@@ -73,7 +73,7 @@ use ustr::Ustr;
 use crate::{
     common::{
         bar::{binance_bar_data_type, parse_binance_bar_type},
-        consts::{BINANCE_BOOK_DEPTHS, BINANCE_VENUE, BINANCE_WS_HEARTBEAT_SECS},
+        consts::{BINANCE_BOOK_DEPTHS, BINANCE_WS_HEARTBEAT_SECS},
         enums::{BinanceEnvironment, BinanceProductType},
         parse::{
             bar_spec_to_binance_interval, parse_millis, parse_millis_or_init,
@@ -193,7 +193,8 @@ impl BinanceFuturesDataClient {
 
         let clock = get_atomic_clock_realtime();
         let data_sender = get_data_event_sender();
-        let socket_factory = SocketControlFactory::new(client_id, Some(*BINANCE_VENUE));
+        let venue = config.resolved_venue();
+        let socket_factory = SocketControlFactory::new(client_id, Some(venue));
 
         let http_client = BinanceFuturesHttpClient::new(
             product_type,
@@ -206,7 +207,8 @@ impl BinanceFuturesDataClient {
             None, // timeout_secs
             config.proxy_url.clone(),
             false, // treat_expired_as_canceled
-        )?;
+        )?
+        .with_venue(venue);
 
         let market_url = config.base_url_ws.clone().map(|url| {
             if product_type == BinanceProductType::UsdM
@@ -289,7 +291,7 @@ impl BinanceFuturesDataClient {
     }
 
     fn venue(&self) -> Venue {
-        *BINANCE_VENUE
+        self.config.resolved_venue()
     }
 
     fn send_data(sender: &tokio::sync::mpsc::UnboundedSender<DataEvent>, data: Data) {

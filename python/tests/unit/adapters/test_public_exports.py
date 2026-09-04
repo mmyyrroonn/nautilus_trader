@@ -37,6 +37,7 @@ ADAPTERS = sorted(p.name for p in ADAPTERS_ROOT.iterdir() if (p / "__init__.py")
 # client, and the multi-venue interactive_brokers broker intentionally omit them.
 VENUE_ADAPTERS = {
     "architect_ax": "AX",
+    "aster": "ASTER",
     "betfair": "BETFAIR",
     "binance": "BINANCE",
     "bitmex": "BITMEX",
@@ -227,6 +228,7 @@ def test_known_adapter_set_is_complete() -> None:
     # Guards against a new adapter landing without a deliberate facade decision.
     expected = {
         "architect_ax",
+        "aster",
         "betfair",
         "binance",
         "bitmex",

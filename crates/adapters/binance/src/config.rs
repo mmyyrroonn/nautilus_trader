@@ -20,14 +20,17 @@ use std::{any::Any, collections::HashMap, str::FromStr};
 use nautilus_common::factories::ClientConfig;
 use nautilus_model::{
     enums::OmsType,
-    identifiers::{AccountId, InstrumentId},
+    identifiers::{AccountId, InstrumentId, Venue},
     types::Currency,
 };
 use nautilus_network::websocket::TransportBackend;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
-use crate::common::enums::{BinanceEnvironment, BinanceMarginType, BinanceProductType};
+use crate::common::{
+    consts::BINANCE_VENUE,
+    enums::{BinanceEnvironment, BinanceMarginType, BinanceProductType},
+};
 
 /// Configuration for Binance instrument loading.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, bon::Builder)]
@@ -79,6 +82,23 @@ impl BinanceInstrumentProviderConfig {
     /// Returns an error for malformed IDs, unsupported filters, or a legacy
     /// callable filter that Binance v2 cannot execute safely.
     pub fn validate(&self, product_type: BinanceProductType) -> anyhow::Result<()> {
+        self.validate_with_venue(product_type, *BINANCE_VENUE)
+    }
+
+    /// Validates instrument loading configuration against a specific venue.
+    ///
+    /// Binance-API-compatible venues (e.g. Aster DEX) reuse this configuration, so
+    /// `load_ids` entries must carry the venue the client is actually configured for.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for malformed IDs, unsupported filters, or a legacy
+    /// callable filter that Binance v2 cannot execute safely.
+    pub fn validate_with_venue(
+        &self,
+        product_type: BinanceProductType,
+        venue: Venue,
+    ) -> anyhow::Result<()> {
         if let Some(filter_callable) = self
             .filter_callable
             .as_deref()
@@ -96,8 +116,8 @@ impl BinanceInstrumentProviderConfig {
                 let instrument_id = InstrumentId::from_str(raw)
                     .map_err(|e| anyhow::anyhow!("invalid Binance load_ids value {raw:?}: {e}"))?;
                 anyhow::ensure!(
-                    instrument_id.venue.as_str() == "BINANCE",
-                    "Binance load_ids value {raw:?} must use venue BINANCE"
+                    instrument_id.venue == venue,
+                    "Binance load_ids value {raw:?} must use venue {venue}"
                 );
             }
         }
@@ -217,6 +237,12 @@ pub struct BinanceDataClientConfig {
     /// WebSocket transport backend (defaults to `Tungstenite`).
     #[builder(default)]
     pub transport_backend: TransportBackend,
+    /// Optional Nautilus venue identifier override (USD-M Futures data only).
+    ///
+    /// Defaults to `BINANCE`. Set this when pointing the USD-M data path at a
+    /// Binance-API-compatible venue such as Aster DEX, so instrument IDs, the data
+    /// client venue, and `load_ids` all resolve to that venue instead.
+    pub venue: Option<Venue>,
 }
 
 #[cfg(feature = "python")]
@@ -232,6 +258,7 @@ nautilus_core::impl_pyo3_config_getters!(BinanceDataClientConfig {
     recv_window_ms: u64,
     us: bool,
     transport_backend: TransportBackend,
+    venue: Option<Venue>,
 });
 
 impl Default for BinanceDataClientConfig {
@@ -248,7 +275,16 @@ impl BinanceDataClientConfig {
     /// Returns an error for invalid receive-window, provider, or Binance US settings.
     pub fn validate(&self) -> anyhow::Result<()> {
         validate_recv_window(self.recv_window_ms)?;
-        self.instrument_provider.validate(self.product_type)?;
+        self.instrument_provider
+            .validate_with_venue(self.product_type, self.resolved_venue())?;
+
+        if self.venue.is_some() {
+            anyhow::ensure!(
+                self.product_type == BinanceProductType::UsdM,
+                "Binance venue override is supported for USD-M Futures data clients only, was {:?}",
+                self.product_type
+            );
+        }
 
         if self.us {
             anyhow::ensure!(
@@ -266,6 +302,12 @@ impl BinanceDataClientConfig {
         }
 
         Ok(())
+    }
+
+    /// Returns the configured venue, defaulting to `BINANCE`.
+    #[must_use]
+    pub fn resolved_venue(&self) -> Venue {
+        self.venue.unwrap_or(*BINANCE_VENUE)
     }
 }
 

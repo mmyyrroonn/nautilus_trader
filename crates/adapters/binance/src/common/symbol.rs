@@ -15,12 +15,12 @@
 
 //! Binance symbol conversion utilities.
 
-use nautilus_model::identifiers::InstrumentId;
+use nautilus_model::identifiers::{InstrumentId, Venue};
 use ustr::Ustr;
 
 use super::{consts::BINANCE_VENUE, enums::BinanceProductType};
 
-/// Converts a Binance symbol to a Nautilus instrument ID.
+/// Converts a Binance symbol to a Nautilus instrument ID on the Binance venue.
 ///
 /// For USD-M perpetuals, appends "-PERP" to match Nautilus symbology.
 /// Dated USD-M delivery symbols are preserved.
@@ -33,6 +33,23 @@ use super::{consts::BINANCE_VENUE, enums::BinanceProductType};
 /// - ("ETHUSD_PERP", CoinM) -> "ETHUSD_PERP.BINANCE"
 #[must_use]
 pub fn format_instrument_id(symbol: &Ustr, product_type: BinanceProductType) -> InstrumentId {
+    format_instrument_id_with_venue(symbol, product_type, *BINANCE_VENUE)
+}
+
+/// Converts a Binance-compatible symbol to a Nautilus instrument ID on the given venue.
+///
+/// Symbology is identical to [`format_instrument_id`]; only the venue differs. This lets
+/// Binance-API-compatible venues (e.g. Aster DEX) reuse the USD-M data path.
+///
+/// # Examples
+///
+/// - ("BTCUSDT", UsdM, ASTER) -> "BTCUSDT-PERP.ASTER"
+#[must_use]
+pub fn format_instrument_id_with_venue(
+    symbol: &Ustr,
+    product_type: BinanceProductType,
+    venue: Venue,
+) -> InstrumentId {
     let nautilus_symbol = match product_type {
         BinanceProductType::UsdM => {
             if is_delivery_symbol(symbol.as_str()) {
@@ -47,7 +64,7 @@ pub fn format_instrument_id(symbol: &Ustr, product_type: BinanceProductType) -> 
         }
         _ => symbol.to_string(),
     };
-    InstrumentId::new(nautilus_symbol.into(), *BINANCE_VENUE)
+    InstrumentId::new(nautilus_symbol.into(), venue)
 }
 
 /// Converts a Nautilus instrument ID to a Binance-compatible symbol.
@@ -134,5 +151,36 @@ mod tests {
         let symbol = Ustr::from(raw_symbol);
         let instrument_id = format_instrument_id(&symbol, product_type);
         assert_eq!(instrument_id.to_string(), expected);
+    }
+
+    #[rstest]
+    #[case::usdm_perp("BTCUSDT", BinanceProductType::UsdM, "ASTER", "BTCUSDT-PERP.ASTER")]
+    #[case::usdm_stock("NVDAUSDT", BinanceProductType::UsdM, "ASTER", "NVDAUSDT-PERP.ASTER")]
+    #[case::usdm_delivery(
+        "BTCUSDT_260925",
+        BinanceProductType::UsdM,
+        "ASTER",
+        "BTCUSDT_260925.ASTER"
+    )]
+    #[case::coinm_perp("BTCUSD_PERP", BinanceProductType::CoinM, "ASTER", "BTCUSD_PERP.ASTER")]
+    fn test_format_instrument_id_with_venue(
+        #[case] raw_symbol: &str,
+        #[case] product_type: BinanceProductType,
+        #[case] raw_venue: &str,
+        #[case] expected: &str,
+    ) {
+        let symbol = Ustr::from(raw_symbol);
+        let venue = Venue::new(Ustr::from(raw_venue));
+        let instrument_id = format_instrument_id_with_venue(&symbol, product_type, venue);
+        assert_eq!(instrument_id.to_string(), expected);
+    }
+
+    #[rstest]
+    fn test_format_instrument_id_defaults_to_binance_venue() {
+        let symbol = Ustr::from("BTCUSDT");
+        assert_eq!(
+            format_instrument_id(&symbol, BinanceProductType::UsdM),
+            format_instrument_id_with_venue(&symbol, BinanceProductType::UsdM, *BINANCE_VENUE),
+        );
     }
 }

@@ -18,7 +18,11 @@
 use std::collections::HashMap;
 
 use nautilus_core::python::to_pyvalue_err;
-use nautilus_model::{enums::OmsType, identifiers::AccountId, types::Currency};
+use nautilus_model::{
+    enums::OmsType,
+    identifiers::{AccountId, Venue},
+    types::Currency,
+};
 use nautilus_network::websocket::TransportBackend;
 use pyo3::{
     prelude::*,
@@ -133,6 +137,7 @@ impl BinanceDataClientConfig {
         recv_window_ms = None,
         us = false,
         transport_backend = None,
+        venue = None,
     ))]
     #[expect(clippy::too_many_arguments)]
     fn py_new(
@@ -150,6 +155,7 @@ impl BinanceDataClientConfig {
         recv_window_ms: Option<u64>,
         us: bool,
         transport_backend: Option<TransportBackend>,
+        venue: Option<Venue>,
     ) -> PyResult<Self> {
         let defaults = Self::default();
         let config = Self {
@@ -169,6 +175,7 @@ impl BinanceDataClientConfig {
             recv_window_ms: recv_window_ms.unwrap_or(defaults.recv_window_ms),
             us,
             transport_backend: transport_backend.unwrap_or(defaults.transport_backend),
+            venue: venue.or(defaults.venue),
         };
         config.validate().map_err(to_pyvalue_err)?;
         Ok(config)
@@ -304,6 +311,7 @@ mod tests {
     fn test_data_client_py_new_uses_defaults_for_omitted_fields() {
         let config = BinanceDataClientConfig::py_new(
             None, None, None, None, None, None, None, None, None, None, None, None, false, None,
+            None,
         )
         .unwrap();
         let defaults = BinanceDataClientConfig::default();
@@ -327,6 +335,8 @@ mod tests {
         assert_eq!(config.proxy_url, defaults.proxy_url);
         assert_eq!(config.recv_window_ms, defaults.recv_window_ms);
         assert!(!config.us);
+        assert_eq!(config.venue, None);
+        assert_eq!(config.resolved_venue(), Venue::from("BINANCE"));
     }
 
     #[rstest]
@@ -346,10 +356,13 @@ mod tests {
             Some(45_000),
             false,
             None,
+            Some(Venue::from("ASTER")),
         )
         .unwrap();
 
         assert_eq!(config.product_type, BinanceProductType::UsdM);
+        assert_eq!(config.venue, Some(Venue::from("ASTER")));
+        assert_eq!(config.resolved_venue(), Venue::from("ASTER"));
         assert_eq!(config.environment, BinanceEnvironment::Testnet);
         assert_eq!(
             config.base_url_http.as_deref(),

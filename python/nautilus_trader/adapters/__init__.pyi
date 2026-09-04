@@ -2,6 +2,7 @@
 # ruff: noqa: E501
 
 from . import architect_ax
+from . import aster
 from . import betfair
 from . import binance
 from . import bitmex
@@ -23,6 +24,7 @@ from . import tardis
 
 __all__ = [
     "architect_ax",
+    "aster",
     "betfair",
     "binance",
     "bitmex",

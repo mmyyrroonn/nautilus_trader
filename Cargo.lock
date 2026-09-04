@@ -5464,6 +5464,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "nautilus-aster"
+version = "0.63.0"
+dependencies = [
+ "anyhow",
+ "nautilus-binance",
+ "nautilus-common",
+ "nautilus-core",
+ "nautilus-live",
+ "nautilus-model",
+ "nautilus-system",
+ "pyo3",
+ "pyo3-stub-gen",
+ "rstest",
+ "serde",
+ "tokio",
+ "ustr",
+]
+
+[[package]]
 name = "nautilus-backtest"
 version = "0.63.0"
 dependencies = [
@@ -6739,6 +6758,7 @@ dependencies = [
  "mimalloc",
  "nautilus-analysis",
  "nautilus-architect-ax",
+ "nautilus-aster",
  "nautilus-backtest",
  "nautilus-betfair",
  "nautilus-binance",

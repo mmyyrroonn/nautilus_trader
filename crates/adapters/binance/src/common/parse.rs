@@ -45,12 +45,12 @@ use serde_json::Value;
 
 use crate::{
     common::{
-        consts::BINANCE,
+        consts::{BINANCE, BINANCE_VENUE},
         encoder::decode_client_order_id,
         enums::{
             BinanceContractStatus, BinanceKlineInterval, BinanceProductType, BinanceTradingStatus,
         },
-        symbol::format_instrument_id,
+        symbol::{format_instrument_id, format_instrument_id_with_venue},
     },
     futures::http::models::{BinanceFuturesCoinSymbol, BinanceFuturesUsdSymbol},
     spot::{
@@ -265,12 +265,48 @@ pub fn parse_usdm_instrument(
     parse_usdm_instrument_with_fees(symbol, None, None, ts_event, ts_init)
 }
 
+/// Parses a USD-M Futures symbol definition onto the given Nautilus venue.
+///
+/// Symbology and all other parsing are identical to [`parse_usdm_instrument`]; only the
+/// venue of the resulting instrument ID differs. This lets Binance-API-compatible venues
+/// (e.g. Aster DEX) reuse the USD-M data path.
+///
+/// # Errors
+///
+/// Returns the same errors as [`parse_usdm_instrument`].
+pub fn parse_usdm_instrument_with_venue(
+    symbol: &BinanceFuturesUsdSymbol,
+    venue: Venue,
+    ts_event: UnixNanos,
+    ts_init: UnixNanos,
+) -> anyhow::Result<InstrumentAny> {
+    parse_usdm_instrument_with_fees_and_venue(symbol, None, None, ts_event, ts_init, venue)
+}
+
 pub(crate) fn parse_usdm_instrument_with_fees(
     symbol: &BinanceFuturesUsdSymbol,
     maker_fee: Option<Decimal>,
     taker_fee: Option<Decimal>,
     ts_event: UnixNanos,
     ts_init: UnixNanos,
+) -> anyhow::Result<InstrumentAny> {
+    parse_usdm_instrument_with_fees_and_venue(
+        symbol,
+        maker_fee,
+        taker_fee,
+        ts_event,
+        ts_init,
+        *BINANCE_VENUE,
+    )
+}
+
+pub(crate) fn parse_usdm_instrument_with_fees_and_venue(
+    symbol: &BinanceFuturesUsdSymbol,
+    maker_fee: Option<Decimal>,
+    taker_fee: Option<Decimal>,
+    ts_event: UnixNanos,
+    ts_init: UnixNanos,
+    venue: Venue,
 ) -> anyhow::Result<InstrumentAny> {
     enum ContractKind {
         CryptoPerpetual,
@@ -303,7 +339,8 @@ pub(crate) fn parse_usdm_instrument_with_fees(
     let quote_currency = get_currency(symbol.quote_asset.as_str());
     let settlement_currency = get_currency(symbol.margin_asset.as_str());
 
-    let instrument_id = format_instrument_id(&symbol.symbol, BinanceProductType::UsdM);
+    let instrument_id =
+        format_instrument_id_with_venue(&symbol.symbol, BinanceProductType::UsdM, venue);
     let raw_symbol = Symbol::new(symbol.symbol.as_str());
 
     let price_filter = get_filter(&symbol.filters, "PRICE_FILTER")

@@ -103,6 +103,8 @@ class BinanceDataClientConfig:
     def us(self) -> bool: ...
     @property
     def transport_backend(self) -> network.TransportBackend: ...
+    @property
+    def venue(self) -> model.Venue | None: ...
     def __init__(
         self,
         product_type: BinanceProductType | None = None,
@@ -119,6 +121,7 @@ class BinanceDataClientConfig:
         recv_window_ms: int | None = None,
         us: bool = False,
         transport_backend: network.TransportBackend | None = None,
+        venue: model.Venue | None = None,
     ) -> None: ...
     @property
     def has_proxy_url(self) -> bool: ...

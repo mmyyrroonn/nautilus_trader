@@ -38,7 +38,7 @@ use nautilus_model::{
         OrderType, TimeInForce,
     },
     events::AccountState,
-    identifiers::{AccountId, ClientOrderId, InstrumentId, TradeId, VenueOrderId},
+    identifiers::{AccountId, ClientOrderId, InstrumentId, TradeId, Venue, VenueOrderId},
     instruments::{Instrument, any::InstrumentAny},
     orderbook::OrderBook,
     reports::{FillReport, OrderStatusReport},
@@ -84,7 +84,8 @@ use crate::{
         bar::BinanceBar,
         consts::{
             BINANCE_API_KEY_HEADER, BINANCE_DAPI_PATH, BINANCE_DAPI_RATE_LIMITS, BINANCE_FAPI_PATH,
-            BINANCE_FAPI_RATE_LIMITS, BINANCE_NAUTILUS_FUTURES_BROKER_ID, BinanceRateLimitQuota,
+            BINANCE_FAPI_RATE_LIMITS, BINANCE_NAUTILUS_FUTURES_BROKER_ID, BINANCE_VENUE,
+            BinanceRateLimitQuota,
         },
         credential::SigningCredential,
         encoder::encode_broker_id,
@@ -98,9 +99,9 @@ use crate::{
         models::BinanceErrorResponse,
         parse::{
             parse_coinm_instrument_with_fees, parse_millis, parse_required_price_at_precision,
-            parse_required_quantity_at_precision, parse_usdm_instrument_with_fees,
+            parse_required_quantity_at_precision, parse_usdm_instrument_with_fees_and_venue,
         },
-        symbol::{format_binance_symbol, format_instrument_id},
+        symbol::{format_binance_symbol, format_instrument_id, format_instrument_id_with_venue},
         urls::get_http_base_url,
     },
     config::BinanceInstrumentProviderConfig,
@@ -1434,12 +1435,22 @@ impl BinanceFuturesInstrument {
         Ok((price_precision, quantity_precision))
     }
 
-    /// Returns the Nautilus-formatted instrument ID.
+    /// Returns the Nautilus-formatted instrument ID on the Binance venue.
     #[must_use]
     pub fn id(&self) -> InstrumentId {
+        self.id_with_venue(*BINANCE_VENUE)
+    }
+
+    /// Returns the Nautilus-formatted instrument ID on the given venue.
+    #[must_use]
+    pub fn id_with_venue(&self, venue: Venue) -> InstrumentId {
         match self {
-            Self::UsdM(s) => format_instrument_id(&s.symbol, BinanceProductType::UsdM),
-            Self::CoinM(s) => format_instrument_id(&s.symbol, BinanceProductType::CoinM),
+            Self::UsdM(s) => {
+                format_instrument_id_with_venue(&s.symbol, BinanceProductType::UsdM, venue)
+            }
+            Self::CoinM(s) => {
+                format_instrument_id_with_venue(&s.symbol, BinanceProductType::CoinM, venue)
+            }
         }
     }
 
@@ -1459,6 +1470,7 @@ impl BinanceFuturesInstrument {
 pub struct BinanceFuturesHttpClient {
     inner: Arc<BinanceRawFuturesHttpClient>,
     product_type: BinanceProductType,
+    venue: Venue,
     clock: &'static AtomicTime,
     instruments: Arc<DashMap<Ustr, BinanceFuturesInstrument>>,
     instruments_reconciliation: Arc<AtomicMap<InstrumentId, InstrumentAny>>,
@@ -1508,6 +1520,7 @@ impl BinanceFuturesHttpClient {
         Ok(Self {
             inner: Arc::new(raw),
             product_type,
+            venue: *BINANCE_VENUE,
             clock,
             instruments: Arc::new(DashMap::new()),
             instruments_reconciliation: Arc::new(AtomicMap::new()),
@@ -1520,6 +1533,23 @@ impl BinanceFuturesHttpClient {
     #[must_use]
     pub const fn product_type(&self) -> BinanceProductType {
         self.product_type
+    }
+
+    /// Overrides the Nautilus venue used when parsing USD-M instruments.
+    ///
+    /// Defaults to `BINANCE`. Binance-API-compatible venues (e.g. Aster DEX) set this so
+    /// loaded instruments, `load_ids` validation, and metadata lookups resolve to their
+    /// own venue. COIN-M parsing is unaffected.
+    #[must_use]
+    pub const fn with_venue(mut self, venue: Venue) -> Self {
+        self.venue = venue;
+        self
+    }
+
+    /// Returns the Nautilus venue this client parses instruments onto.
+    #[must_use]
+    pub const fn venue(&self) -> Venue {
+        self.venue
     }
 
     /// Returns a reference to the inner raw HTTP client.
@@ -1562,11 +1592,12 @@ impl BinanceFuturesHttpClient {
                     instrument.symbol()
                 )));
             }
-            let expected_id = format_instrument_id(&symbol, self.product_type);
-            if instrument.id() != expected_id {
+            let expected_id =
+                format_instrument_id_with_venue(&symbol, self.product_type, self.venue);
+            if instrument.id_with_venue(self.venue) != expected_id {
                 return Err(BinanceFuturesHttpError::ValidationError(format!(
                     "Binance Futures catalogue instrument ID {} does not match expected ID {expected_id}",
-                    instrument.id()
+                    instrument.id_with_venue(self.venue)
                 )));
             }
 
@@ -1769,7 +1800,7 @@ impl BinanceFuturesHttpClient {
     ) -> BinanceFuturesHttpResult<Vec<InstrumentAny>> {
         let _guard = self.instruments_load_lock.lock().await;
         config
-            .validate(self.product_type)
+            .validate_with_venue(self.product_type, self.venue)
             .map_err(|e| BinanceFuturesHttpError::ValidationError(e.to_string()))?;
         let selector = BinanceInstrumentSelector::new(config)
             .map_err(|e| BinanceFuturesHttpError::ValidationError(e.to_string()))?;
@@ -1788,8 +1819,11 @@ impl BinanceFuturesHttpClient {
                 let mut instruments = Vec::with_capacity(info.symbols.len());
 
                 for symbol in info.symbols {
-                    let instrument_id =
-                        format_instrument_id(&symbol.symbol, BinanceProductType::UsdM);
+                    let instrument_id = format_instrument_id_with_venue(
+                        &symbol.symbol,
+                        BinanceProductType::UsdM,
+                        self.venue,
+                    );
                     cache.push((
                         symbol.symbol,
                         BinanceFuturesInstrument::UsdM(symbol.clone()),
@@ -1809,12 +1843,13 @@ impl BinanceFuturesHttpClient {
                         .futures_symbol_fees(config, &symbol.symbol, fallback_fees)
                         .await;
 
-                    match parse_usdm_instrument_with_fees(
+                    match parse_usdm_instrument_with_fees_and_venue(
                         &symbol,
                         Some(fees.0),
                         Some(fees.1),
                         ts_init,
                         ts_init,
+                        self.venue,
                     ) {
                         Ok(instrument) => {
                             validate_reconciliation_instrument(
@@ -3174,7 +3209,7 @@ impl BinanceFuturesHttpClient {
             .get(&Ustr::from(symbol.as_str()))
             .map(|instrument| instrument.value().clone())
             .ok_or_else(|| InstrumentLookupError::not_found(instrument_id))?;
-        if instrument.id() != instrument_id {
+        if instrument.id_with_venue(self.venue) != instrument_id {
             return Err(InstrumentLookupError::not_found(instrument_id).into());
         }
 
