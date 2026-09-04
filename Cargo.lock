@@ -5467,19 +5467,31 @@ dependencies = [
 name = "nautilus-aster"
 version = "0.63.0"
 dependencies = [
+ "ahash 0.8.12",
+ "alloy",
+ "alloy-primitives",
  "anyhow",
+ "async-trait",
+ "futures-util",
+ "log",
  "nautilus-binance",
  "nautilus-common",
  "nautilus-core",
  "nautilus-live",
  "nautilus-model",
+ "nautilus-network",
  "nautilus-system",
+ "parking_lot",
  "pyo3",
  "pyo3-stub-gen",
  "rstest",
+ "rust_decimal",
  "serde",
+ "serde_json",
+ "thiserror 2.0.20",
  "tokio",
  "ustr",
+ "zeroize",
 ]
 
 [[package]]

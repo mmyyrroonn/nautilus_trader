@@ -19,6 +19,12 @@ use std::fmt::Display;
 
 use serde::{Deserialize, Serialize};
 
+/// EIP-712 chain id for the Aster mainnet signing domain.
+pub const ASTER_MAINNET_CHAIN_ID: u64 = 1666;
+
+/// EIP-712 chain id for the Aster testnet signing domain.
+pub const ASTER_TESTNET_CHAIN_ID: u64 = 714;
+
 /// Aster environment type.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[cfg_attr(
@@ -48,6 +54,17 @@ impl AsterEnvironment {
     pub const fn is_testnet(self) -> bool {
         matches!(self, Self::Testnet)
     }
+
+    /// Returns the EIP-712 chain id used when signing Futures V3 requests.
+    ///
+    /// Aster's signing domain uses a venue-specific chain id rather than an EVM network id.
+    #[must_use]
+    pub const fn chain_id(self) -> u64 {
+        match self {
+            Self::Mainnet => ASTER_MAINNET_CHAIN_ID,
+            Self::Testnet => ASTER_TESTNET_CHAIN_ID,
+        }
+    }
 }
 
 impl Display for AsterEnvironment {
@@ -70,6 +87,12 @@ mod tests {
         assert_eq!(AsterEnvironment::default(), AsterEnvironment::Mainnet);
         assert!(!AsterEnvironment::default().is_testnet());
         assert!(AsterEnvironment::Testnet.is_testnet());
+    }
+
+    #[rstest]
+    fn test_chain_id() {
+        assert_eq!(AsterEnvironment::Mainnet.chain_id(), 1666);
+        assert_eq!(AsterEnvironment::Testnet.chain_id(), 714);
     }
 
     #[rstest]

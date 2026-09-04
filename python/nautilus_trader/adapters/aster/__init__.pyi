@@ -14,6 +14,8 @@ __all__ = [
     "AsterDataClientConfig",
     "AsterDataClientFactory",
     "AsterEnvironment",
+    "AsterExecutionClientConfig",
+    "AsterExecutionClientFactory",
 ]
 
 ASTER: str
@@ -52,6 +54,55 @@ class AsterDataClientConfig:
 
 @typing.final
 class AsterDataClientFactory:
+    def __init__(self) -> None: ...
+    def name(self) -> str: ...
+
+@typing.final
+class AsterExecutionClientConfig:
+    @property
+    def account_id(self) -> model.AccountId: ...
+    @property
+    def environment(self) -> AsterEnvironment: ...
+    @property
+    def user_address(self) -> str | None: ...
+    @property
+    def signer_address(self) -> str | None: ...
+    @property
+    def base_url_http(self) -> str | None: ...
+    @property
+    def base_url_ws(self) -> str | None: ...
+    @property
+    def instrument_provider(self) -> binance.BinanceInstrumentProviderConfig: ...
+    @property
+    def http_timeout_secs(self) -> int | None: ...
+    @property
+    def ws_heartbeat_secs(self) -> int | None: ...
+    @property
+    def proxy_url(self) -> str | None: ...
+    @property
+    def treat_expired_as_canceled(self) -> bool: ...
+    @property
+    def venue(self) -> model.Venue | None: ...
+    def __init__(
+        self,
+        account_id: model.AccountId | None = None,
+        environment: AsterEnvironment | None = None,
+        user_address: str | None = None,
+        signer_address: str | None = None,
+        signer_private_key: str | None = None,
+        base_url_http: str | None = None,
+        base_url_ws: str | None = None,
+        instrument_provider: binance.BinanceInstrumentProviderConfig | None = None,
+        http_timeout_secs: int | None = None,
+        ws_heartbeat_secs: int | None = None,
+        proxy_url: str | None = None,
+        treat_expired_as_canceled: bool | None = None,
+        venue: model.Venue | None = None,
+    ) -> None: ...
+    def has_explicit_credentials(self) -> bool: ...
+
+@typing.final
+class AsterExecutionClientFactory:
     def __init__(self) -> None: ...
     def name(self) -> str: ...
 

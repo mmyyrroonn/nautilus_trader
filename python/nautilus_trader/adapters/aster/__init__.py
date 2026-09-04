@@ -27,6 +27,8 @@ __all__ = [
     "AsterDataClientConfig",
     "AsterDataClientFactory",
     "AsterEnvironment",
+    "AsterExecutionClientConfig",
+    "AsterExecutionClientFactory",
 ]
 
 fixup_module_names(globals(), __name__)

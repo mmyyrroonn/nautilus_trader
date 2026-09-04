@@ -1,0 +1,28 @@
+{
+  "_source": {
+    "repo": "https://github.com/ccxt/ccxt",
+    "file": "ts/src/test/static/response/aster.json",
+    "method": "fetchMyTrades",
+    "description": "fetchMyTrades",
+    "url": null,
+    "note": "Verbatim Aster Futures V3 response body, used as a serde fixture."
+  },
+  "response": [
+    {
+      "buyer": false,
+      "commission": "-0.07819010",
+      "commissionAsset": "USDT",
+      "id": 698759,
+      "maker": false,
+      "orderId": 25851813,
+      "price": "7819.01",
+      "qty": "0.002",
+      "quoteQty": "15.63802",
+      "realizedPnl": "-0.91539999",
+      "side": "SELL",
+      "positionSide": "SHORT",
+      "symbol": "BTCUSDT",
+      "time": 1569514978020
+    }
+  ]
+}

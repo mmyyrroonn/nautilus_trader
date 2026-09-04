@@ -1,0 +1,55 @@
+{
+  "_source": {
+    "repo": "https://github.com/ccxt/ccxt",
+    "file": "ts/src/test/static/response/aster.json",
+    "method": "fetchBalance",
+    "description": "swap",
+    "note": "Verbatim Aster Futures V3 response body, used as a serde fixture. Trimmed to a representative slice of the asset list."
+  },
+  "response": [
+    {
+      "accountAlias": "FzXquXsRFzXqAufW",
+      "asset": "USDT",
+      "balance": "1.11341089",
+      "crossWalletBalance": "1.11341089",
+      "crossUnPnl": "0.00000000",
+      "availableBalance": "0.81341089",
+      "maxWithdrawAmount": "0.81341089",
+      "marginAvailable": true,
+      "updateTime": "1776802344230"
+    },
+    {
+      "accountAlias": "FzXquXsRFzXqAufW",
+      "asset": "CDL",
+      "balance": "0.00000000",
+      "crossWalletBalance": "0.00000000",
+      "crossUnPnl": "0.00000000",
+      "availableBalance": "0.00000000",
+      "maxWithdrawAmount": "0.00000000",
+      "marginAvailable": true,
+      "updateTime": "0"
+    },
+    {
+      "accountAlias": "FzXquXsRFzXqAufW",
+      "asset": "FBTC",
+      "balance": "0.00000000",
+      "crossWalletBalance": "0.00000000",
+      "crossUnPnl": "0.00000000",
+      "availableBalance": "0.00000000",
+      "maxWithdrawAmount": "0.00000000",
+      "marginAvailable": true,
+      "updateTime": "0"
+    },
+    {
+      "accountAlias": "FzXquXsRFzXqAufW",
+      "asset": "BONUSUSD",
+      "balance": "0.00000000",
+      "crossWalletBalance": "0.00000000",
+      "crossUnPnl": "0.00000000",
+      "availableBalance": "0.00000000",
+      "maxWithdrawAmount": "0.00000000",
+      "marginAvailable": true,
+      "updateTime": "0"
+    }
+  ]
+}

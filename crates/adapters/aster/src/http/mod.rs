@@ -13,8 +13,13 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-//! Common Aster constants and enumerations.
+//! HTTP client and models for the signed Aster Futures V3 endpoints.
 
-pub mod consts;
-pub mod credential;
-pub mod enums;
+pub mod client;
+pub mod error;
+pub mod models;
+pub mod query;
+
+pub use client::AsterHttpClient;
+pub use error::{AsterHttpError, AsterHttpResult};
+pub use query::AsterParams;

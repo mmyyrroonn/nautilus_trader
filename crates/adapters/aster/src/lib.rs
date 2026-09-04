@@ -62,7 +62,11 @@
 
 pub mod common;
 pub mod config;
+pub mod execution;
 pub mod factories;
+pub mod http;
+pub mod signing;
+pub mod websocket;
 
 #[cfg(feature = "python")]
 pub mod python;

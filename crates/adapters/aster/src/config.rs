@@ -22,7 +22,8 @@ use nautilus_binance::{
     config::{BinanceDataClientConfig, BinanceInstrumentProviderConfig},
 };
 use nautilus_common::factories::ClientConfig;
-use nautilus_model::identifiers::Venue;
+use nautilus_core::string::secret::REDACTED;
+use nautilus_model::identifiers::{AccountId, Venue};
 use serde::{Deserialize, Serialize};
 
 use crate::common::{
@@ -158,6 +159,180 @@ impl ClientConfig for AsterDataClientConfig {
     }
 }
 
+
+/// Configuration for the Aster live execution client.
+///
+/// Aster's Futures V3 trading endpoints are EIP-712 signed, so this client carries its own
+/// signing credentials rather than an API key/secret pair. Instrument metadata is still loaded
+/// through the Binance USD-M instrument provider because Aster serves a Binance-compatible
+/// `exchangeInfo`.
+///
+/// The signer private key is never rendered by `Debug`.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+#[cfg_attr(
+    feature = "python",
+    pyo3::pyclass(module = "nautilus_trader.adapters.aster", from_py_object)
+)]
+#[cfg_attr(
+    feature = "python",
+    pyo3_stub_gen::derive::gen_stub_pyclass(module = "nautilus_trader.adapters.aster")
+)]
+pub struct AsterExecutionClientConfig {
+    /// Account identifier for the execution client.
+    pub account_id: AccountId,
+    /// Environment (mainnet or testnet).
+    ///
+    /// Selects both the endpoints and the EIP-712 chain id used when signing.
+    pub environment: AsterEnvironment,
+    /// Master account wallet address (`user` in every signed request).
+    ///
+    /// Falls back to `ASTER_USER_ADDRESS`, then to the signer address.
+    pub user_address: Option<String>,
+    /// API wallet address (`signer` in every signed request).
+    ///
+    /// Falls back to `ASTER_SIGNER_ADDRESS`, then to the address derived from the private key.
+    /// When set it must match the key, otherwise construction fails.
+    pub signer_address: Option<String>,
+    /// API wallet private key used for EIP-712 signing.
+    ///
+    /// Falls back to `ASTER_SIGNER_PRIVATE_KEY`. Never logged or included in `repr`.
+    pub signer_private_key: Option<String>,
+    /// Optional base URL override for the HTTP API.
+    pub base_url_http: Option<String>,
+    /// Optional base URL override for the WebSocket API.
+    ///
+    /// Must end in `/ws`; the listen key is appended as a further path segment.
+    pub base_url_ws: Option<String>,
+    /// Instrument loading configuration (reused from the Binance adapter).
+    ///
+    /// Aster rate-limits `exchangeInfo` aggressively, so prefer `load_ids` over `load_all`.
+    pub instrument_provider: BinanceInstrumentProviderConfig,
+    /// HTTP request timeout in seconds.
+    pub http_timeout_secs: Option<u64>,
+    /// WebSocket heartbeat interval in seconds.
+    pub ws_heartbeat_secs: Option<u64>,
+    /// Optional proxy URL for HTTP and WebSocket transports.
+    pub proxy_url: Option<String>,
+    /// Whether to report `EXPIRED` orders as canceled.
+    ///
+    /// Aster reports the unfilled remainder of `IOC`/`FOK` orders as `EXPIRED`, which maps
+    /// more naturally onto `CANCELED` for the execution engine.
+    pub treat_expired_as_canceled: bool,
+    /// Optional Nautilus venue identifier override (defaults to `ASTER`).
+    pub venue: Option<Venue>,
+}
+
+impl std::fmt::Debug for AsterExecutionClientConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct(stringify!(AsterExecutionClientConfig))
+            .field("account_id", &self.account_id)
+            .field("environment", &self.environment)
+            .field("user_address", &self.user_address)
+            .field("signer_address", &self.signer_address)
+            .field(
+                "signer_private_key",
+                &self.signer_private_key.as_ref().map(|_| REDACTED),
+            )
+            .field("base_url_http", &self.base_url_http)
+            .field("base_url_ws", &self.base_url_ws)
+            .field("instrument_provider", &self.instrument_provider)
+            .field("http_timeout_secs", &self.http_timeout_secs)
+            .field("ws_heartbeat_secs", &self.ws_heartbeat_secs)
+            .field("proxy_url", &self.proxy_url)
+            .field("treat_expired_as_canceled", &self.treat_expired_as_canceled)
+            .field("venue", &self.venue)
+            .finish()
+    }
+}
+
+#[cfg(feature = "python")]
+nautilus_core::impl_pyo3_config_getters!(AsterExecutionClientConfig {
+    account_id: AccountId,
+    environment: AsterEnvironment,
+    user_address: Option<String>,
+    signer_address: Option<String>,
+    base_url_http: Option<String>,
+    base_url_ws: Option<String>,
+    instrument_provider: BinanceInstrumentProviderConfig,
+    http_timeout_secs: Option<u64>,
+    ws_heartbeat_secs: Option<u64>,
+    proxy_url: Option<String>,
+    treat_expired_as_canceled: bool,
+    venue: Option<Venue>,
+});
+
+impl Default for AsterExecutionClientConfig {
+    fn default() -> Self {
+        Self {
+            account_id: AccountId::from("ASTER-001"),
+            environment: AsterEnvironment::default(),
+            user_address: None,
+            signer_address: None,
+            signer_private_key: None,
+            base_url_http: None,
+            base_url_ws: None,
+            instrument_provider: BinanceInstrumentProviderConfig::default(),
+            http_timeout_secs: Some(60),
+            ws_heartbeat_secs: Some(30),
+            proxy_url: None,
+            treat_expired_as_canceled: true,
+            venue: None,
+        }
+    }
+}
+
+impl AsterExecutionClientConfig {
+    /// Returns the configured venue, defaulting to `ASTER`.
+    #[must_use]
+    pub fn resolved_venue(&self) -> Venue {
+        self.venue.unwrap_or(*ASTER_VENUE)
+    }
+
+    /// Returns the resolved Futures HTTP base URL.
+    #[must_use]
+    pub fn resolved_http_url(&self) -> String {
+        self.base_url_http
+            .clone()
+            .unwrap_or_else(|| aster_http_base_url(self.environment).to_string())
+    }
+
+    /// Returns the resolved Futures WebSocket base URL.
+    #[must_use]
+    pub fn resolved_ws_url(&self) -> String {
+        self.base_url_ws
+            .clone()
+            .unwrap_or_else(|| aster_ws_base_url(self.environment).to_string())
+    }
+
+    /// Returns whether a signing key was configured explicitly.
+    ///
+    /// A `false` result does not mean the client cannot sign: the key may still come from
+    /// `ASTER_SIGNER_PRIVATE_KEY`.
+    #[must_use]
+    pub fn has_explicit_credentials(&self) -> bool {
+        self.signer_private_key
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+    }
+
+    /// Validates the configuration.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the instrument provider selection does not use the resolved venue.
+    pub fn validate(&self) -> anyhow::Result<()> {
+        self.instrument_provider
+            .validate_with_venue(BinanceProductType::UsdM, self.resolved_venue())
+    }
+}
+
+impl ClientConfig for AsterExecutionClientConfig {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
@@ -254,5 +429,117 @@ mod tests {
 
         let error = config.validate().unwrap_err().to_string();
         assert!(error.contains("must use venue ASTER"), "{error}");
+    }
+    #[rstest]
+    fn test_exec_config_defaults() {
+        let config = AsterExecutionClientConfig::default();
+
+        assert_eq!(config.account_id, AccountId::from("ASTER-001"));
+        assert_eq!(config.environment, AsterEnvironment::Mainnet);
+        assert_eq!(config.resolved_venue(), *ASTER_VENUE);
+        assert_eq!(config.resolved_http_url(), ASTER_HTTP_URL);
+        assert_eq!(config.resolved_ws_url(), ASTER_WS_URL);
+        assert!(config.treat_expired_as_canceled);
+        assert!(!config.has_explicit_credentials());
+        assert!(config.validate().is_ok());
+    }
+
+    #[rstest]
+    fn test_exec_config_testnet_urls() {
+        let config = AsterExecutionClientConfig {
+            environment: AsterEnvironment::Testnet,
+            ..Default::default()
+        };
+
+        assert_eq!(config.resolved_http_url(), ASTER_TESTNET_HTTP_URL);
+        assert_eq!(config.resolved_ws_url(), ASTER_TESTNET_WS_URL);
+        assert_eq!(config.environment.chain_id(), 714);
+    }
+
+    #[rstest]
+    fn test_exec_config_url_overrides() {
+        let config = AsterExecutionClientConfig {
+            base_url_http: Some("https://example.invalid".to_string()),
+            base_url_ws: Some("wss://example.invalid/ws".to_string()),
+            ..Default::default()
+        };
+
+        assert_eq!(config.resolved_http_url(), "https://example.invalid");
+        assert_eq!(config.resolved_ws_url(), "wss://example.invalid/ws");
+    }
+
+    #[rstest]
+    fn test_exec_config_debug_redacts_the_signer_key() {
+        let config = AsterExecutionClientConfig {
+            signer_private_key: Some("0x".to_string() + &"11".repeat(32)),
+            ..Default::default()
+        };
+
+        let rendered = format!("{config:?}");
+
+        assert!(config.has_explicit_credentials());
+        assert!(rendered.contains(REDACTED), "{rendered}");
+        assert!(!rendered.contains("1111"), "{rendered}");
+    }
+
+    #[rstest]
+    fn test_exec_config_debug_shows_absent_key_as_none() {
+        let rendered = format!("{:?}", AsterExecutionClientConfig::default());
+
+        assert!(rendered.contains("signer_private_key: None"), "{rendered}");
+    }
+
+    #[rstest]
+    fn test_exec_config_blank_key_is_not_explicit() {
+        let config = AsterExecutionClientConfig {
+            signer_private_key: Some("   ".to_string()),
+            ..Default::default()
+        };
+
+        assert!(!config.has_explicit_credentials());
+    }
+
+    #[rstest]
+    fn test_exec_config_validate_rejects_foreign_load_ids() {
+        let config = AsterExecutionClientConfig {
+            instrument_provider: BinanceInstrumentProviderConfig {
+                load_all: false,
+                load_ids: Some(vec!["BTCUSDT-PERP.BINANCE".to_string()]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let error = config.validate().unwrap_err().to_string();
+        assert!(error.contains("must use venue ASTER"), "{error}");
+    }
+
+    #[rstest]
+    fn test_exec_config_validate_accepts_aster_load_ids() {
+        let config = AsterExecutionClientConfig {
+            instrument_provider: BinanceInstrumentProviderConfig {
+                load_all: false,
+                load_ids: Some(vec!["NVDAUSDT-PERP.ASTER".to_string()]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert!(config.validate().is_ok());
+    }
+
+    #[rstest]
+    fn test_exec_config_serde_round_trip_keeps_the_key() {
+        let config = AsterExecutionClientConfig {
+            signer_private_key: Some("0xabc".to_string()),
+            environment: AsterEnvironment::Testnet,
+            ..Default::default()
+        };
+
+        let json = serde_json::to_string(&config).unwrap();
+        let restored: AsterExecutionClientConfig = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(restored.signer_private_key.as_deref(), Some("0xabc"));
+        assert_eq!(restored.environment, AsterEnvironment::Testnet);
     }
 }

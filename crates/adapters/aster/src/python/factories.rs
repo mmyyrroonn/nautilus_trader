@@ -17,12 +17,30 @@
 
 use pyo3::prelude::*;
 
-use crate::{common::consts::ASTER, factories::AsterDataClientFactory};
+use crate::{
+    common::consts::ASTER,
+    factories::{AsterDataClientFactory, AsterExecutionClientFactory},
+};
 
 #[pymethods]
 #[pyo3_stub_gen::derive::gen_stub_pymethods]
 impl AsterDataClientFactory {
     /// Factory for creating Aster data clients.
+    #[new]
+    fn py_new() -> Self {
+        Self
+    }
+
+    #[pyo3(name = "name")]
+    fn py_name(&self) -> &'static str {
+        ASTER
+    }
+}
+
+#[pymethods]
+#[pyo3_stub_gen::derive::gen_stub_pymethods]
+impl AsterExecutionClientFactory {
+    /// Factory for creating Aster execution clients.
     #[new]
     fn py_new() -> Self {
         Self

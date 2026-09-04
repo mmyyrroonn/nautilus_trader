@@ -16,8 +16,9 @@
 //! Python bindings from `pyo3`.
 //!
 //! Aster's Python surface is intentionally narrow: constants, environment selection,
-//! configuration, and the data client factory. The underlying market-data client is the
-//! Binance USD-M client, consumed through the Rust trait surface.
+//! configuration, and the data and execution client factories. The market-data client is the
+//! Binance USD-M client; execution is Aster's own EIP-712 signed client. Both are consumed
+//! through the Rust trait surface.
 
 #![expect(
     clippy::missing_errors_doc,
@@ -27,7 +28,7 @@
 pub mod config;
 pub mod factories;
 
-use nautilus_common::factories::{ClientConfig, DataClientFactory};
+use nautilus_common::factories::{ClientConfig, DataClientFactory, ExecutionClientFactory};
 use nautilus_core::python::{to_pyruntime_err, to_pyvalue_err};
 use nautilus_system::get_global_pyo3_registry;
 use pyo3::prelude::*;
@@ -37,8 +38,8 @@ use crate::{
         consts::{ASTER, ASTER_CLIENT_ID, ASTER_VENUE},
         enums::AsterEnvironment,
     },
-    config::AsterDataClientConfig,
-    factories::AsterDataClientFactory,
+    config::{AsterDataClientConfig, AsterExecutionClientConfig},
+    factories::{AsterDataClientFactory, AsterExecutionClientFactory},
 };
 
 #[expect(clippy::needless_pass_by_value)]
@@ -64,6 +65,29 @@ fn extract_aster_data_config(py: Python<'_>, config: Py<PyAny>) -> PyResult<Box<
     }
 }
 
+#[expect(clippy::needless_pass_by_value)]
+fn extract_aster_exec_factory(
+    py: Python<'_>,
+    factory: Py<PyAny>,
+) -> PyResult<Box<dyn ExecutionClientFactory>> {
+    match factory.extract::<AsterExecutionClientFactory>(py) {
+        Ok(f) => Ok(Box::new(f)),
+        Err(e) => Err(to_pyvalue_err(format!(
+            "Failed to extract AsterExecutionClientFactory: {e}"
+        ))),
+    }
+}
+
+#[expect(clippy::needless_pass_by_value)]
+fn extract_aster_exec_config(py: Python<'_>, config: Py<PyAny>) -> PyResult<Box<dyn ClientConfig>> {
+    match config.extract::<AsterExecutionClientConfig>(py) {
+        Ok(c) => Ok(Box::new(c)),
+        Err(e) => Err(to_pyvalue_err(format!(
+            "Failed to extract AsterExecutionClientConfig: {e}"
+        ))),
+    }
+}
+
 /// Aster adapter Python module.
 ///
 /// Exposed through `nautilus_trader.adapters.aster`.
@@ -75,6 +99,8 @@ pub fn aster(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<AsterEnvironment>()?;
     m.add_class::<AsterDataClientConfig>()?;
     m.add_class::<AsterDataClientFactory>()?;
+    m.add_class::<AsterExecutionClientConfig>()?;
+    m.add_class::<AsterExecutionClientFactory>()?;
 
     let registry = get_global_pyo3_registry();
 
@@ -86,12 +112,29 @@ pub fn aster(m: &Bound<'_, PyModule>) -> PyResult<()> {
         )));
     }
 
+    if let Err(e) =
+        registry.register_exec_factory_extractor(ASTER.to_string(), extract_aster_exec_factory)
+    {
+        return Err(to_pyruntime_err(format!(
+            "Failed to register Aster exec factory extractor: {e}"
+        )));
+    }
+
     if let Err(e) = registry.register_config_extractor(
         "AsterDataClientConfig".to_string(),
         extract_aster_data_config,
     ) {
         return Err(to_pyruntime_err(format!(
             "Failed to register Aster data config extractor: {e}"
+        )));
+    }
+
+    if let Err(e) = registry.register_config_extractor(
+        "AsterExecutionClientConfig".to_string(),
+        extract_aster_exec_config,
+    ) {
+        return Err(to_pyruntime_err(format!(
+            "Failed to register Aster exec config extractor: {e}"
         )));
     }
 

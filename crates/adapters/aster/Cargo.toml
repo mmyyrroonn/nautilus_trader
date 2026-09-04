@@ -29,6 +29,7 @@ extension-module = [
   "nautilus-core/extension-module",
   "nautilus-live/extension-module",
   "nautilus-model/extension-module",
+  "nautilus-network/extension-module",
   "pyo3/extension-module",
   "python",
 ]
@@ -39,6 +40,7 @@ python = [
   "nautilus-core/python",
   "nautilus-live/python",
   "nautilus-model/python",
+  "nautilus-network/python",
   "nautilus-system/python",
   "pyo3",
   "pyo3-stub-gen",
@@ -60,15 +62,29 @@ nautilus-common = { workspace = true, features = ["live"] }
 nautilus-core = { workspace = true }
 nautilus-live = { workspace = true }
 nautilus-model = { workspace = true }
+nautilus-network = { workspace = true }
 nautilus-system = { workspace = true, optional = true }
 
+ahash = { workspace = true }
+alloy = { workspace = true }
+alloy-primitives = { workspace = true }
 anyhow = { workspace = true }
+async-trait = { workspace = true }
+futures-util = { workspace = true }
+log = { workspace = true }
+parking_lot = { workspace = true }
+rust_decimal = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
 ustr = { workspace = true }
+zeroize = { workspace = true }
 
 pyo3 = { workspace = true, optional = true }
 pyo3-stub-gen = { workspace = true, optional = true }
 
 [dev-dependencies]
 rstest = { workspace = true }
+serde_json = { workspace = true }
 tokio = { workspace = true }

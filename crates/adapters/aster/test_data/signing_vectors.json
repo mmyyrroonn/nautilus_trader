@@ -1,0 +1,132 @@
+{
+  "_comment": [
+    "Aster Futures V3 EIP-712 signature vectors for the nautilus-aster adapter.",
+    "",
+    "param_string values are copied verbatim from CCXT's static request fixtures",
+    "(https://github.com/ccxt/ccxt, ts/src/test/static/request/aster.json), together with the",
+    "test-only private key published in that same file. CCXT lists `signature` and `nonce` in",
+    "its `skipKeys`, so the signatures recorded there are never verified by CCXT's own tests and",
+    "no longer correspond to the recorded parameter strings. The expected signatures below were",
+    "therefore regenerated with eth-account 0.14.0 -- the exact library used by Aster's own",
+    "signing example at https://asterdex.github.io/aster-api-website/futures-v3/general-info/",
+    "(encode_typed_data + Account.sign_message over the AsterSignTransaction domain).",
+    "",
+    "Note: `builder` and `feeRate` appear in some CCXT parameter strings because CCXT attaches",
+    "its own builder-fee attribution. This adapter never sends those parameters; they are kept",
+    "here only so the vectors stay byte-identical to the recorded fixtures."
+  ],
+  "private_key": "0xff3bdd43534543d421f05aec535965b5050ad6ac15345435345435453495e771",
+  "wallet_address": "0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf",
+  "domain": {
+    "name": "AsterSignTransaction",
+    "version": "1",
+    "verifyingContract": "0x0000000000000000000000000000000000000000"
+  },
+  "cases": [
+    {
+      "label": "createOrder limit sell",
+      "endpoint": "POST /fapi/v3/order",
+      "chain_id": 1666,
+      "param_string": "nonce=1777576052926000&user=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf&signer=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf&symbol=ASTERUSDT&side=SELL&type=LIMIT&quantity=10&price=1&timeInForce=GTC&builder=0x1F5877C19e3777Cfd15F9d57253eA4aA5254Ec39&feeRate=0.001",
+      "signature": "0xe05f62222f2085b7ce86a88a4c4a57d436dd365192ad016b230bb9705de1ce5e0f5804332c317ba85c6aa55328defbe54382a1b27ee48e0d8bd82647c625709e1b"
+    },
+    {
+      "label": "createOrder limit buy",
+      "endpoint": "POST /fapi/v3/order",
+      "chain_id": 1666,
+      "param_string": "nonce=1777576052929000&user=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf&signer=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf&symbol=ASTERUSDT&side=BUY&type=LIMIT&quantity=10&price=0.7&timeInForce=GTC&builder=0x1F5877C19e3777Cfd15F9d57253eA4aA5254Ec39&feeRate=0.001",
+      "signature": "0xe15d9e06fca66f9cdf69bc71779ad84948ef364719b005e2690632a3fcdf5aab61567383dafb0796c428496801ac693f28903cea24d10c5b6f742286d226b4e81c"
+    },
+    {
+      "label": "createOrder market buy",
+      "endpoint": "POST /fapi/v3/order",
+      "chain_id": 1666,
+      "param_string": "nonce=1777576052934000&user=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf&signer=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf&symbol=ASTERUSDT&side=BUY&type=MARKET&quantity=10&builder=0x1F5877C19e3777Cfd15F9d57253eA4aA5254Ec39&feeRate=0.001",
+      "signature": "0xb16d40eb4a1bdde74afca53c220a981b071fbb1dcdf13c5fe7e91eb945296ce85634061f04a856cd81a4379ae4bba27846953c1a4af59a5f6fbdd2935383df751b"
+    },
+    {
+      "label": "cancelOrder by orderId",
+      "endpoint": "DELETE /fapi/v3/order",
+      "chain_id": 1666,
+      "param_string": "symbol=BTCUSDT&orderId=123&nonce=1776835698495000&user=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf&signer=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf",
+      "signature": "0x58c6ef7cdcfc73e13433bea7ad34e76f74c6c17e5856bc43acbc4178cde4d4c2225672e536c3bb40c824107c16b338390696c4cbde8c054410b3c84293a52b6e1b"
+    },
+    {
+      "label": "cancelOrder by origClientOrderId",
+      "endpoint": "DELETE /fapi/v3/order",
+      "chain_id": 1666,
+      "param_string": "symbol=BTCUSDT&origClientOrderId=123&nonce=1776835698498000&user=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf&signer=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf",
+      "signature": "0x1627c2ef1e7ca140d189582d790c044163c3af4541cf82dd0ff253e2712a6d35528d7eb7c5dc3c186dc421faf6b8d481a088ba3e08149a8b0f7de5192b48c9791c"
+    },
+    {
+      "label": "cancelAllOrders",
+      "endpoint": "DELETE /fapi/v3/allOpenOrders",
+      "chain_id": 1666,
+      "param_string": "symbol=BTCUSDT&nonce=1776835698486000&user=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf&signer=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf",
+      "signature": "0x628b33a6b2807325a7631d754385fb169bf6d8a8fe10643ecdddad68de5544dc37aadd801a61f08d8674df6f4993897f7c682f859e77feac470a046c2cd8ee7f1b"
+    },
+    {
+      "label": "fetchBalance",
+      "endpoint": "GET /fapi/v3/balance",
+      "chain_id": 1666,
+      "param_string": "nonce=1776872065013000&user=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf&signer=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf",
+      "signature": "0x940797301fe43103c0b059e3ec1d768bd82de10cfc4440a397e921f50b79b17e3ed0e9a1261bd4514e35ddd72c5bec9fe8e9ddac1a73d2c21d25e2eec1b7293c1b"
+    },
+    {
+      "label": "fetchOrder",
+      "endpoint": "GET /fapi/v3/order",
+      "chain_id": 1666,
+      "param_string": "symbol=BTCUSDT&orderId=1917641&nonce=1776835698444000&user=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf&signer=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf",
+      "signature": "0x707fcac497bdd8bb33e3e34c8839925336867907d958e82b764f6249ca097a686416c812030dad5bf94f34b697a810e8373b86073db8753a0643403dfe8c8a341b"
+    },
+    {
+      "label": "fetchOpenOrders",
+      "endpoint": "GET /fapi/v3/openOrders",
+      "chain_id": 1666,
+      "param_string": "symbol=BTCUSDT&nonce=1776835698463000&user=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf&signer=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf",
+      "signature": "0x902f5d2d0a5f10bc2c3acc0499f56d3af79e49d9481006f11380f52debf2dc687e2520abe1ac0748704dedb36a2cd466ba83cdf1da49b9b17ce82aa6ea77064d1c"
+    },
+    {
+      "label": "fetchPositions",
+      "endpoint": "GET /fapi/v3/positionRisk",
+      "chain_id": 1666,
+      "param_string": "nonce=1776859493009000&user=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf&signer=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf",
+      "signature": "0xb64323e751356f4bdb44eed302e0de347848025c69b331bafe7626cfd2063fc569c9c82175ec26ddd113c77f0f67af24740a18ad19bd0a907f56830cc82422051c"
+    },
+    {
+      "label": "fetchTradingFee",
+      "endpoint": "GET /fapi/v3/commissionRate",
+      "chain_id": 1666,
+      "param_string": "symbol=BTCUSDT&nonce=1776835698438000&user=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf&signer=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf",
+      "signature": "0x597affdca0156279cabdadb36c2a256cff68fc4526f07fa7060d21f049651afa3ed616706963a28469d7fdf15b14cf29372f6eea9aae81f58e7aecf7422aac601c"
+    },
+    {
+      "label": "fetchMyTrades",
+      "endpoint": "GET /fapi/v3/userTrades",
+      "chain_id": 1666,
+      "param_string": "symbol=BTCUSDT&startTime=1750400269888&limit=1&nonce=1776835698405000&user=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf&signer=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf",
+      "signature": "0x995176ccb2af12a7332a21f6993e36245d34c7d227938d433ded316a09598b201fb31b442908002d9d37faec63a766a72cbd714b4a010cfc12dd973edc6a65fc1b"
+    },
+    {
+      "label": "fetchPositionMode",
+      "endpoint": "GET /fapi/v3/positionSide/dual",
+      "chain_id": 1666,
+      "param_string": "nonce=1776835698423000&user=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf&signer=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf",
+      "signature": "0x428d1aeffbdfa8972b526d81bca470247e10f89234682c9b5944c9412185b55949ecb40f072806e9c59e8f7f2569379d8385e7e33cd525b3677178333bf8c9561c"
+    },
+    {
+      "label": "cancelOrders percent-encoded list",
+      "endpoint": "DELETE /fapi/v3/batchOrders",
+      "chain_id": 1666,
+      "param_string": "symbol=ETHUSDT&orderIdList=%5B17338441758%5D&nonce=1776804445707000&user=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf&signer=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf",
+      "signature": "0xd9815a0c53f5c2172f10a2445301cdfd440fd9ab95e1e2079ecb8cb46af566472b01af3e725f7f17ece0285feb90748ca38cda03385f95ca4af073a56d956c551c"
+    },
+    {
+      "label": "testnet chain id domain separation",
+      "endpoint": "GET /fapi/v3/balance",
+      "chain_id": 714,
+      "param_string": "nonce=1776872065013000&user=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf&signer=0xb67f9a782d3678a0bac50c22eacbb4924fe9d4cf",
+      "signature": "0x4edd8c8693cf3f154a92a3a584d72557cf3e34ca04e607907a4a1c643149d0873978b00ca945525b4c10bb7bc10ba683f45c0b1a97807cd784db1c1a2a6bc8b61c"
+    }
+  ]
+}
