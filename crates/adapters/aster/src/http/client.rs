@@ -24,7 +24,7 @@
 //! authentication triple `nonce`, `user`, `signer`, signed, and then sent as the query string
 //! for `GET` or as an `application/x-www-form-urlencoded` body otherwise.
 
-use std::{collections::HashMap, num::NonZeroU32, sync::Arc};
+use std::{collections::HashMap, num::NonZeroU32, sync::Arc, time::Duration};
 
 use nautilus_core::consts::NAUTILUS_USER_AGENT;
 use nautilus_network::{
@@ -32,7 +32,9 @@ use nautilus_network::{
     ratelimiter::quota::Quota,
     retry::{RetryConfig, RetryManager},
 };
+use parking_lot::Mutex;
 use serde::de::DeserializeOwned;
+use tokio::time::{Instant, sleep_until};
 
 use crate::{
     common::{
@@ -41,7 +43,11 @@ use crate::{
             ASTER_COMMISSION_RATE_PATH, ASTER_GLOBAL_RATE_KEY, ASTER_LISTEN_KEY_PATH,
             ASTER_OPEN_ORDERS_PATH, ASTER_ORDER_PATH, ASTER_ORDER_RATE_KEY,
             ASTER_ORDERS_PER_MINUTE, ASTER_POSITION_RISK_PATH, ASTER_POSITION_SIDE_DUAL_PATH,
-            ASTER_REQUEST_WEIGHT_PER_MINUTE, ASTER_USER_TRADES_PATH,
+            ASTER_REQUEST_WEIGHT_PER_MINUTE, ASTER_USER_TRADES_PATH, ASTER_WEIGHT_ALL_OPEN_ORDERS,
+            ASTER_WEIGHT_ALL_ORDERS, ASTER_WEIGHT_BALANCE, ASTER_WEIGHT_COMMISSION_RATE,
+            ASTER_WEIGHT_DEFAULT, ASTER_WEIGHT_LISTEN_KEY, ASTER_WEIGHT_OPEN_ORDERS_ALL,
+            ASTER_WEIGHT_OPEN_ORDERS_SYMBOL, ASTER_WEIGHT_ORDER, ASTER_WEIGHT_POSITION_RISK,
+            ASTER_WEIGHT_POSITION_SIDE_DUAL, ASTER_WEIGHT_USER_TRADES,
         },
         credential::AsterCredential,
     },
@@ -68,6 +74,31 @@ const GET_RETRY_INITIAL_DELAY_MS: u64 = 500;
 /// Cap on the `GET` retry backoff, giving a 500 ms / 1 s / 2 s schedule.
 const GET_RETRY_MAX_DELAY_MS: u64 = 2_000;
 
+/// Response header carrying the wait the venue asks for after a `429` or `418`.
+const RETRY_AFTER_HEADER: &str = "retry-after";
+
+/// HTTP status Aster returns when a rate-limit budget is exceeded.
+const STATUS_TOO_MANY_REQUESTS: u16 = 429;
+
+/// HTTP status Aster returns when repeated violations earn the IP an outright ban.
+const STATUS_IP_BANNED: u16 = 418;
+
+/// Cooldown applied after a `429` that carries no usable `Retry-After`.
+const RATE_LIMIT_COOLDOWN_SECS: u64 = 10;
+
+/// Cooldown applied after a `418` that carries no usable `Retry-After`.
+const IP_BAN_COOLDOWN_SECS: u64 = 120;
+
+/// Upper bound on a cooldown, however long the venue asks for.
+///
+/// Aster bans run from two minutes to three days. Sleeping out a multi-day ban inside the
+/// client would strand the execution engine with no way to observe it, so the wait is capped
+/// and a still-banned venue simply re-arms the cooldown on the next attempt.
+const MAX_COOLDOWN_SECS: u64 = 300;
+
+/// Characters of a response body retained in an error message.
+const MAX_ERROR_BODY_CHARS: usize = 512;
+
 /// Maximum page size Aster accepts on `allOrders` and `userTrades` (the default is 500).
 pub const ASTER_HISTORY_PAGE_LIMIT: u32 = 1_000;
 
@@ -90,6 +121,8 @@ struct AsterHttpClientInner {
     base_url: String,
     credential: Option<AsterCredential>,
     nonce: NonceGenerator,
+    /// Instant before which no further request may be sent, armed by a `429` or `418`.
+    cooldown_until: Mutex<Option<Instant>>,
 }
 
 impl AsterHttpClient {
@@ -113,6 +146,8 @@ impl AsterHttpClient {
 
         let client = HttpClient::builder()
             .headers(headers)
+            // Retained from every response so a `429` or `418` can honour the venue's own wait.
+            .header_keys(vec![RETRY_AFTER_HEADER.to_string()])
             .keyed_quotas(Self::rate_limit_quotas())
             .maybe_timeout_secs(timeout_secs)
             .maybe_proxy_url(proxy_url)
@@ -124,15 +159,17 @@ impl AsterHttpClient {
                 base_url: base_url.trim_end_matches('/').to_string(),
                 credential,
                 nonce: NonceGenerator::new(),
+                cooldown_until: Mutex::new(None),
             }),
         })
     }
 
     /// Returns the keyed quotas enforced by the client.
     ///
-    /// Aster publishes a 2400 request-weight/minute and a 1200 order/minute budget. Weights
-    /// are approximated at one unit per request, which is conservative for the endpoints this
-    /// adapter calls (all weight 1 to 5).
+    /// Aster publishes a 2400 request-weight/minute and a 1200 order/minute budget. Each
+    /// request spends its documented weight from the global key (see
+    /// [`Self::rate_limit_keys`]), so these quotas are the venue budgets themselves rather
+    /// than a per-request approximation of them.
     fn rate_limit_quotas() -> Vec<(String, Quota)> {
         vec![
             (
@@ -148,6 +185,131 @@ impl AsterHttpClient {
                 ),
             ),
         ]
+    }
+
+    /// Returns the request weight `path` spends from the shared budget.
+    ///
+    /// The values are the venue's published weights. `openOrders` is the one endpoint whose
+    /// weight depends on the request: a single symbol costs 1, while the account-wide listing
+    /// costs 40, which is one sixtieth of the whole minute budget.
+    fn request_weight(path: &str, params: &AsterParams) -> u32 {
+        match path {
+            ASTER_ORDER_PATH => ASTER_WEIGHT_ORDER,
+            ASTER_ALL_OPEN_ORDERS_PATH => ASTER_WEIGHT_ALL_OPEN_ORDERS,
+            ASTER_LISTEN_KEY_PATH => ASTER_WEIGHT_LISTEN_KEY,
+            ASTER_OPEN_ORDERS_PATH => {
+                if params.get("symbol").is_some() {
+                    ASTER_WEIGHT_OPEN_ORDERS_SYMBOL
+                } else {
+                    ASTER_WEIGHT_OPEN_ORDERS_ALL
+                }
+            }
+            ASTER_ALL_ORDERS_PATH => ASTER_WEIGHT_ALL_ORDERS,
+            ASTER_USER_TRADES_PATH => ASTER_WEIGHT_USER_TRADES,
+            ASTER_BALANCE_PATH => ASTER_WEIGHT_BALANCE,
+            ASTER_POSITION_RISK_PATH => ASTER_WEIGHT_POSITION_RISK,
+            ASTER_COMMISSION_RATE_PATH => ASTER_WEIGHT_COMMISSION_RATE,
+            ASTER_POSITION_SIDE_DUAL_PATH => ASTER_WEIGHT_POSITION_SIDE_DUAL,
+            _ => ASTER_WEIGHT_DEFAULT,
+        }
+    }
+
+    /// Returns the rate-limit keys charged for one request.
+    ///
+    /// The global key is repeated once per unit of request weight. The rate limiter plans all
+    /// the keys of a request together and commits them atomically, so N repeats reserve N
+    /// cells of the 2400/minute budget, or the request waits until all N are available.
+    /// Charging one unit per request instead would let 120 `commissionRate` calls (weight 20)
+    /// through for the price of 120, spending the venue's entire minute budget.
+    fn rate_limit_keys(
+        path: &str,
+        params: &AsterParams,
+        counts_against_order_quota: bool,
+    ) -> Vec<String> {
+        let weight = Self::request_weight(path, params) as usize;
+        let mut keys = Vec::with_capacity(weight + usize::from(counts_against_order_quota));
+        keys.extend(std::iter::repeat_n(
+            ASTER_GLOBAL_RATE_KEY.to_string(),
+            weight,
+        ));
+
+        if counts_against_order_quota {
+            keys.push(ASTER_ORDER_RATE_KEY.to_string());
+        }
+
+        keys
+    }
+
+    /// Returns the cooldown a response status demands, if any.
+    ///
+    /// Only the delta-seconds form of `Retry-After` is honoured; the HTTP-date form, which
+    /// Aster has not been observed to send, falls back to the default for the status.
+    fn cooldown_for_status(status: u16, retry_after: Option<&str>) -> Option<Duration> {
+        let default_secs = match status {
+            STATUS_TOO_MANY_REQUESTS => RATE_LIMIT_COOLDOWN_SECS,
+            STATUS_IP_BANNED => IP_BAN_COOLDOWN_SECS,
+            _ => return None,
+        };
+
+        let secs = retry_after
+            .and_then(|raw| raw.trim().parse::<u64>().ok())
+            .unwrap_or(default_secs)
+            .clamp(1, MAX_COOLDOWN_SECS);
+
+        Some(Duration::from_secs(secs))
+    }
+
+    /// Arms the shared cooldown when the venue rate-limited or banned the client.
+    ///
+    /// Nothing is resent: the failed request is still surfaced to its caller, and only
+    /// *subsequent* requests wait. A longer cooldown already armed is never shortened.
+    fn arm_cooldown(&self, response: &HttpResponse) {
+        let status = response.status.as_u16();
+        let retry_after = response.headers.get(RETRY_AFTER_HEADER).map(String::as_str);
+
+        let Some(cooldown) = Self::cooldown_for_status(status, retry_after) else {
+            return;
+        };
+
+        let deadline = Instant::now() + cooldown;
+        let mut guard = self.inner.cooldown_until.lock();
+
+        if guard.is_none_or(|current| deadline > current) {
+            *guard = Some(deadline);
+            log::warn!(
+                "Aster rate limited the client (HTTP {status}), holding requests for {cooldown:?}"
+            );
+        }
+    }
+
+    /// Returns the remaining cooldown, when the venue has asked the client to back off.
+    #[must_use]
+    pub fn cooldown_remaining(&self) -> Option<Duration> {
+        let deadline = (*self.inner.cooldown_until.lock())?;
+        let now = Instant::now();
+
+        (deadline > now).then(|| deadline - now)
+    }
+
+    /// Waits out any armed cooldown.
+    ///
+    /// The deadline is copied out and the lock released before awaiting, so the mutex is never
+    /// held across a suspension point; a cooldown extended while this task sleeps is picked up
+    /// on the next pass.
+    async fn await_cooldown(&self) {
+        loop {
+            let deadline = *self.inner.cooldown_until.lock();
+
+            let Some(deadline) = deadline else {
+                return;
+            };
+
+            if deadline <= Instant::now() {
+                return;
+            }
+
+            sleep_until(deadline).await;
+        }
     }
 
     /// Returns the resolved REST base URL.
@@ -332,6 +494,10 @@ impl AsterHttpClient {
         params: AsterParams,
         counts_against_order_quota: bool,
     ) -> AsterHttpResult<T> {
+        // Waited out before signing: a nonce drawn now and sent minutes later would be stale,
+        // and Aster rejects a stale nonce.
+        self.await_cooldown().await;
+
         let payload = self.build_signed_payload(&params)?;
         let is_get = method == Method::GET;
 
@@ -349,14 +515,7 @@ impl AsterHttpClient {
             Some(payload.into_bytes())
         };
 
-        let keys = if counts_against_order_quota {
-            vec![
-                ASTER_GLOBAL_RATE_KEY.to_string(),
-                ASTER_ORDER_RATE_KEY.to_string(),
-            ]
-        } else {
-            vec![ASTER_GLOBAL_RATE_KEY.to_string()]
-        };
+        let keys = Self::rate_limit_keys(path, &params, counts_against_order_quota);
 
         // The signed payload carries the signature, so the URL is redacted from logs and
         // transport errors for GET requests.
@@ -365,6 +524,8 @@ impl AsterHttpClient {
             .client
             .request_with_url_redacted(method, url, None, Some(headers), body, None, Some(keys))
             .await?;
+
+        self.arm_cooldown(&response);
 
         Self::deserialize_response(&response)
     }
@@ -387,13 +548,7 @@ impl AsterHttpClient {
         }
 
         serde_json::from_slice::<T>(&response.body).map_err(|e| {
-            AsterHttpError::JsonError(format!(
-                "{e}: {}",
-                String::from_utf8_lossy(&response.body)
-                    .chars()
-                    .take(512)
-                    .collect::<String>()
-            ))
+            AsterHttpError::JsonError(format!("{e}: {}", truncate_body(&response.body)))
         })
     }
 
@@ -411,7 +566,7 @@ impl AsterHttpClient {
 
         AsterHttpError::UnexpectedStatus {
             status: response.status.as_u16(),
-            body: String::from_utf8_lossy(&response.body).to_string(),
+            body: truncate_body(&response.body),
         }
     }
 
@@ -668,12 +823,127 @@ impl AsterHttpClient {
     }
 }
 
+/// Renders a response body for an error message, bounded to [`MAX_ERROR_BODY_CHARS`].
+///
+/// An error body is foreign input of unbounded size (an edge proxy can answer with an entire
+/// HTML page), and the rendered error reaches the logs and the engine's error events.
+fn truncate_body(body: &[u8]) -> String {
+    String::from_utf8_lossy(body)
+        .chars()
+        .take(MAX_ERROR_BODY_CHARS)
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
+    use std::{
+        net::SocketAddr,
+        sync::atomic::{AtomicUsize, Ordering},
+    };
+
+    use axum::{
+        Router,
+        http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
+        response::IntoResponse,
+    };
+    use nautilus_network::ratelimiter::{RateLimiter, clock::MonotonicClock};
     use rstest::rstest;
+    use ustr::Ustr;
 
     use super::*;
     use crate::common::enums::AsterEnvironment;
+
+    /// One scripted response from the stand-in venue.
+    #[derive(Clone, Debug)]
+    struct ScriptedResponse {
+        status: u16,
+        retry_after: Option<String>,
+        body: String,
+    }
+
+    /// A stand-in venue answering scripted responses, counting every request it received.
+    ///
+    /// Requests beyond the script are answered with an empty `200` body.
+    #[derive(Clone)]
+    struct MockVenue {
+        addr: SocketAddr,
+        hits: Arc<AtomicUsize>,
+    }
+
+    impl MockVenue {
+        async fn start(responses: Vec<ScriptedResponse>) -> Self {
+            let hits = Arc::new(AtomicUsize::new(0));
+            let state = (hits.clone(), Arc::new(responses));
+
+            let router = Router::new().fallback(move || {
+                let (hits, script) = state.clone();
+
+                async move {
+                    let index = hits.fetch_add(1, Ordering::SeqCst);
+
+                    match script.get(index) {
+                        Some(response) => {
+                            let mut headers = HeaderMap::new();
+                            if let Some(retry_after) = response.retry_after.as_deref() {
+                                headers.insert(
+                                    HeaderName::from_static(RETRY_AFTER_HEADER),
+                                    HeaderValue::from_str(retry_after).expect("header value"),
+                                );
+                            }
+                            (
+                                StatusCode::from_u16(response.status).expect("status"),
+                                headers,
+                                response.body.clone(),
+                            )
+                                .into_response()
+                        }
+                        None => (StatusCode::OK, "{}").into_response(),
+                    }
+                }
+            });
+
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+                .await
+                .expect("bind");
+            let addr = listener.local_addr().expect("local addr");
+
+            tokio::spawn(async move {
+                let _ = axum::serve(listener, router.into_make_service()).await;
+            });
+
+            Self { addr, hits }
+        }
+
+        fn url(&self) -> String {
+            format!("http://{}", self.addr)
+        }
+
+        fn hits(&self) -> usize {
+            self.hits.load(Ordering::SeqCst)
+        }
+    }
+
+    /// Returns a rate limiter carrying the client's own quotas.
+    fn venue_rate_limiter() -> RateLimiter<Ustr, MonotonicClock> {
+        RateLimiter::new_with_quota(
+            None,
+            AsterHttpClient::rate_limit_quotas()
+                .into_iter()
+                .map(|(key, quota)| (Ustr::from(&key), quota))
+                .collect(),
+        )
+    }
+
+    fn interned_keys(
+        path: &str,
+        params: &AsterParams,
+        counts_against_order_quota: bool,
+    ) -> Vec<Ustr> {
+        AsterHttpClient::rate_limit_keys(path, params, counts_against_order_quota)
+            .iter()
+            .map(|key| Ustr::from(key))
+            .collect()
+    }
 
     /// Test-only key published in CCXT's static request fixtures; holds no funds.
     const TEST_PRIVATE_KEY: &str =
@@ -903,6 +1173,186 @@ mod tests {
     fn test_history_page_limits_match_the_venue_documentation() {
         assert_eq!(ASTER_HISTORY_PAGE_LIMIT, 1_000);
         assert_eq!(ASTER_HISTORY_MAX_INTERVAL_MS, 604_800_000);
+    }
+
+    #[rstest]
+    #[case(ASTER_ORDER_PATH, ASTER_WEIGHT_ORDER)]
+    #[case(ASTER_ALL_OPEN_ORDERS_PATH, ASTER_WEIGHT_ALL_OPEN_ORDERS)]
+    #[case(ASTER_LISTEN_KEY_PATH, ASTER_WEIGHT_LISTEN_KEY)]
+    #[case(ASTER_ALL_ORDERS_PATH, ASTER_WEIGHT_ALL_ORDERS)]
+    #[case(ASTER_USER_TRADES_PATH, ASTER_WEIGHT_USER_TRADES)]
+    #[case(ASTER_BALANCE_PATH, ASTER_WEIGHT_BALANCE)]
+    #[case(ASTER_POSITION_RISK_PATH, ASTER_WEIGHT_POSITION_RISK)]
+    #[case(ASTER_COMMISSION_RATE_PATH, ASTER_WEIGHT_COMMISSION_RATE)]
+    #[case(ASTER_POSITION_SIDE_DUAL_PATH, ASTER_WEIGHT_POSITION_SIDE_DUAL)]
+    #[case("/fapi/v3/somethingNew", ASTER_WEIGHT_DEFAULT)]
+    fn test_request_weight_matches_the_documented_table(#[case] path: &str, #[case] expected: u32) {
+        let params = AsterParams::new().with("symbol", "BTCUSDT");
+
+        assert_eq!(AsterHttpClient::request_weight(path, &params), expected);
+    }
+
+    #[rstest]
+    fn test_open_orders_weight_depends_on_the_symbol_filter() {
+        // Aster charges 40 for the account-wide listing and 1 when a symbol narrows it.
+        let all = AsterParams::new();
+        let one = AsterParams::new().with("symbol", "BTCUSDT");
+
+        assert_eq!(
+            AsterHttpClient::request_weight(ASTER_OPEN_ORDERS_PATH, &all),
+            ASTER_WEIGHT_OPEN_ORDERS_ALL
+        );
+        assert_eq!(
+            AsterHttpClient::request_weight(ASTER_OPEN_ORDERS_PATH, &one),
+            ASTER_WEIGHT_OPEN_ORDERS_SYMBOL
+        );
+    }
+
+    #[rstest]
+    fn test_rate_limit_keys_repeat_the_global_key_once_per_weight_unit() {
+        let params = AsterParams::new().with("symbol", "BTCUSDT");
+        let heavy = AsterHttpClient::rate_limit_keys(ASTER_COMMISSION_RATE_PATH, &params, false);
+
+        assert_eq!(heavy.len(), ASTER_WEIGHT_COMMISSION_RATE as usize);
+        assert!(heavy.iter().all(|key| key == ASTER_GLOBAL_RATE_KEY));
+
+        let order = AsterHttpClient::rate_limit_keys(ASTER_ORDER_PATH, &params, true);
+
+        assert_eq!(
+            order,
+            vec![
+                ASTER_GLOBAL_RATE_KEY.to_string(),
+                ASTER_ORDER_RATE_KEY.to_string()
+            ]
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_a_heavy_endpoint_exhausts_the_weight_budget_sooner_than_a_light_one() {
+        // 2400 weight per minute: 120 `commissionRate` calls (weight 20) spend the whole
+        // budget, so the 121st has to wait, while 121 order queries (weight 1) do not.
+        let params = AsterParams::new().with("symbol", "BTCUSDT");
+        let heavy = interned_keys(ASTER_COMMISSION_RATE_PATH, &params, false);
+        let light = interned_keys(ASTER_ORDER_PATH, &params, false);
+
+        let limiter = venue_rate_limiter();
+        let start = Instant::now();
+        for _ in 0..120 {
+            limiter.await_keys_ready(Some(&heavy)).await;
+        }
+
+        assert_eq!(
+            start.elapsed(),
+            Duration::ZERO,
+            "the budget covers 120 calls"
+        );
+
+        limiter.await_keys_ready(Some(&heavy)).await;
+
+        assert!(start.elapsed() > Duration::ZERO, "the 121st call must wait");
+
+        let limiter = venue_rate_limiter();
+        let start = Instant::now();
+        for _ in 0..121 {
+            limiter.await_keys_ready(Some(&light)).await;
+        }
+
+        assert_eq!(start.elapsed(), Duration::ZERO);
+    }
+
+    #[rstest]
+    #[case(429, None, Some(Duration::from_secs(RATE_LIMIT_COOLDOWN_SECS)))]
+    #[case(418, None, Some(Duration::from_secs(IP_BAN_COOLDOWN_SECS)))]
+    #[case(429, Some("3"), Some(Duration::from_secs(3)))]
+    #[case(418, Some(" 45 "), Some(Duration::from_secs(45)))]
+    // An HTTP-date `Retry-After` is not parsed; the default for the status applies.
+    #[case(
+        429,
+        Some("Wed, 21 Oct 2026 07:28:00 GMT"),
+        Some(Duration::from_secs(RATE_LIMIT_COOLDOWN_SECS))
+    )]
+    // A multi-day ban is capped so the client cannot silently sleep out the session.
+    #[case(418, Some("259200"), Some(Duration::from_secs(MAX_COOLDOWN_SECS)))]
+    #[case(429, Some("0"), Some(Duration::from_secs(1)))]
+    #[case(200, None, None)]
+    #[case(400, Some("5"), None)]
+    #[case(503, None, None)]
+    fn test_cooldown_for_status(
+        #[case] status: u16,
+        #[case] retry_after: Option<&str>,
+        #[case] expected: Option<Duration>,
+    ) {
+        assert_eq!(
+            AsterHttpClient::cooldown_for_status(status, retry_after),
+            expected
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_await_cooldown_waits_for_the_armed_deadline() {
+        let client = client();
+
+        assert_eq!(client.cooldown_remaining(), None);
+
+        let deadline = Instant::now() + Duration::from_secs(30);
+        *client.inner.cooldown_until.lock() = Some(deadline);
+
+        let start = Instant::now();
+        client.await_cooldown().await;
+
+        assert!(start.elapsed() >= Duration::from_secs(30));
+        assert_eq!(client.cooldown_remaining(), None);
+    }
+
+    #[tokio::test]
+    async fn test_rate_limited_response_holds_later_requests_without_resending() {
+        let venue = MockVenue::start(vec![ScriptedResponse {
+            status: 429,
+            retry_after: Some("2".to_string()),
+            body: r#"{"code":-1003,"msg":"Too many requests."}"#.to_string(),
+        }])
+        .await;
+        let client = AsterHttpClient::new(&venue.url(), Some(credential()), Some(5), None).unwrap();
+
+        let error = client
+            .submit_order(AsterParams::new().with("symbol", "BTCUSDT"))
+            .await
+            .unwrap_err();
+
+        assert!(error.is_rate_limited(), "{error}");
+        assert_eq!(venue.hits(), 1, "a rate-limited POST must never be resent");
+
+        let remaining = client.cooldown_remaining().expect("cooldown armed");
+        assert!(remaining > Duration::from_millis(1_500), "{remaining:?}");
+
+        // The next request waits out the cooldown rather than being sent into the ban.
+        let outcome =
+            tokio::time::timeout(Duration::from_millis(250), client.query_balances()).await;
+
+        assert!(outcome.is_err(), "a request was sent during the cooldown");
+        assert_eq!(venue.hits(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_unexpected_status_body_is_truncated() {
+        let venue = MockVenue::start(vec![ScriptedResponse {
+            status: 502,
+            retry_after: None,
+            body: "x".repeat(2_000),
+        }])
+        .await;
+        let client = AsterHttpClient::new(&venue.url(), Some(credential()), Some(5), None).unwrap();
+
+        let error = client.query_balances().await.unwrap_err();
+
+        match error {
+            AsterHttpError::UnexpectedStatus { status, body } => {
+                assert_eq!(status, 502);
+                assert_eq!(body.chars().count(), MAX_ERROR_BODY_CHARS);
+            }
+            other => panic!("expected an unexpected-status error, was {other}"),
+        }
+        assert_eq!(venue.hits(), 1, "a 502 is not a transport fault to retry");
     }
 
     #[rstest]

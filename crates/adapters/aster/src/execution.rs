@@ -74,7 +74,7 @@ use nautilus_model::{
     accounts::AccountAny,
     enums::{AccountType, OmsType, OrderSide, OrderType, PositionSide, TimeInForce},
     events::AccountState,
-    identifiers::{AccountId, ClientId, InstrumentId, Venue, VenueOrderId},
+    identifiers::{AccountId, ClientId, ClientOrderId, InstrumentId, Venue, VenueOrderId},
     instruments::{Instrument, InstrumentAny},
     orders::{Order, OrderAny},
     reports::{ExecutionMassStatus, FillReport, OrderStatusReport, PositionStatusReport},
@@ -340,6 +340,22 @@ fn is_retryable_stream_connect_error(error: &AsterHttpError) -> bool {
     error.is_retryable_transport()
 }
 
+/// Returns whether a request failed before it could reach the venue.
+///
+/// A missing credential, a signing fault, or a request the client itself refused to build never
+/// touched the matching engine. For a cancel that makes the outcome definitive rather than
+/// ambiguous: the order is certainly still working, so the command must be reported as rejected
+/// instead of being left to reconciliation.
+#[must_use]
+fn is_local_request_failure(error: &AsterHttpError) -> bool {
+    matches!(
+        error,
+        AsterHttpError::MissingCredentials
+            | AsterHttpError::SigningError(_)
+            | AsterHttpError::ValidationError(_)
+    )
+}
+
 /// Returns a copy of `instrument` carrying the account's real commission rates.
 ///
 /// Returns `None` for instrument types that have no fee fields, which Aster's USD-M
@@ -423,6 +439,39 @@ enum FillCoverage {
     Unreliable,
 }
 
+/// What one compensation pass established about the fills it read.
+///
+/// `delivered` names the orders whose trades reached the engine bundled with their status, so
+/// the order pass does not send a second, fill-inferring status for them. `uncovered` names the
+/// orders whose trades were read but could *not* be delivered: their status carries a filled
+/// quantity the engine has no trades for, so it must be withheld on this pass too.
+#[derive(Debug, Default)]
+struct CompensatedFills {
+    delivered: AHashSet<Ustr>,
+    uncovered: AHashSet<Ustr>,
+}
+
+impl CompensatedFills {
+    fn merge(&mut self, other: Self) {
+        self.delivered.extend(other.delivered);
+        self.uncovered.extend(other.uncovered);
+    }
+
+    /// Returns the coverage that applies to one venue order on this pass.
+    ///
+    /// A pass that read every trade history is still not covered for an order whose own trades
+    /// could not be delivered, so the two conditions are combined here rather than separately.
+    fn coverage_for(&self, venue_order_id: i64, pass: FillCoverage) -> FillCoverage {
+        let venue_order_id = Ustr::from(&venue_order_id.to_string());
+
+        if pass == FillCoverage::Complete && !self.uncovered.contains(&venue_order_id) {
+            FillCoverage::Complete
+        } else {
+            FillCoverage::Unreliable
+        }
+    }
+}
+
 /// One trade a report request covered, pending the dedupe commit.
 #[derive(Debug, Clone, Copy)]
 struct DeliveredFill {
@@ -443,11 +492,12 @@ struct StreamState {
     working_orders: AHashMap<Ustr, Ustr>,
     /// Applied trade IDs per venue symbol.
     applied_trades: AHashMap<Ustr, AppliedTrades>,
-    /// Trades reported but not applied, per symbol, with the time they happened.
+    /// Trade IDs reported but not applied, per symbol.
     ///
-    /// They keep the compensation window reaching back far enough to pick them up again once
-    /// whatever blocked them — a missing order, most often — has resolved.
-    pending_trades: AHashMap<Ustr, AHashMap<i64, i64>>,
+    /// The next compensation pass fetches them by ID, so a trade stays recoverable once
+    /// whatever blocked it — a missing order, most often — has resolved, however far the
+    /// window this pass reads has since moved on.
+    pending_trades: AHashMap<Ustr, BTreeSet<i64>>,
     /// Millisecond timestamp at which this client connected.
     ///
     /// Compensation never reaches behind it. Fills older than the connect belong to the
@@ -481,7 +531,7 @@ impl StreamState {
     }
 
     /// Notes a trade that was reported but not applied, so it stays recoverable.
-    fn note_pending_fill(&mut self, symbol: Ustr, trade_id: i64, ts_ms: i64) {
+    fn note_pending_fill(&mut self, symbol: Ustr, trade_id: i64) {
         if self.has_fill(&symbol, trade_id) {
             return;
         }
@@ -489,14 +539,12 @@ impl StreamState {
         self.pending_trades
             .entry(symbol)
             .or_default()
-            .insert(trade_id, ts_ms);
+            .insert(trade_id);
     }
 
-    /// Returns the earliest time a trade is still waiting to be recovered for a symbol.
-    fn earliest_pending_ms(&self, symbol: &Ustr) -> Option<i64> {
-        self.pending_trades
-            .get(symbol)
-            .and_then(|pending| pending.values().copied().min())
+    /// Returns the trade IDs still waiting to be recovered for a symbol, oldest first.
+    fn pending_trade_ids(&self, symbol: &Ustr) -> BTreeSet<i64> {
+        self.pending_trades.get(symbol).cloned().unwrap_or_default()
     }
 
     fn has_fill(&self, symbol: &Ustr, trade_id: i64) -> bool {
@@ -517,18 +565,15 @@ impl StreamState {
     ///
     /// Never earlier than the connect: an outage this session observed cannot have hidden a
     /// fill that happened before the session existed.
+    ///
+    /// Trades still awaiting recovery deliberately do *not* pull this floor back to their own
+    /// timestamp. The dedupe set is bounded, so a window reaching behind it re-reads trades it
+    /// can no longer recognise and re-delivers them as live fills; those trades are fetched by
+    /// ID instead (see [`SessionContext::query_pending_trades`]).
     fn compensation_start_ms(&self, symbol: &Ustr, default_start_ms: i64) -> i64 {
-        let start = self
-            .last_fill_ms(symbol)
+        self.last_fill_ms(symbol)
             .unwrap_or(default_start_ms)
-            .max(self.session_start_ms);
-
-        // A trade still awaiting recovery pulls the window back to cover it, whatever later
-        // trades have since advanced the watermark.
-        match self.earliest_pending_ms(symbol) {
-            Some(pending) => start.min(pending),
-            None => start,
-        }
+            .max(self.session_start_ms)
     }
 }
 
@@ -788,6 +833,73 @@ impl SessionContext {
         Ok(trades)
     }
 
+    /// Fetches the trades still awaiting recovery for `symbol`, addressed by ID.
+    ///
+    /// A held-back trade can be older than the window the current pass reads, and pulling that
+    /// window back to its timestamp is not a safe way to reach it: the dedupe set is bounded,
+    /// so every trade in between whose ID it has already evicted would come back looking
+    /// missed and be re-delivered as a live fill. `userTrades` refuses `fromId` together with a
+    /// time window, so this pages forward from the oldest pending ID until the newest has been
+    /// passed and keeps only the rows still pending — the trades in between are read but never
+    /// delivered.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if any page request fails or pagination cannot make progress.
+    async fn query_pending_trades(
+        &self,
+        symbol: &str,
+        pending: &BTreeSet<i64>,
+    ) -> anyhow::Result<Vec<AsterUserTrade>> {
+        let (Some(oldest), Some(newest)) = (pending.first().copied(), pending.last().copied())
+        else {
+            return Ok(Vec::new());
+        };
+
+        let mut recovered: Vec<AsterUserTrade> = Vec::new();
+        let mut cursor = oldest;
+
+        loop {
+            let page = self
+                .http_client
+                .query_user_trades(
+                    symbol,
+                    None,
+                    None,
+                    Some(cursor),
+                    Some(ASTER_HISTORY_PAGE_LIMIT),
+                )
+                .await
+                .map_err(|e| {
+                    anyhow::anyhow!("Aster pending trade query failed for {symbol}: {e}")
+                })?;
+
+            if page.is_empty() {
+                break;
+            }
+
+            let page_len = page.len();
+            let max_trade_id = page.iter().map(|trade| trade.id).max().expect("non-empty");
+
+            recovered.extend(page.into_iter().filter(|trade| pending.contains(&trade.id)));
+
+            if max_trade_id >= newest || page_len < ASTER_HISTORY_PAGE_LIMIT as usize {
+                break;
+            }
+
+            let next_cursor = max_trade_id
+                .checked_add(1)
+                .context("Aster trade ID overflow during pending trade recovery")?;
+            anyhow::ensure!(
+                next_cursor > cursor,
+                "Aster userTrades pagination made no progress for {symbol}"
+            );
+            cursor = next_cursor;
+        }
+
+        Ok(recovered)
+    }
+
     /// Resolves an order submission whose outcome the venue never reported.
     ///
     /// The order stays in flight and is *never* resubmitted: the venue is asked what happened
@@ -874,13 +986,13 @@ impl SessionContext {
         // the real trade then arrives against an already-complete order, trips the overfill
         // guard, and is dropped — leaving the order holding a synthetic trade ID and no
         // commission. The economics, not just the log line, depend on this ordering.
-        let mut delivered = AHashSet::new();
+        let mut fills = CompensatedFills::default();
         let mut coverage = FillCoverage::Unreliable;
 
         for attempt in 0..=COMPENSATION_FILL_RETRY_DELAYS.len() {
             match self.compensate_fills().await {
                 Ok(recovered) => {
-                    delivered = recovered;
+                    fills = recovered;
                     coverage = FillCoverage::Complete;
                     break;
                 }
@@ -901,7 +1013,7 @@ impl SessionContext {
             );
         }
 
-        if let Err(e) = self.compensate_orders(&delivered, coverage).await {
+        if let Err(e) = self.compensate_orders(&fills, coverage).await {
             log::error!("Aster order compensation after {reason} failed: {e}");
         }
         if let Err(e) = self.refresh_account_state().await {
@@ -916,7 +1028,7 @@ impl SessionContext {
     /// working but the venue no longer lists (filled or cancelled during the outage).
     async fn compensate_orders(
         &self,
-        delivered: &AHashSet<Ustr>,
+        fills: &CompensatedFills,
         coverage: FillCoverage,
     ) -> anyhow::Result<()> {
         let open_orders = self
@@ -933,14 +1045,18 @@ impl SessionContext {
                 still_open.insert(Ustr::from(&order.client_order_id));
             }
 
-            if delivered.contains(&Ustr::from(&order.order_id.to_string())) {
+            if fills
+                .delivered
+                .contains(&Ustr::from(&order.order_id.to_string()))
+            {
                 // Already reported with its real fills in the pass above.
                 continue;
             }
 
             match self.order_to_report(order, ts_init) {
                 Ok(Some(report)) => {
-                    if defer_uncovered_status(&report, coverage) {
+                    let order_coverage = fills.coverage_for(order.order_id, coverage);
+                    if defer_uncovered_status(&report, order_coverage) {
                         continue;
                     }
                     self.track_order_state(&report, order.symbol);
@@ -965,7 +1081,7 @@ impl SessionContext {
         };
 
         for (client_order_id, symbol) in vanished {
-            if delivered.contains(&client_order_id) {
+            if fills.delivered.contains(&client_order_id) {
                 // The fill pass already delivered this order together with its trades.
                 continue;
             }
@@ -977,7 +1093,8 @@ impl SessionContext {
             {
                 Ok(order) => match self.order_to_report(&order, self.clock.get_time_ns()) {
                     Ok(Some(report)) => {
-                        if defer_uncovered_status(&report, coverage) {
+                        let order_coverage = fills.coverage_for(order.order_id, coverage);
+                        if defer_uncovered_status(&report, order_coverage) {
                             continue;
                         }
                         self.track_order_state(&report, order.symbol);
@@ -1004,8 +1121,8 @@ impl SessionContext {
     /// Missed fills are grouped by venue order so the order status can be sent with them, the
     /// same bundling the stream path uses: a bare fill would let the engine bootstrap a
     /// synthetic order at the fill quantity and reject the order's later events.
-    async fn compensate_fills(&self) -> anyhow::Result<AHashSet<Ustr>> {
-        let mut delivered: AHashSet<Ustr> = AHashSet::new();
+    async fn compensate_fills(&self) -> anyhow::Result<CompensatedFills> {
+        let mut recovered = CompensatedFills::default();
         let symbols: Vec<Ustr> = {
             let guard = self.instruments.read();
             guard.by_symbol.keys().copied().collect()
@@ -1014,18 +1131,33 @@ impl SessionContext {
         let default_start = now_ms.saturating_sub(COMPENSATION_FILL_LOOKBACK_MS);
 
         for symbol in symbols {
-            let start_ms = self
-                .state
-                .read()
-                .compensation_start_ms(&symbol, default_start);
+            let (start_ms, pending) = {
+                let state = self.state.read();
+                (
+                    state.compensation_start_ms(&symbol, default_start),
+                    state.pending_trade_ids(&symbol),
+                )
+            };
 
-            if start_ms > now_ms {
-                continue;
+            let mut trades = if start_ms > now_ms {
+                Vec::new()
+            } else {
+                self.query_user_trades_paged(symbol.as_str(), start_ms, now_ms)
+                    .await?
+            };
+
+            // Trades held back earlier are reached by ID, not by widening the window: they can
+            // predate it, and the dedupe set no longer recognises what lies in between.
+            if !pending.is_empty() {
+                let read: AHashSet<i64> = trades.iter().map(|trade| trade.id).collect();
+                let held_back = self.query_pending_trades(symbol.as_str(), &pending).await?;
+                trades.extend(
+                    held_back
+                        .into_iter()
+                        .filter(|trade| !read.contains(&trade.id)),
+                );
+                trades.sort_by_key(|trade| trade.id);
             }
-
-            let trades = self
-                .query_user_trades_paged(symbol.as_str(), start_ms, now_ms)
-                .await?;
 
             let missed: Vec<&AsterUserTrade> = trades
                 .iter()
@@ -1042,36 +1174,42 @@ impl SessionContext {
             }
 
             for (venue_order_id, trades) in by_order {
-                delivered.extend(
+                recovered.merge(
                     self.emit_missed_fills(&symbol, venue_order_id, &trades)
                         .await,
                 );
             }
         }
 
-        Ok(delivered)
+        Ok(recovered)
     }
 
-    /// Delivers the missed fills for one venue order, returning the identifiers now reported.
+    /// Delivers the missed fills for one venue order, bundled with its order status.
     ///
-    /// The returned set holds the venue order ID and, when the venue echoes one, the client
-    /// order ID, so the order pass can recognise what has already been delivered and not send a
-    /// second, fill-inferring status for the same order.
+    /// A trade and the order state it produced are only ever published together. Neither half
+    /// is publishable alone: a bare fill lets the engine bootstrap a synthetic order at that
+    /// fill's quantity and drop every later fill for the same venue order, and a bare status
+    /// carrying a filled quantity lets it invent the trade behind it, which permanently
+    /// replaces the real trade ID and its commission. So when either half cannot be built the
+    /// whole order is held back: its trades stay pending (so the next pass fetches them by
+    /// ID) and it is named as uncovered, so the order pass on the same compensation withholds
+    /// its status too.
     async fn emit_missed_fills(
         &self,
         symbol: &Ustr,
         venue_order_id: i64,
         trades: &[&AsterUserTrade],
-    ) -> AHashSet<Ustr> {
-        let mut delivered = AHashSet::new();
+    ) -> CompensatedFills {
+        let mut outcome = CompensatedFills::default();
 
         let Some(context) = self.context_for(symbol) else {
             log::debug!("Ignoring Aster fills on unloaded symbol {symbol}");
-            return delivered;
+            return outcome;
         };
 
         let ts_init = self.clock.get_time_ns();
         let mut fills = Vec::with_capacity(trades.len());
+        let mut unparsable = 0usize;
 
         for trade in trades {
             match trade.to_fill_report(
@@ -1083,39 +1221,41 @@ impl SessionContext {
                 ts_init,
             ) {
                 Ok(report) => fills.push((report, trade.id, trade.time)),
-                Err(e) => log::error!("Failed to parse Aster trade {} on {symbol}: {e}", trade.id),
-            }
-        }
-
-        if fills.is_empty() {
-            return delivered;
-        }
-
-        let status = match self
-            .http_client
-            .query_order(symbol.as_str(), Some(venue_order_id), None)
-            .await
-        {
-            Ok(order) => match self.order_to_report(&order, ts_init) {
-                Ok(report) => {
-                    if let Some(report) = report.as_ref() {
-                        self.track_order_state(report, order.symbol);
-                        delivered.insert(Ustr::from(&venue_order_id.to_string()));
-                        if let Some(client_order_id) = report.client_order_id {
-                            delivered.insert(client_order_id.inner());
-                        }
-                    }
-                    report
-                }
                 Err(e) => {
-                    log::error!("Failed to parse Aster order {venue_order_id}: {e}");
-                    None
+                    log::error!("Failed to parse Aster trade {} on {symbol}: {e}", trade.id);
+                    unparsable += 1;
                 }
-            },
-            Err(e) => {
-                log::error!("Aster order query failed for {venue_order_id} on {symbol}: {e}");
-                None
             }
+        }
+
+        // The order is only queried once every one of its trades has been built: a partial
+        // bundle understates the order's filled quantity by exactly the trades that failed,
+        // which is the gap the engine fills with a fabricated trade.
+        let status = if unparsable == 0 && !fills.is_empty() {
+            self.query_order_report(symbol, venue_order_id, ts_init)
+                .await
+        } else {
+            None
+        };
+
+        let Some(status) = status else {
+            {
+                let mut state = self.state.write();
+                for trade in trades {
+                    state.note_pending_fill(*symbol, trade.id);
+                }
+            }
+
+            log::warn!(
+                "Holding back {} Aster fill(s) for order {venue_order_id} on {symbol}: they \
+                 stay eligible for recovery rather than reaching the engine without the order \
+                 state they belong to",
+                trades.len(),
+            );
+            outcome
+                .uncovered
+                .insert(Ustr::from(&venue_order_id.to_string()));
+            return outcome;
         };
 
         {
@@ -1125,24 +1265,62 @@ impl SessionContext {
             }
         }
 
+        outcome
+            .delivered
+            .insert(Ustr::from(&venue_order_id.to_string()));
+        if let Some(client_order_id) = status.client_order_id {
+            outcome.delivered.insert(client_order_id.inner());
+        }
+
         let reports: Vec<FillReport> = fills.into_iter().map(|(report, _, _)| report).collect();
         log::info!(
             "Applied {} Aster fills missed by the user stream for order {venue_order_id}",
             reports.len(),
         );
 
-        match status {
-            // One report, so the engine applies the trades and the resulting status together
-            // and never has a window in which it must invent the missing quantity.
-            Some(status) => self.emitter.send_order_with_fills(status, reports),
-            None => {
-                for report in reports {
-                    self.emitter.send_fill_report(report);
-                }
+        // One report, so the engine applies the trades and the resulting status together and
+        // never has a window in which it must invent the missing quantity.
+        self.emitter.send_order_with_fills(status, reports);
+
+        outcome
+    }
+
+    /// Returns the status report for one venue order, or `None` when it cannot be built.
+    ///
+    /// Every failure is logged and answered with `None`: the caller holds the order's trades
+    /// back rather than publishing either half on its own.
+    async fn query_order_report(
+        &self,
+        symbol: &Ustr,
+        venue_order_id: i64,
+        ts_init: UnixNanos,
+    ) -> Option<OrderStatusReport> {
+        let order = match self
+            .http_client
+            .query_order(symbol.as_str(), Some(venue_order_id), None)
+            .await
+        {
+            Ok(order) => order,
+            Err(e) => {
+                log::error!("Aster order query failed for {venue_order_id} on {symbol}: {e}");
+                return None;
+            }
+        };
+
+        match self.order_to_report(&order, ts_init) {
+            Ok(Some(report)) => {
+                self.track_order_state(&report, order.symbol);
+                Some(report)
+            }
+            Ok(None) => {
+                log::error!("Ignoring Aster order {venue_order_id} on unloaded symbol {symbol}");
+                None
+            }
+            Err(e) => {
+                log::error!("Failed to parse Aster order {venue_order_id}: {e}");
+                None
             }
         }
-
-        delivered
     }
 
     async fn refresh_account_state(&self) -> anyhow::Result<()> {
@@ -1507,9 +1685,8 @@ impl AsterExecutionClient {
 
     /// Keeps trades recoverable that were reported but could not be applied.
     ///
-    /// Their timestamps also pin the compensation window open: without that, a later trade for
-    /// the same symbol would advance the watermark past them and the next pass would start
-    /// after the very rows it still has to recover.
+    /// The next compensation pass fetches them by ID, so a later trade for the same symbol
+    /// advancing the watermark past them does not put them out of reach.
     fn hold_back_fills(&self, pending: &[DeliveredFill]) {
         if pending.is_empty() {
             return;
@@ -1523,7 +1700,7 @@ impl AsterExecutionClient {
 
         let mut state = self.stream_state.write();
         for fill in pending {
-            state.note_pending_fill(fill.symbol, fill.trade_id, fill.ts_ms);
+            state.note_pending_fill(fill.symbol, fill.trade_id);
         }
     }
 
@@ -1702,6 +1879,12 @@ impl AsterExecutionClient {
     ///
     /// Every position and order path in this adapter assumes one-way mode; silently trading a
     /// hedge-mode account would mis-attribute positions.
+    ///
+    /// The check fails closed. Only a definitive venue answer that the endpoint is unavailable
+    /// lets the session continue on the one-way assumption, because that answer is the same on
+    /// every attempt and says nothing about the account. A transport fault, a `5xx`, or a rate
+    /// limit leaves the mode *unknown*, and an unknown mode is not a one-way mode: assuming it
+    /// is would connect a hedge-mode account to an adapter that mis-attributes every position.
     async fn assert_one_way_mode(&self) -> anyhow::Result<()> {
         match self.http_client.query_position_mode().await {
             Ok(mode) => {
@@ -1715,12 +1898,18 @@ impl AsterExecutionClient {
             Err(e) if e.is_auth_failure() => Err(anyhow::anyhow!(
                 "Aster rejected the first signed request: {e}"
             )),
-            Err(e) => {
-                // A venue that does not expose the endpoint must not block the session; the
-                // position reports still reflect reality in one-way mode.
+            // A venue that answers with a decision of its own — an unknown endpoint, an
+            // invalid parameter — does not expose the mode and never will, so it must not
+            // block the session. A rate limit is a structured answer too, but it is a
+            // "try again", not a decision, so it is excluded here.
+            Err(e) if e.is_venue_rejection() && !e.is_rate_limited() => {
                 log::warn!("Aster position mode query failed, assuming one-way mode: {e}");
                 Ok(())
             }
+            Err(e) => Err(anyhow::anyhow!(
+                "Aster position mode could not be confirmed, so one-way mode cannot be \
+                 assumed: {e}"
+            )),
         }
     }
 
@@ -2435,8 +2624,24 @@ impl ExecutionClient for AsterExecutionClient {
     }
 
     async fn connect(&mut self) -> anyhow::Result<()> {
-        if self.core.is_connected() {
+        if self.core.is_connected() && self.session_tasks.is_open() && self.pending_tasks.is_open()
+        {
             return Ok(());
+        }
+
+        // A previous `disconnect` or `stop` closed both task generations permanently. They are
+        // drained and reopened before anything spawns a task or opens a listen key, otherwise
+        // the stream task is silently refused and the client reports as connected with no
+        // private stream behind it.
+        if !self.session_tasks.is_open() || !self.pending_tasks.is_open() {
+            self.await_task_groups().await;
+
+            self.session_tasks.start_generation().map_err(|e| {
+                anyhow::anyhow!("Failed to start Aster session task generation: {e}")
+            })?;
+            self.pending_tasks.start_generation().map_err(|e| {
+                anyhow::anyhow!("Failed to start Aster pending task generation: {e}")
+            })?;
         }
 
         self.load_instruments().await?;
@@ -2469,6 +2674,15 @@ impl ExecutionClient for AsterExecutionClient {
 
         log::info!("Disconnecting Aster execution client");
         self.await_task_groups().await;
+
+        // The stream session owns its listen key and releases it when its own loop ends, but a
+        // disconnect cancels that loop instead of ending it, so the key would be left open at
+        // the venue until it expired. It is released here, once the session task can no longer
+        // be renewing it.
+        if let Err(e) = self.http_client.close_listen_key().await {
+            log::debug!("Aster listen key close failed (key may already be expired): {e}");
+        }
+
         self.core.set_disconnected();
         log::info!("Aster execution client disconnected");
         Ok(())
@@ -2592,6 +2806,16 @@ impl ExecutionClient for AsterExecutionClient {
         Ok(())
     }
 
+    /// Cancels one order, reporting a definitive refusal back to the engine.
+    ///
+    /// A cancel the venue refuses outright, or one that never left this process, leaves the
+    /// order working. The engine holds it in `PendingCancel` until its in-flight check expires
+    /// and then reconciles it as *canceled* (`ExecutionManager`), so a silent failure here ends
+    /// with the engine believing an order is gone while it still rests on the book.
+    /// `OrderCancelRejected` is what puts the order back into its real state.
+    ///
+    /// An ambiguous failure is different: the venue may still act on the request, so it is left
+    /// to reconciliation rather than reported as a rejection that never happened.
     fn cancel_order(&self, cmd: CancelOrder) -> anyhow::Result<()> {
         let (symbol, _) = self.symbol_context(&cmd.instrument_id)?;
 
@@ -2600,24 +2824,32 @@ impl ExecutionClient for AsterExecutionClient {
         };
 
         let http_client = self.http_client.clone();
+        let emitter = self.emitter.clone();
+        let clock = self.clock;
+        let strategy_id = cmd.strategy_id;
+        let instrument_id = cmd.instrument_id;
         let client_order_id = cmd.client_order_id;
         let venue_order_id = cmd.venue_order_id;
-        // Cancelling by client order ID avoids a race with orders whose venue ID has not yet
-        // been observed on the user stream.
+        // The venue order ID is preferred because it is unambiguous: the venue always knows it,
+        // including for an order placed outside this client whose client order ID it never
+        // received. The client order ID is the fallback for an order whose venue ID this
+        // session has not observed yet.
         let venue_order_id_i64 = venue_order_id
             .as_ref()
             .and_then(|id| id.as_str().parse::<i64>().ok());
-        let use_client_id = venue_order_id_i64.is_none();
 
         spawner.spawn(async move {
-            let result = if use_client_id {
-                http_client
-                    .cancel_order(&symbol, None, Some(client_order_id.as_str()))
-                    .await
-            } else {
-                http_client
-                    .cancel_order(&symbol, venue_order_id_i64, None)
-                    .await
+            let result = match venue_order_id_i64 {
+                Some(order_id) => {
+                    http_client
+                        .cancel_order(&symbol, Some(order_id), None)
+                        .await
+                }
+                None => {
+                    http_client
+                        .cancel_order(&symbol, None, Some(client_order_id.as_str()))
+                        .await
+                }
             };
 
             match result {
@@ -2628,7 +2860,21 @@ impl ExecutionClient for AsterExecutionClient {
                 Err(e) if e.is_unknown_order() => {
                     log::warn!("Aster reported order {client_order_id} as unknown on cancel: {e}");
                 }
-                Err(e) => log::error!("Aster cancel failed for {client_order_id}: {e}"),
+                Err(e) if e.is_venue_rejection() || is_local_request_failure(&e) => {
+                    log::warn!("Aster rejected the cancel for {client_order_id}: {e}");
+                    emitter.emit_order_cancel_rejected_event(
+                        strategy_id,
+                        instrument_id,
+                        client_order_id,
+                        venue_order_id,
+                        &format!("cancel-order-error: {e}"),
+                        clock.get_time_ns(),
+                    );
+                }
+                Err(e) => log::warn!(
+                    "Ambiguous Aster cancel failure for {client_order_id}, awaiting \
+                     reconciliation: {e}"
+                ),
             }
         })?;
 
@@ -2645,6 +2891,10 @@ impl ExecutionClient for AsterExecutionClient {
     fn cancel_all_orders(&self, cmd: CancelAllOrders) -> anyhow::Result<()> {
         let (symbol, _) = self.symbol_context(&cmd.instrument_id)?;
         let http_client = self.http_client.clone();
+        let emitter = self.emitter.clone();
+        let clock = self.clock;
+        let strategy_id = cmd.strategy_id;
+        let instrument_id = cmd.instrument_id;
 
         let Some(order_side) = cmd.order_side else {
             self.spawn_task("cancel_all_orders", async move {
@@ -2673,10 +2923,17 @@ impl ExecutionClient for AsterExecutionClient {
                 .await
                 .map_err(|e| anyhow::anyhow!("Aster open order query failed for {symbol}: {e}"))?;
 
-            let targets: Vec<i64> = open_orders
+            // The venue echoes the client order ID it holds for each open order, which is
+            // what a cancel rejection has to name: an order the engine cannot identify cannot
+            // be put back into its real state.
+            let targets: Vec<(i64, Option<ClientOrderId>)> = open_orders
                 .iter()
                 .filter(|order| parse_order_side(order.side) == order_side)
-                .map(|order| order.order_id)
+                .map(|order| {
+                    let client_order_id = (!order.client_order_id.is_empty())
+                        .then(|| ClientOrderId::new(&order.client_order_id));
+                    (order.order_id, client_order_id)
+                })
                 .collect();
 
             if targets.is_empty() {
@@ -2685,7 +2942,7 @@ impl ExecutionClient for AsterExecutionClient {
             }
 
             let mut failed = Vec::new();
-            for venue_order_id in &targets {
+            for (venue_order_id, client_order_id) in &targets {
                 match http_client
                     .cancel_order(&symbol, Some(*venue_order_id), None)
                     .await
@@ -2696,7 +2953,31 @@ impl ExecutionClient for AsterExecutionClient {
                             "Aster order {venue_order_id} on {symbol} was already gone: {e}"
                         );
                     }
-                    Err(e) => failed.push(format!("{venue_order_id} ({e})")),
+                    Err(e) => {
+                        // Same contract as `cancel_order`: a refusal the venue already decided,
+                        // or one that never reached it, leaves the order working and must be
+                        // reported so the engine does not later reconcile it as canceled.
+                        if e.is_venue_rejection() || is_local_request_failure(&e) {
+                            match client_order_id {
+                                Some(client_order_id) => {
+                                    emitter.emit_order_cancel_rejected_event(
+                                        strategy_id,
+                                        instrument_id,
+                                        *client_order_id,
+                                        Some(VenueOrderId::new(venue_order_id.to_string())),
+                                        &format!("cancel-order-error: {e}"),
+                                        clock.get_time_ns(),
+                                    );
+                                }
+                                None => log::warn!(
+                                    "Aster rejected the cancel for {venue_order_id} on {symbol} \
+                                     and reported no client order ID, so the rejection cannot \
+                                     be attributed to an order: {e}"
+                                ),
+                            }
+                        }
+                        failed.push(format!("{venue_order_id} ({e})"));
+                    }
                 }
             }
 
@@ -2922,7 +3203,7 @@ impl ExecutionClient for AsterExecutionClient {
     /// 2. **Order and fill timelines must agree.** The engine sorts every reconciliation event
     ///    by `ts_event`, so a fill timestamped before its own order's `ts_accepted` is applied
     ///    to an order still in `Initialized` and rejected. Each report is therefore aligned
-    ///    against its own fills (see [`align_report_with_fills`]).
+    ///    against its own fills (see `align_report_with_fills`).
     ///
     /// 3. **Every reported fill is kept.** A fill whose order is not on the order page is not
     ///    an orphan — `allOrders` filters on creation time, so an order opened before the
@@ -3132,8 +3413,8 @@ impl ExecutionClient for AsterExecutionClient {
                 continue;
             };
 
-            // Parsed before anything else: `is_flat` reports an unparsable quantity as flat,
-            // so branching on it first would turn missing data into "no position".
+            // The quantity is parsed before anything branches on flatness: an unparsable
+            // value must fail the report rather than read as "no position".
             let signed_quantity = position
                 .signed_quantity()
                 .with_context(|| format!("Failed to parse Aster position {}", position.symbol))?;
@@ -3893,25 +4174,61 @@ mod tests {
     }
 
     #[rstest]
-    fn test_a_pending_fill_holds_the_compensation_window_open() {
-        // A trade reported but never applied must stay reachable, even after later trades for
-        // the same symbol have moved the watermark past it.
+    fn test_a_pending_fill_is_recovered_by_id_not_by_widening_the_window() {
+        // A trade reported but never applied must stay reachable after later trades have moved
+        // the watermark past it — but reaching it by pulling the window back to its timestamp
+        // would re-read the history in between, which the bounded dedupe set can no longer
+        // recognise. It is listed for a targeted query by ID instead.
         let mut state = StreamState::default();
         let symbol = Ustr::from("BTCUSDT");
         state.session_start_ms = 1_000;
 
-        state.note_pending_fill(symbol, 500, 2_000);
+        state.note_pending_fill(symbol, 500);
         state.record_fill(symbol, 600, 9_000);
 
         assert_eq!(
             state.compensation_start_ms(&symbol, 1_000),
-            2_000,
-            "the window must reach back to the trade still awaiting recovery",
+            9_000,
+            "the window must stay at the watermark, whatever is still awaiting recovery",
+        );
+        assert_eq!(
+            state.pending_trade_ids(&symbol),
+            BTreeSet::from([500]),
+            "the trade must stay listed for a targeted query",
         );
 
-        // Once it is applied, the watermark takes over again.
+        // Once it is applied, nothing is left to recover.
         state.record_fill(symbol, 500, 2_000);
         assert_eq!(state.compensation_start_ms(&symbol, 1_000), 9_000);
+        assert!(state.pending_trade_ids(&symbol).is_empty());
+    }
+
+    #[rstest]
+    fn test_a_pending_trade_survives_the_eviction_of_its_generation() {
+        // The dedupe set is bounded, so a long history evicts the oldest IDs. A trade still
+        // awaiting recovery must not be lost with them, and the trades that *were* applied must
+        // stay recognised as applied so a pass that reads them again does not re-deliver them.
+        let mut state = StreamState::default();
+        let symbol = Ustr::from("BTCUSDT");
+
+        state.note_pending_fill(symbol, 1);
+        for trade_id in 2..=(MAX_TRACKED_TRADE_IDS as i64 + 1) {
+            state.record_fill(symbol, trade_id, 1_000 + trade_id);
+        }
+
+        assert!(
+            !state.has_fill(&symbol, 1),
+            "the pending trade was never applied"
+        );
+        assert_eq!(
+            state.pending_trade_ids(&symbol),
+            BTreeSet::from([1]),
+            "eviction must not drop a trade still awaiting recovery",
+        );
+        assert!(
+            state.has_fill(&symbol, MAX_TRACKED_TRADE_IDS as i64 + 1),
+            "the newest applied trades stay recognised",
+        );
     }
 
     #[rstest]
@@ -3920,9 +4237,9 @@ mod tests {
         let symbol = Ustr::from("BTCUSDT");
         state.record_fill(symbol, 500, 5_000);
 
-        state.note_pending_fill(symbol, 500, 5_000);
+        state.note_pending_fill(symbol, 500);
 
-        assert_eq!(state.earliest_pending_ms(&symbol), None);
+        assert!(state.pending_trade_ids(&symbol).is_empty());
     }
 
     #[rstest]

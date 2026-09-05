@@ -139,8 +139,10 @@ impl AsterCredential {
             );
         }
 
-        let user_address = resolve_value(config_user_address, ASTER_USER_ADDRESS_ENV)
-            .map_or_else(|| derived_address.clone(), |value| value.trim().to_lowercase());
+        let user_address = resolve_value(config_user_address, ASTER_USER_ADDRESS_ENV).map_or_else(
+            || derived_address.clone(),
+            |value| value.trim().to_lowercase(),
+        );
 
         Ok(Self {
             signer,
@@ -352,7 +354,10 @@ mod tests {
         .unwrap_err()
         .to_string();
 
-        assert!(error.contains("Invalid Aster signer private key"), "{error}");
+        assert!(
+            error.contains("Invalid Aster signer private key"),
+            "{error}"
+        );
     }
 
     #[rstest]

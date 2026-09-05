@@ -34,8 +34,8 @@ use nautilus_common::{
     messages::{
         DataEvent, ExecutionEvent,
         execution::{
-            CancelAllOrders, ExecutionReport, GenerateFillReports, GenerateOrderStatusReports,
-            GeneratePositionStatusReports, SubmitOrder,
+            CancelAllOrders, CancelOrder, ExecutionReport, GenerateFillReports,
+            GenerateOrderStatusReports, GeneratePositionStatusReports, SubmitOrder,
         },
     },
     testing::wait_until_async,
@@ -3108,5 +3108,762 @@ async fn review_round3_account_fee_registry_leaks_between_clients() {
     assert_eq!(
         after, before,
         "first endpoint acquired the second account's fees"
+    );
+}
+
+// ------------------------------------------------------------------------------------------------
+// Round-4 review regressions
+// ------------------------------------------------------------------------------------------------
+
+fn cancel_command(client_order_id: &str, venue_order_id: Option<&str>) -> CancelOrder {
+    CancelOrder::new(
+        TraderId::from("TESTER-001"),
+        Some(*ASTER_CLIENT_ID),
+        StrategyId::from("S-001"),
+        InstrumentId::from(BTC),
+        ClientOrderId::from(client_order_id),
+        venue_order_id.map(VenueOrderId::from),
+        UUID4::new(),
+        UnixNanos::default(),
+        None, // params
+        None, // correlation_id
+    )
+}
+
+/// Issues `cmd` and waits until the cancel request has reached the venue and settled.
+async fn cancel_and_settle(harness: &Harness, cmd: CancelOrder, venue: &MockVenue) {
+    harness.client.cancel_order(cmd).expect("cancel accepted");
+
+    wait_until_async(
+        || async { !venue.requests_for("DELETE", "order").is_empty() },
+        Duration::from_secs(10),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+}
+
+fn has_cancel_rejected(events: &[ExecutionEvent]) -> bool {
+    order_events(events)
+        .iter()
+        .any(|event| matches!(event, OrderEventAny::CancelRejected(_)))
+}
+
+/// Builds a started but unconnected harness against a venue already scripted for connect.
+fn started_harness(venue: &MockVenue) -> Harness {
+    script_connect(venue);
+    let mut harness = build_harness(venue, Some(30));
+    seed_account(&harness.cache);
+    harness.client.start().expect("start");
+    harness
+}
+
+/// R4-01: a compensation pass that reads a fill but cannot read the order it belongs to must
+/// publish neither half. A bare fill bootstraps a synthetic order at that fill's quantity and
+/// the remaining fills are then dropped by the overfill guard, so the trades are held back and
+/// delivered with their order once the venue answers.
+#[rstest]
+#[tokio::test]
+async fn review_round4_uncovered_fills_are_withheld_until_their_order_answers() {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    drain_exec(&mut harness.exec_rx);
+
+    let external = ClientOrderId::from("O-R4-UNCOVERED");
+    let trade_ms = now_ms();
+    venue.script(|s| {
+        s.user_trades.insert(
+            "BTCUSDT".to_string(),
+            vec![
+                venue_trade(970_101, 970_001, "BTCUSDT", trade_ms - 2, "0.02"),
+                venue_trade(970_102, 970_001, "BTCUSDT", trade_ms - 1, "0.02"),
+                venue_trade(970_103, 970_001, "BTCUSDT", trade_ms, "0.02"),
+            ],
+        );
+        let mut row = venue_order(970_001, "O-R4-UNCOVERED", "BTCUSDT", "FILLED", "BUY");
+        row["origQty"] = json!("0.030");
+        row["executedQty"] = json!("0.030");
+        row["avgPrice"] = json!("50000.00");
+        row["time"] = json!(trade_ms - 3);
+        row["updateTime"] = json!(trade_ms);
+        s.orders.insert("970001".to_string(), row);
+        s.open_orders = json!([]);
+        // The order query fails once, so the first pass reads the trades but cannot build the
+        // order state they belong to.
+        s.order_query_faults.insert("970001".to_string(), 1);
+    });
+
+    venue.drop_ws();
+    wait_until_async(
+        || async { venue.ws_connection_count() >= 2 },
+        Duration::from_secs(20),
+    )
+    .await;
+    wait_until_async(
+        || async { !venue.requests_for("GET", "order").is_empty() },
+        Duration::from_secs(20),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(600)).await;
+
+    let mut events = drain_exec(&mut harness.exec_rx);
+    assert!(
+        fill_trade_ids(&events).is_empty(),
+        "a fill whose order could not be read must not reach the engine alone: {events:?}",
+    );
+    assert!(
+        !order_reports(&events)
+            .iter()
+            .any(|(_, client_order_id)| *client_order_id == Some(external)),
+        "the order status must be withheld with its fills, not published on its own: {events:?}",
+    );
+
+    venue.clear_requests();
+    venue.drop_ws();
+    wait_until_async(
+        || async { venue.ws_connection_count() >= 3 },
+        Duration::from_secs(20),
+    )
+    .await;
+    wait_until_async(
+        || async {
+            venue
+                .requests_for("GET", "userTrades")
+                .iter()
+                .any(|request| request.param("symbol") == Some("BTCUSDT"))
+        },
+        Duration::from_secs(20),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(600)).await;
+
+    let second = drain_exec(&mut harness.exec_rx);
+    let bundled = second.iter().any(|event| {
+        matches!(
+            event,
+            ExecutionEvent::Report(ExecutionReport::OrderWithFills(report, fills))
+                if report.client_order_id == Some(external) && fills.len() == 3
+        )
+    });
+    assert!(
+        bundled,
+        "the recovered order must arrive with all three of its trades: {second:?}",
+    );
+    events.extend(second);
+
+    let cache = Rc::new(RefCell::new(Cache::default()));
+    seed_account(&cache);
+    while let Ok(event) = harness.data_rx.try_recv() {
+        if let DataEvent::Instrument(instrument) = event {
+            cache.borrow_mut().add_instrument(instrument).unwrap();
+        }
+    }
+    let mut engine =
+        ExecutionEngine::new(Rc::new(RefCell::new(TestClock::new())), cache.clone(), None);
+    engine.register_client(Box::new(harness.client)).unwrap();
+    engine.register_oms_type(StrategyId::from("EXTERNAL"), OmsType::Netting);
+    for event in &events {
+        if let ExecutionEvent::Report(report) = event {
+            engine.reconcile_execution_report(report);
+        }
+    }
+
+    let cache = cache.borrow();
+    let order = cache.order(&external).expect("the external order");
+    assert_eq!(order.filled_qty(), Quantity::from("0.030"));
+    assert_eq!(
+        order
+            .trade_ids()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>(),
+        vec!["970101", "970102", "970103"],
+        "every real trade ID must survive: {:?}",
+        order.trade_ids(),
+    );
+    let position = cache
+        .position_for_order(&external)
+        .expect("the fills must open a position");
+    assert_eq!(position.quantity, Quantity::from("0.030"));
+}
+
+/// R4-01: the order sweep of the same compensation pass must withhold the status of an order
+/// whose fills were held back. Publishing it would report a filled quantity with no trades
+/// behind it, which the engine explains by inventing one.
+#[rstest]
+#[tokio::test]
+async fn review_round4_open_order_status_is_withheld_while_its_fills_are() {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    drain_exec(&mut harness.exec_rx);
+
+    let external = ClientOrderId::from("O-R4-OPEN");
+    let trade_ms = now_ms();
+    venue.script(|s| {
+        s.user_trades.insert(
+            "BTCUSDT".to_string(),
+            vec![venue_trade(970_201, 970_002, "BTCUSDT", trade_ms, "0.02")],
+        );
+        let mut row = venue_order(970_002, "O-R4-OPEN", "BTCUSDT", "PARTIALLY_FILLED", "BUY");
+        row["origQty"] = json!("0.030");
+        row["executedQty"] = json!("0.010");
+        row["avgPrice"] = json!("50000.00");
+        row["time"] = json!(trade_ms - 1);
+        row["updateTime"] = json!(trade_ms);
+        s.orders.insert("970002".to_string(), row.clone());
+        // The order is still working, so the order sweep sees it on `openOrders`.
+        s.open_orders = json!([row]);
+        s.order_query_faults.insert("970002".to_string(), 1);
+    });
+
+    venue.drop_ws();
+    wait_until_async(
+        || async { venue.ws_connection_count() >= 2 },
+        Duration::from_secs(20),
+    )
+    .await;
+    wait_until_async(
+        || async { !venue.requests_for("GET", "openOrders").is_empty() },
+        Duration::from_secs(20),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(600)).await;
+
+    let first = drain_exec(&mut harness.exec_rx);
+    assert!(
+        fill_trade_ids(&first).is_empty(),
+        "the fill must be held back with its order: {first:?}",
+    );
+    assert!(
+        !order_reports(&first)
+            .iter()
+            .any(|(_, client_order_id)| *client_order_id == Some(external)),
+        "a status reporting 0.010 filled with no trade behind it must be withheld: {first:?}",
+    );
+
+    venue.clear_requests();
+    venue.drop_ws();
+    wait_until_async(
+        || async { venue.ws_connection_count() >= 3 },
+        Duration::from_secs(20),
+    )
+    .await;
+    wait_until_async(
+        || async { !venue.requests_for("GET", "openOrders").is_empty() },
+        Duration::from_secs(20),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(600)).await;
+
+    let second = drain_exec(&mut harness.exec_rx);
+    let bundled = second.iter().any(|event| {
+        matches!(
+            event,
+            ExecutionEvent::Report(ExecutionReport::OrderWithFills(report, fills))
+                if report.client_order_id == Some(external)
+                    && fills.iter().any(|fill| fill.trade_id.as_str() == "970201")
+        )
+    });
+    assert!(
+        bundled,
+        "once the order answers, its status and trade arrive together: {second:?}",
+    );
+}
+
+/// R4-02: a cancel the venue definitively refuses leaves the order working, and the engine
+/// reconciles a stuck `PendingCancel` as canceled, so the refusal must be reported.
+#[rstest]
+#[case(json!({"code": -1102, "msg": "Mandatory parameter was not sent."}), true)]
+#[case(json!({"code": -2011, "msg": "Unknown order sent."}), false)]
+#[tokio::test]
+async fn review_round4_cancel_reports_only_a_definitive_refusal(
+    #[case] error: Value,
+    #[case] expect_rejection: bool,
+) {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    venue.script(|s| s.cancel_error = Some(error));
+    drain_exec(&mut harness.exec_rx);
+
+    cancel_and_settle(
+        &harness,
+        cancel_command("O-R4-CANCEL", Some("900500")),
+        &venue,
+    )
+    .await;
+
+    let events = drain_exec(&mut harness.exec_rx);
+    assert_eq!(has_cancel_rejected(&events), expect_rejection, "{events:?}");
+}
+
+/// R4-02: a `5xx` says nothing about whether the cancel landed, so it stays with reconciliation.
+#[rstest]
+#[tokio::test]
+async fn review_round4_ambiguous_cancel_failure_awaits_reconciliation() {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    venue.script(|s| s.cancel_status = Some((503, "service unavailable".to_string())));
+    drain_exec(&mut harness.exec_rx);
+
+    cancel_and_settle(
+        &harness,
+        cancel_command("O-R4-AMBIG", Some("900501")),
+        &venue,
+    )
+    .await;
+
+    let events = drain_exec(&mut harness.exec_rx);
+    assert!(
+        !has_cancel_rejected(&events),
+        "an ambiguous cancel failure must not be reported as a refusal: {events:?}",
+    );
+}
+
+/// R4-02: the side-filtered cancel-all path maps each venue order back to its client order ID,
+/// so a per-order refusal can be attributed to the order it belongs to.
+#[rstest]
+#[tokio::test]
+async fn review_round4_cancel_all_for_a_side_reports_a_refusal_per_order() {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    venue.script(|s| {
+        s.open_orders = json!([venue_order(900_600, "O-R4-SIDE", "BTCUSDT", "NEW", "BUY")]);
+        s.cancel_error = Some(json!({"code": -1102, "msg": "Mandatory parameter was not sent."}));
+    });
+    drain_exec(&mut harness.exec_rx);
+
+    harness
+        .client
+        .cancel_all_orders(cancel_all(Some(OrderSide::Buy)))
+        .expect("cancel-all accepted");
+    wait_until_async(
+        || async { !venue.requests_for("DELETE", "order").is_empty() },
+        Duration::from_secs(10),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+
+    let events = drain_exec(&mut harness.exec_rx);
+    let attributed = order_events(&events).iter().any(|event| {
+        matches!(event, OrderEventAny::CancelRejected(rejected)
+            if rejected.client_order_id == ClientOrderId::from("O-R4-SIDE"))
+    });
+    assert!(
+        attributed,
+        "each refused cancel must name the order it left working: {events:?}",
+    );
+}
+
+/// R4-05: the venue order ID is unambiguous where a client order ID may be unknown to the
+/// venue, so it is preferred; the client order ID is the fallback.
+#[rstest]
+#[case(Some("900700"), "orderId", "900700", "origClientOrderId")]
+#[case(None, "origClientOrderId", "O-R4-IDENT", "orderId")]
+#[tokio::test]
+async fn review_round4_cancel_prefers_the_venue_order_id(
+    #[case] venue_order_id: Option<&str>,
+    #[case] expected_param: &str,
+    #[case] expected_value: &str,
+    #[case] absent_param: &str,
+) {
+    let venue = MockVenue::start().await;
+    let harness = connected_harness(&venue).await;
+
+    cancel_and_settle(
+        &harness,
+        cancel_command("O-R4-IDENT", venue_order_id),
+        &venue,
+    )
+    .await;
+
+    let requests = venue.requests_for("DELETE", "order");
+    assert_eq!(requests.len(), 1, "{requests:?}");
+    assert_eq!(requests[0].param(expected_param), Some(expected_value));
+    assert_eq!(requests[0].param(absent_param), None);
+}
+
+/// R4-03: a disconnect closes both task generations permanently, so a reconnect must reopen
+/// them before it spawns anything, and it must release the listen key it opened.
+#[rstest]
+#[tokio::test]
+async fn review_round4_reconnect_after_disconnect_restores_a_working_session() {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+
+    harness.client.disconnect().await.expect("disconnect");
+    assert!(
+        !venue.requests_for("DELETE", "listenKey").is_empty(),
+        "a disconnect must release the listen key rather than leave it to expire: {:?}",
+        venue.requests(),
+    );
+
+    harness.client.connect().await.expect("reconnect");
+    venue.clear_requests();
+
+    let order = limit_order("O-R4-RECONNECT", OrderSide::Buy, false);
+    submit_and_settle(&harness, &order, &venue).await;
+
+    assert_eq!(
+        venue.requests_for("POST", "order").len(),
+        1,
+        "an order submitted after a reconnect must reach the venue: {:?}",
+        venue.requests(),
+    );
+}
+
+/// R4-04: an unconfirmed position mode is not a one-way mode.
+#[rstest]
+#[tokio::test]
+async fn review_round4_unconfirmed_position_mode_fails_the_connect() {
+    let venue = MockVenue::start().await;
+    venue.script(|s| s.position_mode_status = Some((503, "service unavailable".to_string())));
+    let mut harness = started_harness(&venue);
+
+    let error = harness
+        .client
+        .connect()
+        .await
+        .expect_err("a 5xx leaves the account's position mode unknown");
+
+    assert!(format!("{error:#}").contains("position mode"), "{error:#}");
+    assert!(
+        venue.requests_for("POST", "listenKey").is_empty(),
+        "the session must not come up on an unconfirmed mode: {:?}",
+        venue.requests(),
+    );
+}
+
+/// R4-04: a definitive venue answer that the endpoint is unavailable still assumes one-way.
+#[rstest]
+#[tokio::test]
+async fn review_round4_unsupported_position_mode_endpoint_assumes_one_way() {
+    let venue = MockVenue::start().await;
+    venue.script(|s| {
+        s.position_mode_error = Some(json!({"code": -1121, "msg": "Invalid symbol."}));
+    });
+    let mut harness = started_harness(&venue);
+
+    harness
+        .client
+        .connect()
+        .await
+        .expect("a definitive venue answer must not block the session");
+}
+
+/// R4-04: hedge mode is still rejected outright.
+#[rstest]
+#[tokio::test]
+async fn review_round4_hedge_mode_account_is_rejected_at_connect() {
+    let venue = MockVenue::start().await;
+    venue.script(|s| s.position_mode = Some(json!({"dualSidePosition": true})));
+    let mut harness = started_harness(&venue);
+
+    let error = harness
+        .client
+        .connect()
+        .await
+        .expect_err("hedge mode is not supported by this adapter");
+
+    assert!(format!("{error:#}").contains("hedge"), "{error:#}");
+}
+
+// ------------------------------------------------------------------------------------------------
+// R4 - bounded dedupe memory against the pending-trade pull-back
+// ------------------------------------------------------------------------------------------------
+
+/// Trades the venue holds for the symbol under test, comfortably past the adapter's dedupe cap.
+const HISTORY_TRADES: i64 = 6_000;
+/// Trades per historical order, so the history is a handful of orders rather than 6,000 of them.
+const TRADES_PER_ORDER: i64 = 100;
+/// Historical orders behind those trades.
+const HISTORY_ORDERS: i64 = HISTORY_TRADES / TRADES_PER_ORDER;
+const FIRST_TRADE_ID: i64 = 700_000;
+const FIRST_ORDER_ID: i64 = 800_000;
+/// The venue order behind the unlinkable trade; the venue never answers for it.
+const ORPHAN_ORDER_ID: i64 = 899_999;
+const ORPHAN_TRADE_ID: i64 = 699_999;
+
+/// A historical order that a hundred small trades filled.
+fn bulk_order(order_id: i64, client_order_id: &str, time_ms: i64, update_ms: i64) -> Value {
+    json!({
+        "symbol": "BTCUSDT",
+        "orderId": order_id,
+        "clientOrderId": client_order_id,
+        "price": "50000.00",
+        "avgPrice": "50000.00",
+        "origQty": "0.100",
+        "executedQty": "0.100",
+        "cumQuote": "5000.0",
+        "status": "FILLED",
+        "timeInForce": "GTC",
+        "type": "LIMIT",
+        "side": "BUY",
+        "positionSide": "BOTH",
+        "reduceOnly": false,
+        "closePosition": false,
+        "time": time_ms,
+        "updateTime": update_ms,
+    })
+}
+
+/// Scripts a symbol whose recent history is longer than the adapter can remember.
+///
+/// The oldest trade belongs to an order the venue no longer answers for, which is what keeps a
+/// trade pending after startup reconciliation.
+fn script_long_history(venue: &MockVenue) -> i64 {
+    let base_ms = now_ms() - 900_000;
+    let mut orders = Vec::new();
+    let mut trades = vec![sized_trade(
+        ORPHAN_TRADE_ID,
+        ORPHAN_ORDER_ID,
+        "BTCUSDT",
+        base_ms - 1_000,
+        "0.001",
+        "BUY",
+    )];
+
+    for index in 0..HISTORY_TRADES {
+        let order_index = index / TRADES_PER_ORDER;
+        let order_id = FIRST_ORDER_ID + order_index;
+        let time_ms = base_ms + index * 10;
+        trades.push(sized_trade(
+            FIRST_TRADE_ID + index,
+            order_id,
+            "BTCUSDT",
+            time_ms,
+            "0.001",
+            "BUY",
+        ));
+
+        if index % TRADES_PER_ORDER == 0 {
+            orders.push(bulk_order(
+                order_id,
+                &format!("O-BULK-{order_index}"),
+                time_ms - 5,
+                time_ms + (TRADES_PER_ORDER - 1) * 10,
+            ));
+        }
+    }
+
+    venue.script(|script| {
+        for order in &orders {
+            script.orders.insert(
+                order["orderId"].as_i64().expect("order id").to_string(),
+                order.clone(),
+            );
+        }
+        script.all_orders.insert("BTCUSDT".to_string(), orders);
+        script.user_trades.insert("BTCUSDT".to_string(), trades);
+        script.position_risk = json!([{
+            "symbol": "BTCUSDT",
+            "positionAmt": "6.000",
+            "entryPrice": "50000.00",
+            "positionSide": "BOTH",
+            "updateTime": base_ms,
+        }]);
+    });
+
+    base_ms
+}
+
+/// Drops the socket and waits for the whole compensation pass to finish.
+///
+/// The pass ends with the position refresh, so a `positionRisk` request after the reconnect is
+/// the signal that fills, orders and balances have all been through.
+async fn drive_compensation(venue: &MockVenue, expected_connections: usize) {
+    venue.clear_requests();
+    venue.drop_ws();
+    wait_until_async(
+        || async { venue.ws_connection_count() >= expected_connections },
+        Duration::from_secs(20),
+    )
+    .await;
+    wait_until_async(
+        || async { !venue.requests_for("GET", "positionRisk").is_empty() },
+        Duration::from_secs(60),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+}
+
+fn feed_reports(engine: &Rc<RefCell<ExecutionEngine>>, events: &[ExecutionEvent]) {
+    for event in events {
+        if let ExecutionEvent::Report(report) = event {
+            engine.borrow_mut().reconcile_execution_report(report);
+        }
+    }
+}
+
+fn btc_position(cache: &Rc<RefCell<Cache>>) -> Option<(Quantity, PositionSide)> {
+    let cache = cache.borrow();
+    cache
+        .positions(None, Some(&InstrumentId::from(BTC)), None, None, None)
+        .first()
+        .map(|position| (position.quantity, position.side))
+}
+
+/// R4-04: a trade held back for recovery must not drag the compensation window back over a
+/// history the bounded dedupe set has already forgotten.
+///
+/// The account below is ordinary: 6,000 trades in the reconciliation window, one of them
+/// unlinkable because the venue no longer answers for its order. Startup applies 6,000 trade
+/// IDs, `MAX_TRACKED_TRADE_IDS` (4,096) of which fit in the dedupe set, and the remaining 1,904
+/// are evicted. If the pending trade pulled the next compensation window back to its own
+/// timestamp, every one of those 1,904 evicted trades would read as missed and be re-delivered
+/// as a live fill — on *every* reconnect, because re-recording an evicted ID immediately evicts
+/// it again. The engine absorbs the replay only while it still holds the orders that own those
+/// trade IDs; a node that has purged its closed orders (which live nodes do routinely) instead
+/// bootstraps them again and books the quantity a second time.
+///
+/// So the pending trade is fetched by ID, and the window stays at the watermark.
+#[rstest]
+#[tokio::test]
+async fn review_round4_a_pending_trade_does_not_replay_the_evicted_history() {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    drain_exec(&mut harness.exec_rx);
+    let base_ms = script_long_history(&venue);
+
+    let mass = harness
+        .client
+        .generate_mass_status(Some(10_080))
+        .await
+        .expect("mass status")
+        .expect("mass status present");
+    assert_eq!(mass.order_reports().len(), HISTORY_ORDERS as usize);
+    assert_eq!(
+        mass.fill_reports().values().flatten().count(),
+        HISTORY_TRADES as usize + 1,
+        "every trade in the window is reported, the unlinkable one included",
+    );
+    assert!(
+        !mass.reports_complete(),
+        "the trade whose order the venue will not answer for leaves the snapshot partial",
+    );
+
+    let cache = Rc::new(RefCell::new(Cache::default()));
+    seed_account(&cache);
+    while let Ok(event) = harness.data_rx.try_recv() {
+        if let DataEvent::Instrument(instrument) = event {
+            cache
+                .borrow_mut()
+                .add_instrument(instrument)
+                .expect("instrument");
+        }
+    }
+    let clock = Rc::new(RefCell::new(TestClock::new()));
+    let mut manager = ExecutionManager::new(
+        clock.clone(),
+        cache.clone(),
+        ExecutionManagerConfig::default(),
+    )
+    .expect("manager");
+    let engine = Rc::new(RefCell::new(ExecutionEngine::new(
+        clock,
+        cache.clone(),
+        None,
+    )));
+    engine
+        .borrow_mut()
+        .register_client(Box::new(harness.client))
+        .expect("register");
+    engine
+        .borrow_mut()
+        .register_oms_type(StrategyId::from("EXTERNAL"), OmsType::Netting);
+    manager
+        .reconcile_execution_mass_status(mass, engine.clone())
+        .await;
+    drain_exec(&mut harness.exec_rx);
+
+    let linked_qty = Quantity::from("6.000");
+    assert_eq!(
+        btc_position(&cache),
+        Some((linked_qty, PositionSide::Long)),
+        "startup applies every linked trade and skips the unlinkable one",
+    );
+
+    // Pass one: the compensation that follows the first reconnect, with every order still cached.
+    drive_compensation(&venue, 2).await;
+    let replayed = drain_exec(&mut harness.exec_rx);
+    assert!(
+        fill_trade_ids(&replayed).is_empty(),
+        "a trade the startup snapshot already applied must not come back as a live fill, \
+         however many IDs the dedupe set has since evicted: {:?}",
+        fill_trade_ids(&replayed).len(),
+    );
+    assert!(
+        venue.requests_for("GET", "userTrades").len() <= 4,
+        "the pass must read the recent window and the held-back trade, not the whole history: {}",
+        venue.requests_for("GET", "userTrades").len(),
+    );
+
+    feed_reports(&engine, &replayed);
+    assert_eq!(btc_position(&cache), Some((linked_qty, PositionSide::Long)));
+    assert_eq!(
+        cache
+            .borrow()
+            .order(&ClientOrderId::from("O-BULK-0"))
+            .expect("the first historical order")
+            .filled_qty(),
+        Quantity::from("0.100"),
+    );
+
+    // Pass two: the same reconnect against a node that has purged its closed orders, which is
+    // where a replay stops being absorbed and starts booking quantity twice.
+    cache
+        .borrow_mut()
+        .purge_closed_orders(UnixNanos::from(u64::MAX / 2), 0);
+    assert!(
+        cache
+            .borrow()
+            .orders(None, None, None, None, None)
+            .is_empty(),
+        "the purge must leave the compensation pass with no order to dedupe against",
+    );
+
+    drive_compensation(&venue, 3).await;
+    let after_purge = drain_exec(&mut harness.exec_rx);
+    assert!(
+        fill_trade_ids(&after_purge).is_empty(),
+        "the replay must not reappear once the orders that dedupe it are gone: {:?}",
+        fill_trade_ids(&after_purge).len(),
+    );
+
+    feed_reports(&engine, &after_purge);
+    assert_eq!(
+        btc_position(&cache),
+        Some((linked_qty, PositionSide::Long)),
+        "the position must still be the one the venue reports",
+    );
+
+    // Pass three: the held-back trade is still recoverable. Its order becomes answerable, and
+    // the trade arrives with it — reached by ID, from behind the window this pass reads.
+    venue.script(|script| {
+        let mut order = bulk_order(
+            ORPHAN_ORDER_ID,
+            "O-ORPHAN",
+            base_ms - 1_001,
+            base_ms - 1_000,
+        );
+        order["origQty"] = json!("0.001");
+        order["executedQty"] = json!("0.001");
+        order["cumQuote"] = json!("50.0");
+        script
+            .orders
+            .insert(ORPHAN_ORDER_ID.to_string(), order.clone());
+    });
+
+    drive_compensation(&venue, 4).await;
+    let recovered = drain_exec(&mut harness.exec_rx);
+    assert_eq!(
+        fill_trade_ids(&recovered),
+        vec![ORPHAN_TRADE_ID.to_string()],
+        "the trade held back at startup must still be delivered once its order answers",
+    );
+
+    feed_reports(&engine, &recovered);
+    assert_eq!(
+        btc_position(&cache),
+        Some((Quantity::from("6.001"), PositionSide::Long)),
+        "the recovered trade must reach the position exactly once",
     );
 }

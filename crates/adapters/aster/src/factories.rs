@@ -97,7 +97,6 @@ impl DataClientFactory for AsterDataClientFactory {
     }
 }
 
-
 /// Factory for creating Aster execution clients.
 ///
 /// Unlike the data path, execution cannot reuse the Binance client: Aster's Futures V3
@@ -375,7 +374,10 @@ mod tests {
             cache.into(),
         );
 
-        let error = result.err().expect("expected a validation error").to_string();
+        let error = result
+            .err()
+            .expect("expected a validation error")
+            .to_string();
         assert!(error.contains("must use venue ASTER"), "{error}");
     }
 
@@ -401,7 +403,10 @@ mod tests {
             cache.into(),
         );
 
-        let error = result.err().expect("expected a credential error").to_string();
+        let error = result
+            .err()
+            .expect("expected a credential error")
+            .to_string();
         assert!(error.contains("signer private key"), "{error}");
     }
 }

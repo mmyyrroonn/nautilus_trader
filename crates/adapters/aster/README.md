@@ -25,7 +25,7 @@ so its frame decoding is delegated to `nautilus-binance`.
 | Post-only | Yes | Sent as the `GTX` time in force |
 | `MARKET` orders | Yes | |
 | `reduce_only` | Yes | |
-| Cancel order | Yes | By client order ID, falling back to the venue order ID |
+| Cancel order | Yes | By venue order ID when it is known, falling back to the client order ID; a definitive venue refusal emits `OrderCancelRejected` |
 | Cancel all orders for an instrument | Yes | Side-less: `DELETE /fapi/v3/allOpenOrders`. Side-filtered: only the matching open orders are cancelled, one request each |
 | Order status / fill / position reports | Yes | `order`, `openOrders`, `allOrders`, `userTrades`, `positionRisk` |
 | Account state | Yes | `GET /fapi/v3/balance`, plus `ACCOUNT_UPDATE` on the user stream; unknown assets are registered on the fly, and explicit zero rows are kept so a drained asset clears |
@@ -35,7 +35,7 @@ so its frame decoding is delegated to `nautilus-binance`.
 | Conditional / algo orders (`STOP`, `TAKE_PROFIT`, trailing) | No | Rejected at submission |
 | Batch orders | No | |
 | Quote-denominated quantities | No | Denied before any request; Aster's `quantity` is base-asset only |
-| Hedge (dual-side) mode | No | Detected at connect and rejected |
+| Hedge (dual-side) mode | No | Detected at connect and rejected; a mode the venue cannot confirm fails the connect rather than assuming one-way |
 | Venue position IDs | No | One-way (net) mode carries none |
 
 ## Authentication
@@ -103,7 +103,7 @@ Aster's `{code, msg}` bodies are Binance-shaped, but "the venue answered" is not
 
 | Class | Examples | Handling |
 |---|---|---|
-| Definitive rejection | `-1121` invalid symbol, `-2010` new order rejected, `-2019` margin insufficient, `-4164` min notional, `-1111` bad precision, `-1013`, `-1102`, `-4003`/`-4004`/`-4005`, `-1003` rate limited, `-1021`/`-1022` nonce or signature, and any `4xx` status without an Aster body | `OrderRejected` immediately |
+| Definitive rejection | `-1121` invalid symbol, `-2010` new order rejected, `-2019` margin insufficient, `-4164` min notional, `-1111` bad precision, `-1013`, `-1102`, `-4003`/`-4004`/`-4005`, `-1003` rate limited, `-4225`/`-1022` nonce expired or invalid signature, and any `4xx` status without an Aster body | `OrderRejected` immediately |
 | **Execution status unknown** | `-1006 UNEXPECTED_RESP`, `-1007 TIMEOUT`, any transport fault (TLS, TCP, client timeout), an undecodable response body, and **any** `5xx` / `408` response - including one carrying a parseable Aster error body | **Never terminalised.** Logged at error; the order stays in flight and `GET /fapi/v3/order?origClientOrderId=` is queried after 2 s / 5 s / 15 s until the venue answers. A definitive `-2013 NO_SUCH_ORDER` then rejects it locally; any other answer is emitted as the venue reports it. The order is **never** resubmitted |
 | Local fault | missing credentials, signing, request validation | `OrderRejected`; the request never left the process |
 

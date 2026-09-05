@@ -415,7 +415,9 @@ mod tests {
 
     #[rstest]
     fn test_signature_layout_is_65_bytes_with_recovery_id() {
-        let signature = signer().sign_param_string("nonce=1&user=0x0&signer=0x0").unwrap();
+        let signature = signer()
+            .sign_param_string("nonce=1&user=0x0&signer=0x0")
+            .unwrap();
 
         assert!(signature.starts_with("0x"));
         assert_eq!(signature.len(), 2 + 130);

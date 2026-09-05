@@ -88,6 +88,59 @@ pub const ASTER_REQUEST_WEIGHT_PER_MINUTE: u32 = 2400;
 /// Order rate budget per minute (`ORDER`, 1200/min).
 pub const ASTER_ORDERS_PER_MINUTE: u32 = 1200;
 
+// -------------------------------------------------------------------------------------------
+// Documented request weights
+// -------------------------------------------------------------------------------------------
+//
+// Every signed endpoint spends its documented weight from the shared 2400/minute budget, so a
+// handful of calls to a heavy endpoint costs as much as hundreds of order operations. Aster
+// answers an exceeded budget with HTTP 429 and escalates repeated violations to an HTTP 418 IP
+// ban lasting from two minutes to three days, which is why the weights are modelled exactly
+// rather than approximated at one unit per request.
+//
+// # References
+//
+// - <https://github.com/asterdex/api-docs/tree/master/V3(Recommended)/EN>
+
+/// Weight of `POST`/`GET`/`DELETE /fapi/v3/order`.
+pub const ASTER_WEIGHT_ORDER: u32 = 1;
+
+/// Weight of `DELETE /fapi/v3/allOpenOrders`.
+pub const ASTER_WEIGHT_ALL_OPEN_ORDERS: u32 = 1;
+
+/// Weight of `GET /fapi/v3/openOrders` for a single symbol.
+pub const ASTER_WEIGHT_OPEN_ORDERS_SYMBOL: u32 = 1;
+
+/// Weight of `GET /fapi/v3/openOrders` without a symbol (every symbol on the account).
+pub const ASTER_WEIGHT_OPEN_ORDERS_ALL: u32 = 40;
+
+/// Weight of `GET /fapi/v3/allOrders`.
+pub const ASTER_WEIGHT_ALL_ORDERS: u32 = 5;
+
+/// Weight of `GET /fapi/v3/userTrades`.
+pub const ASTER_WEIGHT_USER_TRADES: u32 = 5;
+
+/// Weight of `GET /fapi/v3/balance`.
+pub const ASTER_WEIGHT_BALANCE: u32 = 5;
+
+/// Weight of `GET /fapi/v3/positionRisk`.
+pub const ASTER_WEIGHT_POSITION_RISK: u32 = 5;
+
+/// Weight of `GET /fapi/v3/commissionRate`.
+pub const ASTER_WEIGHT_COMMISSION_RATE: u32 = 20;
+
+/// Weight of `GET /fapi/v3/positionSide/dual`.
+pub const ASTER_WEIGHT_POSITION_SIDE_DUAL: u32 = 30;
+
+/// Weight of the `POST`/`PUT`/`DELETE /fapi/v3/listenKey` lifecycle.
+pub const ASTER_WEIGHT_LISTEN_KEY: u32 = 1;
+
+/// Weight charged for a path with no documented entry in this table.
+///
+/// Matches the weight of the account endpoints rather than the cheapest endpoint, so a path
+/// added without a table entry under-spends the budget instead of inviting a ban.
+pub const ASTER_WEIGHT_DEFAULT: u32 = 5;
+
 /// Interval at which the user data stream listen key must be renewed.
 ///
 /// Aster expires an idle listen key after 60 minutes; renewing every 30 minutes leaves a
@@ -138,6 +191,23 @@ mod tests {
         assert_eq!(ASTER_REQUEST_WEIGHT_PER_MINUTE, 2400);
         assert_eq!(ASTER_ORDERS_PER_MINUTE, 1200);
         assert_eq!(ASTER_LISTEN_KEY_RENEWAL_SECS, 1800);
+    }
+
+    #[rstest]
+    fn test_documented_request_weights() {
+        assert_eq!(ASTER_WEIGHT_ORDER, 1);
+        assert_eq!(ASTER_WEIGHT_ALL_OPEN_ORDERS, 1);
+        assert_eq!(ASTER_WEIGHT_LISTEN_KEY, 1);
+        assert_eq!(ASTER_WEIGHT_OPEN_ORDERS_SYMBOL, 1);
+        assert_eq!(ASTER_WEIGHT_OPEN_ORDERS_ALL, 40);
+        assert_eq!(ASTER_WEIGHT_ALL_ORDERS, 5);
+        assert_eq!(ASTER_WEIGHT_USER_TRADES, 5);
+        assert_eq!(ASTER_WEIGHT_BALANCE, 5);
+        assert_eq!(ASTER_WEIGHT_POSITION_RISK, 5);
+        assert_eq!(ASTER_WEIGHT_COMMISSION_RATE, 20);
+        assert_eq!(ASTER_WEIGHT_POSITION_SIDE_DUAL, 30);
+        // An unmapped path is charged more than the cheapest endpoint, never less.
+        assert_eq!(ASTER_WEIGHT_DEFAULT, 5);
     }
 
     #[rstest]

@@ -36,10 +36,14 @@ pub const ASTER_CODE_UNEXPECTED_RESP: i64 = -1006;
 /// Aster documents this as "Send status unknown; execution status unknown", so the same
 /// ambiguity as [`ASTER_CODE_UNEXPECTED_RESP`] applies.
 pub const ASTER_CODE_TIMEOUT: i64 = -1007;
-/// Nonce outside the accepted window, or already used (`INVALID_TIMESTAMP`).
-pub const ASTER_CODE_INVALID_NONCE: i64 = -1021;
 /// Signature rejected (`INVALID_SIGNATURE`).
 pub const ASTER_CODE_INVALID_SIGNATURE: i64 = -1022;
+/// Nonce outside the accepted window, or already used (`Nonce Expired`).
+///
+/// Aster replaced Binance's `timestamp`/`recvWindow` pair with a per-signer nonce in V3, so the
+/// Binance `-1021 INVALID_TIMESTAMP` code does not exist here (the published list runs `-1020`
+/// straight to `-1022`); a stale or replayed nonce is reported as `-4225` instead.
+pub const ASTER_CODE_NONCE_EXPIRED: i64 = -4225;
 /// Listen key rejected (`INVALID_LISTEN_KEY`).
 pub const ASTER_CODE_INVALID_LISTEN_KEY: i64 = -1125;
 /// New order rejected (`NEW_ORDER_REJECTED`).
@@ -217,14 +221,14 @@ impl AsterHttpError {
 
     /// Returns whether the request was rejected for authentication reasons.
     ///
-    /// Covers a bad signature, a nonce outside the accepted window, and the "wallet has never
-    /// deposited" gate that Aster applies to every signed V3 endpoint.
+    /// Covers a bad signature, an expired or replayed nonce, a rejected listen key, and the
+    /// "wallet has never deposited" gate that Aster applies to every signed V3 endpoint.
     #[must_use]
     pub fn is_auth_failure(&self) -> bool {
         matches!(
             self.code(),
             Some(
-                ASTER_CODE_INVALID_NONCE
+                ASTER_CODE_NONCE_EXPIRED
                     | ASTER_CODE_INVALID_SIGNATURE
                     | ASTER_CODE_INVALID_LISTEN_KEY
                     | ASTER_CODE_UNFUNDED_WALLET
@@ -311,6 +315,7 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
+    use crate::http::models::AsterErrorResponse;
 
     fn venue_error(code: i64) -> AsterHttpError {
         AsterHttpError::AsterError {
@@ -333,7 +338,7 @@ mod tests {
 
     #[rstest]
     #[case(ASTER_CODE_TOO_MANY_REQUESTS)]
-    #[case(ASTER_CODE_INVALID_NONCE)]
+    #[case(ASTER_CODE_NONCE_EXPIRED)]
     #[case(ASTER_CODE_NEW_ORDER_REJECTED)]
     #[case(ASTER_CODE_MARGIN_NOT_SUFFICIENT)]
     #[case(ASTER_CODE_MIN_NOTIONAL)]
@@ -467,12 +472,41 @@ mod tests {
     }
 
     #[rstest]
-    #[case(ASTER_CODE_INVALID_NONCE)]
+    #[case(ASTER_CODE_NONCE_EXPIRED)]
     #[case(ASTER_CODE_INVALID_SIGNATURE)]
     #[case(ASTER_CODE_INVALID_LISTEN_KEY)]
     #[case(ASTER_CODE_UNFUNDED_WALLET)]
     fn test_auth_failure_classification(#[case] code: i64) {
         assert!(venue_error(code).is_auth_failure(), "code={code}");
+    }
+
+    #[rstest]
+    fn test_nonce_expired_body_is_an_auth_failure() {
+        // The venue rejects a stale or replayed nonce with `-4225`, not with the Binance
+        // `-1021 INVALID_TIMESTAMP` code, which Aster's error list does not define.
+        let response: AsterErrorResponse =
+            serde_json::from_str(r#"{"code":-4225,"msg":"Nonce Expired"}"#).unwrap();
+        let error = AsterHttpError::AsterError {
+            code: response.code,
+            message: response.msg,
+            status: Some(400),
+        };
+
+        assert_eq!(response.code, ASTER_CODE_NONCE_EXPIRED);
+        assert!(error.is_auth_failure());
+        assert!(error.is_venue_rejection());
+        assert!(!error.is_ambiguous_execution());
+        assert!(!error.is_retryable_transport());
+    }
+
+    #[rstest]
+    fn test_binance_invalid_timestamp_code_is_not_an_aster_auth_failure() {
+        // `-1021` is absent from Aster's list (it runs -1020 straight to -1022), so it stays a
+        // plain venue rejection rather than being special-cased as an authentication fault.
+        let error = venue_error(-1021);
+
+        assert!(!error.is_auth_failure());
+        assert!(error.is_venue_rejection());
     }
 
     #[rstest]
@@ -507,7 +541,7 @@ mod tests {
     #[case(-1121)]
     #[case(ASTER_CODE_NEW_ORDER_REJECTED)]
     #[case(ASTER_CODE_TOO_MANY_REQUESTS)]
-    #[case(ASTER_CODE_INVALID_NONCE)]
+    #[case(ASTER_CODE_NONCE_EXPIRED)]
     fn test_venue_error_bodies_are_not_retryable(#[case] code: i64) {
         assert!(
             !venue_error(code).is_retryable_transport(),

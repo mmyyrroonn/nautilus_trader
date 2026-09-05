@@ -113,10 +113,27 @@ pub(crate) struct VenueScript {
     pub(crate) user_trades: HashMap<String, Vec<Value>>,
     /// Per-symbol Aster error body for `GET /fapi/v3/userTrades`.
     pub(crate) user_trades_error: HashMap<String, Value>,
+    /// Per-key `GET /fapi/v3/order` answers that fail with HTTP 500 before succeeding.
+    ///
+    /// Keyed by the lookup value the client sends (`orderId` or `origClientOrderId`); each
+    /// query for that key consumes one, so a transient outage can be scripted for exactly one
+    /// compensation pass.
+    pub(crate) order_query_faults: HashMap<String, usize>,
     /// `GET /fapi/v3/positionRisk` body.
     pub(crate) position_risk: Value,
+    /// `GET /fapi/v3/positionSide/dual` body, when the venue answers one.
+    pub(crate) position_mode: Option<Value>,
+    /// Aster error body returned by `GET /fapi/v3/positionSide/dual`, if any.
+    pub(crate) position_mode_error: Option<Value>,
+    /// Raw status and body returned by `GET /fapi/v3/positionSide/dual`, if any.
+    pub(crate) position_mode_status: Option<(u16, String)>,
     /// Aster error body returned by `DELETE /fapi/v3/order`, if any.
     pub(crate) cancel_error: Option<Value>,
+    /// Raw status and body returned by `DELETE /fapi/v3/order`, if any.
+    ///
+    /// Takes precedence over [`VenueScript::cancel_error`], and drives the paths where the
+    /// venue never produced an Aster error body at all.
+    pub(crate) cancel_status: Option<(u16, String)>,
 }
 
 impl Default for VenueScript {
@@ -135,8 +152,13 @@ impl Default for VenueScript {
             all_orders_error: HashMap::new(),
             user_trades: HashMap::new(),
             user_trades_error: HashMap::new(),
+            order_query_faults: HashMap::new(),
             position_risk: json!([]),
+            position_mode: None,
+            position_mode_error: None,
+            position_mode_status: None,
             cancel_error: None,
+            cancel_status: None,
         }
     }
 }
@@ -295,6 +317,16 @@ fn json_ok(body: &Value) -> Response {
         .into_response()
 }
 
+/// Answers with a raw status and body, bypassing the Aster error envelope.
+fn raw_status(status: u16, body: &str) -> Response {
+    (
+        StatusCode::from_u16(status).expect("valid status"),
+        [("content-type", "text/plain")],
+        body.to_string(),
+    )
+        .into_response()
+}
+
 fn json_error(body: &Value) -> Response {
     (
         StatusCode::BAD_REQUEST,
@@ -318,7 +350,20 @@ async fn handle_exchange_info() -> Response {
 
 async fn handle_position_mode(State(venue): State<MockVenue>) -> Response {
     venue.record("GET", "positionSide/dual", HashMap::new());
-    json_ok(&json!({"dualSidePosition": false}))
+    let script = venue.script.lock();
+
+    if let Some((status, body)) = script.position_mode_status.as_ref() {
+        return raw_status(*status, body);
+    }
+
+    if let Some(error) = script.position_mode_error.as_ref() {
+        return json_error(error);
+    }
+
+    match script.position_mode.as_ref() {
+        Some(body) => json_ok(body),
+        None => json_ok(&json!({"dualSidePosition": false})),
+    }
 }
 
 async fn handle_commission_rate(
@@ -540,13 +585,20 @@ async fn handle_order_query(
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
     venue.record("GET", "order", params.clone());
-    let script = venue.script.lock();
+    let mut script = venue.script.lock();
 
     let key = params
         .get("origClientOrderId")
         .or_else(|| params.get("orderId"))
         .cloned()
         .unwrap_or_default();
+
+    if let Some(remaining) = script.order_query_faults.get_mut(&key)
+        && *remaining > 0
+    {
+        *remaining -= 1;
+        return raw_status(500, "internal error");
+    }
 
     match script.orders.get(&key) {
         Some(order) => json_ok(order),
@@ -559,6 +611,10 @@ async fn handle_order_cancel(State(venue): State<MockVenue>, body: String) -> Re
     venue.record("DELETE", "order", params.clone());
 
     let script = venue.script.lock();
+    if let Some((status, body)) = script.cancel_status.as_ref() {
+        return raw_status(*status, body);
+    }
+
     if let Some(error) = script.cancel_error.as_ref() {
         return json_error(error);
     }

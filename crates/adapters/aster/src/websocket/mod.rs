@@ -30,6 +30,8 @@
 //!
 //! - <https://asterdex.github.io/aster-api-website/futures-v3/user-data-streams/>
 
+use std::fmt::Debug;
+
 use futures_util::Stream;
 use nautilus_binance::{
     common::enums::{BinanceEnvironment, BinanceProductType},
@@ -37,6 +39,7 @@ use nautilus_binance::{
         client::BinanceFuturesWebSocketClient, messages::BinanceFuturesWsStreamsMessage,
     },
 };
+use nautilus_core::string::secret::REDACTED;
 use nautilus_network::websocket::TransportBackend;
 
 use crate::http::{AsterHttpClient, error::AsterHttpResult};
@@ -58,7 +61,11 @@ pub fn user_stream_url(ws_base_url: &str, listen_key: &str) -> String {
 /// renews it, and [`close`](Self::close) tears the session down. A `listenKeyExpired` event or a
 /// dropped stream means the session is over and a fresh [`connect`](Self::connect) is required,
 /// because the URL embeds the key.
-#[derive(Debug)]
+///
+/// Listen keys are account-scoped, not client-scoped: the keepalive and close endpoints take no
+/// key parameter, so they act on whatever key the wallet currently holds. Two clients signing
+/// with the same wallet therefore share one key, and [`close`](Self::close) on either one
+/// invalidates the stream of both. Run a single user stream per account.
 pub struct AsterUserStreamClient {
     http_client: AsterHttpClient,
     ws_base_url: String,
@@ -68,6 +75,21 @@ pub struct AsterUserStreamClient {
     connect_timeout_secs: Option<u64>,
     listen_key: Option<String>,
     ws_client: Option<BinanceFuturesWebSocketClient>,
+}
+
+impl Debug for AsterUserStreamClient {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // The listen key authenticates the stream and travels in the URL, so it is redacted
+        // here as well as kept out of logs.
+        f.debug_struct(stringify!(AsterUserStreamClient))
+            .field("ws_base_url", &self.ws_base_url)
+            .field("transport_backend", &self.transport_backend)
+            .field("heartbeat_secs", &self.heartbeat_secs)
+            .field("connect_timeout_secs", &self.connect_timeout_secs)
+            .field("listen_key", &self.listen_key.as_ref().map(|_| REDACTED))
+            .field("is_active", &self.is_active())
+            .finish_non_exhaustive()
+    }
 }
 
 impl AsterUserStreamClient {
@@ -191,7 +213,8 @@ impl AsterUserStreamClient {
 
     /// Renews the listen key so the venue does not expire the session.
     ///
-    /// Aster invalidates an un-renewed key after 60 minutes.
+    /// Aster invalidates an un-renewed key after 60 minutes. The endpoint takes no key
+    /// parameter: it renews whichever key the signing wallet currently holds.
     ///
     /// # Errors
     ///
@@ -204,6 +227,9 @@ impl AsterUserStreamClient {
     }
 
     /// Closes the socket and releases the listen key.
+    ///
+    /// The close endpoint takes no key parameter, so it releases the account's current key:
+    /// another client streaming with the same wallet loses its stream too.
     ///
     /// Failures are logged rather than propagated: teardown must not block shutdown.
     pub async fn close(&mut self) {
@@ -315,6 +341,39 @@ mod tests {
         );
 
         assert!(!format!("{client:?}").contains("ff3bdd43"));
+    }
+
+    #[rstest]
+    fn test_debug_redacts_the_listen_key() {
+        let mut client = AsterUserStreamClient::new(
+            http_client(),
+            ASTER_TESTNET_WS_URL,
+            TransportBackend::default(),
+            None,
+            None,
+        );
+        client.listen_key = Some(TEST_LISTEN_KEY.to_string());
+
+        let rendered = format!("{client:?}");
+
+        assert!(!rendered.contains(TEST_LISTEN_KEY), "{rendered}");
+        assert!(rendered.contains(REDACTED), "{rendered}");
+        assert!(rendered.contains(ASTER_TESTNET_WS_URL), "{rendered}");
+    }
+
+    #[rstest]
+    fn test_debug_of_a_session_without_a_key_reports_none() {
+        let client = AsterUserStreamClient::new(
+            http_client(),
+            ASTER_TESTNET_WS_URL,
+            TransportBackend::default(),
+            None,
+            None,
+        );
+
+        let rendered = format!("{client:?}");
+
+        assert!(rendered.contains("listen_key: None"), "{rendered}");
     }
 
     #[rstest]

@@ -20,7 +20,7 @@
 //! here because Aster is not byte-compatible with Binance: several numeric fields come back
 //! JSON-encoded as strings (`"orderId": "417663664"`, `"updateTime": "1776802344230"`,
 //! `"code": "200"`) where Binance returns numbers. Every scalar that Aster has been observed
-//! to render either way is parsed leniently through [`flexible_i64`].
+//! to render either way is parsed leniently through a `flexible_i64` deserializer.
 
 use std::str::FromStr;
 
@@ -339,12 +339,6 @@ impl AsterPositionRisk {
     pub fn signed_quantity(&self) -> anyhow::Result<Decimal> {
         parse_decimal(&self.position_amt, "positionAmt")
     }
-
-    /// Returns whether the position is flat.
-    #[must_use]
-    pub fn is_flat(&self) -> bool {
-        self.signed_quantity().map_or(true, |value| value.is_zero())
-    }
 }
 
 /// An account trade (fill) from `GET /fapi/v3/userTrades`.
@@ -480,9 +474,12 @@ impl AsterCommissionRate {
 // ------------------------------------------------------------------------------------------------
 
 /// Converts a millisecond epoch timestamp into [`UnixNanos`], saturating on overflow.
+///
+/// Negative values clamp to the epoch; a value large enough to overflow nanoseconds saturates
+/// rather than wrapping, so a corrupt timestamp cannot land *before* the events around it.
 #[must_use]
 pub fn millis_to_nanos(millis: i64) -> UnixNanos {
-    UnixNanos::from(millis.max(0) as u64 * 1_000_000)
+    UnixNanos::from((millis.max(0) as u64).saturating_mul(1_000_000))
 }
 
 /// Parses a decimal string, naming the field in the error.
@@ -527,19 +524,15 @@ pub const fn parse_order_side(side: BinanceSide) -> OrderSide {
 /// Maps an Aster order type onto the Nautilus enumeration.
 ///
 /// Only `LIMIT` and `MARKET` are submitted by this adapter; the trigger types are mapped so
-/// externally placed orders still reconcile.
+/// externally placed orders still reconcile, and the venue-generated `LIQUIDATION` and `ADL`
+/// types report as market executions.
+///
+/// Delegates to the shared Binance mapping. The user data stream decodes Aster's frames with
+/// the Binance parser, so any divergence here would make the same order reconcile differently
+/// depending on which path observed it.
 #[must_use]
-pub const fn parse_order_type(order_type: BinanceFuturesOrderType) -> OrderType {
-    match order_type {
-        BinanceFuturesOrderType::Market => OrderType::Market,
-        BinanceFuturesOrderType::Stop => OrderType::StopLimit,
-        BinanceFuturesOrderType::StopMarket => OrderType::StopMarket,
-        BinanceFuturesOrderType::TakeProfit => OrderType::LimitIfTouched,
-        BinanceFuturesOrderType::TakeProfitMarket | BinanceFuturesOrderType::TrailingStopMarket => {
-            OrderType::MarketIfTouched
-        }
-        _ => OrderType::Limit,
-    }
+pub fn parse_order_type(order_type: BinanceFuturesOrderType) -> OrderType {
+    OrderType::from(order_type)
 }
 
 /// Maps an Aster time in force onto the Nautilus enumeration.
@@ -557,26 +550,18 @@ pub const fn parse_time_in_force(tif: BinanceTimeInForce) -> TimeInForce {
 }
 
 /// Maps an Aster order status onto the Nautilus enumeration.
+///
+/// Delegates to the shared Binance mapping, which reports `NEW_ADL` and `NEW_INSURANCE` as
+/// [`OrderStatus::Filled`] (both are terminal venue liquidations) and an unrecognised status as
+/// [`OrderStatus::Initialized`]. The user data stream decodes Aster's frames with that same
+/// parser, so mapping REST payloads any other way would let one order reconcile differently
+/// depending on which path observed it, and would assert an undocumented status as working.
 #[must_use]
-pub const fn parse_order_status(
+pub fn parse_order_status(
     status: BinanceOrderStatus,
     treat_expired_as_canceled: bool,
 ) -> OrderStatus {
-    match status {
-        BinanceOrderStatus::New => OrderStatus::Accepted,
-        BinanceOrderStatus::PartiallyFilled => OrderStatus::PartiallyFilled,
-        BinanceOrderStatus::Filled => OrderStatus::Filled,
-        BinanceOrderStatus::Canceled => OrderStatus::Canceled,
-        BinanceOrderStatus::Rejected => OrderStatus::Rejected,
-        BinanceOrderStatus::Expired => {
-            if treat_expired_as_canceled {
-                OrderStatus::Canceled
-            } else {
-                OrderStatus::Expired
-            }
-        }
-        _ => OrderStatus::Accepted,
-    }
+    status.to_nautilus_order_status(treat_expired_as_canceled)
 }
 
 /// Deserializes an integer that Aster may encode as a JSON number or a JSON string.
@@ -766,6 +751,98 @@ mod tests {
         );
     }
 
+    /// Builds a status report from the order fixture with `status` overridden.
+    fn report_with_status(status: &str) -> OrderStatusReport {
+        let mut raw = fixture(ORDER);
+        raw["status"] = Value::String(status.to_string());
+        let order: AsterOrder = serde_json::from_value(raw).unwrap();
+
+        order
+            .to_order_status_report(
+                account_id(),
+                instrument_id(),
+                2,
+                3,
+                true,
+                UnixNanos::default(),
+            )
+            .unwrap()
+    }
+
+    #[rstest]
+    #[case("NEW_ADL")]
+    #[case("NEW_INSURANCE")]
+    fn test_venue_liquidation_statuses_report_as_filled(#[case] status: &str) {
+        // ADL and insurance-fund liquidations are terminal fills. The user stream path already
+        // maps them that way through the shared Binance parser, so a REST poll that reported
+        // them as merely accepted would resurrect an order the venue has already closed out.
+        assert_eq!(report_with_status(status).order_status, OrderStatus::Filled);
+    }
+
+    #[rstest]
+    fn test_pending_cancel_status_is_preserved() {
+        assert_eq!(
+            report_with_status("PENDING_CANCEL").order_status,
+            OrderStatus::PendingCancel
+        );
+    }
+
+    #[rstest]
+    fn test_unrecognised_status_is_not_reported_as_accepted() {
+        // An undocumented status says nothing about the order, so it must not be asserted as
+        // working; `Initialized` is what the shared Binance parser reports for `Unknown`.
+        let report = report_with_status("SOMETHING_NEW");
+
+        assert_ne!(report.order_status, OrderStatus::Accepted);
+        assert_eq!(report.order_status, OrderStatus::Initialized);
+    }
+
+    #[rstest]
+    fn test_expired_in_match_follows_the_expired_mapping() {
+        assert_eq!(
+            parse_order_status(BinanceOrderStatus::ExpiredInMatch, true),
+            OrderStatus::Canceled
+        );
+        assert_eq!(
+            parse_order_status(BinanceOrderStatus::ExpiredInMatch, false),
+            OrderStatus::Expired
+        );
+    }
+
+    #[rstest]
+    #[case(BinanceFuturesOrderType::Limit, OrderType::Limit)]
+    #[case(BinanceFuturesOrderType::Market, OrderType::Market)]
+    #[case(BinanceFuturesOrderType::Stop, OrderType::StopLimit)]
+    #[case(BinanceFuturesOrderType::StopMarket, OrderType::StopMarket)]
+    #[case(BinanceFuturesOrderType::TakeProfit, OrderType::LimitIfTouched)]
+    #[case(BinanceFuturesOrderType::TakeProfitMarket, OrderType::MarketIfTouched)]
+    #[case(
+        BinanceFuturesOrderType::TrailingStopMarket,
+        OrderType::TrailingStopMarket
+    )]
+    #[case(BinanceFuturesOrderType::Liquidation, OrderType::Market)]
+    #[case(BinanceFuturesOrderType::Adl, OrderType::Market)]
+    #[case(BinanceFuturesOrderType::Unknown, OrderType::Market)]
+    fn test_order_type_mapping(
+        #[case] order_type: BinanceFuturesOrderType,
+        #[case] expected: OrderType,
+    ) {
+        // Venue-generated liquidation and ADL orders are market executions, and a trailing stop
+        // is not a market-if-touched; both must match what the user stream path reports.
+        assert_eq!(parse_order_type(order_type), expected);
+    }
+
+    #[rstest]
+    fn test_millis_to_nanos_saturates_instead_of_overflowing() {
+        assert_eq!(millis_to_nanos(0), UnixNanos::default());
+        assert_eq!(millis_to_nanos(-1), UnixNanos::default());
+        assert_eq!(
+            millis_to_nanos(1_579_276_756_075).as_u64(),
+            1_579_276_756_075_000_000
+        );
+        assert_eq!(millis_to_nanos(i64::MAX), UnixNanos::from(u64::MAX));
+    }
+
     #[rstest]
     fn test_deserialize_balances_with_string_update_time() {
         // Aster serializes `updateTime` as a string on this endpoint.
@@ -899,17 +976,27 @@ mod tests {
         assert_eq!(position.entry_price, "6563.66500");
         assert_eq!(position.leverage.as_deref(), Some("10"));
         assert_eq!(position.margin_type, Some(BinanceMarginType::Isolated));
-        assert!(!position.is_flat());
     }
 
     #[rstest]
-    fn test_position_risk_flat_detection() {
+    fn test_position_risk_reports_a_flat_quantity_as_zero() {
+        // A flat row is a fact the reconciliation path needs, so the quantity is parsed rather
+        // than collapsed into a predicate that would read an unparsable value as flat.
         let position: AsterPositionRisk = serde_json::from_str(
             r#"{"symbol":"BTCUSDT","positionAmt":"0.000","entryPrice":"0.0"}"#,
         )
         .unwrap();
 
-        assert!(position.is_flat());
+        assert!(position.signed_quantity().unwrap().is_zero());
+    }
+
+    #[rstest]
+    fn test_position_risk_unparsable_quantity_is_an_error() {
+        let position: AsterPositionRisk =
+            serde_json::from_str(r#"{"symbol":"BTCUSDT","positionAmt":"","entryPrice":"0.0"}"#)
+                .unwrap();
+
+        assert!(position.signed_quantity().is_err());
     }
 
     #[rstest]
@@ -1026,17 +1113,6 @@ mod tests {
 
         assert_eq!(key.listen_key.len(), 44);
         assert!(!mode.dual_side_position);
-    }
-
-    #[rstest]
-    #[case(BinanceFuturesOrderType::Limit, OrderType::Limit)]
-    #[case(BinanceFuturesOrderType::Market, OrderType::Market)]
-    #[case(BinanceFuturesOrderType::StopMarket, OrderType::StopMarket)]
-    fn test_order_type_mapping(
-        #[case] venue: BinanceFuturesOrderType,
-        #[case] expected: OrderType,
-    ) {
-        assert_eq!(parse_order_type(venue), expected);
     }
 
     #[rstest]
