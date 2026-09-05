@@ -26,7 +26,7 @@
 //! rejected at submission. Order modification is not supported by this adapter: cancel and
 //! resubmit instead.
 
-use std::{sync::Arc, time::Duration};
+use std::{str::FromStr, sync::Arc, time::Duration};
 
 use ahash::AHashMap;
 use anyhow::Context;
@@ -38,7 +38,7 @@ use nautilus_binance::{
         symbol::format_binance_symbol,
     },
     futures::{
-        http::client::BinanceFuturesHttpClient,
+        http::{client::BinanceFuturesHttpClient, error::BinanceFuturesHttpError},
         websocket::streams::{
             messages::BinanceFuturesWsStreamsMessage,
             parse_exec::{
@@ -74,16 +74,20 @@ use nautilus_model::{
     reports::{FillReport, OrderStatusReport, PositionStatusReport},
     types::{AccountBalance, Currency, MarginBalance, Quantity},
 };
+use nautilus_network::retry::{RetryConfig, RetryManager};
 use parking_lot::RwLock;
 use rust_decimal::Decimal;
 use ustr::Ustr;
 
 use crate::{
-    common::{consts::ASTER_LISTEN_KEY_RENEWAL_SECS, credential::AsterCredential},
+    common::{
+        consts::ASTER_LISTEN_KEY_RENEWAL_SECS, credential::AsterCredential,
+        currency::resolve_currency,
+    },
     config::AsterExecutionClientConfig,
     http::{
         AsterHttpClient, AsterParams,
-        models::{AsterOrder, millis_to_nanos, parse_decimal},
+        models::{AsterBalance, AsterOrder, millis_to_nanos, parse_decimal},
     },
     websocket::AsterUserStreamClient,
 };
@@ -244,7 +248,10 @@ impl AsterExecutionClient {
     }
 
     /// Resolves the venue symbol and precisions for an instrument.
-    fn symbol_context(&self, instrument_id: &InstrumentId) -> anyhow::Result<(String, SymbolContext)> {
+    fn symbol_context(
+        &self,
+        instrument_id: &InstrumentId,
+    ) -> anyhow::Result<(String, SymbolContext)> {
         let guard = self.instruments.read();
         let instrument = guard.by_id(instrument_id).ok_or_else(|| {
             anyhow::anyhow!("Aster instrument {instrument_id} is not loaded; check `load_ids`")
@@ -262,17 +269,41 @@ impl AsterExecutionClient {
 
     /// Resolves the instrument identity and precisions for a venue symbol.
     fn context_for_symbol(instruments: &InstrumentIndex, symbol: &Ustr) -> Option<SymbolContext> {
-        instruments.by_symbol(symbol).map(|instrument| SymbolContext {
-            instrument_id: instrument.id(),
-            price_precision: instrument.price_precision(),
-            size_precision: instrument.size_precision(),
-        })
+        instruments
+            .by_symbol(symbol)
+            .map(|instrument| SymbolContext {
+                instrument_id: instrument.id(),
+                price_precision: instrument.price_precision(),
+                size_precision: instrument.size_precision(),
+            })
     }
 
+    /// Loads the tradable instrument set, retrying `exchangeInfo` on transport faults.
+    ///
+    /// `exchangeInfo` is served by the Binance USD-M client, which carries no retry of its own,
+    /// and it is the first request of every connect, so a single proxy hiccup there would fail
+    /// the whole session. Only transport faults are repeated; an Aster error body is returned
+    /// unchanged, which matters most for the rate limit Aster applies to this endpoint.
     async fn load_instruments(&self) -> anyhow::Result<()> {
-        let instruments = self
-            .instrument_http_client
-            .request_instruments_with_config(&self.config.instrument_provider)
+        let retry: RetryManager<BinanceFuturesHttpError> =
+            RetryManager::new(instrument_load_retry_config());
+
+        let instruments = retry
+            .execute_with_retry(
+                "exchangeInfo",
+                || {
+                    self.instrument_http_client
+                        .request_instruments_with_config(&self.config.instrument_provider)
+                },
+                |e| {
+                    matches!(
+                        e,
+                        BinanceFuturesHttpError::NetworkError(_)
+                            | BinanceFuturesHttpError::Timeout(_)
+                    )
+                },
+                |e| BinanceFuturesHttpError::NetworkError(format!("exchangeInfo retry: {e}")),
+            )
             .await
             .map_err(|e| anyhow::anyhow!("Failed to load Aster instruments: {e}"))?;
 
@@ -285,8 +316,39 @@ impl AsterExecutionClient {
         self.instruments.write().replace(instruments);
         self.core.set_instruments_initialized();
 
+        self.warn_unlisted_load_ids();
+
         log::info!("Loaded {count} Aster instruments for execution");
         Ok(())
+    }
+
+    /// Warns about configured `load_ids` the venue did not list.
+    ///
+    /// Aster's testnet carries a smaller symbol set than mainnet (it has no `NVDAUSDT`, for
+    /// example), and the instrument selector silently drops IDs that `exchangeInfo` never
+    /// returns. Connecting still succeeds as long as *some* instrument loaded, but the missing
+    /// IDs must be visible, otherwise the first order for one of them fails much later with an
+    /// opaque "instrument is not loaded" error.
+    fn warn_unlisted_load_ids(&self) {
+        let Some(load_ids) = self.config.instrument_provider.load_ids.as_ref() else {
+            return;
+        };
+
+        let guard = self.instruments.read();
+        let missing: Vec<&str> = load_ids
+            .iter()
+            .filter(|raw| InstrumentId::from_str(raw).is_ok_and(|id| guard.by_id(&id).is_none()))
+            .map(String::as_str)
+            .collect();
+
+        if !missing.is_empty() {
+            log::warn!(
+                "Aster does not list {} of the configured `load_ids`: {}; orders for them \
+                 will be denied",
+                missing.len(),
+                missing.join(", "),
+            );
+        }
     }
 
     /// Fails loudly when the account runs in hedge (dual-side) mode.
@@ -315,35 +377,18 @@ impl AsterExecutionClient {
         }
     }
 
-    async fn fetch_account_state(&self) -> anyhow::Result<(Vec<AccountBalance>, Vec<MarginBalance>)> {
+    async fn fetch_account_state(
+        &self,
+    ) -> anyhow::Result<(Vec<AccountBalance>, Vec<MarginBalance>)> {
         let balances = self
             .http_client
             .query_balances()
             .await
             .map_err(|e| anyhow::anyhow!("Aster balance request failed: {e}"))?;
 
-        let mut account_balances = Vec::new();
-
-        for balance in &balances {
-            if balance.is_zero() {
-                continue;
-            }
-
-            let currency = Currency::from(balance.asset.as_str());
-            match (balance.total(), balance.free()) {
-                (Ok(total), Ok(free)) => {
-                    match AccountBalance::from_total_and_free(total, free, currency) {
-                        Ok(account_balance) => account_balances.push(account_balance),
-                        Err(e) => log::warn!("Skipping Aster balance for {currency}: {e}"),
-                    }
-                }
-                _ => log::warn!("Skipping Aster balance for {currency}: unparsable amounts"),
-            }
-        }
-
         // Aster's `/fapi/v3/balance` reports wallet balances only; per-asset initial and
         // maintenance margin are not part of the payload, so no margin balances are emitted.
-        Ok((account_balances, Vec::new()))
+        Ok((parse_account_balances(&balances), Vec::new()))
     }
 
     async fn emit_account_state(&self) -> anyhow::Result<()> {
@@ -655,6 +700,75 @@ pub fn build_order_request(order: &OrderAny, symbol: String) -> anyhow::Result<A
             "Aster execution supports LIMIT and MARKET orders only, received {other:?}"
         ),
     }
+}
+
+// ------------------------------------------------------------------------------------------------
+// Account state
+// ------------------------------------------------------------------------------------------------
+
+/// Retry policy for the instrument load, mirroring the signed client's `GET` policy:
+/// three repeats with a 500 ms / 1 s / 2 s backoff.
+fn instrument_load_retry_config() -> RetryConfig {
+    RetryConfig {
+        max_retries: 3,
+        initial_delay_ms: 500,
+        max_delay_ms: 2_000,
+        backoff_factor: 2.0,
+        jitter_ms: 0,
+        operation_timeout_ms: None,
+        immediate_first: false,
+        max_elapsed_ms: None,
+    }
+}
+
+/// Warns once per process about Aster reporting `availableBalance` above `walletBalance`.
+static FREE_ABOVE_TOTAL_WARNED: std::sync::Once = std::sync::Once::new();
+
+/// Converts venue balance rows into Nautilus account balances.
+///
+/// Assets whose wallet *and* available balances are both zero are dropped; everything else is
+/// reported so the account state names every asset the venue actually holds. Asset codes are
+/// resolved through [`resolve_currency`], which registers unknown venue codes instead of
+/// panicking (Aster's testnet lists `ASTER` and `AFEE`, neither of which the Nautilus currency
+/// map knows).
+///
+/// Aster reports `availableBalance` above `walletBalance` on cross-margin accounts, because
+/// availability there includes headroom from other assets. Nautilus requires
+/// `total == locked + free`, so [`AccountBalance::from_total_and_free`] clamps `free` into
+/// `[0, total]`, which yields `locked = 0` and `free = total` for those rows. The venue value
+/// is deliberately *not* used as the total: doing so would inflate reported equity by margin
+/// that is not this asset's. The first such row per process is logged at warning level.
+fn parse_account_balances(balances: &[AsterBalance]) -> Vec<AccountBalance> {
+    let mut account_balances = Vec::with_capacity(balances.len());
+
+    for balance in balances {
+        if balance.is_zero() {
+            continue;
+        }
+
+        let currency = resolve_currency(balance.asset.as_str());
+
+        let (Ok(total), Ok(free)) = (balance.total(), balance.free()) else {
+            log::warn!("Skipping Aster balance for {currency}: unparsable amounts");
+            continue;
+        };
+
+        if free > total {
+            FREE_ABOVE_TOTAL_WARNED.call_once(|| {
+                log::warn!(
+                    "Aster reports availableBalance {free} above walletBalance {total} \
+                     for {currency}; free is clamped to keep total = locked + free"
+                );
+            });
+        }
+
+        match AccountBalance::from_total_and_free(total, free, currency) {
+            Ok(account_balance) => account_balances.push(account_balance),
+            Err(e) => log::warn!("Skipping Aster balance for {currency}: {e}"),
+        }
+    }
+
+    account_balances
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1025,7 +1139,11 @@ impl ExecutionClient for AsterExecutionClient {
                     Ok(())
                 }
                 Ok(response) => {
-                    anyhow::bail!("Aster cancel-all returned {}: {}", response.code, response.msg)
+                    anyhow::bail!(
+                        "Aster cancel-all returned {}: {}",
+                        response.code,
+                        response.msg
+                    )
                 }
                 Err(e) => anyhow::bail!("Aster cancel-all failed for {symbol}: {e}"),
             }
@@ -1045,18 +1163,15 @@ impl ExecutionClient for AsterExecutionClient {
                 .await
                 .map_err(|e| anyhow::anyhow!("Aster balance request failed: {e}"))?;
 
-            let account_balances: Vec<AccountBalance> = balances
-                .iter()
-                .filter(|balance| !balance.is_zero())
-                .filter_map(|balance| {
-                    let currency = Currency::from(balance.asset.as_str());
-                    let total = balance.total().ok()?;
-                    let free = balance.free().ok()?;
-                    AccountBalance::from_total_and_free(total, free, currency).ok()
-                })
-                .collect();
+            let account_balances = parse_account_balances(&balances);
 
-            emitter.emit_account_state(account_balances, Vec::new(), true, clock.get_time_ns(), None);
+            emitter.emit_account_state(
+                account_balances,
+                Vec::new(),
+                true,
+                clock.get_time_ns(),
+                None,
+            );
             Ok(())
         });
 
@@ -1113,9 +1228,9 @@ impl ExecutionClient for AsterExecutionClient {
         &self,
         cmd: &GenerateOrderStatusReport,
     ) -> anyhow::Result<Option<OrderStatusReport>> {
-        let instrument_id = cmd
-            .instrument_id
-            .ok_or_else(|| anyhow::anyhow!("Aster order status report requires an instrument ID"))?;
+        let instrument_id = cmd.instrument_id.ok_or_else(|| {
+            anyhow::anyhow!("Aster order status report requires an instrument ID")
+        })?;
         let (symbol, context) = self.symbol_context(&instrument_id)?;
 
         let venue_order_id = cmd
@@ -1314,16 +1429,14 @@ impl ExecutionClient for AsterExecutionClient {
                 PositionSide::Short
             };
 
-            let quantity = match Quantity::from_decimal_dp(
-                signed_quantity.abs(),
-                context.size_precision,
-            ) {
-                Ok(quantity) => quantity,
-                Err(e) => {
-                    log::warn!("Skipping Aster position {}: {e}", position.symbol);
-                    continue;
-                }
-            };
+            let quantity =
+                match Quantity::from_decimal_dp(signed_quantity.abs(), context.size_precision) {
+                    Ok(quantity) => quantity,
+                    Err(e) => {
+                        log::warn!("Skipping Aster position {}: {e}", position.symbol);
+                        continue;
+                    }
+                };
 
             let avg_px = parse_decimal(&position.entry_price, "entryPrice").ok();
             let ts_last = position.update_time.map_or(ts_now, millis_to_nanos);
@@ -1348,7 +1461,7 @@ impl ExecutionClient for AsterExecutionClient {
 #[cfg(test)]
 mod tests {
     use nautilus_model::{
-        enums::{OrderSide, OrderType, TimeInForce},
+        enums::{CurrencyType, OrderSide, OrderType, TimeInForce},
         identifiers::{ClientOrderId, InstrumentId, StrategyId, TraderId},
         orders::builder::OrderTestBuilder,
         types::{Price, Quantity},
@@ -1538,6 +1651,74 @@ mod tests {
             AsterExecutionClient::settlement_currency(),
             Currency::from("USDT")
         );
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Account balances
+    // ------------------------------------------------------------------------------------------
+
+    const BALANCE_TESTNET: &str =
+        include_str!("../test_data/http_balance_testnet_unknown_assets.json");
+
+    fn testnet_balances() -> Vec<AsterBalance> {
+        let doc: serde_json::Value =
+            serde_json::from_str(BALANCE_TESTNET).expect("fixture must be valid JSON");
+        serde_json::from_value(doc["response"].clone()).expect("fixture must deserialize")
+    }
+
+    #[rstest]
+    fn test_parse_account_balances_registers_unknown_venue_assets() {
+        // `Currency::from("ASTER")` used to panic the whole node here.
+        let balances = parse_account_balances(&testnet_balances());
+
+        let codes: Vec<&str> = balances.iter().map(|b| b.currency.code.as_str()).collect();
+        assert_eq!(codes, vec!["USDT", "BTC", "ASTER", "AFEE"]);
+
+        for code in ["ASTER", "AFEE"] {
+            let currency = Currency::try_from_str(code).expect("registered by resolve_currency");
+            assert_eq!(currency.currency_type, CurrencyType::Crypto);
+            assert_eq!(currency.precision, 8);
+        }
+    }
+
+    #[rstest]
+    fn test_parse_account_balances_clamps_free_above_total() {
+        let balances = parse_account_balances(&testnet_balances());
+        let usdt = balances
+            .iter()
+            .find(|b| b.currency == Currency::USDT())
+            .expect("USDT balance");
+
+        // The venue reports walletBalance 1000.00000000 and availableBalance 1590.98089862.
+        // Nautilus requires total == locked + free, so free is clamped to the wallet balance
+        // rather than inflating the total with cross-margin headroom from other assets.
+        assert_eq!(usdt.total.as_decimal().to_string(), "1000.00000000");
+        assert_eq!(usdt.free.as_decimal(), usdt.total.as_decimal());
+        assert!(usdt.locked.as_decimal().is_zero());
+    }
+
+    #[rstest]
+    fn test_parse_account_balances_skips_fully_empty_assets() {
+        let balances: Vec<AsterBalance> = serde_json::from_str(
+            r#"[{"asset":"USDT","balance":"5.0","availableBalance":"5.0"},
+                {"asset":"CDL","balance":"0.0","availableBalance":"0.0"}]"#,
+        )
+        .unwrap();
+
+        let parsed = parse_account_balances(&balances);
+
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].currency, Currency::USDT());
+    }
+
+    #[rstest]
+    fn test_parse_account_balances_skips_unparsable_amounts() {
+        let balances: Vec<AsterBalance> = serde_json::from_str(
+            r#"[{"asset":"USDT","balance":"not-a-number","availableBalance":"1.0"}]"#,
+        )
+        .unwrap();
+
+        assert!(parse_account_balances(&balances).is_empty());
     }
 
     #[rstest]

@@ -30,6 +30,7 @@ use nautilus_core::consts::NAUTILUS_USER_AGENT;
 use nautilus_network::{
     http::{HttpClient, HttpResponse, Method, USER_AGENT},
     ratelimiter::quota::Quota,
+    retry::{RetryConfig, RetryManager},
 };
 use serde::de::DeserializeOwned;
 
@@ -57,6 +58,15 @@ use crate::{
 };
 
 const FORM_CONTENT_TYPE: &str = "application/x-www-form-urlencoded";
+
+/// Retries attempted after the first failed `GET`, capping total attempts at four.
+const GET_MAX_RETRIES: u32 = 3;
+
+/// Delay before the first `GET` retry; doubled per attempt up to [`GET_RETRY_MAX_DELAY_MS`].
+const GET_RETRY_INITIAL_DELAY_MS: u64 = 500;
+
+/// Cap on the `GET` retry backoff, giving a 500 ms / 1 s / 2 s schedule.
+const GET_RETRY_MAX_DELAY_MS: u64 = 2_000;
 
 /// HTTP client for Aster's signed Futures V3 endpoints.
 ///
@@ -127,7 +137,9 @@ impl AsterHttpClient {
             ),
             (
                 ASTER_ORDER_RATE_KEY.to_string(),
-                Quota::per_minute(NonZeroU32::new(ASTER_ORDERS_PER_MINUTE).expect("non-zero quota")),
+                Quota::per_minute(
+                    NonZeroU32::new(ASTER_ORDERS_PER_MINUTE).expect("non-zero quota"),
+                ),
             ),
         ]
     }
@@ -147,7 +159,10 @@ impl AsterHttpClient {
     /// Returns the master account (user) address, when credentials are configured.
     #[must_use]
     pub fn user_address(&self) -> Option<&str> {
-        self.inner.credential.as_ref().map(AsterCredential::user_address)
+        self.inner
+            .credential
+            .as_ref()
+            .map(AsterCredential::user_address)
     }
 
     /// Returns the API wallet (signer) address, when credentials are configured.
@@ -177,7 +192,10 @@ impl AsterHttpClient {
         let mut signed = Vec::with_capacity(params.len() + 3);
         signed.push(("nonce".to_string(), self.inner.nonce.next().to_string()));
         signed.push(("user".to_string(), credential.user_address().to_string()));
-        signed.push(("signer".to_string(), credential.signer_address().to_string()));
+        signed.push((
+            "signer".to_string(),
+            credential.signer_address().to_string(),
+        ));
         signed.extend(params.entries().iter().cloned());
 
         credential
@@ -246,7 +264,62 @@ impl AsterHttpClient {
             .await
     }
 
+    /// Dispatches a signed request, retrying idempotent `GET`s on transport faults.
+    ///
+    /// `GET` is the only method repeated. Order submission and cancellation are not idempotent:
+    /// a transport failure there is ambiguous (the order may already be on the book), so it is
+    /// surfaced to the execution client, which resolves it through reconciliation.
     async fn signed_request<T: DeserializeOwned>(
+        &self,
+        method: Method,
+        path: &str,
+        params: AsterParams,
+        counts_against_order_quota: bool,
+    ) -> AsterHttpResult<T> {
+        if method != Method::GET {
+            return self
+                .send_signed(method, path, params, counts_against_order_quota)
+                .await;
+        }
+
+        // Each attempt rebuilds and re-signs the payload, so it draws a fresh nonce; Aster
+        // rejects a replayed nonce for a signer address.
+        let operation = || {
+            let params = params.clone();
+            async move { self.send_signed(Method::GET, path, params, false).await }
+        };
+
+        Self::get_retry_manager()
+            .execute_with_retry(
+                path,
+                operation,
+                AsterHttpError::is_retryable_transport,
+                // Only reached for retry-control failures; an exhausted budget returns the last
+                // transport error verbatim, which is what the caller needs to see.
+                |e| AsterHttpError::NetworkError(format!("GET {path} retry failed: {e}")),
+            )
+            .await
+    }
+
+    /// Returns the retry policy applied to idempotent `GET` requests.
+    ///
+    /// Up to `GET_MAX_RETRIES` repeats after the first attempt, with a fixed 500 ms / 1 s / 2 s
+    /// backoff (no jitter: this is a single client, not a fleet that needs de-synchronising).
+    /// The per-attempt timeout is left to the HTTP client's own configured request timeout.
+    fn get_retry_manager() -> RetryManager<AsterHttpError> {
+        RetryManager::new(RetryConfig {
+            max_retries: GET_MAX_RETRIES,
+            initial_delay_ms: GET_RETRY_INITIAL_DELAY_MS,
+            max_delay_ms: GET_RETRY_MAX_DELAY_MS,
+            backoff_factor: 2.0,
+            jitter_ms: 0,
+            operation_timeout_ms: None,
+            immediate_first: false,
+            max_elapsed_ms: None,
+        })
+    }
+
+    async fn send_signed<T: DeserializeOwned>(
         &self,
         method: Method,
         path: &str,
@@ -308,7 +381,10 @@ impl AsterHttpClient {
         serde_json::from_slice::<T>(&response.body).map_err(|e| {
             AsterHttpError::JsonError(format!(
                 "{e}: {}",
-                String::from_utf8_lossy(&response.body).chars().take(512).collect::<String>()
+                String::from_utf8_lossy(&response.body)
+                    .chars()
+                    .take(512)
+                    .collect::<String>()
             ))
         })
     }
@@ -450,7 +526,8 @@ impl AsterHttpClient {
     ///
     /// Returns an error if the request fails.
     pub async fn query_balances(&self) -> AsterHttpResult<Vec<AsterBalance>> {
-        self.signed_get(ASTER_BALANCE_PATH, AsterParams::new()).await
+        self.signed_get(ASTER_BALANCE_PATH, AsterParams::new())
+            .await
     }
 
     /// Queries position risk (`GET /fapi/v3/positionRisk`), optionally for one symbol.
@@ -575,8 +652,80 @@ mod tests {
     }
 
     fn client() -> AsterHttpClient {
-        AsterHttpClient::new("https://fapi.asterdex.com/", Some(credential()), Some(30), None)
-            .unwrap()
+        AsterHttpClient::new(
+            "https://fapi.asterdex.com/",
+            Some(credential()),
+            Some(30),
+            None,
+        )
+        .unwrap()
+    }
+
+    /// Drives the `GET` retry policy over a scripted sequence of outcomes, returning the
+    /// final result and the number of attempts made.
+    async fn run_get_retry(mut outcomes: Vec<AsterHttpResult<u8>>) -> (AsterHttpResult<u8>, usize) {
+        outcomes.reverse();
+        let outcomes = std::cell::RefCell::new(outcomes);
+        let attempts = std::cell::Cell::new(0usize);
+
+        let result = AsterHttpClient::get_retry_manager()
+            .execute_with_retry(
+                "test",
+                || async {
+                    attempts.set(attempts.get() + 1);
+                    outcomes
+                        .borrow_mut()
+                        .pop()
+                        .unwrap_or(Err(AsterHttpError::NetworkError(
+                            "tls handshake eof".into(),
+                        )))
+                },
+                AsterHttpError::is_retryable_transport,
+                |e| AsterHttpError::NetworkError(format!("retry failed: {e}")),
+            )
+            .await;
+
+        (result, attempts.get())
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_get_retries_transport_faults_then_succeeds() {
+        // The first live testnet run saw exactly this: a TLS handshake EOF followed by a TCP
+        // connect timeout through the host proxy, then a good response.
+        let (result, attempts) = run_get_retry(vec![
+            Err(AsterHttpError::NetworkError("tls handshake eof".into())),
+            Err(AsterHttpError::Timeout("tcp connect error 10060".into())),
+            Ok(7),
+        ])
+        .await;
+
+        assert_eq!(result.unwrap(), 7);
+        assert_eq!(attempts, 3);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_get_retry_is_bounded() {
+        let (result, attempts) = run_get_retry(Vec::new()).await;
+
+        // One initial attempt plus GET_MAX_RETRIES repeats, then the last transport error is
+        // surfaced verbatim rather than being wrapped.
+        assert_eq!(attempts, GET_MAX_RETRIES as usize + 1);
+        let error = result.unwrap_err();
+        assert!(error.is_retryable_transport());
+        assert!(error.to_string().contains("tls handshake eof"), "{error}");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_get_does_not_retry_venue_error_bodies() {
+        // `-1121 Invalid symbol` is a definitive answer: testnet does not list NVDAUSDT.
+        let (result, attempts) = run_get_retry(vec![Err(AsterHttpError::AsterError {
+            code: -1121,
+            message: "Invalid symbol.".to_string(),
+        })])
+        .await;
+
+        assert_eq!(attempts, 1);
+        assert_eq!(result.unwrap_err().code(), Some(-1121));
     }
 
     #[rstest]
@@ -600,7 +749,9 @@ mod tests {
         assert!(!client.has_credentials());
         assert_eq!(client.user_address(), None);
 
-        let error = client.build_signed_payload(&AsterParams::new()).unwrap_err();
+        let error = client
+            .build_signed_payload(&AsterParams::new())
+            .unwrap_err();
         assert!(matches!(error, AsterHttpError::MissingCredentials));
     }
 
@@ -662,7 +813,10 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_cancel_order_requires_an_identifier() {
-        let error = client().cancel_order("BTCUSDT", None, None).await.unwrap_err();
+        let error = client()
+            .cancel_order("BTCUSDT", None, None)
+            .await
+            .unwrap_err();
 
         assert!(matches!(error, AsterHttpError::ValidationError(_)));
         assert!(error.to_string().contains("order_id"));
@@ -671,7 +825,10 @@ mod tests {
     #[rstest]
     #[tokio::test]
     async fn test_query_order_requires_an_identifier() {
-        let error = client().query_order("BTCUSDT", None, None).await.unwrap_err();
+        let error = client()
+            .query_order("BTCUSDT", None, None)
+            .await
+            .unwrap_err();
 
         assert!(matches!(error, AsterHttpError::ValidationError(_)));
     }

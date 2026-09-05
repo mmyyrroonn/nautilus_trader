@@ -13,8 +13,9 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-//! Common Aster constants and enumerations.
+//! Common Aster constants, currency resolution, and enumerations.
 
 pub mod consts;
 pub mod credential;
+pub mod currency;
 pub mod enums;

@@ -39,6 +39,8 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Deserializer, Serialize};
 use ustr::Ustr;
 
+use crate::common::currency::resolve_currency;
+
 /// Error payload returned by any Aster endpoint.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AsterErrorResponse {
@@ -265,13 +267,20 @@ impl AsterBalance {
         }
     }
 
-    /// Returns whether the wallet balance is zero.
+    /// Returns whether the asset carries no value at all.
+    ///
+    /// Both the wallet balance and the available balance must be zero. Aster's testnet reports
+    /// assets whose wallet balance is zero while `availableBalance` is not (fee credits and
+    /// airdropped assets usable as cross margin), and dropping those would hide the asset from
+    /// the account state entirely.
     ///
     /// Unparsable balances are reported as zero so a malformed asset entry is skipped rather
     /// than failing the whole account snapshot.
     #[must_use]
     pub fn is_zero(&self) -> bool {
-        self.total().map_or(true, |value| value.is_zero())
+        let total_zero = self.total().is_ok_and(|value| value.is_zero()) || self.total().is_err();
+        let free_zero = self.free().is_ok_and(|value| value.is_zero()) || self.free().is_err();
+        total_zero && free_zero
     }
 }
 
@@ -324,8 +333,7 @@ impl AsterPositionRisk {
     /// Returns whether the position is flat.
     #[must_use]
     pub fn is_flat(&self) -> bool {
-        self.signed_quantity()
-            .map_or(true, |value| value.is_zero())
+        self.signed_quantity().map_or(true, |value| value.is_zero())
     }
 }
 
@@ -390,8 +398,11 @@ impl AsterUserTrade {
         settlement_currency: Currency,
         ts_init: UnixNanos,
     ) -> anyhow::Result<FillReport> {
+        // The commission asset is a venue string; `resolve_currency` registers codes the
+        // Nautilus currency map does not know rather than panicking or silently mislabelling
+        // the fee as the settlement currency.
         let commission_currency = match self.commission_asset {
-            Some(asset) => Currency::from_str(asset.as_str()).unwrap_or(settlement_currency),
+            Some(asset) => resolve_currency(asset.as_str()),
             None => settlement_currency,
         };
         let commission_amount = match self.commission.as_deref() {
@@ -572,7 +583,10 @@ where
 
     match Repr::deserialize(deserializer)? {
         Repr::Int(value) => Ok(value),
-        Repr::Str(value) => value.trim().parse::<i64>().map_err(serde::de::Error::custom),
+        Repr::Str(value) => value
+            .trim()
+            .parse::<i64>()
+            .map_err(serde::de::Error::custom),
     }
 }
 
@@ -626,6 +640,8 @@ mod tests {
     const OPEN_ORDERS: &str = include_str!("../../test_data/http_open_orders.json");
     const CANCEL_ORDER: &str = include_str!("../../test_data/http_cancel_order.json");
     const BALANCE: &str = include_str!("../../test_data/http_balance.json");
+    const BALANCE_TESTNET: &str =
+        include_str!("../../test_data/http_balance_testnet_unknown_assets.json");
     const POSITION_RISK: &str = include_str!("../../test_data/http_position_risk.json");
     const USER_TRADES: &str = include_str!("../../test_data/http_user_trades.json");
     const COMMISSION_RATE: &str = include_str!("../../test_data/http_commission_rate.json");
@@ -713,7 +729,14 @@ mod tests {
         order.time_in_force = BinanceTimeInForce::Gtx;
 
         let report = order
-            .to_order_status_report(account_id(), instrument_id(), 2, 3, true, UnixNanos::default())
+            .to_order_status_report(
+                account_id(),
+                instrument_id(),
+                2,
+                3,
+                true,
+                UnixNanos::default(),
+            )
             .unwrap();
 
         assert!(report.post_only);
@@ -748,6 +771,62 @@ mod tests {
         assert_eq!(usdt.update_time, Some(1_776_802_344_230));
         assert!(!usdt.is_zero());
         assert!(balances.iter().any(AsterBalance::is_zero));
+    }
+
+    #[rstest]
+    fn test_deserialize_testnet_balance_with_unknown_assets() {
+        let balances: Vec<AsterBalance> = serde_json::from_value(fixture(BALANCE_TESTNET)).unwrap();
+
+        let codes: Vec<&str> = balances.iter().map(|b| b.asset.as_str()).collect();
+        assert_eq!(codes, vec!["USDT", "BTC", "ASTER", "AFEE"]);
+
+        let usdt = &balances[0];
+        assert_eq!(usdt.total().unwrap().to_string(), "1000.00000000");
+        assert_eq!(usdt.free().unwrap().to_string(), "1590.98089862");
+        // Aster reports availableBalance above walletBalance on cross-margin accounts.
+        assert!(usdt.free().unwrap() > usdt.total().unwrap());
+        assert_eq!(usdt.update_time, Some(1_788_571_663_397));
+    }
+
+    #[rstest]
+    fn test_zero_wallet_balance_with_available_funds_is_not_zero() {
+        let balances: Vec<AsterBalance> = serde_json::from_value(fixture(BALANCE_TESTNET)).unwrap();
+
+        // BTC and AFEE hold no wallet balance but carry available cross-margin funds; dropping
+        // them would hide the assets from the account state entirely.
+        for balance in &balances {
+            assert!(!balance.is_zero(), "{} must be reported", balance.asset);
+        }
+
+        let fully_empty: AsterBalance = serde_json::from_str(
+            r#"{"asset":"CDL","balance":"0.00000000","availableBalance":"0.00000000"}"#,
+        )
+        .unwrap();
+        assert!(fully_empty.is_zero());
+    }
+
+    #[rstest]
+    fn test_commission_asset_unknown_to_nautilus_does_not_panic() {
+        let trade: AsterUserTrade = serde_json::from_str(
+            r#"{"symbol":"BTCUSDT","id":1,"orderId":2,"price":"100.0","qty":"1.0",
+                "side":"BUY","maker":false,"buyer":true,"commission":"0.5",
+                "commissionAsset":"AFEE","time":1788571663397}"#,
+        )
+        .unwrap();
+
+        let report = trade
+            .to_fill_report(
+                account_id(),
+                instrument_id(),
+                2,
+                3,
+                Currency::USDT(),
+                UnixNanos::default(),
+            )
+            .unwrap();
+
+        assert_eq!(report.commission.currency.code.as_str(), "AFEE");
+        assert_eq!(report.commission.as_decimal().to_string(), "0.50000000");
     }
 
     #[rstest]
@@ -811,7 +890,10 @@ mod tests {
         assert_eq!(report.last_px, Price::from("7819.01"));
         assert_eq!(report.last_qty, Quantity::from("0.002"));
         assert_eq!(report.liquidity_side, LiquiditySide::Taker);
-        assert_eq!(report.commission, Money::new(-0.078_190_10, Currency::USDT()));
+        assert_eq!(
+            report.commission,
+            Money::new(-0.078_190_10, Currency::USDT())
+        );
         assert_eq!(report.ts_event, millis_to_nanos(1_569_514_978_020));
     }
 

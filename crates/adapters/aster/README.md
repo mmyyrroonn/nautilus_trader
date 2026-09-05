@@ -28,7 +28,7 @@ so its frame decoding is delegated to `nautilus-binance`.
 | Cancel order | Yes | By client order ID, falling back to the venue order ID |
 | Cancel all orders for an instrument | Yes | `DELETE /fapi/v3/allOpenOrders`; the side filter is ignored |
 | Order status / fill / position reports | Yes | `order`, `openOrders`, `allOrders`, `userTrades`, `positionRisk` |
-| Account state | Yes | `GET /fapi/v3/balance`, plus `ACCOUNT_UPDATE` on the user stream |
+| Account state | Yes | `GET /fapi/v3/balance`, plus `ACCOUNT_UPDATE` on the user stream; unknown assets are registered on the fly |
 | User data stream | Yes | Listen key renewed every 30 minutes; reconnects with a new key on expiry |
 | Commission rates | Yes | `GET /fapi/v3/commissionRate` |
 | Order modification | No | Cancel and resubmit; `modify_order` emits a modify-rejected event |
@@ -77,10 +77,43 @@ The `nonce` is a microsecond timestamp that must fall within ±60 s of server ti
 tracks it per signer address, so it must be strictly increasing. One `AsterHttpClient` and all
 of its clones therefore draw from a single monotonic counter.
 
+## Retries
+
+Idempotent `GET` requests (`balance`, `positionRisk`, `openOrders`, `order`, `allOrders`,
+`userTrades`, `commissionRate`, `positionSide/dual`) are retried up to three times on
+**transport-level** failures only — a TLS handshake EOF, a TCP connect failure or timeout, a
+connection reset — with a 500 ms / 1 s / 2 s backoff. Each attempt re-signs the request, so it
+draws a fresh nonce.
+
+Nothing else is retried. An answer from the venue is definitive: an Aster error body such as
+`-1121 Invalid symbol` is returned to the caller unchanged, as is any unexpected HTTP status.
+`POST` and `DELETE` are never repeated, because order submission and cancellation are not
+idempotent; a transport failure there is surfaced as ambiguous and left to reconciliation.
+
+Instrument loading (`exchangeInfo`) runs through `nautilus-binance`, which has no retry of its
+own, so the execution client wraps it in the same policy at connect: transport faults only,
+never an Aster error body, which matters because Aster rate-limits this endpoint aggressively.
+
 ## Venue quirks
 
 - `NVDAUSDT` reports `pricePrecision 6` but a `0.01` tick. Prices are formatted from the
   instrument's price increment (the `PRICE_FILTER` tick size), not from `pricePrecision`.
+- Balances name assets the Nautilus currency map has never seen (testnet answers with `USDT`,
+  `BTC`, `ASTER` and `AFEE`). Every currency built from a venue string goes through
+  `common::currency::resolve_currency`, which registers an unknown code as an 8-decimal crypto
+  currency and logs it once at debug level. `Currency::from` is never used on venue data: it
+  panics on an unknown code, which would take the whole trading node down over an airdropped
+  or fee-credit asset the account never trades.
+- `availableBalance` can exceed `walletBalance` on a cross-margin account, because availability
+  includes headroom from other assets. Nautilus requires `total == locked + free`, so `free` is
+  clamped to the wallet balance (`locked = 0`) rather than inflating the reported total; the
+  first such row per process is logged at warning level.
+- An asset can hold zero `walletBalance` while `availableBalance` is non-zero. Such rows are
+  still reported, so the account state names every asset the venue holds; only assets that are
+  zero on both fields are dropped.
+- The testnet symbol set is smaller than mainnet's (it has no `NVDAUSDT`, which answers
+  `-1121 Invalid symbol`). `load_ids` entries the venue does not list are logged as a warning
+  at connect and skipped; the client still connects as long as one instrument loaded.
 - Several numeric fields arrive JSON-encoded as strings (`"orderId": "417663664"`,
   `"updateTime": "1776802344230"`, `"code": "200"`) where Binance returns numbers. The models
   accept both forms.
@@ -99,6 +132,9 @@ come from CCXT's static request fixtures; the expected signatures were regenerat
 in its `skipKeys`, so the signatures recorded there are never verified by CCXT's tests and no
 longer match the recorded parameter strings. The `test_data/http_*.json` files are verbatim
 Aster response bodies used as serde fixtures, each with a `_source` header naming its origin.
+`http_balance_testnet_unknown_assets.json` is a real testnet `GET /fapi/v3/balance` body rather
+than a CCXT copy: it carries the two currency codes Nautilus does not know and the
+`availableBalance > walletBalance` case.
 
 ## References
 

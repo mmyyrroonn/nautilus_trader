@@ -1,0 +1,54 @@
+{
+  "_source": {
+    "venue": "Aster Futures V3 testnet",
+    "endpoint": "GET /fapi/v3/balance",
+    "captured": "2026-09-05",
+    "note": "Verbatim testnet response body, used as a serde fixture. Recorded from the first live testnet run of the execution probe. Two things here are not covered by the CCXT fixture: the assets ASTER and AFEE are absent from the Nautilus currency map (they panicked `Currency::from`), and USDT reports availableBalance > balance. accountAlias is a venue-generated public handle, not a credential."
+  },
+  "response": [
+    {
+      "accountAlias": "FzoCXqFzTi",
+      "asset": "USDT",
+      "balance": "1000.00000000",
+      "crossWalletBalance": "1000.00000000",
+      "crossUnPnl": "0.00000000",
+      "availableBalance": "1590.98089862",
+      "maxWithdrawAmount": "1000.00000000",
+      "marginAvailable": true,
+      "updateTime": 1788571663397
+    },
+    {
+      "accountAlias": "FzoCXqFzTi",
+      "asset": "BTC",
+      "balance": "0.00000000",
+      "crossWalletBalance": "0.00000000",
+      "crossUnPnl": "0.00000000",
+      "availableBalance": "0.01900919",
+      "maxWithdrawAmount": "0.00000000",
+      "marginAvailable": true,
+      "updateTime": 0
+    },
+    {
+      "accountAlias": "FzoCXqFzTi",
+      "asset": "ASTER",
+      "balance": "1000.00000000",
+      "crossWalletBalance": "1000.00000000",
+      "crossUnPnl": "0.00000000",
+      "availableBalance": "1794.12759340",
+      "maxWithdrawAmount": "1000.00000000",
+      "marginAvailable": true,
+      "updateTime": 1788571663427
+    },
+    {
+      "accountAlias": "FzoCXqFzTi",
+      "asset": "AFEE",
+      "balance": "0.00000000",
+      "crossWalletBalance": "0.00000000",
+      "crossUnPnl": "0.00000000",
+      "availableBalance": "795.75696784",
+      "maxWithdrawAmount": "0.00000000",
+      "marginAvailable": true,
+      "updateTime": 0
+    }
+  ]
+}

@@ -173,6 +173,26 @@ impl AsterHttpError {
     pub fn is_min_notional(&self) -> bool {
         self.code() == Some(ASTER_CODE_MIN_NOTIONAL)
     }
+
+    /// Returns whether the failure is a transport fault that a repeat attempt could clear.
+    ///
+    /// True only when the request never produced an HTTP response: a TLS handshake EOF, a TCP
+    /// connect failure, a DNS failure, a connection reset, or a client-side timeout. Those are
+    /// the failures this host's proxy produces intermittently, and repeating an *idempotent*
+    /// request is then free of venue-side effects.
+    ///
+    /// False for everything the venue actually answered ([`Self::AsterError`],
+    /// [`Self::UnexpectedStatus`]) and for local faults a retry cannot fix
+    /// ([`Self::MissingCredentials`], [`Self::SigningError`], [`Self::ValidationError`],
+    /// [`Self::JsonError`]). In particular an Aster error body such as `-1121 Invalid symbol`
+    /// is a definitive answer and is never retried.
+    ///
+    /// This says nothing about whether a request is *safe* to retry; only `GET` requests are
+    /// repeated (see `AsterHttpClient`), never order submission or cancellation.
+    #[must_use]
+    pub const fn is_retryable_transport(&self) -> bool {
+        matches!(self, Self::NetworkError(_) | Self::Timeout(_))
+    }
 }
 
 impl From<serde_json::Error> for AsterHttpError {
@@ -264,6 +284,47 @@ mod tests {
         assert!(venue_error(ASTER_CODE_MIN_NOTIONAL).is_min_notional());
         assert!(venue_error(ASTER_CODE_ORDER_WOULD_IMMEDIATELY_TRIGGER).is_post_only_violation());
         assert!(!venue_error(ASTER_CODE_NEW_ORDER_REJECTED).is_post_only_violation());
+    }
+
+    #[rstest]
+    fn test_transport_errors_are_retryable() {
+        assert!(AsterHttpError::Timeout("elapsed".to_string()).is_retryable_transport());
+        assert!(
+            AsterHttpError::NetworkError("tls handshake eof".to_string()).is_retryable_transport()
+        );
+        assert!(
+            AsterHttpError::NetworkError("tcp connect error: os error 10060".to_string())
+                .is_retryable_transport()
+        );
+    }
+
+    #[rstest]
+    #[case(-1121)]
+    #[case(ASTER_CODE_NEW_ORDER_REJECTED)]
+    #[case(ASTER_CODE_TOO_MANY_REQUESTS)]
+    #[case(ASTER_CODE_INVALID_NONCE)]
+    fn test_venue_error_bodies_are_not_retryable(#[case] code: i64) {
+        assert!(
+            !venue_error(code).is_retryable_transport(),
+            "code={code} must not be retried; the venue answered"
+        );
+    }
+
+    #[rstest]
+    fn test_local_and_http_status_failures_are_not_retryable() {
+        assert!(!AsterHttpError::MissingCredentials.is_retryable_transport());
+        assert!(!AsterHttpError::SigningError("bad key".to_string()).is_retryable_transport());
+        assert!(
+            !AsterHttpError::ValidationError("no order id".to_string()).is_retryable_transport()
+        );
+        assert!(!AsterHttpError::JsonError("eof".to_string()).is_retryable_transport());
+        assert!(
+            !AsterHttpError::UnexpectedStatus {
+                status: 503,
+                body: "maintenance".to_string(),
+            }
+            .is_retryable_transport()
+        );
     }
 
     #[rstest]
