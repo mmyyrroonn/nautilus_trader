@@ -94,7 +94,7 @@ use crate::{
             BinancePriceMatch, BinanceProductType, BinanceRateLimitInterval, BinanceRateLimitType,
             BinanceSide, BinanceTimeInForce, BinanceWorkingType,
         },
-        fees::futures_fee_tier_rates,
+        fees::{futures_fee_tier_rates, instrument_fees},
         instruments::BinanceInstrumentSelector,
         models::BinanceErrorResponse,
         parse::{
@@ -1966,6 +1966,13 @@ impl BinanceFuturesHttpClient {
         symbol: &str,
         fallback: (Decimal, Decimal),
     ) -> (Decimal, Decimal) {
+        // Rates a venue's own execution client verified outrank anything derived here: this
+        // client may not even be able to authenticate against that venue, and rebuilding the
+        // instrument on a refresh would otherwise restore the placeholder. Empty for Binance.
+        if let Some(fees) = instrument_fees(self.venue, symbol) {
+            return fees;
+        }
+
         if !config.query_commission_rates || !self.has_credentials() {
             return fallback;
         }

@@ -113,6 +113,10 @@ RESTING_PRICE_FACTOR = Decimal("0.5")
 # Watchdog default: stop the node this long after start no matter what happens.
 DEFAULT_TIMEOUT_SECS = 180
 
+# Bounded grace between "the probe finished" and "stop the node", so the cancel requests the
+# cleanup issued for still-open probe orders have a chance to be confirmed by the venue.
+CLEANUP_GRACE_SECS = 10.0
+
 # Binance VIP0 defaults. The Aster instrument metadata is loaded through the Binance
 # USD-M path, which falls back to these when no account commissionRate is available, so
 # seeing exactly these values is a strong hint the numbers are a fallback, not our fees.
@@ -269,6 +273,8 @@ def start_stop_watchdog(
     done_event: threading.Event,
     stop_callable: Callable[[], None],
     timeout_secs: float,
+    cleanup_event: threading.Event | None = None,
+    cleanup_grace_secs: float = 0.0,
 ) -> tuple[threading.Thread, dict[str, bool]]:
     """
     Stop the node when the probe signals done, or when ``timeout_secs`` elapses.
@@ -277,13 +283,20 @@ def start_stop_watchdog(
     keeps blocking. This watchdog owns the node-level stop so the process always terminates
     without a manual Ctrl+C. Returns the started thread and a state dict that reports whether
     the stop was triggered by the done event or by the timeout.
+
+    When ``cleanup_event`` is given, a finished probe gets up to ``cleanup_grace_secs`` for
+    its cancel requests to be confirmed before the node is stopped; the wait is bounded and
+    the outcome is reported in ``state["cleanup_confirmed"]``. The timeout path never waits:
+    ``on_stop`` does the last-chance cleanup there.
     """
-    state = {"fired": False, "timed_out": False, "stopped": False}
+    state = {"fired": False, "timed_out": False, "stopped": False, "cleanup_confirmed": False}
 
     def _run() -> None:
         fired = done_event.wait(timeout_secs)
         state["fired"] = fired
         state["timed_out"] = not fired
+        if fired and cleanup_event is not None:
+            state["cleanup_confirmed"] = cleanup_event.wait(cleanup_grace_secs)
         try:
             stop_callable()
         finally:
@@ -376,8 +389,18 @@ class AsterProbeStrategy(Strategy):
         self._ioc_closed = False
         self._finished = False
 
+        # Every order this probe created, in submit order. Cleanup only ever touches these:
+        # it must never cancel account-wide.
+        self._probe_order_ids: list[Any] = []
+        # Once frozen, no step may send a new order; late events are bookkeeping only.
+        self._frozen = False
+        self._cleanup_started = False
+        self._leftovers: list[str] = []
+
         # Set when the probe reaches a terminal state; the watchdog in main() waits on it.
         self.done_event = threading.Event()
+        # Set when every probe order is confirmed closed; the watchdog waits on it, bounded.
+        self.cleanup_done_event = threading.Event()
         self.summary_line = ""
 
     # -- results ---------------------------------------------------------------------------
@@ -394,6 +417,13 @@ class AsterProbeStrategy(Strategy):
         return self._orders_sent
 
     @property
+    def leftovers(self) -> list[str]:
+        """
+        Return ``id=status`` for every probe order still not confirmed closed.
+        """
+        return list(self._leftovers)
+
+    @property
     def finished(self) -> bool:
         """
         Return whether the probe reached a terminal state.
@@ -407,6 +437,22 @@ class AsterProbeStrategy(Strategy):
         """
         return EXIT_OK if self._finished and not self._failures else EXIT_PROBE_FAILED
 
+    def _log_safe(self, level: str, message: str) -> None:
+        """
+        Log ``message`` without letting a re-entrant borrow abort the caller.
+
+        Inside a callback fired synchronously from a Strategy method (e.g. OrderPendingCancel
+        from ``cancel_order``) the strategy is still mutably borrowed on the Rust side and
+        ``self.log`` raises "Already mutably borrowed". The message then goes to stderr
+        instead of being lost. The logger also drops multi-line messages, so those are
+        flattened for the log and printed in full on stderr.
+        """
+        flat = " | ".join(message.splitlines())
+        try:
+            getattr(self.log, level)(flat)
+        except RuntimeError:
+            print(message, file=sys.stderr, flush=True)
+
     def record_failure(self, reason: str) -> None:
         """
         Record a failure, log it, and finish the probe.
@@ -414,15 +460,9 @@ class AsterProbeStrategy(Strategy):
         Public because :func:`_guarded` calls it from outside the class body.
         """
         self._failures.append(reason)
-        # stderr first: inside a callback fired synchronously from a Strategy method (e.g.
-        # OrderPendingCancel from cancel_order) the strategy is still mutably borrowed on
-        # the Rust side and `self.log` raises "Already mutably borrowed". The logger also
-        # drops multi-line messages, so the single-line form goes to the log best-effort.
+        # stderr first: the log call can be refused by a re-entrant borrow (see _log_safe).
         print(f"[probe] FAILED: {reason}", file=sys.stderr, flush=True)
-        try:
-            self.log.error(f"[probe] FAILED: {' | '.join(reason.splitlines())}")
-        except RuntimeError:
-            pass
+        self._log_safe("error", f"[probe] FAILED: {reason}")
         self._finish("failure")
 
     # -- lifecycle -------------------------------------------------------------------------
@@ -452,9 +492,25 @@ class AsterProbeStrategy(Strategy):
     @_guarded
     def on_stop(self) -> None:
         """
-        Log the phase the probe reached.
+        Freeze, run the last-chance cleanup, and report anything left open.
+
+        The node is stopped by the watchdog, including on the hard timeout, when an accepted
+        GTC may still be live and unconfirmed. ``manage_stop`` is False by default, so the
+        framework cancels nothing on our behalf: this is the probe's only remaining chance to
+        ask the venue to cancel the orders it created, and to name what it could not confirm.
         """
-        self.log.info(f"[probe] stopping in phase={self._phase}")
+        self._frozen = True
+        self._log_safe("info", f"[probe] stopping in phase={self._phase}")
+        outstanding = self._run_cleanup("stop")
+        if outstanding:
+            detail = ", ".join(self._leftovers)
+            message = (
+                f"[probe] LEFTOVER: {len(outstanding)} probe order(s) not confirmed closed at "
+                f"stop: {detail} - cancel requested, confirmation not received; check the "
+                f"venue manually"
+            )
+            print(message, file=sys.stderr, flush=True)
+            self._log_safe("error", message)
 
     # -- market data -----------------------------------------------------------------------
 
@@ -476,6 +532,10 @@ class AsterProbeStrategy(Strategy):
     # -- probe steps -----------------------------------------------------------------------
 
     def _submit_resting_order(self, quote) -> None:
+        if self._frozen:
+            self._log_safe("warning", "[probe] frozen; step 1 not sent")
+            return
+
         bid = quote.bid_price.as_decimal()
         if bid <= 0:
             self.record_failure(f"first quote has a non-positive bid: {bid}")
@@ -499,6 +559,7 @@ class AsterProbeStrategy(Strategy):
             time_in_force=TimeInForce.GTC,
         )
         self._resting_order_id = order.client_order_id
+        self._probe_order_ids.append(order.client_order_id)
         self._orders_sent += 1
         self._phase = "resting_submitted"
         self.log.info(
@@ -508,6 +569,10 @@ class AsterProbeStrategy(Strategy):
         self.submit_order(order)
 
     def _submit_ioc_order(self) -> None:
+        if self._frozen:
+            self._log_safe("warning", "[probe] frozen; step 2 (IOC) not sent")
+            return
+
         quote = self.cache.quote(self._instrument_id)
         if quote is None:
             self.record_failure("no cached quote for the IOC leg")
@@ -532,6 +597,7 @@ class AsterProbeStrategy(Strategy):
             time_in_force=TimeInForce.IOC,
         )
         self._ioc_order_id = order.client_order_id
+        self._probe_order_ids.append(order.client_order_id)
         self._orders_sent += 1
         self._phase = "ioc_submitted"
         self.log.info(
@@ -562,6 +628,73 @@ class AsterProbeStrategy(Strategy):
             self.record_failure(f"no cached order for {client_order_id}")
         return order
 
+    def _outstanding_orders(self) -> list[tuple[Any, Any]]:
+        """
+        Return ``(client_order_id, order)`` for every probe order not confirmed closed.
+
+        A cache read that fails leaves the order state unknown; that counts as outstanding
+        (and is logged), because "we could not check" is not "it is closed".
+        """
+        outstanding: list[tuple[Any, Any]] = []
+        for client_order_id in self._probe_order_ids:
+            try:
+                order = self.cache.order(client_order_id)
+            except Exception:
+                self._log_safe(
+                    "error",
+                    f"[probe] cannot read {client_order_id} from the cache:\n"
+                    f"{traceback.format_exc()}",
+                )
+                order = None
+            if order is None or not order.is_closed:
+                outstanding.append((client_order_id, order))
+        return outstanding
+
+    @staticmethod
+    def _leftover_label(client_order_id, order) -> str:
+        status = order.status if order is not None else "unknown (not in the cache)"
+        return f"{client_order_id}={status}"
+
+    def _run_cleanup(self, trigger: str) -> list[tuple[Any, Any]]:
+        """
+        Freeze new orders and ask the venue to cancel this probe's own open orders.
+
+        Only the orders this probe created are touched - never an account-wide cancel. The
+        request is fire-and-forget here; confirmation is awaited elsewhere within a bound
+        (the watchdog grace before the node stops, or reported as leftover at stop).
+        """
+        self._frozen = True
+        self._cleanup_started = True
+        outstanding = self._outstanding_orders()
+        self._leftovers = [self._leftover_label(coid, order) for coid, order in outstanding]
+
+        if not outstanding:
+            self.cleanup_done_event.set()
+            self._log_safe("info", f"[probe] cleanup ({trigger}): no probe order left open")
+            return []
+
+        for client_order_id, order in outstanding:
+            self._log_safe(
+                "warning",
+                f"[probe] cleanup ({trigger}): {self._leftover_label(client_order_id, order)} "
+                f"is not closed; sending cancel",
+            )
+            self.cancel_order(client_order_id)
+        return outstanding
+
+    def _recheck_cleanup(self) -> None:
+        """
+        Confirm the cleanup once every probe order is closed.
+        """
+        if not self._cleanup_started or self.cleanup_done_event.is_set():
+            return
+        outstanding = self._outstanding_orders()
+        self._leftovers = [self._leftover_label(coid, order) for coid, order in outstanding]
+        if outstanding:
+            return
+        self.cleanup_done_event.set()
+        self._log_safe("info", "[probe] cleanup confirmed: every probe order is closed")
+
     def _check_terminal(self, client_order_id) -> None:
         """
         Advance the probe from the order's real terminal state, never from a single event.
@@ -581,16 +714,39 @@ class AsterProbeStrategy(Strategy):
             )
             return
 
+        if self._finished:
+            # Late terminal report. The probe already ended (success or failure), so this can
+            # only update bookkeeping and close out the cleanup - never start a new step.
+            if client_order_id == self._resting_order_id:
+                self._resting_closed = True
+            elif client_order_id == self._ioc_order_id:
+                self._ioc_closed = True
+            self._log_safe(
+                "info",
+                f"[probe] late terminal report for {client_order_id}: status={order.status} "
+                f"filled_qty={order.filled_qty}/{order.quantity} "
+                f"(probe already finished; no new step)",
+            )
+            self._recheck_cleanup()
+            return
+
         if client_order_id == self._resting_order_id and not self._resting_closed:
             self._resting_closed = True
             self.log.info(
                 f"[probe] resting order terminal: status={order.status} "
                 f"filled_qty={order.filled_qty}/{order.quantity}",
             )
+            self._recheck_cleanup()
             if order.status.name != "CANCELED":
-                self.log.warning(
-                    f"[probe] resting order ended as {order.status.name}, expected CANCELED",
+                # The cancel step is what step 1 exists to verify. A resting leg that ends
+                # FILLED or EXPIRED never proved it, so the run has failed - and the probe
+                # must not add another position on top of the one it just took.
+                self.record_failure(
+                    f"resting order ended as {order.status.name} instead of CANCELED: the "
+                    f"cancel was never verified (filled_qty={order.filled_qty}/"
+                    f"{order.quantity}); not sending the IOC leg",
                 )
+                return
             self._submit_ioc_order()
             return
 
@@ -600,6 +756,7 @@ class AsterProbeStrategy(Strategy):
                 f"[probe] IOC order terminal: status={order.status} "
                 f"filled_qty={order.filled_qty}/{order.quantity}",
             )
+            self._recheck_cleanup()
             self._report_fees()
             self._finish("complete")
 
@@ -607,7 +764,11 @@ class AsterProbeStrategy(Strategy):
         if self._finished:
             return
         self._finished = True
+        self._frozen = True
         self._phase = "done"
+
+        # Ask the venue to cancel anything this probe left open before the node is stopped.
+        self._run_cleanup(f"finish:{reason}")
 
         events = " ".join(f"{name}={count}" for name, count in sorted(self._event_counts.items()))
         commissions = (
@@ -623,12 +784,10 @@ class AsterProbeStrategy(Strategy):
             f"orders_sent={self._orders_sent} events=[{events}] "
             f"fills={len(self._fills)} filled_qty={filled_qty} "
             f"commissions=[{commissions}] fee_lines={len(self._fee_lines)} "
+            f"outstanding={len(self._leftovers)} "
             f"failures={len(self._failures)} exit_code={self.exit_code}"
         )
-        if self._failures:
-            self.log.error(self.summary_line)
-        else:
-            self.log.info(self.summary_line)
+        self._log_safe("error" if self._failures else "info", self.summary_line)
         self.done_event.set()
 
     def _record_event(self, name: str, event) -> None:
@@ -912,6 +1071,8 @@ def main(argv: list[str] | None = None) -> int:
             strategy.done_event,
             handle.stop,
             args.timeout_secs,
+            strategy.cleanup_done_event,
+            CLEANUP_GRACE_SECS,
         )
 
         print(f"starting node against {ASTER} ({environment}) attempt {attempt}/{CONNECT_ATTEMPTS}")
@@ -956,6 +1117,19 @@ def main(argv: list[str] | None = None) -> int:
             exit_code = EXIT_TIMEOUT
         else:
             exit_code = strategy.exit_code
+
+        if strategy.leftovers:
+            # The probe asked for these to be cancelled but never saw the confirmation; a run
+            # that may have left a live order on the venue is not a clean run.
+            print(
+                f"[probe] LEFTOVER unconfirmed order(s): {', '.join(strategy.leftovers)}",
+                file=sys.stderr,
+                flush=True,
+            )
+            if exit_code == EXIT_OK:
+                exit_code = EXIT_PROBE_FAILED
+        elif watchdog_state["fired"]:
+            print(f"[probe] cleanup confirmed: {watchdog_state['cleanup_confirmed']}")
         break
     print(f"[probe] exit code: {exit_code}")
     return exit_code

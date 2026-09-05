@@ -104,13 +104,19 @@ Aster's `{code, msg}` bodies are Binance-shaped, but "the venue answered" is not
 | Class | Examples | Handling |
 |---|---|---|
 | Definitive rejection | `-1121` invalid symbol, `-2010` new order rejected, `-2019` margin insufficient, `-4164` min notional, `-1111` bad precision, `-1013`, `-1102`, `-4003`/`-4004`/`-4005`, `-1003` rate limited, `-1021`/`-1022` nonce or signature, and any `4xx` status without an Aster body | `OrderRejected` immediately |
-| **Execution status unknown** | `-1006 UNEXPECTED_RESP`, `-1007 TIMEOUT`, any transport fault (TLS, TCP, client timeout), an undecodable response body, and `5xx` / `408` statuses | **Never terminalised.** Logged at error; the order stays in flight and `GET /fapi/v3/order?origClientOrderId=` is queried after 2 s / 5 s / 15 s until the venue answers. A definitive `-2013 NO_SUCH_ORDER` then rejects it locally; any other answer is emitted as the venue reports it. The order is **never** resubmitted |
+| **Execution status unknown** | `-1006 UNEXPECTED_RESP`, `-1007 TIMEOUT`, any transport fault (TLS, TCP, client timeout), an undecodable response body, and **any** `5xx` / `408` response - including one carrying a parseable Aster error body | **Never terminalised.** Logged at error; the order stays in flight and `GET /fapi/v3/order?origClientOrderId=` is queried after 2 s / 5 s / 15 s until the venue answers. A definitive `-2013 NO_SUCH_ORDER` then rejects it locally; any other answer is emitted as the venue reports it. The order is **never** resubmitted |
 | Local fault | missing credentials, signing, request validation | `OrderRejected`; the request never left the process |
 
 Aster's own error-code documentation states that `-1006` and `-1007` mean "execution status
 unknown", so an order submitted under either may already be resting or filled. Treating them as
 rejections desynchronises the engine from the book, which is why `is_venue_rejection` excludes
 them explicitly.
+
+The HTTP status is kept alongside the code for the same reason. Aster documents every `5xx` as
+"execution status unknown", and it answers some of them with a perfectly parseable body -
+`503` with `{"code": -1000, ...}`. Classifying on the code alone reads that as a decision and
+terminalises an order that is live on the book, so `AsterHttpError::AsterError` carries the
+status and any `5xx` / `408` is ambiguous whatever the code says.
 
 ## User data stream lifecycle
 
@@ -127,16 +133,22 @@ frame the shared streams client raises when it re-establishes the socket underne
 session. The gap between the drop and the reconnect carries no events at all, so the pass
 restores the four things that gap can invalidate:
 
-1. **Open orders** - `openOrders` is reported, then every order this client still believes is
+1. **Fills first.** Each recovered trade is delivered *with* its order status as a single
+   `OrderWithFills` report. Order and fills are not two messages whose arrival order happens to
+   work out: a status carrying the cumulative quantity on its own makes the engine infer a fill
+   to explain it, and the real trade then arrives against an already-complete order, trips the
+   overfill guard and is dropped. The order keeps a synthetic trade ID and no commission - the
+   log looks clean and the economics are wrong.
+2. **Open orders** - `openOrders` is reported, then every order this client still believes is
    working but the venue no longer lists is queried individually, which surfaces the fills and
-   cancels that happened during the outage.
-2. **Fills** - `userTrades` from the newest trade time seen for each symbol, falling back to a
-   one-hour lookback, and never earlier than the connect. Anything older belongs to the
+   cancels that happened during the outage. Orders the fill pass already delivered are skipped,
+   so no second, fill-inferring status follows them.
+   The fill window starts at the newest trade time seen for each symbol, falling back to a
+   one-hour lookback, and never reaches earlier than the connect. Anything older belongs to the
    execution engine's startup reconciliation; replaying it as a live session fill is what makes
    the engine reject an `OrderFilled` for an order it already holds as filled. Trades already
-   delivered - by the stream, or by a `generate_fill_reports` call - are skipped by trade ID,
-   and the fills that remain are bundled with their order status so the engine does not
-   bootstrap a synthetic order from a bare fill.
+   delivered - by the stream, or by a report request - are skipped by trade ID, so a repeated
+   compensation is idempotent.
 3. **Balances** - a fresh `balance` snapshot.
 4. **Positions** - `positionRisk` for every loaded instrument, including flat rows, so a
    position closed during the outage is cleared instead of being left at its stale quantity.
@@ -151,6 +163,11 @@ deduplicated by ID, and the cursor must strictly advance or pagination fails rat
 
 A failed `userTrades` / `allOrders` / `openOrders` / `positionRisk` request, or a row whose
 required fields cannot be parsed, fails `generate_*_reports` instead of yielding a short list.
+A failed request also leaves no trace: the trades it covered are recorded as delivered only once
+the whole request has succeeded. Recording them while building loses them outright - the call
+returns `Err`, the engine never receives the earlier rows, and the next compensation pass skips
+them as already applied. `generate_mass_status` holds the same records back until its position
+query has succeeded too.
 A partial history that looks complete is worse than an error, because the engine infers fills
 from it. Rows for instruments this client never loaded are the one thing skipped, and only with
 a log line: they are out of scope rather than missing.
@@ -185,10 +202,14 @@ three things the default composition cannot:
   `ExecutionMassStatus::set_report_window`; without it the engine treats the history as complete
   and may synthesise position-opening fills to explain a position whose opening trade simply
   predates the lookback.
-- **Keeps orders and fills consistent.** All three sources are requested over one identical
-  window, and a fill whose order is not in the report set is dropped with a warning. A one-way
-  mode fill carries no venue position ID, which is exactly what the engine's orphan-fill path
-  requires, so reporting it could only add an event nothing can reconcile.
+- **Keeps every reported fill.** All three sources are requested over one identical window, but
+  a window is not a partition of the account's history: `allOrders` filters on the order's
+  *creation* time, so a GTC opened two minutes ago and filled one second ago contributes a trade
+  with no order on the page. That fill is not an orphan and must not be discarded - it is real
+  execution with a real commission. The order is fetched by ID
+  (`GET /fapi/v3/order?orderId=`, which is not time-filtered) and linked. A fill that still
+  cannot be linked is kept and the snapshot is published with `reports_complete = false`; the
+  engine is told the history is partial rather than handed a trimmed one that looks whole.
 - **Reports flat positions.** Declaring the window also turns on the engine's bounded check
   (`ExecutionManager::order_only_venue_order_ids`), which confirms per instrument that the
   reported fills net to the reported position. It looks the expected quantity up in the position
@@ -215,6 +236,20 @@ the data engine and cache hold them.
 
 A symbol whose query fails keeps the venue default and is named in a warning as **UNVERIFIED**.
 That default is a placeholder, not a measurement, and must not be quoted as the account's cost.
+
+Publishing once is not enough. The market-data path is the Binance USD-M client, which rebuilds
+instruments from `exchangeInfo` on every explicit `request_instruments` and on its hourly
+refresh - with the Binance VIP-0 defaults, over the same cache. The verified rates are therefore
+also *registered* with `nautilus_binance::common::fees::register_instrument_fees`, keyed by venue
+and symbol, and the shared instrument parser applies them wherever it would otherwise use a
+fallback. The registry is empty unless a venue registers into it, so Binance itself is unchanged.
+This is the one place the Aster work reaches into `nautilus-binance`: the fees can only be
+obtained through Aster's EIP-712-signed endpoint, which that client cannot call, so nothing
+inside the data path could otherwise know them.
+
+A registration outlives the client that made it, so a symbol whose query *fails* on a later
+connect has its entry removed rather than left in place: a rate that can no longer be confirmed
+must not keep being applied as though it still were.
 
 ## Venue quirks
 

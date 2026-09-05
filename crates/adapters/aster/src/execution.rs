@@ -35,6 +35,7 @@ use futures_util::StreamExt;
 use nautilus_binance::{
     common::{
         enums::{BinanceEnvironment, BinanceProductType},
+        fees::{clear_instrument_fee, register_instrument_fees},
         symbol::format_binance_symbol,
     },
     futures::{
@@ -73,7 +74,7 @@ use nautilus_model::{
     accounts::AccountAny,
     enums::{AccountType, OmsType, OrderSide, OrderType, PositionSide, TimeInForce},
     events::AccountState,
-    identifiers::{AccountId, ClientId, InstrumentId, Venue},
+    identifiers::{AccountId, ClientId, InstrumentId, Venue, VenueOrderId},
     instruments::{Instrument, InstrumentAny},
     orders::{Order, OrderAny},
     reports::{ExecutionMassStatus, FillReport, OrderStatusReport, PositionStatusReport},
@@ -371,6 +372,14 @@ impl AppliedTrades {
     fn contains(&self, trade_id: i64) -> bool {
         self.ids.contains(&trade_id)
     }
+}
+
+/// One trade a report request covered, pending the dedupe commit.
+#[derive(Debug, Clone, Copy)]
+struct DeliveredFill {
+    symbol: Ustr,
+    trade_id: i64,
+    ts_ms: i64,
 }
 
 /// Cross-task view of what the private stream has already reported.
@@ -770,11 +779,21 @@ impl SessionContext {
     async fn compensate(&self, reason: &str) {
         log::info!("Compensating Aster session state after {reason}");
 
-        if let Err(e) = self.compensate_orders().await {
+        // Fills go first, and each one is delivered *with* its order status as a single
+        // `OrderWithFills` report. Sending the order status on its own first would hand the
+        // engine a terminal quantity with no trades behind it, so it infers a fill of its own;
+        // the real trade then arrives against an already-complete order, trips the overfill
+        // guard, and is dropped — leaving the order holding a synthetic trade ID and no
+        // commission. The economics, not just the log line, depend on this ordering.
+        let delivered = match self.compensate_fills().await {
+            Ok(delivered) => delivered,
+            Err(e) => {
+                log::error!("Aster fill compensation after {reason} failed: {e}");
+                AHashSet::new()
+            }
+        };
+        if let Err(e) = self.compensate_orders(&delivered).await {
             log::error!("Aster order compensation after {reason} failed: {e}");
-        }
-        if let Err(e) = self.compensate_fills().await {
-            log::error!("Aster fill compensation after {reason} failed: {e}");
         }
         if let Err(e) = self.refresh_account_state().await {
             log::error!("Aster balance refresh after {reason} failed: {e}");
@@ -786,7 +805,7 @@ impl SessionContext {
 
     /// Reports the venue's open orders, then resolves every order this client still believes is
     /// working but the venue no longer lists (filled or cancelled during the outage).
-    async fn compensate_orders(&self) -> anyhow::Result<()> {
+    async fn compensate_orders(&self, delivered: &AHashSet<Ustr>) -> anyhow::Result<()> {
         let open_orders = self
             .http_client
             .query_open_orders(None)
@@ -799,6 +818,11 @@ impl SessionContext {
         for order in &open_orders {
             if !order.client_order_id.is_empty() {
                 still_open.insert(Ustr::from(&order.client_order_id));
+            }
+
+            if delivered.contains(&Ustr::from(&order.order_id.to_string())) {
+                // Already reported with its real fills in the pass above.
+                continue;
             }
 
             match self.order_to_report(order, ts_init) {
@@ -825,6 +849,11 @@ impl SessionContext {
         };
 
         for (client_order_id, symbol) in vanished {
+            if delivered.contains(&client_order_id) {
+                // The fill pass already delivered this order together with its trades.
+                continue;
+            }
+
             match self
                 .http_client
                 .query_order(&symbol, None, Some(client_order_id.as_str()))
@@ -856,7 +885,8 @@ impl SessionContext {
     /// Missed fills are grouped by venue order so the order status can be sent with them, the
     /// same bundling the stream path uses: a bare fill would let the engine bootstrap a
     /// synthetic order at the fill quantity and reject the order's later events.
-    async fn compensate_fills(&self) -> anyhow::Result<()> {
+    async fn compensate_fills(&self) -> anyhow::Result<AHashSet<Ustr>> {
+        let mut delivered: AHashSet<Ustr> = AHashSet::new();
         let symbols: Vec<Ustr> = {
             let guard = self.instruments.read();
             guard.by_symbol.keys().copied().collect()
@@ -893,23 +923,32 @@ impl SessionContext {
             }
 
             for (venue_order_id, trades) in by_order {
-                self.emit_missed_fills(&symbol, venue_order_id, &trades)
-                    .await;
+                delivered.extend(
+                    self.emit_missed_fills(&symbol, venue_order_id, &trades)
+                        .await,
+                );
             }
         }
 
-        Ok(())
+        Ok(delivered)
     }
 
+    /// Delivers the missed fills for one venue order, returning the identifiers now reported.
+    ///
+    /// The returned set holds the venue order ID and, when the venue echoes one, the client
+    /// order ID, so the order pass can recognise what has already been delivered and not send a
+    /// second, fill-inferring status for the same order.
     async fn emit_missed_fills(
         &self,
         symbol: &Ustr,
         venue_order_id: i64,
         trades: &[&AsterUserTrade],
-    ) {
+    ) -> AHashSet<Ustr> {
+        let mut delivered = AHashSet::new();
+
         let Some(context) = self.context_for(symbol) else {
             log::debug!("Ignoring Aster fills on unloaded symbol {symbol}");
-            return;
+            return delivered;
         };
 
         let ts_init = self.clock.get_time_ns();
@@ -930,7 +969,7 @@ impl SessionContext {
         }
 
         if fills.is_empty() {
-            return;
+            return delivered;
         }
 
         let status = match self
@@ -942,6 +981,10 @@ impl SessionContext {
                 Ok(report) => {
                     if let Some(report) = report.as_ref() {
                         self.track_order_state(report, order.symbol);
+                        delivered.insert(Ustr::from(&venue_order_id.to_string()));
+                        if let Some(client_order_id) = report.client_order_id {
+                            delivered.insert(client_order_id.inner());
+                        }
                     }
                     report
                 }
@@ -970,6 +1013,8 @@ impl SessionContext {
         );
 
         match status {
+            // One report, so the engine applies the trades and the resulting status together
+            // and never has a window in which it must invent the missing quantity.
             Some(status) => self.emitter.send_order_with_fills(status, reports),
             None => {
                 for report in reports {
@@ -977,6 +1022,8 @@ impl SessionContext {
                 }
             }
         }
+
+        delivered
     }
 
     async fn refresh_account_state(&self) -> anyhow::Result<()> {
@@ -1258,6 +1305,126 @@ impl AsterExecutionClient {
         Ok(())
     }
 
+    /// Builds the fill reports for a window, together with the trades they cover.
+    ///
+    /// The dedupe records are *returned*, not applied. Recording a trade as delivered while
+    /// the request is still being built loses it outright when a later row fails: the whole
+    /// call returns `Err`, the engine never receives the earlier trade, and the next
+    /// compensation pass skips it as already applied. Only a caller that has finished
+    /// successfully may commit them (see [`Self::commit_delivered_fills`]).
+    async fn fetch_fill_reports(
+        &self,
+        cmd: GenerateFillReports,
+    ) -> anyhow::Result<(Vec<FillReport>, Vec<DeliveredFill>)> {
+        let session = self.session();
+        let ts_init = self.clock.get_time_ns();
+        let now_ms = session.now_ms();
+        let start_ms = cmd.start.map_or(now_ms - DEFAULT_REPORT_LOOKBACK_MS, |ts| {
+            (ts.as_u64() / 1_000_000) as i64
+        });
+        let end_ms = cmd
+            .end
+            .map_or(now_ms, |ts| (ts.as_u64() / 1_000_000) as i64);
+
+        // Aster requires a symbol on `userTrades`, so the request is fanned out across loaded
+        // instruments when the command does not name one.
+        let targets: Vec<(String, SymbolContext)> = match cmd.instrument_id {
+            Some(instrument_id) => vec![self.symbol_context(&instrument_id)?],
+            None => {
+                let guard = self.instruments.read();
+                guard
+                    .by_id
+                    .keys()
+                    .filter_map(|id| {
+                        Self::context_for_symbol(&guard, &Ustr::from(&format_binance_symbol(id)))
+                            .map(|context| (format_binance_symbol(id), context))
+                    })
+                    .collect()
+            }
+        };
+
+        let mut reports = Vec::new();
+        let mut delivered = Vec::new();
+
+        for (symbol, context) in targets {
+            let trades = session
+                .query_user_trades_paged(&symbol, start_ms, end_ms)
+                .await?;
+
+            for trade in &trades {
+                // A fill whose price, quantity or commission cannot be parsed is a hole in the
+                // history, not a fill to skip: the caller must not treat the result as complete.
+                let report = trade
+                    .to_fill_report(
+                        self.core.account_id,
+                        context.instrument_id,
+                        context.price_precision,
+                        context.size_precision,
+                        Self::settlement_currency(),
+                        ts_init,
+                    )
+                    .with_context(|| {
+                        format!("Failed to parse Aster trade {} on {symbol}", trade.id)
+                    })?;
+                reports.push(report);
+                delivered.push(DeliveredFill {
+                    symbol: Ustr::from(&symbol),
+                    trade_id: trade.id,
+                    ts_ms: trade.time,
+                });
+            }
+        }
+
+        Ok((reports, delivered))
+    }
+
+    /// Records trades as delivered so a later compensation pass does not repeat them.
+    ///
+    /// Called only once the request that produced them has succeeded in full.
+    fn commit_delivered_fills(&self, delivered: Vec<DeliveredFill>) {
+        if delivered.is_empty() {
+            return;
+        }
+
+        let mut state = self.stream_state.write();
+        for fill in delivered {
+            state.record_fill(fill.symbol, fill.trade_id, fill.ts_ms);
+        }
+    }
+
+    /// Fetches one order report by venue order ID, for a fill whose order the window missed.
+    ///
+    /// `allOrders` filters on the order's *creation* time, so an order opened before the
+    /// lookback and filled inside it never appears on the order page even though its trade
+    /// does. `GET /fapi/v3/order?orderId=` is not time-filtered, so it can still supply the
+    /// order the fill belongs to.
+    ///
+    /// Returns `Ok(None)` when the instrument is not loaded (nothing can be built for it) and
+    /// an error when the venue could not answer; the caller keeps the fill either way and marks
+    /// the snapshot incomplete.
+    async fn fetch_order_report_by_venue_id(
+        &self,
+        instrument_id: &InstrumentId,
+        venue_order_id: VenueOrderId,
+        ts_init: UnixNanos,
+    ) -> anyhow::Result<Option<OrderStatusReport>> {
+        let order_id: i64 = venue_order_id
+            .as_str()
+            .parse()
+            .with_context(|| format!("Aster venue order ID {venue_order_id} is not numeric"))?;
+        let symbol = format_binance_symbol(instrument_id);
+
+        let order = self
+            .http_client
+            .query_order(&symbol, Some(order_id), None)
+            .await
+            .map_err(|e| {
+                anyhow::anyhow!("Aster order query failed for {venue_order_id} on {symbol}: {e}")
+            })?;
+
+        self.session().order_to_report(&order, ts_init)
+    }
+
     /// Replaces the venue's default fee fields with the account's real commission rates.
     ///
     /// `exchangeInfo` carries no commission data, so the Binance USD-M instrument parser fills
@@ -1290,6 +1457,9 @@ impl AsterExecutionClient {
             let rate = match self.http_client.query_commission_rate(&symbol).await {
                 Ok(rate) => rate,
                 Err(e) => {
+                    // Drop anything an earlier session registered for this symbol: a rate that
+                    // can no longer be confirmed must not keep being applied as if it were.
+                    clear_instrument_fee(self.venue, instrument.raw_symbol().inner());
                     unverified.push(format!("{symbol} ({e})"));
                     continue;
                 }
@@ -1299,6 +1469,7 @@ impl AsterExecutionClient {
                 (Ok(maker), Ok(taker)) => (maker, taker),
                 (maker, taker) => {
                     let error = maker.err().or_else(|| taker.err()).expect("one error");
+                    clear_instrument_fee(self.venue, instrument.raw_symbol().inner());
                     unverified.push(format!("{symbol} ({error})"));
                     continue;
                 }
@@ -1310,6 +1481,11 @@ impl AsterExecutionClient {
             };
 
             self.instruments.write().replace_one(updated.clone());
+            // Registered against the venue so the shared instrument parser applies these rates
+            // to every later load. The market-data path rebuilds instruments from
+            // `exchangeInfo` on request and on its periodic refresh, and would otherwise
+            // restore the Binance placeholder fees over the rates just verified here.
+            register_instrument_fees(self.venue, instrument.raw_symbol().inner(), maker, taker);
             verified += 1;
 
             if let Some(sender) = sender.as_ref()
@@ -2562,68 +2738,13 @@ impl ExecutionClient for AsterExecutionClient {
         &self,
         cmd: GenerateFillReports,
     ) -> anyhow::Result<Vec<FillReport>> {
-        let session = self.session();
-        let ts_init = self.clock.get_time_ns();
-        let now_ms = session.now_ms();
-        let start_ms = cmd.start.map_or(now_ms - DEFAULT_REPORT_LOOKBACK_MS, |ts| {
-            (ts.as_u64() / 1_000_000) as i64
-        });
-        let end_ms = cmd
-            .end
-            .map_or(now_ms, |ts| (ts.as_u64() / 1_000_000) as i64);
+        let (reports, delivered) = self.fetch_fill_reports(cmd).await?;
 
-        // Aster requires a symbol on `userTrades`, so the request is fanned out across loaded
-        // instruments when the command does not name one.
-        let targets: Vec<(String, SymbolContext)> = match cmd.instrument_id {
-            Some(instrument_id) => vec![self.symbol_context(&instrument_id)?],
-            None => {
-                let guard = self.instruments.read();
-                guard
-                    .by_id
-                    .keys()
-                    .filter_map(|id| {
-                        Self::context_for_symbol(&guard, &Ustr::from(&format_binance_symbol(id)))
-                            .map(|context| (format_binance_symbol(id), context))
-                    })
-                    .collect()
-            }
-        };
-
-        let mut reports = Vec::new();
-
-        for (symbol, context) in targets {
-            let trades = session
-                .query_user_trades_paged(&symbol, start_ms, end_ms)
-                .await?;
-
-            for trade in &trades {
-                // A fill whose price, quantity or commission cannot be parsed is a hole in the
-                // history, not a fill to skip: the caller must not treat the result as complete.
-                let report = trade
-                    .to_fill_report(
-                        self.core.account_id,
-                        context.instrument_id,
-                        context.price_precision,
-                        context.size_precision,
-                        Self::settlement_currency(),
-                        ts_init,
-                    )
-                    .with_context(|| {
-                        format!("Failed to parse Aster trade {} on {symbol}", trade.id)
-                    })?;
-                reports.push(report);
-
-                // Reported to the engine's reconciliation, so a later compensation pass must
-                // not deliver the same trade again as a live fill.
-                self.stream_state
-                    .write()
-                    .record_fill(Ustr::from(&symbol), trade.id, trade.time);
-            }
-        }
+        // Only now, with the whole request answered, are the trades recorded as delivered.
+        self.commit_delivered_fills(delivered);
 
         Ok(reports)
     }
-
     /// Composes the startup reconciliation snapshot.
     ///
     /// Overridden rather than inherited for two reasons the default composition cannot know
@@ -2639,9 +2760,11 @@ impl ExecutionClient for AsterExecutionClient {
     ///    to an order still in `Initialized` and rejected. Each report is therefore aligned
     ///    against its own fills (see [`align_report_with_fills`]).
     ///
-    /// Fills whose order is not in the report set are dropped: a one-way-mode fill carries no
-    /// venue position ID, which is what the engine's orphan-fill path requires, so reporting it
-    /// could only add an unreconcilable event.
+    /// 3. **Every reported fill is kept.** A fill whose order is not on the order page is not
+    ///    an orphan — `allOrders` filters on creation time, so an order opened before the
+    ///    window and filled inside it is simply absent — so the order is fetched by ID and
+    ///    linked. A fill that still cannot be linked is retained and the snapshot is declared
+    ///    incomplete; a real trade is never discarded to quiet a warning.
     ///
     /// The three sources are requested one after another rather than concurrently, because each
     /// already fans out across instruments and pages, and Aster rate-limits aggressively.
@@ -2684,24 +2807,65 @@ impl ExecutionClient for AsterExecutionClient {
             .context("failed to build Aster position status reports command")?;
 
         let mut order_reports = self.generate_order_status_reports(&order_cmd).await?;
-        let fill_reports = self.generate_fill_reports(fill_cmd).await?;
+        // Fetched without committing the dedupe records: the positions request below can still
+        // fail the whole snapshot, and a trade the engine never saw must stay deliverable.
+        let (fill_reports, delivered) = self.fetch_fill_reports(fill_cmd).await?;
         let position_reports = self.generate_position_status_reports(&position_cmd).await?;
 
-        let reported_orders: AHashSet<Ustr> = order_reports
+        // A fill inside the window whose order was *created* before it is not an orphan: the
+        // venue's `allOrders` filters on creation time, so a GTC placed two minutes ago and
+        // filled one second ago is simply missing from the order page. Dropping the fill would
+        // discard a real trade and its commission; the order is fetched by ID instead.
+        let mut reported_orders: AHashSet<Ustr> = order_reports
             .iter()
             .map(|report| report.venue_order_id.inner())
             .collect();
+        let mut unlinked_fills = 0usize;
+        // One query per missing order, however many of its trades are in the window.
+        let mut unfetchable: AHashSet<Ustr> = AHashSet::new();
 
-        let (matched_fills, orphan_fills): (Vec<FillReport>, Vec<FillReport>) = fill_reports
-            .into_iter()
-            .partition(|fill| reported_orders.contains(&fill.venue_order_id.inner()));
+        for fill in &fill_reports {
+            let venue_order_id = fill.venue_order_id.inner();
+            if reported_orders.contains(&venue_order_id) {
+                continue;
+            }
 
-        if !orphan_fills.is_empty() {
+            if unfetchable.contains(&venue_order_id) {
+                unlinked_fills += 1;
+                continue;
+            }
+
+            match self
+                .fetch_order_report_by_venue_id(&fill.instrument_id, fill.venue_order_id, ts_init)
+                .await
+            {
+                Ok(Some(report)) => {
+                    log::debug!(
+                        "Linked Aster fill {} to order {venue_order_id}, which predates the \
+                         report window",
+                        fill.trade_id,
+                    );
+                    reported_orders.insert(venue_order_id);
+                    order_reports.push(report);
+                }
+                Ok(None) | Err(_) => {
+                    // Keep the fill: a trade the venue reported is evidence, and losing it
+                    // silently is worse than admitting the snapshot is partial.
+                    unfetchable.insert(venue_order_id);
+                    unlinked_fills += 1;
+                }
+            }
+        }
+
+        // Every fill is retained; the completeness flag carries whether they could all be
+        // attributed to an order.
+        let matched_fills = fill_reports;
+        let reports_complete = unlinked_fills == 0;
+
+        if !reports_complete {
             log::warn!(
-                "Dropping {} Aster fill(s) whose order is outside the reported window; a \
-                 one-way-mode fill carries no venue position ID, so the engine cannot \
-                 reconcile it on its own",
-                orphan_fills.len(),
+                "{unlinked_fills} Aster fill(s) could not be linked to an order report; the \
+                 startup snapshot is reported as incomplete rather than silently trimmed"
             );
         }
 
@@ -2751,11 +2915,16 @@ impl ExecutionClient for AsterExecutionClient {
             None, // report_id
         );
         // The history is complete only from `start`; saying otherwise invites the engine to
-        // invent opening fills for a position it cannot see the start of.
-        mass_status.set_report_window(Some(start), true);
+        // invent opening fills for a position it cannot see the start of. `reports_complete`
+        // additionally states whether every reported fill could be attributed to an order.
+        mass_status.set_report_window(Some(start), reports_complete);
         mass_status.add_order_reports(order_reports);
         mass_status.add_fill_reports(matched_fills);
         mass_status.add_position_reports(position_reports);
+
+        // The snapshot is complete and about to be handed over, so the trades in it are now
+        // the engine's to reconcile and must not be replayed by a later compensation pass.
+        self.commit_delivered_fills(delivered);
 
         Ok(Some(mass_status))
     }
@@ -3609,6 +3778,7 @@ mod tests {
         let error = AsterHttpError::AsterError {
             code,
             message: "denied".to_string(),
+            status: Some(400),
         };
 
         assert!(!is_retryable_stream_connect_error(&error), "code={code}");

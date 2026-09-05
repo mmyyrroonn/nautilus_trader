@@ -381,6 +381,8 @@ impl AsterHttpClient {
             return Err(AsterHttpError::AsterError {
                 code: error.code,
                 message: error.msg,
+                // A `2xx` carrying an error body: the status adds nothing, the code decides.
+                status: None,
             });
         }
 
@@ -397,9 +399,13 @@ impl AsterHttpClient {
 
     fn parse_error_response(response: &HttpResponse) -> AsterHttpError {
         if let Ok(error) = serde_json::from_slice::<AsterErrorResponse>(&response.body) {
+            // The status travels with the code: a parseable body under `503` still means the
+            // execution status is unknown, and classifying on the code alone would terminalise
+            // an order that may be live.
             return AsterHttpError::AsterError {
                 code: error.code,
                 message: error.msg,
+                status: Some(response.status.as_u16()),
             };
         }
 
@@ -755,6 +761,7 @@ mod tests {
         let (result, attempts) = run_get_retry(vec![Err(AsterHttpError::AsterError {
             code: -1121,
             message: "Invalid symbol.".to_string(),
+            status: Some(400),
         })])
         .await;
 

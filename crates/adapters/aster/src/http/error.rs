@@ -82,6 +82,15 @@ pub enum AsterHttpError {
         code: i64,
         /// Error message from Aster.
         message: String,
+        /// HTTP status the body arrived with, when it was not `2xx`.
+        ///
+        /// Aster answers some failures with `200` and an error body, which is why this is
+        /// optional. It is retained because the status and the code carry *different* claims:
+        /// Aster documents `5xx` as "execution status unknown" regardless of the code in the
+        /// body, so a structured `-1000` under `503` is ambiguous while the same code under
+        /// `400` is a decision. Discarding the status here is what let a `503` terminalise an
+        /// order that was live on the book.
+        status: Option<u16>,
     },
     /// Request signing failed.
     SigningError(String),
@@ -106,7 +115,12 @@ impl Display for AsterHttpError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::MissingCredentials => write!(f, "Missing Aster signing credentials"),
-            Self::AsterError { code, message } => write!(f, "Aster error {code}: {message}"),
+            Self::AsterError {
+                code,
+                message,
+                status: Some(status),
+            } => write!(f, "Aster error {code} (HTTP {status}): {message}"),
+            Self::AsterError { code, message, .. } => write!(f, "Aster error {code}: {message}"),
             Self::SigningError(msg) => write!(f, "Signing error: {msg}"),
             Self::JsonError(msg) => write!(f, "JSON error: {msg}"),
             Self::ValidationError(msg) => write!(f, "Validation error: {msg}"),
@@ -167,6 +181,13 @@ impl AsterHttpError {
         match self {
             Self::NetworkError(_) | Self::Timeout(_) | Self::JsonError(_) => true,
             Self::UnexpectedStatus { status, .. } => *status >= 500 || *status == 408,
+            // A `5xx` or `408` is ambiguous whatever the body says: Aster documents those
+            // statuses as "execution status unknown", and the code inside is then a description
+            // of the failure, not a decision about the order.
+            Self::AsterError {
+                status: Some(status),
+                ..
+            } if *status >= 500 || *status == 408 => true,
             Self::AsterError { .. } => self.is_execution_status_unknown(),
             Self::MissingCredentials | Self::SigningError(_) | Self::ValidationError(_) => false,
         }
@@ -185,7 +206,7 @@ impl AsterHttpError {
     /// can be resting or filled while the local state says rejected.
     #[must_use]
     pub fn is_venue_rejection(&self) -> bool {
-        matches!(self, Self::AsterError { .. }) && !self.is_execution_status_unknown()
+        matches!(self, Self::AsterError { .. }) && !self.is_ambiguous_execution()
     }
 
     /// Returns whether the venue rate-limited the request.
@@ -295,6 +316,7 @@ mod tests {
         AsterHttpError::AsterError {
             code,
             message: "test".to_string(),
+            status: None,
         }
     }
 
@@ -303,6 +325,7 @@ mod tests {
         let error = AsterHttpError::AsterError {
             code: -1121,
             message: "Invalid symbol.".to_string(),
+            status: None,
         };
 
         assert_eq!(error.to_string(), "Aster error -1121: Invalid symbol.");
@@ -391,6 +414,41 @@ mod tests {
 
         assert_eq!(error.is_ambiguous_execution(), expected, "status={status}");
         assert!(!error.is_venue_rejection());
+    }
+
+    #[rstest]
+    #[case(503, true)]
+    #[case(502, true)]
+    #[case(500, true)]
+    #[case(408, true)]
+    #[case(400, false)]
+    #[case(429, false)]
+    fn test_structured_body_under_a_server_status_is_ambiguous(
+        #[case] status: u16,
+        #[case] expected: bool,
+    ) {
+        // Aster documents `5xx` as "execution status unknown" whatever the body says, so a
+        // parseable `-1000` under `503` must not terminalise an order that may be on the book.
+        let error = AsterHttpError::AsterError {
+            code: -1000,
+            message: "An unknown error occured while processing the request.".to_string(),
+            status: Some(status),
+        };
+
+        assert_eq!(error.is_ambiguous_execution(), expected, "status={status}");
+        assert_eq!(error.is_venue_rejection(), !expected, "status={status}");
+        assert_eq!(error.code(), Some(-1000));
+    }
+
+    #[rstest]
+    fn test_status_is_rendered_alongside_the_code() {
+        let error = AsterHttpError::AsterError {
+            code: -1000,
+            message: "unknown".to_string(),
+            status: Some(503),
+        };
+
+        assert_eq!(error.to_string(), "Aster error -1000 (HTTP 503): unknown");
     }
 
     #[rstest]

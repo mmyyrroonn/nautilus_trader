@@ -50,7 +50,9 @@ use nautilus_model::{
     accounts::{Account, AccountAny, MarginAccount},
     enums::{AccountType, OmsType, OrderSide, OrderStatus, OrderType, PositionSide, TimeInForce},
     events::{AccountState, OrderEventAny},
-    identifiers::{AccountId, ClientOrderId, InstrumentId, StrategyId, TraderId},
+    identifiers::{
+        AccountId, ClientOrderId, InstrumentId, StrategyId, Symbol, TraderId, Venue, VenueOrderId,
+    },
     instruments::Instrument,
     orders::{Order, OrderAny, builder::OrderTestBuilder},
     types::{AccountBalance, Currency, Money, Price, Quantity},
@@ -83,18 +85,36 @@ fn build_harness(venue: &MockVenue, http_timeout_secs: Option<u64>) -> Harness {
     build_harness_with(venue, http_timeout_secs, None)
 }
 
+/// Builds a harness pinned to its own Nautilus venue.
+///
+/// The account fee registry is process-wide and keyed by venue, so a test that asserts on it
+/// needs a venue the rest of this binary does not touch.
+fn build_harness_with_venue(mock: &MockVenue, venue: Venue) -> Harness {
+    build_harness_inner(mock, Some(30), None, Some(venue))
+}
+
 fn build_harness_with(
     venue: &MockVenue,
     http_timeout_secs: Option<u64>,
     ws_connect_timeout_secs: Option<u64>,
 ) -> Harness {
+    build_harness_inner(venue, http_timeout_secs, ws_connect_timeout_secs, None)
+}
+
+fn build_harness_inner(
+    venue: &MockVenue,
+    http_timeout_secs: Option<u64>,
+    ws_connect_timeout_secs: Option<u64>,
+    venue_override: Option<Venue>,
+) -> Harness {
     let account_id = AccountId::from(ACCOUNT_ID);
     let cache = Rc::new(RefCell::new(Cache::default()));
 
+    let resolved_venue = venue_override.unwrap_or(*ASTER_VENUE);
     let core = ExecutionClientCore::new(
         TraderId::from("TESTER-001"),
         *ASTER_CLIENT_ID,
-        *ASTER_VENUE,
+        resolved_venue,
         OmsType::Netting,
         account_id,
         AccountType::Margin,
@@ -110,6 +130,7 @@ fn build_harness_with(
         http_timeout_secs,
         ws_connect_timeout_secs: ws_connect_timeout_secs
             .or(AsterExecutionClientConfig::default().ws_connect_timeout_secs),
+        venue: venue_override,
         ..Default::default()
     };
 
@@ -1809,14 +1830,28 @@ fn script_historical_fills(venue: &MockVenue) -> i64 {
                     "SELL",
                 ),
                 sized_trade(34_264_622, 910_005, "BTCUSDT", base_ms + 55, "0.010", "BUY"),
-                // A fill whose order falls outside the reported window.
+                // Filled inside the window, but its order was created before it, so
+                // `allOrders` never returns the order and only the trade shows up.
                 sized_trade(34_264_623, 999_999, "BTCUSDT", base_ms + 60, "0.010", "BUY"),
             ],
         );
-        // A real account carries an open position alongside its history.
+        // The venue still answers for that order by ID; `allOrders` filters on creation time.
+        let mut old_order = filled_order(
+            999_999,
+            "O-BEFORE-WINDOW",
+            "BTCUSDT",
+            "BUY",
+            base_ms - 600_000,
+            base_ms + 60,
+        );
+        old_order["origQty"] = json!("0.010");
+        old_order["executedQty"] = json!("0.010");
+        script.orders.insert("999999".to_string(), old_order);
+        // A real account carries an open position alongside its history: the five windowed
+        // orders net to +0.010 and the pre-window order adds another +0.010.
         script.position_risk = json!([{
             "symbol": "BTCUSDT",
-            "positionAmt": "0.010",
+            "positionAmt": "0.020",
             "entryPrice": "50000.0",
             "positionSide": "BOTH",
             "updateTime": base_ms + 25,
@@ -1956,13 +1991,27 @@ async fn test_startup_reconciliation_of_historical_fills_is_accepted_by_the_engi
         .expect("mass status")
         .expect("mass status present");
 
-    assert_eq!(mass_status.order_reports().len(), 5, "every order reported");
+    assert_eq!(
+        mass_status.order_reports().len(),
+        6,
+        "five orders from the window plus the one fetched for a fill that predates it",
+    );
     assert!(
         mass_status
             .fill_reports()
             .keys()
-            .all(|venue_order_id| venue_order_id.as_str() != "999999"),
-        "a fill whose order is outside the window must not be reported",
+            .any(|venue_order_id| venue_order_id.as_str() == "999999"),
+        "a real trade inside the window must be kept, whatever its order's creation time",
+    );
+    assert!(
+        mass_status
+            .order_reports()
+            .contains_key(&VenueOrderId::new("999999")),
+        "the order behind that trade must be fetched by ID and linked",
+    );
+    assert!(
+        mass_status.reports_complete(),
+        "every fill was linked, so the snapshot is complete",
     );
     for (venue_order_id, report) in mass_status.order_reports() {
         if let Some(fills) = mass_status.fill_reports().get(&venue_order_id) {
@@ -2023,6 +2072,7 @@ async fn test_startup_reconciliation_of_historical_fills_is_accepted_by_the_engi
         "NTT2X7HGbrBkQhMo4FnvXc",
         "MANUALMARKET1",
         "O-20260905-023725-001-000-2",
+        "O-BEFORE-WINDOW",
     ] {
         let order = cache_ref
             .order(&ClientOrderId::from(client_order_id))
@@ -2266,5 +2316,524 @@ async fn test_flat_account_with_pre_session_history_reconciles_without_complaint
             .positions_open(None, Some(&eth), None, None, None)
             .is_empty(),
         "the netted history must leave no open position",
+    );
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_unlinkable_fill_is_kept_and_the_snapshot_declared_incomplete() {
+    // The venue cannot answer for the order behind a trade it reported. Dropping the trade
+    // would lose real execution and its commission, so it is kept and the snapshot says so.
+    let venue = MockVenue::start().await;
+    let harness = connected_harness(&venue).await;
+
+    let trade_ms = now_ms() - 5_000;
+    venue.script(|script| {
+        script.user_trades.insert(
+            "BTCUSDT".to_string(),
+            vec![sized_trade(
+                44_000, 940_404, "BTCUSDT", trade_ms, "0.010", "BUY",
+            )],
+        );
+        // `orders` stays empty, so the order query answers -2013 NO_SUCH_ORDER.
+    });
+
+    let mass_status = harness
+        .client
+        .generate_mass_status(None)
+        .await
+        .expect("mass status")
+        .expect("mass status present");
+
+    let trade_ids: Vec<String> = mass_status
+        .fill_reports()
+        .values()
+        .flatten()
+        .map(|fill| fill.trade_id.to_string())
+        .collect();
+    assert_eq!(
+        trade_ids,
+        vec!["44000".to_string()],
+        "a real trade must never be discarded to silence a warning",
+    );
+    assert!(
+        !mass_status.reports_complete(),
+        "a fill with no order behind it makes the snapshot partial, and it must say so",
+    );
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_repeated_compensation_does_not_duplicate_a_recovered_fill() {
+    // R2-01 asks for idempotency: a second outage must not re-apply a trade the first one
+    // already delivered, nor follow it with a bare status that infers a replacement.
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    let order = limit_order("O-IDEMPOTENT", OrderSide::Buy, false);
+    submit_and_settle(&harness, &order, &venue).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    drain_exec(&mut harness.exec_rx);
+
+    let trade_ms = now_ms();
+    venue.script(|script| {
+        let mut row = venue_order(900_900, "O-IDEMPOTENT", "BTCUSDT", "FILLED", "BUY");
+        row["time"] = json!(trade_ms - 1);
+        row["updateTime"] = json!(trade_ms);
+        script
+            .orders
+            .insert("O-IDEMPOTENT".to_string(), row.clone());
+        script.orders.insert("900900".to_string(), row);
+        script.open_orders = json!([]);
+        script.user_trades.insert(
+            "BTCUSDT".to_string(),
+            vec![venue_trade(7_777, 900_900, "BTCUSDT", trade_ms, "0.02")],
+        );
+    });
+
+    venue.drop_ws();
+    wait_until_async(
+        || async { venue.ws_connection_count() >= 2 },
+        Duration::from_secs(20),
+    )
+    .await;
+    wait_until_async(
+        || async { !venue.requests_for("GET", "userTrades").is_empty() },
+        Duration::from_secs(20),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    let first = drain_exec(&mut harness.exec_rx);
+    assert_eq!(
+        fill_trade_ids(&first)
+            .iter()
+            .filter(|id| *id == "7777")
+            .count(),
+        1,
+        "the recovered fill must be delivered exactly once: {first:?}",
+    );
+
+    venue.drop_ws();
+    wait_until_async(
+        || async { venue.ws_connection_count() >= 3 },
+        Duration::from_secs(20),
+    )
+    .await;
+    wait_until_async(
+        || async {
+            venue
+                .requests_for("GET", "userTrades")
+                .iter()
+                .filter(|request| request.param("symbol") == Some("BTCUSDT"))
+                .count()
+                >= 2
+        },
+        Duration::from_secs(20),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    let second = drain_exec(&mut harness.exec_rx);
+    assert!(
+        !fill_trade_ids(&second).contains(&"7777".to_string()),
+        "a second compensation must not re-apply an already delivered trade: {second:?}",
+    );
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_compensation_reports_the_order_together_with_its_fills() {
+    // The order status and its trades must reach the engine as one report. A bare status
+    // carrying the cumulative quantity would make the engine invent the missing fill, and the
+    // real trade would then be rejected by the overfill guard.
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    let order = limit_order("O-BUNDLED", OrderSide::Buy, false);
+    submit_and_settle(&harness, &order, &venue).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    drain_exec(&mut harness.exec_rx);
+
+    let trade_ms = now_ms();
+    venue.script(|script| {
+        let mut row = venue_order(901_000, "O-BUNDLED", "BTCUSDT", "FILLED", "BUY");
+        row["time"] = json!(trade_ms - 1);
+        row["updateTime"] = json!(trade_ms);
+        script.orders.insert("O-BUNDLED".to_string(), row.clone());
+        script.orders.insert("901000".to_string(), row);
+        script.open_orders = json!([]);
+        script.user_trades.insert(
+            "BTCUSDT".to_string(),
+            vec![venue_trade(8_888, 901_000, "BTCUSDT", trade_ms, "0.02")],
+        );
+    });
+
+    venue.drop_ws();
+    wait_until_async(
+        || async { venue.ws_connection_count() >= 2 },
+        Duration::from_secs(20),
+    )
+    .await;
+    wait_until_async(
+        || async { !venue.requests_for("GET", "userTrades").is_empty() },
+        Duration::from_secs(20),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    let events = drain_exec(&mut harness.exec_rx);
+    let bundled = events.iter().any(|event| {
+        matches!(
+            event,
+            ExecutionEvent::Report(ExecutionReport::OrderWithFills(report, fills))
+                if report.client_order_id == Some(ClientOrderId::from("O-BUNDLED"))
+                    && fills.iter().any(|fill| fill.trade_id.as_str() == "8888")
+        )
+    });
+    assert!(
+        bundled,
+        "order and fills must arrive as one report: {events:?}"
+    );
+
+    let bare_status_for_order = events.iter().any(|event| {
+        matches!(
+            event,
+            ExecutionEvent::Report(ExecutionReport::Order(report))
+                if report.client_order_id == Some(ClientOrderId::from("O-BUNDLED"))
+        )
+    });
+    assert!(
+        !bare_status_for_order,
+        "no fill-inferring status may accompany the bundled report: {events:?}",
+    );
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_a_failed_rate_query_does_not_leave_an_earlier_rate_applied() {
+    // Registered rates outlive the client that published them, so a reconnect whose query fails
+    // must not keep silently applying the previous session's rate as if it were verified.
+    // Its own venue: the registry is process-wide, and the other tests in this binary connect
+    // against `ASTER` concurrently.
+    let fee_venue = Venue::from("ASTERFEESCOPE");
+    let btc = InstrumentId::new(Symbol::from("BTCUSDT-PERP"), fee_venue);
+    let venue = MockVenue::start().await;
+    script_connect(&venue);
+
+    let mut first = build_harness_with_venue(&venue, fee_venue);
+    seed_account(&first.cache);
+    first.client.start().expect("start");
+    first.client.connect().await.expect("connect");
+
+    let mut seen_verified = false;
+    while let Ok(event) = first.data_rx.try_recv() {
+        if let DataEvent::Instrument(instrument) = event
+            && instrument.id() == btc
+        {
+            assert_eq!(instrument.taker_fee().to_string(), ASTER_TAKER);
+            seen_verified = true;
+        }
+    }
+    assert!(seen_verified, "the first session must verify the rate");
+
+    // The venue stops answering `commissionRate` for BTCUSDT.
+    venue.script(|script| {
+        script.commission_rates.remove("BTCUSDT");
+    });
+
+    let mut second = build_harness_with_venue(&venue, fee_venue);
+    seed_account(&second.cache);
+    second.client.start().expect("start");
+    second.client.connect().await.expect("connect");
+
+    let mut published = HashMap::new();
+    while let Ok(event) = second.data_rx.try_recv() {
+        if let DataEvent::Instrument(instrument) = event {
+            published.insert(instrument.id().to_string(), instrument);
+        }
+    }
+
+    assert!(
+        !published.contains_key(&btc.to_string()),
+        "a symbol whose rate query failed must not be republished as verified",
+    );
+
+    // And the shared parser must no longer apply the stale rate either.
+    assert_eq!(
+        nautilus_binance::common::fees::instrument_fees(fee_venue, "BTCUSDT"),
+        None,
+        "the previous session's registration must be cleared",
+    );
+    nautilus_binance::common::fees::clear_instrument_fees(fee_venue);
+}
+
+// ------------------------------------------------------------------------------------------------
+// Round-2 review regressions
+// ------------------------------------------------------------------------------------------------
+
+#[rstest]
+#[tokio::test]
+async fn review_round2_reconnect_preserves_real_trade_economics() {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    let order = limit_order("O-REVIEW-GAP", OrderSide::Buy, false);
+    submit_and_settle(&harness, &order, &venue).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    drain_exec(&mut harness.exec_rx);
+    let trade_ms = now_ms();
+    venue.script(|s| {
+        let mut row = venue_order(900200, "O-REVIEW-GAP", "BTCUSDT", "FILLED", "BUY");
+        row["time"] = json!(trade_ms - 1);
+        row["updateTime"] = json!(trade_ms);
+        s.orders.insert("O-REVIEW-GAP".to_string(), row.clone());
+        s.orders.insert("900200".to_string(), row);
+        s.open_orders = json!([]);
+        s.user_trades.insert(
+            "BTCUSDT".to_string(),
+            vec![venue_trade(7001, 900200, "BTCUSDT", trade_ms, "0.02")],
+        );
+    });
+    venue.drop_ws();
+    wait_until_async(
+        || async { venue.ws_connection_count() >= 2 },
+        Duration::from_secs(20),
+    )
+    .await;
+    wait_until_async(
+        || async { !venue.requests_for("GET", "userTrades").is_empty() },
+        Duration::from_secs(20),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    let events = drain_exec(&mut harness.exec_rx);
+    assert!(
+        fill_trade_ids(&events).contains(&"7001".to_string()),
+        "{events:?}"
+    );
+    let cache = Rc::new(RefCell::new(Cache::default()));
+    seed_account(&cache);
+    while let Ok(event) = harness.data_rx.try_recv() {
+        if let DataEvent::Instrument(i) = event {
+            cache.borrow_mut().add_instrument(i).unwrap();
+        }
+    }
+    let mut engine =
+        ExecutionEngine::new(Rc::new(RefCell::new(TestClock::new())), cache.clone(), None);
+    engine.register_client(Box::new(harness.client)).unwrap();
+    engine.register_oms_type(StrategyId::from("EXTERNAL"), OmsType::Netting);
+    for event in &events {
+        if let ExecutionEvent::Report(r) = event {
+            engine.reconcile_execution_report(r);
+        }
+    }
+    let c = cache.borrow();
+    let o = c.order(&ClientOrderId::from("O-REVIEW-GAP")).unwrap();
+    assert_eq!(o.filled_qty(), Quantity::from("0.010"));
+    assert!(
+        o.trade_ids().iter().any(|id| id.as_str() == "7001"),
+        "real trade lost: ids={:?}, fees={:?}",
+        o.trade_ids(),
+        o.commissions()
+    );
+    assert_eq!(
+        o.commissions().get(&Currency::USDT()),
+        Some(&Money::from("0.02 USDT"))
+    );
+}
+
+#[rstest]
+#[tokio::test]
+async fn review_round2_mass_status_keeps_fill_for_order_created_before_window() {
+    let venue = MockVenue::start().await;
+    let harness = connected_harness(&venue).await;
+    let time = now_ms();
+    venue.script(|s| {
+        let mut row = venue_order(920001,"O-OLD-GTC","BTCUSDT","FILLED","BUY");
+        row["time"] = json!(time - 120_000);
+        row["updateTime"] = json!(time - 1_000);
+        s.all_orders.insert("BTCUSDT".to_string(),vec![row.clone()]);
+        s.orders.insert("920001".to_string(),row);
+        s.user_trades.insert("BTCUSDT".to_string(),vec![venue_trade(920101,920001,"BTCUSDT",time-1_000,"0.02")]);
+        s.position_risk = json!([{"symbol":"BTCUSDT","positionAmt":"0.010","entryPrice":"50000.00","positionSide":"BOTH","updateTime":time}]);
+    });
+    let mass = harness
+        .client
+        .generate_mass_status(Some(1))
+        .await
+        .unwrap()
+        .unwrap();
+    let ids: Vec<String> = mass
+        .fill_reports()
+        .values()
+        .flat_map(|rows| rows.iter().map(|r| r.trade_id.to_string()))
+        .collect();
+    assert!(
+        ids.contains(&"920101".to_string()),
+        "in-window real trade discarded; complete={}, orders={}, fills={ids:?}",
+        mass.reports_complete(),
+        mass.order_reports().len()
+    );
+}
+
+#[rstest]
+#[tokio::test]
+async fn review_round2_structured_503_must_not_reject_live_order() {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    venue.script(|s| {
+        s.submit = SubmitOutcome::Status {
+            status: 503,
+            body: json!({"code": -1000, "msg": "An unknown error occured while processing the request."}).to_string(),
+        };
+        s.orders.insert("O-503-JSON".to_string(),
+            venue_order(930001,"O-503-JSON","BTCUSDT","NEW","BUY"));
+    });
+    let order = limit_order("O-503-JSON", OrderSide::Buy, false);
+    drain_exec(&mut harness.exec_rx);
+    submit_and_settle(&harness, &order, &venue).await;
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    let events = drain_exec(&mut harness.exec_rx);
+    assert!(
+        !order_events(&events)
+            .iter()
+            .any(|e| matches!(e, OrderEventAny::Rejected(_))),
+        "structured HTTP503 terminalised a potentially live order: {events:?}"
+    );
+}
+
+#[rstest]
+#[tokio::test]
+async fn review_round2_failed_fill_report_does_not_consume_recovery_trade() {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    drain_exec(&mut harness.exec_rx);
+    let trade_ms = now_ms();
+    venue.script(|s| {
+        s.user_trades.insert(
+            "BTCUSDT".to_string(),
+            vec![
+                venue_trade(930101, 930001, "BTCUSDT", trade_ms, "0.02"),
+                venue_trade(930102, 930002, "BTCUSDT", trade_ms, "not-a-number"),
+            ],
+        );
+        let mut row = venue_order(930001, "O-REPORT-RETRY", "BTCUSDT", "FILLED", "BUY");
+        row["time"] = json!(trade_ms);
+        row["updateTime"] = json!(trade_ms);
+        s.orders.insert("930001".to_string(), row);
+        s.open_orders = json!([]);
+    });
+    let error = harness
+        .client
+        .generate_fill_reports(recent_fill_reports_command())
+        .await
+        .expect_err("invalid second commission must fail the whole report request");
+    assert!(format!("{error:#}").contains("commission"), "{error:#}");
+    assert!(fill_trade_ids(&drain_exec(&mut harness.exec_rx)).is_empty());
+    venue.script(|s| {
+        s.user_trades.insert(
+            "BTCUSDT".to_string(),
+            vec![venue_trade(930101, 930001, "BTCUSDT", trade_ms, "0.02")],
+        );
+    });
+    venue.drop_ws();
+    wait_until_async(
+        || async { venue.ws_connection_count() >= 2 },
+        Duration::from_secs(20),
+    )
+    .await;
+    wait_until_async(
+        || async {
+            venue
+                .requests_for("GET", "userTrades")
+                .iter()
+                .filter(|r| r.param("symbol") == Some("BTCUSDT"))
+                .count()
+                >= 2
+        },
+        Duration::from_secs(20),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(600)).await;
+    let events = drain_exec(&mut harness.exec_rx);
+    assert!(
+        fill_trade_ids(&events).contains(&"930101".to_string()),
+        "failed report request must not consume a trade that the engine never received: {events:?}"
+    );
+}
+
+#[rstest]
+#[tokio::test]
+async fn review_round2_data_request_preserves_verified_fees() {
+    use nautilus_aster::config::AsterDataClientConfig;
+    use nautilus_binance::{
+        common::enums::BinanceProductType, futures::data::BinanceFuturesDataClient,
+    };
+    use nautilus_common::{
+        clients::DataClient,
+        messages::data::{DataResponse, RequestInstruments},
+    };
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    while let Ok(event) = harness.data_rx.try_recv() {
+        if let DataEvent::Instrument(i) = event {
+            harness.cache.borrow_mut().add_instrument(i).unwrap();
+        }
+    }
+    let before = harness
+        .cache
+        .borrow()
+        .instrument(&InstrumentId::from(BTC))
+        .unwrap()
+        .taker_fee();
+    assert_eq!(before, ASTER_TAKER.parse().unwrap());
+    let config = AsterDataClientConfig {
+        base_url_http: Some(venue.http_url()),
+        base_url_ws: Some(venue.ws_url()),
+        ..Default::default()
+    };
+    let mut data = BinanceFuturesDataClient::new(
+        *ASTER_CLIENT_ID,
+        config.to_binance(),
+        BinanceProductType::UsdM,
+    )
+    .unwrap();
+    data.start().unwrap();
+    data.request_instruments(RequestInstruments::new(
+        None,
+        None,
+        Some(*ASTER_CLIENT_ID),
+        Some(*ASTER_VENUE),
+        UUID4::new(),
+        UnixNanos::default(),
+        None,
+    ))
+    .unwrap();
+    let response = tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            if let Some(DataEvent::Response(DataResponse::Instruments(r))) =
+                harness.data_rx.recv().await
+            {
+                break r;
+            }
+        }
+    })
+    .await
+    .expect("instrument response must arrive");
+    for instrument in response.data {
+        harness
+            .cache
+            .borrow_mut()
+            .add_instrument(instrument)
+            .unwrap();
+    }
+    let after = harness
+        .cache
+        .borrow()
+        .instrument(&InstrumentId::from(BTC))
+        .unwrap()
+        .taker_fee();
+    data.stop().unwrap();
+    assert_eq!(
+        after, before,
+        "data request overwrote verified account taker fee"
     );
 }
