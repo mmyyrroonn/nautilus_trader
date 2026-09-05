@@ -192,6 +192,68 @@ impl InstrumentIndex {
     }
 }
 
+/// Adds an explicit flat position row for every instrument that traded in the window but has no
+/// position report.
+///
+/// Aster's `positionRisk` answers with a row per symbol the account holds, so a symbol it omits
+/// is one the account is flat in. That omission is unambiguous to a human and invisible to the
+/// engine: under a bounded report window
+/// (`ExecutionManager::order_only_venue_order_ids`) it looks up the expected quantity per
+/// instrument from the position reports, and an instrument that has none falls through to "the
+/// reports do not explain the position" — demoting every historical order for it to order-only
+/// projection and logging an error, even when the windowed fills net to exactly zero.
+///
+/// Restating the omission as a flat row lets that check succeed. It states nothing the venue did
+/// not: a flat report and an absent report carry the same claim.
+fn with_flat_rows_for_traded_instruments(
+    mut reports: Vec<PositionStatusReport>,
+    order_reports: &[OrderStatusReport],
+    fills: &[FillReport],
+    account_id: AccountId,
+    ts_init: UnixNanos,
+    instruments: &InstrumentIndex,
+) -> Vec<PositionStatusReport> {
+    let already_reported: AHashSet<InstrumentId> =
+        reports.iter().map(|report| report.instrument_id).collect();
+
+    let mut traded: Vec<InstrumentId> = order_reports
+        .iter()
+        .filter(|report| !report.filled_qty.is_zero())
+        .map(|report| report.instrument_id)
+        .chain(fills.iter().map(|fill| fill.instrument_id))
+        .filter(|instrument_id| !already_reported.contains(instrument_id))
+        .collect::<AHashSet<InstrumentId>>()
+        .into_iter()
+        .collect();
+    traded.sort(); // Deterministic report order
+
+    for instrument_id in traded {
+        let Some(instrument) = instruments.by_id(&instrument_id) else {
+            continue;
+        };
+
+        let Ok(quantity) = Quantity::from_decimal_dp(Decimal::ZERO, instrument.size_precision())
+        else {
+            log::warn!("Cannot report a flat Aster position for {instrument_id}");
+            continue;
+        };
+
+        reports.push(PositionStatusReport::new(
+            account_id,
+            instrument_id,
+            PositionSide::Flat,
+            quantity,
+            ts_init,
+            ts_init,
+            Some(UUID4::new()),
+            None, // venue_position_id: one-way mode
+            None, // avg_px_open
+        ));
+    }
+
+    reports
+}
+
 /// Makes an order report's timeline consistent with the fills reported for the same order.
 ///
 /// The execution engine sorts every reconciliation event by `ts_event` before applying it
@@ -2667,6 +2729,20 @@ impl ExecutionClient for AsterExecutionClient {
             );
         }
 
+        // Under a bounded window the engine confirms that the reported fills explain the
+        // reported position, per instrument. An instrument with activity but no position row
+        // has nothing to confirm against, and every one of its orders is then demoted to
+        // order-only projection with an error. A flat row states what the venue's omission
+        // already means, so the check can be answered instead of skipped.
+        let position_reports = with_flat_rows_for_traded_instruments(
+            position_reports,
+            &order_reports,
+            &matched_fills,
+            self.core.account_id,
+            ts_init,
+            &self.instruments.read(),
+        );
+
         let mut mass_status = ExecutionMassStatus::new(
             self.core.client_id,
             self.core.account_id,
@@ -2715,20 +2791,22 @@ impl ExecutionClient for AsterExecutionClient {
                 continue;
             };
 
-            // Parsed before the flat check: `is_flat` reports an unparsable quantity as flat,
-            // so skipping on it first would turn missing data into "no position".
+            // Parsed before anything else: `is_flat` reports an unparsable quantity as flat,
+            // so branching on it first would turn missing data into "no position".
             let signed_quantity = position
                 .signed_quantity()
                 .with_context(|| format!("Failed to parse Aster position {}", position.symbol))?;
 
-            if signed_quantity.is_zero() {
-                continue;
-            }
-
+            // Flat rows are reported, not dropped. "The venue holds nothing here" is a fact the
+            // engine needs: it closes a position the cache still believes in, and under a
+            // bounded report window it is the only thing that can confirm the windowed fills
+            // net out (see `generate_mass_status`).
             let position_side = if signed_quantity > Decimal::ZERO {
                 PositionSide::Long
-            } else {
+            } else if signed_quantity < Decimal::ZERO {
                 PositionSide::Short
+            } else {
+                PositionSide::Flat
             };
 
             let quantity = Quantity::from_decimal_dp(signed_quantity.abs(), context.size_precision)
@@ -3349,6 +3427,89 @@ mod tests {
             UnixNanos::from(ts_last),
             None, // report_id
         )
+    }
+
+    fn flat_position_inputs() -> (Vec<OrderStatusReport>, Vec<FillReport>, InstrumentIndex) {
+        let mut index = InstrumentIndex::default();
+        index.replace(vec![InstrumentAny::CryptoPerpetual(
+            crypto_perpetual_ethusdt(),
+        )]);
+        let instrument_id = crypto_perpetual_ethusdt().id;
+
+        let mut report = report_accepted_at(1_000, 2_000);
+        report.instrument_id = instrument_id;
+        let mut fill = fill_at(1_500);
+        fill.instrument_id = instrument_id;
+
+        (vec![report], vec![fill], index)
+    }
+
+    #[rstest]
+    fn test_flat_row_is_added_for_an_instrument_the_venue_omitted() {
+        // Aster omits a symbol from `positionRisk` when the account is flat in it, and the
+        // engine's bounded check then has no expected quantity to confirm the fills against.
+        let (orders, fills, index) = flat_position_inputs();
+        let instrument_id = crypto_perpetual_ethusdt().id;
+
+        let reports = with_flat_rows_for_traded_instruments(
+            Vec::new(),
+            &orders,
+            &fills,
+            account_id(),
+            UnixNanos::default(),
+            &index,
+        );
+
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].instrument_id, instrument_id);
+        assert_eq!(reports[0].position_side, PositionSide::Flat);
+        assert!(reports[0].signed_decimal_qty.is_zero());
+        assert!(reports[0].venue_position_id.is_none());
+    }
+
+    #[rstest]
+    fn test_existing_position_row_is_never_replaced_by_a_flat_one() {
+        let (orders, fills, index) = flat_position_inputs();
+        let instrument_id = crypto_perpetual_ethusdt().id;
+        let existing = PositionStatusReport::new(
+            account_id(),
+            instrument_id,
+            PositionSide::Long,
+            Quantity::from("0.010"),
+            UnixNanos::default(),
+            UnixNanos::default(),
+            None, // report_id
+            None, // venue_position_id
+            None, // avg_px_open
+        );
+
+        let reports = with_flat_rows_for_traded_instruments(
+            vec![existing],
+            &orders,
+            &fills,
+            account_id(),
+            UnixNanos::default(),
+            &index,
+        );
+
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].position_side, PositionSide::Long);
+    }
+
+    #[rstest]
+    fn test_no_flat_row_without_activity() {
+        let (_, _, index) = flat_position_inputs();
+
+        let reports = with_flat_rows_for_traded_instruments(
+            Vec::new(),
+            &[],
+            &[],
+            account_id(),
+            UnixNanos::default(),
+            &index,
+        );
+
+        assert!(reports.is_empty());
     }
 
     #[rstest]

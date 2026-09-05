@@ -48,7 +48,7 @@ use nautilus_live::{
 };
 use nautilus_model::{
     accounts::{Account, AccountAny, MarginAccount},
-    enums::{AccountType, OmsType, OrderSide, OrderStatus, OrderType, TimeInForce},
+    enums::{AccountType, OmsType, OrderSide, OrderStatus, OrderType, PositionSide, TimeInForce},
     events::{AccountState, OrderEventAny},
     identifiers::{AccountId, ClientOrderId, InstrumentId, StrategyId, TraderId},
     instruments::Instrument,
@@ -1717,6 +1717,33 @@ fn install_log_capture() -> &'static LogCapture {
     &LOG_CAPTURE
 }
 
+/// Returns the reconciliation complaints logged since `since`, for one instrument.
+///
+/// The `log` facade takes a single process-wide logger, so this capture also sees whatever the
+/// other tests in this binary are logging in parallel. Records are therefore narrowed to the
+/// instrument under test, which is unique per test; every reconciliation complaint that matters
+/// here names its instrument (`Bounded reconciliation does not explain the reported position for
+/// {instrument}`, `InvalidStateTrigger: ... instrument_id={instrument}`).
+///
+/// The `no registered endpoint` records are excluded as a property of the rig, not the adapter:
+/// this harness wires an engine and a manager but no portfolio, so published order events find
+/// no `Portfolio.update_order` endpoint. The live node registers one.
+fn reconciliation_complaints(
+    logger: &'static LogCapture,
+    since: usize,
+    instrument_id: &str,
+) -> Vec<String> {
+    logger
+        .records()
+        .into_iter()
+        .skip(since)
+        .filter(|(level, _)| *level <= Level::Warn)
+        .filter(|(_, message)| !message.contains("no registered endpoint"))
+        .filter(|(_, message)| message.contains(instrument_id))
+        .map(|(level, message)| format!("[{level}] {message}"))
+        .collect()
+}
+
 /// Scripts two historical filled orders with their trades, as a real account carries them.
 fn script_historical_fills(venue: &MockVenue) -> i64 {
     let base_ms = now_ms() - 600_000;
@@ -1763,13 +1790,27 @@ fn script_historical_fills(venue: &MockVenue) -> i64 {
         script.user_trades.insert(
             "BTCUSDT".to_string(),
             vec![
-                venue_trade(34_264_618, 910_001, "BTCUSDT", base_ms + 10, "0.02"),
-                venue_trade(34_264_619, 910_002, "BTCUSDT", base_ms + 25, "0.02"),
-                venue_trade(34_264_620, 910_003, "BTCUSDT", base_ms + 35, "0.02"),
-                venue_trade(34_264_621, 910_004, "BTCUSDT", base_ms + 45, "0.02"),
-                venue_trade(34_264_622, 910_005, "BTCUSDT", base_ms + 55, "0.02"),
+                sized_trade(34_264_618, 910_001, "BTCUSDT", base_ms + 10, "0.010", "BUY"),
+                sized_trade(
+                    34_264_619,
+                    910_002,
+                    "BTCUSDT",
+                    base_ms + 25,
+                    "0.010",
+                    "SELL",
+                ),
+                sized_trade(34_264_620, 910_003, "BTCUSDT", base_ms + 35, "0.010", "BUY"),
+                sized_trade(
+                    34_264_621,
+                    910_004,
+                    "BTCUSDT",
+                    base_ms + 45,
+                    "0.010",
+                    "SELL",
+                ),
+                sized_trade(34_264_622, 910_005, "BTCUSDT", base_ms + 55, "0.010", "BUY"),
                 // A fill whose order falls outside the reported window.
-                venue_trade(34_264_623, 999_999, "BTCUSDT", base_ms + 60, "0.02"),
+                sized_trade(34_264_623, 999_999, "BTCUSDT", base_ms + 60, "0.010", "BUY"),
             ],
         );
         // A real account carries an open position alongside its history.
@@ -1968,13 +2009,7 @@ async fn test_startup_reconciliation_of_historical_fills_is_accepted_by_the_engi
         .reconcile_execution_mass_status(mass_status, Rc::new(RefCell::new(engine)))
         .await;
 
-    let rejected: Vec<String> = logger
-        .records()
-        .into_iter()
-        .skip(before)
-        .filter(|(_, message)| message.contains("InvalidStateTrigger"))
-        .map(|(_, message)| message)
-        .collect();
+    let rejected = reconciliation_complaints(logger, before, BTC);
 
     assert!(
         rejected.is_empty(),
@@ -1999,4 +2034,237 @@ async fn test_startup_reconciliation_of_historical_fills_is_accepted_by_the_engi
             "{client_order_id} must carry its real fill",
         );
     }
+}
+
+/// A filled `IOC` buy, as the probe leaves behind on each run.
+fn ioc_buy(order_id: i64, client_order_id: &str, symbol: &str, time_ms: i64, qty: &str) -> Value {
+    json!({
+        "symbol": symbol,
+        "orderId": order_id,
+        "clientOrderId": client_order_id,
+        "price": "50000.00",
+        "avgPrice": "50000.00",
+        "origQty": qty,
+        "executedQty": qty,
+        "cumQuote": "150.0",
+        "status": "FILLED",
+        "timeInForce": "IOC",
+        "type": "LIMIT",
+        "side": "BUY",
+        "positionSide": "BOTH",
+        "reduceOnly": false,
+        "closePosition": false,
+        "time": time_ms,
+        "updateTime": time_ms,
+    })
+}
+
+/// A manual reduce-only `MARKET` sell placed outside Nautilus to flatten the account.
+fn manual_reduce_only_sell(
+    order_id: i64,
+    client_order_id: &str,
+    symbol: &str,
+    time_ms: i64,
+    qty: &str,
+) -> Value {
+    json!({
+        "symbol": symbol,
+        "orderId": order_id,
+        "clientOrderId": client_order_id,
+        "price": "0",
+        "avgPrice": "50000.00",
+        "origQty": qty,
+        "executedQty": qty,
+        "cumQuote": "600.0",
+        "status": "FILLED",
+        "timeInForce": "GTC",
+        "type": "MARKET",
+        "side": "SELL",
+        "positionSide": "BOTH",
+        "reduceOnly": true,
+        "closePosition": false,
+        "time": time_ms,
+        "updateTime": time_ms,
+    })
+}
+
+fn sized_trade(id: i64, order_id: i64, symbol: &str, time: i64, qty: &str, side: &str) -> Value {
+    json!({
+        "symbol": symbol,
+        "id": id,
+        "orderId": order_id,
+        "price": "50000.00",
+        "qty": qty,
+        "quoteQty": "150.0",
+        "realizedPnl": "0",
+        "side": side,
+        "positionSide": "BOTH",
+        "maker": false,
+        "buyer": side == "BUY",
+        "commission": "0.02",
+        "commissionAsset": "USDT",
+        "time": time,
+    })
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_flat_account_with_pre_session_history_reconciles_without_complaint() {
+    // The live account after a probe run: five IOC buys of 0.003 and two manual reduce-only
+    // sells (0.012 then 0.003) that flatten it again. `positionRisk` then lists nothing for the
+    // instrument, and the engine's bounded-window check had no expected quantity to confirm the
+    // fills against, so it logged
+    // "Bounded reconciliation does not explain the reported position ...".
+    let logger = install_log_capture();
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+
+    let base_ms = now_ms() - 600_000;
+    venue.script(|script| {
+        let mut orders = Vec::new();
+        let mut trades = Vec::new();
+
+        // Four buys, then the 0.012 flattening sell, then a fifth buy and its 0.003 sell.
+        for index in 0..4i64 {
+            let time_ms = base_ms + index * 1_000;
+            orders.push(ioc_buy(
+                920_000 + index,
+                &format!("O-PROBE-{index}"),
+                "ETHUSDT",
+                time_ms,
+                "0.003",
+            ));
+            trades.push(sized_trade(
+                35_000 + index,
+                920_000 + index,
+                "ETHUSDT",
+                time_ms,
+                "0.003",
+                "BUY",
+            ));
+        }
+
+        orders.push(manual_reduce_only_sell(
+            920_100,
+            "NTT2X7HGbrBkQhMo4FnvXc",
+            "ETHUSDT",
+            base_ms + 10_000,
+            "0.012",
+        ));
+        trades.push(sized_trade(
+            35_100,
+            920_100,
+            "ETHUSDT",
+            base_ms + 10_000,
+            "0.012",
+            "SELL",
+        ));
+
+        orders.push(ioc_buy(
+            920_004,
+            "O-PROBE-4",
+            "ETHUSDT",
+            base_ms + 20_000,
+            "0.003",
+        ));
+        trades.push(sized_trade(
+            35_004,
+            920_004,
+            "ETHUSDT",
+            base_ms + 20_000,
+            "0.003",
+            "BUY",
+        ));
+
+        orders.push(manual_reduce_only_sell(
+            920_101,
+            "NTT3MANUALSELL2",
+            "ETHUSDT",
+            base_ms + 30_000,
+            "0.003",
+        ));
+        trades.push(sized_trade(
+            35_101,
+            920_101,
+            "ETHUSDT",
+            base_ms + 30_000,
+            "0.003",
+            "SELL",
+        ));
+
+        script.all_orders.insert("ETHUSDT".to_string(), orders);
+        script.user_trades.insert("ETHUSDT".to_string(), trades);
+        // The account is flat, so the venue lists no position for the instrument.
+        script.position_risk = json!([]);
+    });
+
+    let mass_status = harness
+        .client
+        .generate_mass_status(None)
+        .await
+        .expect("mass status")
+        .expect("mass status present");
+
+    assert_eq!(
+        mass_status.order_reports().len(),
+        7,
+        "seven historical orders"
+    );
+    let eth = InstrumentId::from(ETH);
+    let position_reports = mass_status.position_reports();
+    let reported = position_reports
+        .get(&eth)
+        .and_then(|reports| reports.first())
+        .expect("a traded instrument must carry a position row even when flat");
+    assert_eq!(reported.position_side, PositionSide::Flat);
+    assert!(reported.signed_decimal_qty.is_zero());
+
+    let cache = Rc::new(RefCell::new(Cache::default()));
+    seed_account(&cache);
+    while let Ok(event) = harness.data_rx.try_recv() {
+        if let DataEvent::Instrument(instrument) = event {
+            cache
+                .borrow_mut()
+                .add_instrument(instrument)
+                .expect("instrument");
+        }
+    }
+    let clock = Rc::new(RefCell::new(TestClock::new()));
+    let mut manager = ExecutionManager::new(
+        clock.clone(),
+        cache.clone(),
+        ExecutionManagerConfig::default(),
+    )
+    .expect("manager");
+    let mut engine = ExecutionEngine::new(clock, cache.clone(), None);
+    engine
+        .register_client(Box::new(harness.client))
+        .expect("register");
+    engine.register_oms_type(StrategyId::from("EXTERNAL"), OmsType::Netting);
+
+    let before = logger.records().len();
+    manager
+        .reconcile_execution_mass_status(mass_status, Rc::new(RefCell::new(engine)))
+        .await;
+
+    let complaints = reconciliation_complaints(logger, before, ETH);
+
+    assert!(
+        complaints.is_empty(),
+        "a flat account with pre-session history must reconcile silently: {complaints:#?}",
+    );
+
+    // Every order is still reconstructed, and the account is still flat.
+    let cache_ref = cache.borrow();
+    assert_eq!(
+        cache_ref.orders(None, Some(&eth), None, None, None).len(),
+        7,
+        "every historical order must still be reconstructed",
+    );
+    assert!(
+        cache_ref
+            .positions_open(None, Some(&eth), None, None, None)
+            .is_empty(),
+        "the netted history must leave no open position",
+    );
 }

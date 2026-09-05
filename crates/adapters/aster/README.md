@@ -189,6 +189,20 @@ three things the default composition cannot:
   window, and a fill whose order is not in the report set is dropped with a warning. A one-way
   mode fill carries no venue position ID, which is exactly what the engine's orphan-fill path
   requires, so reporting it could only add an event nothing can reconcile.
+- **Reports flat positions.** Declaring the window also turns on the engine's bounded check
+  (`ExecutionManager::order_only_venue_order_ids`), which confirms per instrument that the
+  reported fills net to the reported position. It looks the expected quantity up in the position
+  reports, and an instrument with fills but *no* position row has nothing to confirm against:
+  every historical order for it is demoted to order-only projection with
+  `Bounded reconciliation does not explain the reported position for ...`. Aster omits a symbol
+  from `positionRisk` when the account is flat in it, so `generate_position_status_reports` now
+  reports flat rows rather than dropping them, and `generate_mass_status` adds an explicit flat
+  row for any instrument that traded in the window but has none. A flat report and an absent
+  report make the same claim; only one of them is legible to the engine.
+
+A flat row is also what closes a position the cache still believes in, so reporting it is right
+independently of the bounded check - `reconcile_position_report_netting` no-ops when the venue
+and the cache already agree.
 
 ## Fees
 
