@@ -143,6 +143,14 @@ restores the four things that gap can invalidate:
    working but the venue no longer lists is queried individually, which surfaces the fills and
    cancels that happened during the outage. Orders the fill pass already delivered are skipped,
    so no second, fill-inferring status follows them.
+   If the trade history cannot be read, the pass retries it (1 s, 3 s) and then **holds back
+   every order status that carries a filled quantity** rather than publishing it: to the engine
+   such a status *is* a fill, and the trade it invents to explain it permanently displaces the
+   real one — which then arrives against a complete order and is rejected as an overfill. Those
+   orders stay in the working set and the next pass retries them; statuses with nothing filled,
+   and the balance and position refreshes, proceed as usual. "No fills were missed" and "the
+   fill query failed" are different answers and are no longer both an empty set.
+
    The fill window starts at the newest trade time seen for each symbol, falling back to a
    one-hour lookback, and never reaches earlier than the connect. Anything older belongs to the
    execution engine's startup reconciliation; replaying it as a live session fill is what makes
@@ -210,6 +218,13 @@ three things the default composition cannot:
   (`GET /fapi/v3/order?orderId=`, which is not time-filtered) and linked. A fill that still
   cannot be linked is kept and the snapshot is published with `reports_complete = false`; the
   engine is told the history is partial rather than handed a trimmed one that looks whole.
+
+  Such a fill is also **not** marked as delivered. `ExecutionManager` creates no fill event for
+  a one-way fill with neither a cached order nor a venue position ID, so a report call returning
+  `Ok` is not the same as the fill having been applied; recording it would make the next
+  compensation pass skip a trade nothing ever consumed. It is held as pending instead, and its
+  timestamp pins the compensation window open so a later trade for the same symbol cannot
+  advance the watermark past it.
 - **Reports flat positions.** Declaring the window also turns on the engine's bounded check
   (`ExecutionManager::order_only_venue_order_ids`), which confirms per instrument that the
   reported fills net to the reported position. It looks the expected quantity up in the position
@@ -240,16 +255,28 @@ That default is a placeholder, not a measurement, and must not be quoted as the 
 Publishing once is not enough. The market-data path is the Binance USD-M client, which rebuilds
 instruments from `exchangeInfo` on every explicit `request_instruments` and on its hourly
 refresh - with the Binance VIP-0 defaults, over the same cache. The verified rates are therefore
-also *registered* with `nautilus_binance::common::fees::register_instrument_fees`, keyed by venue
-and symbol, and the shared instrument parser applies them wherever it would otherwise use a
-fallback. The registry is empty unless a venue registers into it, so Binance itself is unchanged.
-This is the one place the Aster work reaches into `nautilus-binance`: the fees can only be
-obtained through Aster's EIP-712-signed endpoint, which that client cannot call, so nothing
-inside the data path could otherwise know them.
+also *registered* with `nautilus_binance::common::fees::register_instrument_fees`, and the shared
+instrument parser applies them wherever it would otherwise use a fallback. The registry is empty
+unless something registers into it, so Binance itself is unchanged. This is the one place the
+Aster work reaches into `nautilus-binance`: the fees can only be obtained through Aster's
+EIP-712-signed endpoint, which that client cannot call, so nothing inside the data path could
+otherwise know them.
 
-A registration outlives the client that made it, so a symbol whose query *fails* on a later
-connect has its entry removed rather than left in place: a rate that can no longer be confirmed
-must not keep being applied as though it still were.
+Registrations are owned, not global. The key is the **HTTP endpoint** the rates were verified
+against, and the owning **account** is stored with them:
+
+- Mainnet and testnet, or two deployments, share the `ASTER` venue but not their base URL, so
+  two clients for different accounts no longer overwrite each other. The parser matches on the
+  URL it is itself talking to.
+- Two accounts on the *same* endpoint cannot both be served, because nothing downstream could
+  tell their instruments apart. The second registration is **refused** and the symbol is
+  reported as unverified, rather than silently replacing the first account's measured rates.
+- Only the owning account can drop an entry, so one client's failed query cannot clear another's.
+- `stop()` releases the client's registrations, so a later client for another account can take
+  the endpoint over and a stale rate cannot outlive the session that verified it.
+
+A symbol whose query *fails* on a later connect also has its entry removed: a rate that can no
+longer be confirmed must not keep being applied as though it still were.
 
 ## Venue quirks
 

@@ -35,7 +35,7 @@ use futures_util::StreamExt;
 use nautilus_binance::{
     common::{
         enums::{BinanceEnvironment, BinanceProductType},
-        fees::{clear_instrument_fee, register_instrument_fees},
+        fees::{FeeScope, clear_instrument_fee, clear_scope_fees, register_instrument_fees},
         symbol::format_binance_symbol,
     },
     futures::{
@@ -131,6 +131,14 @@ const AMBIGUOUS_SUBMIT_QUERY_DELAYS: [Duration; 3] = [
     Duration::from_secs(5),
     Duration::from_secs(15),
 ];
+
+/// Delays before repeating a compensation pass's trade-history query.
+///
+/// A transient `userTrades` failure must not cost the session its real fills, and the order
+/// states that depend on them are held back until it answers, so it is worth a short retry
+/// rather than waiting for the next reconnect.
+const COMPENSATION_FILL_RETRY_DELAYS: [Duration; 2] =
+    [Duration::from_secs(1), Duration::from_secs(3)];
 
 /// Trade IDs retained per symbol for deduplicating REST compensation against stream fills.
 const MAX_TRACKED_TRADE_IDS: usize = 4_096;
@@ -255,6 +263,34 @@ fn with_flat_rows_for_traded_instruments(
     reports
 }
 
+#[must_use]
+/// Returns whether a status report must be withheld because its fills are not covered.
+///
+/// A report carrying a filled quantity is a fill in the engine's eyes: it reconciles the
+/// difference by inventing one. That is correct only when the real trades have already been
+/// delivered. When the trade history could not be read, publishing it replaces a real trade
+/// (with its ID and commission) by a synthetic one *permanently* — the real fill arriving on
+/// a later pass is then rejected by the overfill guard.
+///
+/// The order is left in the working set, so the next pass retries it once the history reads
+/// again. A report with nothing filled cannot trigger inference and is published as usual.
+fn defer_uncovered_status(report: &OrderStatusReport, coverage: FillCoverage) -> bool {
+    if coverage == FillCoverage::Complete || report.filled_qty.is_zero() {
+        return false;
+    }
+
+    log::warn!(
+        "Holding back the Aster status for {} ({}): it reports {} filled and the trade \
+         history is unavailable, so publishing it would fabricate the fill behind it",
+        report
+            .client_order_id
+            .map_or_else(|| report.venue_order_id.to_string(), |id| id.to_string()),
+        report.instrument_id,
+        report.filled_qty,
+    );
+    true
+}
+
 /// Makes an order report's timeline consistent with the fills reported for the same order.
 ///
 /// The execution engine sorts every reconciliation event by `ts_event` before applying it
@@ -374,10 +410,24 @@ impl AppliedTrades {
     }
 }
 
+/// Whether a compensation pass could see every fill it needed.
+///
+/// The difference matters more than it looks: an empty delivered set means either "no trades
+/// were missed" or "the trade history could not be read", and those demand opposite behaviour
+/// from the order pass that follows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FillCoverage {
+    /// Every symbol's trade history answered, so the delivered set is the whole truth.
+    Complete,
+    /// At least one trade query failed; nothing may be published that implies a fill.
+    Unreliable,
+}
+
 /// One trade a report request covered, pending the dedupe commit.
 #[derive(Debug, Clone, Copy)]
 struct DeliveredFill {
     symbol: Ustr,
+    venue_order_id: Ustr,
     trade_id: i64,
     ts_ms: i64,
 }
@@ -393,6 +443,11 @@ struct StreamState {
     working_orders: AHashMap<Ustr, Ustr>,
     /// Applied trade IDs per venue symbol.
     applied_trades: AHashMap<Ustr, AppliedTrades>,
+    /// Trades reported but not applied, per symbol, with the time they happened.
+    ///
+    /// They keep the compensation window reaching back far enough to pick them up again once
+    /// whatever blocked them — a missing order, most often — has resolved.
+    pending_trades: AHashMap<Ustr, AHashMap<i64, i64>>,
     /// Millisecond timestamp at which this client connected.
     ///
     /// Compensation never reaches behind it. Fills older than the connect belong to the
@@ -412,10 +467,36 @@ impl StreamState {
 
     /// Records a fill, returning whether it had not been applied before.
     fn record_fill(&mut self, symbol: Ustr, trade_id: i64, ts_ms: i64) -> bool {
+        if let Some(pending) = self.pending_trades.get_mut(&symbol) {
+            pending.remove(&trade_id);
+            if pending.is_empty() {
+                self.pending_trades.remove(&symbol);
+            }
+        }
+
         self.applied_trades
             .entry(symbol)
             .or_default()
             .record(trade_id, ts_ms)
+    }
+
+    /// Notes a trade that was reported but not applied, so it stays recoverable.
+    fn note_pending_fill(&mut self, symbol: Ustr, trade_id: i64, ts_ms: i64) {
+        if self.has_fill(&symbol, trade_id) {
+            return;
+        }
+
+        self.pending_trades
+            .entry(symbol)
+            .or_default()
+            .insert(trade_id, ts_ms);
+    }
+
+    /// Returns the earliest time a trade is still waiting to be recovered for a symbol.
+    fn earliest_pending_ms(&self, symbol: &Ustr) -> Option<i64> {
+        self.pending_trades
+            .get(symbol)
+            .and_then(|pending| pending.values().copied().min())
     }
 
     fn has_fill(&self, symbol: &Ustr, trade_id: i64) -> bool {
@@ -437,9 +518,17 @@ impl StreamState {
     /// Never earlier than the connect: an outage this session observed cannot have hidden a
     /// fill that happened before the session existed.
     fn compensation_start_ms(&self, symbol: &Ustr, default_start_ms: i64) -> i64 {
-        self.last_fill_ms(symbol)
+        let start = self
+            .last_fill_ms(symbol)
             .unwrap_or(default_start_ms)
-            .max(self.session_start_ms)
+            .max(self.session_start_ms);
+
+        // A trade still awaiting recovery pulls the window back to cover it, whatever later
+        // trades have since advanced the watermark.
+        match self.earliest_pending_ms(symbol) {
+            Some(pending) => start.min(pending),
+            None => start,
+        }
     }
 }
 
@@ -785,14 +874,34 @@ impl SessionContext {
         // the real trade then arrives against an already-complete order, trips the overfill
         // guard, and is dropped — leaving the order holding a synthetic trade ID and no
         // commission. The economics, not just the log line, depend on this ordering.
-        let delivered = match self.compensate_fills().await {
-            Ok(delivered) => delivered,
-            Err(e) => {
-                log::error!("Aster fill compensation after {reason} failed: {e}");
-                AHashSet::new()
+        let mut delivered = AHashSet::new();
+        let mut coverage = FillCoverage::Unreliable;
+
+        for attempt in 0..=COMPENSATION_FILL_RETRY_DELAYS.len() {
+            match self.compensate_fills().await {
+                Ok(recovered) => {
+                    delivered = recovered;
+                    coverage = FillCoverage::Complete;
+                    break;
+                }
+                Err(e) => {
+                    log::error!("Aster fill compensation after {reason} failed: {e}");
+                    if let Some(delay) = COMPENSATION_FILL_RETRY_DELAYS.get(attempt) {
+                        tokio::time::sleep(*delay).await;
+                    }
+                }
             }
-        };
-        if let Err(e) = self.compensate_orders(&delivered).await {
+        }
+
+        if coverage == FillCoverage::Unreliable {
+            log::error!(
+                "Aster trade history is unavailable after {reason}; order states carrying a \
+                 filled quantity are held back until it can be read, so the engine is not \
+                 invited to invent the trades behind them"
+            );
+        }
+
+        if let Err(e) = self.compensate_orders(&delivered, coverage).await {
             log::error!("Aster order compensation after {reason} failed: {e}");
         }
         if let Err(e) = self.refresh_account_state().await {
@@ -805,7 +914,11 @@ impl SessionContext {
 
     /// Reports the venue's open orders, then resolves every order this client still believes is
     /// working but the venue no longer lists (filled or cancelled during the outage).
-    async fn compensate_orders(&self, delivered: &AHashSet<Ustr>) -> anyhow::Result<()> {
+    async fn compensate_orders(
+        &self,
+        delivered: &AHashSet<Ustr>,
+        coverage: FillCoverage,
+    ) -> anyhow::Result<()> {
         let open_orders = self
             .http_client
             .query_open_orders(None)
@@ -827,6 +940,9 @@ impl SessionContext {
 
             match self.order_to_report(order, ts_init) {
                 Ok(Some(report)) => {
+                    if defer_uncovered_status(&report, coverage) {
+                        continue;
+                    }
                     self.track_order_state(&report, order.symbol);
                     self.emitter.send_order_status_report(report);
                 }
@@ -861,6 +977,9 @@ impl SessionContext {
             {
                 Ok(order) => match self.order_to_report(&order, self.clock.get_time_ns()) {
                     Ok(Some(report)) => {
+                        if defer_uncovered_status(&report, coverage) {
+                            continue;
+                        }
                         self.track_order_state(&report, order.symbol);
                         self.emitter.send_order_status_report(report);
                     }
@@ -1112,6 +1231,7 @@ pub struct AsterExecutionClient {
     emitter: ExecutionEventEmitter,
     http_client: AsterHttpClient,
     instrument_http_client: BinanceFuturesHttpClient,
+    fee_scope: FeeScope,
     instruments: Arc<RwLock<InstrumentIndex>>,
     stream_state: Arc<RwLock<StreamState>>,
     session_tasks: TaskGroup,
@@ -1141,6 +1261,8 @@ impl AsterExecutionClient {
 
         let venue = config.resolved_venue();
         let http_base = config.resolved_http_url();
+        let http_base_for_scope = http_base.clone();
+        let config_account_id = config.account_id;
 
         let http_client = AsterHttpClient::new(
             &http_base,
@@ -1183,6 +1305,10 @@ impl AsterExecutionClient {
             emitter,
             http_client,
             instrument_http_client,
+            // Account fees belong to this account at this endpoint, not to the venue: mainnet
+            // and testnet, or two deployments, share the `ASTER` venue while holding entirely
+            // different rates.
+            fee_scope: FeeScope::new(&http_base_for_scope, config_account_id.as_str()),
             instruments: Arc::new(RwLock::new(InstrumentIndex::default())),
             stream_state: Arc::new(RwLock::new(StreamState::default())),
             session_tasks: TaskGroup::new(),
@@ -1369,6 +1495,7 @@ impl AsterExecutionClient {
                 reports.push(report);
                 delivered.push(DeliveredFill {
                     symbol: Ustr::from(&symbol),
+                    venue_order_id: Ustr::from(&trade.order_id.to_string()),
                     trade_id: trade.id,
                     ts_ms: trade.time,
                 });
@@ -1376,6 +1503,28 @@ impl AsterExecutionClient {
         }
 
         Ok((reports, delivered))
+    }
+
+    /// Keeps trades recoverable that were reported but could not be applied.
+    ///
+    /// Their timestamps also pin the compensation window open: without that, a later trade for
+    /// the same symbol would advance the watermark past them and the next pass would start
+    /// after the very rows it still has to recover.
+    fn hold_back_fills(&self, pending: &[DeliveredFill]) {
+        if pending.is_empty() {
+            return;
+        }
+
+        log::warn!(
+            "{} Aster fill(s) have no order the engine can attach them to; they stay eligible \
+             for recovery rather than being marked delivered",
+            pending.len(),
+        );
+
+        let mut state = self.stream_state.write();
+        for fill in pending {
+            state.note_pending_fill(fill.symbol, fill.trade_id, fill.ts_ms);
+        }
     }
 
     /// Records trades as delivered so a later compensation pass does not repeat them.
@@ -1459,7 +1608,7 @@ impl AsterExecutionClient {
                 Err(e) => {
                     // Drop anything an earlier session registered for this symbol: a rate that
                     // can no longer be confirmed must not keep being applied as if it were.
-                    clear_instrument_fee(self.venue, instrument.raw_symbol().inner());
+                    clear_instrument_fee(&self.fee_scope, instrument.raw_symbol().inner());
                     unverified.push(format!("{symbol} ({e})"));
                     continue;
                 }
@@ -1469,7 +1618,7 @@ impl AsterExecutionClient {
                 (Ok(maker), Ok(taker)) => (maker, taker),
                 (maker, taker) => {
                     let error = maker.err().or_else(|| taker.err()).expect("one error");
-                    clear_instrument_fee(self.venue, instrument.raw_symbol().inner());
+                    clear_instrument_fee(&self.fee_scope, instrument.raw_symbol().inner());
                     unverified.push(format!("{symbol} ({error})"));
                     continue;
                 }
@@ -1481,12 +1630,23 @@ impl AsterExecutionClient {
             };
 
             self.instruments.write().replace_one(updated.clone());
-            // Registered against the venue so the shared instrument parser applies these rates
-            // to every later load. The market-data path rebuilds instruments from
-            // `exchangeInfo` on request and on its periodic refresh, and would otherwise
-            // restore the Binance placeholder fees over the rates just verified here.
-            register_instrument_fees(self.venue, instrument.raw_symbol().inner(), maker, taker);
-            verified += 1;
+            // Registered against this account's endpoint so the shared instrument parser
+            // applies these rates to every later load against it. The market-data path rebuilds
+            // instruments from `exchangeInfo` on request and on its periodic refresh, and would
+            // otherwise restore the Binance placeholder fees over the rates just verified here.
+            if register_instrument_fees(
+                &self.fee_scope,
+                instrument.raw_symbol().inner(),
+                maker,
+                taker,
+            ) {
+                verified += 1;
+            } else {
+                // Another account already owns this endpoint's rates; the parser cannot tell
+                // the two apart, so ours are not applied and must not be reported as verified.
+                unverified.push(format!("{symbol} (endpoint owned by another account)"));
+                continue;
+            }
 
             if let Some(sender) = sender.as_ref()
                 && let Err(e) = sender.send(DataEvent::Instrument(updated))
@@ -2263,6 +2423,10 @@ impl ExecutionClient for AsterExecutionClient {
 
         self.session_tasks.abort();
         self.pending_tasks.abort();
+        // The endpoint's fee registrations belong to this client; releasing them lets a later
+        // client for another account take the endpoint over, and stops a stale rate from
+        // outliving the session that verified it.
+        clear_scope_fees(&self.fee_scope);
         self.core.set_stopped();
         self.core.set_disconnected();
 
@@ -2922,9 +3086,17 @@ impl ExecutionClient for AsterExecutionClient {
         mass_status.add_fill_reports(matched_fills);
         mass_status.add_position_reports(position_reports);
 
-        // The snapshot is complete and about to be handed over, so the trades in it are now
-        // the engine's to reconcile and must not be replayed by a later compensation pass.
-        self.commit_delivered_fills(delivered);
+        // Only the trades whose order the snapshot could name are the engine's to reconcile.
+        // A one-way fill with no cached order and no venue position ID is not turned into a
+        // fill event at all (`ExecutionManager` skips it), so "the report call returned Ok" is
+        // not "the fill was applied". Marking those delivered would make the next compensation
+        // pass skip a trade nothing ever applied.
+        let (linked, unlinked): (Vec<DeliveredFill>, Vec<DeliveredFill>) = delivered
+            .into_iter()
+            .partition(|fill| reported_orders.contains(&fill.venue_order_id));
+
+        self.commit_delivered_fills(linked);
+        self.hold_back_fills(&unlinked);
 
         Ok(Some(mass_status))
     }
@@ -3721,6 +3893,39 @@ mod tests {
     }
 
     #[rstest]
+    fn test_a_pending_fill_holds_the_compensation_window_open() {
+        // A trade reported but never applied must stay reachable, even after later trades for
+        // the same symbol have moved the watermark past it.
+        let mut state = StreamState::default();
+        let symbol = Ustr::from("BTCUSDT");
+        state.session_start_ms = 1_000;
+
+        state.note_pending_fill(symbol, 500, 2_000);
+        state.record_fill(symbol, 600, 9_000);
+
+        assert_eq!(
+            state.compensation_start_ms(&symbol, 1_000),
+            2_000,
+            "the window must reach back to the trade still awaiting recovery",
+        );
+
+        // Once it is applied, the watermark takes over again.
+        state.record_fill(symbol, 500, 2_000);
+        assert_eq!(state.compensation_start_ms(&symbol, 1_000), 9_000);
+    }
+
+    #[rstest]
+    fn test_a_pending_note_for_an_applied_fill_is_ignored() {
+        let mut state = StreamState::default();
+        let symbol = Ustr::from("BTCUSDT");
+        state.record_fill(symbol, 500, 5_000);
+
+        state.note_pending_fill(symbol, 500, 5_000);
+
+        assert_eq!(state.earliest_pending_ms(&symbol), None);
+    }
+
+    #[rstest]
     fn test_recorded_fill_is_not_offered_again() {
         let mut state = StreamState::default();
         let symbol = Ustr::from("BTCUSDT");
@@ -3751,6 +3956,39 @@ mod tests {
     // ------------------------------------------------------------------------------------------
     // User stream connect retry classification
     // ------------------------------------------------------------------------------------------
+
+    #[rstest]
+    fn test_a_filled_status_is_withheld_when_the_trade_history_is_unavailable() {
+        // Publishing it would make the engine invent the trade behind it, and the real one
+        // would then be rejected as an overfill — permanently, not just for this pass.
+        let report = report_accepted_at(1_000, 2_000);
+        assert!(!report.filled_qty.is_zero());
+
+        assert!(defer_uncovered_status(&report, FillCoverage::Unreliable));
+        assert!(
+            !defer_uncovered_status(&report, FillCoverage::Complete),
+            "with the history read, the real fills were already delivered alongside it",
+        );
+    }
+
+    #[rstest]
+    fn test_an_unfilled_status_is_published_even_without_the_trade_history() {
+        // Nothing is filled, so there is no quantity for the engine to explain.
+        let mut report = report_accepted_at(1_000, 2_000);
+        report.filled_qty = Quantity::from("0.000");
+        report.order_status = nautilus_model::enums::OrderStatus::Accepted;
+
+        assert!(!defer_uncovered_status(&report, FillCoverage::Unreliable));
+    }
+
+    #[rstest]
+    fn test_compensation_fill_retry_schedule_is_bounded() {
+        assert_eq!(COMPENSATION_FILL_RETRY_DELAYS.len(), 2);
+        assert_eq!(
+            COMPENSATION_FILL_RETRY_DELAYS.map(|delay| delay.as_secs()),
+            [1, 3],
+        );
+    }
 
     #[rstest]
     fn test_stream_connect_retries_transport_faults() {

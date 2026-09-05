@@ -396,6 +396,8 @@ class AsterProbeStrategy(Strategy):
         self._frozen = False
         self._cleanup_started = False
         self._leftovers: list[str] = []
+        self._leftover_source = "no cleanup has run"
+        self._cancel_errors: list[str] = []
 
         # Set when the probe reaches a terminal state; the watchdog in main() waits on it.
         self.done_event = threading.Event()
@@ -422,6 +424,26 @@ class AsterProbeStrategy(Strategy):
         Return ``id=status`` for every probe order still not confirmed closed.
         """
         return list(self._leftovers)
+
+    @property
+    def cancel_errors(self) -> list[str]:
+        """
+        Return every cancel the cleanup could not even request.
+        """
+        return list(self._cancel_errors)
+
+    @property
+    def leftover_report(self) -> str:
+        """
+        Return the leftover list together with where that state came from.
+
+        The distinction matters: order events stop being dispatched to the strategy once the
+        node stops, so a leftover list taken at stop is a local cache snapshot, not a
+        venue-confirmed state.
+        """
+        if not self._leftovers:
+            return f"none ({self._leftover_source})"
+        return f"{', '.join(self._leftovers)} (source: {self._leftover_source})"
 
     @property
     def finished(self) -> bool:
@@ -453,16 +475,24 @@ class AsterProbeStrategy(Strategy):
         except RuntimeError:
             print(message, file=sys.stderr, flush=True)
 
+    def _note_failure(self, reason: str) -> None:
+        """
+        Record and report a failure without ending the probe.
+
+        Used from inside the cleanup, which runs while ``_finish`` is already in progress.
+        """
+        self._failures.append(reason)
+        # stderr first: the log call can be refused by a re-entrant borrow (see _log_safe).
+        print(f"[probe] FAILED: {reason}", file=sys.stderr, flush=True)
+        self._log_safe("error", f"[probe] FAILED: {reason}")
+
     def record_failure(self, reason: str) -> None:
         """
         Record a failure, log it, and finish the probe.
 
         Public because :func:`_guarded` calls it from outside the class body.
         """
-        self._failures.append(reason)
-        # stderr first: the log call can be refused by a re-entrant borrow (see _log_safe).
-        print(f"[probe] FAILED: {reason}", file=sys.stderr, flush=True)
-        self._log_safe("error", f"[probe] FAILED: {reason}")
+        self._note_failure(reason)
         self._finish("failure")
 
     # -- lifecycle -------------------------------------------------------------------------
@@ -501,16 +531,30 @@ class AsterProbeStrategy(Strategy):
         """
         self._frozen = True
         self._log_safe("info", f"[probe] stopping in phase={self._phase}")
-        outstanding = self._run_cleanup("stop")
+        self._run_cleanup("stop")
+
+        # Re-read the tracked orders after the cancels were requested. Order events are no
+        # longer dispatched to the strategy once the node stops, so this is explicitly a
+        # local stop-time cache snapshot - not a venue-confirmed state.
+        outstanding = self._outstanding_orders()
+        self._set_leftovers(
+            outstanding,
+            "local cache snapshot taken at stop - NOT venue-confirmed",
+        )
         if outstanding:
-            detail = ", ".join(self._leftovers)
             message = (
                 f"[probe] LEFTOVER: {len(outstanding)} probe order(s) not confirmed closed at "
-                f"stop: {detail} - cancel requested, confirmation not received; check the "
-                f"venue manually"
+                f"stop: {self.leftover_report} - cancel requested, confirmation not received; "
+                f"check the venue manually"
             )
             print(message, file=sys.stderr, flush=True)
             self._log_safe("error", message)
+        else:
+            self._log_safe(
+                "info",
+                "[probe] no probe order open in the stop-time cache snapshot "
+                "(local state, not a venue confirmation)",
+            )
 
     # -- market data -----------------------------------------------------------------------
 
@@ -662,11 +706,16 @@ class AsterProbeStrategy(Strategy):
         Only the orders this probe created are touched - never an account-wide cancel. The
         request is fire-and-forget here; confirmation is awaited elsewhere within a bound
         (the watchdog grace before the node stops, or reported as leftover at stop).
+
+        A cancel can be refused locally before it ever reaches the venue - ``cancel_order``
+        raises when the tracked id is not in the cache, which is exactly the state this
+        cleanup exists to report. Each refusal is recorded and the remaining orders are still
+        processed; the exception must never escape and cost the run its result.
         """
         self._frozen = True
         self._cleanup_started = True
         outstanding = self._outstanding_orders()
-        self._leftovers = [self._leftover_label(coid, order) for coid, order in outstanding]
+        self._set_leftovers(outstanding, f"local cache snapshot at cleanup ({trigger})")
 
         if not outstanding:
             self.cleanup_done_event.set()
@@ -679,8 +728,20 @@ class AsterProbeStrategy(Strategy):
                 f"[probe] cleanup ({trigger}): {self._leftover_label(client_order_id, order)} "
                 f"is not closed; sending cancel",
             )
-            self.cancel_order(client_order_id)
+            try:
+                self.cancel_order(client_order_id)
+            except Exception as exc:  # noqa: BLE001 - recorded, never swallowed
+                detail = f"{client_order_id}: {type(exc).__name__}: {exc}"
+                self._cancel_errors.append(detail)
+                self._note_failure(
+                    f"cleanup ({trigger}) could not request a cancel for {detail}; the order "
+                    f"may still be live on the venue",
+                )
         return outstanding
+
+    def _set_leftovers(self, outstanding: list[tuple[Any, Any]], source: str) -> None:
+        self._leftovers = [self._leftover_label(coid, order) for coid, order in outstanding]
+        self._leftover_source = source
 
     def _recheck_cleanup(self) -> None:
         """
@@ -689,7 +750,7 @@ class AsterProbeStrategy(Strategy):
         if not self._cleanup_started or self.cleanup_done_event.is_set():
             return
         outstanding = self._outstanding_orders()
-        self._leftovers = [self._leftover_label(coid, order) for coid, order in outstanding]
+        self._set_leftovers(outstanding, "live order events while the node was running")
         if outstanding:
             return
         self.cleanup_done_event.set()
@@ -760,16 +821,7 @@ class AsterProbeStrategy(Strategy):
             self._report_fees()
             self._finish("complete")
 
-    def _finish(self, reason: str) -> None:
-        if self._finished:
-            return
-        self._finished = True
-        self._frozen = True
-        self._phase = "done"
-
-        # Ask the venue to cancel anything this probe left open before the node is stopped.
-        self._run_cleanup(f"finish:{reason}")
-
+    def _build_summary(self, reason: str) -> str:
         events = " ".join(f"{name}={count}" for name, count in sorted(self._event_counts.items()))
         commissions = (
             " ".join(
@@ -778,17 +830,49 @@ class AsterProbeStrategy(Strategy):
             or "none"
         )
         filled_qty = sum((qty for qty, _ in self._fills), Decimal(0))
-        self.summary_line = (
+        return (
             f"[probe] SUMMARY reason={reason} "
             f"result={'ok' if not self._failures else 'failed'} "
             f"orders_sent={self._orders_sent} events=[{events}] "
             f"fills={len(self._fills)} filled_qty={filled_qty} "
             f"commissions=[{commissions}] fee_lines={len(self._fee_lines)} "
-            f"outstanding={len(self._leftovers)} "
+            f"outstanding={len(self._leftovers)} cancel_errors={len(self._cancel_errors)} "
             f"failures={len(self._failures)} exit_code={self.exit_code}"
         )
-        self._log_safe("error" if self._failures else "info", self.summary_line)
-        self.done_event.set()
+
+    def _finish(self, reason: str) -> None:
+        """
+        End the probe exactly once, always with a result and always with the done signal.
+
+        The cleanup runs first so its outcome reaches the summary, but nothing it does can
+        stop the summary from being produced or ``done_event`` from being set - otherwise a
+        cleanup error would leave the run to be ended only by the watchdog timeout. The
+        cleanup-confirmed signal stays separate: ``done_event`` means "the probe reached a
+        terminal state", ``cleanup_done_event`` means "every probe order is closed".
+        """
+        if self._finished:
+            return
+        self._finished = True
+        self._frozen = True
+        self._phase = "done"
+
+        try:
+            # Ask the venue to cancel anything this probe left open before the node stops.
+            try:
+                self._run_cleanup(f"finish:{reason}")
+            except Exception:  # noqa: BLE001 - recorded, never swallowed
+                self._note_failure(f"cleanup raised while finishing:\n{traceback.format_exc()}")
+
+            self.summary_line = self._build_summary(reason)
+            self._log_safe("error" if self._failures else "info", self.summary_line)
+        finally:
+            if not self.summary_line:
+                self.summary_line = (
+                    f"[probe] SUMMARY reason={reason} result=failed "
+                    f"(the summary could not be built; failures={len(self._failures)})"
+                )
+                print(self.summary_line, file=sys.stderr, flush=True)
+            self.done_event.set()
 
     def _record_event(self, name: str, event) -> None:
         self._event_counts[name] += 1
@@ -1118,11 +1202,18 @@ def main(argv: list[str] | None = None) -> int:
         else:
             exit_code = strategy.exit_code
 
+        if strategy.cancel_errors:
+            print(
+                f"[probe] cleanup could not request {len(strategy.cancel_errors)} cancel(s): "
+                f"{'; '.join(strategy.cancel_errors)}",
+                file=sys.stderr,
+                flush=True,
+            )
         if strategy.leftovers:
             # The probe asked for these to be cancelled but never saw the confirmation; a run
             # that may have left a live order on the venue is not a clean run.
             print(
-                f"[probe] LEFTOVER unconfirmed order(s): {', '.join(strategy.leftovers)}",
+                f"[probe] LEFTOVER unconfirmed order(s): {strategy.leftover_report}",
                 file=sys.stderr,
                 flush=True,
             )

@@ -250,6 +250,12 @@ impl BinanceRawFuturesHttpClient {
         })
     }
 
+    /// Returns the resolved HTTP base URL this client talks to.
+    #[must_use]
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
     fn shared_rate_limiters(
         environment: BinanceEnvironment,
         base_url_override: Option<&str>,
@@ -1968,8 +1974,10 @@ impl BinanceFuturesHttpClient {
     ) -> (Decimal, Decimal) {
         // Rates a venue's own execution client verified outrank anything derived here: this
         // client may not even be able to authenticate against that venue, and rebuilding the
-        // instrument on a refresh would otherwise restore the placeholder. Empty for Binance.
-        if let Some(fees) = instrument_fees(self.venue, symbol) {
+        // instrument on a refresh would otherwise restore the placeholder. Matched on the base
+        // URL, so two accounts on one venue reached through different endpoints stay apart.
+        // Empty for Binance.
+        if let Some(fees) = instrument_fees(self.inner.base_url(), symbol) {
             return fees;
         }
 
