@@ -26,6 +26,16 @@ use nautilus_network::http::error::HttpClientError;
 
 /// Rate limit exceeded (`TOO_MANY_REQUESTS`).
 pub const ASTER_CODE_TOO_MANY_REQUESTS: i64 = -1003;
+/// An unexpected response reached the venue's message bus (`UNEXPECTED_RESP`).
+///
+/// Aster documents this as "execution status unknown": an order submitted under this code may
+/// already be resting on the book or filled.
+pub const ASTER_CODE_UNEXPECTED_RESP: i64 = -1006;
+/// The venue timed out waiting for its own backend (`TIMEOUT`).
+///
+/// Aster documents this as "Send status unknown; execution status unknown", so the same
+/// ambiguity as [`ASTER_CODE_UNEXPECTED_RESP`] applies.
+pub const ASTER_CODE_TIMEOUT: i64 = -1007;
 /// Nonce outside the accepted window, or already used (`INVALID_TIMESTAMP`).
 pub const ASTER_CODE_INVALID_NONCE: i64 = -1021;
 /// Signature rejected (`INVALID_SIGNATURE`).
@@ -48,6 +58,18 @@ pub const ASTER_CODE_ORDER_WOULD_IMMEDIATELY_TRIGGER: i64 = -2021;
 pub const ASTER_CODE_MIN_NOTIONAL: i64 = -4164;
 /// The master wallet has never deposited, so signed endpoints are unavailable.
 pub const ASTER_CODE_UNFUNDED_WALLET: i64 = -5050;
+
+/// The Aster codes that leave the execution status of a request unknown.
+///
+/// Every other structured `{code, msg}` body is a decision the venue already made, so it can be
+/// terminalised. These two are explicitly documented as "execution status unknown" and must be
+/// resolved by querying the order instead.
+///
+/// # References
+///
+/// - <https://asterdex.github.io/aster-api-website/futures-v3/error-codes/>
+pub const ASTER_EXECUTION_STATUS_UNKNOWN_CODES: [i64; 2] =
+    [ASTER_CODE_UNEXPECTED_RESP, ASTER_CODE_TIMEOUT];
 
 /// Aster HTTP client error.
 #[derive(Debug)]
@@ -109,13 +131,61 @@ impl AsterHttpError {
         }
     }
 
-    /// Returns whether this is a structured venue rejection rather than a transport failure.
+    /// Returns whether the venue left the execution status of the request unknown.
     ///
-    /// Structured rejections are definitive: the order never reached the book, so the
-    /// execution client can emit `OrderRejected` instead of waiting for reconciliation.
+    /// True for the two Aster codes documented as "execution status unknown"
+    /// ([`ASTER_CODE_UNEXPECTED_RESP`] and [`ASTER_CODE_TIMEOUT`]). The venue answered, but its
+    /// answer says nothing about whether the order reached the book, so the outcome must be
+    /// resolved by querying the order rather than terminalised.
     #[must_use]
-    pub const fn is_venue_rejection(&self) -> bool {
-        matches!(self, Self::AsterError { .. })
+    pub fn is_execution_status_unknown(&self) -> bool {
+        self.code()
+            .is_some_and(|code| ASTER_EXECUTION_STATUS_UNKNOWN_CODES.contains(&code))
+    }
+
+    /// Returns whether the outcome of a non-idempotent request is ambiguous.
+    ///
+    /// True whenever the failure leaves open the possibility that the venue acted on the
+    /// request anyway:
+    ///
+    /// - a transport fault that never produced a response ([`Self::is_retryable_transport`]);
+    /// - a structured body that declines to report the execution status
+    ///   ([`Self::is_execution_status_unknown`]);
+    /// - a response body that could not be decoded, which says nothing about what the venue
+    ///   did with the request;
+    /// - a `5xx` or `408` status without an Aster error body, typically produced by an edge
+    ///   proxy that may well have forwarded the request.
+    ///
+    /// False for failures that provably never reached the matching engine: missing credentials,
+    /// signing and validation faults raised before the send, and `4xx` statuses, which are the
+    /// venue refusing the request outright.
+    ///
+    /// An ambiguous submission must never be resubmitted and must never be terminalised; the
+    /// execution client resolves it with `GET /fapi/v3/order`.
+    #[must_use]
+    pub fn is_ambiguous_execution(&self) -> bool {
+        match self {
+            Self::NetworkError(_) | Self::Timeout(_) | Self::JsonError(_) => true,
+            Self::UnexpectedStatus { status, .. } => *status >= 500 || *status == 408,
+            Self::AsterError { .. } => self.is_execution_status_unknown(),
+            Self::MissingCredentials | Self::SigningError(_) | Self::ValidationError(_) => false,
+        }
+    }
+
+    /// Returns whether this is a definitive venue rejection.
+    ///
+    /// True only when the venue answered with a structured `{code, msg}` body that reports a
+    /// decision it already made: an invalid symbol, a filter violation, insufficient margin, a
+    /// rejected signature, and so on. The order never reached the book, so the execution client
+    /// can emit `OrderRejected` without waiting for reconciliation.
+    ///
+    /// False for transport failures *and* for the "execution status unknown" codes, which are
+    /// structured bodies that carry no decision (see [`Self::is_execution_status_unknown`]).
+    /// Treating those as rejections was the failure this predicate exists to prevent: the order
+    /// can be resting or filled while the local state says rejected.
+    #[must_use]
+    pub fn is_venue_rejection(&self) -> bool {
+        matches!(self, Self::AsterError { .. }) && !self.is_execution_status_unknown()
     }
 
     /// Returns whether the venue rate-limited the request.
@@ -241,9 +311,46 @@ mod tests {
     #[rstest]
     #[case(ASTER_CODE_TOO_MANY_REQUESTS)]
     #[case(ASTER_CODE_INVALID_NONCE)]
+    #[case(ASTER_CODE_NEW_ORDER_REJECTED)]
+    #[case(ASTER_CODE_MARGIN_NOT_SUFFICIENT)]
+    #[case(ASTER_CODE_MIN_NOTIONAL)]
+    #[case(-1121)] // INVALID_SYMBOL
+    #[case(-1111)] // BAD_PRECISION
+    #[case(-1013)] // INVALID_MESSAGE / filter failure
+    #[case(-1102)] // MANDATORY_PARAM_EMPTY_OR_MALFORMED
+    #[case(-4003)] // quantity less than zero
+    #[case(-4004)] // quantity less than the minimum
+    #[case(-4005)] // quantity greater than the maximum
     fn test_venue_rejection_classification(#[case] code: i64) {
-        assert!(venue_error(code).is_venue_rejection());
-        assert_eq!(venue_error(code).code(), Some(code));
+        let error = venue_error(code);
+
+        assert!(error.is_venue_rejection(), "code={code}");
+        assert!(!error.is_execution_status_unknown(), "code={code}");
+        assert!(!error.is_ambiguous_execution(), "code={code}");
+        assert_eq!(error.code(), Some(code));
+    }
+
+    #[rstest]
+    #[case(ASTER_CODE_UNEXPECTED_RESP)]
+    #[case(ASTER_CODE_TIMEOUT)]
+    fn test_execution_status_unknown_codes_are_not_rejections(#[case] code: i64) {
+        // Aster documents -1006/-1007 as "execution status unknown": the order may already be
+        // resting or filled, so terminalising it as rejected would desynchronise the engine.
+        let error = venue_error(code);
+
+        assert!(error.is_execution_status_unknown(), "code={code}");
+        assert!(error.is_ambiguous_execution(), "code={code}");
+        assert!(!error.is_venue_rejection(), "code={code}");
+        assert!(!error.is_unknown_order(), "code={code}");
+    }
+
+    #[rstest]
+    fn test_execution_status_unknown_codes_are_still_not_retried() {
+        // The venue answered, so the request must not be repeated; only the *classification*
+        // changes, resolution goes through an order query.
+        for code in ASTER_EXECUTION_STATUS_UNKNOWN_CODES {
+            assert!(!venue_error(code).is_retryable_transport(), "code={code}");
+        }
     }
 
     #[rstest]
@@ -251,8 +358,48 @@ mod tests {
         let error = AsterHttpError::Timeout("elapsed".to_string());
 
         assert!(!error.is_venue_rejection());
+        assert!(error.is_ambiguous_execution());
         assert_eq!(error.code(), None);
         assert!(!error.is_auth_failure());
+    }
+
+    #[rstest]
+    fn test_local_failures_are_not_ambiguous() {
+        // A request that never left the process cannot have reached the book.
+        assert!(!AsterHttpError::MissingCredentials.is_ambiguous_execution());
+        assert!(!AsterHttpError::SigningError("bad key".to_string()).is_ambiguous_execution());
+        assert!(!AsterHttpError::ValidationError("no id".to_string()).is_ambiguous_execution());
+    }
+
+    #[rstest]
+    #[case(500, true)]
+    #[case(502, true)]
+    #[case(503, true)]
+    #[case(408, true)]
+    #[case(400, false)]
+    #[case(401, false)]
+    #[case(429, false)]
+    fn test_unexpected_status_ambiguity_follows_the_status_class(
+        #[case] status: u16,
+        #[case] expected: bool,
+    ) {
+        // A gateway 5xx may still have forwarded the order; a 4xx is the request being refused.
+        let error = AsterHttpError::UnexpectedStatus {
+            status,
+            body: "edge".to_string(),
+        };
+
+        assert_eq!(error.is_ambiguous_execution(), expected, "status={status}");
+        assert!(!error.is_venue_rejection());
+    }
+
+    #[rstest]
+    fn test_undecodable_response_body_is_ambiguous() {
+        // The venue answered something; not being able to read it is not a rejection.
+        let error = AsterHttpError::JsonError("expected value at line 1".to_string());
+
+        assert!(error.is_ambiguous_execution());
+        assert!(!error.is_venue_rejection());
     }
 
     #[rstest]

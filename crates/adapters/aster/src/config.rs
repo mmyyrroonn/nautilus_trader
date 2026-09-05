@@ -159,6 +159,11 @@ impl ClientConfig for AsterDataClientConfig {
     }
 }
 
+/// Default per-attempt timeout for opening the private user data stream.
+///
+/// The transport's own connect timeout is shorter than a slow egress path needs; a stalled
+/// handshake there fails the whole `connect`, so the adapter allows a longer window and retries.
+pub const DEFAULT_WS_CONNECT_TIMEOUT_SECS: u64 = 20;
 
 /// Configuration for the Aster live execution client.
 ///
@@ -212,6 +217,13 @@ pub struct AsterExecutionClientConfig {
     pub http_timeout_secs: Option<u64>,
     /// WebSocket heartbeat interval in seconds.
     pub ws_heartbeat_secs: Option<u64>,
+    /// Per-attempt timeout in seconds for opening the private user data stream.
+    ///
+    /// `connect` waits for the first listen key and socket before reporting the client as
+    /// connected, so this bounds how long a stalled handshake can hold up the whole session.
+    /// Hosts whose egress path is slow (a proxy, a long TLS negotiation) need more than the
+    /// transport's own default; the attempt is retried on transport faults regardless.
+    pub ws_connect_timeout_secs: Option<u64>,
     /// Optional proxy URL for HTTP and WebSocket transports.
     pub proxy_url: Option<String>,
     /// Whether to report `EXPIRED` orders as canceled.
@@ -239,6 +251,7 @@ impl std::fmt::Debug for AsterExecutionClientConfig {
             .field("instrument_provider", &self.instrument_provider)
             .field("http_timeout_secs", &self.http_timeout_secs)
             .field("ws_heartbeat_secs", &self.ws_heartbeat_secs)
+            .field("ws_connect_timeout_secs", &self.ws_connect_timeout_secs)
             .field("proxy_url", &self.proxy_url)
             .field("treat_expired_as_canceled", &self.treat_expired_as_canceled)
             .field("venue", &self.venue)
@@ -257,6 +270,7 @@ nautilus_core::impl_pyo3_config_getters!(AsterExecutionClientConfig {
     instrument_provider: BinanceInstrumentProviderConfig,
     http_timeout_secs: Option<u64>,
     ws_heartbeat_secs: Option<u64>,
+    ws_connect_timeout_secs: Option<u64>,
     proxy_url: Option<String>,
     treat_expired_as_canceled: bool,
     venue: Option<Venue>,
@@ -275,6 +289,7 @@ impl Default for AsterExecutionClientConfig {
             instrument_provider: BinanceInstrumentProviderConfig::default(),
             http_timeout_secs: Some(60),
             ws_heartbeat_secs: Some(30),
+            ws_connect_timeout_secs: Some(DEFAULT_WS_CONNECT_TIMEOUT_SECS),
             proxy_url: None,
             treat_expired_as_canceled: true,
             venue: None,

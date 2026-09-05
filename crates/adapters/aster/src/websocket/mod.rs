@@ -65,6 +65,7 @@ pub struct AsterUserStreamClient {
     transport_backend: TransportBackend,
     proxy_url: Option<String>,
     heartbeat_secs: Option<u64>,
+    connect_timeout_secs: Option<u64>,
     listen_key: Option<String>,
     ws_client: Option<BinanceFuturesWebSocketClient>,
 }
@@ -85,9 +86,27 @@ impl AsterUserStreamClient {
             transport_backend,
             proxy_url,
             heartbeat_secs,
+            connect_timeout_secs: None,
             listen_key: None,
             ws_client: None,
         }
+    }
+
+    /// Overrides the per-attempt WebSocket connect timeout.
+    ///
+    /// The shared Binance stream pool defaults to five seconds, which is short for hosts whose
+    /// egress path is slow: the handshake then times out on every attempt and the execution
+    /// client can never come up. `None` keeps the shared default.
+    #[must_use]
+    pub const fn with_connect_timeout_secs(mut self, connect_timeout_secs: Option<u64>) -> Self {
+        self.connect_timeout_secs = connect_timeout_secs;
+        self
+    }
+
+    /// Returns the configured per-attempt WebSocket connect timeout in seconds, if overridden.
+    #[must_use]
+    pub const fn connect_timeout_secs(&self) -> Option<u64> {
+        self.connect_timeout_secs
     }
 
     /// Returns the configured WebSocket base URL.
@@ -143,7 +162,11 @@ impl AsterUserStreamClient {
                 "Failed to build Aster user stream client: {e}"
             ))
         })?
-        .with_proxy(self.proxy_url.clone());
+        .with_proxy(self.proxy_url.clone())
+        .with_connect_timeout_ms(
+            self.connect_timeout_secs
+                .map(|secs| secs.saturating_mul(1_000)),
+        );
 
         ws_client.connect().await.map_err(|e| {
             crate::http::AsterHttpError::NetworkError(format!(

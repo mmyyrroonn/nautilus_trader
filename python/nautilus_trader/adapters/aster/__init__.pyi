@@ -78,6 +78,8 @@ class AsterExecutionClientConfig:
     @property
     def ws_heartbeat_secs(self) -> int | None: ...
     @property
+    def ws_connect_timeout_secs(self) -> int | None: ...
+    @property
     def proxy_url(self) -> str | None: ...
     @property
     def treat_expired_as_canceled(self) -> bool: ...
@@ -95,6 +97,7 @@ class AsterExecutionClientConfig:
         instrument_provider: binance.BinanceInstrumentProviderConfig | None = None,
         http_timeout_secs: int | None = None,
         ws_heartbeat_secs: int | None = None,
+        ws_connect_timeout_secs: int | None = None,
         proxy_url: str | None = None,
         treat_expired_as_canceled: bool | None = None,
         venue: model.Venue | None = None,

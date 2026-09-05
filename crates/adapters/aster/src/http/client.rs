@@ -68,6 +68,12 @@ const GET_RETRY_INITIAL_DELAY_MS: u64 = 500;
 /// Cap on the `GET` retry backoff, giving a 500 ms / 1 s / 2 s schedule.
 const GET_RETRY_MAX_DELAY_MS: u64 = 2_000;
 
+/// Maximum page size Aster accepts on `allOrders` and `userTrades` (the default is 500).
+pub const ASTER_HISTORY_PAGE_LIMIT: u32 = 1_000;
+
+/// Widest window Aster accepts between `startTime` and `endTime` on the history endpoints.
+pub const ASTER_HISTORY_MAX_INTERVAL_MS: i64 = 7 * 24 * 60 * 60 * 1_000;
+
 /// HTTP client for Aster's signed Futures V3 endpoints.
 ///
 /// Cheap to clone; clones share the connection pool, rate limiters, and nonce sequence. The
@@ -501,18 +507,32 @@ impl AsterHttpClient {
 
     /// Queries historical orders for a symbol (`GET /fapi/v3/allOrders`).
     ///
+    /// `order_id` is the venue's pagination cursor: the response then starts at that order ID.
+    /// Aster does not accept it together with a time window, so passing both is rejected
+    /// locally rather than sent.
+    ///
     /// # Errors
     ///
-    /// Returns an error if the request fails.
+    /// Returns an error if `order_id` is combined with `start_time_ms` or `end_time_ms`, or if
+    /// the request fails.
     pub async fn query_all_orders(
         &self,
         symbol: &str,
         start_time_ms: Option<i64>,
         end_time_ms: Option<i64>,
+        order_id: Option<i64>,
         limit: Option<u32>,
     ) -> AsterHttpResult<Vec<AsterOrder>> {
+        if order_id.is_some() && (start_time_ms.is_some() || end_time_ms.is_some()) {
+            return Err(AsterHttpError::ValidationError(
+                "allOrders does not accept `orderId` together with `startTime`/`endTime`"
+                    .to_string(),
+            ));
+        }
+
         let params = AsterParams::new()
             .with("symbol", symbol)
+            .with_opt("orderId", order_id)
             .with_opt("startTime", start_time_ms)
             .with_opt("endTime", end_time_ms)
             .with_opt("limit", limit);
@@ -545,20 +565,34 @@ impl AsterHttpClient {
 
     /// Queries the account's own trades (`GET /fapi/v3/userTrades`).
     ///
+    /// `from_id` is the venue's pagination cursor: the response then starts at that trade ID.
+    /// Aster does not accept it together with a time window, so passing both is rejected
+    /// locally rather than sent.
+    ///
     /// # Errors
     ///
-    /// Returns an error if the request fails.
+    /// Returns an error if `from_id` is combined with `start_time_ms` or `end_time_ms`, or if
+    /// the request fails.
     pub async fn query_user_trades(
         &self,
         symbol: &str,
         start_time_ms: Option<i64>,
         end_time_ms: Option<i64>,
+        from_id: Option<i64>,
         limit: Option<u32>,
     ) -> AsterHttpResult<Vec<AsterUserTrade>> {
+        if from_id.is_some() && (start_time_ms.is_some() || end_time_ms.is_some()) {
+            return Err(AsterHttpError::ValidationError(
+                "userTrades does not accept `fromId` together with `startTime`/`endTime`"
+                    .to_string(),
+            ));
+        }
+
         let params = AsterParams::new()
             .with("symbol", symbol)
             .with_opt("startTime", start_time_ms)
             .with_opt("endTime", end_time_ms)
+            .with_opt("fromId", from_id)
             .with_opt("limit", limit);
 
         self.signed_get(ASTER_USER_TRADES_PATH, params).await
@@ -831,6 +865,37 @@ mod tests {
             .unwrap_err();
 
         assert!(matches!(error, AsterHttpError::ValidationError(_)));
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_all_orders_rejects_cursor_combined_with_a_time_window() {
+        // Aster documents `orderId` as mutually exclusive with `startTime`/`endTime`.
+        let error = client()
+            .query_all_orders("BTCUSDT", Some(1), None, Some(7), None)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(error, AsterHttpError::ValidationError(_)));
+        assert!(error.to_string().contains("orderId"), "{error}");
+    }
+
+    #[rstest]
+    #[tokio::test]
+    async fn test_user_trades_rejects_cursor_combined_with_a_time_window() {
+        let error = client()
+            .query_user_trades("BTCUSDT", None, Some(2), Some(7), None)
+            .await
+            .unwrap_err();
+
+        assert!(matches!(error, AsterHttpError::ValidationError(_)));
+        assert!(error.to_string().contains("fromId"), "{error}");
+    }
+
+    #[rstest]
+    fn test_history_page_limits_match_the_venue_documentation() {
+        assert_eq!(ASTER_HISTORY_PAGE_LIMIT, 1_000);
+        assert_eq!(ASTER_HISTORY_MAX_INTERVAL_MS, 604_800_000);
     }
 
     #[rstest]

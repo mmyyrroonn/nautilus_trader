@@ -107,9 +107,13 @@ pub struct BinanceFuturesWebSocketClient {
     instruments_cache: Arc<AtomicMap<Ustr, InstrumentAny>>,
     transport_backend: TransportBackend,
     proxy_url: Option<String>,
+    connect_timeout_ms: u64,
     socket_factory: Option<SocketControlFactory>,
     socket_endpoint: Option<String>,
 }
+
+/// Default per-attempt WebSocket connect timeout for the stream pool, in milliseconds.
+pub const BINANCE_WS_CONNECT_TIMEOUT_MS: u64 = 5_000;
 
 impl Debug for BinanceFuturesWebSocketClient {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -170,6 +174,7 @@ impl BinanceFuturesWebSocketClient {
             instruments_cache: Arc::new(AtomicMap::new()),
             transport_backend,
             proxy_url: None,
+            connect_timeout_ms: BINANCE_WS_CONNECT_TIMEOUT_MS,
             socket_factory: None,
             socket_endpoint: None,
         })
@@ -180,6 +185,23 @@ impl BinanceFuturesWebSocketClient {
     pub fn with_proxy(mut self, proxy_url: Option<String>) -> Self {
         self.proxy_url = proxy_url;
         self
+    }
+
+    /// Overrides the per-attempt connect timeout for every connection in the stream pool.
+    ///
+    /// `None` keeps [`BINANCE_WS_CONNECT_TIMEOUT_MS`], which is what Binance itself uses. The
+    /// override exists for venues reached over a slower egress path, where a handshake that
+    /// legitimately needs longer than five seconds would otherwise fail every attempt.
+    #[must_use]
+    pub fn with_connect_timeout_ms(mut self, connect_timeout_ms: Option<u64>) -> Self {
+        self.connect_timeout_ms = connect_timeout_ms.unwrap_or(BINANCE_WS_CONNECT_TIMEOUT_MS);
+        self
+    }
+
+    /// Returns the per-attempt connect timeout applied to the stream pool, in milliseconds.
+    #[must_use]
+    pub const fn connect_timeout_ms(&self) -> u64 {
+        self.connect_timeout_ms
     }
 
     /// Configures socket state reporting and reconnect control for the stream pool.
@@ -596,7 +618,7 @@ impl BinanceFuturesWebSocketClient {
             headers,
             heartbeat_interval_secs: self.heartbeat,
             heartbeat_payload: None,
-            connect_timeout_ms: Some(5_000),
+            connect_timeout_ms: Some(self.connect_timeout_ms),
             reconnect_delay_initial_ms: Some(500),
             reconnect_delay_max_ms: Some(5_000),
             reconnect_backoff_factor: Some(2.0),
@@ -906,5 +928,44 @@ mod tests {
             client.proxy_url.as_deref(),
             Some("socks5://proxy.example:1080")
         );
+        assert_eq!(
+            client.connect_timeout_ms(),
+            BINANCE_WS_CONNECT_TIMEOUT_MS,
+            "an unrelated builder call must not change the connect timeout",
+        );
+    }
+
+    fn streams_client() -> BinanceFuturesWebSocketClient {
+        BinanceFuturesWebSocketClient::new(
+            BinanceProductType::UsdM,
+            BinanceEnvironment::Testnet,
+            None,
+            None,
+            None,
+            None,
+            TransportBackend::default(),
+        )
+        .unwrap()
+    }
+
+    #[rstest]
+    fn test_connect_timeout_defaults_to_the_binance_value() {
+        assert_eq!(BINANCE_WS_CONNECT_TIMEOUT_MS, 5_000);
+        assert_eq!(streams_client().connect_timeout_ms(), 5_000);
+    }
+
+    #[rstest]
+    fn test_with_connect_timeout_none_keeps_the_binance_default() {
+        // Binance itself never sets the override, so its behaviour must be unchanged.
+        let client = streams_client().with_connect_timeout_ms(None);
+
+        assert_eq!(client.connect_timeout_ms(), BINANCE_WS_CONNECT_TIMEOUT_MS);
+    }
+
+    #[rstest]
+    fn test_with_connect_timeout_overrides_the_default() {
+        let client = streams_client().with_connect_timeout_ms(Some(20_000));
+
+        assert_eq!(client.connect_timeout_ms(), 20_000);
     }
 }

@@ -26,14 +26,15 @@ so its frame decoding is delegated to `nautilus-binance`.
 | `MARKET` orders | Yes | |
 | `reduce_only` | Yes | |
 | Cancel order | Yes | By client order ID, falling back to the venue order ID |
-| Cancel all orders for an instrument | Yes | `DELETE /fapi/v3/allOpenOrders`; the side filter is ignored |
+| Cancel all orders for an instrument | Yes | Side-less: `DELETE /fapi/v3/allOpenOrders`. Side-filtered: only the matching open orders are cancelled, one request each |
 | Order status / fill / position reports | Yes | `order`, `openOrders`, `allOrders`, `userTrades`, `positionRisk` |
-| Account state | Yes | `GET /fapi/v3/balance`, plus `ACCOUNT_UPDATE` on the user stream; unknown assets are registered on the fly |
-| User data stream | Yes | Listen key renewed every 30 minutes; reconnects with a new key on expiry |
-| Commission rates | Yes | `GET /fapi/v3/commissionRate` |
+| Account state | Yes | `GET /fapi/v3/balance`, plus `ACCOUNT_UPDATE` on the user stream; unknown assets are registered on the fly, and explicit zero rows are kept so a drained asset clears |
+| User data stream | Yes | Awaited at connect; listen key renewed every 30 minutes; reconnects with a new key on expiry and compensates for the gap |
+| Commission rates | Yes | `GET /fapi/v3/commissionRate` per instrument at connect; the instruments are re-published with the account's real fees |
 | Order modification | No | Cancel and resubmit; `modify_order` emits a modify-rejected event |
 | Conditional / algo orders (`STOP`, `TAKE_PROFIT`, trailing) | No | Rejected at submission |
 | Batch orders | No | |
+| Quote-denominated quantities | No | Denied before any request; Aster's `quantity` is base-asset only |
 | Hedge (dual-side) mode | No | Detected at connect and rejected |
 | Venue position IDs | No | One-way (net) mode carries none |
 
@@ -88,11 +89,83 @@ draws a fresh nonce.
 Nothing else is retried. An answer from the venue is definitive: an Aster error body such as
 `-1121 Invalid symbol` is returned to the caller unchanged, as is any unexpected HTTP status.
 `POST` and `DELETE` are never repeated, because order submission and cancellation are not
-idempotent; a transport failure there is surfaced as ambiguous and left to reconciliation.
+idempotent; a transport failure there is surfaced as ambiguous and resolved by querying the
+order (see **Error classification**), never by resubmitting it.
 
 Instrument loading (`exchangeInfo`) runs through `nautilus-binance`, which has no retry of its
 own, so the execution client wraps it in the same policy at connect: transport faults only,
 never an Aster error body, which matters because Aster rate-limits this endpoint aggressively.
+
+## Error classification
+
+Aster's `{code, msg}` bodies are Binance-shaped, but "the venue answered" is not the same as
+"the venue decided". Order submission classifies every failure into one of three groups:
+
+| Class | Examples | Handling |
+|---|---|---|
+| Definitive rejection | `-1121` invalid symbol, `-2010` new order rejected, `-2019` margin insufficient, `-4164` min notional, `-1111` bad precision, `-1013`, `-1102`, `-4003`/`-4004`/`-4005`, `-1003` rate limited, `-1021`/`-1022` nonce or signature, and any `4xx` status without an Aster body | `OrderRejected` immediately |
+| **Execution status unknown** | `-1006 UNEXPECTED_RESP`, `-1007 TIMEOUT`, any transport fault (TLS, TCP, client timeout), an undecodable response body, and `5xx` / `408` statuses | **Never terminalised.** Logged at error; the order stays in flight and `GET /fapi/v3/order?origClientOrderId=` is queried after 2 s / 5 s / 15 s until the venue answers. A definitive `-2013 NO_SUCH_ORDER` then rejects it locally; any other answer is emitted as the venue reports it. The order is **never** resubmitted |
+| Local fault | missing credentials, signing, request validation | `OrderRejected`; the request never left the process |
+
+Aster's own error-code documentation states that `-1006` and `-1007` mean "execution status
+unknown", so an order submitted under either may already be resting or filled. Treating them as
+rejections desynchronises the engine from the book, which is why `is_venue_rejection` excludes
+them explicitly.
+
+## User data stream lifecycle
+
+`connect` opens the first stream session inline and does not report the client as connected
+until the listen key and the socket are both up: an order submitted in that window would
+otherwise produce no events at all. Each attempt is bounded by `ws_connect_timeout_secs`
+(default 20 s; the shared Binance stream pool's own default is 5 s, which is short for a slow or
+proxied egress path) and repeated on a 1 s / 2 s / 4 s backoff for **transport faults only**. A
+venue answer - a rejected listen key, an unfunded wallet - fails `connect` on the first attempt,
+because repeating it would answer the same way.
+
+Every later session runs a **compensation pass** before resuming, and so does the `Reconnected`
+frame the shared streams client raises when it re-establishes the socket underneath a live
+session. The gap between the drop and the reconnect carries no events at all, so the pass
+restores the four things that gap can invalidate:
+
+1. **Open orders** - `openOrders` is reported, then every order this client still believes is
+   working but the venue no longer lists is queried individually, which surfaces the fills and
+   cancels that happened during the outage.
+2. **Fills** - `userTrades` from the newest trade time seen for each symbol, falling back to a
+   one-hour lookback, and never earlier than the connect. Anything older belongs to the
+   execution engine's startup reconciliation; replaying it as a live session fill is what makes
+   the engine reject an `OrderFilled` for an order it already holds as filled. Trades already
+   delivered - by the stream, or by a `generate_fill_reports` call - are skipped by trade ID,
+   and the fills that remain are bundled with their order status so the engine does not
+   bootstrap a synthetic order from a bare fill.
+3. **Balances** - a fresh `balance` snapshot.
+4. **Positions** - `positionRisk` for every loaded instrument, including flat rows, so a
+   position closed during the outage is cleared instead of being left at its stale quantity.
+
+## History pagination and report completeness
+
+`allOrders` and `userTrades` default to 500 rows and cap at 1000, and Aster refuses their
+cursors (`orderId` / `fromId`) together with `startTime` / `endTime`. Both are therefore paged
+the same way: the end of the window is pinned before the first request, each 7-day slice is
+opened with a time-bounded page at `limit=1000` and continued with the cursor alone, rows are
+deduplicated by ID, and the cursor must strictly advance or pagination fails rather than looping.
+
+A failed `userTrades` / `allOrders` / `openOrders` / `positionRisk` request, or a row whose
+required fields cannot be parsed, fails `generate_*_reports` instead of yielding a short list.
+A partial history that looks complete is worse than an error, because the engine infers fills
+from it. Rows for instruments this client never loaded are the one thing skipped, and only with
+a log line: they are out of scope rather than missing.
+
+## Fees
+
+`exchangeInfo` carries no commission data, so the shared Binance instrument parser fills
+`maker_fee` / `taker_fee` with its own VIP-0 defaults (`0.0002` / `0.0005`). Those are neither
+Aster's rates nor this account's. At connect, once the instruments have loaded, the execution
+client queries `GET /fapi/v3/commissionRate` once per loaded instrument with the **signed**
+client and re-publishes each instrument carrying the real rates on the data event channel, so
+the data engine and cache hold them.
+
+A symbol whose query fails keeps the venue default and is named in a warning as **UNVERIFIED**.
+That default is a placeholder, not a measurement, and must not be quoted as the account's cost.
 
 ## Venue quirks
 
@@ -108,9 +181,11 @@ never an Aster error body, which matters because Aster rate-limits this endpoint
   includes headroom from other assets. Nautilus requires `total == locked + free`, so `free` is
   clamped to the wallet balance (`locked = 0`) rather than inflating the reported total; the
   first such row per process is logged at warning level.
-- An asset can hold zero `walletBalance` while `availableBalance` is non-zero. Such rows are
-  still reported, so the account state names every asset the venue holds; only assets that are
-  zero on both fields are dropped.
+- Every balance row the venue reports is passed on, **including explicit zeros**. Account
+  state is applied per currency, so an asset the venue omits keeps whatever the cache already
+  holds; the zero row is the only thing that can clear an asset after a withdrawal. The shared
+  Binance `ACCOUNT_UPDATE` parser drops `wb == 0` rows, so the `B` array is parsed in this crate
+  instead of changing the Binance parser other venues depend on.
 - The testnet symbol set is smaller than mainnet's (it has no `NVDAUSDT`, which answers
   `-1121 Invalid symbol`). `load_ids` entries the venue does not list are logged as a warning
   at connect and skipped; the client still connects as long as one instrument loaded.

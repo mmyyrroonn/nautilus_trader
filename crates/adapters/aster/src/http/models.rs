@@ -267,20 +267,25 @@ impl AsterBalance {
         }
     }
 
-    /// Returns whether the asset carries no value at all.
+    /// Returns whether the venue reports this asset as fully empty.
     ///
-    /// Both the wallet balance and the available balance must be zero. Aster's testnet reports
-    /// assets whose wallet balance is zero while `availableBalance` is not (fee credits and
-    /// airdropped assets usable as cross margin), and dropping those would hide the asset from
-    /// the account state entirely.
+    /// True only when the wallet balance *and* the available balance parse as zero. Aster's
+    /// testnet reports assets whose wallet balance is zero while `availableBalance` is not (fee
+    /// credits and airdropped assets usable as cross margin), so both fields are consulted.
     ///
-    /// Unparsable balances are reported as zero so a malformed asset entry is skipped rather
-    /// than failing the whole account snapshot.
+    /// An explicit zero row is *not* a reason to drop the asset from the account state: account
+    /// updates overwrite balances per currency, so dropping a zero row would leave the previous
+    /// non-zero amount cached forever after a withdrawal. This predicate reports the fact; it
+    /// does not decide what the account state carries.
+    ///
+    /// An unparsable balance is unknown rather than zero, so it is reported as non-zero and the
+    /// caller decides.
     #[must_use]
     pub fn is_zero(&self) -> bool {
-        let total_zero = self.total().is_ok_and(|value| value.is_zero()) || self.total().is_err();
-        let free_zero = self.free().is_ok_and(|value| value.is_zero()) || self.free().is_err();
-        total_zero && free_zero
+        matches!(
+            (self.total(), self.free()),
+            (Ok(total), Ok(free)) if total.is_zero() && free.is_zero()
+        )
     }
 }
 
@@ -803,6 +808,17 @@ mod tests {
         )
         .unwrap();
         assert!(fully_empty.is_zero());
+    }
+
+    #[rstest]
+    fn test_unparsable_balance_is_unknown_rather_than_zero() {
+        // An unparsable amount says nothing about the asset holding nothing, so it must not
+        // masquerade as an explicit zero row.
+        let broken: AsterBalance =
+            serde_json::from_str(r#"{"asset":"USDT","balance":"not-a-number"}"#).unwrap();
+
+        assert!(!broken.is_zero());
+        assert!(broken.total().is_err());
     }
 
     #[rstest]

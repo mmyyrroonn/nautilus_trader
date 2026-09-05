@@ -77,7 +77,6 @@ impl AsterDataClientConfig {
     }
 }
 
-
 #[pymethods]
 #[pyo3_stub_gen::derive::gen_stub_pymethods]
 impl AsterExecutionClientConfig {
@@ -102,6 +101,7 @@ impl AsterExecutionClientConfig {
         instrument_provider = None,
         http_timeout_secs = None,
         ws_heartbeat_secs = None,
+        ws_connect_timeout_secs = None,
         proxy_url = None,
         treat_expired_as_canceled = None,
         venue = None,
@@ -118,6 +118,7 @@ impl AsterExecutionClientConfig {
         instrument_provider: Option<BinanceInstrumentProviderConfig>,
         http_timeout_secs: Option<u64>,
         ws_heartbeat_secs: Option<u64>,
+        ws_connect_timeout_secs: Option<u64>,
         proxy_url: Option<String>,
         treat_expired_as_canceled: Option<bool>,
         venue: Option<Venue>,
@@ -134,6 +135,7 @@ impl AsterExecutionClientConfig {
             instrument_provider: instrument_provider.unwrap_or(defaults.instrument_provider),
             http_timeout_secs: http_timeout_secs.or(defaults.http_timeout_secs),
             ws_heartbeat_secs: ws_heartbeat_secs.or(defaults.ws_heartbeat_secs),
+            ws_connect_timeout_secs: ws_connect_timeout_secs.or(defaults.ws_connect_timeout_secs),
             proxy_url: proxy_url.or(defaults.proxy_url),
             treat_expired_as_canceled: treat_expired_as_canceled
                 .unwrap_or(defaults.treat_expired_as_canceled),

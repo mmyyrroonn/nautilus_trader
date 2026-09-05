@@ -22,7 +22,10 @@
 //! instrument IDs and data client to the `ASTER` venue. No Binance protocol code is
 //! duplicated here, so protocol fixes in `nautilus-binance` apply to Aster automatically.
 //!
-//! Market data only; this crate provides no execution client.
+//! Execution cannot be layered the same way: Aster's Futures **V3** endpoints replaced
+//! Binance's HMAC signing with EIP-712 typed-data signatures, so this crate carries its own
+//! signed HTTP client, response models and execution client. The private user data stream is
+//! still Binance-shaped, so its frame decoding is delegated to [`nautilus_binance`].
 //!
 //! # NautilusTrader
 //!
