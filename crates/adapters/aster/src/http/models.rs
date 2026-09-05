@@ -167,8 +167,13 @@ impl AsterOrder {
         treat_expired_as_canceled: bool,
         ts_init: UnixNanos,
     ) -> anyhow::Result<OrderStatusReport> {
+        // `ts_accepted` must never sit after `ts_last`: the execution engine orders the events
+        // it derives from this report by timestamp, and an acceptance stamped after the order's
+        // own last update (or after its fills) is applied out of sequence. Aster omits `time`
+        // on some historical rows, in which case the venue's own update time is the best
+        // evidence available, and only a row with neither falls back to "now".
         let ts_last = self.update_time.map_or(ts_init, millis_to_nanos);
-        let ts_accepted = self.time.map_or(ts_last, millis_to_nanos);
+        let ts_accepted = self.time.map_or(ts_last, millis_to_nanos).min(ts_last);
 
         let client_order_id = if self.client_order_id.is_empty() {
             None
@@ -808,6 +813,34 @@ mod tests {
         )
         .unwrap();
         assert!(fully_empty.is_zero());
+    }
+
+    #[rstest]
+    fn test_order_report_acceptance_never_follows_its_last_update() {
+        // Aster omits `time` on some historical `allOrders` rows; the acceptance must then fall
+        // back to the venue's update time rather than to "now", which would place the order
+        // after its own fills once the engine sorts the reconciliation events.
+        let order: AsterOrder = serde_json::from_str(
+            r#"{"symbol":"BTCUSDT","orderId":1,"clientOrderId":"O-1","origQty":"0.010",
+                "executedQty":"0.010","price":"50000.00","status":"FILLED","timeInForce":"GTC",
+                "type":"LIMIT","side":"BUY","updateTime":1788571663397}"#,
+        )
+        .unwrap();
+
+        let report = order
+            .to_order_status_report(
+                account_id(),
+                instrument_id(),
+                2,
+                3,
+                true,
+                UnixNanos::from(9_999_999_999_999_999_999u64),
+            )
+            .unwrap();
+
+        assert_eq!(report.ts_accepted, millis_to_nanos(1_788_571_663_397));
+        assert_eq!(report.ts_last, report.ts_accepted);
+        assert!(report.ts_accepted <= report.ts_last);
     }
 
     #[rstest]

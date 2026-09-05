@@ -20,6 +20,7 @@ mod common;
 use std::{cell::RefCell, collections::HashMap, rc::Rc, time::Duration};
 
 use common::{MockVenue, PAGE_LIMIT, SubmitOutcome, TEST_PRIVATE_KEY};
+use log::{Level, LevelFilter, Log, Metadata, Record};
 use nautilus_aster::{
     common::consts::{ASTER_CLIENT_ID, ASTER_VENUE},
     config::AsterExecutionClientConfig,
@@ -28,6 +29,7 @@ use nautilus_aster::{
 use nautilus_common::{
     cache::Cache,
     clients::ExecutionClient,
+    clock::TestClock,
     live::runner::{replace_data_event_sender, replace_exec_event_sender},
     messages::{
         DataEvent, ExecutionEvent,
@@ -39,7 +41,11 @@ use nautilus_common::{
     testing::wait_until_async,
 };
 use nautilus_core::{UUID4, UnixNanos};
-use nautilus_live::ExecutionClientCore;
+use nautilus_execution::engine::ExecutionEngine;
+use nautilus_live::{
+    ExecutionClientCore,
+    manager::{ExecutionManager, ExecutionManagerConfig},
+};
 use nautilus_model::{
     accounts::{Account, AccountAny, MarginAccount},
     enums::{AccountType, OmsType, OrderSide, OrderStatus, OrderType, TimeInForce},
@@ -1665,4 +1671,332 @@ async fn test_commission_rate_failure_leaves_the_venue_default_unpublished() {
         2,
         "every loaded instrument is queried once",
     );
+}
+
+// ------------------------------------------------------------------------------------------------
+// Startup reconciliation against the real execution manager
+// ------------------------------------------------------------------------------------------------
+
+/// Captures `log` records so a test can assert on what the execution engine reported.
+struct LogCapture {
+    records: parking_lot::Mutex<Vec<(Level, String)>>,
+}
+
+impl LogCapture {
+    fn records(&self) -> Vec<(Level, String)> {
+        self.records.lock().clone()
+    }
+}
+
+impl Log for LogCapture {
+    fn enabled(&self, metadata: &Metadata<'_>) -> bool {
+        metadata.level() <= Level::Warn
+    }
+
+    fn log(&self, record: &Record<'_>) {
+        if self.enabled(record.metadata()) {
+            self.records
+                .lock()
+                .push((record.level(), record.args().to_string()));
+        }
+    }
+
+    fn flush(&self) {}
+}
+
+static LOG_CAPTURE: LogCapture = LogCapture {
+    records: parking_lot::Mutex::new(Vec::new()),
+};
+static INSTALL_LOG_CAPTURE: std::sync::Once = std::sync::Once::new();
+
+fn install_log_capture() -> &'static LogCapture {
+    INSTALL_LOG_CAPTURE.call_once(|| {
+        let _ = log::set_logger(&LOG_CAPTURE);
+        log::set_max_level(LevelFilter::Warn);
+    });
+    &LOG_CAPTURE
+}
+
+/// Scripts two historical filled orders with their trades, as a real account carries them.
+fn script_historical_fills(venue: &MockVenue) -> i64 {
+    let base_ms = now_ms() - 600_000;
+
+    venue.script(|script| {
+        script.all_orders.insert(
+            "BTCUSDT".to_string(),
+            vec![
+                filled_order(
+                    910_001,
+                    "O-HIST-1",
+                    "BTCUSDT",
+                    "BUY",
+                    base_ms + 500,
+                    base_ms + 10,
+                ),
+                filled_order(
+                    910_002,
+                    "NTT2X7HGbrBkQhMo4FnvXc",
+                    "BTCUSDT",
+                    "SELL",
+                    base_ms + 20,
+                    base_ms + 25,
+                ),
+                ioc_expired_order(
+                    910_003,
+                    "O-IOC-1",
+                    "BTCUSDT",
+                    "BUY",
+                    base_ms + 30,
+                    base_ms + 35,
+                ),
+                market_order(
+                    910_004,
+                    "MANUALMARKET1",
+                    "BTCUSDT",
+                    "SELL",
+                    base_ms + 40,
+                    base_ms + 45,
+                ),
+                timeless_order(910_005, "O-20260905-023725-001-000-2", "BTCUSDT", "BUY"),
+            ],
+        );
+        script.user_trades.insert(
+            "BTCUSDT".to_string(),
+            vec![
+                venue_trade(34_264_618, 910_001, "BTCUSDT", base_ms + 10, "0.02"),
+                venue_trade(34_264_619, 910_002, "BTCUSDT", base_ms + 25, "0.02"),
+                venue_trade(34_264_620, 910_003, "BTCUSDT", base_ms + 35, "0.02"),
+                venue_trade(34_264_621, 910_004, "BTCUSDT", base_ms + 45, "0.02"),
+                venue_trade(34_264_622, 910_005, "BTCUSDT", base_ms + 55, "0.02"),
+                // A fill whose order falls outside the reported window.
+                venue_trade(34_264_623, 999_999, "BTCUSDT", base_ms + 60, "0.02"),
+            ],
+        );
+        // A real account carries an open position alongside its history.
+        script.position_risk = json!([{
+            "symbol": "BTCUSDT",
+            "positionAmt": "0.010",
+            "entryPrice": "50000.0",
+            "positionSide": "BOTH",
+            "updateTime": base_ms + 25,
+        }]);
+    });
+
+    base_ms
+}
+
+/// A fully filled historical order, as `allOrders` reports one.
+fn filled_order(
+    order_id: i64,
+    client_order_id: &str,
+    symbol: &str,
+    side: &str,
+    time_ms: i64,
+    update_ms: i64,
+) -> Value {
+    json!({
+        "symbol": symbol,
+        "orderId": order_id,
+        "clientOrderId": client_order_id,
+        "price": "50000.00",
+        "avgPrice": "50000.00",
+        "origQty": "0.010",
+        "executedQty": "0.010",
+        "cumQuote": "500.0",
+        "status": "FILLED",
+        "timeInForce": "GTC",
+        "type": "LIMIT",
+        "side": side,
+        "positionSide": "BOTH",
+        "reduceOnly": false,
+        "closePosition": false,
+        "time": time_ms,
+        "updateTime": update_ms,
+    })
+}
+
+/// An `IOC` order whose remainder Aster reports as `EXPIRED` after a partial fill.
+fn ioc_expired_order(
+    order_id: i64,
+    client_order_id: &str,
+    symbol: &str,
+    side: &str,
+    time_ms: i64,
+    update_ms: i64,
+) -> Value {
+    json!({
+        "symbol": symbol,
+        "orderId": order_id,
+        "clientOrderId": client_order_id,
+        "price": "50000.00",
+        "avgPrice": "50000.00",
+        "origQty": "0.020",
+        "executedQty": "0.010",
+        "cumQuote": "500.0",
+        "status": "EXPIRED",
+        "timeInForce": "IOC",
+        "type": "LIMIT",
+        "side": side,
+        "positionSide": "BOTH",
+        "reduceOnly": false,
+        "closePosition": false,
+        "time": time_ms,
+        "updateTime": update_ms,
+    })
+}
+
+/// A historical row Aster returns without a `time` field, so the report has no venue creation
+/// time to anchor its acceptance to.
+fn timeless_order(order_id: i64, client_order_id: &str, symbol: &str, side: &str) -> Value {
+    json!({
+        "symbol": symbol,
+        "orderId": order_id,
+        "clientOrderId": client_order_id,
+        "price": "50000.00",
+        "avgPrice": "50000.00",
+        "origQty": "0.010",
+        "executedQty": "0.010",
+        "cumQuote": "500.0",
+        "status": "FILLED",
+        "timeInForce": "IOC",
+        "type": "LIMIT",
+        "side": side,
+        "positionSide": "BOTH",
+        "reduceOnly": false,
+        "closePosition": false,
+    })
+}
+
+/// A reduce-only `MARKET` order placed outside Nautilus, as the venue reports it.
+fn market_order(
+    order_id: i64,
+    client_order_id: &str,
+    symbol: &str,
+    side: &str,
+    time_ms: i64,
+    update_ms: i64,
+) -> Value {
+    json!({
+        "symbol": symbol,
+        "orderId": order_id,
+        "clientOrderId": client_order_id,
+        "price": "0",
+        "avgPrice": "50000.00",
+        "origQty": "0.010",
+        "executedQty": "0.010",
+        "cumQuote": "500.0",
+        "status": "FILLED",
+        "timeInForce": "GTC",
+        "type": "MARKET",
+        "side": side,
+        "positionSide": "BOTH",
+        "reduceOnly": true,
+        "closePosition": false,
+        "time": time_ms,
+        "updateTime": update_ms,
+    })
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_startup_reconciliation_of_historical_fills_is_accepted_by_the_engine() {
+    // A fresh node start on an account with historical filled orders logged one
+    // `InvalidStateTrigger: ... did not apply OrderFilled` per order, because the adapter
+    // reported both the terminal order and its trades and the engine could not order them.
+    let logger = install_log_capture();
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    script_historical_fills(&venue);
+
+    let mass_status = harness
+        .client
+        .generate_mass_status(None)
+        .await
+        .expect("mass status")
+        .expect("mass status present");
+
+    assert_eq!(mass_status.order_reports().len(), 5, "every order reported");
+    assert!(
+        mass_status
+            .fill_reports()
+            .keys()
+            .all(|venue_order_id| venue_order_id.as_str() != "999999"),
+        "a fill whose order is outside the window must not be reported",
+    );
+    for (venue_order_id, report) in mass_status.order_reports() {
+        if let Some(fills) = mass_status.fill_reports().get(&venue_order_id) {
+            let earliest = fills.iter().map(|fill| fill.ts_event).min().expect("fills");
+            assert!(
+                report.ts_accepted <= earliest,
+                "{venue_order_id}: acceptance {} must not follow its first fill {earliest}",
+                report.ts_accepted,
+            );
+        }
+    }
+    assert!(
+        mass_status.lookback_start().is_some(),
+        "a bounded history must declare its window",
+    );
+
+    // The engine's reconciliation needs the instruments; connect published them with their real
+    // commission rates, which is also what the inferred-fill commission would be costed against.
+    let cache = Rc::new(RefCell::new(Cache::default()));
+    seed_account(&cache);
+    while let Ok(event) = harness.data_rx.try_recv() {
+        if let DataEvent::Instrument(instrument) = event {
+            cache
+                .borrow_mut()
+                .add_instrument(instrument)
+                .expect("instrument");
+        }
+    }
+    let clock = Rc::new(RefCell::new(TestClock::new()));
+    let mut manager = ExecutionManager::new(
+        clock.clone(),
+        cache.clone(),
+        ExecutionManagerConfig::default(),
+    )
+    .expect("manager");
+    let mut engine = ExecutionEngine::new(clock, cache.clone(), None);
+    engine
+        .register_client(Box::new(harness.client))
+        .expect("register");
+    engine.register_oms_type(StrategyId::from("EXTERNAL"), OmsType::Netting);
+
+    let before = logger.records().len();
+    manager
+        .reconcile_execution_mass_status(mass_status, Rc::new(RefCell::new(engine)))
+        .await;
+
+    let rejected: Vec<String> = logger
+        .records()
+        .into_iter()
+        .skip(before)
+        .filter(|(_, message)| message.contains("InvalidStateTrigger"))
+        .map(|(_, message)| message)
+        .collect();
+
+    assert!(
+        rejected.is_empty(),
+        "reconciling historical fills must not produce rejected transitions: {rejected:#?}",
+    );
+
+    // The orders must still be reconstructed and fully filled, not merely silent.
+    let cache_ref = cache.borrow();
+    for client_order_id in [
+        "O-HIST-1",
+        "NTT2X7HGbrBkQhMo4FnvXc",
+        "MANUALMARKET1",
+        "O-20260905-023725-001-000-2",
+    ] {
+        let order = cache_ref
+            .order(&ClientOrderId::from(client_order_id))
+            .unwrap_or_else(|| panic!("{client_order_id} must be reconstructed"));
+        assert_eq!(order.status(), OrderStatus::Filled, "{client_order_id}");
+        assert_eq!(
+            order.filled_qty(),
+            Quantity::from("0.010"),
+            "{client_order_id} must carry its real fill",
+        );
+    }
 }

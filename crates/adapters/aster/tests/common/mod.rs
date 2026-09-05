@@ -403,10 +403,13 @@ fn paginate(
         .iter()
         .filter(|row| {
             let id = row[id_key].as_i64().unwrap_or_default();
-            let time = row["time"].as_i64().unwrap_or_default();
+            // A row without a `time` is returned whatever the window: the venue cannot filter
+            // on a field it did not record, and Aster does omit `time` on some history rows.
+            let time = row["time"].as_i64();
             cursor.is_none_or(|cursor| id >= cursor)
-                && start.is_none_or(|start| time >= start)
-                && end.is_none_or(|end| time <= end)
+                && time.is_none_or(|time| {
+                    start.is_none_or(|start| time >= start) && end.is_none_or(|end| time <= end)
+                })
         })
         .cloned()
         .collect();

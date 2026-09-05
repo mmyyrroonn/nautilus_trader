@@ -53,9 +53,11 @@ use nautilus_common::{
     messages::{
         DataEvent,
         execution::{
-            CancelAllOrders, CancelOrder, GenerateFillReports, GenerateOrderStatusReport,
-            GenerateOrderStatusReports, GeneratePositionStatusReports, ModifyOrder, QueryAccount,
-            QueryOrder, SubmitOrder,
+            CancelAllOrders, CancelOrder, GenerateFillReports, GenerateFillReportsBuilder,
+            GenerateOrderStatusReport, GenerateOrderStatusReports,
+            GenerateOrderStatusReportsBuilder, GeneratePositionStatusReports,
+            GeneratePositionStatusReportsBuilder, ModifyOrder, QueryAccount, QueryOrder,
+            SubmitOrder,
         },
     },
 };
@@ -74,7 +76,7 @@ use nautilus_model::{
     identifiers::{AccountId, ClientId, InstrumentId, Venue},
     instruments::{Instrument, InstrumentAny},
     orders::{Order, OrderAny},
-    reports::{FillReport, OrderStatusReport, PositionStatusReport},
+    reports::{ExecutionMassStatus, FillReport, OrderStatusReport, PositionStatusReport},
     types::{AccountBalance, Currency, MarginBalance, Quantity},
 };
 use nautilus_network::retry::{RetryConfig, RetryManager};
@@ -188,6 +190,36 @@ impl InstrumentIndex {
         instruments.sort_by_key(|instrument| instrument.id());
         instruments
     }
+}
+
+/// Makes an order report's timeline consistent with the fills reported for the same order.
+///
+/// The execution engine sorts every reconciliation event by `ts_event` before applying it
+/// (`ExecutionManager::reconcile_execution_mass_status`), and the events it builds for an
+/// external order take their timestamps straight from the reports: `OrderAccepted` from
+/// `ts_accepted`, each `OrderFilled` from its fill's `ts_event`. If an order's `ts_accepted` is
+/// later than one of its own fills, that fill sorts *before* the acceptance and is applied to an
+/// order still in `Initialized`, which the order state machine rejects with
+/// `InvalidStateTrigger: ... did not apply OrderFilled`.
+///
+/// Aster does not always give a usable creation time for a historical order: `time` can be
+/// absent on `allOrders` rows, in which case the report falls back to `updateTime` and finally
+/// to "now", which is later than every historical fill. Rather than trust the venue's clock,
+/// the acceptance is pulled back to the earliest fill it must precede.
+///
+/// Returns whether the report was adjusted.
+fn align_report_with_fills(report: &mut OrderStatusReport, fills: &[&FillReport]) -> bool {
+    let Some(earliest_fill) = fills.iter().map(|fill| fill.ts_event).min() else {
+        return false;
+    };
+
+    if report.ts_accepted <= earliest_fill {
+        return false;
+    }
+
+    report.ts_accepted = earliest_fill;
+    report.ts_last = report.ts_last.max(earliest_fill);
+    true
 }
 
 /// Marks the session as live from `now`, so compensation cannot reach behind the connect.
@@ -2530,6 +2562,128 @@ impl ExecutionClient for AsterExecutionClient {
         Ok(reports)
     }
 
+    /// Composes the startup reconciliation snapshot.
+    ///
+    /// Overridden rather than inherited for two reasons the default composition cannot know
+    /// about:
+    ///
+    /// 1. **The window is bounded.** Aster's history endpoints only answer for a time range, so
+    ///    this snapshot is complete *from `start`*, not from the account's first trade. The
+    ///    window is declared with [`ExecutionMassStatus::set_report_window`]; without it the
+    ///    engine treats the history as complete and may synthesise position-opening fills to
+    ///    explain a position whose opening trade simply predates the lookback.
+    /// 2. **Order and fill timelines must agree.** The engine sorts every reconciliation event
+    ///    by `ts_event`, so a fill timestamped before its own order's `ts_accepted` is applied
+    ///    to an order still in `Initialized` and rejected. Each report is therefore aligned
+    ///    against its own fills (see [`align_report_with_fills`]).
+    ///
+    /// Fills whose order is not in the report set are dropped: a one-way-mode fill carries no
+    /// venue position ID, which is what the engine's orphan-fill path requires, so reporting it
+    /// could only add an unreconcilable event.
+    ///
+    /// The three sources are requested one after another rather than concurrently, because each
+    /// already fans out across instruments and pages, and Aster rate-limits aggressively.
+    async fn generate_mass_status(
+        &self,
+        lookback_mins: Option<u64>,
+    ) -> anyhow::Result<Option<ExecutionMassStatus>> {
+        let ts_init = self.clock.get_time_ns();
+        let now_ms = (ts_init.as_u64() / 1_000_000) as i64;
+        let start_ms = match lookback_mins {
+            Some(mins) => now_ms.saturating_sub(
+                i64::try_from(mins)
+                    .ok()
+                    .and_then(|mins| mins.checked_mul(60_000))
+                    .ok_or_else(|| anyhow::anyhow!("lookback minutes overflow: {mins}"))?,
+            ),
+            None => now_ms - DEFAULT_REPORT_LOOKBACK_MS,
+        };
+        let start = UnixNanos::from(start_ms.max(0) as u64 * 1_000_000);
+
+        // All three sources share one window, so an order and its fills cannot straddle the edge.
+        let order_cmd = GenerateOrderStatusReportsBuilder::default()
+            .ts_init(ts_init)
+            .open_only(false)
+            .start(Some(start))
+            .end(Some(ts_init))
+            .build()
+            .context("failed to build Aster order status reports command")?;
+        let fill_cmd = GenerateFillReportsBuilder::default()
+            .ts_init(ts_init)
+            .start(Some(start))
+            .end(Some(ts_init))
+            .build()
+            .context("failed to build Aster fill reports command")?;
+        let position_cmd = GeneratePositionStatusReportsBuilder::default()
+            .ts_init(ts_init)
+            .start(Some(start))
+            .end(Some(ts_init))
+            .build()
+            .context("failed to build Aster position status reports command")?;
+
+        let mut order_reports = self.generate_order_status_reports(&order_cmd).await?;
+        let fill_reports = self.generate_fill_reports(fill_cmd).await?;
+        let position_reports = self.generate_position_status_reports(&position_cmd).await?;
+
+        let reported_orders: AHashSet<Ustr> = order_reports
+            .iter()
+            .map(|report| report.venue_order_id.inner())
+            .collect();
+
+        let (matched_fills, orphan_fills): (Vec<FillReport>, Vec<FillReport>) = fill_reports
+            .into_iter()
+            .partition(|fill| reported_orders.contains(&fill.venue_order_id.inner()));
+
+        if !orphan_fills.is_empty() {
+            log::warn!(
+                "Dropping {} Aster fill(s) whose order is outside the reported window; a \
+                 one-way-mode fill carries no venue position ID, so the engine cannot \
+                 reconcile it on its own",
+                orphan_fills.len(),
+            );
+        }
+
+        let mut fills_by_order: AHashMap<Ustr, Vec<&FillReport>> = AHashMap::new();
+        for fill in &matched_fills {
+            fills_by_order
+                .entry(fill.venue_order_id.inner())
+                .or_default()
+                .push(fill);
+        }
+
+        let mut realigned = 0usize;
+        for report in &mut order_reports {
+            if let Some(fills) = fills_by_order.get(&report.venue_order_id.inner())
+                && align_report_with_fills(report, fills)
+            {
+                realigned += 1;
+            }
+        }
+
+        if realigned > 0 {
+            log::debug!(
+                "Pulled the reported acceptance time back to the first fill for {realigned} \
+                 Aster order(s)"
+            );
+        }
+
+        let mut mass_status = ExecutionMassStatus::new(
+            self.core.client_id,
+            self.core.account_id,
+            self.venue,
+            ts_init,
+            None, // report_id
+        );
+        // The history is complete only from `start`; saying otherwise invites the engine to
+        // invent opening fills for a position it cannot see the start of.
+        mass_status.set_report_window(Some(start), true);
+        mass_status.add_order_reports(order_reports);
+        mass_status.add_fill_reports(matched_fills);
+        mass_status.add_position_reports(position_reports);
+
+        Ok(Some(mass_status))
+    }
+
     async fn generate_position_status_reports(
         &self,
         cmd: &GeneratePositionStatusReports,
@@ -3153,6 +3307,87 @@ mod tests {
             2_000_000,
             "once a fill is seen, that is the floor",
         );
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Reconciliation report alignment
+    // ------------------------------------------------------------------------------------------
+
+    fn fill_at(ts_event: u64) -> FillReport {
+        FillReport::new(
+            account_id(),
+            instrument_id(),
+            nautilus_model::identifiers::VenueOrderId::new("910001"),
+            nautilus_model::identifiers::TradeId::new("1"),
+            OrderSide::Buy,
+            Quantity::from("0.010"),
+            Price::from("50000.00"),
+            Money::new(0.02, Currency::USDT()),
+            nautilus_model::enums::LiquiditySide::Maker,
+            None, // client_order_id
+            None, // venue_position_id
+            UnixNanos::from(ts_event),
+            UnixNanos::from(ts_event),
+            None, // report_id
+        )
+    }
+
+    fn report_accepted_at(ts_accepted: u64, ts_last: u64) -> OrderStatusReport {
+        OrderStatusReport::new(
+            account_id(),
+            instrument_id(),
+            Some(ClientOrderId::from("O-1")),
+            nautilus_model::identifiers::VenueOrderId::new("910001"),
+            Some(OrderSide::Buy),
+            OrderType::Limit,
+            TimeInForce::Gtc,
+            nautilus_model::enums::OrderStatus::Filled,
+            Quantity::from("0.010"),
+            Quantity::from("0.010"),
+            UnixNanos::from(ts_accepted),
+            UnixNanos::from(ts_last),
+            UnixNanos::from(ts_last),
+            None, // report_id
+        )
+    }
+
+    #[rstest]
+    fn test_report_acceptance_is_pulled_back_to_its_first_fill() {
+        // The engine orders reconciliation events by `ts_event`, so an acceptance stamped after
+        // the order's own fill puts the fill first and the order state machine rejects it.
+        let mut report = report_accepted_at(3_000, 3_000);
+        let fills = [fill_at(1_000), fill_at(2_000)];
+        let refs: Vec<&FillReport> = fills.iter().collect();
+
+        assert!(align_report_with_fills(&mut report, &refs));
+
+        assert_eq!(report.ts_accepted, UnixNanos::from(1_000u64));
+        assert_eq!(
+            report.ts_last,
+            UnixNanos::from(3_000u64),
+            "the last update must not be pulled backwards",
+        );
+    }
+
+    #[rstest]
+    fn test_report_already_preceding_its_fills_is_left_alone() {
+        let mut report = report_accepted_at(1_000, 5_000);
+        let fills = [fill_at(2_000)];
+        let refs: Vec<&FillReport> = fills.iter().collect();
+
+        assert!(!align_report_with_fills(&mut report, &refs));
+
+        assert_eq!(report.ts_accepted, UnixNanos::from(1_000u64));
+        assert_eq!(report.ts_last, UnixNanos::from(5_000u64));
+    }
+
+    #[rstest]
+    fn test_report_without_fills_is_left_alone() {
+        let mut report = report_accepted_at(9_000, 9_000);
+
+        assert!(!align_report_with_fills(&mut report, &[]));
+
+        assert_eq!(report.ts_accepted, UnixNanos::from(9_000u64));
     }
 
     #[rstest]

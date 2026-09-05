@@ -155,6 +155,41 @@ A partial history that looks complete is worse than an error, because the engine
 from it. Rows for instruments this client never loaded are the one thing skipped, and only with
 a log line: they are out of scope rather than missing.
 
+## Startup reconciliation
+
+The execution engine builds each historical order it does not know about from an
+`OrderStatusReport` plus the `FillReport`s carrying the same `venue_order_id`: it drops the fill
+it would otherwise infer from `filled_qty` and applies the real ones instead. Before applying
+anything it sorts **every** reconciliation event by `ts_event`, and it takes those timestamps
+straight from the reports - `OrderAccepted` from the order's `ts_accepted`, each `OrderFilled`
+from its fill's `ts_event`.
+
+That makes one ordering invariant load-bearing: **an order's `ts_accepted` must not follow any
+of its own fills.** Aster breaks it. Some `allOrders` rows come back with no `time` field, so
+the report has no venue creation time and falls back to the receive time - now - which is later
+than every historical fill. The fill then sorts ahead of the acceptance, is applied to an order
+still in `Initialized`, and the order state machine rejects it:
+`InvalidStateTrigger: ... did not apply OrderFilled(...)`, once per historical filled order on
+the account, on every fresh start.
+
+`generate_mass_status` is therefore composed by this adapter rather than inherited, and does
+three things the default composition cannot:
+
+- **Aligns each order with its own fills.** A report whose `ts_accepted` follows its first fill
+  has the acceptance pulled back to that fill; `ts_last` is never pulled backwards. The order
+  report is corrected rather than the fills dropped, so nothing is lost - only the one timestamp
+  the venue did not give us. `AsterOrder::to_order_status_report` additionally clamps
+  `ts_accepted` to `ts_last`, so a single row can never contradict itself either.
+- **Declares the report window.** Aster's history endpoints only answer for a time range, so the
+  snapshot is complete *from* `start`, not from the account's first trade. It is published with
+  `ExecutionMassStatus::set_report_window`; without it the engine treats the history as complete
+  and may synthesise position-opening fills to explain a position whose opening trade simply
+  predates the lookback.
+- **Keeps orders and fills consistent.** All three sources are requested over one identical
+  window, and a fill whose order is not in the report set is dropped with a warning. A one-way
+  mode fill carries no venue position ID, which is exactly what the engine's orphan-fill path
+  requires, so reporting it could only add an event nothing can reconcile.
+
 ## Fees
 
 `exchangeInfo` carries no commission data, so the shared Binance instrument parser fills
