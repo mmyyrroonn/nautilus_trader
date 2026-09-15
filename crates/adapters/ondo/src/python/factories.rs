@@ -27,9 +27,11 @@ use crate::{
 impl OndoDataClientFactory {
     /// Factory for creating Ondo Perps data clients.
     ///
-    /// One factory is created per adapter environment and owns one REST budget, which every
-    /// client it creates draws on (plan §4.4). Registering the factory with a Python `LiveNode`
-    /// is what makes the `ONDO` client name resolvable; the data client's configuration is the
+    /// One factory is created per adapter environment, and every client it creates draws on that
+    /// environment's REST budget (plan §4.4) - the same one an execution client of the same
+    /// environment draws on, resolved from the `environment` its configuration names rather than
+    /// passed between surfaces. Registering the factory with a Python `LiveNode` is what makes the
+    /// `ONDO` client name resolvable; the data client's configuration is the
     /// `OndoDataClientConfig` above.
     #[new]
     fn py_new() -> Self {
@@ -48,11 +50,12 @@ impl OndoDataClientFactory {
 impl OndoExecutionClientFactory {
     /// Factory for creating Ondo Perps execution clients.
     ///
-    /// One factory is created per adapter environment and owns one REST budget, which every client
-    /// it creates draws on (plan §4.4); pass the same budget the data factory holds so the two
-    /// surfaces pace against one bucket. The client it builds is the native Rust execution client
-    /// behind the `ExecutionClient` trait, and the credential is resolved inside it - this factory
-    /// carries none, and its `__repr__` renders none.
+    /// One factory is created per adapter environment, and every client it creates draws on that
+    /// environment's REST budget (plan §4.4) - the same bucket a data client configured for the
+    /// same environment draws on, so a metadata refresh and a cancel cannot each hold half of the
+    /// venue's limit. The client it builds is the native Rust execution client behind the
+    /// `ExecutionClient` trait, and the credential is resolved inside it - this factory carries
+    /// none, and its `__repr__` renders none.
     ///
     /// Registering the factory with a Python `LiveNode` is what makes the `ONDO` execution client
     /// resolvable; its configuration is the `OndoExecutionClientConfig` above.

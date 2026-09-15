@@ -264,6 +264,58 @@ pub struct SessionCounters {
     pub disconnected_published: u64,
     /// Funding frames mapped to an update.
     pub funding_frames: u64,
+    /// Re-registrations of a known instrument that changed how its frames decode.
+    ///
+    /// A re-registration of an unchanged instrument is not counted and rebuilds nothing, so this is
+    /// the count of metadata changes the wire conversion actually followed.
+    pub instrument_updates: u64,
+}
+
+/// Returns what changed between two registrations of one instrument's wire conversion, if anything.
+///
+/// The conversion is what a frame's decimal lexemes are read with: [`crate::websocket::parse`]
+/// rounds a price to the instrument's price precision and a size to its size precision, and the
+/// increments are the venue's own steps within those. A refreshed version that changes any of them
+/// changes what the next frame decodes to, so the book those levels were converted into can no
+/// longer be kept. Everything else the venue's metadata carries - fees, leverage, position limits -
+/// is not part of the conversion and is deliberately not compared here.
+fn conversion_change(previous: &InstrumentAny, updated: &InstrumentAny) -> Option<String> {
+    let mut changes = Vec::new();
+
+    if previous.price_precision() != updated.price_precision() {
+        changes.push(format!(
+            "price precision {} -> {}",
+            previous.price_precision(),
+            updated.price_precision()
+        ));
+    }
+    if previous.size_precision() != updated.size_precision() {
+        changes.push(format!(
+            "size precision {} -> {}",
+            previous.size_precision(),
+            updated.size_precision()
+        ));
+    }
+    if previous.price_increment() != updated.price_increment() {
+        changes.push(format!(
+            "price increment {} -> {}",
+            previous.price_increment(),
+            updated.price_increment()
+        ));
+    }
+    if previous.size_increment() != updated.size_increment() {
+        changes.push(format!(
+            "size increment {} -> {}",
+            previous.size_increment(),
+            updated.size_increment()
+        ));
+    }
+
+    if changes.is_empty() {
+        None
+    } else {
+        Some(changes.join(", "))
+    }
 }
 
 /// The protocol state machine for one connection to the public feed.
@@ -305,18 +357,62 @@ impl OndoWsSession {
         }
     }
 
-    /// Registers an instrument so frames for its market can be routed.
+    /// Registers an instrument so frames for its market can be routed, updating one already
+    /// registered.
     ///
     /// The routing key is the instrument's `raw_symbol`, which is the venue's own market string: a
     /// frame never routes through the Nautilus product marker.
+    ///
+    /// # Re-registration is how a metadata refresh reaches the parser
+    ///
+    /// This session holds the instrument every frame is decoded with - the precision a price or a
+    /// size is converted at, and the increment it is rounded to - so a refreshed version must land
+    /// here before the next frame is parsed, or the adapter would keep decoding at the version the
+    /// venue has replaced. Re-registering an instrument whose **conversion** changed (price or size
+    /// precision, price or size increment) also invalidates that market's book: its levels were
+    /// converted at the previous version, and mixing the two in one book is exactly what must not
+    /// happen. The subscription's next snapshot rebuilds it, and the invalid -> valid transition
+    /// publishes `adapter:snapshot_ready` again, so a consumer is told the book it holds was
+    /// rebuilt rather than amended. Anything else a refreshed instrument carries - fees above all -
+    /// is not read by the conversion and therefore rebuilds nothing.
     pub fn register_instrument(&mut self, instrument: &InstrumentAny) {
         let market = instrument.raw_symbol().to_string();
+        let instrument_id = instrument.id();
 
-        self.markets.insert(market, instrument.id());
-        self.instruments.insert(instrument.id(), instrument.clone());
-        self.books
-            .entry(instrument.id())
-            .or_insert_with(|| OndoBookState::new(self.session_id));
+        match self.instruments.get(&instrument_id) {
+            Some(previous) => {
+                if let Some(change) = conversion_change(previous, instrument) {
+                    self.counters.instrument_updates += 1;
+
+                    log::warn!(
+                        "Ondo metadata changed how `{instrument_id}` decodes ({change}); its book is \
+                         invalidated and waits for the next snapshot"
+                    );
+
+                    if let Some(state) = self.books.get_mut(&instrument_id) {
+                        state.invalidate(&format!("the instrument's conversion changed: {change}"));
+                    }
+                }
+
+                let previous_market = previous.raw_symbol().to_string();
+                if previous_market != market
+                    && self.markets.get(&previous_market) == Some(&instrument_id)
+                {
+                    // The instrument id is derived from the market, so this cannot happen for this
+                    // venue; a stale routing key is dropped rather than left to route a frame for a
+                    // market the adapter no longer tracks under that name.
+                    self.markets.remove(&previous_market);
+                }
+            }
+            None => {
+                self.books
+                    .entry(instrument_id)
+                    .or_insert_with(|| OndoBookState::new(self.session_id));
+            }
+        }
+
+        self.markets.insert(market, instrument_id);
+        self.instruments.insert(instrument_id, instrument.clone());
     }
 
     /// Returns the number of registered instruments.
@@ -1211,6 +1307,17 @@ impl OndoWebSocketClient {
         )));
     }
 
+    /// Returns the sender that applies session commands to the transport's protocol session.
+    ///
+    /// The session lives inside the transport task, so this is the seam a task that does not own the
+    /// transport uses to reach it: the metadata refresh re-registers an instrument whose conversion
+    /// changed, which must land in the session before the next frame is parsed. Commands are applied
+    /// in the order they were queued, and a command queued while no socket exists is applied when
+    /// the next connection's replay is built rather than being lost.
+    pub(crate) fn session_sender(&self) -> mpsc::UnboundedSender<WsSessionCommand> {
+        self.session_tx.clone()
+    }
+
     /// Subscribes to a channel for a set of instruments through the transport's session.
     ///
     /// Returns nothing: building the request and sending it belongs to the session, which knows
@@ -1639,7 +1746,7 @@ async fn send_body(
 
 #[cfg(test)]
 mod tests {
-    use nautilus_model::{enums::AggressorSide, instruments::Instrument};
+    use nautilus_model::{data::OrderBookDeltas, enums::AggressorSide, instruments::Instrument};
     use rstest::rstest;
 
     use super::*;
@@ -2372,5 +2479,210 @@ mod tests {
             "a local feed state never claims an exchange trading event"
         );
         assert_ne!(status.action, MarketStatusAction::Halt);
+    }
+
+    // --------------------------------------------------------------------------------------------
+    // A refreshed metadata version reaches the parser
+    // --------------------------------------------------------------------------------------------
+
+    /// The instrument the venue's metadata builds for `market` with `fields` replaced on that pair.
+    ///
+    /// It goes through `parse_instruments`, the one conversion boundary, so a test can never build
+    /// an instrument whose precision disagrees with the production path - and replacing an
+    /// increment is exactly what a refreshed `GET /v1/markets` carries when the venue re-grids a
+    /// market.
+    fn instrument_with(market: &str, fields: &[(&str, serde_json::Value)]) -> InstrumentAny {
+        let body = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/test_data/rest/markets_synthetic.json"
+        ))
+        .unwrap();
+        let mut value: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let pairs = value["result"]["perps"]["tradingPairs"]
+            .as_array_mut()
+            .expect("the fixture carries trading pairs");
+
+        for pair in pairs {
+            if pair["market"].as_str() != Some(market) {
+                continue;
+            }
+
+            for (field, replacement) in fields {
+                pair[*field] = replacement.clone();
+            }
+        }
+
+        parse_instruments(
+            &value.to_string(),
+            &[market_to_instrument_id(market).unwrap()],
+            UnixNanos::from(2),
+        )
+        .unwrap()
+        .into_iter()
+        .next()
+        .unwrap()
+    }
+
+    /// A `depthBooksPerps` frame for NVDA carrying exactly these levels.
+    ///
+    /// Every frame of this channel is a complete replacement of the covered range, which is why a
+    /// rebuilt book needs no more than the next frame.
+    fn depth_frame(time: &str, bids: &[(&str, &str)], asks: &[(&str, &str)]) -> String {
+        let levels = |side: &[(&str, &str)]| {
+            side.iter()
+                .map(|(price, size)| serde_json::json!([price, size]))
+                .collect::<Vec<_>>()
+        };
+
+        serde_json::json!({
+            "type": "update",
+            "channel": "depthBooksPerps",
+            "timestamp": "2026-09-14T11:09:59.670112401Z",
+            "data": [{
+                "market": "NVDA-USD.P",
+                "time": time,
+                "bids": levels(bids),
+                "asks": levels(asks),
+            }],
+        })
+        .to_string()
+    }
+
+    fn published_deltas(outcomes: &[WsOutcome]) -> &OrderBookDeltas {
+        outcomes
+            .iter()
+            .find_map(|outcome| match outcome {
+                WsOutcome::Data(Data::Deltas(deltas)) => Some(deltas.as_ref()),
+                _ => None,
+            })
+            .expect("the frame published its deltas")
+    }
+
+    /// A refresh that changes what a frame decodes to rebuilds the book instead of letting the two
+    /// versions mix (plan R2.1).
+    #[rstest]
+    fn test_an_instrument_update_that_changes_the_conversion_invalidates_the_book() {
+        let (mut session, instrument_id) = session_with_nvda();
+        session
+            .subscribe(WsChannel::DepthBooksPerps, &[instrument_id])
+            .unwrap();
+
+        // At the fixture's own precision (`quoteIncrement` 0.01, so two decimals) this price has to
+        // be rounded, which is how the test tells the two versions of the instrument apart.
+        let outcomes = session.handle_raw_frame(
+            &depth_frame(
+                "2026-09-14T11:10:00Z",
+                &[("212.225", "1.00")],
+                &[("212.255", "1.00")],
+            ),
+            UnixNanos::from(1),
+        );
+        assert_eq!(
+            published_deltas(&outcomes).deltas[1]
+                .order
+                .price
+                .to_string(),
+            "212.23",
+            "the registered version rounds the level it cannot represent"
+        );
+        assert!(session.book_state(&instrument_id).unwrap().is_valid());
+
+        // The venue re-grids the market: a thousandth rather than a hundredth.
+        let finer = instrument_with(
+            "NVDA-USD.P",
+            &[("quoteIncrement", serde_json::json!("0.001"))],
+        );
+        assert_eq!(finer.price_precision(), 3);
+        assert_eq!(
+            finer.price_increment().to_string(),
+            "0.001",
+            "the update is the venue's own new increment, not a hand-built instrument"
+        );
+        session.register_instrument(&finer);
+
+        let state = session.book_state(&instrument_id).unwrap();
+        assert!(
+            !state.is_valid(),
+            "the levels it held were converted at the previous precision"
+        );
+        assert!(
+            state.book().is_empty(),
+            "and they are not kept beside new ones"
+        );
+        assert!(
+            state
+                .invalid_reason()
+                .is_some_and(|reason| reason.contains("conversion changed")),
+            "the state names why it was emptied, was {:?}",
+            state.invalid_reason()
+        );
+        assert_eq!(session.counters().instrument_updates, 1);
+
+        // The subscription's next snapshot rebuilds the book, decoded at the version that is now
+        // registered - and the invalid -> valid transition says so.
+        let outcomes = session.handle_raw_frame(
+            &depth_frame(
+                "2026-09-14T11:10:01Z",
+                &[("212.225", "1.00")],
+                &[("212.255", "1.00")],
+            ),
+            UnixNanos::from(2),
+        );
+
+        assert_eq!(
+            published_deltas(&outcomes).deltas[1]
+                .order
+                .price
+                .to_string(),
+            "212.225",
+            "the frame is parsed at the version the refresh registered"
+        );
+        assert!(
+            session.book_state(&instrument_id).unwrap().is_valid(),
+            "one snapshot is all a rebuilt book needs"
+        );
+        assert!(
+            outcomes.iter().any(|outcome| matches!(
+                outcome,
+                WsOutcome::Data(Data::InstrumentStatus(status))
+                    if status.reason == Some(Ustr::from(REASON_SNAPSHOT_READY))
+            )),
+            "the rebuilt book publishes the ready state again, was {outcomes:?}"
+        );
+    }
+
+    /// A refresh that carries no conversion change rebuilds nothing and counts nothing.
+    #[rstest]
+    fn test_an_instrument_update_that_changes_nothing_keeps_the_book() {
+        let (mut session, instrument_id) = session_with_nvda();
+        session
+            .subscribe(WsChannel::DepthBooksPerps, &[instrument_id])
+            .unwrap();
+        session.handle_raw_frame(DEPTH_FIXTURE, UnixNanos::from(1));
+        assert!(session.book_state(&instrument_id).unwrap().is_valid());
+
+        // The same increments, a different fee: this is what a refreshed version usually carries,
+        // and the conversion reads none of it.
+        let repriced = instrument_with("NVDA-USD.P", &[("takerFee", serde_json::json!("0.0006"))]);
+        assert_ne!(
+            repriced.taker_fee(),
+            instrument("NVDA-USD.P").taker_fee(),
+            "the refreshed version really is a different instrument"
+        );
+        session.register_instrument(&repriced);
+
+        let state = session.book_state(&instrument_id).unwrap();
+        assert!(
+            state.is_valid(),
+            "a fee change does not invalidate a book it is not converted with"
+        );
+        assert_eq!(state.book().level_counts(), (10, 10));
+        assert_eq!(state.invalid_reason(), None);
+        assert_eq!(session.counters().instrument_updates, 0);
+
+        // Re-registering the identical instrument is not a change either.
+        session.register_instrument(&repriced);
+        assert!(session.book_state(&instrument_id).unwrap().is_valid());
+        assert_eq!(session.counters().instrument_updates, 0);
     }
 }

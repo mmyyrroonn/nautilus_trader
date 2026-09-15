@@ -352,6 +352,21 @@ impl OndoBookState {
         Ok(SnapshotOutcome::Accepted { conflict })
     }
 
+    /// Invalidates the book without changing the connection session it serves.
+    ///
+    /// This is what an instrument update does when the venue's metadata changes what a frame
+    /// decodes to: the levels this state holds were converted at the previous precision or
+    /// increment, and keeping them beside levels converted at the new one would be a book of two
+    /// versions. The state is emptied instead, and the subscription's next snapshot - a full
+    /// replacement, as every `depthBooksPerps` frame is - rebuilds it. The event time is cleared
+    /// with it, so that snapshot is accepted whatever time it carries, and the invalid -> valid
+    /// transition publishes `adapter:snapshot_ready` again once it lands.
+    ///
+    /// Returns `true` when the state changed (a book was held, or one had already been accepted).
+    pub fn invalidate(&mut self, reason: &str) -> bool {
+        self.invalidate_to(self.session_id, reason)
+    }
+
     /// Invalidates the book and moves it to the connection session `session_id`.
     ///
     /// This is what a disconnect does: the old book becomes immediately unusable, every frame from

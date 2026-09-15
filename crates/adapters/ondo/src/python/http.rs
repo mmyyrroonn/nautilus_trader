@@ -108,9 +108,10 @@ impl OndoHttpClient {
     /// per-request timeout and defaults to 15. The client holds no credentials, and constructing
     /// it performs no request: it opens a connection pool and nothing else.
     ///
-    /// The client's own rate budget is a conservative one request per second. A data client's
-    /// factory owns the environment's budget and shares it with the execution client; a standalone
-    /// client built here has its own, so it does not contend with a running node.
+    /// The client's own rate budget is a conservative one request per second. The factories give
+    /// the clients they create the *environment's* budget, which the data and execution surfaces of
+    /// one environment share; a standalone client built here has its own, so it does not contend
+    /// with a running node.
     #[new]
     #[pyo3(signature = (environment, timeout_secs = 15))]
     fn py_new(environment: OndoEnvironment, timeout_secs: u64) -> PyResult<Self> {

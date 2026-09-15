@@ -19,8 +19,18 @@
 //! environment**. That is deliberately *one budget*, not one per endpoint and not one per client:
 //! [`OndoRateBudget`] is injectable, and every client that talks to the same environment is built
 //! from a clone of the same instance, so a data client and an execution client in one process draw
-//! on the same tokens. The quota is never read from a process global, so two environments - or two
-//! independent tests - never contend for one another's budget.
+//! on the same tokens.
+//!
+//! # How two clients end up on one budget
+//!
+//! A factory is constructed before any configuration reaches it - `OndoDataClientFactory()` in
+//! Python, then `create(name, config, ..)` once the node has one - and the environment is a member
+//! of *that configuration*, not of the factory. So the shared instance is resolved at `create`:
+//! [`shared_rest_budget`] answers the process-wide budget of the environment a configuration names,
+//! which is what makes the data and execution clients of one environment contend for one bucket
+//! without either surface having to be wired to the other. The registry is keyed by the environment
+//! itself, so a production client and a sandbox client in one process never share a bucket - and
+//! [`OndoRateBudget::new`] is still the way a test or a Rust embedder takes an independent one.
 //!
 //! # Priority
 //!
@@ -35,11 +45,14 @@
 
 use std::{
     num::NonZeroU32,
-    sync::{Arc, LazyLock},
+    sync::{Arc, LazyLock, Mutex, PoisonError},
 };
 
+use ahash::AHashMap;
 use nautilus_network::ratelimiter::{RateLimiter, clock::MonotonicClock, quota::Quota};
 use ustr::Ustr;
+
+use crate::common::enums::OndoEnvironment;
 
 /// The single rate-limit bucket every Ondo Perps REST request draws on.
 ///
@@ -55,6 +68,31 @@ pub static ONDO_REST_QUOTA: LazyLock<Quota> = LazyLock::new(|| {
     Quota::per_second(NonZeroU32::new(ONDO_REST_REQUESTS_PER_SECOND).expect("non-zero"))
         .expect("one request per second has a non-zero replenish interval")
 });
+
+/// The process-wide REST budgets, one per adapter environment.
+///
+/// The key is the environment and nothing else: one process that reads production market data and
+/// talks to a sandbox account holds two buckets, and two clients of one environment hold one. The
+/// map is never cleared - a bucket is a plain allocation with no state worth resetting - so a
+/// factory, a re-created client and a reconnecting client all resolve the same instance.
+static ENVIRONMENT_BUDGETS: LazyLock<Mutex<AHashMap<OndoEnvironment, OndoRateBudget>>> =
+    LazyLock::new(|| Mutex::new(AHashMap::new()));
+
+/// Returns the REST budget the whole process shares for `environment` (plan §4.4).
+///
+/// This is the resolution the factories use at `create`, from the environment the configuration
+/// names: two clients built for one environment - the data client whose refresh reads the market
+/// metadata and the execution client whose account calls share the venue's request limit - pace
+/// against one bucket, and a client built for another environment never does. The answer is a clone
+/// of a shared handle, so callers hold the bucket rather than the registry.
+#[must_use]
+pub fn shared_rest_budget(environment: OndoEnvironment) -> OndoRateBudget {
+    let mut budgets = ENVIRONMENT_BUDGETS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
+
+    budgets.entry(environment).or_default().clone()
+}
 
 /// The class of traffic a slot in the shared budget is being taken for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -156,6 +194,28 @@ mod tests {
         assert_eq!(ONDO_REST_BUCKET, "ondo:rest");
         assert_eq!(ONDO_REST_QUOTA.burst_size().get(), 1);
         assert_eq!(ONDO_REST_QUOTA.replenish_interval(), Duration::from_secs(1));
+    }
+
+    /// §4.4's isolation key: the environment. Two resolutions of one environment are one bucket,
+    /// and the two environments this adapter knows never contend for one another's tokens.
+    #[rstest]
+    fn test_the_process_shares_one_budget_per_environment_and_never_across_environments() {
+        let production = shared_rest_budget(OndoEnvironment::Production);
+        let again = shared_rest_budget(OndoEnvironment::Production);
+        let sandbox = shared_rest_budget(OndoEnvironment::Sandbox);
+
+        assert!(
+            Arc::ptr_eq(production.limiter(), again.limiter()),
+            "the same environment resolves the same bucket, however many times it is asked"
+        );
+        assert!(
+            !Arc::ptr_eq(production.limiter(), sandbox.limiter()),
+            "two environments must not contend for one bucket"
+        );
+        assert!(
+            !Arc::ptr_eq(production.limiter(), OndoRateBudget::new().limiter()),
+            "the shared budget is not the independent one a caller builds for itself"
+        );
     }
 
     #[rstest]

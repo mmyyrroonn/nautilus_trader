@@ -27,10 +27,12 @@
 
 #![cfg(feature = "python")]
 
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, sync::Arc, task::Poll, time::Duration};
 
+use futures_util::poll;
 use nautilus_common::{
-    cache::Cache, clock::TestClock, live::runner::replace_data_event_sender, messages::DataEvent,
+    cache::Cache, clock::TestClock, factories::DataClientFactory,
+    live::runner::replace_data_event_sender, messages::DataEvent,
 };
 use nautilus_model::identifiers::{ClientId, InstrumentId, Venue};
 use nautilus_ondo::{
@@ -40,7 +42,7 @@ use nautilus_ondo::{
     },
     config::{OndoDataClientConfig, OndoExecutionClientConfig},
     factories::{OndoDataClientFactory, OndoExecutionClientFactory},
-    http::client::OndoHttpClient,
+    http::{client::OndoHttpClient, rate_limit::shared_rest_budget},
 };
 use nautilus_system::get_global_pyo3_registry;
 use pyo3::{
@@ -64,6 +66,9 @@ fn scratch_module(py: Python<'_>) -> Bound<'_, PyModule> {
     module
         .add_class::<OndoExecutionClientConfig>()
         .expect("the execution configuration should register");
+    module
+        .add_class::<OndoDataClientFactory>()
+        .expect("the data factory should register");
     module
         .add_class::<OndoExecutionClientFactory>()
         .expect("the execution factory should register");
@@ -221,6 +226,182 @@ fn test_the_python_module_registers_the_documented_surface() {
             "the factory builds a client, it does not connect one",
         );
     });
+}
+
+/// The two factories a live node builds in Python draw on one REST budget per environment, and the
+/// client one of them creates is paced by it (plan §4.4, finding F13).
+///
+/// Both factories are constructed here **through the Python surface** - `OndoDataClientFactory()`
+/// and `OndoExecutionClientFactory()`, which is what the node's registration does - and nothing
+/// hands either of them a budget. What makes them share one is the environment the configuration
+/// names, resolved at `create`.
+#[tokio::test(start_paused = true)]
+async fn test_the_python_factories_share_one_environment_budget_under_concurrency() {
+    setup_data_event_sender();
+    Python::initialize();
+
+    let (data_factory, exec_factory) = Python::attach(|py| {
+        let module = scratch_module(py);
+        let data_factory = module
+            .getattr("OndoDataClientFactory")
+            .expect("the data factory is exported")
+            .call0()
+            .expect("the data factory constructs with no arguments")
+            .extract::<OndoDataClientFactory>()
+            .expect("the Python factory extracts back into the Rust type the node uses");
+        let exec_factory = module
+            .getattr("OndoExecutionClientFactory")
+            .expect("the execution factory is exported")
+            .call0()
+            .expect("the execution factory constructs with no arguments")
+            .extract::<OndoExecutionClientFactory>()
+            .expect("the Python factory extracts back into the Rust type the node uses");
+
+        (data_factory, exec_factory)
+    });
+
+    // What both Python constructors resolved: the default environment's process-wide bucket, and
+    // therefore one instance for both surfaces rather than one each.
+    assert!(
+        Arc::ptr_eq(
+            data_factory.budget().limiter(),
+            exec_factory.budget().limiter()
+        ),
+        "two factories of one environment are one budget, without a caller passing one"
+    );
+    assert!(Arc::ptr_eq(
+        data_factory.budget().limiter(),
+        shared_rest_budget(OndoEnvironment::Production).limiter()
+    ));
+
+    // Concurrency across the two factories: the slot one of them spent is the slot the other waits
+    // for. Neither handle was passed to the test - each came from its own factory - and the second
+    // acquisition is driven by hand rather than spawned, so the assertion is about the budget
+    // rather than about how the runtime happened to schedule a task.
+    data_factory
+        .budget()
+        .acquire(nautilus_ondo::http::rate_limit::OndoRequestPriority::Normal)
+        .await;
+
+    let exec_budget = exec_factory.budget().clone();
+    let mut waiting =
+        Box::pin(exec_budget.acquire(nautilus_ondo::http::rate_limit::OndoRequestPriority::Normal));
+    for _ in 0..16 {
+        assert!(
+            poll!(waiting.as_mut()).is_pending(),
+            "the second factory waits on the slot the first one spent"
+        );
+        tokio::task::yield_now().await;
+    }
+
+    // Two seconds rather than one: this bucket is process-wide, so the reference instant its
+    // limiter counts from was taken by whichever test in this binary created it - possibly a
+    // runtime whose paused clock is a millisecond or so away from this one's. What is asserted
+    // exactly is that the second factory *waits*; the release allows for that skew rather than
+    // pretending two runtimes share one clock.
+    tokio::time::advance(Duration::from_secs(2)).await;
+
+    let mut released = false;
+    for _ in 0..16 {
+        if poll!(waiting.as_mut()).is_ready() {
+            released = true;
+
+            break;
+        }
+        tokio::task::yield_now().await;
+    }
+    assert!(
+        released,
+        "one request per second, however many factories share the environment"
+    );
+
+    // And the client one of them creates is paced by the bucket of the environment its own
+    // configuration names - here the other one, which is what the isolation key buys.
+    let config = Python::attach(|py| {
+        let module = scratch_module(py);
+        let kwargs = PyDict::new(py);
+        kwargs.set_item("environment", sandbox(&module)).unwrap();
+        kwargs
+            .set_item("load_ids", vec![InstrumentId::from("NVDA-USD-PERP.ONDO")])
+            .unwrap();
+        // Nothing is listening on the loopback port, so a read that gets past the budget fails at
+        // the transport instead of reaching a venue.
+        kwargs
+            .set_item("base_url_http", "http://127.0.0.1:9")
+            .unwrap();
+
+        module
+            .getattr("OndoDataClientConfig")
+            .expect("the data configuration is exported")
+            .call((), Some(&kwargs))
+            .expect("the configuration constructs from keywords")
+            .extract::<OndoDataClientConfig>()
+            .expect("the configuration extracts back into Rust")
+    });
+
+    // This bucket is created here, by this test's own runtime, and the client's read is the only
+    // thing that draws on it - so the cell it spends is the cell the assertion below finds gone.
+    let sandbox_budget = shared_rest_budget(OndoEnvironment::Sandbox);
+    assert!(
+        sandbox_budget
+            .limiter()
+            .check_key(&ustr::Ustr::from(
+                nautilus_ondo::http::rate_limit::ONDO_REST_BUCKET
+            ))
+            .is_ok(),
+        "the sandbox environment's bucket holds its one cell before the read"
+    );
+
+    let mut client = data_factory
+        .create(
+            "ONDO-PY-DATA",
+            &config,
+            Rc::new(RefCell::new(Cache::default())).into(),
+            Rc::new(RefCell::new(TestClock::new())),
+        )
+        .expect("the Python-built factory creates the client the node asks it for");
+
+    let mut connect = Box::pin(client.connect());
+    for _ in 0..16 {
+        assert!(
+            poll!(connect.as_mut()).is_pending(),
+            "the sandbox configuration waits on the sandbox bucket, not on the factory's own"
+        );
+        tokio::task::yield_now().await;
+    }
+
+    assert!(
+        sandbox_budget
+            .limiter()
+            .check_key(&ustr::Ustr::from(
+                nautilus_ondo::http::rate_limit::ONDO_REST_BUCKET
+            ))
+            .is_err(),
+        "the client created through the Python factory drew the sandbox environment's cell"
+    );
+
+    tokio::time::advance(Duration::from_secs(1)).await;
+
+    let mut connected = None;
+    for _ in 0..16 {
+        match poll!(connect.as_mut()) {
+            Poll::Ready(result) => {
+                connected = Some(result);
+
+                break;
+            }
+            Poll::Pending => {}
+        }
+        tokio::task::yield_now().await;
+    }
+    let connected = match connected {
+        Some(result) => result,
+        None => connect.await,
+    };
+    assert!(
+        connected.is_err(),
+        "the read went out and nothing answers on the local port"
+    );
 }
 
 #[rstest]

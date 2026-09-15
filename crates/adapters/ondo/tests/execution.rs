@@ -498,6 +498,33 @@ fn build_harness_on_budget(
     }
 }
 
+/// The client's REST path draws on the budget it was built with, not on one of its own.
+///
+/// This is the client's half of the factory's resolution (finding F13): the factory resolves the
+/// environment's budget and hands that instance to `with_credential`, and this asserts what the
+/// client actually paces against - no request is sent here.
+#[tokio::test]
+async fn test_the_client_draws_on_the_budget_it_was_built_with() {
+    let mock = MockServer::start(Vec::new()).await;
+    let budget = paced_budget();
+    let harness = build_harness_on_budget(&mock, sandbox_config(), budget.clone());
+
+    assert!(
+        Arc::ptr_eq(
+            harness.client.http_client().budget().limiter(),
+            budget.limiter()
+        ),
+        "an injected budget is the bucket the client's requests pace against"
+    );
+    assert!(
+        !Arc::ptr_eq(
+            harness.client.http_client().budget().limiter(),
+            OndoRateBudget::new().limiter()
+        ),
+        "and the client did not mint one of its own beside it"
+    );
+}
+
 /// A configuration with the sandbox credential pair and no base URL of its own.
 fn sandbox_config() -> OndoExecutionClientConfig {
     OndoExecutionClientConfig {

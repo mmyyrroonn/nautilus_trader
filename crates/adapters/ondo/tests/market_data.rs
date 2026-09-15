@@ -47,8 +47,8 @@ use nautilus_common::{
     messages::{
         DataEvent,
         data::{
-            SubscribeBookDeltas, SubscribeBookDepth10, SubscribeInstrumentStatus,
-            UnsubscribeBookDeltas, UnsubscribeBookDepth10,
+            SubscribeBookDeltas, SubscribeBookDepth10, SubscribeInstrument,
+            SubscribeInstrumentStatus, UnsubscribeBookDeltas, UnsubscribeBookDepth10,
         },
     },
     msgbus::{self, MessageBus, stubs::get_any_saving_handler, switchboard},
@@ -69,7 +69,7 @@ use nautilus_model::{
 use nautilus_ondo::{
     common::parse::{market_to_instrument_id, parse_decimal, parse_timestamp},
     config::OndoDataClientConfig,
-    data::OndoDataClient,
+    data::{OndoDataClient, REASON_METADATA_READY, REASON_METADATA_STALE},
     http::{models::parse_instruments, rate_limit::OndoRateBudget},
     websocket::{
         EventTimeSource, NO_EXCHANGE_SEQUENCE, OndoBookState, OndoWebSocketClient, OndoWsSession,
@@ -1991,6 +1991,16 @@ impl Drop for MockRest {
 
 impl MockRest {
     async fn start(body: String) -> Self {
+        Self::start_with_bodies(vec![body]).await
+    }
+
+    /// Answers one body per request, in order, repeating the last one once the list is exhausted.
+    ///
+    /// A venue that changes its mind between two reads is a venue that answers differently, and the
+    /// metadata refresh is a read like any other - so this is how a status change reaches the
+    /// client without waiting a refresh interval for it.
+    async fn start_with_bodies(bodies: Vec<String>) -> Self {
+        assert!(!bodies.is_empty(), "a mock endpoint answers something");
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
             .await
             .expect("a mock endpoint binds on the loopback interface");
@@ -2002,13 +2012,16 @@ impl MockRest {
         );
         let requests = Arc::new(Mutex::new(Vec::new()));
         let recorded = Arc::clone(&requests);
+        let bodies = Arc::new(bodies);
+        let served = Arc::new(AtomicUsize::new(0));
 
         let handle = tokio::spawn(async move {
             loop {
                 let Ok((mut stream, _)) = listener.accept().await else {
                     return;
                 };
-                let body = body.clone();
+                let body =
+                    bodies[served.fetch_add(1, Ordering::SeqCst).min(bodies.len() - 1)].clone();
                 let recorded = Arc::clone(&recorded);
 
                 tokio::spawn(async move {
@@ -2073,6 +2086,17 @@ fn fixture_with_first_pair_only() -> String {
     value.to_string()
 }
 
+/// The market metadata fixture with the first pair's maker fee changed, which is a venue whose view
+/// of the tradable set is unchanged: a read of it is accepted as a version that replaced the last.
+fn fixture_with_a_changed_maker_fee() -> String {
+    let mut value: serde_json::Value =
+        serde_json::from_str(MARKETS_FIXTURE).expect("the fixture is JSON");
+    value["result"]["perps"]["tradingPairs"][0]["makerFee"] =
+        serde_json::Value::String("0.0002".to_string());
+
+    value.to_string()
+}
+
 /// The market metadata fixture carrying no market at all.
 fn fixture_with_no_pairs() -> String {
     let mut value: serde_json::Value =
@@ -2115,19 +2139,43 @@ fn data_client(
     (client, rx)
 }
 
-/// The instrument ids the client published, in the order it published them.
-fn published_instruments(
+/// The instruments the client published, in the order it published them.
+fn published_copies(
     events: &mut tokio::sync::mpsc::UnboundedReceiver<DataEvent>,
-) -> Vec<String> {
+) -> Vec<InstrumentAny> {
     let mut published = Vec::new();
 
     while let Ok(event) = events.try_recv() {
         if let DataEvent::Instrument(instrument) = event {
-            published.push(instrument.id().to_string());
+            published.push(instrument);
         }
     }
 
     published
+}
+
+/// The instrument ids the client published, in the order it published them.
+fn published_instruments(
+    events: &mut tokio::sync::mpsc::UnboundedReceiver<DataEvent>,
+) -> Vec<String> {
+    published_copies(events)
+        .iter()
+        .map(|instrument| instrument.id().to_string())
+        .collect()
+}
+
+/// The metadata version a consumer reads off an instrument it was handed.
+///
+/// The key is spelled out rather than taken from the adapter's own constant: this is the name the
+/// application reads, and a test that imported it would follow a rename instead of failing on one.
+fn metadata_version_of(instrument: &InstrumentAny) -> Option<u64> {
+    match instrument {
+        InstrumentAny::CryptoPerpetual(perp) => perp
+            .info
+            .as_ref()
+            .and_then(|info| info.get_u64("metadata_version")),
+        _ => None,
+    }
 }
 
 /// Forwards the client's events to the data engine until `predicate` holds or the deadline passes.
@@ -2195,6 +2243,96 @@ async fn test_the_instrument_provider_publishes_exactly_the_requested_instrument
     assert!(
         !client.is_market_tradable(&instrument_id(TSLA_MARKET)),
         "TSLA is `active` at the venue but this client never loaded or published it"
+    );
+
+    client.disconnect().await.expect("the client stops");
+}
+
+/// The metadata version an application records is the version of the instrument it was handed.
+///
+/// The version is not published as an event of its own: a consumer reads it off the instrument, so
+/// both carriers have to carry it - the copy the provider's store answers a subscription with, and
+/// the copy a read that replaced the accepted version republishes.
+#[tokio::test]
+async fn test_the_instrument_a_consumer_is_handed_names_the_metadata_version_it_belongs_to() {
+    // The venue answers the first read with its opening metadata and the second with the same
+    // markets at a different maker fee: a view of the tradable set that did not change, so the
+    // second read is accepted as a version that replaced the last one.
+    let rest = MockRest::start_with_bodies(vec![
+        MARKETS_FIXTURE.to_string(),
+        fixture_with_a_changed_maker_fee(),
+    ])
+    .await;
+    let feed = MockFeed::start().await;
+    let (mut client, mut events) = data_client(config_for(&rest, &feed, &[NVDA_INSTRUMENT]));
+
+    let instrument_id = instrument_id(NVDA_MARKET);
+    client.load_all(None).await.expect("the market loads");
+
+    let published = published_copies(&mut events);
+    assert_eq!(
+        published.len(),
+        1,
+        "one market was loaded, so one was published"
+    );
+    assert_eq!(
+        metadata_version_of(&published[0]),
+        Some(1),
+        "the first accepted version names itself on the instrument it publishes"
+    );
+
+    // The application's own call: it subscribes to the market it trades, and is answered from the
+    // provider's store rather than by the read that filled it.
+    client
+        .subscribe_instrument(SubscribeInstrument::new(
+            instrument_id,
+            Some(ClientId::from("ONDO-TEST")),
+            None,
+            UUID4::new(),
+            ts_init(),
+            None,
+            None,
+        ))
+        .expect("the market this client loaded is published to the subscription");
+
+    let answered = published_copies(&mut events);
+    assert_eq!(
+        answered.len(),
+        1,
+        "a subscription is answered with exactly the instrument it asked for"
+    );
+    assert_eq!(answered[0].id(), instrument_id);
+    assert_eq!(
+        metadata_version_of(&answered[0]),
+        Some(1),
+        "the store hands out the version it holds"
+    );
+
+    // The venue's metadata changes underneath the run: the read is accepted as a new version, and
+    // the instrument republished with it is the new copy, named with the version it became.
+    client
+        .load_all(None)
+        .await
+        .expect("the venue's second answer is still market metadata");
+
+    let republished = published_copies(&mut events);
+    assert_eq!(
+        republished.len(),
+        1,
+        "the version that replaced the accepted one republishes its markets"
+    );
+    assert_eq!(
+        metadata_version_of(&republished[0]),
+        Some(2),
+        "the republished instrument names the version that replaced the accepted one"
+    );
+    let InstrumentAny::CryptoPerpetual(perpetual) = &republished[0] else {
+        panic!("this venue publishes crypto perpetuals");
+    };
+    assert_eq!(
+        perpetual.maker_fee.to_string(),
+        "0.0002",
+        "the republished copy is the read that was accepted, not the copy it replaced"
     );
 
     client.disconnect().await.expect("the client stops");
@@ -2687,6 +2825,313 @@ async fn test_a_disconnect_reaches_an_instrument_status_subscriber_and_only_a_ne
             "the pre-disconnect level {gone} is gone: the book was rebuilt, not amended"
         );
     }
+
+    client.disconnect().await.expect("the client stops");
+}
+
+// ------------------------------------------------------------------------------------------------
+// The metadata axis, the market axis, and one frame of recovery
+// ------------------------------------------------------------------------------------------------
+
+/// The market metadata fixture with NVDA's status string set to `disabled`.
+///
+/// The string field is the one that wins the precedence in `MarketStatusInfo::resolve`, so this is
+/// how the venue re-grids... regrades a market: the same increments, a different tradability.
+fn fixture_with_nvda_disabled() -> String {
+    let mut value: serde_json::Value =
+        serde_json::from_str(MARKETS_FIXTURE).expect("the fixture is JSON");
+    let pairs = value["result"]["perps"]["tradingPairs"]
+        .as_array_mut()
+        .expect("the fixture carries trading pairs");
+
+    for pair in pairs {
+        if pair["market"] == NVDA_MARKET {
+            pair["status"] = serde_json::Value::String("disabled".to_string());
+        }
+    }
+
+    value.to_string()
+}
+
+/// Every instrument status the client published into `events`, in order.
+fn published_statuses(published: &[Data]) -> Vec<&InstrumentStatus> {
+    published
+        .iter()
+        .filter_map(|data| match data {
+            Data::InstrumentStatus(status) => Some(status),
+            _ => None,
+        })
+        .collect()
+}
+
+/// One frame of recovery depth is all a book needs, and the events say which came first.
+///
+/// The venue's `depthBooksPerps` frame is a complete replacement, so the frame after a reconnect is
+/// the whole book - and the session publishes it as deltas before it publishes the state that says
+/// the book is usable, which is the order a consumer needs: the data before the permission to use
+/// it. A test that only checked "a ready state arrived" would pass on the wrong order.
+#[tokio::test]
+async fn test_one_recovery_frame_makes_the_feed_usable_and_the_deltas_come_first() {
+    let rest = MockRest::start(MARKETS_FIXTURE.to_string()).await;
+    let feed = MockFeed::start().await;
+    let (mut client, mut events) = data_client(config_for(&rest, &feed, &[NVDA_INSTRUMENT]));
+    let instrument_id = instrument_id(NVDA_MARKET);
+
+    client
+        .connect()
+        .await
+        .expect("the metadata loads over the mock REST endpoint and the feed starts");
+    client
+        .subscribe_book_deltas(subscribe_book_deltas(instrument_id))
+        .expect("the book subscription is accepted");
+    feed_connection(&feed, 1).await;
+    feed_request(&feed, 1).await;
+
+    feed.push(&book_frame(
+        NVDA_MARKET,
+        "2026-09-14T11:10:00Z",
+        &[("100.00", "1.00")],
+        &[("101.00", "1.00")],
+    ));
+    let opening = data_until(&mut events, |published| {
+        published_statuses(published)
+            .iter()
+            .any(|status| status.reason == Some(Ustr::from(REASON_SNAPSHOT_READY)))
+    })
+    .await;
+
+    let deltas_at = opening
+        .iter()
+        .position(|data| matches!(data, Data::Deltas(_)))
+        .expect("the first snapshot published its deltas");
+    let ready_at = opening
+        .iter()
+        .position(|data| {
+            matches!(data, Data::InstrumentStatus(status) if status.reason == Some(Ustr::from(REASON_SNAPSHOT_READY)))
+        })
+        .expect("the first snapshot published the ready state");
+    assert!(
+        deltas_at < ready_at,
+        "the book is published before the state that permits using it, was {opening:?}"
+    );
+
+    // The venue closes the socket. The book becomes unusable and the client says so; the transport
+    // reconnects on its own and replays its subscription.
+    feed.disconnect();
+    let disconnected = data_until(&mut events, |published| {
+        published_statuses(published)
+            .iter()
+            .any(|status| status.reason == Some(Ustr::from(REASON_DISCONNECTED)))
+    })
+    .await;
+    assert!(
+        published_deltas(&disconnected).is_none(),
+        "a disconnect is not market data, was {disconnected:?}"
+    );
+
+    feed_connection(&feed, 2).await;
+    feed_request(&feed, 2).await;
+
+    // Exactly one frame of recovery depth.
+    feed.push(&book_frame(
+        NVDA_MARKET,
+        "2026-09-14T11:11:00Z",
+        &[("98.00", "3.00")],
+        &[("102.00", "4.00")],
+    ));
+    let recovery = data_until(&mut events, |published| {
+        published_statuses(published)
+            .iter()
+            .any(|status| status.reason == Some(Ustr::from(REASON_SNAPSHOT_READY)))
+    })
+    .await;
+
+    let deltas_at = recovery
+        .iter()
+        .position(|data| matches!(data, Data::Deltas(_)))
+        .expect("the one recovery frame published its book");
+    let ready_at = recovery
+        .iter()
+        .position(|data| {
+            matches!(data, Data::InstrumentStatus(status) if status.reason == Some(Ustr::from(REASON_SNAPSHOT_READY)))
+        })
+        .expect("the one recovery frame published the ready state");
+    assert!(
+        deltas_at < ready_at,
+        "one frame is the whole book, and it arrives before the state that permits using it"
+    );
+    let deltas = published_deltas(&recovery).expect("the recovery frame published its deltas");
+    assert_eq!(deltas.deltas[0].action, BookAction::Clear);
+    assert_eq!(
+        deltas.deltas.len(),
+        3,
+        "one CLEAR plus the two levels of the recovery frame"
+    );
+
+    client.disconnect().await.expect("the client stops");
+}
+
+/// The venue's own halt reaches a subscriber, and neither a metadata recovery nor a fresh snapshot
+/// clears it.
+///
+/// This is the chain the application's replay reads: the client reads the venue's view over REST,
+/// the session publishes the book, and the platform's data engine puts both on the message bus.
+#[tokio::test]
+async fn test_a_venue_halt_reaches_a_subscriber_and_only_the_venue_clears_it() {
+    let rest = MockRest::start_with_bodies(vec![
+        MARKETS_FIXTURE.to_string(),
+        fixture_with_nvda_disabled(),
+    ])
+    .await;
+    let feed = MockFeed::start().await;
+    let (mut client, mut events) = data_client(config_for(&rest, &feed, &[NVDA_INSTRUMENT]));
+
+    let _msgbus = MessageBus::new(TraderId::from("TRADER-001"), UUID4::new(), None, None)
+        .register_message_bus();
+    let clock: Rc<RefCell<dyn Clock>> = Rc::new(RefCell::new(TestClock::new()));
+    let cache: Rc<RefCell<Cache>> = Rc::new(RefCell::new(Cache::default()));
+    let mut engine = DataEngine::new(clock, cache, None);
+
+    let instrument_id = instrument_id(NVDA_MARKET);
+    let topic = switchboard::get_instrument_status_topic(instrument_id);
+    let (handler, subscriber) =
+        get_any_saving_handler::<InstrumentStatus>(Some(Ustr::from("ondo-market-axis-subscriber")));
+    msgbus::subscribe_any(topic.into(), handler, None);
+
+    let seen = |reason: &str| -> usize {
+        subscriber
+            .get_messages()
+            .into_iter()
+            .filter(|status| status.reason == Some(Ustr::from(reason)))
+            .count()
+    };
+    let venue_states = || -> Vec<InstrumentStatus> {
+        subscriber
+            .get_messages()
+            .into_iter()
+            .filter(|status| status.action != MarketStatusAction::None)
+            .collect()
+    };
+
+    client
+        .connect()
+        .await
+        .expect("the metadata loads over the mock REST endpoint and the feed starts");
+    client
+        .subscribe_book_deltas(subscribe_book_deltas(instrument_id))
+        .expect("the book subscription is accepted");
+    feed_connection(&feed, 1).await;
+    feed_request(&feed, 1).await;
+
+    let mut published = Vec::new();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    assert!(
+        drive_statuses(&mut events, &mut engine, &mut published, deadline, || {
+            !venue_states().is_empty() && seen(REASON_METADATA_READY) == 1
+        })
+        .await,
+        "the first version publishes the venue's own status and the metadata state"
+    );
+
+    let opening = venue_states();
+    assert_eq!(opening.len(), 1);
+    assert_eq!(opening[0].action, MarketStatusAction::Trading);
+    assert_eq!(opening[0].is_trading, Some(true));
+    assert_eq!(
+        opening[0].is_quoting, None,
+        "the venue's status is not this adapter's feed state"
+    );
+
+    // The venue disables NVDA. The refresh reads the venue's view again - the same read the
+    // sixty-second task makes, driven here instead of waited for - and this client refuses the
+    // version that says so while still reporting what the venue said.
+    client
+        .load_all(None)
+        .await
+        .expect("the venue's second answer is still market metadata");
+
+    let mut halted = Vec::new();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    assert!(
+        drive_statuses(&mut events, &mut engine, &mut halted, deadline, || {
+            seen(REASON_METADATA_STALE) == 1
+        })
+        .await,
+        "the metadata gate closes on the version the venue changed"
+    );
+
+    let venue = venue_states();
+    assert_eq!(
+        venue.len(),
+        2,
+        "one opening state and one halt, was {venue:?}"
+    );
+    let halt = &venue[1];
+    assert_eq!(halt.instrument_id, instrument_id);
+    assert_eq!(halt.action, MarketStatusAction::Halt);
+    assert_eq!(halt.is_trading, Some(false));
+    assert_eq!(
+        halt.reason, None,
+        "the action is the venue's statement; a reason would read as an adapter condition"
+    );
+
+    let stale = subscriber
+        .get_messages()
+        .into_iter()
+        .find(|status| status.reason == Some(Ustr::from(REASON_METADATA_STALE)))
+        .expect("the stale state was published");
+    assert_eq!(stale.action, MarketStatusAction::None);
+    assert_eq!(stale.is_trading, None);
+    assert_eq!(stale.is_quoting, Some(false));
+    assert_eq!(
+        seen(REASON_METADATA_READY),
+        1,
+        "a read that keeps the previous version is not a ready state"
+    );
+
+    // The feed loses its connection and comes back with one frame. That restores the feed axis and
+    // nothing else: the halt stands until the venue says otherwise.
+    feed.disconnect();
+    let mut dropped = Vec::new();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    assert!(
+        drive_statuses(&mut events, &mut engine, &mut dropped, deadline, || {
+            seen(REASON_DISCONNECTED) == 1
+        })
+        .await,
+        "the disconnect reaches the subscriber"
+    );
+
+    feed_connection(&feed, 2).await;
+    feed_request(&feed, 2).await;
+    feed.push(&book_frame(
+        NVDA_MARKET,
+        "2026-09-14T11:11:00Z",
+        &[("98.00", "3.00")],
+        &[("102.00", "4.00")],
+    ));
+
+    let mut recovered = Vec::new();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    assert!(
+        drive_statuses(&mut events, &mut engine, &mut recovered, deadline, || {
+            seen(REASON_SNAPSHOT_READY) == 1
+        })
+        .await,
+        "one frame of recovery depth makes the feed usable again"
+    );
+
+    assert_eq!(
+        venue_states().len(),
+        2,
+        "a recovery snapshot is not the venue resuming trading, was {:?}",
+        venue_states()
+    );
+    assert_eq!(
+        venue_states().last().map(|status| status.action),
+        Some(MarketStatusAction::Halt),
+        "the venue's halt is still the last thing the venue said"
+    );
 
     client.disconnect().await.expect("the client stops");
 }
