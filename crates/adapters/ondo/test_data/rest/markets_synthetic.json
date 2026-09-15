@@ -1,0 +1,84 @@
+{
+  "_fixture": {
+    "kind": "synthetic",
+    "authored_at_utc": "2026-09-14T11:53:22Z",
+    "what_this_is": "A hand-authored response body for GET https://api.ondoperps.xyz/v1/markets. It follows the official REST spec shape but it is NOT an observed server response.",
+    "why_synthetic": "The live endpoint returned HTTP 403 (Cloudflare body 'error code: 1010') on 2026-09-14T11:50:18Z and again on 2026-09-14T11:50:22Z for /status. No legitimate sandbox key was available for this phase, so no real /v1/markets body exists to copy. Per Task 0, private/authenticated fixtures stay synthetic until a legitimate sandbox response is obtained.",
+    "source_file": "reports/ondo-plan-2026-09-14/api-reference__rest-spec.json",
+    "source_url": "https://docs.ondoperps.xyz/api-reference/rest-spec.json",
+    "source_sha256": "860a96ca3fa1e0800841446cddc738bc8ab2749feb67c2f10fcdd1e2aae003f1",
+    "source_retrieved_at_utc": "2026-09-14T11:08:44.875791+00:00",
+    "spec_refresh_verified_same_sha256_at_utc": "2026-09-14T11:52:50.086667+00:00",
+    "field_provenance": {
+      "success": "spec (GenericResponse.required)",
+      "result.perps.tradingPairs": "spec (MarketsResult.perps.tradingPairs)",
+      "result.perps.tradingPairs[].market": "spec (PerpsTradingPair.market)",
+      "result.perps.tradingPairs[].baseIncrement": "spec (PerpsTradingPair.baseIncrement) = quantity step, in base units",
+      "result.perps.tradingPairs[].quoteIncrement": "spec (PerpsTradingPair.quoteIncrement) = price step, in quote units",
+      "result.perps.tradingPairs[].status": "INVENTED FIELD NAME. The spec declares no status field on PerpsTradingPair at all. Included only so later tasks can exercise a raw-status -> active/disabled/unknown mapping. Names and values are unverified; see conflicts.md conflict 5.",
+      "result.perps.tradingPairs[].disabled": "spec (Contract.disabled - a GET /v1/perps/contracts field, included here as the documented alternative reading of 'status')",
+      "result.perps.tradingPairs[].makerFee": "spec (Contract.makerFee - also a /v1/perps/contracts field; the 2026-09-11 /v1/markets observation reported maker 0.0001 per market, but that is 2026-09-11 data)",
+      "result.perps.tradingPairs[].takerFee": "spec (Contract.takerFee - same caveat; 2026-09-11 observed 0.00025)",
+      "result.tokenConfig": "spec (MarketsResult.tokenConfig / TokenConfig, values taken from the spec example)"
+    },
+    "value_basis": {
+      "baseIncrement/quoteIncrement for NVDA-USD.P and TSLA-USD.P": "0.01 / 0.01, chosen to be consistent with the observed 2026-09-14 WS frames: every observed price carries 2 decimals and every observed size carries at most 2 decimals. Consistency with observation is a cross-check, NOT proof of the real increments - only a live /v1/markets response proves them.",
+      "makerFee/takerFee": "0.0001 / 0.00025 = the promotional 1 bp / 2.5 bp published on https://docs.ondoperps.xyz/fees.md (retrieved 2026-09-14T11:08:45.179791+00:00, sha256 5ec248258c910632fd2bfcc4a2db5b6a32b8c9c7b72ba6c5778030f3b8e50a8f). This is the published default, not a verified account-specific rate.",
+      "status of NVDA-USD.P / TSLA-USD.P / ENA-USD.P": "The 2026-09-11 /v1/markets observation recorded 81 markets with 61 active and 20 disabled, and listed ENA-USD.P among the disabled. That is 2026-09-11 data and MUST NOT be presented as today's status.",
+      "SYNTH-USD.P": "NOT a real Ondo market. A deliberately fake market name whose raw status value 'halted' is not a known official value; it exists only to exercise the fail-closed unknown-status path. Never derive a real market list from this file.",
+      "parsing note": "The '_fixture' key is not part of the REST schema. A parser under test must ignore unknown top-level keys or drop '_fixture' before deserialising."
+    }
+  },
+  "success": true,
+  "result": {
+    "perps": {
+      "tradingPairs": [
+        {
+          "market": "NVDA-USD.P",
+          "baseIncrement": "0.01",
+          "quoteIncrement": "0.01",
+          "status": "active",
+          "disabled": false,
+          "makerFee": "0.0001",
+          "takerFee": "0.00025"
+        },
+        {
+          "market": "TSLA-USD.P",
+          "baseIncrement": "0.01",
+          "quoteIncrement": "0.01",
+          "status": "active",
+          "disabled": false,
+          "makerFee": "0.0001",
+          "takerFee": "0.00025"
+        },
+        {
+          "market": "ENA-USD.P",
+          "baseIncrement": "0.1",
+          "quoteIncrement": "0.0001",
+          "status": "disabled",
+          "disabled": true,
+          "makerFee": "0.0001",
+          "takerFee": "0.00025"
+        },
+        {
+          "market": "SYNTH-USD.P",
+          "baseIncrement": "0.001",
+          "quoteIncrement": "0.05",
+          "status": "halted",
+          "disabled": false,
+          "makerFee": "0.0001",
+          "takerFee": "0.00025"
+        }
+      ]
+    },
+    "tokenConfig": [
+      {
+        "id": "USDC",
+        "name": "USD Coin",
+        "decimals": 2,
+        "tokenDecimals": 6,
+        "networks": {}
+      }
+    ]
+  }
+}

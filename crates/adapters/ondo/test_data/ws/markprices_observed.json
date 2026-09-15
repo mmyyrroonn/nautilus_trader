@@ -1,0 +1,10 @@
+{
+  "type": "update",
+  "channel": "markPricesPerps",
+  "data": [
+    {
+      "market": "AAPL-USD.P",
+      "markPrice": "227.50"
+    }
+  ]
+}

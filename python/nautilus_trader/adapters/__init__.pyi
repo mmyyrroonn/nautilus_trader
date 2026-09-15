@@ -18,6 +18,7 @@ from . import interactive_brokers
 from . import kraken
 from . import lighter
 from . import okx
+from . import ondo
 from . import polymarket
 from . import sandbox
 from . import tardis
@@ -40,6 +41,7 @@ __all__ = [
     "kraken",
     "lighter",
     "okx",
+    "ondo",
     "polymarket",
     "sandbox",
     "tardis",

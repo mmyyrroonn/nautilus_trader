@@ -1,0 +1,113 @@
+[package]
+name = "nautilus-ondo"
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Ondo Perps integration adapter for the Nautilus trading engine"
+categories.workspace = true
+keywords.workspace = true
+documentation.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "nautilus_ondo"
+crate-type = ["rlib"]
+
+[features]
+default = ["high-precision"]
+extension-module = [
+  "nautilus-common/extension-module",
+  "nautilus-core/extension-module",
+  "nautilus-model/extension-module",
+  "nautilus-network/extension-module",
+  "pyo3/extension-module",
+  "python",
+]
+python = [
+  "dep:nautilus-system",
+  "nautilus-common/python",
+  "nautilus-core/python",
+  "nautilus-model/python",
+  "nautilus-network/python",
+  "nautilus-system/python",
+  "pyo3",
+  "pyo3-async-runtimes",
+  "pyo3-stub-gen",
+]
+high-precision = ["nautilus-model/high-precision"]
+
+[package.metadata.cargo-machete]
+ignored = [
+  "nautilus-system",
+] # Optional dep activated only via the python feature
+
+[package.metadata.docs.rs]
+features = ["high-precision"]
+rustdoc-args = ["--cfg", "docsrs"]
+
+[dependencies]
+nautilus-common = { workspace = true, features = ["live"] }
+nautilus-core = { workspace = true }
+# The execution client is built on the same base the other adapters use: `ExecutionClientCore`
+# carries the client/account identity and the connection state, and `ExecutionEventEmitter`
+# generates and dispatches the order events. The lean build (`node` disabled) is what an adapter
+# needs, and it is what Aster's execution client links against too.
+nautilus-live = { workspace = true }
+nautilus-model = { workspace = true }
+nautilus-network = { workspace = true }
+nautilus-system = { workspace = true, optional = true }
+
+ahash = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+# The venue authenticates a REST request with `hex(HMAC_SHA256(secret, message))`; this is the same
+# hash provider the Binance adapters sign with, rather than a second cryptographic dependency.
+aws-lc-rs = { workspace = true }
+blake3 = { workspace = true }
+bon = { workspace = true }
+futures-util = { workspace = true }
+jiff = { workspace = true }
+log = { workspace = true }
+# The order index and the fill ledger are shared with the spawned request tasks, which are `Send`:
+# the same `parking_lot::RwLock` the other adapters share stream state through.
+parking_lot = { workspace = true }
+rust_decimal = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-tungstenite = { workspace = true }
+tokio-util = { workspace = true }
+ustr = { workspace = true }
+# Wipes the API secret when the last handle to a credential is dropped.
+zeroize = { workspace = true }
+
+pyo3 = { workspace = true, optional = true }
+pyo3-async-runtimes = { workspace = true, optional = true }
+pyo3-stub-gen = { workspace = true, optional = true }
+
+[dev-dependencies]
+nautilus-testkit = { workspace = true, default-features = false, features = [
+  "testers",
+] }
+# The one-process invalidation test drives the platform's own data engine (the live runner's job in
+# a running node), so a message-bus subscriber sees what the client published.
+nautilus-data = { workspace = true }
+rstest = { workspace = true }
+# `test-util` gives the tests a virtual clock, so the shared one-request-per-second budget and the
+# bounded retry backoff are asserted without sleeping for real seconds.
+tokio = { workspace = true, features = ["test-util"] }
+
+# Exercises the Python surface offline (no venue, no wheel): the exported names, the configuration
+# defaults, and that constructing the HTTP client performs no I/O.
+[[test]]
+name = "python"
+path = "tests/python.rs"
+required-features = ["python"]

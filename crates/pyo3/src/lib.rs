@@ -273,6 +273,11 @@ fn _libnautilus(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_wrapped(submodule)?;
     sys_modules.set_item(format!("{module_name}.{n}"), m.getattr(n)?)?;
 
+    let n = "ondo";
+    let submodule = pyo3::wrap_pymodule!(nautilus_ondo::python::ondo);
+    m.add_wrapped(submodule)?;
+    sys_modules.set_item(format!("{module_name}.{n}"), m.getattr(n)?)?;
+
     let n = "polymarket";
     let submodule = pyo3::wrap_pymodule!(nautilus_polymarket::python::polymarket);
     m.add_wrapped(submodule)?;

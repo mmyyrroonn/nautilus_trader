@@ -1,0 +1,36 @@
+[
+  {
+    "op": "subscribe",
+    "channel": "topOfBooksPerps",
+    "markets": [
+      "NVDA-USD.P",
+      "TSLA-USD.P"
+    ]
+  },
+  {
+    "op": "subscribe",
+    "channel": "depthBooksPerps",
+    "markets": [
+      "NVDA-USD.P",
+      "TSLA-USD.P"
+    ],
+    "limit": 10
+  },
+  {
+    "op": "subscribe",
+    "channel": "fundingRatesPerps",
+    "markets": [
+      "NVDA-USD.P",
+      "TSLA-USD.P"
+    ]
+  },
+  {
+    "op": "subscribe",
+    "channel": "tradesPerps",
+    "markets": [
+      "NVDA-USD.P",
+      "TSLA-USD.P"
+    ],
+    "numPastTrades": 0
+  }
+]

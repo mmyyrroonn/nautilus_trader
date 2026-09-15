@@ -6631,6 +6631,43 @@ dependencies = [
 ]
 
 [[package]]
+name = "nautilus-ondo"
+version = "0.63.0"
+dependencies = [
+ "ahash 0.8.12",
+ "anyhow",
+ "async-trait",
+ "aws-lc-rs",
+ "blake3",
+ "bon",
+ "futures-util",
+ "jiff",
+ "log",
+ "nautilus-common",
+ "nautilus-core",
+ "nautilus-data",
+ "nautilus-live",
+ "nautilus-model",
+ "nautilus-network",
+ "nautilus-system",
+ "nautilus-testkit",
+ "parking_lot",
+ "pyo3",
+ "pyo3-async-runtimes",
+ "pyo3-stub-gen",
+ "rstest",
+ "rust_decimal",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-tungstenite 0.30.0",
+ "tokio-util",
+ "ustr",
+ "zeroize",
+]
+
+[[package]]
 name = "nautilus-persistence"
 version = "0.63.0"
 dependencies = [
@@ -6799,6 +6836,7 @@ dependencies = [
  "nautilus-model",
  "nautilus-network",
  "nautilus-okx",
+ "nautilus-ondo",
  "nautilus-persistence",
  "nautilus-polymarket",
  "nautilus-portfolio",

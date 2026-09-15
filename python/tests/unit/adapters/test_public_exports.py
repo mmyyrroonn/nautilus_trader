@@ -50,6 +50,7 @@ VENUE_ADAPTERS = {
     "kraken": "KRAKEN",
     "lighter": "LIGHTER",
     "okx": "OKX",
+    "ondo": "ONDO",
     "polymarket": "POLYMARKET",
 }
 
@@ -244,6 +245,7 @@ def test_known_adapter_set_is_complete() -> None:
         "kraken",
         "lighter",
         "okx",
+        "ondo",
         "polymarket",
         "sandbox",
         "tardis",

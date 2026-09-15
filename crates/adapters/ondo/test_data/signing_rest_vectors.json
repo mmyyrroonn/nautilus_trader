@@ -1,0 +1,106 @@
+{
+  "_fixture": {
+    "kind": "synthetic",
+    "purpose": "Python-standard-library HMAC-SHA256 reference vectors for the Ondo Perps REST request signing and the WebSocket login digest. Every value is computed by this script, independently of the Rust implementation, so the Rust test compares against a foreign computation instead of restating its own expression.",
+    "key_material": "FAKE. `key_id` and `api_secret` are unit-test material only; they are not, and never were, venue credentials, and no real credential or signature appears here.",
+    "generator": "gen_signing_vectors.py (python standard library: hashlib + hmac only)",
+    "generator_language": "Python 3.12.9",
+    "generated_at_utc": "2026-09-15T02:48:31Z",
+    "message_rule": "message = timestamp_ms + UPPERCASE_METHOD + exact_path_and_query + exact_body, HMAC-SHA256 keyed with the full secret including its `ondoApiSecret_` prefix; source: docs/api-reference/api_key_authentication.md",
+    "ws_message_rule": "conflicts.md conflict 2: reading A (`time` first) is the login-page prose and is what the adapter implements; reading B (phrase first) is the shared OpenAPI description and is recorded here only so a test can prove the two digests differ.",
+    "corrected_at_utc": "2026-09-15T05:48:10.855255+00:00",
+    "corrected_by": "reports/ondo-acceptance/20260915T-signed-fixture-correction/gen_signing_vectors.py",
+    "correction": "The 2026-09-15T02:48:31Z generation signed `/v1/perps/account`, a path no spec declares (the frozen REST spec declares `/v1/account`; `src/http/private.rs` records that `/v1/perps/account` does not exist). The case tests an empty GET body, so the path is incidental and was replaced with the real one. No other case changed. Every other case's message and signature was recomputed from its own inputs and is byte-identical to the 2026-09-15T02:48:31Z generation, so the re-derivation reproduces the original generator exactly."
+  },
+  "key_id": "ondoKeyId_UNIT_TEST_ONLY",
+  "api_secret": "ondoApiSecret_UNIT_TEST_ONLY",
+  "ws_login_phrase": "ondo_perps_ws_login",
+  "rest_cases": [
+    {
+      "label": "task-6-brief-vector",
+      "method_in": "GET",
+      "method_in_message": "GET",
+      "timestamp_ms": "1789384200000",
+      "path_query": "/v1/perps/orders?market=NVDA-USD.P&limit=2",
+      "body": "",
+      "message": "1789384200000GET/v1/perps/orders?market=NVDA-USD.P&limit=2",
+      "signature": "df4ba6005e3f028f9928a80b0f8dd33ad6af488418dffed317a9543d2d9bb816"
+    },
+    {
+      "label": "empty-get-body",
+      "method_in": "GET",
+      "method_in_message": "GET",
+      "timestamp_ms": "1789384200000",
+      "path_query": "/v1/account",
+      "body": "",
+      "message": "1789384200000GET/v1/account",
+      "signature": "98778415ff1e1b6f3a2b9a0571a6540a8b89d8543ea17a6c43712b53437ca2d6"
+    },
+    {
+      "label": "lowercase-method-is-signed-uppercase",
+      "method_in": "get",
+      "method_in_message": "GET",
+      "timestamp_ms": "1789384200000",
+      "path_query": "/v1/perps/contracts",
+      "body": "",
+      "message": "1789384200000GET/v1/perps/contracts",
+      "signature": "957f2b8e6687f13d3387e0ceffdf424ce342a4e24657809fae1d6162e04010bb"
+    },
+    {
+      "label": "delete-with-body",
+      "method_in": "DELETE",
+      "method_in_message": "DELETE",
+      "timestamp_ms": "1789384200123",
+      "path_query": "/v1/perps/orders?clientOrderId=client%3Aondo_probe_example_1",
+      "body": "{\"reason\":\"probe\"}",
+      "message": "1789384200123DELETE/v1/perps/orders?clientOrderId=client%3Aondo_probe_example_1{\"reason\":\"probe\"}",
+      "signature": "704ff55b34013b1880be7198af0c73d7d86b9ebeecd2b78e52b12eb1db89f376"
+    },
+    {
+      "label": "post-limit-order-body-decimal-strings",
+      "method_in": "POST",
+      "method_in_message": "POST",
+      "timestamp_ms": "1789384200456",
+      "path_query": "/v1/perps/orders",
+      "body": "{\"market\":\"NVDA-USD.P\",\"side\":\"buy\",\"type\":\"limit\",\"size\":\"0.01\",\"price\":\"100.00\",\"timeInForce\":\"GTC\",\"postOnly\":true,\"reduceOnly\":false,\"clientOrderId\":\"ondo_probe_example_1\"}",
+      "message": "1789384200456POST/v1/perps/orders{\"market\":\"NVDA-USD.P\",\"side\":\"buy\",\"type\":\"limit\",\"size\":\"0.01\",\"price\":\"100.00\",\"timeInForce\":\"GTC\",\"postOnly\":true,\"reduceOnly\":false,\"clientOrderId\":\"ondo_probe_example_1\"}",
+      "signature": "0bdf55b1711b0b0ee1eadf0ac282b3c61b0cb2aecbd0daaab16f5a8837acdd45"
+    },
+    {
+      "label": "utf8-query-value",
+      "method_in": "GET",
+      "method_in_message": "GET",
+      "timestamp_ms": "1789384200789",
+      "path_query": "/v1/perps/fills?market=NVDA-USD.P&note=caf%C3%A9",
+      "body": "",
+      "message": "1789384200789GET/v1/perps/fills?market=NVDA-USD.P&note=caf%C3%A9",
+      "signature": "7b25ebb62d905300357bcf81c7e0e4a525685da6cdec4ac4e5d2cff68ed26634"
+    },
+    {
+      "label": "utf8-body",
+      "method_in": "POST",
+      "method_in_message": "POST",
+      "timestamp_ms": "1789384200789",
+      "path_query": "/v1/perps/orders",
+      "body": "{\"note\":\"café\",\"size\":\"0.01000000\"}",
+      "message": "1789384200789POST/v1/perps/orders{\"note\":\"café\",\"size\":\"0.01000000\"}",
+      "signature": "8ed869350acbafb4f36b63ee4ce07a826d9540ad162a0215faf3d98e85823c80"
+    }
+  ],
+  "ws_login_cases": [
+    {
+      "label": "timestamp-first-reading-a-implemented",
+      "timestamp_ms": "1789384200000",
+      "phrase": "ondo_perps_ws_login",
+      "message": "1789384200000ondo_perps_ws_login",
+      "signature": "29b1e3ca1a71e3771d4f6bc375308b86e52577c16fd2edede0ee58a06070b4b4"
+    },
+    {
+      "label": "phrase-first-reading-b-not-implemented",
+      "timestamp_ms": "1789384200000",
+      "phrase": "ondo_perps_ws_login",
+      "message": "ondo_perps_ws_login1789384200000",
+      "signature": "c753ee5eed85fbca0efd06f984b2af3f144e6d639774bc66ab7ce5aa44a4e383"
+    }
+  ]
+}

@@ -1,0 +1,325 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-09-14T11:55:41.981461+00:00",
+  "generated_by": "Task 0 / P0 of the Ondo Perps integration; fixtures live in the fork at crates/adapters/ondo/test_data",
+  "phase_scope": "P0 produces evidence and fixtures only. No adapter code, no Cargo.toml, no wheel build.",
+  "p0_run_evidence": {
+    "directory": "E:/Nautilus-Perps/reports/ondo-acceptance/20260914T114942Z/p0/",
+    "purpose": "Run evidence for P0 lives outside the fork; this test_data tree holds only fixtures, this manifest and conflicts.md.",
+    "baseline_test": {
+      "command": "E:/Nautilus-Perps/.venv/Scripts/python.exe -m pytest tests/test_spread_watch.py tests/test_opportunities.py tests/test_ref_feed.py -q -p no:cacheprovider",
+      "cwd": "E:/Nautilus-Perps",
+      "result": "83 passed in 0.72s",
+      "exit_code": 0,
+      "raw_output": "reports/ondo-acceptance/20260914T114942Z/p0/baseline_pytest_stdout.txt",
+      "scope_note": "Only the three named files were run; this is not the full test suite."
+    },
+    "wheel_copy": "reports/ondo-acceptance/20260914T114942Z/p0/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl (sha256 verified equal to the source wheel; nothing overwritten)",
+    "network_probe": "reports/ondo-acceptance/20260914T114942Z/p0/network_probe.json",
+    "spec_refresh": "reports/ondo-acceptance/20260914T114942Z/p0/spec-refresh/ (verbatim doc bodies + manifest with hashes)",
+    "environment": "reports/ondo-acceptance/20260914T114942Z/p0/environment.txt",
+    "git_status": [
+      "reports/ondo-acceptance/20260914T114942Z/p0/app_git_status.txt",
+      "reports/ondo-acceptance/20260914T114942Z/p0/fork_git_status.txt"
+    ]
+  },
+  "application_readme_drift": [
+    "E:/Nautilus-Perps/CLAUDE.md says Python 3.12.4 and uv 0.6.10. Measured in this run: the app venv is Python 3.12.9 and uv is 0.12.6. The 3.12.4 figure matches the conda base python that is first on PATH, not the venv.",
+    "E:/Nautilus-Perps/CLAUDE.md says Rust 1.86.0. That is the default toolchain seen from the app repo; the fork pins 1.98.0 via rust-toolchain.toml."
+  ],
+  "kind_legend": {
+    "observed": "Captured from a real, unauthenticated production endpoint/protocol within the last observation window; the raw bytes are preserved. Sources: reports/ondo-plan-2026-09-14/connectivity-probe.json (WS, 2026-09-14T11:10:08Z) and reports/ondo-acceptance/20260914T142730Z-p1-build/rest-capture/markets.json (REST GET /v1/markets, 2026-09-14T15:15:02Z).",
+    "official-example": "Copied verbatim from an official Ondo document/spec example. Not real traffic and not necessarily current.",
+    "synthetic": "Authored for this phase from the official schema because no legitimate response could be obtained. Values are invented and labelled as such inside the file."
+  },
+  "repositories": [
+    {
+      "role": "application",
+      "path": "E:/Nautilus-Perps",
+      "branch": "main",
+      "head": "76b9881de1a453dbc8c4cff150395bafe649c279",
+      "head_subject": "docs: correct the Lighter funding unit and require a preflight before collecting",
+      "head_committed_at": "2026-09-14 17:11:11 +0800",
+      "upstream": "origin/main, ahead 35",
+      "worktree": "untracked files only; no tracked file modified; nothing committed, merged or pushed by P0"
+    },
+    {
+      "role": "fork",
+      "path": "E:/nautilus_trader",
+      "branch": "onde-perps",
+      "head": "047d494e3c260bc6f701aa8f9193d1fd36f8da89",
+      "head_subject": "nautilus-aster: round-4 review fixes R4-01..R4-09",
+      "head_committed_at": "2026-09-05 19:36:07 +0800",
+      "worktree": "untracked files only. The fork's ONLY pre-existing untracked entry was .workbuddy-ai/; the crates/adapters/ondo/test_data tree is new and was added by P0. NOT part of the fork's untracked set: the `?? __ws_write_test.txt` line visible in p0/fork_git_status.txt (a verbatim capture of that moment, kept unchanged) was a controller write-access capability probe against E:/nautilus_trader, created at session start and removed by the controller at the end of P0. It was never a user file, was never pre-existing, and was not preserved by this task."
+    }
+  ],
+  "tools": {
+    "app_venv_python": {
+      "executable": "E:/Nautilus-Perps/.venv/Scripts/python.exe",
+      "version": "3.12.9 (main, Mar 17 2025, 21:06:20) [MSC v.1943 64 bit (AMD64)]"
+    },
+    "conda_base_python_on_path": {
+      "executable": "C:/ProgramData/miniconda3/python.exe",
+      "version": "3.12.4",
+      "note": "First python.exe on PATH. All uv pip commands must name .venv/Scripts/python.exe explicitly."
+    },
+    "uv": {
+      "path": "C:/Users/myron/AppData/Roaming/Python/Python312/Scripts/uv.exe",
+      "version": "uv 0.12.6 (7938ca5d5 2026-08-25 x86_64-pc-windows-msvc)"
+    },
+    "rustc_cargo": {
+      "paths": "C:/Users/myron/.cargo/bin/rustc.exe, C:/Users/myron/.cargo/bin/cargo.exe (rustup proxies)",
+      "version_depends_on_directory": true,
+      "from_app_repo": "rustc 1.86.0 (05f9846f8 2025-03-31) / cargo 1.86.0 (adf9b6adf 2025-02-28) - the default 'stable' toolchain",
+      "from_fork": "rustc 1.98.0 (88d9e12ae 2026-08-18) / cargo 1.98.0 (797e8a9bc 2026-08-05)",
+      "why": "E:/nautilus_trader/rust-toolchain.toml pins [toolchain] channel = \"1.98.0\"; the rustup proxy selects it inside the fork. A later wheel build must use 1.98.0, not the 1.86.0 that the application CLAUDE.md quotes.",
+      "installed_toolchains": [
+        "stable",
+        "nightly",
+        "1.81",
+        "1.86",
+        "1.97",
+        "1.98.0 (active)"
+      ]
+    },
+    "git": {
+      "path": "C:/Program Files/Git/cmd/git.exe",
+      "version": "git version 2.54.0.windows.1"
+    },
+    "pytest": {
+      "version": "9.1.1",
+      "invoked_as": "E:/Nautilus-Perps/.venv/Scripts/python.exe -m pytest"
+    },
+    "nautilus_trader_installed": {
+      "version": "2.0.0rc4",
+      "module_file": "E:/Nautilus-Perps/.venv/Lib/site-packages/nautilus_trader/__init__.py",
+      "dist_info_direct_url": "file:///E:/nautilus_trader/target/wheels/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+      "dist_info_installer": "uv",
+      "wheel_sha256": "6f5f0f6bb63bf9562d62caf9874f545eb0d28b5de36c9577beb8708e742a6698",
+      "wheel_evidence_copy": "reports/ondo-acceptance/20260914T114942Z/p0/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+      "no_wheel_built_or_installed_in_this_phase": true
+    }
+  },
+  "sources": {
+    "connectivity_probe": {
+      "path": "reports/ondo-plan-2026-09-14/connectivity-probe.json",
+      "sha256": "660a3f57db0d291d713d8801f92a432f275eee5ef87cbfe79729614f76209773",
+      "retrieved_at_utc": "2026-09-14T11:10:08.864127+00:00",
+      "what": "Archived real (unauthenticated) production WS capture: 1 REST row, 4 subscribe sends, 95 received frames over ca. 8 s."
+    },
+    "rest_spec": {
+      "url": "https://docs.ondoperps.xyz/api-reference/rest-spec.json",
+      "path": "reports/ondo-plan-2026-09-14/api-reference__rest-spec.json",
+      "sha256": "860a96ca3fa1e0800841446cddc738bc8ab2749feb67c2f10fcdd1e2aae003f1",
+      "retrieved_at_utc": "2026-09-14T11:08:44.875791+00:00",
+      "refresh_verified_same_sha256_at_utc": "2026-09-14T11:52:50.086667+00:00"
+    },
+    "ws_spec": {
+      "url": "https://docs.ondoperps.xyz/api-reference/ws-spec.json",
+      "path": "reports/ondo-plan-2026-09-14/api-reference__ws-spec.json",
+      "sha256": "9321654d102d996b6e7aaf3c67675ca651f2b64d7910b99b37f2dae16988d67c",
+      "retrieved_at_utc": "2026-09-14T11:08:45.020593+00:00",
+      "refresh_verified_same_sha256_at_utc": "2026-09-14T11:52:54.714717+00:00"
+    },
+    "fees_md": {
+      "url": "https://docs.ondoperps.xyz/fees.md",
+      "path": "reports/ondo-plan-2026-09-14/fees.md",
+      "sha256": "5ec248258c910632fd2bfcc4a2db5b6a32b8c9c7b72ba6c5778030f3b8e50a8f",
+      "retrieved_at_utc": "2026-09-14T11:08:45.179791+00:00",
+      "refresh_verified_same_sha256_at_utc": "2026-09-14T11:53:16.761469+00:00"
+    }
+  },
+  "fixtures": [
+    {
+      "path": "ws/topofbook_observed.json",
+      "sha256": "482c75541f3d81cf8fc71abf6e426b1882d4a6065dc8b50e8d8b49da9a08afdf",
+      "bytes": 214,
+      "kind": "observed",
+      "captured_at_utc": "2026-09-14T11:10:00.861748+00:00",
+      "source": {
+        "capture": {
+          "path": "reports/ondo-plan-2026-09-14/connectivity-probe.json",
+          "sha256": "660a3f57db0d291d713d8801f92a432f275eee5ef87cbfe79729614f76209773",
+          "retrieved_at_utc": "2026-09-14T11:10:08.864127+00:00",
+          "what": "Archived real (unauthenticated) production WS capture: 1 REST row, 4 subscribe sends, 95 received frames over ca. 8 s."
+        },
+        "channel": "topOfBooksPerps",
+        "observed_for_market": "NVDA-USD.P",
+        "frame_index_in_capture": "first topOfBooksPerps update"
+      },
+      "notes": "Byte-exact observed frame. Content = the captured raw message text with the transport framing newline normalised to one trailing newline; no value re-serialised. source_message_sha256 == fixture sha256 because the captured string already ended in exactly one '\\n'.",
+      "schema": "BookSnapshot (ws-spec components.schemas.BookSnapshot)"
+    },
+    {
+      "path": "ws/depth_observed.json",
+      "sha256": "79b814f2be32533681fb2e8c258ec95ec8f0563e55b71cf6d1ad78cc9b5e9866",
+      "bytes": 546,
+      "kind": "observed",
+      "captured_at_utc": "2026-09-14T11:10:00.884683+00:00",
+      "source": {
+        "capture": {
+          "path": "reports/ondo-plan-2026-09-14/connectivity-probe.json",
+          "sha256": "660a3f57db0d291d713d8801f92a432f275eee5ef87cbfe79729614f76209773",
+          "retrieved_at_utc": "2026-09-14T11:10:08.864127+00:00",
+          "what": "Archived real (unauthenticated) production WS capture: 1 REST row, 4 subscribe sends, 95 received frames over ca. 8 s."
+        },
+        "channel": "depthBooksPerps",
+        "observed_for_market": "NVDA-USD.P",
+        "frame_index_in_capture": "first depthBooksPerps update"
+      },
+      "notes": "Byte-exact observed frame: 10 bid + 10 ask levels from the depthBooksPerps subscription with limit=10 and no depthLevels. source_message_sha256 == fixture sha256.",
+      "schema": "BookSnapshot (ws-spec components.schemas.BookSnapshot)"
+    },
+    {
+      "path": "ws/trades_observed.json",
+      "sha256": "07e8f57bbaf05093ce51c327f3c6014876bfdcc1a7ee58a1e15f414db5baf3a4",
+      "bytes": 272,
+      "kind": "observed",
+      "captured_at_utc": "2026-09-14T11:10:05.576192+00:00",
+      "source": {
+        "capture": {
+          "path": "reports/ondo-plan-2026-09-14/connectivity-probe.json",
+          "sha256": "660a3f57db0d291d713d8801f92a432f275eee5ef87cbfe79729614f76209773",
+          "retrieved_at_utc": "2026-09-14T11:10:08.864127+00:00",
+          "what": "Archived real (unauthenticated) production WS capture: 1 REST row, 4 subscribe sends, 95 received frames over ca. 8 s."
+        },
+        "channel": "tradesPerps",
+        "observed_for_market": "NVDA-USD.P",
+        "frame_index_in_capture": "first tradesPerps update"
+      },
+      "notes": "Byte-exact observed frame. This captured message had NO trailing newline, so the fixture is one byte larger than the captured string (source_message_sha256 differs from the fixture sha256).",
+      "schema": "Trade (ws-spec components.schemas.Trade)"
+    },
+    {
+      "path": "ws/funding_observed.json",
+      "sha256": "83b4a25fbc114c0e5ec37b111055b9e90e0e4ce05ed68b4168b2522fba01e82f",
+      "bytes": 2178,
+      "kind": "observed",
+      "captured_at_utc": "2026-09-14T11:10:00.884683+00:00",
+      "source": {
+        "capture": {
+          "path": "reports/ondo-plan-2026-09-14/connectivity-probe.json",
+          "sha256": "660a3f57db0d291d713d8801f92a432f275eee5ef87cbfe79729614f76209773",
+          "retrieved_at_utc": "2026-09-14T11:10:08.864127+00:00",
+          "what": "Archived real (unauthenticated) production WS capture: 1 REST row, 4 subscribe sends, 95 received frames over ca. 8 s."
+        },
+        "channel": "fundingRatesPerps",
+        "observed_for_market": "NVDA-USD.P",
+        "frame_index_in_capture": "first fundingRatesPerps update"
+      },
+      "notes": "Byte-exact observed frame: rate='0.0000063' (hourly decimal fraction), intervalEnds='2026-09-14T12:00:00Z' (settlement time, not an event time), 10 premium samples (one per minute, times 11:09:00 down to 11:00:00 inclusive, i.e. the 10 minutes ending at the 11:09:59 capture). source_message_sha256 == fixture sha256.",
+      "schema": "FundingRate (ws-spec components.schemas.FundingRate)"
+    },
+    {
+      "path": "ws/subscribe_observed.json",
+      "sha256": "7457b14f45efe1ecc561916df3d265061f20c7962b434a1408b149f480255af0",
+      "bytes": 554,
+      "kind": "observed",
+      "captured_at_utc": null,
+      "captured_at_utc_note": "There is NO captured send timestamp for this fixture: the capture stored the 4 subscribe frames as parsed JSON objects only, with no send times. Do not read a timestamp here.",
+      "send_time_utc_inferred": "2026-09-14T11:09:59+00:00",
+      "send_time_inference_basis": "INFERRED, never captured. A response cannot precede its request, and the earliest server-side time in the capture is 11:09:59 (REST response header Date: 'Mon, 14 Sep 2026 11:09:59 GMT'; envelope timestamp of the first response frames '2026-09-14T11:09:59.670112401Z'), so the 4 frames were sent at or before ~11:09:59.670112401Z.",
+      "receive_window_utc": "2026-09-14T11:10:00.861748+00:00 - 2026-09-14T11:10:08.776553+00:00",
+      "source": {
+        "capture": {
+          "path": "reports/ondo-plan-2026-09-14/connectivity-probe.json",
+          "sha256": "660a3f57db0d291d713d8801f92a432f275eee5ef87cbfe79729614f76209773",
+          "retrieved_at_utc": "2026-09-14T11:10:08.864127+00:00",
+          "what": "Archived real (unauthenticated) production WS capture: 1 REST row, 4 subscribe sends, 95 received frames over ca. 8 s."
+        },
+        "frames": [
+          "topOfBooksPerps",
+          "depthBooksPerps",
+          "fundingRatesPerps",
+          "tradesPerps"
+        ]
+      },
+      "notes": "JSON array of the 4 subscribe frames exactly as sent by the probe, in send order. IMPORTANT: the capture stored send frames as parsed JSON objects, so the wire bytes are not recoverable; this file is a faithful re-serialisation of the captured object (all values are strings/integers, so no numeric lexeme is at risk). Not a byte-exact wire capture.",
+      "schema": "subscribe request body (ws-spec requestBody per channel)"
+    },
+    {
+      "path": "ws/markprices_observed.json",
+      "sha256": "b1c297728ff964ab3a3f06a54abfbb156ce34f41254db27dc3d9228a856899f6",
+      "bytes": 142,
+      "kind": "official-example",
+      "captured_at_utc": "2026-09-14T11:08:45.020593+00:00 (spec retrieval time; the example itself is undated)",
+      "source": {
+        "spec": {
+          "url": "https://docs.ondoperps.xyz/api-reference/ws-spec.json",
+          "path": "reports/ondo-plan-2026-09-14/api-reference__ws-spec.json",
+          "sha256": "9321654d102d996b6e7aaf3c67675ca651f2b64d7910b99b37f2dae16988d67c",
+          "retrieved_at_utc": "2026-09-14T11:08:45.020593+00:00",
+          "refresh_verified_same_sha256_at_utc": "2026-09-14T11:52:54.714717+00:00"
+        },
+        "json_pointer": "/paths/~1ws~1markPricesPerps/post/responses/200/content/application~1json/example"
+      },
+      "notes": "NOT OBSERVED. The capture never subscribed to markPricesPerps, so no real frame exists. Content is the official example from the WS spec, copied verbatim (all values are strings). The file name keeps the Task 0 mandated layout and therefore says 'observed'; the authoritative kind is this manifest field. Do not treat this file as an observed production frame.",
+      "schema": "MarkPrice (ws-spec components.schemas.MarkPrice)"
+    },
+    {
+      "path": "rest/markets_synthetic.json",
+      "sha256": "06aaf025ac03a90740e1473cff26d31e0857da32b22842efb1b922b0cd785fa4",
+      "bytes": 5087,
+      "kind": "synthetic",
+      "captured_at_utc": "2026-09-14T11:53:22Z",
+      "source": {
+        "spec": {
+          "url": "https://docs.ondoperps.xyz/api-reference/rest-spec.json",
+          "path": "reports/ondo-plan-2026-09-14/api-reference__rest-spec.json",
+          "sha256": "860a96ca3fa1e0800841446cddc738bc8ab2749feb67c2f10fcdd1e2aae003f1",
+          "retrieved_at_utc": "2026-09-14T11:08:44.875791+00:00",
+          "refresh_verified_same_sha256_at_utc": "2026-09-14T11:52:50.086667+00:00"
+        },
+        "json_pointer": "/paths/~1v1~1markets/get/responses/200/content/application~1json/example",
+        "live_attempt": "GET https://api.ondoperps.xyz/v1/markets -> HTTP 403, body 'error code: 1010', Server: cloudflare, at 2026-09-14T11:50:18.569618+00:00"
+      },
+      "notes": "Hand-authored. Follows the spec shape (result.perps.tradingPairs) and is labelled synthetic inside the file (_fixture.kind). 'status' is an INVENTED field name (the spec declares none); 'SYNTH-USD.P' is a deliberately fake market. Values are not today's metadata. See test_data/conflicts.md conflict 5.",
+      "schema": "GET /v1/markets 200 response (GenericResponse + MarketsResult)"
+    },
+    {
+      "path": "rest/markets_observed_20260914.json",
+      "sha256": "3fc411115f1d9ba2ca664adcddb87805d087331a803e4e8511d55f691e4d5af7",
+      "bytes": 14498,
+      "kind": "observed",
+      "captured_at_utc": "2026-09-14T15:15:02.434934+00:00",
+      "source": {
+        "url": "https://api.ondoperps.xyz/v1/markets",
+        "endpoint_environment": "PRODUCTION, unauthenticated public endpoint (no API key, no signature, no session, no cookie)",
+        "fetched_with": "the adapter's own public OndoHttpClient (crates/adapters/ondo/src/http/client.rs): one read-only GET, no credentials supplied",
+        "capture": {
+          "directory": "E:/Nautilus-Perps/reports/ondo-acceptance/20260914T142730Z-p1-build/rest-capture/",
+          "markets_json": "markets.json",
+          "markets_json_sha256": "9a774cabaf8d803dab9b6d1c9fab35e2d7022877058cf93c516360923839ccc8",
+          "markets_json_bytes": 392020,
+          "fetched_at_utc_source": "fetched_at.txt (endpoint=PRODUCTION)",
+          "sibling_captures": ["contracts.json", "status.json", "target_pairs.json (empty object)"]
+        },
+        "excerpt": {
+          "selection": ["NVDA-USD.P", "TSLA-USD.P", "ENA-USD.P", "BTC-USD.P"],
+          "why": "the two P1 targets (disabled ABSENT), one disabled:true market (ENA-USD.P), and one non-stock market (BTC-USD.P, tags [Crypto], no schedule object)",
+          "of_total_trading_pairs": 81,
+          "omitted": "the other 77 trading pairs, plus result.spot and result.tokenConfig, which this excerpt does not carry",
+          "value_fidelity": "each retained pair object is the captured text verbatim - key order, decimal-string lexemes, booleans and integers unchanged. The capture's CRLF line terminators are normalised to LF, as everywhere else in test_data; no value was edited, re-serialised or re-ordered."
+        }
+      },
+      "observed_facts": {
+        "envelope": "success + result.perps.tradingPairs, i.e. the spec's nesting (conflicts.md gap 6 settled in favour of the spec)",
+        "perps_keys": ["tradingPairs"],
+        "trading_pairs": 81,
+        "markets_with_a_status_string": 0,
+        "markets_with_disabled_true": 20,
+        "markets_with_disabled_false": 0,
+        "markets_omitting_disabled": 61,
+        "targets": "NVDA-USD.P and TSLA-USD.P: disabled ABSENT; tags [Stock]; baseIncrement 0.01; quoteIncrement 0.01; makerFee 0.0001; takerFee 0.00025; defaultLeverage 10; marginInfo[]; schedule.timezone America/New_York with 7 openHours entries (the 7th is 'closed') and a holidays list",
+        "market_hours": "the venue expresses closure through `disabled` and market hours through `schedule` (70 of 81 pairs carry one; crypto pairs like BTC-USD.P do not). The adapter does not interpret `schedule` - a known limitation, reported rather than invented."
+      },
+      "notes": "Observed excerpt, not synthetic and not hand-authored beyond the excerpt boundary. It carries NO `_fixture` block, because the envelope is the venue's own (the observed WS fixtures are bare payloads for the same reason); this manifest entry is the only statement of its provenance. This is the payload that resolved test_data/conflicts.md conflict 5, and it is exercised by crates/adapters/ondo/tests/http_contract.rs.",
+      "schema": "GET /v1/markets 200 response (GenericResponse + MarketsResult)"
+    }
+  ],
+  "unresolved": [
+    "GET https://api.ondoperps.xyz/v1/markets answered HTTP 403 (Cloudflare 'error code: 1010') during P0 at 2026-09-14T11:50:18Z, so P0's REST fixtures were synthetic. The same endpoint answered later the same day and rest/markets_observed_20260914.json is that observed capture (2026-09-14T15:15:02.434934+00:00). GET /v1/perps/contracts WAS re-attempted in that capture and succeeded - the body is reports/ondo-acceptance/20260914T142730Z-p1-build/rest-capture/contracts.json (69,042 bytes on disk) and the capture's own log records 'wrote contracts.json: 66530 bytes', the difference being the 2,512 CRLF pairs Windows written text adds - but it was not promoted into this fixture tree, so no contracts fixture exists here and its row stays unverified here. /v1/perps/depth and /v1/perps/funding_rates were NOT re-attempted in that capture - the capture script (reports/ondo-acceptance/20260914T142730Z-p1-build/capture_markets.py) calls only /status, /v1/markets and /v1/perps/contracts - so those two rows stay unverified, and markets_synthetic.json remains synthetic.",
+    "No sandbox API key was available, so no authenticated response exists and no signing/HMAC order can be confirmed. See test_data/conflicts.md.",
+    "markPricesPerps had no observed frame; ws/markprices_observed.json is an official spec example despite its file name."
+  ]
+}

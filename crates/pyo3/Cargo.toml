@@ -63,6 +63,7 @@ extension-module = [
   "nautilus-live/extension-module",
   "nautilus-model/extension-module",
   "nautilus-okx/extension-module",
+  "nautilus-ondo/extension-module",
   "nautilus-portfolio/extension-module",
   "nautilus-polymarket/extension-module",
   "nautilus-sandbox/extension-module",
@@ -92,6 +93,7 @@ high-precision = [
   "nautilus-kraken/high-precision",
   "nautilus-lighter/high-precision",
   "nautilus-okx/high-precision",
+  "nautilus-ondo/high-precision",
   "nautilus-polymarket/high-precision",
   "nautilus-sandbox/high-precision",
   "nautilus-tardis/high-precision",
@@ -156,6 +158,7 @@ nautilus-interactive-brokers = { workspace = true, features = ["python"] }
 nautilus-kraken = { workspace = true, features = ["python"] }
 nautilus-lighter = { workspace = true, features = ["python"] }
 nautilus-okx = { workspace = true, features = ["python"] }
+nautilus-ondo = { workspace = true, features = ["python"] }
 nautilus-polymarket = { workspace = true, features = ["python"] }
 nautilus-sandbox = { workspace = true, features = ["python"] }
 nautilus-tardis = { workspace = true, features = ["python", "replay"] }

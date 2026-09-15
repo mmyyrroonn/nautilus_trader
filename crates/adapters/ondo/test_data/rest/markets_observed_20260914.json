@@ -1,0 +1,507 @@
+{
+  "success": true,
+  "result": {
+    "perps": {
+      "tradingPairs": [
+        {
+          "market": "NVDA-USD.P",
+          "underlyingMarket": "NVDA-USD",
+          "displayName": "NVDAUSD",
+          "longName": "NVIDIA",
+          "pair": {
+            "base": "NVDA",
+            "quote": "USD"
+          },
+          "baseIncrement": "0.01",
+          "quoteIncrement": "0.01",
+          "dailyInterestRate": "0.0003",
+          "fundingIntervalDivisions": 8,
+          "interestDampingRange": "0.0000625",
+          "fundingRateCap": "0.01",
+          "marginInfo": [
+            {
+              "positionBracketUsd": "1000000",
+              "maxLeverage": "10",
+              "maintenanceMarginRate": "0.05",
+              "maintenanceAmount": "0"
+            }
+          ],
+          "defaultLeverage": "10",
+          "maxPositionBaseSize": "4500",
+          "basisTradeMaxCollateralBaseSize": "100",
+          "makerFee": "0.0001",
+          "takerFee": "0.00025",
+          "impactPriceQuoteSize": "1000",
+          "schedule": {
+            "timezone": "America/New_York",
+            "openHours": [
+              "20:00-23:59",
+              "00:00-23:59",
+              "00:00-23:59",
+              "00:00-23:59",
+              "00:00-23:59",
+              "00:00-20:00",
+              "closed"
+            ],
+            "holidays": [
+              {
+                "date": "2026-01-01",
+                "openHours": "20:00-23:59"
+              },
+              {
+                "date": "2026-01-18",
+                "openHours": "closed"
+              },
+              {
+                "date": "2026-01-19",
+                "openHours": "20:00-23:59"
+              },
+              {
+                "date": "2026-02-15",
+                "openHours": "closed"
+              },
+              {
+                "date": "2026-02-16",
+                "openHours": "20:00-23:59"
+              },
+              {
+                "date": "2026-04-02",
+                "openHours": "00:00-20:00"
+              },
+              {
+                "date": "2026-04-03",
+                "openHours": "closed"
+              },
+              {
+                "date": "2026-05-24",
+                "openHours": "closed"
+              },
+              {
+                "date": "2026-05-25",
+                "openHours": "20:00-23:59"
+              },
+              {
+                "date": "2026-06-18",
+                "openHours": "00:00-20:00"
+              },
+              {
+                "date": "2026-06-19",
+                "openHours": "closed"
+              },
+              {
+                "date": "2026-07-02",
+                "openHours": "00:00-20:00"
+              },
+              {
+                "date": "2026-07-03",
+                "openHours": "closed"
+              },
+              {
+                "date": "2026-09-06",
+                "openHours": "closed"
+              },
+              {
+                "date": "2026-09-07",
+                "openHours": "20:00-23:59"
+              },
+              {
+                "date": "2026-11-25",
+                "openHours": "00:00-20:00"
+              },
+              {
+                "date": "2026-11-26",
+                "openHours": "20:00-23:59"
+              },
+              {
+                "date": "2026-11-27",
+                "openHours": "00:00-17:00"
+              },
+              {
+                "date": "2026-12-24",
+                "openHours": "00:00-17:00"
+              },
+              {
+                "date": "2026-12-25",
+                "openHours": "closed"
+              },
+              {
+                "date": "2026-12-31",
+                "openHours": "00:00-20:00"
+              },
+              {
+                "date": "2027-01-01",
+                "openHours": "closed"
+              },
+              {
+                "date": "2027-01-17",
+                "openHours": "closed"
+              },
+              {
+                "date": "2027-01-18",
+                "openHours": "20:00-23:59"
+              },
+              {
+                "date": "2027-02-14",
+                "openHours": "closed"
+              },
+              {
+                "date": "2027-02-15",
+                "openHours": "20:00-23:59"
+              },
+              {
+                "date": "2027-03-25",
+                "openHours": "00:00-20:00"
+              },
+              {
+                "date": "2027-03-26",
+                "openHours": "closed"
+              },
+              {
+                "date": "2027-05-30",
+                "openHours": "closed"
+              },
+              {
+                "date": "2027-05-31",
+                "openHours": "20:00-23:59"
+              },
+              {
+                "date": "2027-06-17",
+                "openHours": "00:00-20:00"
+              },
+              {
+                "date": "2027-06-18",
+                "openHours": "closed"
+              },
+              {
+                "date": "2027-07-04",
+                "openHours": "closed"
+              },
+              {
+                "date": "2027-07-05",
+                "openHours": "20:00-23:59"
+              },
+              {
+                "date": "2027-09-05",
+                "openHours": "closed"
+              },
+              {
+                "date": "2027-09-06",
+                "openHours": "20:00-23:59"
+              },
+              {
+                "date": "2027-11-24",
+                "openHours": "00:00-20:00"
+              },
+              {
+                "date": "2027-11-25",
+                "openHours": "20:00-23:59"
+              },
+              {
+                "date": "2027-11-26",
+                "openHours": "00:00-17:00"
+              },
+              {
+                "date": "2027-12-23",
+                "openHours": "00:00-20:00"
+              },
+              {
+                "date": "2027-12-24",
+                "openHours": "closed"
+              }
+            ],
+            "holidayCoverageStartYear": 2026,
+            "holidayCoverageEndYear": 2027
+          },
+          "tags": [
+            "Stock"
+          ]
+        },
+        {
+          "market": "TSLA-USD.P",
+          "underlyingMarket": "TSLA-USD",
+          "displayName": "TSLAUSD",
+          "longName": "Tesla",
+          "pair": {
+            "base": "TSLA",
+            "quote": "USD"
+          },
+          "baseIncrement": "0.01",
+          "quoteIncrement": "0.01",
+          "dailyInterestRate": "0.0003",
+          "fundingIntervalDivisions": 8,
+          "interestDampingRange": "0.0000625",
+          "fundingRateCap": "0.01",
+          "marginInfo": [
+            {
+              "positionBracketUsd": "1000000",
+              "maxLeverage": "10",
+              "maintenanceMarginRate": "0.05",
+              "maintenanceAmount": "0"
+            }
+          ],
+          "defaultLeverage": "10",
+          "maxPositionBaseSize": "2800",
+          "basisTradeMaxCollateralBaseSize": "100",
+          "makerFee": "0.0001",
+          "takerFee": "0.00025",
+          "impactPriceQuoteSize": "1000",
+          "schedule": {
+            "timezone": "America/New_York",
+            "openHours": [
+              "20:00-23:59",
+              "00:00-23:59",
+              "00:00-23:59",
+              "00:00-23:59",
+              "00:00-23:59",
+              "00:00-20:00",
+              "closed"
+            ],
+            "holidays": [
+              {
+                "date": "2026-01-01",
+                "openHours": "20:00-23:59"
+              },
+              {
+                "date": "2026-01-18",
+                "openHours": "closed"
+              },
+              {
+                "date": "2026-01-19",
+                "openHours": "20:00-23:59"
+              },
+              {
+                "date": "2026-02-15",
+                "openHours": "closed"
+              },
+              {
+                "date": "2026-02-16",
+                "openHours": "20:00-23:59"
+              },
+              {
+                "date": "2026-04-02",
+                "openHours": "00:00-20:00"
+              },
+              {
+                "date": "2026-04-03",
+                "openHours": "closed"
+              },
+              {
+                "date": "2026-05-24",
+                "openHours": "closed"
+              },
+              {
+                "date": "2026-05-25",
+                "openHours": "20:00-23:59"
+              },
+              {
+                "date": "2026-06-18",
+                "openHours": "00:00-20:00"
+              },
+              {
+                "date": "2026-06-19",
+                "openHours": "closed"
+              },
+              {
+                "date": "2026-07-02",
+                "openHours": "00:00-20:00"
+              },
+              {
+                "date": "2026-07-03",
+                "openHours": "closed"
+              },
+              {
+                "date": "2026-09-06",
+                "openHours": "closed"
+              },
+              {
+                "date": "2026-09-07",
+                "openHours": "20:00-23:59"
+              },
+              {
+                "date": "2026-11-25",
+                "openHours": "00:00-20:00"
+              },
+              {
+                "date": "2026-11-26",
+                "openHours": "20:00-23:59"
+              },
+              {
+                "date": "2026-11-27",
+                "openHours": "00:00-17:00"
+              },
+              {
+                "date": "2026-12-24",
+                "openHours": "00:00-17:00"
+              },
+              {
+                "date": "2026-12-25",
+                "openHours": "closed"
+              },
+              {
+                "date": "2026-12-31",
+                "openHours": "00:00-20:00"
+              },
+              {
+                "date": "2027-01-01",
+                "openHours": "closed"
+              },
+              {
+                "date": "2027-01-17",
+                "openHours": "closed"
+              },
+              {
+                "date": "2027-01-18",
+                "openHours": "20:00-23:59"
+              },
+              {
+                "date": "2027-02-14",
+                "openHours": "closed"
+              },
+              {
+                "date": "2027-02-15",
+                "openHours": "20:00-23:59"
+              },
+              {
+                "date": "2027-03-25",
+                "openHours": "00:00-20:00"
+              },
+              {
+                "date": "2027-03-26",
+                "openHours": "closed"
+              },
+              {
+                "date": "2027-05-30",
+                "openHours": "closed"
+              },
+              {
+                "date": "2027-05-31",
+                "openHours": "20:00-23:59"
+              },
+              {
+                "date": "2027-06-17",
+                "openHours": "00:00-20:00"
+              },
+              {
+                "date": "2027-06-18",
+                "openHours": "closed"
+              },
+              {
+                "date": "2027-07-04",
+                "openHours": "closed"
+              },
+              {
+                "date": "2027-07-05",
+                "openHours": "20:00-23:59"
+              },
+              {
+                "date": "2027-09-05",
+                "openHours": "closed"
+              },
+              {
+                "date": "2027-09-06",
+                "openHours": "20:00-23:59"
+              },
+              {
+                "date": "2027-11-24",
+                "openHours": "00:00-20:00"
+              },
+              {
+                "date": "2027-11-25",
+                "openHours": "20:00-23:59"
+              },
+              {
+                "date": "2027-11-26",
+                "openHours": "00:00-17:00"
+              },
+              {
+                "date": "2027-12-23",
+                "openHours": "00:00-20:00"
+              },
+              {
+                "date": "2027-12-24",
+                "openHours": "closed"
+              }
+            ],
+            "holidayCoverageStartYear": 2026,
+            "holidayCoverageEndYear": 2027
+          },
+          "tags": [
+            "Stock"
+          ]
+        },
+        {
+          "market": "ENA-USD.P",
+          "underlyingMarket": "ENA-USD",
+          "displayName": "ENAUSD",
+          "longName": "Ethena",
+          "pair": {
+            "base": "ENA",
+            "quote": "USD"
+          },
+          "baseIncrement": "1",
+          "quoteIncrement": "0.00001",
+          "dailyInterestRate": "0.0003",
+          "fundingIntervalDivisions": 8,
+          "interestDampingRange": "0.0000625",
+          "fundingRateCap": "0.01",
+          "marginInfo": [
+            {
+              "positionBracketUsd": "1000000",
+              "maxLeverage": "5",
+              "maintenanceMarginRate": "0.1",
+              "maintenanceAmount": "0"
+            }
+          ],
+          "defaultLeverage": "5",
+          "maxPositionBaseSize": "6700000",
+          "basisTradeMaxCollateralBaseSize": "200000",
+          "makerFee": "0.0001",
+          "takerFee": "0.00025",
+          "disabled": true,
+          "listedAt": "2026-09-01T00:00:00Z",
+          "impactPriceQuoteSize": "1000",
+          "tags": [
+            "Crypto"
+          ],
+          "logoUrl": "https://cache.enclave.market/tokens/ENA.webp",
+          "backgroundColour": "#FFFFFF"
+        },
+        {
+          "market": "BTC-USD.P",
+          "underlyingMarket": "BTC-USD",
+          "displayName": "BTCUSD",
+          "longName": "Bitcoin",
+          "pair": {
+            "base": "BTC",
+            "quote": "USD"
+          },
+          "baseIncrement": "0.0001",
+          "quoteIncrement": "1",
+          "dailyInterestRate": "0.0003",
+          "fundingIntervalDivisions": 8,
+          "interestDampingRange": "0.0000625",
+          "fundingRateCap": "0.01",
+          "marginInfo": [
+            {
+              "positionBracketUsd": "1000000",
+              "maxLeverage": "25",
+              "maintenanceMarginRate": "0.02",
+              "maintenanceAmount": "0"
+            }
+          ],
+          "defaultLeverage": "25",
+          "maxPositionBaseSize": "13",
+          "basisTradeMaxCollateralBaseSize": "1",
+          "makerFee": "0.0001",
+          "takerFee": "0.00025",
+          "impactPriceQuoteSize": "1000",
+          "tags": [
+            "Crypto"
+          ],
+          "logoUrl": "https://cache.enclave.market/tokens/BTC.svg",
+          "backgroundColour": "#E9983D"
+        }
+      ]
+    }
+  }
+}
