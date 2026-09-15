@@ -816,7 +816,12 @@ struct RawApiOrder {
 /// The type keeps the venue's text - `raw` is the exact JSON of the order - so a status, a member or
 /// a decimal this adapter does not act on is still available to a report or to a later task. Its
 /// accessors convert exactly, through [`parse_decimal`] and [`parse_timestamp`].
-#[derive(Clone, Debug)]
+///
+/// The equality this type carries is **the whole payload**, `raw` included: two `ApiOrder`s are
+/// equal when the venue sent the same bytes, which is what makes one of them the other's duplicate
+/// rather than a second update. Nothing here compares a subset of the members, because a member this
+/// adapter does not read is still a member the venue may have changed.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct OndoApiOrder {
     raw: String,
     order_id: String,

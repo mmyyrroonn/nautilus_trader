@@ -61,11 +61,19 @@
 //! A submission whose answer never arrived, or arrived unreadable, may have been applied at the
 //! venue: it is reported as neither accepted nor rejected, the order stays in flight, and it is
 //! never resubmitted (plan §6.3). What the client does *not* do is judge the account clean: an
-//! order left unresolved - an unknown status, an `untriggered` conditional, or a terminal status
-//! whose fills do not add up - is listed by [`OndoExecutionClient::unresolved_orders`] until more
-//! evidence arrives.
+//! order left unresolved - an unknown status, an `untriggered` conditional, a terminal status whose
+//! fills do not add up, or a terminal status whose filled quantity cannot be read at all - is
+//! reported by the order judgment ([`crate::reconciliation::Finding::UnresolvedOrder`]) and keeps
+//! the account out of [`crate::reconciliation::ReconciliationState::Ready`] until more evidence
+//! arrives.
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    collections::BTreeMap,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+};
 
 use ahash::AHashMap;
 use async_trait::async_trait;
@@ -113,15 +121,15 @@ use crate::{
             ONDO_POST_ONLY_HAS_MATCH, OndoApiOrder, OndoCancelRejection, OndoOrderCommand,
             OndoOrderError, OndoOrderStatus, OndoRejectedOrder, OndoSide, client_lookup_value,
         },
-        private::{OndoApiFill, OndoFillDirection, OndoPrivateReadQuery},
+        private::{OndoApiFill, OndoFillDirection, OndoOrderHistoryStatus, OndoPrivateReadQuery},
         query::{CursorWalk, FILLS_PATH, ORDERS_PATH},
         rate_limit::OndoRequestPriority,
     },
     reconciliation::{
         AccountJudgment, AccountReading, Admission, BalanceReading, DeadMansSwitchMessage,
-        MetadataValidity, NewRiskRefusal, OrderReading, PositionReading, ProbeOutcome, ProbeReport,
-        ReconciliationBuffer, ReconciliationMachine, ReconciliationState, StopStep,
-        UncertainOutcome, balance_member,
+        DrainedReports, MetadataValidity, NewRiskRefusal, OrderReading, PositionReading,
+        ProbeOutcome, ProbeReport, ReconciliationBuffer, ReconciliationMachine,
+        ReconciliationState, RecoveryPassRefusal, StopStep, UncertainOutcome, balance_member,
     },
 };
 
@@ -231,8 +239,13 @@ impl OndoFillLedger {
 ///
 /// `filled` is the sum of the **applied fills**, not the venue's `filledSize`: plan §6.3 makes the
 /// unique fills the driver of every increment. The venue's own number is compared against it
-/// ([`Self::reconciliation_needed`]) rather than adopted, so a venue that reports a filled quantity
-/// no fill accounts for leaves the order unresolved instead of silently agreeing.
+/// ([`Self::fill_gap`]) rather than adopted, so a venue that reports a filled quantity no fill
+/// accounts for leaves the order unresolved instead of silently agreeing.
+///
+/// The two conditions under which that comparison cannot be satisfied are **different in kind** and
+/// are kept apart ([`Self::unappliable_fill`], [`Self::fill_gap`]): one is a fact about the fills
+/// this adapter has seen, which more fills can change, and the other is a fact about a fill it will
+/// never be able to report, which nothing can.
 #[derive(Clone, Debug)]
 pub struct OndoOrderState {
     /// The Nautilus client order id: the order's identity in this process.
@@ -272,8 +285,16 @@ pub struct OndoOrderState {
     pub venue_filled: Option<Quantity>,
     /// The last raw payload this adapter applied to the order.
     pub last_raw: String,
-    /// Whether the venue's filled quantity disagreed with the applied fills.
-    pub reconciliation_needed: bool,
+    /// Whether a fill this adapter accepted is one it can never express
+    /// (`OndoReporter::mark_unappliable_fill`, which is private and so is named rather than
+    /// linked).
+    ///
+    /// This is **permanent**, and that is the whole of what it means: the fill is in the venue's
+    /// history and this client's ledger can never carry it, so the order's applied total can never
+    /// reach the venue's and nothing that arrives later can change that. It is not the terminal
+    /// filled-size disagreement - that one is recomputed from the numbers
+    /// ([`Self::fill_gap`]) and clears when the fills catch up.
+    pub unappliable_fill: bool,
     /// Whether the order ended in a state this adapter confirmed with the venue.
     pub resolved: bool,
     /// Fills this adapter accepted **before** the venue acknowledged the order.
@@ -281,18 +302,80 @@ pub struct OndoOrderState {
 }
 
 impl OndoOrderState {
+    /// Returns the venue's terminal filled quantity when the applied fills do not account for it.
+    ///
+    /// This is **recomputed, not accumulated**: plan §6.3 makes a terminal status terminal only once
+    /// the fills agree with it, and the two orderings the venue's two streams may deliver are both
+    /// ordinary. A terminal report that arrives before the fills that complete it is a disagreement
+    /// now and no disagreement at all once they arrive, so an order that kept the first reading
+    /// would stay unresolved over a fill it had already applied. Reading the condition off the
+    /// numbers every time is what makes the fills catching up - which arrives on the fill path, not
+    /// on the order path - the thing that settles it.
+    #[must_use]
+    pub fn fill_gap(&self) -> Option<Quantity> {
+        if !self.status.is_terminal() {
+            return None;
+        }
+
+        let venue_filled = self.venue_filled?;
+
+        (venue_filled != self.filled).then_some(venue_filled)
+    }
+
+    /// Returns whether this adapter can account for the order's state.
+    ///
+    /// Accounting for an order means every increment this adapter applied is one the venue's own
+    /// reading of the order supports. That fails in three ways: a status this adapter cannot read
+    /// (an unknown one, or an `untriggered` conditional it did not create), a fill it can never
+    /// report, and a terminal status whose total it cannot check. An order that is simply still
+    /// working **is** accounted for - plan §6.3 is about the states the adapter cannot read, not
+    /// about the ones it is waiting on.
+    ///
+    /// The third way is the one [`Self::fill_gap`] cannot see on its own. A terminal payload whose
+    /// `filledSize` cannot be read states no total, so there is nothing to check the applied fills
+    /// against. That is not the fills agreeing with the venue - it is the check being impossible -
+    /// and an order whose terminal reading cannot be checked is not one this adapter can account
+    /// for, however clean the total it happens to hold looks. `fill_gap` returning [`None`] there is
+    /// right within its own definition ("is there a readable total that disagrees?"); reading that
+    /// [`None`] as agreement is what was wrong.
+    ///
+    /// This is the **single** expression of the question. [`Self::is_unresolved`] and
+    /// [`Self::is_settled`] - the latter being the `resolved` flag, recomputed on every path that
+    /// can move it - are both read off it, so no two of them can answer differently about the same
+    /// order. The account judgment is a third reader of the same facts and reaches the same answer
+    /// for a tracked order (`ReconciliationMachine::judge_orders` in `crate::reconciliation`, which
+    /// reads them off [`OrderReading`]).
+    #[must_use]
+    pub fn is_accounted_for(&self) -> bool {
+        self.status.is_known()
+            && self.status != OndoOrderStatus::Untriggered
+            && !self.unappliable_fill
+            && (!self.status.is_terminal()
+                || self
+                    .venue_filled
+                    .is_some_and(|venue_filled| venue_filled == self.filled))
+    }
+
     /// Returns whether this order's state is one this adapter **cannot** account for.
     ///
-    /// That is a status it does not know, an `untriggered` conditional it does not create, or a
-    /// terminal status whose fills do not add up. An order that is simply still working is neither
-    /// resolved nor unresolved, and it does not belong here: plan §6.3 is about the states the
-    /// adapter cannot read, not about the ones it is waiting on. This is the predicate an account
-    /// is judged clean against.
+    /// The negation of [`Self::is_accounted_for`] and nothing else, so it may never claim less than
+    /// the adapter can actually check. What judges the *account* is the order judgment
+    /// (`ReconciliationMachine::judge_orders`); this is the same question asked of one order, and
+    /// the two are read off the same facts (plan §6.3).
     #[must_use]
     pub fn is_unresolved(&self) -> bool {
-        !self.status.is_known()
-            || self.status == OndoOrderStatus::Untriggered
-            || self.reconciliation_needed
+        !self.is_accounted_for()
+    }
+
+    /// Returns whether this order is settled: the venue is done with it, this adapter can account
+    /// for the total it states, and every fill it applied has been reported.
+    ///
+    /// The `resolved` flag is this value, recomputed - never accumulated - on every path that can
+    /// move it, which is what lets a fill that satisfies a terminal reading settle the order it
+    /// arrived after (plan §6.3).
+    #[must_use]
+    pub fn is_settled(&self) -> bool {
+        self.status.is_terminal() && self.is_accounted_for() && self.pending_fills.is_empty()
     }
 }
 
@@ -547,13 +630,16 @@ impl OndoReporter {
     }
 
     /// Recomputes whether an order is resolved, from its current state.
+    ///
+    /// It is called on **both** paths that can change the answer: a payload that advances the
+    /// order's status, and a fill that moves the applied total towards the venue's. A terminal
+    /// report and the fills that complete it are delivered by two streams in either order, so a
+    /// fill whose arrival satisfies a terminal reading has to be able to settle it (plan §6.3).
     fn settle(&self, client_order_id: &ClientOrderId) {
         let mut state = self.state.write();
 
         if let Some(entry) = state.orders.get_mut(client_order_id) {
-            entry.resolved = entry.status.is_terminal()
-                && !entry.reconciliation_needed
-                && entry.pending_fills.is_empty();
+            entry.resolved = entry.is_settled();
         }
     }
 
@@ -618,6 +704,10 @@ impl OndoReporter {
             entry.filled = add_quantity(entry.filled, quantity)?;
         }
 
+        // The fill may be the one a terminal reading was waiting for: a report that arrived first
+        // is only a disagreement until the fills it counted arrive (plan §6.3).
+        self.settle(&client_order_id);
+
         self.emitter.send_fill_report(report);
 
         Ok(OndoFillApplication::Applied)
@@ -668,6 +758,8 @@ impl OndoReporter {
         let newly_accepted = !entry.accepted;
         let changed =
             newly_accepted || entry.status != *status || entry.venue_filled != venue_filled;
+        // Whether the order was short of a terminal reading before this payload moved it.
+        let was_short = entry.fill_gap().is_some();
 
         entry.accepted = true;
         entry.status = status.clone();
@@ -681,24 +773,32 @@ impl OndoReporter {
             .and_then(|size| Quantity::from_decimal(size).ok());
 
         // Plan §6.3: a terminal status is only terminal once the fills agree with it. A venue
-        // filled quantity the applied fills do not account for leaves the order unresolved
-        // rather than silently agreeing with it.
-        if let Some(venue_filled) = venue_filled
-            && status.is_terminal()
-            && venue_filled != entry.filled
-        {
-            entry.reconciliation_needed = true;
-
-            log::error!(
-                "Ondo order {client_order_id} is {} at the venue with filledSize {venue_filled} \
-                 but the applied fills total {}; the order stays unresolved",
-                status.as_str(),
+        // filled quantity the applied fills do not account for leaves the order unresolved rather
+        // than silently agreeing with it - and it stops doing so the moment the fills that account
+        // for it are applied, which [`Self::settle`] is what notices. The condition itself is not
+        // stored ([`OndoOrderState::fill_gap`]), so what is left here is saying so once, on the
+        // payload that opened the disagreement, rather than on every read of it afterwards.
+        if let Some(venue_filled) = entry.fill_gap() {
+            if !was_short {
+                log::error!(
+                    "Ondo order {client_order_id} is {} at the venue with filledSize {venue_filled} \
+                     but the applied fills total {}; the order stays unresolved",
+                    status.as_str(),
+                    entry.filled,
+                );
+            }
+        } else if was_short && entry.is_accounted_for() {
+            // "Settled" is only said of a reading this adapter can account for: a status it cannot
+            // read, or a terminal one whose total is unreadable, is not an agreement however the
+            // gap happened to close.
+            log::info!(
+                "Ondo order {client_order_id} is settled at the venue: the applied fills total {} \
+                 and the venue's filledSize agree",
                 entry.filled,
             );
         }
 
-        entry.resolved =
-            status.is_terminal() && !entry.reconciliation_needed && entry.pending_fills.is_empty();
+        entry.resolved = entry.is_settled();
 
         let snapshot = entry.clone();
         let pending = std::mem::take(&mut entry.pending_fills);
@@ -722,7 +822,7 @@ impl OndoReporter {
             Err(error) => {
                 // A fill this adapter accepted and then could not express leaves the order
                 // unresolved rather than silently short of its venue quantity.
-                self.mark_reconciliation_needed(client_order_id);
+                self.mark_unappliable_fill(client_order_id);
 
                 log::error!(
                     "Ondo buffered fill {} for {client_order_id} could not be reported: {error}",
@@ -739,7 +839,12 @@ impl OndoReporter {
 
         if let Err(error) = self.credit(client_order_id, quantity) {
             log::error!("Ondo order {client_order_id} could not be credited {quantity}: {error}");
+
+            return;
         }
+
+        // The total moved, so whether a terminal reading is satisfied may have moved with it.
+        self.settle(client_order_id);
     }
 
     /// Adds an applied fill's quantity to its order's total.
@@ -797,7 +902,7 @@ impl OndoReporter {
                 last_fill_size: None,
                 venue_filled: None,
                 last_raw: String::new(),
-                reconciliation_needed: false,
+                unappliable_fill: false,
                 resolved: false,
                 pending_fills: Vec::new(),
             },
@@ -830,12 +935,19 @@ impl OndoReporter {
         }
     }
 
-    /// Marks an order as needing reconciliation, so it is never reported as resolved.
-    fn mark_reconciliation_needed(&self, client_order_id: &ClientOrderId) {
+    /// Marks an order as one holding a fill this adapter accepted and can never express, so it is
+    /// never reported as resolved.
+    ///
+    /// This is the one condition that is not recomputed, and it must not be: the fill is in the
+    /// venue's history, this client's ledger cannot carry it, and the applied total can therefore
+    /// never reach the venue's. Nothing that arrives later changes that, so nothing later may clear
+    /// it. The terminal filled-size disagreement, which more fills *can* clear, is not this
+    /// ([`OndoOrderState::fill_gap`]).
+    fn mark_unappliable_fill(&self, client_order_id: &ClientOrderId) {
         let mut state = self.state.write();
 
         if let Some(entry) = state.orders.get_mut(client_order_id) {
-            entry.reconciliation_needed = true;
+            entry.unappliable_fill = true;
             entry.resolved = false;
         }
     }
@@ -863,25 +975,40 @@ impl OndoReporter {
     /// orders this client did not place needs (plan §6.4: an external order is identified, not
     /// dropped).
     ///
-    /// `filled_qty` is the **venue's own** `filledSize`: a status report states the venue's view,
-    /// and the applied-fills total is what [`OndoOrderState::reconciliation_needed`] compares it
-    /// against.
+    /// For an order this client **tracks**, `filled_qty` is the quantity the **applied fills** add
+    /// up to, and `order_status` is the state those fills support: a terminal venue status the
+    /// applied total does not account for is reported as the state the ledger *can* support rather
+    /// than as the completion it cannot (plan §6.3). The reason is what the report does downstream:
+    /// the engine reconciles a `Filled`/`PartiallyFilled` report whose quantity is above the
+    /// cache's by **inferring the difference as a fill** at the report's average price, so a report
+    /// that carried the venue's terminal quantity would have the cache - and the position built
+    /// from it - complete and price an order on a fill this adapter never reported.
+    ///
+    /// Withholding the report instead was the alternative, and it is the worse one: a report is
+    /// emitted only for a payload that moves the order, so the terminal state withheld from the
+    /// cache would arrive only if the venue repeated itself, and until then the adapter's ledger
+    /// and the cache would disagree with nothing left to reconcile them. The completion does reach
+    /// the cache, by the path plan §6.3 makes the driver of every increment - the fills themselves,
+    /// which cover the order's quantity when they arrive.
+    ///
+    /// An order this client does **not** track has no ledger to report from, so the payload is all
+    /// there is: its `filledSize` and its status are reported as the venue sent them.
     fn status_report(
         &self,
         payload: &OndoApiOrder,
         tracked: Option<&OndoOrderState>,
         ts_event: UnixNanos,
     ) -> anyhow::Result<OrderStatusReport> {
-        let filled_qty = payload.filled_quantity()?;
+        let venue_filled = payload.filled_quantity()?;
 
-        let order_status = match payload.status() {
-            OndoOrderStatus::Open if filled_qty.is_positive() => OrderStatus::PartiallyFilled,
-            OndoOrderStatus::Open => OrderStatus::Accepted,
-            OndoOrderStatus::FullyFilled => OrderStatus::Filled,
-            OndoOrderStatus::Canceled => OrderStatus::Canceled,
-            other => anyhow::bail!(
-                "the venue's status `{}` has no Nautilus order status",
-                other.as_str()
+        let (order_status, filled_qty) = match tracked {
+            None => (
+                venue_order_status(payload.status(), venue_filled)?,
+                venue_filled,
+            ),
+            Some(order) => (
+                order_status_for_ledger(payload.status(), venue_filled, order)?,
+                order.filled,
             ),
         };
 
@@ -1006,6 +1133,117 @@ struct Advance {
     changed: bool,
 }
 
+/// The orders one pass saw, each at the newest payload the pass applied for it.
+///
+/// A pass sees an order more than once - the venue's pages can repeat it, and a stream report can
+/// name it again - and the last one it saw is the order's state. The reading is built from this
+/// rather than from the pages alone, so an order only the stream mentioned is part of what the pass
+/// read, and an order both sources carried is read at the state the pass left it in (plan §6.4).
+#[derive(Debug, Default)]
+struct ObservedOrders {
+    /// The payloads, in the order the pass first saw each venue order id.
+    entries: Vec<OndoApiOrder>,
+    /// Where each venue order id's payload sits in `entries`.
+    index: BTreeMap<String, usize>,
+}
+
+impl ObservedOrders {
+    /// Records one payload as the newest this pass has seen for its order.
+    fn observe(&mut self, payload: &OndoApiOrder) {
+        match self.index.get(payload.order_id()) {
+            Some(at) => self.entries[*at] = payload.clone(),
+            None => {
+                self.index
+                    .insert(payload.order_id().to_string(), self.entries.len());
+                self.entries.push(payload.clone());
+            }
+        }
+    }
+}
+
+/// Whether a recovery pass owns the account right now (plan §6.4).
+///
+/// The claim is one atomic rather than a lock, because a pass holds it across its four reads and a
+/// lock held across an await on the account's own state is a deadlock waiting for a slow venue.
+///
+/// The atomic carries the id of the claim that owns the account, not a flag, because a pass ends its
+/// claim twice - once at its drain and once when its guard drops - and between the two another pass
+/// may legitimately have claimed the account. An end that could only set "free" would then release a
+/// claim that is no longer its own, and a third pass would run beside the second: two passes
+/// advancing one account is the whole of what the claim exists to prevent.
+#[derive(Debug, Default)]
+struct PassOwnership {
+    /// The id of the pass that owns the account, or zero when no pass does.
+    claimed_by: AtomicU64,
+    /// Issues claim ids; see [`Self::next_claim_id`].
+    next_id: AtomicU64,
+}
+
+impl PassOwnership {
+    /// Claims the account for one pass, or [`None`] when another pass already holds it.
+    ///
+    /// The guard is built on the successful branch alone: one built and dropped on the way out of a
+    /// refused claim would release the claim of the pass that holds it.
+    fn claim(&self) -> Option<PassGuard<'_>> {
+        let id = self.next_claim_id();
+
+        if self
+            .claimed_by
+            .compare_exchange(0, id, Ordering::AcqRel, Ordering::Acquire)
+            .is_err()
+        {
+            return None;
+        }
+
+        Some(PassGuard { owner: self, id })
+    }
+
+    /// Issues the id that names the next claim.
+    ///
+    /// Zero means "no owner", so the counter starts at one and a wrapped counter skips past it: a
+    /// claim issued the id zero would leave the account reading as free while its holder believed it
+    /// owned it, which is the state this type exists to make impossible.
+    fn next_claim_id(&self) -> u64 {
+        match self.next_id.fetch_add(1, Ordering::Relaxed) {
+            0 => self.next_id.fetch_add(1, Ordering::Relaxed),
+            id => id,
+        }
+    }
+}
+
+/// A pass's claim on the account, released when it ends or when the pass leaves.
+#[derive(Debug)]
+struct PassGuard<'a> {
+    owner: &'a PassOwnership,
+    /// The claim this guard holds. Zero is never issued, so a guard always names a real claim.
+    id: u64,
+}
+
+impl PassGuard<'_> {
+    /// Ends the pass, so the next one may claim the account.
+    ///
+    /// It is idempotent on purpose: a pass ends twice, once at the drain - under the same boundary
+    /// that takes the reports the stream buffered - and once when this guard drops, and the second
+    /// one must not be able to re-open a claim or to close one the drain has already closed.
+    ///
+    /// The claim is released only while it is still **this** claim's. A pass that ended at its drain
+    /// and then let another pass claim the account leaves that other pass's claim alone when its own
+    /// guard drops: releasing it would let a third pass run beside the second, and the account would
+    /// be advanced by two passes with nothing refused and nothing reported.
+    fn end(&self) {
+        let _ =
+            self.owner
+                .claimed_by
+                .compare_exchange(self.id, 0, Ordering::AcqRel, Ordering::Acquire);
+    }
+}
+
+impl Drop for PassGuard<'_> {
+    fn drop(&mut self) {
+        self.end();
+    }
+}
+
 /// The live execution client for the Ondo Perps API.
 ///
 /// Order entry, cancellation and the private order and fill reads go through [`OndoHttpClient`],
@@ -1023,6 +1261,11 @@ pub struct OndoExecutionClient {
     reconciliation: Arc<RwLock<ReconciliationMachine>>,
     /// The private reports that arrived while a pass was reading the account (plan §6.4).
     buffer: Arc<RwLock<ReconciliationBuffer>>,
+    /// The one recovery pass that may read and conclude the account at a time (plan §6.4).
+    ///
+    /// Shared with nothing: a pass is this client's own, and a second pass on the same client is the
+    /// case the claim exists to refuse.
+    pass: PassOwnership,
     tasks: TaskGroup,
 }
 
@@ -1134,6 +1377,7 @@ impl OndoExecutionClient {
             reporter,
             reconciliation,
             buffer: Arc::new(RwLock::new(ReconciliationBuffer::new())),
+            pass: PassOwnership::default(),
             tasks: TaskGroup::new(),
         })
     }
@@ -1187,9 +1431,19 @@ impl OndoExecutionClient {
     ///
     /// An unresolved order is one the venue answered about without this adapter being able to
     /// confirm it ([`OndoOrderState::is_unresolved`]): an unknown status, an `untriggered`
-    /// conditional, or a terminal status whose fills do not add up. An order that is merely still
-    /// working is not one of these. A non-empty result is what stops an account being judged clean
-    /// (plan §6.3, §6.4).
+    /// conditional, a fill this adapter can never report, a terminal status whose fills do not add
+    /// up, or a terminal status whose filled quantity cannot be read. An order that is merely still
+    /// working is not one of these.
+    ///
+    /// **This is a local view, not the account gate.** It reads the orders this client *tracks*,
+    /// and nothing in the production path calls it: what keeps an account from being judged clean is
+    /// the order judgment, which runs over every order a pass read and reports
+    /// [`crate::reconciliation::Finding::UnresolvedOrder`] for the same condition
+    /// (`ReconciliationMachine::judge_orders`, plan §6.3, §6.4). The two agree about a tracked order
+    /// because both are read off [`OndoOrderState::is_accounted_for`]; the judgment additionally
+    /// covers orders this client does not track, and reports those as a foreign order. This accessor
+    /// exists for a caller that wants the local list - a non-empty result here is not by itself what
+    /// stops anything.
     #[must_use]
     pub fn unresolved_orders(&self) -> Vec<ClientOrderId> {
         self.reporter
@@ -1369,14 +1623,62 @@ impl OndoExecutionClient {
     /// Records a private report that arrived while the account was being read.
     ///
     /// The report is held rather than applied so the pass can replay it through the same state
-    /// machine the REST pages go through, where it is deduped (plan §6.4).
+    /// machine the REST pages go through, where it is deduped (plan §6.4). It is attributed to the
+    /// recovery the account is in at this instant: a report recorded before this recovery began, or
+    /// after the session it belonged to ended, is refused when the pass drains rather than applied
+    /// as current state.
+    ///
+    /// A report the bounded buffer refuses for want of room is **not** dropped quietly: the account
+    /// becomes uncertain until a pass has read it whole again (plan §6.4).
     pub fn buffer_stream_order(&self, payload: OndoApiOrder) {
-        self.buffer.write().record_order(payload);
+        let generation = self.reconciliation.read().recovery_generation();
+        let dropped = {
+            let mut buffer = self.buffer.write();
+            buffer.record_order(payload, generation);
+
+            buffer.take_dropped()
+        };
+
+        self.note_refused_reports(dropped);
     }
 
     /// Records a private fill that arrived while the account was being read.
+    ///
+    /// Buffered, attributed and bounded exactly as [`Self::buffer_stream_order`] buffers an order
+    /// report.
     pub fn buffer_stream_fill(&self, fill: OndoApiFill) {
-        self.buffer.write().record_fill(fill);
+        let generation = self.reconciliation.read().recovery_generation();
+        let dropped = {
+            let mut buffer = self.buffer.write();
+            buffer.record_fill(fill, generation);
+
+            buffer.take_dropped()
+        };
+
+        self.note_refused_reports(dropped);
+    }
+
+    /// Records the reports the buffer refused for want of room.
+    ///
+    /// The buffer's own count is what is reported, so the machine is told how many facts about the
+    /// account this client saw and does not hold, not merely that something was dropped.
+    fn note_refused_reports(&self, dropped: usize) {
+        if dropped == 0 {
+            return;
+        }
+
+        let capacity = self.buffer.read().capacity();
+
+        self.note_lost_reports(
+            dropped,
+            format!("the recovery buffer holds {capacity} report(s) and refused {dropped} more"),
+        );
+    }
+
+    /// Records reports the recovery could not apply to the account.
+    fn note_lost_reports(&self, count: usize, reason: String) {
+        log::error!("Ondo lost {count} report(s) during recovery: {reason}");
+        self.reconciliation.write().note_lost_reports(count, reason);
     }
 
     /// Reads the account once and concludes a pass (plan §6.4).
@@ -1384,17 +1686,28 @@ impl OndoExecutionClient {
     /// The reads are the venue's own lists, walked with the same bounded [`CursorWalk`] every other
     /// history read uses, and every payload is applied through [`Self::apply_order`] and
     /// [`Self::apply_fill`] - the one state machine, so the stream and this pass can never disagree
-    /// about what a payload means. The buffered stream reports are replayed after the pages, where
-    /// the ledger and the order index dedupe them.
+    /// about what a payload means. The reports the stream buffered while the pass read are replayed
+    /// into it, after the last read and under the boundary that ends the pass, where the ledger and
+    /// the order index dedupe them.
+    ///
+    /// One pass owns the account at a time: two would both drain the buffer - the second finding it
+    /// empty - and each would conclude a reading the other half-wrote.
     ///
     /// # Errors
     ///
-    /// Returns an error when the account cannot be read completely: a failed request, an
-    /// unreadable page, a cursor that will not advance. The machine is left
-    /// [`ReconciliationState::Uncertain`] in that case - a pass that stopped early must not look
-    /// like an account that was read.
+    /// Returns [`RecoveryPassRefusal::AlreadyRunning`] when another pass owns the account, without
+    /// reading anything and without judging this one; and an error when the account cannot be read
+    /// completely - a failed request, an unreadable page, a cursor that will not advance. The
+    /// machine is left [`ReconciliationState::Uncertain`] in that case, because a pass that stopped
+    /// early must not look like an account that was read.
     pub async fn reconcile_account(&self, now: UnixNanos) -> anyhow::Result<AccountJudgment> {
-        match self.read_account().await {
+        let Some(pass) = self.pass.claim() else {
+            log::error!("Ondo refused a recovery pass: another pass already owns the account");
+
+            return Err(RecoveryPassRefusal::AlreadyRunning.into());
+        };
+
+        match self.read_account(&pass).await {
             Ok(reading) => {
                 self.reconciliation.write().conclude_pass(&reading, now);
 
@@ -1498,35 +1811,73 @@ impl OndoExecutionClient {
         abandoned
     }
 
-    /// Reads the account: orders, fills, the buffered reports, positions and balance.
+    /// Reads the account: orders, fills, positions, balance, and then the buffered reports.
     ///
     /// The order readings are built **after** every payload of the pass has been applied, not as
     /// the pages arrive. Pagination means the order list and the fill history are read minutes
     /// apart in the worst case, and nothing in the protocol orders the two: an order read before
     /// the fill that completed it would otherwise be judged against a filled quantity the same
     /// pass had not applied yet, and a reconciled account would look like a disagreement.
-    async fn read_account(&self) -> anyhow::Result<AccountReading> {
+    ///
+    /// The buffered reports are taken last of all, once the positions and the balance have been
+    /// read, and under the boundary that ends the pass: a report arriving while this pass reads is
+    /// either in what the drain took or in the buffer the next pass will drain, never in neither
+    /// place and never in both. After the drain nothing here can fail, so a pass that took reports
+    /// out of the buffer is a pass that applied them.
+    async fn read_account(&self, pass: &PassGuard<'_>) -> anyhow::Result<AccountReading> {
         let mut reading = AccountReading::default();
+        let mut observed = ObservedOrders::default();
 
-        let orders = self.read_orders().await?;
-
+        self.read_orders(&mut observed).await?;
         self.read_fills(&mut reading).await?;
-        self.replay_buffered();
+        reading.positions = self.read_positions().await?;
+        reading.balance = Some(self.read_balance().await?);
 
-        reading.orders = orders
+        let drained = self.close_pass(pass);
+
+        self.replay(&drained, &mut observed, &mut reading);
+
+        reading.orders = observed
+            .entries
             .iter()
             .map(|payload| self.order_reading(payload))
             .collect();
-        reading.positions = self.read_positions().await?;
-        reading.balance = Some(self.read_balance().await?);
         reading.applied_net = self.reporter.state.read().applied_net();
 
         Ok(reading)
     }
 
-    /// Walks the venue's order list, applying every payload it carries and returning them.
-    async fn read_orders(&self) -> anyhow::Result<Vec<OndoApiOrder>> {
-        let mut payloads = Vec::new();
+    /// Takes the reports the stream buffered, and ends the pass, under one boundary (plan §6.4).
+    ///
+    /// The drain and the switch from "this pass owns the account" to "it does not" happen under the
+    /// same write lock the private stream records under, and they happen after the last await the
+    /// pass makes. A report arriving at that instant therefore either lands in the set this drain
+    /// took or in the buffer the next pass will drain - never in neither, which would strand it, and
+    /// never in both, which would apply it twice.
+    ///
+    /// What the drain takes is what belongs to the recovery the machine is on **now**, read here
+    /// rather than taken from the pass: a recovery that began while this pass was reading supersedes
+    /// the reports recorded before it, and a pass that replayed those would be applying the state of
+    /// a session the machine has left as the state of the one it is reconciling.
+    ///
+    /// The generation is read under the buffer's own write lock, not before it, so that no report
+    /// can be recorded between the read and the drain: the stream records under that lock, so while
+    /// it is held the buffer holds exactly the reports stamped at or before the generation drained
+    /// and none stamped after it. Read first, a recovery beginning in the gap would have the reports
+    /// it recorded counted as superseded by the older drain, which costs a pass and an uncertain
+    /// account over a report that is in fact current.
+    fn close_pass(&self, pass: &PassGuard<'_>) -> DrainedReports {
+        let mut buffer = self.buffer.write();
+        let generation = self.reconciliation.read().recovery_generation();
+        let drained = buffer.drain_generation(generation);
+
+        pass.end();
+
+        drained
+    }
+
+    /// Walks the venue's order list, applying every payload it carries.
+    async fn read_orders(&self, observed: &mut ObservedOrders) -> anyhow::Result<()> {
         let mut walk = CursorWalk::new(REPORT_MAX_PAGES);
         let mut query = OndoPrivateReadQuery::new();
 
@@ -1539,40 +1890,8 @@ impl OndoExecutionClient {
             for item in response.items()? {
                 let payload = OndoApiOrder::from_text(item.get())?;
 
+                observed.observe(&payload);
                 self.apply_order(&payload);
-                payloads.push(payload);
-            }
-
-            let Some(cursor) = walk.advance(response.cursor())? else {
-                break;
-            };
-
-            query = query.with_cursor(cursor);
-        }
-
-        Ok(payloads)
-    }
-
-    /// Walks the venue's fill history, applying every fill it carries.
-    async fn read_fills(&self, reading: &mut AccountReading) -> anyhow::Result<()> {
-        let mut walk = CursorWalk::new(REPORT_MAX_PAGES);
-        let mut query = OndoPrivateReadQuery::new();
-
-        loop {
-            let response =
-                self.http_client.get_fills(&query).await.map_err(|error| {
-                    anyhow::anyhow!("the fill history could not be read: {error}")
-                })?;
-
-            for fill in response.fills()? {
-                match self.apply_fill(&fill) {
-                    Ok(OndoFillApplication::Applied) => reading.fills.push(fill.id().to_string()),
-                    Ok(_) => {}
-                    Err(error) => log::error!(
-                        "Ondo fill {} could not be applied during reconciliation: {error}",
-                        fill.id(),
-                    ),
-                }
             }
 
             let Some(cursor) = walk.advance(response.cursor())? else {
@@ -1585,28 +1904,109 @@ impl OndoExecutionClient {
         Ok(())
     }
 
-    /// Replays the private reports that arrived while the account was being read.
-    fn replay_buffered(&self) {
-        let (orders, fills) = self.buffer.write().drain();
+    /// Walks the venue's fill history, applying every fill it carries.
+    ///
+    /// A fill the state machine cannot express at all - a market that does not map onto an
+    /// instrument, an unreadable `size`/`price`/`fee` - is a fact about the account this pass saw and
+    /// could not apply, so it is recorded as a loss rather than skipped past: the pass that follows
+    /// may not judge an account it did not read whole (plan §6.4).
+    async fn read_fills(&self, reading: &mut AccountReading) -> anyhow::Result<()> {
+        let mut walk = CursorWalk::new(REPORT_MAX_PAGES);
+        let mut query = OndoPrivateReadQuery::new();
+        let mut unreadable = Vec::new();
 
-        for payload in &orders {
+        loop {
+            let response =
+                self.http_client.get_fills(&query).await.map_err(|error| {
+                    anyhow::anyhow!("the fill history could not be read: {error}")
+                })?;
+
+            for fill in response.fills()? {
+                match self.apply_fill(&fill) {
+                    Ok(OndoFillApplication::Applied) => reading.fills.push(fill.id().to_string()),
+                    Ok(_) => {}
+                    Err(error) => {
+                        log::error!(
+                            "Ondo fill {} could not be applied during reconciliation: {error}",
+                            fill.id(),
+                        );
+                        unreadable.push((fill.id().to_string(), error.to_string()));
+                    }
+                }
+            }
+
+            let Some(cursor) = walk.advance(response.cursor())? else {
+                break;
+            };
+
+            query = query.with_cursor(cursor);
+        }
+
+        for (fill_id, reason) in unreadable {
+            self.note_lost_reports(
+                1,
+                format!("the fill {fill_id} could not be applied: {reason}"),
+            );
+        }
+
+        Ok(())
+    }
+
+    /// Replays the private reports one drain took, in the order they arrived (plan §6.4).
+    ///
+    /// They go through [`Self::apply_order`] and [`Self::apply_fill`] - the same state machine the
+    /// pages go through - so an order's run of reports is applied in the order the stream delivered
+    /// it, the last of them being the state the order is left in, and a report the pages already
+    /// carried is deduped rather than applied a second time.
+    ///
+    /// What is *not* applied is reported. Reports held under a superseded recovery are refused by
+    /// the drain, and a fill the state machine cannot express would otherwise leave no trace at all:
+    /// an order's unreadable status reaches the judgment through the reading either way, but a fill
+    /// that could not be applied has to be said out loud (plan §6.4).
+    fn replay(
+        &self,
+        drained: &DrainedReports,
+        observed: &mut ObservedOrders,
+        reading: &mut AccountReading,
+    ) {
+        if drained.superseded > 0 {
+            self.note_lost_reports(
+                drained.superseded,
+                "they were recorded for a recovery that has since been superseded".to_string(),
+            );
+        }
+
+        for payload in &drained.orders {
+            observed.observe(payload);
             self.apply_order(payload);
         }
 
-        for fill in &fills {
-            if let Err(error) = self.apply_fill(fill) {
-                log::error!(
-                    "A buffered Ondo fill {} could not be applied during reconciliation: {error}",
-                    fill.id(),
-                );
+        for fill in &drained.fills {
+            match self.apply_fill(fill) {
+                Ok(OndoFillApplication::Applied) => reading.fills.push(fill.id().to_string()),
+                Ok(_) => {}
+                Err(error) => {
+                    log::error!(
+                        "A buffered Ondo fill {} could not be applied during reconciliation: \
+                         {error}",
+                        fill.id(),
+                    );
+                    self.note_lost_reports(
+                        1,
+                        format!(
+                            "the buffered fill {} could not be applied: {error}",
+                            fill.id()
+                        ),
+                    );
+                }
             }
         }
 
-        if !orders.is_empty() || !fills.is_empty() {
+        if !drained.orders.is_empty() || !drained.fills.is_empty() {
             log::info!(
                 "Replayed {} buffered Ondo order report(s) and {} fill(s) during reconciliation",
-                orders.len(),
-                fills.len(),
+                drained.orders.len(),
+                drained.fills.len(),
             );
         }
     }
@@ -1700,30 +2100,42 @@ impl OndoExecutionClient {
         })
     }
 
-    /// Builds one order's reading, with what this client's index holds for it.
+    /// Builds one order's reading, from the state the pass left the order in.
+    ///
+    /// The payload is the newest the pass saw for this order, but it is not necessarily the state
+    /// the order is in: a report that arrived after it - from the stream, or from a later page -
+    /// has moved the order on, and what the pass judges has to be the state it left behind rather
+    /// than the state one of its inputs described. `status` and `venue_filled` therefore come from
+    /// the order index whenever it holds the order, and from the payload only for an order this
+    /// client does not track, where the payload is all there is to read.
     fn order_reading(&self, payload: &OndoApiOrder) -> OrderReading {
-        let state =
-            payload
-                .client_order_id()
-                .map(ClientOrderId::from)
-                .and_then(|client_order_id| {
-                    self.reporter
-                        .state
-                        .read()
-                        .orders
-                        .get(&client_order_id)
-                        .cloned()
-                });
+        let state = {
+            let state = self.reporter.state.read();
+
+            state
+                .resolve_order(payload)
+                .and_then(|client_order_id| state.orders.get(&client_order_id).cloned())
+        };
 
         OrderReading {
             venue_order_id: payload.order_id().to_string(),
-            client_order_id: payload.client_order_id().map(ToString::to_string),
+            client_order_id: state
+                .as_ref()
+                .map(|state| state.client_order_id.to_string())
+                .or_else(|| payload.client_order_id().map(ToString::to_string)),
             market: payload.market().to_string(),
-            status: payload.status().clone(),
-            venue_filled: payload
-                .filled_quantity()
-                .ok()
-                .map(|quantity| quantity.as_decimal()),
+            status: state
+                .as_ref()
+                .map_or_else(|| payload.status().clone(), |state| state.status.clone()),
+            venue_filled: state.as_ref().map_or_else(
+                || {
+                    payload
+                        .filled_quantity()
+                        .ok()
+                        .map(|quantity| quantity.as_decimal())
+                },
+                |state| state.venue_filled.map(|quantity| quantity.as_decimal()),
+            ),
             applied_filled: state.as_ref().map(|state| state.filled.as_decimal()),
             tracked: state.is_some(),
         }
@@ -2582,18 +2994,26 @@ impl ExecutionClient for OndoExecutionClient {
     }
 
     /// Reads one order and returns its status report (plan §6.3).
+    ///
+    /// Either identifier is enough to ask with, which is what the venue documents: its single-order
+    /// read takes one path parameter, *"Internal order ID, or `client:{clientOrderID}` for client
+    /// order ID lookup"*. A venue order id therefore goes into the path as itself - the `client:`
+    /// form is this adapter's convention for a client order id query (plan §6.2) and means
+    /// something else entirely when wrapped around a venue id.
     async fn generate_order_status_report(
         &self,
         cmd: &GenerateOrderStatusReport,
     ) -> anyhow::Result<Option<OrderStatusReport>> {
-        let Some(client_order_id) = cmd.client_order_id else {
-            anyhow::bail!(
-                "An Ondo Perps order status report needs a client order id: this venue has no \
-                 account-wide order lookup by venue order id alone"
-            );
+        let order_ref = match (cmd.client_order_id, cmd.venue_order_id) {
+            (Some(client_order_id), venue_order_id) => {
+                self.order_ref(&client_order_id, venue_order_id)
+            }
+            (None, Some(venue_order_id)) => venue_order_id.to_string(),
+            (None, None) => anyhow::bail!(
+                "An Ondo Perps order status report needs an order to read: neither a client order \
+                 id nor a venue order id was given"
+            ),
         };
-
-        let order_ref = self.order_ref(&client_order_id, cmd.venue_order_id);
 
         let payload = self
             .http_client
@@ -2601,14 +3021,30 @@ impl ExecutionClient for OndoExecutionClient {
             .await?;
 
         if let OndoOrderApplication::Unresolved { reason, .. } = self.apply_order(&payload) {
-            anyhow::bail!("Ondo order {client_order_id} is unresolved: {reason}");
+            // The identifier the caller gave, so the error names the order they asked about; a
+            // venue-id-only read has only the venue's own id to name it by.
+            let named = match cmd.client_order_id {
+                Some(client_order_id) => client_order_id.to_string(),
+                None => payload.order_id().to_string(),
+            };
+
+            anyhow::bail!("Ondo order {named} is unresolved: {reason}");
         }
 
+        // The payload was applied a moment ago, so the index holds this read's own effect: an order
+        // this client tracks is reported from its ledger, and an order it does not track is
+        // reported from the venue's view of it. `status_report` keeps the payload's `clientOrderId`
+        // in that second case, which for an order this client never placed is the only identity
+        // there is ([`Self::generate_order_status_reports`] does the same, per plan §6.4).
         let state = self.reporter.state.read();
+
+        let tracked = state
+            .resolve_order(&payload)
+            .and_then(|client_order_id| state.orders.get(&client_order_id));
 
         Ok(Some(self.reporter.status_report(
             &payload,
-            state.orders.get(&client_order_id),
+            tracked,
             event_time(&payload, self.reporter.now()),
         )?))
     }
@@ -2631,6 +3067,28 @@ impl ExecutionClient for OndoExecutionClient {
             query = query.with_market(instrument_id_to_market(&instrument_id)?);
         }
 
+        // `open_only` is the venue's own filter, sent as the venue's own word for it: the spec's
+        // `status` enum on this endpoint is `open`, `canceled`, `fullyfilled`, so a working order
+        // is `open` at the venue and this is a mapping rather than an approximation. What it does
+        // approximate is the other direction: that enum has no `pending` and no `untriggered`, so
+        // **no** filter value asks for "every non-terminal order" and an order in one of those
+        // states is not reachable through this read (`test_data/conflicts.md`).
+        if cmd.open_only {
+            query = query.with_status(OndoOrderHistoryStatus::Open);
+        }
+
+        // The window is sent as the venue declares it - whole milliseconds of UTC - and the result
+        // is deliberately **not** trimmed here as well. Which of the order's own timestamps the
+        // venue's window filters on is not something this adapter can observe, and re-applying the
+        // window locally against a different one would drop orders the venue meant to return.
+        if let Some(start) = cmd.start {
+            query = query.with_start_time(start);
+        }
+
+        if let Some(end) = cmd.end {
+            query = query.with_end_time(end);
+        }
+
         loop {
             // The typed reader fixes its own priority at `Normal`; a reconciliation read goes
             // through the signed seam so §4.4's traffic class is the caller's to choose.
@@ -2642,6 +3100,20 @@ impl ExecutionClient for OndoExecutionClient {
 
             for item in response.items()? {
                 let payload = OndoApiOrder::from_text(item.get())?;
+
+                // The read asked the venue for `open` orders only. One that comes back in another
+                // status is a venue that did not apply the filter, and it is named here and then
+                // reported like any other order: the filter was the request, not a licence to drop
+                // what the answer contains.
+                if cmd.open_only && payload.status() != &OndoOrderStatus::Open {
+                    log::error!(
+                        "Ondo order {} came back from a history read filtered to `open` with the \
+                         status `{}`: the venue did not apply the filter, and the order is \
+                         reported rather than dropped",
+                        payload.order_id(),
+                        payload.status().as_str(),
+                    );
+                }
 
                 match self.apply_order(&payload) {
                     OndoOrderApplication::Unresolved { reason, .. } => {
@@ -2664,7 +3136,27 @@ impl ExecutionClient for OndoExecutionClient {
 
                 let ts_event = event_time(&payload, self.reporter.now());
 
-                reports.push(self.reporter.status_report(&payload, None, ts_event)?);
+                // A report of an order this client tracks is built from its **ledger**, exactly as
+                // the ingest path builds it ([`OndoReporter::emit_status_report`]). Reporting the
+                // venue's own view here instead would have one order answered two ways by one
+                // adapter: a `fullyfilled` payload whose applied fills have not arrived yet is
+                // `Accepted` through ingest and would be `Filled` here - an assertion of a
+                // completion the ledger cannot support, which leaves the engine to synthesise an
+                // inferred fill for the difference. The lookup is by resolution, not by the
+                // payload's own client order id, so an order this session knows only by its venue
+                // order id is found too; an order this client does not track resolves to [`None`]
+                // and is reported from the venue's own view, which is all an external order has.
+                //
+                // The read guard is held across the call, as the single-order read holds it: the
+                // order was applied a moment ago, so the index is the reading to report, and
+                // `status_report` takes no lock of its own.
+                let state = self.reporter.state.read();
+
+                let tracked = state
+                    .resolve_order(&payload)
+                    .and_then(|client_order_id| state.orders.get(&client_order_id));
+
+                reports.push(self.reporter.status_report(&payload, tracked, ts_event)?);
             }
 
             let Some(cursor) = walk.advance(response.cursor())? else {
@@ -2724,11 +3216,15 @@ impl ExecutionClient for OndoExecutionClient {
                 }
 
                 // The venue's fill history documents a `startTime`/`endTime` window (UTC
-                // milliseconds, both optional), but this read does not send one:
-                // `OndoPrivateReadQuery` serializes `market`, `limit` and `cursor` only, and
-                // widening the signed target is a change to the request bytes rather than to this
-                // filter. Until that changes the command's window is applied here, on the fill's
-                // own timestamp - and only to a fill whose timestamp this adapter can read.
+                // milliseconds, both optional) and this read deliberately does not send it: the
+                // command's window is applied here instead, on the fill's own timestamp. That is
+                // the safer of the two filters, not a leftover. A window sent to the venue is a
+                // second filter this adapter cannot see the effect of, over a field and an
+                // inclusive/exclusive convention the frozen spec states only in prose; applied
+                // here, the boundaries are this adapter's own to define, a fill the venue would
+                // have dropped at the edge still arrives and is judged, and the one case a
+                // venue-side window could not report at all - a fill whose timestamp cannot be
+                // read - is reported loudly below.
                 match fill_timestamp(&fill) {
                     Some(ts_event) => {
                         if cmd.start.is_some_and(|start| ts_event < start)
@@ -3079,6 +3575,70 @@ fn nautilus_order_type(order_type: &str) -> anyhow::Result<OrderType> {
     }
 }
 
+/// Returns the Nautilus order status a venue status maps to, for a report that states the venue's
+/// own view.
+///
+/// # Errors
+///
+/// Returns an error for a status this adapter has no Nautilus status for, exactly as it does
+/// through [`order_status_for_ledger`]: a report states a state, and an invented one is worse than
+/// none.
+fn venue_order_status(
+    status: &OndoOrderStatus,
+    filled_qty: Quantity,
+) -> anyhow::Result<OrderStatus> {
+    match status {
+        OndoOrderStatus::Open if filled_qty.is_positive() => Ok(OrderStatus::PartiallyFilled),
+        OndoOrderStatus::Open => Ok(OrderStatus::Accepted),
+        OndoOrderStatus::FullyFilled => Ok(OrderStatus::Filled),
+        OndoOrderStatus::Canceled => Ok(OrderStatus::Canceled),
+        other => anyhow::bail!(
+            "the venue's status `{}` has no Nautilus order status",
+            other.as_str()
+        ),
+    }
+}
+
+/// Returns the Nautilus order status a venue status maps to for an order this adapter holds a
+/// ledger for (plan §6.3).
+///
+/// The status and the quantity a report states have to be consistent, and for a filled order the
+/// quantity the report states is the applied fills total
+/// ([`OndoReporter::status_report`]). A venue status of `fullyfilled` whose `filledSize` the
+/// applied fills do not account for is therefore **not** reported as `Filled` - that would state a
+/// completion of an order whose fills this adapter has not reported, and the engine turns exactly
+/// that into an inferred fill. It is reported as the state the ledger does support: the venue's
+/// order is finished, this client's account of it is not, and the difference is what
+/// [`OndoOrderState::fill_gap`] leaves the reconciliation to report.
+///
+/// A `canceled` order is reported as canceled whatever the fills say: a cancel is a statement that
+/// the order stopped, not that it completed, and withholding it would leave the cache holding an
+/// order the venue has already ended.
+///
+/// # Errors
+///
+/// Returns an error for a status this adapter has no Nautilus status for.
+fn order_status_for_ledger(
+    status: &OndoOrderStatus,
+    venue_filled: Quantity,
+    order: &OndoOrderState,
+) -> anyhow::Result<OrderStatus> {
+    match status {
+        OndoOrderStatus::FullyFilled if venue_filled != order.filled => {
+            Ok(if order.filled.is_zero() {
+                OrderStatus::Accepted
+            } else if order.filled >= order.quantity {
+                // The applied fills cover the order on their own, so the completion is one this
+                // adapter can support even though the venue's number is not the one it reports.
+                OrderStatus::Filled
+            } else {
+                OrderStatus::PartiallyFilled
+            })
+        }
+        other => venue_order_status(other, order.filled),
+    }
+}
+
 /// Returns the venue's `timeInForce` member as the Nautilus value it was sent as.
 ///
 /// `order_type` is the payload's own `type`, and it is not decoration: the spec documents an
@@ -3242,6 +3802,8 @@ fn add_quantity(total: Quantity, quantity: Quantity) -> anyhow::Result<Quantity>
 
 #[cfg(test)]
 mod tests {
+    use nautilus_core::time::get_atomic_clock_static;
+    use nautilus_model::{enums::AccountType, identifiers::TraderId};
     use rstest::rstest;
 
     use super::*;
@@ -3563,8 +4125,121 @@ mod tests {
 
     #[rstest]
     fn test_an_order_is_unresolved_only_when_its_state_cannot_be_accounted_for() {
-        let state = |status: OndoOrderStatus, reconciliation_needed: bool| OndoOrderState {
-            client_order_id: ClientOrderId::from("ondo_probe_1"),
+        let state =
+            |status: OndoOrderStatus, venue_filled: Option<&str>, filled: &str| OndoOrderState {
+                client_order_id: ClientOrderId::from("ondo_probe_1"),
+                venue_order_id: Some(VenueOrderId::from("197ec08e001658690721be129e7fa595")),
+                instrument_id: InstrumentId::from("NVDA-USD-PERP.ONDO"),
+                side: OrderSide::Buy,
+                order_type: OrderType::Limit,
+                time_in_force: TimeInForce::Gtc,
+                quantity: Quantity::from("1.00"),
+                price: Some(Price::from("227.50")),
+                reduce_only: false,
+                post_only: false,
+                status,
+                accepted: true,
+                filled: Quantity::from(filled),
+                venue_fee: None,
+                last_fill_size: None,
+                venue_filled: venue_filled.map(Quantity::from),
+                last_raw: String::new(),
+                unappliable_fill: false,
+                resolved: false,
+                pending_fills: Vec::new(),
+            };
+
+        assert!(
+            !state(OndoOrderStatus::Open, None, "0").is_unresolved(),
+            "an order that is still working is not one this adapter cannot account for",
+        );
+        assert!(!state(OndoOrderStatus::Pending, None, "0").is_unresolved());
+        assert!(state(OndoOrderStatus::Untriggered, None, "0").is_unresolved());
+        assert!(state(OndoOrderStatus::Unknown("settling".to_string()), None, "0").is_unresolved());
+        assert!(
+            state(OndoOrderStatus::FullyFilled, Some("1.00"), "0").is_unresolved(),
+            "a terminal status whose fills do not add up is unresolved",
+        );
+        assert!(
+            !state(OndoOrderStatus::FullyFilled, Some("1.00"), "1.00").is_unresolved(),
+            "the same reading is not unresolved once the fills account for it",
+        );
+        assert!(
+            !state(OndoOrderStatus::FullyFilled, Some("0.00"), "0").is_unresolved(),
+            "a terminal status the fills agree with is not one this adapter cannot account for",
+        );
+        assert!(
+            state(OndoOrderStatus::FullyFilled, None, "0").is_unresolved(),
+            "a terminal status whose filled quantity cannot be read states no total to check the \
+             applied fills against - which is not the fills agreeing with it",
+        );
+        assert!(
+            state(OndoOrderStatus::Canceled, None, "0").is_unresolved(),
+            "the same unreadable reading on the other terminal status",
+        );
+        assert!(
+            state(OndoOrderStatus::Open, None, "0").is_accounted_for(),
+            "and a working order with no readable total is still one this adapter can account for",
+        );
+        assert!(
+            OndoOrderState {
+                unappliable_fill: true,
+                ..state(OndoOrderStatus::Open, None, "0")
+            }
+            .is_unresolved(),
+            "a fill this adapter can never report leaves the order unresolved permanently",
+        );
+    }
+
+    #[rstest]
+    fn test_a_running_total_never_becomes_a_silent_zero() {
+        assert_eq!(
+            add_quantity(Quantity::from("0.20"), Quantity::from("0.30")).unwrap(),
+            Quantity::from("0.50"),
+        );
+    }
+
+    /// A reporter holding no orders, for the tests that drive the state machine directly.
+    fn reporter() -> OndoReporter {
+        let clock = get_atomic_clock_static();
+        let account_id = AccountId::from("ONDO-SANDBOX-001");
+
+        OndoReporter {
+            account_id,
+            clock,
+            emitter: ExecutionEventEmitter::new(
+                clock,
+                TraderId::from("TESTER-001"),
+                account_id,
+                AccountType::Margin,
+                None, // base_currency
+            ),
+            state: Arc::new(RwLock::new(OndoPrivateState::default())),
+        }
+    }
+
+    /// F14: the two conditions that leave an order unresolved are different in kind, and the one
+    /// that cannot be cleared must not be cleared by the one that can.
+    ///
+    /// A fill this adapter accepted and can never express is a fact about the fills it has seen:
+    /// the venue holds it, the ledger cannot carry it, and the applied total can never reach the
+    /// venue's - so nothing that arrives later changes it and nothing later may clear it. The
+    /// terminal filled-size disagreement is the other kind: it is recomputed from the numbers and
+    /// it is gone as soon as they agree.
+    ///
+    /// The flush path is driven directly here. A fill's expressibility is checked before it is ever
+    /// buffered ([`OndoReporter::apply_fill`] builds the report before it records anything), so the
+    /// error branch a buffered flush can reach is one this test has to place itself: what it pins is
+    /// that the branch's condition survives the recomputation.
+    #[rstest]
+    fn test_a_fill_this_adapter_can_never_report_is_never_downgraded_to_resolved() {
+        let reporter = reporter();
+        let client_order_id = ClientOrderId::from("ondo_probe_1");
+
+        // A terminal order whose applied fills add up to the venue's own total: nothing about it is
+        // left to reconcile, and the recomputation settles it.
+        let order = OndoOrderState {
+            client_order_id,
             venue_order_id: Some(VenueOrderId::from("197ec08e001658690721be129e7fa595")),
             instrument_id: InstrumentId::from("NVDA-USD-PERP.ONDO"),
             side: OrderSide::Buy,
@@ -3574,36 +4249,95 @@ mod tests {
             price: Some(Price::from("227.50")),
             reduce_only: false,
             post_only: false,
-            status,
+            status: OndoOrderStatus::FullyFilled,
             accepted: true,
-            filled: Quantity::from("0"),
+            filled: Quantity::from("1.00"),
             venue_fee: None,
             last_fill_size: None,
-            venue_filled: None,
+            venue_filled: Some(Quantity::from("1.00")),
             last_raw: String::new(),
-            reconciliation_needed,
+            unappliable_fill: false,
             resolved: false,
             pending_fills: Vec::new(),
         };
 
-        assert!(
-            !state(OndoOrderStatus::Open, false).is_unresolved(),
-            "an order that is still working is not one this adapter cannot account for",
+        reporter.state.write().orders.insert(client_order_id, order);
+        reporter.settle(&client_order_id);
+
+        let state = reporter
+            .state
+            .read()
+            .orders
+            .get(&client_order_id)
+            .cloned()
+            .unwrap();
+
+        assert!(state.resolved);
+        assert!(!state.is_unresolved());
+
+        // The fill this adapter accepted and cannot express: no readable size, so it can never be
+        // reported, and the order is short of the venue's total for good.
+        let unexpressible = FillFixture {
+            id: "f2",
+            size: None,
+            ..FillFixture::new()
+        }
+        .build();
+
+        reporter.flush_fill(&client_order_id, &unexpressible);
+
+        // The recomputation runs again over numbers that now *do* agree, which is exactly what is
+        // not allowed to clear it.
+        reporter.settle(&client_order_id);
+
+        let state = reporter
+            .state
+            .read()
+            .orders
+            .get(&client_order_id)
+            .cloned()
+            .unwrap();
+
+        assert!(state.unappliable_fill);
+        assert_eq!(
+            state.fill_gap(),
+            None,
+            "the terminal totals agree: the recomputed condition has nothing left to report",
         );
-        assert!(!state(OndoOrderStatus::Pending, false).is_unresolved());
-        assert!(state(OndoOrderStatus::Untriggered, false).is_unresolved());
-        assert!(state(OndoOrderStatus::Unknown("settling".to_string()), false).is_unresolved());
         assert!(
-            state(OndoOrderStatus::FullyFilled, true).is_unresolved(),
-            "a terminal status whose fills do not add up is unresolved",
+            !state.resolved,
+            "a fill this adapter can never report is not cleared by the numbers agreeing",
         );
+        assert!(state.is_unresolved());
     }
 
     #[rstest]
-    fn test_a_running_total_never_becomes_a_silent_zero() {
-        assert_eq!(
-            add_quantity(Quantity::from("0.20"), Quantity::from("0.30")).unwrap(),
-            Quantity::from("0.50"),
+    fn test_a_pass_ends_only_the_claim_it_still_holds() {
+        let ownership = PassOwnership::default();
+        let first = ownership.claim().expect("the account is free");
+
+        assert!(
+            ownership.claim().is_none(),
+            "a second pass may not claim an account the first one owns",
+        );
+
+        // The drain ends the pass while its guard is still alive, so the next pass legitimately
+        // claims the account before the first one has finished concluding.
+        first.end();
+        let second = ownership.claim().expect("the drain released the account");
+
+        drop(first);
+
+        assert!(
+            ownership.claim().is_none(),
+            "the first pass's guard must not release the claim the second pass holds now: two \
+             passes would advance the account and neither would refuse the other",
+        );
+
+        drop(second);
+        assert!(
+            ownership.claim().is_some(),
+            "the pass that owns the account releases it when it leaves",
         );
     }
 }

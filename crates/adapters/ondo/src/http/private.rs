@@ -25,7 +25,9 @@
 //! - the **documented** things are used as documented. `docs/api-reference/rest-spec.json` (sha256
 //!   `860a96ca…`, the hash the freeze records) declares every endpoint and member this module
 //!   reads: `GET /v1/account` ([`ACCOUNT_PATH`]), `GET /v1/perps/positions` ([`POSITIONS_PATH`]),
-//!   `GET /v1/perps/balance` ([`BALANCE_PATH`]), the `cursor` query parameter ([`CURSOR_PARAM`])
+//!   `GET /v1/perps/balance` ([`BALANCE_PATH`]), the query parameters a list read may carry
+//!   ([`CURSOR_PARAM`], [`STATUS_PARAM`], [`START_TIME_PARAM`], [`END_TIME_PARAM`] - and the
+//!   `status` enum those come with, [`OndoOrderHistoryStatus`])
 //!   and the `PageInfo` members a cursor is read from ([`CURSOR_FIELDS`]). The `ApiFill` field list
 //!   is in the protocol table (`test_data/README.md`) and the REST auth error codes are in the
 //!   API-key page;
@@ -58,6 +60,7 @@
 //! failure, not an empty page - and that one documented exception has its own constructor,
 //! [`OndoPrivateResponse::decode_optional_result`].
 
+use nautilus_core::UnixNanos;
 use serde::Deserialize;
 use serde_json::value::RawValue;
 
@@ -97,6 +100,26 @@ pub const BALANCE_PATH: &str = "/v1/perps/balance";
 /// `/v1/perps/trades` carries no time window. No host has answered one yet.
 pub const CURSOR_PARAM: &str = "cursor";
 
+/// The request parameter an order-history read's status filter travels in.
+///
+/// **DOCUMENTED.** The frozen REST spec gives `status` as a query parameter of
+/// `GET /v1/perps/orders` alone, described as *"Filter by order status"*. `GET /v1/perps/fills` has
+/// no `status` at all, which is why only a read of the order history can carry one.
+pub const STATUS_PARAM: &str = "status";
+
+/// The request parameter an order-history read's window opens at.
+///
+/// **DOCUMENTED.** `GET /v1/perps/orders` and `GET /v1/perps/fills` both declare `startTime`, an
+/// integer in UTC milliseconds. The orders list describes it as *"Filter orders placed at or after
+/// this time"*, so the bound is inclusive and is stated in terms of when the order was placed.
+pub const START_TIME_PARAM: &str = "startTime";
+
+/// The request parameter an order-history read's window closes at.
+///
+/// **DOCUMENTED**, as [`START_TIME_PARAM`] is: *"at or before this time"* on the orders list, so
+/// this end is inclusive too. Both are milliseconds of UTC.
+pub const END_TIME_PARAM: &str = "endTime";
+
 /// The response members a cursor is read from, in the order they are tried.
 ///
 /// `nextCursor` is the documented one: the frozen REST spec's `PageInfo` is
@@ -111,16 +134,49 @@ pub const CURSOR_PARAM: &str = "cursor";
 /// must never look like the end of the history.
 pub const CURSOR_FIELDS: [&str; 4] = ["cursor", "nextCursor", "next_cursor", "next"];
 
+/// The `status` values the venue's order-history filter accepts.
+///
+/// **DOCUMENTED.** The frozen REST spec declares the query enum as exactly these three. It is
+/// deliberately **not** [`crate::http::orders::OndoOrderStatus`]: the two are different
+/// vocabularies, and the venue's filter has no `pending` and no `untriggered`, so no value of this
+/// type asks for "every non-terminal order" - that set is not expressible as a filter, which
+/// `test_data/conflicts.md` records.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OndoOrderHistoryStatus {
+    /// Orders the venue is working.
+    Open,
+    /// Orders the venue ended without filling them completely.
+    Canceled,
+    /// Orders the venue filled completely.
+    FullyFilled,
+}
+
+impl OndoOrderHistoryStatus {
+    /// Returns the value exactly as the venue's query parameter spells it.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Open => "open",
+            Self::Canceled => "canceled",
+            Self::FullyFilled => "fullyfilled",
+        }
+    }
+}
+
 /// The filters a private list read accepts.
 ///
-/// The parameters are serialized by [`Self::target`] in a fixed order - `market`, `limit`, `cursor` -
-/// through [`OndoRequestTarget`], so the bytes a signature covers are the bytes the transport sends
-/// (plan §6.1). Nothing re-orders them.
+/// The parameters are serialized by [`Self::target`] in a fixed order - `market`, `limit`,
+/// `cursor`, `status`, `startTime`, `endTime` - through [`OndoRequestTarget`], so the bytes a
+/// signature covers are the bytes the transport sends (plan §6.1). Nothing re-orders them, and a
+/// filter that was never set contributes no bytes at all: a read that sets none is the path alone.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct OndoPrivateReadQuery {
     market: Option<String>,
     cursor: Option<String>,
     limit: Option<u32>,
+    status: Option<OndoOrderHistoryStatus>,
+    start_time: Option<UnixNanos>,
+    end_time: Option<UnixNanos>,
 }
 
 impl OndoPrivateReadQuery {
@@ -151,6 +207,34 @@ impl OndoPrivateReadQuery {
         self
     }
 
+    /// Narrows the read to orders the venue reports with this status.
+    ///
+    /// Only `GET /v1/perps/orders` has a `status` filter ([`STATUS_PARAM`]); a fill history read
+    /// that sets one would be sending a parameter that endpoint does not declare.
+    #[must_use]
+    pub fn with_status(mut self, status: OndoOrderHistoryStatus) -> Self {
+        self.status = Some(status);
+        self
+    }
+
+    /// Opens the read's time window at `start`.
+    ///
+    /// The value is sent in the venue's own unit - whole milliseconds of UTC
+    /// ([`START_TIME_PARAM`]) - so a caller passes the instant it means and this is where the
+    /// nanosecond precision Nautilus carries is narrowed once.
+    #[must_use]
+    pub fn with_start_time(mut self, start: UnixNanos) -> Self {
+        self.start_time = Some(start);
+        self
+    }
+
+    /// Closes the read's time window at `end`, inclusive, as [`Self::with_start_time`] opens it.
+    #[must_use]
+    pub fn with_end_time(mut self, end: UnixNanos) -> Self {
+        self.end_time = Some(end);
+        self
+    }
+
     /// Returns the request target for `path`: the path plus this query, serialized once.
     ///
     /// An unfiltered query is the path alone, which is what an endpoint documented as taking no
@@ -176,6 +260,18 @@ impl OndoPrivateReadQuery {
             target = target.with_query_param(CURSOR_PARAM, cursor);
         }
 
+        if let Some(status) = self.status {
+            target = target.with_query_param(STATUS_PARAM, status.as_str());
+        }
+
+        if let Some(start_time) = self.start_time {
+            target = target.with_query_param(START_TIME_PARAM, &start_time.as_millis().to_string());
+        }
+
+        if let Some(end_time) = self.end_time {
+            target = target.with_query_param(END_TIME_PARAM, &end_time.as_millis().to_string());
+        }
+
         target
     }
 
@@ -195,6 +291,24 @@ impl OndoPrivateReadQuery {
     #[must_use]
     pub const fn limit(&self) -> Option<u32> {
         self.limit
+    }
+
+    /// Returns the status this read is narrowed to, when it is narrowed to one.
+    #[must_use]
+    pub const fn status(&self) -> Option<OndoOrderHistoryStatus> {
+        self.status
+    }
+
+    /// Returns the start of this read's time window, when it has one.
+    #[must_use]
+    pub const fn start_time(&self) -> Option<UnixNanos> {
+        self.start_time
+    }
+
+    /// Returns the end of this read's time window, when it has one.
+    #[must_use]
+    pub const fn end_time(&self) -> Option<UnixNanos> {
+        self.end_time
     }
 }
 

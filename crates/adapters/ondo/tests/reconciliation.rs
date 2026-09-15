@@ -67,7 +67,11 @@ use nautilus_ondo::{
     common::{consts::ONDO_VENUE, credential::OndoCredential, enums::OndoEnvironment},
     config::OndoExecutionClientConfig,
     execution::OndoExecutionClient,
-    http::{orders::OndoOrderStatus, private::OndoApiFill, rate_limit::OndoRateBudget},
+    http::{
+        orders::{OndoApiOrder, OndoOrderStatus},
+        private::OndoApiFill,
+        rate_limit::OndoRateBudget,
+    },
     reconciliation::{
         AccountReading, Admission, BalanceReading, DeadMansSwitch, DeadMansSwitchMessage,
         DeadMansSwitchState, Finding, LedgerJournal, MetadataValidity, NewRiskRefusal,
@@ -135,6 +139,17 @@ fn fill_from(text: &str) -> OndoApiFill {
     )
     .expect("the fill fixture is an ApiFill")
 }
+
+/// One `ApiOrder` fixture, read the way the REST pages and the private stream read one.
+fn order_from(text: &str) -> OndoApiOrder {
+    OndoApiOrder::from_text(text).expect("the order fixture is an ApiOrder")
+}
+
+/// The recovery generation the buffer tests record their reports under.
+///
+/// Nothing in these tests changes generation, so one number is enough to say "current": the
+/// superseded case is the one that names another.
+const RECOVERY: u64 = 1;
 
 /// An order reading for a tracked order, filled to `applied` by this client's own fills.
 fn tracked_order(status: OndoOrderStatus, venue_filled: &str, applied: &str) -> OrderReading {
@@ -274,7 +289,12 @@ fn test_two_passes_that_read_different_accounts_are_not_a_confirmation() {
     machine.set_metadata(MetadataValidity::Current);
     machine.begin_recovery(secs(1));
 
+    // The account moved, and it moved cleanly: this client's fill built a position and the venue's
+    // own list carries it. The position is what makes the reading *different* rather than
+    // *disagreeing* - a fill that built a position the venue's list does not carry is the
+    // disagreement `Finding::PositionAbsent` reports, and it is not what this test is about.
     let mut moved = clean_reading();
+    moved.positions = vec![position(PositionDirection::Long, "0.5", "0.5")];
     moved.applied_net.insert(
         nvda(),
         rust_decimal::Decimal::from_str_exact("0.5").expect("decimal"),
@@ -845,6 +865,392 @@ fn test_a_position_the_applied_fills_do_not_explain_is_uncertain_and_never_ready
     )));
 }
 
+// ------------------------------------------------------------------------------------------------
+// A position the venue stops listing (F04)
+// ------------------------------------------------------------------------------------------------
+
+/// A reading carrying the long NVDA position this client has carried in, or holds.
+fn long_position(net_quantity: &str) -> AccountReading {
+    let mut reading = clean_reading();
+    reading.positions = vec![position(
+        PositionDirection::Long,
+        net_quantity,
+        net_quantity,
+    )];
+
+    reading
+}
+
+/// A recovery whose first two passes read `carried`, so the account is Ready with its baseline
+/// adopted.
+fn machine_holding(carried: &AccountReading) -> ReconciliationMachine {
+    let mut machine = ReconciliationMachine::new(account_id(), 30);
+
+    machine.set_metadata(MetadataValidity::Current);
+    machine.begin_recovery(secs(1));
+
+    assert_eq!(
+        machine.conclude_pass(carried, secs(1)),
+        ReconciliationState::Recovering
+    );
+    assert_eq!(
+        machine.conclude_pass(carried, secs(2)),
+        ReconciliationState::Ready
+    );
+
+    machine
+}
+
+/// F04: the venue documents its position list as the whole set of open positions, so an instrument
+/// missing from a read that succeeded - and whose every row this adapter could read - is the venue
+/// stating the position is gone. Comparing the listed rows alone never reads that statement: the
+/// position is neither reported nor retired, and the carried-in expectation the baseline still
+/// holds is one nothing can ever reconcile.
+#[rstest]
+fn test_a_position_the_venue_stops_listing_is_reported_and_its_baseline_retired() {
+    let carried = long_position("1.5489");
+    let mut machine = machine_holding(&carried);
+
+    assert_eq!(
+        machine.position_baseline().get(&nvda()).copied(),
+        Some(rust_decimal::Decimal::from_str_exact("1.5489").expect("decimal")),
+        "the first pass adopts what the account carried in",
+    );
+
+    // The venue's next complete read does not carry that market. The position was closed - or
+    // liquidated - at the venue, and no fill of this client's accounts for it.
+    let gone = clean_reading();
+
+    assert_eq!(
+        machine.conclude_pass(&gone, secs(3)),
+        ReconciliationState::Uncertain,
+        "the account was Ready, and a position it expected is not one the venue carries",
+    );
+    assert!(!machine.can_submit_new_orders());
+
+    let judgment = machine.last_judgment().expect("the pass is judged");
+
+    assert!(judgment.findings.iter().any(|finding| matches!(
+        finding,
+        Finding::PositionAbsent { instrument_id, expected }
+            if *instrument_id == nvda()
+                && *expected == rust_decimal::Decimal::from_str_exact("1.5489").expect("decimal")
+    )));
+
+    // The carried-in expectation is retired with the finding, and retired means the entry leaves
+    // the map rather than being zeroed: a stale entry that survives is the original defect in
+    // another form, and one that could never be retired would leave the account uncertain for good
+    // over a position the venue has already closed.
+    assert_eq!(
+        machine.position_baseline().get(&nvda()).copied(),
+        None,
+        "the retired entry is gone, not zeroed",
+    );
+    assert!(
+        machine.position_baseline().is_empty(),
+        "nothing else was left behind either",
+    );
+
+    assert_eq!(
+        machine.conclude_pass(&gone, secs(4)),
+        ReconciliationState::Recovering,
+        "the second read of a flat venue is a reading the retirement accounts for",
+    );
+    assert!(
+        machine.last_judgment().expect("judged").is_clean(),
+        "the disappearance is reported once, not on every pass that follows it",
+    );
+}
+
+/// F04: a position this client's own fills closed out is not a position that vanished. The venue's
+/// flat statement is the one those fills explain, so nothing is reported - and the carried-in entry
+/// that makes them net to flat is left where it is. Retiring it would turn the closing fills into
+/// an unexplained net no later pass could clear.
+#[rstest]
+fn test_a_position_this_clients_own_fills_closed_is_not_one_that_vanished() {
+    let carried = long_position("1.5489");
+    let mut machine = machine_holding(&carried);
+
+    let sold = rust_decimal::Decimal::from_str_exact("-1.5489").expect("decimal");
+    let mut closed = clean_reading();
+    closed.applied_net.insert(nvda(), sold);
+
+    assert_eq!(
+        machine.conclude_pass(&closed, secs(3)),
+        ReconciliationState::Ready,
+        "a Ready account that reads clean again stays Ready, and this read is clean",
+    );
+    assert!(
+        machine.last_judgment().expect("judged").is_clean(),
+        "the venue is flat and the fills this client applied are what made it flat",
+    );
+    assert_eq!(
+        machine.position_baseline().get(&nvda()).copied(),
+        Some(rust_decimal::Decimal::from_str_exact("1.5489").expect("decimal")),
+        "the entry the closing fills net against is not retired: it is still carrying the entry",
+    );
+
+    // And it is still the entry a later position on the same instrument is measured against.
+    let mut reopened = clean_reading();
+    reopened.positions = vec![position(PositionDirection::Long, "0.5", "0.5")];
+    reopened.applied_net.insert(
+        nvda(),
+        rust_decimal::Decimal::from_str_exact("-1.0489").expect("decimal"),
+    );
+
+    assert_eq!(
+        machine.conclude_pass(&reopened, secs(5)),
+        ReconciliationState::Ready,
+        "the account trades without leaving Ready: an account that trades is not an account that is \
+         unrecovered",
+    );
+    assert!(
+        machine.last_judgment().expect("judged").is_clean(),
+        "1.5489 carried in, 0.5 bought since, and the venue states 0.5",
+    );
+}
+
+/// F04: a liquidation is the same event as any other external close for this judgment, and what
+/// matters about it is the state it leaves the account in - out of [`ReconciliationState::Ready`],
+/// and refusing new risk until a pass has read the account whole again.
+#[rstest]
+fn test_a_liquidation_leaves_ready_and_stops_new_risk() {
+    let carried = long_position("1.5489");
+    let mut machine = machine_holding(&carried);
+
+    assert!(machine.can_submit_new_orders());
+
+    // The account was carried in long, and the venue's next read is flat with nothing filled:
+    // the position was liquidated at the venue rather than closed by this client.
+    let mut liquidated = clean_reading();
+    liquidated.balance = Some(balance("5000.00", "4400.00", "0.00", "4400.00", "4400.00"));
+
+    assert_eq!(
+        machine.conclude_pass(&liquidated, secs(3)),
+        ReconciliationState::Uncertain
+    );
+    assert!(!machine.can_submit_new_orders());
+    assert!(machine.refuses_new_risk());
+    assert_eq!(machine.state(), ReconciliationState::Uncertain);
+}
+
+/// F04: an explicit `neutral` row and a missing row are two different statements, and the account
+/// keeps them apart. One is the venue stating the position is flat while it listed the instrument;
+/// the other is the venue not carrying the instrument at all.
+#[rstest]
+fn test_a_flat_row_and_an_absent_row_are_different_statements() {
+    let carried = long_position("1.5489");
+
+    // The venue listed the instrument and said it is flat.
+    let mut stated_flat = machine_holding(&carried);
+    let mut flat_row = clean_reading();
+    flat_row.positions = vec![position(PositionDirection::Neutral, "0.00", "0.00")];
+
+    assert_eq!(
+        stated_flat.conclude_pass(&flat_row, secs(3)),
+        ReconciliationState::Uncertain
+    );
+
+    let findings = stated_flat
+        .last_judgment()
+        .expect("judged")
+        .clone()
+        .findings;
+
+    assert!(findings.iter().any(|finding| matches!(
+        finding,
+        Finding::PositionMismatch { venue, expected, .. }
+            if venue.is_zero() && *expected == rust_decimal::Decimal::from_str_exact("1.5489").expect("decimal")
+    )));
+    assert!(
+        !findings
+            .iter()
+            .any(|finding| matches!(finding, Finding::PositionAbsent { .. })),
+        "the venue carried the instrument: nothing about it is absent",
+    );
+
+    // The venue did not carry the instrument at all.
+    let mut absent = machine_holding(&carried);
+
+    assert_eq!(
+        absent.conclude_pass(&clean_reading(), secs(3)),
+        ReconciliationState::Uncertain
+    );
+
+    let findings = absent.last_judgment().expect("judged").clone().findings;
+
+    assert!(findings.iter().any(|finding| matches!(
+        finding,
+        Finding::PositionAbsent { instrument_id, .. } if *instrument_id == nvda()
+    )));
+    assert!(
+        !findings
+            .iter()
+            .any(|finding| matches!(finding, Finding::PositionMismatch { .. })),
+        "the venue stated nothing about this instrument, so no stated position disagrees",
+    );
+}
+
+/// F04: an account with nothing in it - no positions, no baseline, no fills - is clean. Coverage of
+/// an empty list is not in doubt, and a machine that treated the empty list as unverified would
+/// never leave recovery at all.
+#[rstest]
+fn test_an_account_with_nothing_in_it_is_clean() {
+    let mut machine = ReconciliationMachine::new(account_id(), 30);
+
+    machine.set_metadata(MetadataValidity::Current);
+    machine.begin_recovery(secs(1));
+
+    let judgment = machine.evaluate(&clean_reading());
+
+    assert!(judgment.is_clean());
+    assert!(!judgment.is_uncertain());
+    assert_eq!(
+        machine.conclude_pass(&clean_reading(), secs(1)),
+        ReconciliationState::Recovering
+    );
+    assert_eq!(
+        machine.conclude_pass(&clean_reading(), secs(2)),
+        ReconciliationState::Ready
+    );
+}
+
+/// F04: coverage is established, never assumed. A read carrying a row this adapter cannot map is
+/// not a complete list of the account's positions, so the instruments it does *not* mention prove
+/// nothing: they are neither reported as gone nor retired, and the account is uncertain until a
+/// read it can read whole arrives.
+#[rstest]
+fn test_a_row_that_cannot_be_read_is_not_a_statement_about_the_rows_that_are_missing() {
+    let carried = long_position("1.5489");
+    let mut machine = machine_holding(&carried);
+
+    // A market this adapter has no instrument for, and a direction it cannot read.
+    let mut unreadable = clean_reading();
+    unreadable.positions = vec![
+        PositionReading {
+            market: "SOMETHING-USD".to_string(),
+            instrument_id: None,
+            direction: PositionDirection::Long,
+            net_quantity: rust_decimal::Decimal::ONE,
+            signed: rust_decimal::Decimal::ONE,
+        },
+        PositionReading::new(
+            NVDA_MARKET,
+            "sideways",
+            rust_decimal::Decimal::from_str_exact("4.00").expect("decimal"),
+        ),
+    ];
+
+    assert_eq!(
+        machine.conclude_pass(&unreadable, secs(3)),
+        ReconciliationState::Uncertain
+    );
+
+    let findings = machine.last_judgment().expect("judged").clone().findings;
+
+    assert!(findings.iter().any(|finding| matches!(
+        finding,
+        Finding::UnmappablePosition { market } if market == "SOMETHING-USD"
+    )));
+    assert!(findings.iter().any(|finding| matches!(
+        finding,
+        Finding::UnreadablePosition { direction, .. } if direction == "sideways"
+    )));
+    assert!(
+        !findings
+            .iter()
+            .any(|finding| matches!(finding, Finding::PositionAbsent { .. })),
+        "a list with a row this adapter could not read is not evidence about the rest",
+    );
+    assert_eq!(
+        machine.position_baseline().get(&nvda()).copied(),
+        Some(rust_decimal::Decimal::from_str_exact("1.5489").expect("decimal")),
+        "the carried-in expectation is left where it is, not retired on a read that proved nothing",
+    );
+
+    // The same position, read by a pass that can read every row: nothing was lost, so the account
+    // converges on the reading it was already holding.
+    assert_eq!(
+        machine.conclude_pass(&carried, secs(4)),
+        ReconciliationState::Recovering
+    );
+    assert!(machine.last_judgment().expect("judged").is_clean());
+}
+
+/// F04: a pass that could not read the account at all has not seen the positions, so it has seen
+/// no absence either. The baseline is left exactly as it was, and the account is uncertain.
+#[rstest]
+fn test_a_pass_that_could_not_read_leaves_the_baseline_alone() {
+    let carried = long_position("1.5489");
+    let mut machine = machine_holding(&carried);
+
+    assert_eq!(
+        machine.note_pass_failed(
+            "the positions could not be read: connection reset".to_string(),
+            secs(3)
+        ),
+        ReconciliationState::Uncertain,
+    );
+    assert_eq!(
+        machine.position_baseline().get(&nvda()).copied(),
+        Some(rust_decimal::Decimal::from_str_exact("1.5489").expect("decimal")),
+        "a read that failed is not a venue stating the position is gone",
+    );
+
+    let judgment = machine.last_judgment().expect("the failure is judged");
+
+    assert!(judgment.findings.iter().any(|finding| matches!(
+        finding,
+        Finding::ReadFailed { reason } if reason.contains("connection reset")
+    )));
+}
+
+/// F04: fills applied before the first pass adopted the baseline are judged too. The first pass
+/// calibrates what the venue *listed*; an instrument it does not list has no carried-in position to
+/// adopt, so the expectation is what this client's own fills say - and a position those fills built
+/// and the venue does not carry is exactly the disagreement an account is not clean with.
+#[rstest]
+fn test_fills_applied_before_the_first_pass_are_judged_and_not_skipped() {
+    let mut machine = ReconciliationMachine::new(account_id(), 30);
+
+    machine.set_metadata(MetadataValidity::Current);
+    machine.begin_recovery(secs(1));
+
+    let mut filled = clean_reading();
+    filled.applied_net.insert(
+        nvda(),
+        rust_decimal::Decimal::from_str_exact("0.5").expect("decimal"),
+    );
+
+    assert_eq!(
+        machine.conclude_pass(&filled, secs(1)),
+        ReconciliationState::Uncertain,
+        "the account is read whole and the venue does not carry the position the fills built",
+    );
+
+    let judgment = machine.last_judgment().expect("judged");
+
+    assert!(judgment.findings.iter().any(|finding| matches!(
+        finding,
+        Finding::PositionAbsent { instrument_id, expected }
+            if *instrument_id == nvda()
+                && *expected == rust_decimal::Decimal::from_str_exact("0.5").expect("decimal")
+    )));
+
+    // Once the venue carries it, the two readings agree and the account converges.
+    let mut listed = filled.clone();
+    listed.positions = vec![position(PositionDirection::Long, "0.5", "0.5")];
+
+    assert_eq!(
+        machine.conclude_pass(&listed, secs(2)),
+        ReconciliationState::Recovering
+    );
+    assert_eq!(
+        machine.conclude_pass(&listed, secs(3)),
+        ReconciliationState::Ready
+    );
+}
+
 #[rstest]
 fn test_an_order_whose_status_is_unknown_leaves_the_account_uncertain() {
     let mut machine = ReconciliationMachine::new(account_id(), 30);
@@ -1323,47 +1729,225 @@ fn test_releasing_the_switch_sends_the_unsubscribe_frame_and_leaves_the_state_un
 fn test_the_buffer_dedupes_by_id_and_keeps_arrival_order() {
     let mut buffer = ReconciliationBuffer::new();
 
-    assert!(buffer.record_fill(fill_from(&api_fill(
-        "fill-1",
-        VENUE_ORDER_ID,
-        CLIENT_ORDER_ID,
-        "0.2"
-    ))));
-    // The same fill delivered twice is held once: the buffer is a set of ids, not a transcript.
-    assert!(!buffer.record_fill(fill_from(&api_fill(
-        "fill-1",
-        VENUE_ORDER_ID,
-        CLIENT_ORDER_ID,
-        "0.2"
-    ))));
-    assert!(buffer.record_fill(fill_from(&api_fill(
-        "fill-2",
-        VENUE_ORDER_ID,
-        CLIENT_ORDER_ID,
-        "0.3"
-    ))));
-    assert!(
-        buffer.record_order(
-            nautilus_ondo::http::orders::OndoApiOrder::from_text(&api_order(
-                VENUE_ORDER_ID,
-                CLIENT_ORDER_ID,
-                "open",
-                "0.20"
-            ))
-            .expect("the order fixture is an ApiOrder")
-        )
-    );
+    assert!(buffer.record_fill(
+        fill_from(&api_fill("fill-1", VENUE_ORDER_ID, CLIENT_ORDER_ID, "0.2")),
+        RECOVERY,
+    ));
+    // The same fill delivered twice is held once: a fill is identified by the venue's own fill id.
+    assert!(!buffer.record_fill(
+        fill_from(&api_fill("fill-1", VENUE_ORDER_ID, CLIENT_ORDER_ID, "0.2")),
+        RECOVERY,
+    ));
+    assert!(buffer.record_fill(
+        fill_from(&api_fill("fill-2", VENUE_ORDER_ID, CLIENT_ORDER_ID, "0.3")),
+        RECOVERY,
+    ));
+    assert!(buffer.record_order(
+        order_from(&api_order(VENUE_ORDER_ID, CLIENT_ORDER_ID, "open", "0.20")),
+        RECOVERY,
+    ));
 
     assert_eq!(buffer.len(), 3);
 
-    let (orders, fills) = buffer.drain();
+    let drained = buffer.drain_generation(RECOVERY);
 
-    assert_eq!(orders.len(), 1);
+    assert_eq!(drained.orders.len(), 1);
     assert_eq!(
-        fills.iter().map(OndoApiFill::id).collect::<Vec<_>>(),
+        drained
+            .fills
+            .iter()
+            .map(OndoApiFill::id)
+            .collect::<Vec<_>>(),
         vec!["fill-1", "fill-2"]
     );
+    assert_eq!(drained.superseded, 0);
     assert!(buffer.is_empty());
+}
+
+#[rstest]
+fn test_the_buffer_holds_every_update_of_one_order_in_arrival_order() {
+    let mut buffer = ReconciliationBuffer::new();
+
+    // One order's reports are a sequence, not a set: the venue worked the order between them, and
+    // which of the three is the order's state is exactly what the arrival order decides.
+    assert!(buffer.record_order(
+        order_from(&api_order(VENUE_ORDER_ID, CLIENT_ORDER_ID, "open", "0.00")),
+        RECOVERY,
+    ));
+    assert!(buffer.record_order(
+        order_from(&api_order(VENUE_ORDER_ID, CLIENT_ORDER_ID, "open", "0.50")),
+        RECOVERY,
+    ));
+    assert!(buffer.record_order(
+        order_from(&api_order(
+            VENUE_ORDER_ID,
+            CLIENT_ORDER_ID,
+            "canceled",
+            "0.50"
+        )),
+        RECOVERY,
+    ));
+    // The first update delivered a second time is the same fact, not a fourth: it is the one report
+    // of this order the buffer refuses.
+    assert!(!buffer.record_order(
+        order_from(&api_order(VENUE_ORDER_ID, CLIENT_ORDER_ID, "open", "0.00")),
+        RECOVERY,
+    ));
+
+    assert_eq!(buffer.order_count(), 3, "all three updates are held");
+
+    let drained = buffer.drain_generation(RECOVERY);
+
+    assert_eq!(
+        drained
+            .orders
+            .iter()
+            .map(|order| (
+                order.status().as_str().to_string(),
+                order.filled_size().to_string()
+            ))
+            .collect::<Vec<_>>(),
+        vec![
+            ("open".to_string(), "0.00".to_string()),
+            ("open".to_string(), "0.50".to_string()),
+            ("canceled".to_string(), "0.50".to_string()),
+        ],
+        "the sequence is replayed in the order it arrived, so the last one is the order's state",
+    );
+}
+
+#[rstest]
+fn test_the_buffer_refuses_reports_from_a_superseded_recovery_and_counts_them() {
+    let mut buffer = ReconciliationBuffer::new();
+
+    assert!(buffer.record_order(
+        order_from(&api_order(VENUE_ORDER_ID, CLIENT_ORDER_ID, "open", "0.00")),
+        RECOVERY,
+    ));
+    assert!(buffer.record_fill(
+        fill_from(&api_fill("fill-1", VENUE_ORDER_ID, CLIENT_ORDER_ID, "0.2")),
+        RECOVERY,
+    ));
+
+    // The next pass is reconciling a recovery the reports above were not recorded for.
+    let drained = buffer.drain_generation(RECOVERY + 1);
+
+    assert!(
+        drained.orders.is_empty(),
+        "a superseded report is not applied"
+    );
+    assert!(drained.fills.is_empty());
+    assert_eq!(
+        drained.superseded, 2,
+        "and it is counted, not dropped quietly"
+    );
+    assert!(buffer.is_empty());
+}
+
+#[rstest]
+fn test_a_buffer_that_is_full_refuses_reports_and_counts_them() {
+    let mut buffer = ReconciliationBuffer::with_capacity(2);
+
+    assert!(buffer.record_order(
+        order_from(&api_order(VENUE_ORDER_ID, CLIENT_ORDER_ID, "open", "0.00")),
+        RECOVERY,
+    ));
+    assert!(buffer.record_fill(
+        fill_from(&api_fill("fill-1", VENUE_ORDER_ID, CLIENT_ORDER_ID, "0.2")),
+        RECOVERY,
+    ));
+    assert_eq!(buffer.take_dropped(), 0);
+
+    // The buffer is bounded, and the report it cannot hold is a fact about the account this client
+    // saw and does not have - which is a count the caller reports, never a silent discard.
+    assert!(!buffer.record_fill(
+        fill_from(&api_fill("fill-2", VENUE_ORDER_ID, CLIENT_ORDER_ID, "0.3")),
+        RECOVERY,
+    ));
+    assert_eq!(buffer.take_dropped(), 1);
+    assert_eq!(
+        buffer.take_dropped(),
+        0,
+        "the count is taken, not read twice"
+    );
+
+    // A duplicate is not a drop: the buffer refuses it because it already holds that fact.
+    assert!(!buffer.record_fill(
+        fill_from(&api_fill("fill-1", VENUE_ORDER_ID, CLIENT_ORDER_ID, "0.2")),
+        RECOVERY,
+    ));
+    assert_eq!(buffer.take_dropped(), 0);
+}
+
+#[rstest]
+fn test_a_recovery_generation_changes_when_a_recovery_starts_or_a_session_ends() {
+    let mut machine = ReconciliationMachine::new(account_id(), 30);
+    let start = machine.recovery_generation();
+
+    machine.begin_recovery(secs(1));
+    let first = machine.recovery_generation();
+
+    // The same recovery, begun again: the reports of the recovery in flight are still its own.
+    machine.begin_recovery(secs(2));
+
+    assert_eq!(machine.recovery_generation(), first);
+
+    // A session that ends, and the recovery that follows it, are a different read of the account.
+    machine.note_disconnected(secs(3));
+
+    assert_ne!(machine.recovery_generation(), first);
+
+    machine.begin_recovery(secs(4));
+
+    assert_ne!(machine.recovery_generation(), start);
+    assert_eq!(machine.recovery_generation(), first.wrapping_add(2));
+}
+
+#[rstest]
+fn test_reports_the_recovery_could_not_apply_cost_a_bounded_re_read_rather_than_a_silent_drop() {
+    let mut machine = recovered_machine();
+
+    assert!(machine.can_submit_new_orders());
+
+    machine.note_lost_reports(3, "the recovery buffer refused 3 more".to_string());
+
+    // The loss stops new risk at the instant it happens: a converged account with reports missing
+    // from it is not an account that has been read.
+    assert_eq!(machine.state(), ReconciliationState::Uncertain);
+    assert!(!machine.can_submit_new_orders(), "a loss is not tradable");
+
+    // The pass that reads the account judges the loss with everything else, and judging it is what
+    // clears it: what keeps the account uncertain afterwards is that judgment, not the record.
+    assert_eq!(
+        machine.conclude_pass(&clean_reading(), secs(3)),
+        ReconciliationState::Uncertain,
+    );
+
+    let judged = machine.last_judgment().expect("the pass is judged");
+
+    assert!(judged.is_uncertain());
+    assert!(judged.findings.iter().any(|finding| matches!(
+        finding,
+        Finding::LostReports { count: 3, reason } if reason.contains("refused 3 more")
+    )));
+
+    // Ready takes two agreeing passes again, and the pass that carried the loss is not one of them:
+    // the re-read is bounded, and it is a re-read.
+    assert_eq!(
+        machine.conclude_pass(&clean_reading(), secs(4)),
+        ReconciliationState::Recovering,
+        "the loss is not judged twice",
+    );
+    assert!(
+        !machine.can_submit_new_orders(),
+        "one pass is not a recovery"
+    );
+
+    assert_eq!(
+        machine.conclude_pass(&clean_reading(), secs(5)),
+        ReconciliationState::Ready,
+    );
+    assert!(machine.can_submit_new_orders());
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -2973,6 +3557,426 @@ async fn test_a_report_that_arrived_while_the_account_was_read_is_replayed_once(
         "the duplicate delivery is not a second fill: {events:?}",
     );
     assert_eq!(reports[0].trade_id.to_string(), "fill-1");
+}
+
+/// F03, scenario 1: an order's reports are a sequence, and the last one is the order's state.
+///
+/// The venue worked the order while the pass was reading the account: the stream delivered `open`
+/// with no fill, then `open` with half of it, then `canceled`. All three are facts about the order,
+/// and the reading the pass judges has to be the state the last of them describes - not the first
+/// one, which is what an order-keyed set of one payload per order would have left behind.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_the_reports_of_one_order_are_replayed_in_arrival_order_and_the_last_one_wins() {
+    let mock = MockServer::start_admitted(vec![
+        Reply::ok(envelope(&api_order(
+            VENUE_ORDER_ID,
+            CLIENT_ORDER_ID,
+            "open",
+            "0.00",
+        ))),
+        Reply::ok(orders_page(
+            &[api_order(VENUE_ORDER_ID, CLIENT_ORDER_ID, "open", "0.00")],
+            None,
+        )),
+        Reply::ok(fills_page(
+            &[
+                api_fill("fill-1", VENUE_ORDER_ID, CLIENT_ORDER_ID, "0.2"),
+                api_fill("fill-2", VENUE_ORDER_ID, CLIENT_ORDER_ID, "0.3"),
+            ],
+            None,
+        )),
+        Reply::ok(envelope(&format!("[{}]", position_json("long", "0.50")))),
+        Reply::ok(envelope(&balance_json())),
+    ])
+    .await;
+    let harness = recovered_harness(&mock).await;
+    let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
+
+    seed_order(&harness, &order);
+    harness
+        .client
+        .submit_order(submit_command(&order))
+        .expect("the command is handled");
+    wait_for_writes(&mock, 1).await;
+
+    harness.client.begin_recovery(secs(1));
+
+    // The stream delivered the order's progress while the pass was reading the account.
+    for (status, filled) in [("open", "0.00"), ("open", "0.50"), ("canceled", "0.50")] {
+        harness.client.buffer_stream_order(order_from(&api_order(
+            VENUE_ORDER_ID,
+            CLIENT_ORDER_ID,
+            status,
+            filled,
+        )));
+    }
+
+    harness
+        .client
+        .reconcile_account(secs(1))
+        .await
+        .expect("pass");
+
+    let state = harness
+        .client
+        .order_state(&client_order_id(CLIENT_ORDER_ID))
+        .expect("the order is tracked");
+
+    assert_eq!(
+        state.status,
+        OndoOrderStatus::Canceled,
+        "the last report the stream delivered is the order's state, not the first",
+    );
+    assert_eq!(state.filled.to_string(), "0.5");
+    assert!(
+        state.resolved,
+        "the canceled order's fills add up to the venue's own filledSize",
+    );
+    assert_eq!(harness.client.applied_fill_count(), 2);
+
+    // The pass converged on the account the sequence describes, and one agreeing pass is still not
+    // a recovery: the third report does not make the account Ready on its own.
+    let judgment = harness.client.last_judgment().expect("the pass is judged");
+
+    assert!(
+        judgment.is_clean(),
+        "the replayed sequence leaves nothing unexplained: {:?}",
+        judgment.reasons(),
+    );
+    assert_eq!(
+        harness.client.reconciliation_state(),
+        ReconciliationState::Recovering,
+    );
+    assert!(!harness.client.can_submit_new_orders());
+}
+
+/// F03, scenario 2: one frame delivered twice is one fact, and it moves nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_duplicated_frame_is_applied_once_and_leaves_the_state_where_it_was() {
+    let mock = MockServer::start_admitted(vec![
+        Reply::ok(envelope(&api_order(
+            VENUE_ORDER_ID,
+            CLIENT_ORDER_ID,
+            "open",
+            "0.00",
+        ))),
+        Reply::ok(orders_page(
+            &[api_order(VENUE_ORDER_ID, CLIENT_ORDER_ID, "open", "0.20")],
+            None,
+        )),
+        Reply::ok(fills_page(
+            &[api_fill("fill-1", VENUE_ORDER_ID, CLIENT_ORDER_ID, "0.2")],
+            None,
+        )),
+        Reply::ok(envelope(&format!("[{}]", position_json("long", "0.20")))),
+        Reply::ok(envelope(&balance_json())),
+    ])
+    .await;
+    let mut harness = recovered_harness(&mock).await;
+    let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
+
+    seed_order(&harness, &order);
+    harness
+        .client
+        .submit_order(submit_command(&order))
+        .expect("the command is handled");
+    wait_for_writes(&mock, 1).await;
+
+    harness.client.begin_recovery(secs(1));
+
+    // The same frame twice, both as the stream delivered it and as the pages carry it.
+    for _ in 0..2 {
+        harness.client.buffer_stream_fill(fill_from(&api_fill(
+            "fill-1",
+            VENUE_ORDER_ID,
+            CLIENT_ORDER_ID,
+            "0.2",
+        )));
+        harness.client.buffer_stream_order(order_from(&api_order(
+            VENUE_ORDER_ID,
+            CLIENT_ORDER_ID,
+            "open",
+            "0.20",
+        )));
+    }
+
+    harness
+        .client
+        .reconcile_account(secs(1))
+        .await
+        .expect("pass");
+
+    let events = drain(&mut harness);
+    let reports = events
+        .iter()
+        .filter(|event| matches!(event, ExecutionEvent::Report(ExecutionReport::Fill(_))))
+        .count();
+
+    assert_eq!(
+        harness.client.applied_fill_count(),
+        1,
+        "one fill, delivered four times, is counted once",
+    );
+    assert_eq!(reports, 1, "and reported once: {events:?}");
+
+    let state = harness
+        .client
+        .order_state(&client_order_id(CLIENT_ORDER_ID))
+        .expect("the order is tracked");
+
+    assert_eq!(state.status, OndoOrderStatus::Open);
+    assert_eq!(state.filled.to_string(), "0.2");
+    assert!(harness.client.unresolved_orders().is_empty());
+}
+
+/// F03, scenario 3: fills and order reports interleave, and each fill is applied exactly once.
+///
+/// The stream does not deliver an order's fills after its reports: it delivers what happened. The
+/// fill that arrived between two order reports is the one a replay that sorted by kind would apply
+/// against the wrong state, and the one a replay that dropped either would lose.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_interleaved_fill_and_order_reports_are_each_applied_exactly_once() {
+    let mock = MockServer::start_admitted(vec![
+        Reply::ok(envelope(&api_order(
+            VENUE_ORDER_ID,
+            CLIENT_ORDER_ID,
+            "open",
+            "0.00",
+        ))),
+        Reply::ok(orders_page(
+            &[api_order(VENUE_ORDER_ID, CLIENT_ORDER_ID, "open", "0.00")],
+            None,
+        )),
+        Reply::ok(fills_page(&[], None)),
+        Reply::ok(envelope(&format!("[{}]", position_json("long", "0.50")))),
+        Reply::ok(envelope(&balance_json())),
+    ])
+    .await;
+    let mut harness = recovered_harness(&mock).await;
+    let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
+
+    seed_order(&harness, &order);
+    harness
+        .client
+        .submit_order(submit_command(&order))
+        .expect("the command is handled");
+    wait_for_writes(&mock, 1).await;
+
+    harness.client.begin_recovery(secs(1));
+
+    harness.client.buffer_stream_order(order_from(&api_order(
+        VENUE_ORDER_ID,
+        CLIENT_ORDER_ID,
+        "open",
+        "0.20",
+    )));
+    harness.client.buffer_stream_fill(fill_from(&api_fill(
+        "fill-1",
+        VENUE_ORDER_ID,
+        CLIENT_ORDER_ID,
+        "0.2",
+    )));
+    harness.client.buffer_stream_order(order_from(&api_order(
+        VENUE_ORDER_ID,
+        CLIENT_ORDER_ID,
+        "open",
+        "0.50",
+    )));
+    harness.client.buffer_stream_fill(fill_from(&api_fill(
+        "fill-2",
+        VENUE_ORDER_ID,
+        CLIENT_ORDER_ID,
+        "0.3",
+    )));
+
+    harness
+        .client
+        .reconcile_account(secs(1))
+        .await
+        .expect("pass");
+
+    let events = drain(&mut harness);
+    let reports = events
+        .iter()
+        .filter(|event| matches!(event, ExecutionEvent::Report(ExecutionReport::Fill(_))))
+        .count();
+
+    assert_eq!(harness.client.applied_fill_count(), 2);
+    assert_eq!(reports, 2, "each fill is reported once: {events:?}");
+
+    let state = harness
+        .client
+        .order_state(&client_order_id(CLIENT_ORDER_ID))
+        .expect("the order is tracked");
+
+    assert_eq!(state.filled.to_string(), "0.5");
+    assert!(harness.client.unresolved_orders().is_empty());
+}
+
+/// F03, scenario 6: a report from a recovery this machine has left is never current state.
+///
+/// The report below arrived before the recovery began. It says the order ended; the pass that reads
+/// the account finds it working. Applying the older report after that read would move the order
+/// backwards into a state the venue has already moved it on from, so it is refused - and refused
+/// out loud, because it is still a fact this client saw and does not hold.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_report_from_a_superseded_recovery_is_refused_and_named() {
+    let mock = MockServer::start_admitted(vec![
+        Reply::ok(envelope(&api_order(
+            VENUE_ORDER_ID,
+            CLIENT_ORDER_ID,
+            "open",
+            "0.00",
+        ))),
+        Reply::ok(orders_page(
+            &[api_order(VENUE_ORDER_ID, CLIENT_ORDER_ID, "open", "0.00")],
+            None,
+        )),
+        Reply::ok(fills_page(
+            &[
+                api_fill("fill-1", VENUE_ORDER_ID, CLIENT_ORDER_ID, "0.2"),
+                api_fill("fill-2", VENUE_ORDER_ID, CLIENT_ORDER_ID, "0.3"),
+            ],
+            None,
+        )),
+        Reply::ok(envelope(&format!("[{}]", position_json("long", "0.50")))),
+        Reply::ok(envelope(&balance_json())),
+    ])
+    .await;
+    let harness = recovered_harness(&mock).await;
+    let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
+
+    seed_order(&harness, &order);
+    harness
+        .client
+        .submit_order(submit_command(&order))
+        .expect("the command is handled");
+    wait_for_writes(&mock, 1).await;
+
+    // The report the previous session delivered, still in the buffer when the new recovery starts.
+    harness.client.buffer_stream_order(order_from(&api_order(
+        VENUE_ORDER_ID,
+        CLIENT_ORDER_ID,
+        "canceled",
+        "0.50",
+    )));
+    harness.client.begin_recovery(secs(1));
+
+    harness
+        .client
+        .reconcile_account(secs(1))
+        .await
+        .expect("pass");
+
+    let state = harness
+        .client
+        .order_state(&client_order_id(CLIENT_ORDER_ID))
+        .expect("the order is tracked");
+
+    assert_eq!(
+        state.status,
+        OndoOrderStatus::Open,
+        "the superseded report is not applied as the order's current state",
+    );
+    assert_eq!(state.filled.to_string(), "0.5");
+
+    let judgment = harness.client.last_judgment().expect("the pass is judged");
+
+    assert!(
+        judgment.findings.iter().any(|finding| matches!(
+            finding,
+            Finding::LostReports { count: 1, reason } if reason.contains("superseded")
+        )),
+        "the refused report is a loss the pass names: {:?}",
+        judgment.reasons(),
+    );
+    assert_eq!(
+        harness.client.reconciliation_state(),
+        ReconciliationState::Uncertain,
+        "an account with a report missing from it is not an account that was read",
+    );
+}
+
+/// F03, scenario 7: a buffer that overflows is an uncertain account, not a silent drop.
+///
+/// The buffer is bounded so that a stream healthier than the read cannot exhaust this process. What
+/// the bound must not do is lose a report quietly: the account stops being tradable the moment one
+/// is refused, the pass that reads it says how many were lost, and only the bounded re-read that
+/// follows makes it Ready again.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_buffer_that_overflows_leaves_the_account_uncertain_until_a_re_read() {
+    let mut script = empty_pass_script();
+
+    script.extend(empty_pass_script());
+    script.extend(empty_pass_script());
+
+    let mock = MockServer::start(script).await;
+    let mut harness = build_harness(&mock, sandbox_config());
+
+    harness.client.start().expect("start");
+    harness.client.connect().await.expect("connect");
+    harness.client.set_metadata(MetadataValidity::Current);
+    harness.client.begin_recovery(secs(1));
+
+    let capacity = ReconciliationBuffer::new().capacity();
+
+    // Every frame is a distinct update - the venue worked the order between them - so none of them
+    // is the duplicate the buffer is allowed to drop.
+    for step in 0..=capacity {
+        harness.client.buffer_stream_order(order_from(&api_order(
+            "abcd0000000000000000000000000009",
+            "placed_by_hand_1",
+            "open",
+            &format!("0.{step:04}"),
+        )));
+    }
+
+    assert_eq!(
+        harness.client.reconciliation_state(),
+        ReconciliationState::Uncertain,
+        "the report the buffer could not hold is a condition, not a log line",
+    );
+    assert!(!harness.client.can_submit_new_orders());
+
+    let first = harness.client.reconcile_account(secs(1)).await;
+
+    assert!(first.is_ok(), "the pass reads: {first:?}");
+
+    let judgment = harness.client.last_judgment().expect("the pass is judged");
+
+    assert!(
+        judgment.findings.iter().any(|finding| matches!(
+            finding,
+            Finding::LostReports { count: 1, reason }
+                if reason.contains(&capacity.to_string())
+        )),
+        "the pass says how many reports were lost and how full the buffer was: {:?}",
+        judgment.reasons(),
+    );
+    assert!(judgment.is_uncertain());
+    assert_ne!(
+        harness.client.reconciliation_state(),
+        ReconciliationState::Ready,
+        "a pass that lost a report does not converge the account",
+    );
+
+    // The bounded re-read: two agreeing passes over the account as the venue states it.
+    let second = harness.client.reconcile_account(secs(2)).await;
+
+    assert!(second.is_ok(), "the pass reads: {second:?}");
+    assert_eq!(
+        harness.client.reconciliation_state(),
+        ReconciliationState::Recovering,
+    );
+
+    let third = harness.client.reconcile_account(secs(3)).await;
+
+    assert!(third.is_ok(), "the pass reads: {third:?}");
+    assert_eq!(
+        harness.client.reconciliation_state(),
+        ReconciliationState::Ready,
+    );
+    assert!(harness.client.can_submit_new_orders());
 }
 
 #[tokio::test(flavor = "multi_thread")]

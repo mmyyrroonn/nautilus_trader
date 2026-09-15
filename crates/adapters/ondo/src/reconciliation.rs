@@ -65,7 +65,10 @@ use serde::{Deserialize, Serialize};
 use crate::{
     common::parse::{market_to_instrument_id, parse_decimal},
     execution::OndoFillLedger,
-    http::orders::OndoOrderStatus,
+    http::{
+        orders::{OndoApiOrder, OndoOrderStatus},
+        private::OndoApiFill,
+    },
     websocket::WsOp,
 };
 
@@ -690,6 +693,22 @@ pub enum Finding {
         /// The signed position this client's fills and baseline imply.
         expected: Decimal,
     },
+    /// An instrument the venue's **complete** position list does not carry, on which this client's
+    /// fills and baseline are not flat (plan §6.4).
+    ///
+    /// This is a statement the venue made, not a silence it left: the endpoint returns all open
+    /// positions, so an instrument missing from a read that succeeded and whose every row was
+    /// readable is the venue saying the account holds nothing on it. A position this client's fills
+    /// built and the venue does not carry, and a position carried into the run that the venue no
+    /// longer lists, are one condition - the venue's position is flat and this client's expectation
+    /// is not - and the baseline entry is retired with the finding so the disagreement is reported
+    /// once rather than repeated against a carried-in position the venue has already closed.
+    PositionAbsent {
+        /// The instrument the venue's list does not carry.
+        instrument_id: InstrumentId,
+        /// The signed position this client's fills and baseline imply.
+        expected: Decimal,
+    },
     /// A balance member outside the documented set: a second collateral asset, a loan, or a member
     /// this adapter has not been taught. Unsupported rather than folded in (plan §6.4).
     UnsupportedCollateral {
@@ -734,6 +753,19 @@ pub enum Finding {
     /// A pass that could not read the account at all.
     ReadFailed {
         /// Why the pass failed.
+        reason: String,
+    },
+    /// Reports the recovery observed and could not apply to the account (plan §6.4).
+    ///
+    /// Three things are one condition: a report the bounded buffer refused for want of room, a
+    /// report held under a recovery this machine has left, and a report the state machine could not
+    /// read. Each is a fact about the account this client saw and does not hold, so the account is
+    /// not one anybody has verified - the pass that judges it says so here, and the bounded re-read
+    /// that follows is what clears it.
+    LostReports {
+        /// How many reports were not applied.
+        count: usize,
+        /// Why, as this client saw it.
         reason: String,
     },
 }
@@ -790,6 +822,13 @@ impl Finding {
                 "the venue's position on {instrument_id} is {venue} but this client's fills and \
                  baseline imply {expected}"
             ),
+            Self::PositionAbsent {
+                instrument_id,
+                expected,
+            } => format!(
+                "the venue's position list does not carry {instrument_id}, but this client's fills \
+                 and baseline imply {expected}"
+            ),
             Self::UnsupportedCollateral { member, value } => format!(
                 "the balance member `{member}` = {value} is not one this adapter supports; a \
                  multi-collateral or borrowing account is out of scope"
@@ -818,6 +857,9 @@ impl Finding {
                 format!("the cancel of {client_order_id} was not confirmed by any venue answer")
             }
             Self::ReadFailed { reason } => format!("the account could not be read: {reason}"),
+            Self::LostReports { count, reason } => {
+                format!("{count} report(s) the recovery could not apply: {reason}")
+            }
         }
     }
 }
@@ -877,7 +919,13 @@ impl AccountJudgment {
 /// which is how a position carried into the run is told apart from one the fills do not explain.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct AccountReading {
-    /// One entry per order the venue listed, in the order the pages returned them.
+    /// One entry per order the pass saw - the venue's pages and the stream reports it replayed - in
+    /// the order it first saw each one, at the state that pass left it in.
+    ///
+    /// The state is the **merged** one, not the page's: the newest payload applied to the order is
+    /// what its status and its venue filled quantity are read from, whether that payload came from a
+    /// page or from the stream. An order only the stream mentioned is listed here too - a report is
+    /// evidence about the account whether or not a page repeated it.
     pub orders: Vec<OrderReading>,
     /// One entry per position the venue listed.
     pub positions: Vec<PositionReading>,
@@ -963,47 +1011,164 @@ impl AccountReading {
     }
 }
 
+/// How many private reports the recovery buffer holds before it refuses more.
+///
+/// The buffer is not a transcript of the account: it carries the reports that arrive while one pass
+/// is reading it, and a pass holds it for the seconds its four reads take. The bound is what keeps a
+/// stream healthier than the read - or a reconnect loop - from turning this adapter's own memory
+/// into the failure. What the bound must never do is drop a report **quietly**: a refusal is counted
+/// and reported to the machine, which is what makes the account uncertain until a pass has re-read
+/// it (plan §6.4).
+pub const ONDO_RECOVERY_BUFFER_CAPACITY: usize = 1024;
+
+/// One buffered payload, with the recovery it was recorded under.
+#[derive(Debug)]
+struct BufferedReport<T> {
+    /// The recovery generation in force when the report arrived
+    /// ([`ReconciliationMachine::recovery_generation`]).
+    generation: u64,
+    /// The payload, exactly as the venue sent it.
+    payload: T,
+}
+
+/// The reports one drain took, and what it found that it could not take (plan §6.4).
+#[derive(Debug, Default)]
+pub struct DrainedReports {
+    /// The order payloads, oldest first.
+    pub orders: Vec<OndoApiOrder>,
+    /// The fill payloads, oldest first.
+    pub fills: Vec<OndoApiFill>,
+    /// How many reports were held under a recovery generation that has since been superseded.
+    ///
+    /// They are not returned: a report from a recovery this machine has left is a statement about an
+    /// account state it is no longer reconciling, and replaying it now would apply a superseded
+    /// state as the current one. The count is a loss the caller reports, not a silent discard.
+    pub superseded: usize,
+}
+
 /// Holds the private reports that arrived while the account was being read (plan §6.4).
 ///
 /// A stream report and the REST history carry the same facts, and either may arrive first. The
 /// buffer keeps what the stream delivered while a pass was in flight so the pass can replay it
 /// through the same state machine the REST pages go through - where `(account_id, fill.id)` and the
 /// order index dedupe it - instead of dropping it or applying it twice.
-#[derive(Debug, Default)]
+///
+/// What it holds is a **sequence per order**, not a set of orders. `open` with no fill, `open` with
+/// a fill, and `canceled` are three facts about one order, and the pass that replays them has to see
+/// all three, in the order they arrived: which of them is the order's state is exactly what arrival
+/// order decides. Only a payload equal to one already held for that same venue order id is one fact
+/// delivered twice, and that is the one [`Self::record_order`] drops. Fills are identified by the
+/// venue's own fill id, so they dedupe on it.
+#[derive(Debug)]
 pub struct ReconciliationBuffer {
-    orders: Vec<crate::http::orders::OndoApiOrder>,
-    fills: Vec<crate::http::private::OndoApiFill>,
-    order_ids: BTreeSet<String>,
+    orders: Vec<BufferedReport<OndoApiOrder>>,
+    fills: Vec<BufferedReport<OndoApiFill>>,
+    /// The payloads held for each venue order id, by their index in `orders`.
+    ///
+    /// The index is what makes the duplicate check exact without a second copy of the payloads: an
+    /// order's report is compared against the reports already held for that order alone, never
+    /// against another order's.
+    order_indices: BTreeMap<String, Vec<usize>>,
     fill_ids: BTreeSet<String>,
+    /// How many reports the buffer holds at most.
+    capacity: usize,
+    /// How many reports have been refused for want of room since the last [`Self::take_dropped`].
+    dropped: usize,
+}
+
+impl Default for ReconciliationBuffer {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ReconciliationBuffer {
-    /// Creates an empty buffer.
+    /// Creates an empty buffer holding up to [`ONDO_RECOVERY_BUFFER_CAPACITY`] reports.
     #[must_use]
     pub fn new() -> Self {
-        Self::default()
+        Self::with_capacity(ONDO_RECOVERY_BUFFER_CAPACITY)
     }
 
-    /// Records one order payload, returning `false` when its venue order id is already held.
-    pub fn record_order(&mut self, payload: crate::http::orders::OndoApiOrder) -> bool {
-        if !self.order_ids.insert(payload.order_id().to_string()) {
+    /// Creates an empty buffer holding up to `capacity` reports.
+    #[must_use]
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            orders: Vec::new(),
+            fills: Vec::new(),
+            order_indices: BTreeMap::new(),
+            fill_ids: BTreeSet::new(),
+            capacity,
+            dropped: 0,
+        }
+    }
+
+    /// Returns how many reports the buffer holds at most.
+    #[must_use]
+    pub const fn capacity(&self) -> usize {
+        self.capacity
+    }
+
+    /// Records one order payload, returning whether it was held.
+    ///
+    /// It is not held when it repeats a payload already held for the same venue order id - one fact
+    /// delivered twice - or when the buffer is full. [`Self::take_dropped`] is what tells the two
+    /// apart: a repeat is nothing at all, a report refused for want of room is a loss.
+    pub fn record_order(&mut self, payload: OndoApiOrder, generation: u64) -> bool {
+        if let Some(held) = self.order_indices.get(payload.order_id())
+            && held.iter().any(|at| self.orders[*at].payload == payload)
+        {
             return false;
         }
 
-        self.orders.push(payload);
+        if self.orders.len() + self.fills.len() >= self.capacity {
+            self.dropped += 1;
+
+            return false;
+        }
+
+        self.order_indices
+            .entry(payload.order_id().to_string())
+            .or_default()
+            .push(self.orders.len());
+        self.orders.push(BufferedReport {
+            generation,
+            payload,
+        });
 
         true
     }
 
-    /// Records one fill payload, returning `false` when its fill id is already held.
-    pub fn record_fill(&mut self, fill: crate::http::private::OndoApiFill) -> bool {
-        if !self.fill_ids.insert(fill.id().to_string()) {
+    /// Records one fill payload, returning whether it was held.
+    ///
+    /// A fill is identified by the venue's own `id`, so a second delivery of one fill is the same
+    /// fact and is not held twice.
+    pub fn record_fill(&mut self, fill: OndoApiFill, generation: u64) -> bool {
+        if self.fill_ids.contains(fill.id()) {
             return false;
         }
 
-        self.fills.push(fill);
+        if self.orders.len() + self.fills.len() >= self.capacity {
+            self.dropped += 1;
+
+            return false;
+        }
+
+        self.fill_ids.insert(fill.id().to_string());
+        self.fills.push(BufferedReport {
+            generation,
+            payload: fill,
+        });
 
         true
+    }
+
+    /// Returns how many reports the buffer refused for want of room, and forgets them.
+    ///
+    /// The count is what the caller reports to the machine. A report the buffer could not hold is a
+    /// fact about the account this client saw and does not have, which is a condition the account
+    /// has to be judged on rather than a line in a log (plan §6.4).
+    pub fn take_dropped(&mut self) -> usize {
+        std::mem::take(&mut self.dropped)
     }
 
     /// Returns how many payloads the buffer holds.
@@ -1030,21 +1195,35 @@ impl ReconciliationBuffer {
         self.fills.len()
     }
 
-    /// Takes everything the buffer holds, oldest first, leaving it empty.
+    /// Takes everything the buffer holds under `generation`, oldest first, leaving it empty.
+    ///
+    /// Reports held under another generation are counted in [`DrainedReports::superseded`] and
+    /// dropped: they were recorded for a recovery this machine has left, and a pass that replayed
+    /// them would be applying a superseded state as the current one (plan §6.4).
     #[must_use]
-    pub fn drain(
-        &mut self,
-    ) -> (
-        Vec<crate::http::orders::OndoApiOrder>,
-        Vec<crate::http::private::OndoApiFill>,
-    ) {
-        self.order_ids.clear();
+    pub fn drain_generation(&mut self, generation: u64) -> DrainedReports {
+        let mut drained = DrainedReports::default();
+
+        for report in std::mem::take(&mut self.orders) {
+            if report.generation == generation {
+                drained.orders.push(report.payload);
+            } else {
+                drained.superseded += 1;
+            }
+        }
+
+        for report in std::mem::take(&mut self.fills) {
+            if report.generation == generation {
+                drained.fills.push(report.payload);
+            } else {
+                drained.superseded += 1;
+            }
+        }
+
+        self.order_indices.clear();
         self.fill_ids.clear();
 
-        (
-            std::mem::take(&mut self.orders),
-            std::mem::take(&mut self.fills),
-        )
+        drained
     }
 }
 
@@ -1333,6 +1512,28 @@ impl LedgerJournal {
     }
 }
 
+/// Why a recovery pass was refused before it read anything (plan §6.4).
+///
+/// Only one pass may advance an account at a time. Two would both read the venue, both drain the
+/// buffer - the second finding it empty - and both conclude, and neither reading would then be the
+/// account's: the reports the first drain took would be missing from the second pass's reading and
+/// from its judgment, and the account would be judged on a stitched-together account.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+pub enum RecoveryPassRefusal {
+    /// Another pass owns this account's recovery.
+    #[error("another recovery pass already owns this account")]
+    AlreadyRunning,
+}
+
+/// One report the recovery could not apply to the account, awaiting the pass that judges it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ReportLoss {
+    /// How many reports.
+    count: usize,
+    /// Why, as this client saw it.
+    reason: String,
+}
+
 /// The reconciliation state machine, the account's judgments and the switch, in one place.
 #[derive(Debug)]
 pub struct ReconciliationMachine {
@@ -1344,6 +1545,8 @@ pub struct ReconciliationMachine {
     unknown: BTreeMap<ClientOrderId, UncertainOutcome>,
     unconfirmed_cancels: BTreeMap<ClientOrderId, UncertainOutcome>,
     generation: u64,
+    recovery_generation: u64,
+    lost_reports: Vec<ReportLoss>,
     baseline: BTreeMap<InstrumentId, Decimal>,
     baseline_adopted: bool,
     confirmations: usize,
@@ -1368,6 +1571,8 @@ impl ReconciliationMachine {
             unknown: BTreeMap::new(),
             unconfirmed_cancels: BTreeMap::new(),
             generation: 0,
+            recovery_generation: 0,
+            lost_reports: Vec::new(),
             baseline: BTreeMap::new(),
             baseline_adopted: false,
             confirmations: 0,
@@ -1574,14 +1779,48 @@ impl ReconciliationMachine {
     ///
     /// A recovery already under way keeps its confirmations, so the second of the two agreeing
     /// passes is what a caller repeating this method cannot reset by accident.
+    ///
+    /// A recovery that **starts** is a different read of the account from the one it replaces, so
+    /// the reports still held for the previous one stop being statements about the account this
+    /// machine is reconciling ([`Self::recovery_generation`]). Repeating the call while a recovery
+    /// is already under way is not a new recovery - it is the same one, whose confirmations it
+    /// deliberately leaves alone - and it does not supersede anything either.
     pub fn begin_recovery(&mut self, _now: UnixNanos) {
         if self.state != ReconciliationState::Recovering {
             self.confirmations = 0;
             self.last_fingerprint = None;
+            self.recovery_generation = self.recovery_generation.wrapping_add(1);
         }
 
         self.session_established = true;
         self.state = ReconciliationState::Recovering;
+        self.invalidate_admissions();
+    }
+
+    /// Returns the recovery a private report recorded now belongs to.
+    ///
+    /// It is **not** the admission generation: that one counts every event that revokes a permit,
+    /// including ones that say nothing about whether a buffered report is still a statement about
+    /// this account. This one changes exactly when a report recorded earlier stops being one - when
+    /// a recovery begins, and when the session ends - which is what a buffered report is checked
+    /// against before it is replayed (plan §6.4).
+    #[must_use]
+    pub const fn recovery_generation(&self) -> u64 {
+        self.recovery_generation
+    }
+
+    /// Records reports the recovery could not apply to the account (plan §6.4).
+    ///
+    /// The account becomes [`ReconciliationState::Uncertain`] here and now, and stays un-Ready until
+    /// a pass has read it whole again: reports this client observed and does not hold are exactly
+    /// the state it cannot vouch for, and a machine that waited for the next pass to notice would
+    /// leave a window in which a converged account is treated as read. The next pass judges the
+    /// loss with everything else, which is what makes the re-read that clears it a bounded one.
+    pub fn note_lost_reports(&mut self, count: usize, reason: String) {
+        self.lost_reports.push(ReportLoss { count, reason });
+        self.state = ReconciliationState::Uncertain;
+        self.confirmations = 0;
+        self.last_fingerprint = None;
         self.invalidate_admissions();
     }
 
@@ -1594,6 +1833,9 @@ impl ReconciliationMachine {
         self.confirmations = 0;
         self.last_fingerprint = None;
         self.invalidate_admissions();
+        // The session ended. A report still held was recorded for the session that ended, and the
+        // recovery that follows reads the account rather than replaying it (plan §6.4).
+        self.recovery_generation = self.recovery_generation.wrapping_add(1);
     }
 
     /// Records a cancel no venue answer has settled.
@@ -1842,6 +2084,13 @@ impl ReconciliationMachine {
             });
         }
 
+        for loss in &self.lost_reports {
+            findings.push(Finding::LostReports {
+                count: loss.count,
+                reason: loss.reason.clone(),
+            });
+        }
+
         let judgment = AccountJudgment::new(findings);
 
         self.last_reading = Some(reading.clone());
@@ -1870,6 +2119,11 @@ impl ReconciliationMachine {
     ) -> ReconciliationState {
         let was_ready = self.state == ReconciliationState::Ready;
         let judgment = self.evaluate(reading);
+
+        // The loss has been judged. What keeps the account uncertain from here is that judgment -
+        // the pass that carried it is the one that has to be repeated - so the record of it is
+        // cleared rather than kept, which would make it a condition nothing could ever clear.
+        self.lost_reports.clear();
 
         if judgment.is_uncertain() {
             self.confirmations = 0;
@@ -1986,26 +2240,46 @@ impl ReconciliationMachine {
         findings
     }
 
-    /// Judges the positions one reading listed, against the baseline and this client's fills.
+    /// Judges the positions one reading carries, against the baseline and this client's fills.
     ///
-    /// The comparison is `venue == baseline + applied`. The baseline is adopted **once**, by the
-    /// first pass, as the venue's position less this client's fills at that moment: whatever the
-    /// account held when this run started is the starting point - a position carried in, or a
-    /// carried-in position on an instrument this pass did not list, which is flat. Adopting per
-    /// instrument instead would let a position that appears later explain itself away, which is
-    /// exactly the disagreement this judgment exists to catch.
+    /// The comparison is `venue == baseline + applied`, and it is made over the **union** of the
+    /// instruments the reading names: the ones the venue listed, the ones this client's fills have
+    /// touched, and the ones the baseline still holds. A loop over the listed rows alone judges only
+    /// what the venue chose to mention, which leaves the two halves of a position this adapter can
+    /// be wrong about unjudged - a position it carried in and the venue no longer lists, and a
+    /// position its own fills built that the venue never listed.
     ///
-    /// An instrument the venue did not list is left alone by the *comparison*: a missing row is not
-    /// a statement that a position is gone, so nothing is reported for it.
+    /// The baseline is adopted **once**, by the first pass that reads the account whole, as the
+    /// venue's position less this client's fills at that moment: whatever the account held when this
+    /// run started is the starting point. Adopting per instrument instead would let a position that
+    /// appears later explain itself away, which is exactly the disagreement this judgment exists to
+    /// catch - so only a read that could be read whole adopts, and until one has, a pass judges
+    /// nothing about positions (plan §6.4).
+    ///
+    /// An instrument the venue's complete list does not carry is the venue stating the position is
+    /// flat, which is a statement and not a silence (plan §6.4 resolves this endpoint as the whole
+    /// set of open positions). What it is compared against is `venue == 0`, and a baseline entry the
+    /// venue's flat statement contradicts is retired rather than kept: an expectation nothing can
+    /// ever reconcile or retire is what would leave the account uncertain for good over a position
+    /// the venue has already closed.
     fn judge_positions(&mut self, reading: &AccountReading) -> Vec<Finding> {
         let mut findings = Vec::new();
-        let adopt = !self.baseline_adopted;
+
+        // What the venue stated, per instrument, for the rows this adapter can read.
+        let mut listed: BTreeMap<InstrumentId, Decimal> = BTreeMap::new();
+        // Whether this response is one the venue documents as the complete set of open positions.
+        // Every row it does carry has to map to an instrument and state a direction this adapter
+        // can read for that to hold; a row that does not is a gap in the list, and a gap is not
+        // evidence that the positions the list does not mention are gone.
+        let mut covered = true;
 
         for position in &reading.positions {
             let Some(instrument_id) = position.instrument_id else {
                 findings.push(Finding::UnmappablePosition {
                     market: position.market.clone(),
                 });
+
+                covered = false;
 
                 continue;
             };
@@ -2016,38 +2290,85 @@ impl ReconciliationMachine {
                     direction: direction.clone(),
                 });
 
+                covered = false;
+
                 continue;
             }
 
+            listed.insert(instrument_id, position.signed);
+        }
+
+        if !self.baseline_adopted {
+            if !covered {
+                // Nothing is calibrated and this read cannot calibrate it: an instrument whose row
+                // could not be read would be left out of the baseline for good, and every later
+                // pass would then report the position it was carrying as one the fills do not
+                // explain. The pass has said what it could not read, which is what makes the
+                // account uncertain; the next whole read is what adopts.
+                return findings;
+            }
+
+            for (instrument_id, venue) in &listed {
+                let applied = reading
+                    .applied_net
+                    .get(instrument_id)
+                    .copied()
+                    .unwrap_or(Decimal::ZERO);
+
+                self.baseline.insert(*instrument_id, *venue - applied);
+            }
+
+            self.baseline_adopted = true;
+        }
+
+        let mut instruments: BTreeSet<InstrumentId> = self.baseline.keys().copied().collect();
+
+        instruments.extend(reading.applied_net.keys().copied());
+        instruments.extend(listed.keys().copied());
+
+        for instrument_id in instruments {
             let applied = reading
                 .applied_net
                 .get(&instrument_id)
                 .copied()
                 .unwrap_or(Decimal::ZERO);
-
-            if adopt {
-                self.baseline
-                    .insert(instrument_id, position.signed - applied);
-            }
-
             let baseline = self
                 .baseline
                 .get(&instrument_id)
                 .copied()
                 .unwrap_or(Decimal::ZERO);
-
             let expected = baseline + applied;
 
-            if !adopt && expected != position.signed {
-                findings.push(Finding::PositionMismatch {
+            if let Some(venue) = listed.get(&instrument_id).copied() {
+                if expected != venue {
+                    findings.push(Finding::PositionMismatch {
+                        instrument_id,
+                        venue,
+                        expected,
+                    });
+                }
+            } else if covered && expected != Decimal::ZERO {
+                // The venue's complete list does not carry this instrument and this client expects
+                // the account to hold something on it. The disagreement is reported here, and the
+                // carried-in position the baseline still asserts is retired with it: the
+                // expectation from here on is what this client's own fills say. An entry the venue
+                // already agrees with is left where it is - a carried-in position this client's own
+                // fills closed out needs that entry to net the venue's flat, and retiring it would
+                // turn the closing fills into an unexplained net no later pass could clear.
+                findings.push(Finding::PositionAbsent {
                     instrument_id,
-                    venue: position.signed,
                     expected,
                 });
+
+                // Retired means **removed**, not zeroed. A zero entry is not a baseline this pass
+                // adopted; it is the same stale claim as the entry being retired, kept in a map
+                // that grows once per instrument ever seen (`position_baseline` hands the map out).
+                // Nothing is lost by removing it: every read of `baseline` here is a `.get(...)`
+                // that falls back to zero, so an absent key and a zero entry judge identically -
+                // only a key that is present can be mistaken for a claim.
+                self.baseline.remove(&instrument_id);
             }
         }
-
-        self.baseline_adopted = true;
 
         findings
     }

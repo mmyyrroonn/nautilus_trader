@@ -76,7 +76,7 @@ use nautilus_ondo::{
         private::OndoApiFill,
         rate_limit::{ONDO_REST_BUCKET, OndoRateBudget},
     },
-    reconciliation::MetadataValidity,
+    reconciliation::{MetadataValidity, ReconciliationState, RecoveryPassRefusal},
     signing::{ONDO_KEY_ID_HEADER, ONDO_SIGN_HEADER, ONDO_TIMESTAMP_HEADER},
 };
 use rstest::rstest;
@@ -330,6 +330,17 @@ fn order_json(
 ) -> String {
     format!(
         r#"{{"orderId":"{order_id}","clientOrderId":"{client_order_id}","side":"buy","price":"227.50","size":"{size}","market":"NVDA-USD.P","filledSize":"{filled_size}","lastFillSize":"{last_fill_size}","filledCost":"0.00","fee":"{fee}","status":"{status}","createdAt":"2025-03-05T14:30:00Z","type":"limit","timeInForce":"GTC","reduceOnly":false}}"#,
+    )
+}
+
+/// The same `ApiOrder` shape with the echoing `clientOrderId` member absent.
+///
+/// The frozen spec's single-order read answers an order the venue knows by its own id, and the
+/// member is optional there: a payload without it is a payload whose only identity this client can
+/// resolve is the one it recorded itself.
+fn order_json_without_client_order_id(status: &str, filled_size: &str) -> String {
+    format!(
+        r#"{{"orderId":"{VENUE_ORDER_ID}","side":"buy","price":"227.50","size":"1.00","market":"NVDA-USD.P","filledSize":"{filled_size}","lastFillSize":"{filled_size}","filledCost":"0.00","fee":"0.00","status":"{status}","createdAt":"2025-03-05T14:30:00Z","type":"limit","timeInForce":"GTC","reduceOnly":false}}"#,
     )
 }
 
@@ -728,6 +739,16 @@ fn writes(mock: &MockServer) -> Vec<CapturedRequest> {
 // The recovered account a submission is admitted under
 // ------------------------------------------------------------------------------------------------
 
+/// The balance summary the venue answers a pass's last read with.
+const BALANCE_BODY: &str = r#"{"walletBalance":"5000.00","realizedPnl":"0.00","unrealizedPnl":"0.00","marginBalance":"5000.00","usedMargin":"0.00","availableMargin":"5000.00","withdrawableMargin":"5000.00","maintenanceMarginRequirement":"0.00","totalMaintenanceMargin":"0.00","marginRatio":"0.00","leverage":"0.00","underLiquidation":false,"totalFundingPayments":"0.00","totalTradingFees":"0.00","totalPnL":"0.00","netInvested":"5000.00"}"#;
+
+/// One `ApiPosition` on NVDA, as the venue states a long of `net_quantity`.
+fn position_json(net_quantity: &str) -> String {
+    format!(
+        r#"{{"market":"NVDA-USD.P","direction":"long","netQuantity":"{net_quantity}","averageEntryPrice":"227.50","usedMargin":"45.50","unrealizedPnl":"0.00","markPrice":"227.50","liquidationPrice":"180.00","bankruptcyPrice":"170.00","maintenanceMargin":"2.28","notionalValue":"45.50","leverage":"2.0","netFundingSinceNeutral":"0.00","returnOnEquity":"0.00"}}"#,
+    )
+}
+
 /// The four reads one reconciliation pass makes when the account is empty and healthy, in the
 /// order the pass makes them: orders, fills, positions, balance.
 fn clean_pass_reads() -> Vec<Reply> {
@@ -735,9 +756,7 @@ fn clean_pass_reads() -> Vec<Reply> {
         Reply::ok(envelope("[]")),
         Reply::ok(envelope("[]")),
         Reply::ok(envelope("[]")),
-        Reply::ok(envelope(
-            r#"{"walletBalance":"5000.00","realizedPnl":"0.00","unrealizedPnl":"0.00","marginBalance":"5000.00","usedMargin":"0.00","availableMargin":"5000.00","withdrawableMargin":"5000.00","maintenanceMarginRequirement":"0.00","totalMaintenanceMargin":"0.00","marginRatio":"0.00","leverage":"0.00","underLiquidation":false,"totalFundingPayments":"0.00","totalTradingFees":"0.00","totalPnL":"0.00","netInvested":"5000.00"}"#,
-        )),
+        Reply::ok(envelope(BALANCE_BODY)),
     ]
 }
 
@@ -1507,6 +1526,423 @@ async fn test_two_fills_sharing_an_order_id_accumulate_until_the_venue_agrees() 
         ],
         "a fill is never a request of its own",
     );
+}
+
+// ------------------------------------------------------------------------------------------------
+// A terminal reading and the fills that account for it (F14)
+// ------------------------------------------------------------------------------------------------
+
+/// One `ApiOrder` payload, read the way the REST pages and the private stream read one.
+fn api_order(status: &str, filled_size: &str) -> OndoApiOrder {
+    OndoApiOrder::from_text(&order_json(
+        VENUE_ORDER_ID,
+        CLIENT_ORDER_ID,
+        status,
+        "1.00",
+        filled_size,
+        "0.00",
+        filled_size,
+    ))
+    .expect("the order fixture is an ApiOrder")
+}
+
+/// A recovered harness holding one order the venue has acknowledged, with no fill of it applied.
+///
+/// The order is submitted against the mock's `open` create answer, which is the state the payloads
+/// below are applied to: accepted, unfilled, and tracked under its client order id.
+async fn acknowledged_order(mock: &MockServer) -> Harness {
+    let harness = recovered_harness(mock).await;
+    let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
+
+    seed_order(&harness, &order);
+    harness
+        .client
+        .submit_order(submit_command(&order))
+        .expect("submit");
+    wait_until_async(
+        || async {
+            harness
+                .client
+                .order_state(&ClientOrderId::from(CLIENT_ORDER_ID))
+                .is_some_and(|state| state.accepted)
+        },
+        Duration::from_secs(5),
+    )
+    .await;
+
+    harness
+}
+
+/// The `open` create answer every test below is admitted behind.
+fn open_create_script() -> Vec<Reply> {
+    vec![Reply::ok(envelope(&order_json(
+        VENUE_ORDER_ID,
+        CLIENT_ORDER_ID,
+        "open",
+        "1.00",
+        "0.00",
+        "0.00",
+        "0.00",
+    )))]
+}
+
+/// F14: the order stream and the fill stream are two streams, and nothing orders them against each
+/// other. A terminal reading that arrives before the fills it counts used to set a flag that
+/// nothing ever cleared, so the fills arriving afterwards left the order unresolved for good and no
+/// later terminal reading could recover it. The disagreement is a state of the numbers: it holds
+/// while they disagree and it is gone once they do not.
+#[rstest]
+#[tokio::test]
+async fn test_a_terminal_reading_that_arrives_before_its_fills_is_settled_by_them() {
+    let mock = MockServer::start_admitted(open_create_script()).await;
+    let harness = acknowledged_order(&mock).await;
+    let client_order_id = ClientOrderId::from(CLIENT_ORDER_ID);
+
+    // The venue says the order is done, and the fill that did it has not arrived yet.
+    assert_eq!(
+        harness
+            .client
+            .apply_order(&api_order("fullyfilled", "1.00")),
+        OndoOrderApplication::Applied,
+    );
+
+    let state = harness
+        .client
+        .order_state(&client_order_id)
+        .expect("tracked");
+
+    assert_eq!(
+        state.fill_gap(),
+        Some(Quantity::from("1.00")),
+        "the venue's terminal total is not one the applied fills account for",
+    );
+    assert!(state.is_unresolved());
+    assert!(!state.resolved);
+    assert_eq!(harness.client.unresolved_orders(), vec![client_order_id]);
+    assert!(
+        harness
+            .client
+            .order_state(&client_order_id)
+            .unwrap()
+            .resolved
+            == false,
+        "an order short of its terminal reading is not a resolved one",
+    );
+
+    // Then the fill arrives - the ordinary case, the two streams in the other order.
+    assert_eq!(
+        harness
+            .client
+            .apply_fill(&fill("f1", "1.00", "0.00"))
+            .unwrap(),
+        OndoFillApplication::Applied,
+    );
+
+    let state = harness
+        .client
+        .order_state(&client_order_id)
+        .expect("tracked");
+
+    assert_eq!(
+        state.fill_gap(),
+        None,
+        "the numbers agree, so nothing is left to reconcile",
+    );
+    assert!(
+        state.resolved,
+        "the fill that satisfied the terminal reading is what settles it, not another report",
+    );
+    assert!(!state.is_unresolved());
+    assert!(harness.client.unresolved_orders().is_empty());
+    assert_eq!(
+        harness
+            .client
+            .order_state(&client_order_id)
+            .expect("tracked")
+            .filled,
+        Quantity::from("1.00"),
+    );
+}
+
+/// F14: the same account read the other way round - the fills first, the terminal reading after -
+/// settles the same way. The condition is the numbers agreeing, not the order they arrived in.
+#[rstest]
+#[tokio::test]
+async fn test_a_terminal_reading_that_arrives_after_its_fills_resolves_the_order() {
+    let mock = MockServer::start_admitted(open_create_script()).await;
+    let harness = acknowledged_order(&mock).await;
+    let client_order_id = ClientOrderId::from(CLIENT_ORDER_ID);
+
+    assert_eq!(
+        harness
+            .client
+            .apply_fill(&fill("f1", "1.00", "0.00"))
+            .unwrap(),
+        OndoFillApplication::Applied,
+    );
+
+    let state = harness
+        .client
+        .order_state(&client_order_id)
+        .expect("tracked");
+
+    assert!(!state.resolved, "an `open` order is not a resolved one");
+    assert!(
+        !state.is_unresolved(),
+        "and it is not one this adapter cannot account for"
+    );
+
+    assert_eq!(
+        harness
+            .client
+            .apply_order(&api_order("fullyfilled", "1.00")),
+        OndoOrderApplication::Applied,
+    );
+
+    let state = harness
+        .client
+        .order_state(&client_order_id)
+        .expect("tracked");
+
+    assert_eq!(state.fill_gap(), None);
+    assert!(state.resolved);
+    assert!(harness.client.unresolved_orders().is_empty());
+}
+
+/// F14: a terminal reading the venue states **no total** for is not a reading this adapter can
+/// check. `fill_gap` is [`None`] here and rightly so - there is no readable total that disagrees -
+/// but reading that as agreement would have this adapter call an order settled on the strength of a
+/// number it never read, while the account judgment reports the same order as unresolved. The two
+/// answers come from one expression, so the unreadable total is unresolved on both sides.
+#[rstest]
+#[tokio::test]
+async fn test_a_terminal_reading_with_no_readable_filled_size_is_not_settled() {
+    let mock = MockServer::start_admitted(open_create_script()).await;
+    let harness = acknowledged_order(&mock).await;
+    let client_order_id = ClientOrderId::from(CLIENT_ORDER_ID);
+
+    assert_eq!(
+        harness
+            .client
+            .apply_order(&api_order("canceled", "not-a-number")),
+        OndoOrderApplication::Applied,
+    );
+
+    let state = harness
+        .client
+        .order_state(&client_order_id)
+        .expect("tracked");
+
+    assert_eq!(
+        state.venue_filled, None,
+        "the venue's terminal total could not be read",
+    );
+    assert_eq!(
+        state.fill_gap(),
+        None,
+        "and there is no readable total for the applied fills to disagree with",
+    );
+    assert_eq!(state.status, OndoOrderStatus::Canceled);
+    assert!(
+        state.is_unresolved(),
+        "a terminal state the adapter cannot check is not one it can account for",
+    );
+    assert!(!state.is_accounted_for());
+    assert!(
+        !state.resolved,
+        "nothing was confirmed at the venue, so the order is not a resolved one",
+    );
+    assert_eq!(harness.client.unresolved_orders(), vec![client_order_id]);
+}
+
+/// F14: a partial fill, then the cancel that ends the order, then the fill the cancel did not wait
+/// for. The cancel is reported - the venue did end the order - and the order is settled once the
+/// fills account for what the venue said it filled.
+#[rstest]
+#[tokio::test]
+async fn test_a_cancel_whose_last_fill_arrives_late_converges() {
+    let mock = MockServer::start_admitted(open_create_script()).await;
+    let mut harness = acknowledged_order(&mock).await;
+    let client_order_id = ClientOrderId::from(CLIENT_ORDER_ID);
+
+    assert_eq!(
+        harness.client.apply_order(&api_order("canceled", "0.20")),
+        OndoOrderApplication::Applied,
+    );
+
+    let state = harness
+        .client
+        .order_state(&client_order_id)
+        .expect("tracked");
+
+    assert_eq!(state.fill_gap(), Some(Quantity::from("0.20")));
+    assert!(state.is_unresolved());
+
+    let reports = order_reports(&drain(&mut harness));
+    let terminal = reports
+        .iter()
+        .find(|report| report.order_status == OrderStatus::Canceled)
+        .expect("the cancel is reported: the venue ended the order");
+
+    assert_eq!(
+        terminal.filled_qty,
+        Quantity::from("0.00"),
+        "the report states the fills this adapter applied, not a quantity it never reported - the \
+         engine infers the difference as a fill",
+    );
+
+    // The fill the venue counted arrives after the cancel that ended the order.
+    assert_eq!(
+        harness
+            .client
+            .apply_fill(&fill("f1", "0.20", "0.00"))
+            .unwrap(),
+        OndoFillApplication::Applied,
+    );
+
+    let state = harness
+        .client
+        .order_state(&client_order_id)
+        .expect("tracked");
+
+    assert_eq!(state.fill_gap(), None);
+    assert!(
+        state.resolved,
+        "the order is ended and the fills account for it"
+    );
+    assert!(harness.client.unresolved_orders().is_empty());
+}
+
+/// F14: a fill delivered twice is one fill. The second delivery moves nothing, including the
+/// terminal reading the first one settled.
+#[rstest]
+#[tokio::test]
+async fn test_a_fill_delivered_twice_is_counted_once_and_settles_once() {
+    let mock = MockServer::start_admitted(open_create_script()).await;
+    let harness = acknowledged_order(&mock).await;
+    let client_order_id = ClientOrderId::from(CLIENT_ORDER_ID);
+
+    assert_eq!(
+        harness
+            .client
+            .apply_order(&api_order("fullyfilled", "1.00")),
+        OndoOrderApplication::Applied,
+    );
+    assert_eq!(
+        harness
+            .client
+            .apply_fill(&fill("f1", "1.00", "0.00"))
+            .unwrap(),
+        OndoFillApplication::Applied,
+    );
+    assert_eq!(
+        harness
+            .client
+            .apply_fill(&fill("f1", "1.00", "0.00"))
+            .unwrap(),
+        OndoFillApplication::Duplicate,
+        "the same fill id is one fill, whichever source delivered it",
+    );
+
+    let state = harness
+        .client
+        .order_state(&client_order_id)
+        .expect("tracked");
+
+    assert_eq!(state.filled, Quantity::from("1.00"));
+    assert_eq!(harness.client.applied_fill_count(), 1);
+    assert_eq!(state.fill_gap(), None);
+    assert!(state.resolved);
+}
+
+/// F14: a terminal reading the applied fills do not account for stays unresolved, however often
+/// the venue repeats it - and the report the adapter emits for it never states a completion the
+/// ledger cannot support, because the engine turns a `Filled` report whose quantity is above the
+/// cache's into an inferred fill this adapter never reported.
+#[rstest]
+#[tokio::test]
+async fn test_a_terminal_total_the_fills_do_not_reach_stays_unresolved_and_unasserted() {
+    let mock = MockServer::start_admitted(open_create_script()).await;
+    let mut harness = acknowledged_order(&mock).await;
+    let client_order_id = ClientOrderId::from(CLIENT_ORDER_ID);
+
+    assert_eq!(
+        harness
+            .client
+            .apply_fill(&fill("f1", "0.40", "0.00"))
+            .unwrap(),
+        OndoFillApplication::Applied,
+    );
+    assert_eq!(
+        harness
+            .client
+            .apply_order(&api_order("fullyfilled", "1.00")),
+        OndoOrderApplication::Applied,
+    );
+
+    let state = harness
+        .client
+        .order_state(&client_order_id)
+        .expect("tracked");
+
+    assert_eq!(
+        state.fill_gap(),
+        Some(Quantity::from("1.00")),
+        "the venue says 1.00 filled and the applied fills total 0.40",
+    );
+    assert!(!state.resolved);
+    assert_eq!(harness.client.unresolved_orders(), vec![client_order_id]);
+
+    let reports = order_reports(&drain(&mut harness));
+
+    assert!(
+        reports
+            .iter()
+            .all(|report| report.order_status != OrderStatus::Filled),
+        "no report asserts a completion the applied fills do not support: {reports:?}",
+    );
+
+    let reported = reports.last().expect("the payload is reported");
+
+    assert_eq!(reported.order_status, OrderStatus::PartiallyFilled);
+    assert_eq!(
+        reported.filled_qty,
+        Quantity::from("0.40"),
+        "the report states the fills this adapter applied",
+    );
+
+    // Repeating the reading says nothing new and settles nothing: only the fills can.
+    assert_eq!(
+        harness
+            .client
+            .apply_order(&api_order("fullyfilled", "1.00")),
+        OndoOrderApplication::Unchanged,
+    );
+    assert!(
+        harness
+            .client
+            .order_state(&client_order_id)
+            .unwrap()
+            .is_unresolved()
+    );
+
+    // What settles it is the rest of the fills, and nothing else.
+    assert_eq!(
+        harness
+            .client
+            .apply_fill(&fill("f2", "0.60", "0.00"))
+            .unwrap(),
+        OndoFillApplication::Applied,
+    );
+
+    let state = harness
+        .client
+        .order_state(&client_order_id)
+        .expect("tracked");
+
+    assert_eq!(state.fill_gap(), None);
+    assert!(state.resolved);
+    assert!(harness.client.unresolved_orders().is_empty());
 }
 
 #[rstest]
@@ -2336,12 +2772,23 @@ async fn test_a_cancel_the_venue_refuses_with_a_race_code_triggers_a_confirming_
 
     let mut events = Vec::new();
 
+    // The query's answer is the venue saying the order is `fullyfilled`, and this adapter has
+    // applied no fill of it: the report states the state the ledger supports - the order is
+    // accepted, nothing is filled - and never the completion (F14). A report that carried the
+    // venue's `filledSize` would have the engine infer a fill of 1.00 this adapter never reported.
     collect_until(&mut harness, &mut events, |events| {
-        order_reports(events)
-            .iter()
-            .any(|report| report.order_status == OrderStatus::Filled)
+        order_reports(events).iter().any(|report| {
+            report.order_status == OrderStatus::Accepted && report.filled_qty.is_zero()
+        })
     })
     .await;
+
+    assert!(
+        !order_reports(&events)
+            .iter()
+            .any(|report| report.order_status == OrderStatus::Filled),
+        "no report asserts a completion the applied fills do not support",
+    );
 
     assert_eq!(
         mock.targets()[RECOVERY_READS..],
@@ -2366,9 +2813,15 @@ async fn test_a_cancel_the_venue_refuses_with_a_race_code_triggers_a_confirming_
         .unwrap();
 
     assert_eq!(state.status.as_str(), "fullyfilled");
+    assert_eq!(
+        state.fill_gap(),
+        Some(Quantity::from("1.00")),
+        "the venue filled 1.00 and no fill was applied, so the order is short of its terminal \
+         reading",
+    );
     assert!(
-        state.reconciliation_needed,
-        "the venue filled 1.00 and no fill was applied, so the order is not resolved",
+        state.is_unresolved(),
+        "an order whose terminal reading the fills do not account for is not resolved",
     );
     assert_eq!(
         harness.client.unresolved_orders(),
@@ -2995,6 +3448,310 @@ async fn test_an_order_this_client_did_not_place_is_reported_rather_than_dropped
     assert_eq!(reports[0].filled_qty, Quantity::from("1.00"));
 }
 
+/// F14 on the query path: a report of an order this client tracks is built from the ledger, not from
+/// the venue's own view. `apply_order` accepts a `fullyfilled` payload the applied fills do not
+/// account for yet - the fills may still be arriving - so reporting the venue's number would state a
+/// completion the ledger cannot support and leave the engine to synthesise an inferred fill for the
+/// difference. The ingest path builds its report from the ledger for that very payload, so the two
+/// paths have to give one order one answer: the ledger's 0.40, not the venue's 1.00.
+#[rstest]
+#[tokio::test]
+async fn test_a_bulk_report_of_a_tracked_order_is_built_from_the_ledger() {
+    let mut script = open_create_script();
+
+    script.push(Reply::ok(envelope(&format!(
+        "[{}]",
+        order_json(
+            VENUE_ORDER_ID,
+            CLIENT_ORDER_ID,
+            "fullyfilled",
+            "1.00",
+            "1.00",
+            "0.00",
+            "1.00",
+        )
+    ))));
+
+    let mock = MockServer::start_admitted(script).await;
+    let mut harness = acknowledged_order(&mock).await;
+
+    // The ledger has 0.40 of the order applied; the venue's own view calls it finished.
+    assert_eq!(
+        harness
+            .client
+            .apply_fill(&fill("f1", "0.40", "0.00"))
+            .unwrap(),
+        OndoFillApplication::Applied,
+    );
+
+    // Everything emitted before the read is setup, not the comparison.
+    let _ = drain(&mut harness);
+
+    let command = GenerateOrderStatusReportsBuilder::default()
+        .ts_init(UnixNanos::default())
+        .open_only(false)
+        .build()
+        .expect("the command builds");
+
+    let reports = harness
+        .client
+        .generate_order_status_reports(&command)
+        .await
+        .expect("the order history is read");
+
+    // The same payload through ingest: the bulk loop applied it, and applying it is what reported it.
+    let ingest = order_reports(&drain(&mut harness));
+
+    assert_eq!(reports.len(), 1);
+
+    let report = &reports[0];
+
+    assert_eq!(
+        report.client_order_id,
+        Some(ClientOrderId::from(CLIENT_ORDER_ID)),
+        "the order is this client's own, so it is reported from this client's ledger",
+    );
+    assert_ne!(
+        report.order_status,
+        OrderStatus::Filled,
+        "the venue's completion is not one the applied fills account for",
+    );
+    assert_eq!(
+        report.order_status,
+        OrderStatus::PartiallyFilled,
+        "the ledger is 0.40 of the way through the order, and that is the state reported",
+    );
+    assert_eq!(
+        report.filled_qty,
+        Quantity::from("0.40"),
+        "the report carries the ledger's total, not the venue's filledSize",
+    );
+
+    let ingest = ingest
+        .iter()
+        .find(|report| report.venue_order_id == VenueOrderId::from(VENUE_ORDER_ID))
+        .expect("the ingest path reports the order the venue just called finished");
+
+    assert_eq!(
+        (
+            report.order_status,
+            report.filled_qty,
+            report.quantity,
+            report.price,
+        ),
+        (
+            ingest.order_status,
+            ingest.filled_qty,
+            ingest.quantity,
+            ingest.price,
+        ),
+        "one adapter answers one order one way: the two paths agree",
+    );
+}
+
+/// F16: the bulk read's filters are the venue's own parameters. `open_only` is sent as the venue's
+/// `status` enum value for a working order, and the command's window as the whole milliseconds of
+/// UTC the endpoint declares, so the bytes a signature covers are the bytes the transport sends.
+/// The window is sent **instead of** trimming the answer locally: which of an order's own
+/// timestamps the venue filters on cannot be observed from here, and a second filter over a
+/// different one would drop orders the venue meant to return.
+#[rstest]
+#[tokio::test]
+async fn test_a_bulk_read_sends_the_open_filter_and_the_time_window() {
+    let mock = MockServer::start(vec![Reply::ok(envelope("[]"))]).await;
+    let harness = build_harness(&mock, sandbox_config());
+
+    let command = GenerateOrderStatusReportsBuilder::default()
+        .ts_init(UnixNanos::default())
+        .open_only(true)
+        .instrument_id(Some(InstrumentId::from(NVDA)))
+        .start(Some(UnixNanos::from_millis(1_757_088_000_000)))
+        .end(Some(UnixNanos::from_millis(1_757_174_400_000)))
+        .build()
+        .expect("the command builds");
+
+    harness
+        .client
+        .generate_order_status_reports(&command)
+        .await
+        .expect("the order history is read");
+
+    assert_eq!(
+        mock.captured()
+            .iter()
+            .map(|request| request.target.as_str())
+            .collect::<Vec<_>>(),
+        vec![
+            "/v1/perps/orders?market=NVDA-USD.P&status=open&startTime=1757088000000&endTime=1757174400000"
+        ],
+        "the filter and the window are the venue's own query parameters",
+    );
+
+    // `open_only: false` is the absence of a filter, not a different one: the venue returns every
+    // status and each order is judged on its own.
+    let unfiltered = GenerateOrderStatusReportsBuilder::default()
+        .ts_init(UnixNanos::default())
+        .open_only(false)
+        .build()
+        .expect("the command builds");
+
+    harness
+        .client
+        .generate_order_status_reports(&unfiltered)
+        .await
+        .expect("the order history is read");
+
+    assert_eq!(
+        mock.captured().last().expect("the second read").target,
+        "/v1/perps/orders",
+        "a read that asks for no filter is the path alone",
+    );
+}
+
+/// F16: the filter is what the read asked the venue for, not a licence to drop what the answer
+/// contains. An order that comes back in a status the read did not ask for is reported rather than
+/// trimmed away - the venue chose to return it, and a local re-application of the filter is exactly
+/// how this read would lose an order silently, which is what the filter exists to avoid.
+#[rstest]
+#[tokio::test]
+async fn test_an_order_outside_the_requested_filter_is_reported_rather_than_dropped() {
+    let mock = MockServer::start(vec![Reply::ok(envelope(&format!(
+        "[{}]",
+        order_json(
+            VENUE_ORDER_ID,
+            CLIENT_ORDER_ID,
+            "canceled",
+            "1.00",
+            "0.00",
+            "0.00",
+            "0.00",
+        )
+    )))])
+    .await;
+
+    let harness = build_harness(&mock, sandbox_config());
+
+    let command = GenerateOrderStatusReportsBuilder::default()
+        .ts_init(UnixNanos::default())
+        .open_only(true)
+        .build()
+        .expect("the command builds");
+
+    let reports = harness
+        .client
+        .generate_order_status_reports(&command)
+        .await
+        .expect("the order history is read");
+
+    assert_eq!(reports.len(), 1, "the order is reported, not trimmed away");
+    assert_eq!(reports[0].order_status, OrderStatus::Canceled);
+    assert_eq!(
+        reports[0].venue_order_id,
+        VenueOrderId::from(VENUE_ORDER_ID)
+    );
+}
+
+/// F16: the venue's single-order read takes one path parameter, and the venue order id is one of
+/// the two forms it accepts - its own description of that parameter is *"Internal order ID, or
+/// `client:{clientOrderID}` for client order ID lookup"*. Asking by it is therefore not the same as
+/// asking by client order id, and the `client:` value is this adapter's convention for the other
+/// form: wrapped around a venue id it would name an order the venue has never heard of.
+///
+/// The answer is still judged against this client's ledger. The venue's payload need not echo a
+/// `clientOrderId` at all - the index identifies the order by the venue id it recorded - and a
+/// `filledSize` the applied fills do not agree with is not the total the report states.
+#[rstest]
+#[tokio::test]
+async fn test_a_report_query_by_venue_order_id_alone_is_read_from_the_ledger() {
+    let mut script = open_create_script();
+
+    script.push(Reply::ok(envelope(&order_json_without_client_order_id(
+        "open", "0.25",
+    ))));
+
+    let mock = MockServer::start_admitted(script).await;
+    let harness = acknowledged_order(&mock).await;
+
+    assert_eq!(
+        harness
+            .client
+            .apply_fill(&fill("f1", "0.10", "0.001"))
+            .unwrap(),
+        OndoFillApplication::Applied,
+    );
+
+    let report = harness
+        .client
+        .generate_order_status_report(&GenerateOrderStatusReport {
+            command_id: UUID4::new(),
+            ts_init: UnixNanos::default(),
+            instrument_id: None,
+            client_order_id: None,
+            venue_order_id: Some(VenueOrderId::from(VENUE_ORDER_ID)),
+            params: None,
+            correlation_id: None,
+            causation_id: None,
+        })
+        .await
+        .expect("the order is read")
+        .expect("the order the venue knows is reported");
+
+    assert_eq!(
+        mock.captured().last().expect("the read").target,
+        format!("/v1/perps/orders/{VENUE_ORDER_ID}"),
+        "a venue order id is the path parameter itself, not a `client:` lookup value",
+    );
+    assert_eq!(report.venue_order_id, VenueOrderId::from(VENUE_ORDER_ID));
+    assert_eq!(report.instrument_id, InstrumentId::from(NVDA));
+    assert_eq!(
+        report.client_order_id,
+        Some(ClientOrderId::from(CLIENT_ORDER_ID)),
+        "the identity is this client's, from the ledger: the venue's payload carries none",
+    );
+    assert_eq!(report.order_status, OrderStatus::PartiallyFilled);
+    assert_eq!(
+        report.filled_qty,
+        Quantity::from("0.10"),
+        "the ledger's applied total, not the venue's `filledSize`",
+    );
+}
+
+/// F16: a report of one order is a read this venue addresses by one identifier or the other.
+/// Neither is not a request that can be made, and it is refused where it is still decidable -
+/// locally, before anything is signed or sent.
+#[rstest]
+#[tokio::test]
+async fn test_a_report_query_with_neither_identifier_is_refused_before_any_request() {
+    let mock = MockServer::start(vec![Reply::ok(envelope("{}"))]).await;
+    let harness = build_harness(&mock, sandbox_config());
+
+    let error = harness
+        .client
+        .generate_order_status_report(&GenerateOrderStatusReport {
+            command_id: UUID4::new(),
+            ts_init: UnixNanos::default(),
+            instrument_id: None,
+            client_order_id: None,
+            venue_order_id: None,
+            params: None,
+            correlation_id: None,
+            causation_id: None,
+        })
+        .await
+        .expect_err("neither identifier is a read this adapter can make");
+
+    assert!(
+        error
+            .to_string()
+            .contains("neither a client order id nor a venue order id"),
+        "the refusal names both identifiers, was `{error}`",
+    );
+    assert!(
+        mock.captured().is_empty(),
+        "the refusal happens before any request exists",
+    );
+}
+
 // ------------------------------------------------------------------------------------------------
 // The endpoint gate
 // ------------------------------------------------------------------------------------------------
@@ -3268,5 +4025,333 @@ async fn test_a_client_without_a_credential_never_falls_back_and_never_sends() {
     assert!(
         mock.captured().is_empty(),
         "no credential is ever sent, and no request is made to find one",
+    );
+}
+
+// ------------------------------------------------------------------------------------------------
+// The recovery pass's boundary: what it reads, what it drains, and who owns it (F03, plan §6.4)
+// ------------------------------------------------------------------------------------------------
+
+/// F03 (D4): a report that arrives while the pass is still reading belongs to that pass.
+///
+/// The positions read is held open until the stream has delivered a fill. A pass that drained its
+/// buffered reports *before* its last two reads would hand this fill to the next pass - and judge an
+/// account stitched together out of two instants, comparing the position the venue states now
+/// against the fills it knew a moment ago, which is no fill at all.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_fill_that_arrives_during_the_last_reads_is_in_that_passes_reading() {
+    let gate = Arc::new(Notify::new());
+    let mock = MockServer::start_admitted(vec![
+        // The create answer, which acknowledges the order before the pass reads the account.
+        Reply::ok(envelope(&order_json(
+            VENUE_ORDER_ID,
+            CLIENT_ORDER_ID,
+            "open",
+            "1.00",
+            "0.00",
+            "0.00",
+            "0.00",
+        ))),
+        Reply::ok(envelope(&format!(
+            "[{}]",
+            order_json(
+                VENUE_ORDER_ID,
+                CLIENT_ORDER_ID,
+                "open",
+                "1.00",
+                "0.20",
+                "0.00",
+                "0.00",
+            ),
+        ))),
+        // The venue's fill history does not carry this fill yet: the stream is ahead of it.
+        Reply::ok(envelope("[]")),
+        Reply::Gated {
+            gate: Arc::clone(&gate),
+            body: envelope(&format!("[{}]", position_json("0.20"))),
+        },
+        Reply::ok(envelope(BALANCE_BODY)),
+    ])
+    .await;
+    let harness = recovered_harness(&mock).await;
+
+    let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
+
+    seed_order(&harness, &order);
+    harness
+        .client
+        .submit_order(submit_command(&order))
+        .expect("submit");
+    wait_until_async(
+        || async {
+            harness
+                .client
+                .order_state(&ClientOrderId::from(CLIENT_ORDER_ID))
+                .is_some_and(|state| state.accepted)
+        },
+        Duration::from_secs(5),
+    )
+    .await;
+
+    harness.client.begin_recovery(UnixNanos::default());
+
+    let fill = fill("f1", "0.20", "0.002");
+
+    let (pass, ()) = tokio::join!(
+        harness.client.reconcile_account(UnixNanos::default()),
+        async {
+            // The create answer and this pass's first three reads have landed, so the positions read
+            // is provably in flight and the pass is provably still reading the account.
+            wait_for_requests(&mock, RECOVERY_READS + 4).await;
+            harness.client.buffer_stream_fill(fill);
+            gate.notify_one();
+        },
+    );
+
+    assert!(pass.is_ok(), "the pass reads: {pass:?}");
+
+    assert_eq!(
+        harness.client.applied_fill_count(),
+        1,
+        "the fill the stream delivered mid-pass is applied by that pass, not the next one",
+    );
+
+    let reading = harness
+        .client
+        .last_reading()
+        .expect("the pass keeps its reading");
+
+    assert_eq!(
+        reading.fills,
+        vec!["f1".to_string()],
+        "the reading this pass judged carries the report it replayed",
+    );
+    assert_eq!(reading.orders.len(), 1);
+    assert_eq!(
+        reading.orders[0]
+            .applied_filled
+            .map(|quantity| quantity.to_string()),
+        Some("0.20".to_string()),
+        "and it is built from the state the pass left, not from the page it read",
+    );
+
+    let judgment = harness.client.last_judgment().expect("the pass is judged");
+
+    assert!(
+        judgment.is_clean(),
+        "the position the venue states and the fill that explains it agree: {:?}",
+        judgment.reasons(),
+    );
+}
+
+/// F03 (D4): a report arriving at the instant the pass drains lands in exactly one pass.
+///
+/// The producer below pushes eight distinct fills while the pass reads, releasing the gated read in
+/// the middle of them. The reports before that instant are the pass's own; the ones after it land on
+/// one side of the drain or the other, and the assertion is about which: the two passes' readings
+/// partition the eight ids - none stranded, none applied twice - and each fill is reported once.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_reports_arriving_at_the_drain_boundary_land_in_exactly_one_pass() {
+    let gate = Arc::new(Notify::new());
+    let account = || {
+        vec![
+            Reply::ok(envelope(&format!(
+                "[{}]",
+                order_json(
+                    VENUE_ORDER_ID,
+                    CLIENT_ORDER_ID,
+                    "open",
+                    "1.00",
+                    "0.80",
+                    "0.00",
+                    "0.00",
+                ),
+            ))),
+            Reply::ok(envelope("[]")),
+            Reply::ok(envelope(&format!("[{}]", position_json("0.80")))),
+            Reply::ok(envelope(BALANCE_BODY)),
+        ]
+    };
+    let mut script = vec![Reply::ok(envelope(&order_json(
+        VENUE_ORDER_ID,
+        CLIENT_ORDER_ID,
+        "open",
+        "1.00",
+        "0.00",
+        "0.00",
+        "0.00",
+    )))];
+
+    script.extend(account());
+
+    // The first pass's positions read is the gated one; the second pass reads the account plainly.
+    script[3] = Reply::Gated {
+        gate: Arc::clone(&gate),
+        body: envelope(&format!("[{}]", position_json("0.80"))),
+    };
+    script.extend(account());
+
+    let mock = MockServer::start_admitted(script).await;
+    let mut harness = recovered_harness(&mock).await;
+
+    let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
+
+    seed_order(&harness, &order);
+    harness
+        .client
+        .submit_order(submit_command(&order))
+        .expect("submit");
+    wait_until_async(
+        || async {
+            harness
+                .client
+                .order_state(&ClientOrderId::from(CLIENT_ORDER_ID))
+                .is_some_and(|state| state.accepted)
+        },
+        Duration::from_secs(5),
+    )
+    .await;
+
+    harness.client.begin_recovery(UnixNanos::default());
+
+    let fills: Vec<OndoApiFill> = (1..=8)
+        .map(|step| fill(&format!("f{step}"), "0.10", "0.001"))
+        .collect();
+
+    let (first, ()) = tokio::join!(
+        harness.client.reconcile_account(UnixNanos::default()),
+        async {
+            // The create answer and this pass's first three reads: the positions read is in flight.
+            wait_for_requests(&mock, RECOVERY_READS + 4).await;
+
+            for (at, fill) in fills.iter().enumerate() {
+                // The gated read is released in the middle of the stream, so half of the reports
+                // arrive before the pass can drain and half of them around it.
+                if at == fills.len() / 2 {
+                    gate.notify_one();
+                }
+
+                harness.client.buffer_stream_fill(fill.clone());
+                tokio::task::yield_now().await;
+            }
+        },
+    );
+
+    assert!(first.is_ok(), "the pass reads: {first:?}");
+
+    let first_reading = harness
+        .client
+        .last_reading()
+        .expect("the first pass keeps its reading");
+
+    let second = harness.client.reconcile_account(UnixNanos::default()).await;
+
+    assert!(second.is_ok(), "the pass reads: {second:?}");
+
+    let second_reading = harness
+        .client
+        .last_reading()
+        .expect("the second pass keeps its reading");
+
+    let mut applied = first_reading.fills.clone();
+
+    applied.extend(second_reading.fills.clone());
+    applied.sort();
+
+    let expected: Vec<String> = fills.iter().map(|fill| fill.id().to_string()).collect();
+
+    assert_eq!(
+        applied, expected,
+        "every report the stream delivered is in exactly one pass's reading",
+    );
+    assert_eq!(
+        harness.client.applied_fill_count(),
+        fills.len(),
+        "and each of them is applied once",
+    );
+
+    let events = drain(&mut harness);
+
+    assert_eq!(
+        fill_reports(&events).len(),
+        fills.len(),
+        "each fill is reported once: {events:?}",
+    );
+}
+
+/// F03 (D3): one pass owns the account, and a second is refused by name.
+///
+/// Two passes over one account would both drain the buffer - the second finding it empty - and both
+/// conclude, each judging a reading the other half-wrote. The refused pass reads nothing, judges
+/// nothing, and says which condition it hit rather than reporting the account as failed.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_second_recovery_pass_is_refused_while_one_owns_the_account() {
+    let gate = Arc::new(Notify::new());
+    let mock = MockServer::start_admitted(vec![
+        Reply::Gated {
+            gate: Arc::clone(&gate),
+            body: envelope("[]"),
+        },
+        Reply::ok(envelope("[]")),
+        Reply::ok(envelope("[]")),
+        Reply::ok(envelope(BALANCE_BODY)),
+    ])
+    .await;
+    let harness = recovered_harness(&mock).await;
+
+    harness.client.begin_recovery(UnixNanos::default());
+
+    let state_before = harness.client.reconciliation_state();
+    let judgment_before = harness.client.last_judgment();
+
+    let (pass, ()) = tokio::join!(
+        harness.client.reconcile_account(UnixNanos::default()),
+        async {
+            // The first read of the pass is in flight, so that pass provably owns the account.
+            wait_for_requests(&mock, RECOVERY_READS + 1).await;
+
+            let refused = harness.client.reconcile_account(UnixNanos::default()).await;
+            let error = refused.expect_err("a second pass is refused while one owns the account");
+
+            assert_eq!(
+                error.downcast_ref::<RecoveryPassRefusal>(),
+                Some(&RecoveryPassRefusal::AlreadyRunning),
+                "the refusal names the condition: `{error}`",
+            );
+
+            // A refused pass leaves the claim where it was: the pass that owns the account still
+            // owns it, so the next caller meets the same condition rather than being let in.
+            let also_refused = harness.client.reconcile_account(UnixNanos::default()).await;
+
+            assert_eq!(
+                also_refused
+                    .err()
+                    .and_then(|error| error.downcast_ref::<RecoveryPassRefusal>().copied()),
+                Some(RecoveryPassRefusal::AlreadyRunning),
+                "a refusal does not hand the account on",
+            );
+            assert_eq!(
+                harness.client.last_judgment(),
+                judgment_before,
+                "the refused pass judged nothing",
+            );
+            assert_eq!(
+                harness.client.reconciliation_state(),
+                state_before,
+                "and left the account to the pass that owns it",
+            );
+
+            gate.notify_one();
+        },
+    );
+
+    assert!(
+        pass.is_ok(),
+        "the pass that owns the account reads: {pass:?}"
+    );
+    assert_eq!(
+        harness.client.reconciliation_state(),
+        ReconciliationState::Recovering,
+        "one agreeing pass, concluded by the pass that owned it",
     );
 }

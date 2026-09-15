@@ -43,8 +43,10 @@ use nautilus_ondo::{
     http::{
         error::OndoHttpError,
         models::{MarketInfo, MarketsResponse, parse_instruments, parse_markets},
-        private::{ACCOUNT_PATH, OndoPrivateReadQuery, OndoPrivateResponse},
-        query::{FILLS_PATH, MARKETS_PATH},
+        private::{
+            ACCOUNT_PATH, OndoOrderHistoryStatus, OndoPrivateReadQuery, OndoPrivateResponse,
+        },
+        query::{FILLS_PATH, MARKETS_PATH, ORDERS_PATH},
     },
 };
 use rstest::rstest;
@@ -1310,6 +1312,47 @@ fn test_the_private_read_target_is_built_once_in_a_fixed_order() {
     assert_eq!(query.market(), Some("NVDA-USD.P"));
     assert_eq!(query.limit(), Some(100));
     assert_eq!(query.cursor(), Some("opaque-token"));
+
+    // The three order-history filters are appended after those three, so the fixed order is
+    // `market`, `limit`, `cursor`, `status`, `startTime`, `endTime` - and the window travels as the
+    // whole milliseconds of UTC the endpoint declares, not as the nanoseconds Nautilus carries.
+    let filtered = OndoPrivateReadQuery::new()
+        .with_market(NVDA_MARKET)
+        .with_limit(100)
+        .with_cursor("opaque-token")
+        .with_status(OndoOrderHistoryStatus::Open)
+        .with_start_time(UnixNanos::from_millis(1_757_088_000_123))
+        .with_end_time(UnixNanos::from_millis(1_757_174_400_456));
+
+    assert_eq!(
+        filtered.target(ORDERS_PATH).as_str(),
+        "/v1/perps/orders?market=NVDA-USD.P&limit=100&cursor=opaque-token&status=open&startTime=1757088000123&endTime=1757174400456",
+    );
+    assert_eq!(filtered.status(), Some(OndoOrderHistoryStatus::Open));
+    assert_eq!(
+        filtered.start_time(),
+        Some(UnixNanos::from_millis(1_757_088_000_123)),
+    );
+    assert_eq!(
+        filtered.end_time(),
+        Some(UnixNanos::from_millis(1_757_174_400_456)),
+    );
+
+    // The enum is the venue's query vocabulary, which is narrower than this adapter's own order
+    // statuses: it has no `pending` and no `untriggered`, so nothing here can ask the venue for
+    // "every non-terminal order". A wrong spelling would be a filter the venue rejects or ignores.
+    assert_eq!(OndoOrderHistoryStatus::Open.as_str(), "open");
+    assert_eq!(OndoOrderHistoryStatus::Canceled.as_str(), "canceled");
+    assert_eq!(OndoOrderHistoryStatus::FullyFilled.as_str(), "fullyfilled");
+
+    // A read that sets no filter is the path alone, whatever path it is.
+    assert_eq!(
+        OndoPrivateReadQuery::new().target(ORDERS_PATH).as_str(),
+        ORDERS_PATH
+    );
+    assert!(OndoPrivateReadQuery::new().status().is_none());
+    assert!(OndoPrivateReadQuery::new().start_time().is_none());
+    assert!(OndoPrivateReadQuery::new().end_time().is_none());
 
     // An account read takes no filters, and its path is declared once in `http::private` and
     // asserted here so a change to it is deliberate. It is `/v1/account`: the frozen REST spec
