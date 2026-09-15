@@ -66,8 +66,12 @@ pub struct OndoDataClientConfig {
     pub load_ids: Vec<InstrumentId>,
     /// Override for the REST base URL.
     ///
-    /// Only for the official host of the same environment or an explicit local test server; it
-    /// must never be used to reach production from a sandbox configuration.
+    /// The public transport carries no credential, so it is not held to the signed endpoint
+    /// allowlist: production public data is readable by design (plan §1). Use the official host of
+    /// the same environment, or an explicit local test server. The *signed* endpoints are a
+    /// different matter - [`OndoExecutionClientConfig::base_url_http`] is judged by
+    /// [`crate::common::credential::validate_authenticated_environment`], which refuses everything
+    /// that is not the sandbox authority or a loopback test service.
     pub base_url_http: Option<String>,
     /// Override for the WebSocket URL, with the same restriction as [`Self::base_url_http`].
     pub base_url_ws: Option<String>,
@@ -166,7 +170,9 @@ pub enum OndoExecutionConfigError {
 /// [`Self::environment`] defaults to [`OndoEnvironment::Sandbox`], unlike the data client's
 /// production default: the authenticated surface may only ever be sandbox
 /// ([`crate::common::credential::validate_authenticated_environment`]), and a production
-/// configuration is refused there before a credential is read.
+/// configuration is refused there before a credential is read. The same gate admits the endpoint
+/// the session signs for - see [`Self::base_url_http`] - so a configuration cannot aim a credential
+/// at an authority this adapter does not own.
 /// [`Self::allow_production_orders`] exists so that asking for production order entry can be
 /// *refused by name* ([`OndoExecutionConfigError::ProductionOrdersUnsupported`]) rather than
 /// silently ignored; setting it does not enable anything.
@@ -201,9 +207,15 @@ pub struct OndoExecutionClientConfig {
     pub api_secret: Option<String>,
     /// Override for the REST base URL.
     ///
-    /// Only for the official host of the selected environment or an explicit local test server.
-    /// The environment gate runs on whatever this resolves to, so an override cannot aim a sandbox
-    /// session at production.
+    /// The signed endpoint is an allowlist, not a preference. Two authorities are admitted: the
+    /// official host of [`Self::environment`] on `https` and the scheme's default port, and a
+    /// loopback test service (`127.0.0.0/8` or `::1`) for the offline tests and a local mock.
+    /// Everything else - another remote host, a host that merely resembles the official one,
+    /// userinfo, a plaintext remote service, an unreadable URL - is refused by
+    /// [`crate::common::credential::validate_authenticated_environment`] before a credential is
+    /// read and before a client exists, and the URL is judged with the parser the transport itself
+    /// uses rather than as a string (plan §R0.3). The default resolves to the official sandbox
+    /// host, which is never loopback, so a test service is always an explicit override.
     pub base_url_http: Option<String>,
     /// The HTTP request timeout in seconds.
     #[builder(default = ONDO_HTTP_TIMEOUT_SECS)]
@@ -312,6 +324,7 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
+    use crate::common::{credential::validate_authenticated_environment, endpoint::OndoEndpoint};
 
     #[rstest]
     fn test_defaults() {
@@ -487,6 +500,47 @@ mod tests {
         };
 
         assert_eq!(config.http_base_url(), "http://127.0.0.1:8080");
+    }
+
+    /// What the configuration resolves to and what the gate admits are one decision: a default
+    /// configuration can only ever name the environment's own host, a loopback mock is always an
+    /// explicit override, and an arbitrary remote host is not an endpoint this configuration can
+    /// aim a credential at.
+    #[rstest]
+    fn test_a_configuration_can_only_resolve_to_an_endpoint_it_may_sign_for() {
+        let default = OndoExecutionClientConfig::default();
+
+        assert_eq!(default.http_base_url(), "https://api.ondoperps-sandbox.xyz");
+        assert_eq!(
+            validate_authenticated_environment(OndoEnvironment::Sandbox, default.http_base_url()),
+            Ok(OndoEndpoint::Official),
+            "the default resolves to the official sandbox host, never a test service",
+        );
+
+        let local = OndoExecutionClientConfig {
+            base_url_http: Some("http://127.0.0.1:8080".to_string()),
+            ..Default::default()
+        };
+        assert_eq!(
+            validate_authenticated_environment(OndoEnvironment::Sandbox, local.http_base_url()),
+            Ok(OndoEndpoint::LoopbackTestService),
+            "a loopback mock is the explicit test service, classified as itself",
+        );
+
+        for url in ["https://evil.example", "https://api.ondoperps.xyz"] {
+            let remote = OndoExecutionClientConfig {
+                base_url_http: Some(url.to_string()),
+                ..Default::default()
+            };
+            assert!(
+                validate_authenticated_environment(
+                    OndoEnvironment::Sandbox,
+                    remote.http_base_url()
+                )
+                .is_err(),
+                "`{url}` is not an endpoint this configuration may sign for",
+            );
+        }
     }
 
     #[rstest]

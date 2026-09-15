@@ -65,17 +65,18 @@ use nautilus_network::ratelimiter::quota::Quota;
 use nautilus_ondo::{
     common::{
         consts::{ONDO_SETTLEMENT_CURRENCY, ONDO_VENUE},
-        credential::OndoCredential,
+        credential::{OndoCredential, OndoEnvironmentError},
         enums::OndoEnvironment,
         parse::parse_timestamp,
     },
-    config::OndoExecutionClientConfig,
+    config::{OndoExecutionClientConfig, OndoExecutionConfigError},
     execution::{OndoExecutionClient, OndoFillApplication, OndoOrderApplication},
     http::{
         orders::{OndoApiOrder, OndoOrderStatus},
         private::OndoApiFill,
-        rate_limit::OndoRateBudget,
+        rate_limit::{ONDO_REST_BUCKET, OndoRateBudget},
     },
+    reconciliation::MetadataValidity,
     signing::{ONDO_KEY_ID_HEADER, ONDO_SIGN_HEADER, ONDO_TIMESTAMP_HEADER},
 };
 use rstest::rstest;
@@ -85,6 +86,7 @@ use tokio::{
     sync::{Notify, mpsc::UnboundedReceiver},
     task::JoinHandle,
 };
+use ustr::Ustr;
 
 const ACCOUNT_ID: &str = "ONDO-SANDBOX-001";
 const CLIENT_ID: &str = "ONDO-EXEC";
@@ -152,6 +154,15 @@ impl Drop for MockServer {
 }
 
 impl MockServer {
+    /// A server whose script answers the two reconciliation passes a submission is admitted after,
+    /// then the given replies.
+    ///
+    /// New risk is refused from construction (plan §6.4), so every test that submits starts here:
+    /// the eight recovery reads come first, and the request assertions below count from there.
+    async fn start_admitted(script: Vec<Reply>) -> Self {
+        Self::start(admitted_script(script)).await
+    }
+
     async fn start(script: Vec<Reply>) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
@@ -197,6 +208,14 @@ impl MockServer {
         self.captured()
             .into_iter()
             .map(|request| request.target)
+            .collect()
+    }
+
+    /// The requests the venue would have answered with this method.
+    fn with_method(&self, method: &str) -> Vec<CapturedRequest> {
+        self.captured()
+            .into_iter()
+            .filter(|request| request.method == method)
             .collect()
     }
 }
@@ -370,7 +389,62 @@ struct Harness {
     cache: Rc<RefCell<Cache>>,
 }
 
+/// The budget an ordinary harness shares.
+///
+/// The venue's production budget is one request per second, which a test that makes four requests
+/// does not need to wait for: only the *sharing* is the property under test.
+fn test_budget() -> OndoRateBudget {
+    OndoRateBudget::with_quota(
+        Quota::per_second(NonZeroU32::new(1_000).expect("a nonzero quota"))
+            .expect("a burst this size replenishes"),
+    )
+}
+
+/// How long a spent budget takes to replenish one request: the window a queued request waits in.
+const QUEUE_WINDOW: Duration = Duration::from_secs(1);
+
+/// The budget a test drives by hand: enough cells for the harness's own reads, and one more per
+/// [`QUEUE_WINDOW`] after that.
+///
+/// The venue's own budget is one request per second; what a test of the wait needs is not the same
+/// number but the same shape - cells it can spend itself, so that the next request has to wait for a
+/// replenishment that is out of its hands.
+fn paced_budget() -> OndoRateBudget {
+    OndoRateBudget::with_quota(
+        Quota::with_period(QUEUE_WINDOW)
+            .expect("a one-second period is not zero")
+            .allow_burst(NonZeroU32::new(16).expect("a nonzero burst")),
+    )
+}
+
+/// Empties the shared budget, leaving the next acquisition to wait for a replenishment.
+///
+/// `check_key` is the same decision `acquire` makes, without the wait, so this establishes that the
+/// bucket is empty rather than assuming how many cells a replenishment left in it: a quota's burst
+/// tolerance is what makes "spend one and the next waits" an assumption and not a fact. The bucket
+/// stays empty for [`QUEUE_WINDOW`] afterwards - which is the window a queued request waits in, and
+/// the reason a test can act on a submission while it is provably still queued.
+fn drain_budget(budget: &OndoRateBudget) {
+    while budget
+        .limiter()
+        .check_key(&Ustr::from(ONDO_REST_BUCKET))
+        .is_ok()
+    {}
+}
+
 fn build_harness(mock: &MockServer, config: OndoExecutionClientConfig) -> Harness {
+    build_harness_on_budget(mock, config, test_budget())
+}
+
+/// [`build_harness`] on a budget the caller keeps a handle on.
+///
+/// The client is built with a clone of `budget`, so the test's own acquisitions draw on the same
+/// bucket the client's requests do - which is what lets a test empty it first.
+fn build_harness_on_budget(
+    mock: &MockServer,
+    config: OndoExecutionClientConfig,
+    budget: OndoRateBudget,
+) -> Harness {
     let account_id = AccountId::from(ACCOUNT_ID);
     let cache = Rc::new(RefCell::new(Cache::default()));
 
@@ -397,13 +471,6 @@ fn build_harness(mock: &MockServer, config: OndoExecutionClientConfig) -> Harnes
         TEST_API_SECRET.to_string(),
     )
     .expect("the plan's fake credential is well formed");
-
-    // The venue's production budget is one request per second, which a test that makes four
-    // requests does not need to wait for: only the *sharing* is the property under test.
-    let budget = OndoRateBudget::with_quota(
-        Quota::per_second(NonZeroU32::new(1_000).expect("a nonzero quota"))
-            .expect("a burst this size replenishes"),
-    );
 
     let (exec_tx, exec_rx) = tokio::sync::mpsc::unbounded_channel();
     let (data_tx, _data_rx) = tokio::sync::mpsc::unbounded_channel::<DataEvent>();
@@ -473,6 +540,32 @@ fn submit_command(order: &OrderAny) -> SubmitOrder {
         order.instrument_id(),
         order.client_order_id(),
         order.init_event().clone(),
+        None, // exec_algorithm_id
+        None, // position_id
+        None, // params
+        UUID4::new(),
+        UnixNanos::default(),
+        None, // correlation_id
+    )
+}
+
+/// A batch submission carrying `orders` as one native list.
+fn order_list_command(orders: &[OrderAny]) -> SubmitOrderList {
+    SubmitOrderList::new(
+        TraderId::from("TESTER-001"),
+        Some(ClientId::from(CLIENT_ID)),
+        StrategyId::from("S-001"),
+        OrderList::new(
+            OrderListId::new("OL-1"),
+            InstrumentId::from(NVDA),
+            StrategyId::from("S-001"),
+            orders.iter().map(Order::client_order_id).collect(),
+            UnixNanos::default(),
+        ),
+        orders
+            .iter()
+            .map(|order| order.init_event().clone())
+            .collect(),
         None, // exec_algorithm_id
         None, // position_id
         None, // params
@@ -606,6 +699,9 @@ fn total_commission(reports: &[FillReport]) -> rust_decimal::Decimal {
         })
 }
 
+/// The reads the two reconciliation passes make before a test's own replies: four per pass.
+const RECOVERY_READS: usize = 8;
+
 /// Waits until the mock server has received `count` requests.
 async fn wait_for_requests(mock: &MockServer, count: usize) {
     wait_until_async(
@@ -613,6 +709,82 @@ async fn wait_for_requests(mock: &MockServer, count: usize) {
         Duration::from_secs(5),
     )
     .await;
+}
+
+/// Waits until the mock server has received `count` requests of this test's own.
+async fn wait_for_writes(mock: &MockServer, count: usize) {
+    wait_for_requests(mock, count + RECOVERY_READS).await;
+}
+
+/// The requests that could change something at the venue, in the order they arrived.
+fn writes(mock: &MockServer) -> Vec<CapturedRequest> {
+    mock.captured()
+        .into_iter()
+        .filter(|request| request.method != "GET")
+        .collect()
+}
+
+// ------------------------------------------------------------------------------------------------
+// The recovered account a submission is admitted under
+// ------------------------------------------------------------------------------------------------
+
+/// The four reads one reconciliation pass makes when the account is empty and healthy, in the
+/// order the pass makes them: orders, fills, positions, balance.
+fn clean_pass_reads() -> Vec<Reply> {
+    vec![
+        Reply::ok(envelope("[]")),
+        Reply::ok(envelope("[]")),
+        Reply::ok(envelope("[]")),
+        Reply::ok(envelope(
+            r#"{"walletBalance":"5000.00","realizedPnl":"0.00","unrealizedPnl":"0.00","marginBalance":"5000.00","usedMargin":"0.00","availableMargin":"5000.00","withdrawableMargin":"5000.00","maintenanceMarginRequirement":"0.00","totalMaintenanceMargin":"0.00","marginRatio":"0.00","leverage":"0.00","underLiquidation":false,"totalFundingPayments":"0.00","totalTradingFees":"0.00","totalPnL":"0.00","netInvested":"5000.00"}"#,
+        )),
+    ]
+}
+
+/// `replies` behind the two agreeing passes a new order is admitted after.
+fn admitted_script(replies: Vec<Reply>) -> Vec<Reply> {
+    let mut script = clean_pass_reads();
+
+    script.extend(clean_pass_reads());
+    script.extend(replies);
+
+    script
+}
+
+/// A harness whose account is recovered: current metadata, two agreeing passes, nothing unknown.
+///
+/// New risk is refused from construction (plan §6.4), so a test that submits has to establish this
+/// first - and the mock has to be started on [`admitted_script`], which answers the eight reads the
+/// two passes make before the test's own replies.
+async fn recovered_harness(mock: &MockServer) -> Harness {
+    recovered_harness_on(mock, test_budget()).await
+}
+
+/// [`recovered_harness`] on a budget the caller keeps a handle on.
+async fn recovered_harness_on(mock: &MockServer, budget: OndoRateBudget) -> Harness {
+    let mut harness = build_harness_on_budget(mock, sandbox_config(), budget);
+
+    harness.client.start().expect("start");
+    harness.client.connect().await.expect("connect");
+    harness.client.set_metadata(MetadataValidity::Current);
+    harness.client.begin_recovery(UnixNanos::default());
+    harness
+        .client
+        .reconcile_account(UnixNanos::default())
+        .await
+        .expect("the first pass reads an empty account");
+    harness
+        .client
+        .reconcile_account(UnixNanos::default())
+        .await
+        .expect("the second pass reads an empty account");
+
+    assert!(
+        harness.client.can_submit_new_orders(),
+        "the harness is admitted: a submission test needs an account new risk is allowed on",
+    );
+
+    harness
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -633,7 +805,7 @@ async fn wait_for_requests(mock: &MockServer, count: usize) {
 #[tokio::test]
 async fn test_the_plans_scenario_two_fills_one_duplicate_and_a_cancel() {
     let gate = Arc::new(Notify::new());
-    let mock = MockServer::start(vec![
+    let mock = MockServer::start_admitted(vec![
         // The create answer, held open until the fill below has been applied.
         Reply::Gated {
             gate: Arc::clone(&gate),
@@ -661,9 +833,7 @@ async fn test_the_plans_scenario_two_fills_one_duplicate_and_a_cancel() {
     ])
     .await;
 
-    let mut harness = build_harness(&mock, sandbox_config());
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let mut harness = recovered_harness(&mock).await;
 
     let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
     seed_order(&harness, &order);
@@ -672,7 +842,7 @@ async fn test_the_plans_scenario_two_fills_one_duplicate_and_a_cancel() {
         .client
         .submit_order(submit_command(&order))
         .expect("submit");
-    wait_for_requests(&mock, 1).await;
+    wait_for_writes(&mock, 1).await;
 
     // F1 arrives before the venue has acknowledged the order.
     let f1 = fill("f1", "0.20", "0.010");
@@ -804,7 +974,7 @@ async fn test_the_plans_scenario_two_fills_one_duplicate_and_a_cancel() {
 #[rstest]
 #[tokio::test]
 async fn test_a_limit_gtc_post_only_reduce_only_order_is_serialized_and_signed_as_one_request() {
-    let mock = MockServer::start(vec![Reply::ok(envelope(&order_json(
+    let mock = MockServer::start_admitted(vec![Reply::ok(envelope(&order_json(
         VENUE_ORDER_ID,
         CLIENT_ORDER_ID,
         "open",
@@ -815,9 +985,7 @@ async fn test_a_limit_gtc_post_only_reduce_only_order_is_serialized_and_signed_a
     )))])
     .await;
 
-    let mut harness = build_harness(&mock, sandbox_config());
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let harness = recovered_harness(&mock).await;
 
     let order = OrderTestBuilder::new(OrderType::Limit)
         .trader_id(TraderId::from("TESTER-001"))
@@ -837,9 +1005,9 @@ async fn test_a_limit_gtc_post_only_reduce_only_order_is_serialized_and_signed_a
         .client
         .submit_order(submit_command(&order))
         .expect("submit");
-    wait_for_requests(&mock, 1).await;
+    wait_for_writes(&mock, 1).await;
 
-    let captured = mock.captured();
+    let captured = writes(&mock);
 
     assert_eq!(captured[0].method, "POST");
     assert_eq!(captured[0].target, "/v1/perps/orders");
@@ -867,7 +1035,7 @@ async fn test_a_limit_gtc_post_only_reduce_only_order_is_serialized_and_signed_a
 #[rstest]
 #[tokio::test]
 async fn test_a_market_order_sends_the_base_size_and_neither_price_nor_time_in_force() {
-    let mock = MockServer::start(vec![Reply::ok(envelope(&order_json(
+    let mock = MockServer::start_admitted(vec![Reply::ok(envelope(&order_json(
         VENUE_ORDER_ID,
         "ondo_probe_market",
         "open",
@@ -878,9 +1046,7 @@ async fn test_a_market_order_sends_the_base_size_and_neither_price_nor_time_in_f
     )))])
     .await;
 
-    let mut harness = build_harness(&mock, sandbox_config());
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let harness = recovered_harness(&mock).await;
 
     let order = market_order("ondo_probe_market");
     seed_order(&harness, &order);
@@ -888,10 +1054,10 @@ async fn test_a_market_order_sends_the_base_size_and_neither_price_nor_time_in_f
         .client
         .submit_order(submit_command(&order))
         .expect("submit");
-    wait_for_requests(&mock, 1).await;
+    wait_for_writes(&mock, 1).await;
 
     assert_eq!(
-        mock.captured()[0].body,
+        writes(&mock)[0].body,
         r#"{"market":"NVDA-USD.P","side":"sell","type":"market","size":"0.50","postOnly":false,"reduceOnly":false,"clientOrderId":"ondo_probe_market"}"#,
     );
 }
@@ -901,7 +1067,7 @@ async fn test_a_market_order_sends_the_base_size_and_neither_price_nor_time_in_f
 #[rstest]
 #[tokio::test]
 async fn test_a_limit_ioc_order_carries_ioc_and_the_size_is_the_base_quantity() {
-    let mock = MockServer::start(vec![Reply::ok(envelope(&order_json(
+    let mock = MockServer::start_admitted(vec![Reply::ok(envelope(&order_json(
         VENUE_ORDER_ID,
         "ondo_probe_ioc",
         "open",
@@ -912,9 +1078,7 @@ async fn test_a_limit_ioc_order_carries_ioc_and_the_size_is_the_base_quantity() 
     )))])
     .await;
 
-    let mut harness = build_harness(&mock, sandbox_config());
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let harness = recovered_harness(&mock).await;
 
     let order = OrderTestBuilder::new(OrderType::Limit)
         .trader_id(TraderId::from("TESTER-001"))
@@ -932,10 +1096,10 @@ async fn test_a_limit_ioc_order_carries_ioc_and_the_size_is_the_base_quantity() 
         .client
         .submit_order(submit_command(&order))
         .expect("submit");
-    wait_for_requests(&mock, 1).await;
+    wait_for_writes(&mock, 1).await;
 
     assert_eq!(
-        mock.captured()[0].body,
+        writes(&mock)[0].body,
         r#"{"market":"NVDA-USD.P","side":"sell","type":"limit","size":"0.25","price":"228.75","timeInForce":"IOC","postOnly":false,"reduceOnly":false,"clientOrderId":"ondo_probe_ioc"}"#,
     );
 }
@@ -948,7 +1112,7 @@ async fn test_a_time_in_force_outside_the_create_schema_is_denied_without_a_requ
     #[case] time_in_force: TimeInForce,
     #[case] expected: &str,
 ) {
-    let mock = MockServer::start(vec![Reply::ok(envelope(&order_json(
+    let mock = MockServer::start_admitted(vec![Reply::ok(envelope(&order_json(
         VENUE_ORDER_ID,
         CLIENT_ORDER_ID,
         "open",
@@ -959,9 +1123,7 @@ async fn test_a_time_in_force_outside_the_create_schema_is_denied_without_a_requ
     )))])
     .await;
 
-    let mut harness = build_harness(&mock, sandbox_config());
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let mut harness = recovered_harness(&mock).await;
 
     let mut builder = OrderTestBuilder::new(OrderType::Limit);
 
@@ -1007,7 +1169,7 @@ async fn test_a_time_in_force_outside_the_create_schema_is_denied_without_a_requ
         "the refusal is local: `{reason}`",
     );
     assert!(
-        mock.captured().is_empty(),
+        mock.with_method("POST").is_empty(),
         "a refused command never becomes a request: {:?}",
         mock.targets(),
     );
@@ -1049,7 +1211,7 @@ async fn test_an_illegal_combination_is_denied_without_a_request(
     #[case] client_order_id: &str,
     #[case] expected: &str,
 ) {
-    let mock = MockServer::start(vec![Reply::ok(envelope(&order_json(
+    let mock = MockServer::start_admitted(vec![Reply::ok(envelope(&order_json(
         VENUE_ORDER_ID,
         CLIENT_ORDER_ID,
         "open",
@@ -1060,9 +1222,7 @@ async fn test_an_illegal_combination_is_denied_without_a_request(
     )))])
     .await;
 
-    let mut harness = build_harness(&mock, sandbox_config());
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let mut harness = recovered_harness(&mock).await;
 
     let mut builder = OrderTestBuilder::new(order_type);
 
@@ -1102,7 +1262,7 @@ async fn test_an_illegal_combination_is_denied_without_a_request(
 
     assert!(reason.contains(expected), "was `{reason}`");
     assert!(
-        mock.captured().is_empty(),
+        mock.with_method("POST").is_empty(),
         "a refused command never becomes a request: {:?}",
         mock.targets(),
     );
@@ -1111,15 +1271,13 @@ async fn test_an_illegal_combination_is_denied_without_a_request(
 #[rstest]
 #[tokio::test]
 async fn test_a_post_only_order_the_venue_refuses_keeps_the_venues_own_reason() {
-    let mock = MockServer::start(vec![Reply::answer(
+    let mock = MockServer::start_admitted(vec![Reply::answer(
         400,
         r#"{"success":false,"errorCode":"post_only_has_match","error":"post only order would match"}"#,
     )])
     .await;
 
-    let mut harness = build_harness(&mock, sandbox_config());
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let mut harness = recovered_harness(&mock).await;
 
     let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
     seed_order(&harness, &order);
@@ -1127,7 +1285,7 @@ async fn test_a_post_only_order_the_venue_refuses_keeps_the_venues_own_reason() 
         .client
         .submit_order(submit_command(&order))
         .expect("submit");
-    wait_for_requests(&mock, 1).await;
+    wait_for_writes(&mock, 1).await;
 
     let mut events = Vec::new();
 
@@ -1220,7 +1378,7 @@ async fn test_a_modification_is_rejected_because_this_venue_has_no_atomic_amend(
 #[rstest]
 #[tokio::test]
 async fn test_two_fills_sharing_an_order_id_accumulate_until_the_venue_agrees() {
-    let mock = MockServer::start(vec![
+    let mock = MockServer::start_admitted(vec![
         // The create answer.
         Reply::ok(envelope(&order_json(
             VENUE_ORDER_ID,
@@ -1245,9 +1403,7 @@ async fn test_two_fills_sharing_an_order_id_accumulate_until_the_venue_agrees() 
     ])
     .await;
 
-    let mut harness = build_harness(&mock, sandbox_config());
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let mut harness = recovered_harness(&mock).await;
 
     let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
     seed_order(&harness, &order);
@@ -1344,7 +1500,7 @@ async fn test_two_fills_sharing_an_order_id_accumulate_until_the_venue_agrees() 
     assert_eq!(total_filled(&fills), Quantity::from("0.60"));
     assert_eq!(harness.client.applied_fill_count(), 2);
     assert_eq!(
-        mock.targets(),
+        mock.targets()[RECOVERY_READS..],
         vec![
             "/v1/perps/orders".to_string(),
             format!("/v1/perps/orders/{VENUE_ORDER_ID}"),
@@ -1356,7 +1512,7 @@ async fn test_two_fills_sharing_an_order_id_accumulate_until_the_venue_agrees() 
 #[rstest]
 #[tokio::test]
 async fn test_last_fill_size_is_an_informational_field_and_never_a_fill() {
-    let mock = MockServer::start(vec![Reply::ok(envelope(&order_json(
+    let mock = MockServer::start_admitted(vec![Reply::ok(envelope(&order_json(
         VENUE_ORDER_ID,
         CLIENT_ORDER_ID,
         "open",
@@ -1367,9 +1523,7 @@ async fn test_last_fill_size_is_an_informational_field_and_never_a_fill() {
     )))])
     .await;
 
-    let mut harness = build_harness(&mock, sandbox_config());
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let mut harness = recovered_harness(&mock).await;
 
     let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
     seed_order(&harness, &order);
@@ -1471,14 +1625,12 @@ async fn test_a_batch_2xx_reports_each_item_from_the_venues_own_answer() {
     );
     let refused = r#"{"order":{"clientOrderId":"ondo_probe_c","market":"NVDA-USD.P"},"error":"post only order would match","errorCode":"post_only_has_match"}"#;
 
-    let mock = MockServer::start(vec![Reply::ok(envelope(&format!(
+    let mock = MockServer::start_admitted(vec![Reply::ok(envelope(&format!(
         r#"{{"addedOrders":[{added_first},{added_second}],"failedOrders":[{refused}]}}"#,
     )))])
     .await;
 
-    let mut harness = build_harness(&mock, sandbox_config());
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let mut harness = recovered_harness(&mock).await;
 
     let orders: Vec<OrderAny> = ["ondo_probe_a", "ondo_probe_b", "ondo_probe_c"]
         .iter()
@@ -1516,15 +1668,15 @@ async fn test_a_batch_2xx_reports_each_item_from_the_venues_own_answer() {
         .client
         .submit_order_list(command)
         .expect("submit the list");
-    wait_for_requests(&mock, 1).await;
+    wait_for_writes(&mock, 1).await;
 
-    assert_eq!(mock.captured()[0].target, "/v1/perps/orders/batch");
+    assert_eq!(writes(&mock)[0].target, "/v1/perps/orders/batch");
     assert!(
-        mock.captured()[0]
+        writes(&mock)[0]
             .body
             .starts_with(r#"{"orders":[{"market":"NVDA-USD.P""#),
         "the batch keeps the submitted order: {}",
-        mock.captured()[0].body,
+        writes(&mock)[0].body,
     );
 
     let mut events = Vec::new();
@@ -1586,6 +1738,539 @@ async fn test_a_batch_2xx_reports_each_item_from_the_venues_own_answer() {
     );
 }
 
+/// F02's batch half: a batch whose answer was lost used to leave only a log line. Every item is
+/// now registered as unknown under its own client order id, which is the only reference a probe
+/// may use - a new client order id would be a second order - and the batch is never re-sent.
+#[rstest]
+#[tokio::test]
+async fn test_a_batch_whose_answer_was_lost_leaves_every_item_unknown() {
+    let mock = MockServer::start(admitted_script(vec![Reply::answer(
+        500,
+        r#"{"success":false,"error":"gateway"}"#,
+    )]))
+    .await;
+    let harness = recovered_harness(&mock).await;
+
+    let orders: Vec<OrderAny> = ["ondo_probe_a", "ondo_probe_b"]
+        .iter()
+        .map(|id| limit_order(id, OrderSide::Buy))
+        .collect();
+
+    for order in &orders {
+        seed_order(&harness, order);
+    }
+
+    harness
+        .client
+        .submit_order_list(order_list_command(&orders))
+        .expect("the command is handled");
+
+    // The eight reads the two passes made, and the batch.
+    wait_for_requests(&mock, 9).await;
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    assert_eq!(
+        mock.with_method("POST").len(),
+        1,
+        "a POST that may have been applied is never sent twice: {:?}",
+        mock.targets(),
+    );
+
+    let unknown = harness.client.unknown_submissions();
+
+    assert_eq!(unknown.len(), 2, "both items are registered: {unknown:?}");
+    assert_eq!(
+        unknown
+            .iter()
+            .map(|submission| submission.client_order_id)
+            .collect::<Vec<_>>(),
+        vec![
+            ClientOrderId::from("ondo_probe_a"),
+            ClientOrderId::from("ondo_probe_b")
+        ],
+    );
+    assert!(
+        unknown
+            .iter()
+            .all(|submission| submission.lookup.starts_with("client:ondo_probe_")),
+        "each entry keeps the reference a probe uses: {unknown:?}",
+    );
+    assert!(
+        !harness.client.can_submit_new_orders(),
+        "an unresolved batch is not a licence to trade",
+    );
+}
+
+/// A 2xx that names neither an added nor a refused order for an item settles nothing about that
+/// item. It stays in flight, and it is registered - the log line it used to leave behind is not
+/// something a probe could find.
+#[rstest]
+#[tokio::test]
+async fn test_a_batch_answer_that_omits_an_item_leaves_that_item_unknown() {
+    let added = order_json(
+        VENUE_ORDER_ID,
+        "ondo_probe_a",
+        "open",
+        "1.00",
+        "0.00",
+        "0.00",
+        "0.00",
+    );
+    let refused = r#"{"order":{"clientOrderId":"ondo_probe_b","market":"NVDA-USD.P"},"error":"post only order would match","errorCode":"post_only_has_match"}"#;
+
+    let mock = MockServer::start(admitted_script(vec![Reply::ok(envelope(&format!(
+        r#"{{"addedOrders":[{added}],"failedOrders":[{refused}]}}"#,
+    )))]))
+    .await;
+    let harness = recovered_harness(&mock).await;
+
+    let orders: Vec<OrderAny> = ["ondo_probe_a", "ondo_probe_b", "ondo_probe_c"]
+        .iter()
+        .map(|id| limit_order(id, OrderSide::Buy))
+        .collect();
+
+    for order in &orders {
+        seed_order(&harness, order);
+    }
+
+    harness
+        .client
+        .submit_order_list(order_list_command(&orders))
+        .expect("the command is handled");
+    wait_for_requests(&mock, 9).await;
+
+    let unknown = harness.client.unknown_submissions();
+
+    assert_eq!(
+        unknown.len(),
+        1,
+        "only the item the venue said nothing about is unknown: {unknown:?}",
+    );
+    assert_eq!(
+        unknown[0].client_order_id,
+        ClientOrderId::from("ondo_probe_c"),
+    );
+    assert!(
+        harness.client.tracks(&ClientOrderId::from("ondo_probe_c")),
+        "an item that may be resting is not forgotten",
+    );
+    assert!(
+        !harness.client.can_submit_new_orders(),
+        "one unaccounted item holds the whole account's new risk",
+    );
+}
+
+/// The plan's own batch sample: three items are sent and the venue answers for one. The two it said
+/// nothing about are both unknown, under their own client order ids, and the account admits no new
+/// risk while they are.
+#[rstest]
+#[tokio::test]
+async fn test_a_batch_of_three_answered_for_one_leaves_the_other_two_unknown() {
+    let added = order_json(
+        VENUE_ORDER_ID,
+        "ondo_probe_a",
+        "open",
+        "1.00",
+        "0.00",
+        "0.00",
+        "0.00",
+    );
+
+    let mock = MockServer::start(admitted_script(vec![Reply::ok(envelope(&format!(
+        r#"{{"addedOrders":[{added}],"failedOrders":[]}}"#,
+    )))]))
+    .await;
+    let harness = recovered_harness(&mock).await;
+
+    let orders: Vec<OrderAny> = ["ondo_probe_a", "ondo_probe_b", "ondo_probe_c"]
+        .iter()
+        .map(|id| limit_order(id, OrderSide::Buy))
+        .collect();
+
+    for order in &orders {
+        seed_order(&harness, order);
+    }
+
+    harness
+        .client
+        .submit_order_list(order_list_command(&orders))
+        .expect("the command is handled");
+    wait_for_requests(&mock, 9).await;
+
+    let unknown = harness.client.unknown_submissions();
+
+    assert_eq!(unknown.len(), 2, "the two unanswered items: {unknown:?}");
+    assert_eq!(
+        unknown
+            .iter()
+            .map(|submission| submission.client_order_id)
+            .collect::<Vec<_>>(),
+        vec![
+            ClientOrderId::from("ondo_probe_b"),
+            ClientOrderId::from("ondo_probe_c")
+        ],
+    );
+    assert!(
+        unknown
+            .iter()
+            .all(|submission| !submission.reason.is_empty()
+                && submission.lookup.starts_with("client:ondo_probe_")),
+        "each entry keeps why it is unknown and the reference a probe uses: {unknown:?}",
+    );
+    assert!(
+        harness.client.tracks(&ClientOrderId::from("ondo_probe_b"))
+            && harness.client.tracks(&ClientOrderId::from("ondo_probe_c")),
+        "an item that may be resting is not forgotten",
+    );
+    assert!(!harness.client.can_submit_new_orders());
+}
+
+/// An item attributed to an order this client never submitted accounts for none of its own. The
+/// venue's answer is applied - it is a real order - but it does not settle the item that was sent.
+#[rstest]
+#[tokio::test]
+async fn test_a_batch_answer_that_names_a_foreign_order_leaves_the_item_unknown() {
+    let foreign = order_json(
+        "someone-elses-venue-id",
+        "someone-elses-order",
+        "open",
+        "1.00",
+        "0.00",
+        "0.00",
+        "0.00",
+    );
+
+    let mock = MockServer::start(admitted_script(vec![Reply::ok(envelope(&format!(
+        r#"{{"addedOrders":[{foreign}],"failedOrders":[]}}"#,
+    )))]))
+    .await;
+    let harness = recovered_harness(&mock).await;
+
+    let order = limit_order("ondo_probe_a", OrderSide::Buy);
+
+    seed_order(&harness, &order);
+    harness
+        .client
+        .submit_order_list(order_list_command(&[order]))
+        .expect("the command is handled");
+    wait_for_requests(&mock, 9).await;
+
+    let unknown = harness.client.unknown_submissions();
+
+    assert_eq!(
+        unknown.len(),
+        1,
+        "the item is unattributed, not answered: {unknown:?}",
+    );
+    assert_eq!(
+        unknown[0].client_order_id,
+        ClientOrderId::from("ondo_probe_a"),
+    );
+    assert!(!harness.client.can_submit_new_orders());
+}
+
+/// The other side of the same rule: a command this adapter refuses locally never became a request,
+/// so it is denied by name and enters no uncertainty at all. Recording it as unknown would put an
+/// order that cannot exist into the list a probe has to chase.
+#[rstest]
+#[case(TimeInForce::Fok)]
+#[case(TimeInForce::Gtd)]
+#[tokio::test]
+async fn test_a_command_refused_locally_is_denied_and_never_enters_uncertainty(
+    #[case] time_in_force: TimeInForce,
+) {
+    let mock = MockServer::start(admitted_script(Vec::new())).await;
+    let mut harness = recovered_harness(&mock).await;
+
+    let mut builder = OrderTestBuilder::new(OrderType::Limit);
+
+    builder
+        .trader_id(TraderId::from("TESTER-001"))
+        .strategy_id(StrategyId::from("S-001"))
+        .instrument_id(InstrumentId::from(NVDA))
+        .client_order_id(ClientOrderId::from(CLIENT_ORDER_ID))
+        .side(OrderSide::Buy)
+        .quantity(Quantity::from("1.00"))
+        .price(Price::from("227.50"))
+        .time_in_force(time_in_force);
+
+    if time_in_force == TimeInForce::Gtd {
+        builder.expire_time(UnixNanos::from(1_800_000_000_000_000_000));
+    }
+
+    let order = builder.build();
+
+    seed_order(&harness, &order);
+    harness
+        .client
+        .submit_order(submit_command(&order))
+        .expect("the command is handled");
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+
+    assert!(
+        mock.with_method("POST").is_empty(),
+        "a locally refused command never becomes a request: {:?}",
+        mock.targets(),
+    );
+    assert!(
+        harness.client.unknown_submissions().is_empty(),
+        "a request that never existed is not an unknown outcome",
+    );
+    assert!(
+        harness.client.can_submit_new_orders(),
+        "a local refusal says nothing about the account",
+    );
+    assert!(
+        order_events(&drain(&mut harness))
+            .iter()
+            .any(|event| matches!(event, OrderEventAny::Denied(_))),
+        "the refusal is reported to the strategy",
+    );
+}
+
+/// R0.1's window, and the gate that closes it: admission is decided when the command is accepted,
+/// and the request is built later, because a request waits for the shared budget. The account can
+/// stop admitting new risk *inside* that wait, and a request built then is an order placed against
+/// a state nothing has verified.
+///
+/// The wait is not a sleep this test hopes was long enough: the shared budget is emptied before the
+/// submission, so the submission has to queue for a whole [`QUEUE_WINDOW`], and the state change is
+/// asserted to land inside that window. The one thing the test cannot do is end the wait early -
+/// the client's tasks run on the adapter's own runtime, whose clock a test cannot stop - so the
+/// window is checked rather than shortened.
+#[tokio::test]
+async fn test_a_submission_queued_for_the_budget_is_refused_when_the_account_invalidates() {
+    let mock = MockServer::start(admitted_script(Vec::new())).await;
+    let mut harness = recovered_harness_on(&mock, paced_budget()).await;
+    let budget = harness.client.http_client().budget().clone();
+
+    // The bucket is empty, so the submission below has to wait a whole `QUEUE_WINDOW` for the next
+    // cell. The wait is a real one - the client's tasks run on the runtime the adapter owns, and a
+    // test cannot stop its clock - so what makes this test deterministic is that everything it needs
+    // to happen inside the window is checked to be inside it, below.
+    drain_budget(&budget);
+    let emptied_at = Instant::now();
+
+    let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
+
+    seed_order(&harness, &order);
+    harness
+        .client
+        .submit_order(submit_command(&order))
+        .expect("the command is handled");
+
+    // `Submitted` is emitted at the request boundary, immediately before the acquisition, so seeing
+    // it is seeing the command reach the wait - with no request behind it.
+    let mut events = Vec::new();
+
+    collect_until(&mut harness, &mut events, |events| {
+        order_events(events)
+            .iter()
+            .any(|event| matches!(event, OrderEventAny::Submitted(_)))
+    })
+    .await;
+    assert!(
+        writes(&mock).is_empty(),
+        "the submission is queued for the budget, not sent: {:?}",
+        mock.targets(),
+    );
+
+    // The account stops admitting new risk while the command is queued. This is the property the
+    // test is about, so the window it has to happen in is asserted rather than assumed: a state
+    // change after the budget came back would be a different test entirely.
+    assert!(
+        emptied_at.elapsed() < QUEUE_WINDOW,
+        "the account must stop admitting new risk inside the budget wait, and {:?} of the {:?}        \
+         window has already passed",
+        emptied_at.elapsed(),
+        QUEUE_WINDOW,
+    );
+    harness.client.set_metadata(MetadataValidity::Stale {
+        reason: "the metadata refresh failed".to_string(),
+    });
+
+    // Wait for the budget to come back on its own, and then for the outcome - whichever it is: the
+    // refusal, or the write request that must not exist.
+    collect_until(&mut harness, &mut events, |events| {
+        order_events(events)
+            .iter()
+            .any(|event| matches!(event, OrderEventAny::Rejected(_)))
+            || !writes(&mock).is_empty()
+    })
+    .await;
+
+    let rejected: Vec<&OrderEventAny> = order_events(&events)
+        .into_iter()
+        .filter(|event| matches!(event, OrderEventAny::Rejected(_)))
+        .collect();
+
+    assert!(
+        writes(&mock).is_empty(),
+        "the queued request is refused before it is built: {:?}",
+        mock.targets(),
+    );
+    assert_eq!(
+        rejected.len(),
+        1,
+        "the queued submission is terminalised rather than left in flight: {events:?}",
+    );
+    assert!(
+        rejected.iter().all(|event| match event {
+            OrderEventAny::Rejected(event) => event.reason.contains("order-denied: reconciliation"),
+            _ => false,
+        }),
+        "the refusal carries the account's own reason: {rejected:?}",
+    );
+    assert!(
+        harness.client.unknown_submissions().is_empty(),
+        "a request that never existed is not an unknown outcome",
+    );
+}
+
+/// The batch counterpart of the same window: a list waits for the budget exactly as a single order
+/// does, and an account that stops admitting new risk while it waits refuses the whole list - every
+/// item terminalised, no item left in flight, and nothing sent.
+#[tokio::test]
+async fn test_a_batch_queued_for_the_budget_is_refused_when_the_account_invalidates() {
+    let mock = MockServer::start(admitted_script(Vec::new())).await;
+    let mut harness = recovered_harness_on(&mock, paced_budget()).await;
+    let budget = harness.client.http_client().budget().clone();
+
+    drain_budget(&budget);
+    let emptied_at = Instant::now();
+
+    let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
+
+    seed_order(&harness, &order);
+    harness
+        .client
+        .submit_order_list(order_list_command(&[order]))
+        .expect("the command is handled");
+
+    let mut events = Vec::new();
+
+    collect_until(&mut harness, &mut events, |events| {
+        order_events(events)
+            .iter()
+            .any(|event| matches!(event, OrderEventAny::Submitted(_)))
+    })
+    .await;
+    assert!(
+        writes(&mock).is_empty(),
+        "the batch is queued for the budget, not sent: {:?}",
+        mock.targets(),
+    );
+    assert!(
+        emptied_at.elapsed() < QUEUE_WINDOW,
+        "the account must stop admitting new risk inside the budget wait, and {:?} of the {:?} \
+         window has already passed",
+        emptied_at.elapsed(),
+        QUEUE_WINDOW,
+    );
+
+    harness.client.set_metadata(MetadataValidity::Stale {
+        reason: "the metadata refresh failed".to_string(),
+    });
+
+    collect_until(&mut harness, &mut events, |events| {
+        order_events(events)
+            .iter()
+            .any(|event| matches!(event, OrderEventAny::Rejected(_)))
+            || !writes(&mock).is_empty()
+    })
+    .await;
+
+    let rejected: Vec<&OrderEventAny> = order_events(&events)
+        .into_iter()
+        .filter(|event| matches!(event, OrderEventAny::Rejected(_)))
+        .collect();
+
+    assert!(
+        writes(&mock).is_empty(),
+        "the queued batch is refused before it is built: {:?}",
+        mock.targets(),
+    );
+    assert_eq!(
+        rejected.len(),
+        1,
+        "every item of the queued batch is terminalised: {events:?}",
+    );
+    assert!(
+        rejected.iter().all(|event| match event {
+            OrderEventAny::Rejected(event) => event.reason.contains("order-denied: reconciliation"),
+            _ => false,
+        }),
+        "the refusal carries the account's own reason: {rejected:?}",
+    );
+    assert!(
+        harness.client.unknown_submissions().is_empty(),
+        "no item of a batch that never became a request is an unknown outcome",
+    );
+}
+
+/// A market cancel speaks for a whole market, so an ambiguous answer leaves every order this client
+/// tracks there unsettled - and a confirming read that names none of them settles none of them.
+/// Absent evidence is not evidence (plan §6.3): the orders keep their outstanding cancels, and the
+/// account stops admitting new risk on a state no answer has stated.
+#[rstest]
+#[tokio::test]
+async fn test_a_market_cancel_whose_answer_was_lost_registers_the_markets_orders() {
+    let mock = MockServer::start_admitted(vec![
+        // The create answer: the order is resting.
+        Reply::ok(envelope(&order_json(
+            VENUE_ORDER_ID,
+            CLIENT_ORDER_ID,
+            "open",
+            "1.00",
+            "0.00",
+            "0.00",
+            "0.00",
+        ))),
+        // The market cancel's answer never arrives.
+        Reply::answer(500, r#"{"success":false,"error":"gateway"}"#),
+        // The confirming read lists no order at all.
+        Reply::ok(envelope("[]")),
+    ])
+    .await;
+    let harness = recovered_harness(&mock).await;
+
+    let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
+
+    seed_order(&harness, &order);
+    harness
+        .client
+        .submit_order(submit_command(&order))
+        .expect("the command is handled");
+    wait_for_writes(&mock, 1).await;
+
+    harness
+        .client
+        .cancel_all_orders(cancel_all_command(None))
+        .expect("cancel all");
+    wait_for_writes(&mock, 2).await;
+
+    let cancels = harness.client.unconfirmed_cancels();
+
+    assert_eq!(
+        cancels.len(),
+        1,
+        "the market's order is registered: {cancels:?}"
+    );
+    assert_eq!(
+        cancels[0].client_order_id,
+        ClientOrderId::from(CLIENT_ORDER_ID)
+    );
+    assert_eq!(
+        cancels[0].lookup, VENUE_ORDER_ID,
+        "a cancel is asked about under the venue order id this session holds",
+    );
+    assert!(
+        !harness.client.can_submit_new_orders(),
+        "a cancel no answer has settled is not a state to trade on",
+    );
+}
+
 // ------------------------------------------------------------------------------------------------
 // Cancellation
 // ------------------------------------------------------------------------------------------------
@@ -1593,7 +2278,7 @@ async fn test_a_batch_2xx_reports_each_item_from_the_venues_own_answer() {
 #[rstest]
 #[tokio::test]
 async fn test_a_cancel_the_venue_refuses_with_a_race_code_triggers_a_confirming_query() {
-    let mock = MockServer::start(vec![
+    let mock = MockServer::start_admitted(vec![
         // The create answer.
         Reply::ok(envelope(&order_json(
             VENUE_ORDER_ID,
@@ -1622,9 +2307,7 @@ async fn test_a_cancel_the_venue_refuses_with_a_race_code_triggers_a_confirming_
     ])
     .await;
 
-    let mut harness = build_harness(&mock, sandbox_config());
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let mut harness = recovered_harness(&mock).await;
 
     let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
     seed_order(&harness, &order);
@@ -1661,7 +2344,7 @@ async fn test_a_cancel_the_venue_refuses_with_a_race_code_triggers_a_confirming_
     .await;
 
     assert_eq!(
-        mock.targets(),
+        mock.targets()[RECOVERY_READS..],
         vec![
             "/v1/perps/orders".to_string(),
             format!("/v1/perps/orders/{VENUE_ORDER_ID}"),
@@ -1670,12 +2353,12 @@ async fn test_a_cancel_the_venue_refuses_with_a_race_code_triggers_a_confirming_
         "the refusal is answered by a query, not by calling the cancel API a second time",
     );
     assert_eq!(
-        mock.captured()[1].method,
+        mock.captured()[RECOVERY_READS + 1].method,
         "DELETE",
         "the cancel is a DELETE with no body",
     );
-    assert!(mock.captured()[1].body.is_empty());
-    assert_eq!(mock.captured()[2].method, "GET");
+    assert!(mock.captured()[RECOVERY_READS + 1].body.is_empty());
+    assert_eq!(mock.captured()[RECOVERY_READS + 2].method, "GET");
 
     let state = harness
         .client
@@ -1697,7 +2380,7 @@ async fn test_a_cancel_the_venue_refuses_with_a_race_code_triggers_a_confirming_
 #[rstest]
 #[tokio::test]
 async fn test_a_cancel_all_is_by_market_and_a_side_filtered_one_is_not_sent() {
-    let mock = MockServer::start(vec![Reply::ok(envelope(&order_json(
+    let mock = MockServer::start_admitted(vec![Reply::ok(envelope(&order_json(
         VENUE_ORDER_ID,
         CLIENT_ORDER_ID,
         "canceled",
@@ -1708,9 +2391,7 @@ async fn test_a_cancel_all_is_by_market_and_a_side_filtered_one_is_not_sent() {
     )))])
     .await;
 
-    let mut harness = build_harness(&mock, sandbox_config());
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let harness = recovered_harness(&mock).await;
 
     let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
     seed_order(&harness, &order);
@@ -1748,7 +2429,7 @@ async fn test_a_cancel_all_is_by_market_and_a_side_filtered_one_is_not_sent() {
     tokio::time::sleep(Duration::from_millis(200)).await;
 
     assert_eq!(
-        mock.targets(),
+        mock.targets()[RECOVERY_READS..],
         vec!["/v1/perps/orders".to_string()],
         "a side-filtered cancel-all is refused rather than sent as a whole-market cancel",
     );
@@ -1769,13 +2450,10 @@ async fn test_a_cancel_all_is_by_market_and_a_side_filtered_one_is_not_sent() {
         .cancel_all_orders(unfiltered)
         .expect("cancel all");
 
-    wait_until_async(
-        || async { mock.captured().len() >= 2 },
-        Duration::from_secs(5),
-    )
-    .await;
+    // The create, and the whole-market cancel the unfiltered command sends.
+    wait_for_writes(&mock, 2).await;
 
-    let captured = mock.captured();
+    let captured = writes(&mock);
 
     assert_eq!(captured[1].method, "DELETE");
     assert_eq!(captured[1].target, "/v1/perps/orders?market=NVDA-USD.P");
@@ -1792,7 +2470,7 @@ async fn test_a_cancel_all_is_by_market_and_a_side_filtered_one_is_not_sent() {
 #[rstest]
 #[tokio::test]
 async fn test_a_market_cancel_that_reports_no_order_is_confirmed_by_a_market_query() {
-    let mock = MockServer::start(vec![
+    let mock = MockServer::start_admitted(vec![
         // The create answer: the order exists and is working.
         Reply::ok(envelope(&order_json(
             VENUE_ORDER_ID,
@@ -1821,9 +2499,7 @@ async fn test_a_market_cancel_that_reports_no_order_is_confirmed_by_a_market_que
     ])
     .await;
 
-    let mut harness = build_harness(&mock, sandbox_config());
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let mut harness = recovered_harness(&mock).await;
 
     let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
     seed_order(&harness, &order);
@@ -1856,7 +2532,7 @@ async fn test_a_market_cancel_that_reports_no_order_is_confirmed_by_a_market_que
     .await;
 
     assert_eq!(
-        mock.captured()
+        mock.captured()[RECOVERY_READS..]
             .iter()
             .map(|request| (request.method.as_str(), request.target.as_str()))
             .collect::<Vec<_>>(),
@@ -1888,14 +2564,12 @@ async fn test_a_market_cancel_that_reports_no_order_is_confirmed_by_a_market_que
 async fn test_a_status_this_adapter_cannot_resolve_is_kept_raw_and_leaves_the_order_unresolved(
     #[case] status: &str,
 ) {
-    let mock = MockServer::start(vec![Reply::ok(envelope(&unknown_status_order_json(
+    let mock = MockServer::start_admitted(vec![Reply::ok(envelope(&unknown_status_order_json(
         status,
     )))])
     .await;
 
-    let mut harness = build_harness(&mock, sandbox_config());
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let mut harness = recovered_harness(&mock).await;
 
     let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
     seed_order(&harness, &order);
@@ -1903,7 +2577,7 @@ async fn test_a_status_this_adapter_cannot_resolve_is_kept_raw_and_leaves_the_or
         .client
         .submit_order(submit_command(&order))
         .expect("submit");
-    wait_for_requests(&mock, 1).await;
+    wait_for_writes(&mock, 1).await;
 
     wait_until_async(
         || async {
@@ -1957,11 +2631,9 @@ async fn test_a_repeated_acknowledgement_is_not_reported_twice() {
         "0.00",
     );
 
-    let mock = MockServer::start(vec![Reply::ok(envelope(&body))]).await;
+    let mock = MockServer::start_admitted(vec![Reply::ok(envelope(&body))]).await;
 
-    let mut harness = build_harness(&mock, sandbox_config());
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let mut harness = recovered_harness(&mock).await;
 
     let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
     seed_order(&harness, &order);
@@ -2008,7 +2680,7 @@ async fn test_a_repeated_acknowledgement_is_not_reported_twice() {
 #[rstest]
 #[tokio::test]
 async fn test_a_status_report_carries_the_instrument_the_order_id_and_the_settlement_currency() {
-    let mock = MockServer::start(vec![Reply::ok(envelope(&order_json(
+    let mock = MockServer::start_admitted(vec![Reply::ok(envelope(&order_json(
         VENUE_ORDER_ID,
         CLIENT_ORDER_ID,
         "open",
@@ -2019,9 +2691,7 @@ async fn test_a_status_report_carries_the_instrument_the_order_id_and_the_settle
     )))])
     .await;
 
-    let mut harness = build_harness(&mock, sandbox_config());
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let mut harness = recovered_harness(&mock).await;
 
     let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
     seed_order(&harness, &order);
@@ -2074,7 +2744,7 @@ async fn test_a_status_report_carries_the_instrument_the_order_id_and_the_settle
     assert_eq!(report.quantity, Quantity::from("1.00"));
     assert_eq!(report.post_only, order.is_post_only());
 
-    let fill_mock = MockServer::start(vec![
+    let fill_mock = MockServer::start_admitted(vec![
         // The create answer, so the order this harness reads fills for exists.
         Reply::ok(envelope(&order_json(
             VENUE_ORDER_ID,
@@ -2093,9 +2763,7 @@ async fn test_a_status_report_carries_the_instrument_the_order_id_and_the_settle
     ])
     .await;
 
-    let mut fill_harness = build_harness(&fill_mock, sandbox_config());
-    fill_harness.client.start().expect("start");
-    fill_harness.client.connect().await.expect("connect");
+    let fill_harness = recovered_harness(&fill_mock).await;
 
     let fill_harness_order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
     seed_order(&fill_harness, &fill_harness_order);
@@ -2167,7 +2835,7 @@ async fn test_a_fill_before_the_window_is_filtered_and_one_that_cannot_be_ordere
         r#"{{"id":"unplaceable","orderId":"{VENUE_ORDER_ID}","clientOrderId":"{CLIENT_ORDER_ID}","market":"NVDA-USD.P","price":"0.01","size":"0.10","side":"buy","direction":"openLong","fee":"0.001","isMaker":false}}"#,
     );
 
-    let mock = MockServer::start(vec![
+    let mock = MockServer::start_admitted(vec![
         Reply::ok(envelope(&order_json(
             VENUE_ORDER_ID,
             CLIENT_ORDER_ID,
@@ -2181,9 +2849,7 @@ async fn test_a_fill_before_the_window_is_filtered_and_one_that_cannot_be_ordere
     ])
     .await;
 
-    let mut harness = build_harness(&mock, sandbox_config());
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let harness = recovered_harness(&mock).await;
 
     let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
     seed_order(&harness, &order);
@@ -2236,7 +2902,7 @@ async fn test_a_fill_before_the_window_is_filtered_and_one_that_cannot_be_ordere
 #[rstest]
 #[tokio::test]
 async fn test_a_fill_whose_fee_cannot_be_read_is_refused_rather_than_booked_as_free() {
-    let mock = MockServer::start(vec![Reply::ok(envelope(&order_json(
+    let mock = MockServer::start_admitted(vec![Reply::ok(envelope(&order_json(
         VENUE_ORDER_ID,
         CLIENT_ORDER_ID,
         "open",
@@ -2247,9 +2913,7 @@ async fn test_a_fill_whose_fee_cannot_be_read_is_refused_rather_than_booked_as_f
     )))])
     .await;
 
-    let mut harness = build_harness(&mock, sandbox_config());
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let mut harness = recovered_harness(&mock).await;
 
     let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
     seed_order(&harness, &order);
@@ -2329,6 +2993,158 @@ async fn test_an_order_this_client_did_not_place_is_reported_rather_than_dropped
     assert_eq!(reports[0].instrument_id, InstrumentId::from(NVDA));
     assert_eq!(reports[0].order_status, OrderStatus::PartiallyFilled);
     assert_eq!(reports[0].filled_qty, Quantity::from("1.00"));
+}
+
+// ------------------------------------------------------------------------------------------------
+// The endpoint gate
+// ------------------------------------------------------------------------------------------------
+
+/// Builds the execution client the way [`build_harness`] does and hands back the constructor's own
+/// result.
+///
+/// The endpoint gate is a construction-time decision, so a refusal has to be observed here rather
+/// than through a later request. The event channels are installed exactly as the harness installs
+/// them, so a construction that is *not* refused cannot fail for an unrelated reason.
+fn try_build_client_against(
+    base_url: String,
+    config: OndoExecutionClientConfig,
+) -> anyhow::Result<OndoExecutionClient> {
+    let account_id = AccountId::from(ACCOUNT_ID);
+    let cache = Rc::new(RefCell::new(Cache::default()));
+
+    let core = ExecutionClientCore::new(
+        TraderId::from("TESTER-001"),
+        ClientId::from(CLIENT_ID),
+        *ONDO_VENUE,
+        OmsType::Netting,
+        account_id,
+        AccountType::Margin,
+        None, // base_currency
+        cache,
+    );
+
+    let config = OndoExecutionClientConfig {
+        base_url_http: Some(base_url),
+        account_id: Some(account_id),
+        ..config
+    };
+
+    let credential = OndoCredential::new(
+        OndoEnvironment::Sandbox,
+        TEST_KEY_ID.to_string(),
+        TEST_API_SECRET.to_string(),
+    )
+    .expect("the fake unit-test credential is well formed");
+
+    let (exec_tx, _exec_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (data_tx, _data_rx) = tokio::sync::mpsc::unbounded_channel::<DataEvent>();
+    replace_exec_event_sender(exec_tx);
+    replace_data_event_sender(data_tx);
+
+    OndoExecutionClient::with_credential(core, config, Some(credential), None)
+}
+
+/// The execution client signs order entry, so the endpoint allowlist applies to it as it does to
+/// the transport: an authority that is neither the sandbox host nor a loopback test service never
+/// produces a client, and the refusal is the gate's own, not a later request's failure.
+#[rstest]
+#[case::an_unrelated_remote_host(
+    "https://evil.example",
+    OndoEnvironmentError::HostNotAllowed { host: "evil.example".to_string() }
+)]
+#[case::a_host_that_merely_contains_the_sandbox_host(
+    "https://api.ondoperps-sandbox.xyz.evil.example",
+    OndoEnvironmentError::HostNotAllowed { host: "api.ondoperps-sandbox.xyz.evil.example".to_string() }
+)]
+#[case::a_subdomain_of_the_sandbox_host(
+    "https://eu.api.ondoperps-sandbox.xyz",
+    OndoEnvironmentError::HostNotAllowed { host: "eu.api.ondoperps-sandbox.xyz".to_string() }
+)]
+#[case::userinfo_in_front_of_the_sandbox_host(
+    "https://key:secret@api.ondoperps-sandbox.xyz",
+    OndoEnvironmentError::UserInfoForbidden
+)]
+#[case::the_sandbox_host_over_plain_http(
+    "http://api.ondoperps-sandbox.xyz",
+    OndoEnvironmentError::UnsupportedScheme { scheme: "http".to_string(), expected: "https" }
+)]
+#[case::the_production_host(
+    "https://api.ondoperps.xyz",
+    OndoEnvironmentError::ProductionHostForbidden { host: "api.ondoperps.xyz".to_string() }
+)]
+fn test_the_execution_client_is_not_built_on_an_endpoint_outside_the_allowlist(
+    #[case] url: &str,
+    #[case] expected: OndoEnvironmentError,
+) {
+    let built = try_build_client_against(url.to_string(), sandbox_config());
+    let error = match built {
+        Ok(_) => panic!("`{url}` is not an endpoint this client may sign for"),
+        Err(error) => error,
+    };
+
+    assert_eq!(
+        error.downcast_ref::<OndoEnvironmentError>(),
+        Some(&expected),
+        "the refusal is the gate's own, was `{error}`",
+    );
+}
+
+/// The mock server's own listener, addressed under a name the policy refuses (`0.0.0.0` is not a
+/// loopback address), so "nothing was sent" is an observation about a reachable listener.
+#[rstest]
+#[tokio::test]
+async fn test_a_refused_endpoint_receives_no_request() {
+    let mock = MockServer::start(vec![Reply::ok(envelope("{}"))]).await;
+    let refused = mock.url().replace("127.0.0.1", "0.0.0.0");
+
+    let built = try_build_client_against(refused, sandbox_config());
+
+    assert!(
+        built.is_err(),
+        "a host outside the allowlist never produces a client",
+    );
+    assert!(
+        mock.captured().is_empty(),
+        "the refusal happens before any request exists",
+    );
+}
+
+/// Production is refused both ways at once: the configuration that asks for production order entry
+/// and names a production (or otherwise refused) endpoint is refused, and nothing is sent.
+#[rstest]
+#[tokio::test]
+async fn test_a_refused_endpoint_is_refused_with_production_orders_requested() {
+    let mock = MockServer::start(vec![Reply::ok(envelope("{}"))]).await;
+
+    for url in [
+        "https://api.ondoperps.xyz",
+        "https://api.ondoperps.xyz.evil.example",
+        "https://key:secret@api.ondoperps-sandbox.xyz",
+    ] {
+        let built = try_build_client_against(
+            url.to_string(),
+            OndoExecutionClientConfig {
+                allow_production_orders: true,
+                ..sandbox_config()
+            },
+        );
+
+        let error = match built {
+            Ok(_) => panic!("`{url}` and production order entry are both refused"),
+            Err(error) => error,
+        };
+
+        assert_eq!(
+            error.downcast_ref::<OndoExecutionConfigError>(),
+            Some(&OndoExecutionConfigError::ProductionOrdersUnsupported),
+            "the flag is refused by name whatever the endpoint says, was `{error}`",
+        );
+    }
+
+    assert!(
+        mock.captured().is_empty(),
+        "the refusal happens before a socket is opened",
+    );
 }
 
 // ------------------------------------------------------------------------------------------------

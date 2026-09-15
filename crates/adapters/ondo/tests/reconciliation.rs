@@ -56,6 +56,7 @@ use nautilus_model::{
     events::OrderEventAny,
     identifiers::{
         AccountId, ClientId, ClientOrderId, InstrumentId, OrderListId, StrategyId, TraderId,
+        VenueOrderId,
     },
     orders::{Order, OrderAny, OrderList, builder::OrderTestBuilder},
     reports::FillReport,
@@ -68,11 +69,11 @@ use nautilus_ondo::{
     execution::OndoExecutionClient,
     http::{orders::OndoOrderStatus, private::OndoApiFill, rate_limit::OndoRateBudget},
     reconciliation::{
-        AccountReading, BalanceReading, DeadMansSwitch, DeadMansSwitchMessage, DeadMansSwitchState,
-        Finding, LedgerJournal, MetadataValidity, ONDO_DMS_CHANNEL, ONDO_SUBMISSION_PROBE_INTERVAL,
-        ONDO_SUBMISSION_UNKNOWN_SECS, OrderReading, PositionDirection, PositionReading,
-        ProbeDisposition, ProbeOutcome, ReconciliationBuffer, ReconciliationMachine,
-        ReconciliationState, StopStep,
+        AccountReading, Admission, BalanceReading, DeadMansSwitch, DeadMansSwitchMessage,
+        DeadMansSwitchState, Finding, LedgerJournal, MetadataValidity, NewRiskRefusal,
+        ONDO_DMS_CHANNEL, ONDO_SUBMISSION_PROBE_INTERVAL, ONDO_SUBMISSION_UNKNOWN_SECS,
+        OrderReading, PositionDirection, PositionReading, ProbeDisposition, ProbeOutcome,
+        ReconciliationBuffer, ReconciliationMachine, ReconciliationState, StopStep, UncertainKind,
     },
 };
 use rstest::rstest;
@@ -210,19 +211,36 @@ fn recovered_machine() -> ReconciliationMachine {
 // The state machine and the fail-closed predicate (plan §6.4)
 // ------------------------------------------------------------------------------------------------
 
+/// F01: a machine that has never held a session used to be excused from governing new risk, on the
+/// reasoning that there was no venue state to be uncertain about yet. There is: the account has
+/// never been read, which is the least verified state there is, and an order placed against it is
+/// the thing the entrance check exists to stop.
 #[rstest]
-fn test_a_machine_with_no_session_never_permits_a_new_order() {
+fn test_a_machine_that_has_never_held_a_session_refuses_new_risk() {
     let machine = ReconciliationMachine::new(account_id(), 30);
 
     assert_eq!(machine.state(), ReconciliationState::Disconnected);
     assert!(!machine.session_established());
 
-    // The plan's predicate is fail-closed: only a recovered session, with usable metadata and a
-    // switch that permits orders, returns true.
     assert!(!machine.can_submit_new_orders());
-    // And it governs only a session that has begun: before one, a client's local refusals are all
-    // there is to apply, which is the one place the two predicates differ.
-    assert!(!machine.refuses_new_risk());
+    assert!(machine.refuses_new_risk());
+
+    // And the decision says why, rather than leaving a caller to infer it from a state.
+    let refusal = machine
+        .new_risk_refusal()
+        .expect("a fresh machine refuses new risk");
+
+    assert_eq!(
+        machine.admission(),
+        Admission::Refused {
+            reason: refusal.clone()
+        },
+    );
+    assert_eq!(
+        refusal,
+        NewRiskRefusal::AccountState(ReconciliationState::Disconnected),
+    );
+    assert_eq!(refusal.reason(), "the account is disconnected");
 }
 
 #[rstest]
@@ -381,7 +399,11 @@ fn test_a_pass_that_could_not_read_the_account_leaves_it_uncertain() {
 fn test_a_lost_submission_answer_is_probed_under_its_own_client_id() {
     let mut machine = ReconciliationMachine::new(account_id(), 30);
 
-    machine.note_unknown_submission(client_order_id(CLIENT_ORDER_ID), secs(1));
+    machine.note_unknown_submission(
+        client_order_id(CLIENT_ORDER_ID),
+        "the create request was not answered".to_string(),
+        secs(1),
+    );
 
     let unknown = machine.unknown_submissions();
 
@@ -410,7 +432,11 @@ fn test_a_lost_submission_answer_is_probed_under_its_own_client_id() {
 fn test_a_404_inside_the_window_is_not_evidence_the_order_was_never_submitted() {
     let mut machine = ReconciliationMachine::new(account_id(), 30);
 
-    machine.note_unknown_submission(client_order_id(CLIENT_ORDER_ID), secs(1));
+    machine.note_unknown_submission(
+        client_order_id(CLIENT_ORDER_ID),
+        "the create request was not answered".to_string(),
+        secs(1),
+    );
 
     let disposition = machine.note_probe(
         &client_order_id(CLIENT_ORDER_ID),
@@ -433,7 +459,11 @@ fn test_a_404_inside_the_window_is_not_evidence_the_order_was_never_submitted() 
 fn test_an_inconclusive_probe_keeps_the_submission_unknown() {
     let mut machine = ReconciliationMachine::new(account_id(), 30);
 
-    machine.note_unknown_submission(client_order_id(CLIENT_ORDER_ID), secs(1));
+    machine.note_unknown_submission(
+        client_order_id(CLIENT_ORDER_ID),
+        "the create request was not answered".to_string(),
+        secs(1),
+    );
 
     let disposition = machine.note_probe(
         &client_order_id(CLIENT_ORDER_ID),
@@ -451,7 +481,11 @@ fn test_an_inconclusive_probe_keeps_the_submission_unknown() {
 fn test_thirty_seconds_of_an_unresolved_submission_ends_the_probe_and_keeps_the_ids() {
     let mut machine = ReconciliationMachine::new(account_id(), 30);
 
-    machine.note_unknown_submission(client_order_id(CLIENT_ORDER_ID), secs(1));
+    machine.note_unknown_submission(
+        client_order_id(CLIENT_ORDER_ID),
+        "the create request was not answered".to_string(),
+        secs(1),
+    );
 
     // Inside the window the probe keeps going.
     assert!(
@@ -493,7 +527,11 @@ fn test_thirty_seconds_of_an_unresolved_submission_ends_the_probe_and_keeps_the_
 fn test_an_outstanding_unknown_submission_keeps_a_recovered_account_uncertain() {
     let mut machine = recovered_machine();
 
-    machine.note_unknown_submission(client_order_id(CLIENT_ORDER_ID), secs(3));
+    machine.note_unknown_submission(
+        client_order_id(CLIENT_ORDER_ID),
+        "the create request was not answered".to_string(),
+        secs(3),
+    );
 
     let state = machine.conclude_pass(&clean_reading(), secs(3));
 
@@ -517,12 +555,19 @@ fn test_an_outstanding_unknown_submission_keeps_a_recovered_account_uncertain() 
 fn test_a_cancel_whose_answer_was_lost_is_confirmed_by_a_query_before_the_account_is_ready() {
     let mut machine = recovered_machine();
 
-    machine.note_unconfirmed_cancel(client_order_id(CLIENT_ORDER_ID), secs(3));
-
-    assert_eq!(
-        machine.unconfirmed_cancels(),
-        vec![client_order_id(CLIENT_ORDER_ID)]
+    machine.note_unconfirmed_cancel(
+        client_order_id(CLIENT_ORDER_ID),
+        None,
+        "the cancel request was not answered".to_string(),
+        secs(3),
     );
+
+    let cancels = machine.unconfirmed_cancels();
+
+    assert_eq!(cancels.len(), 1);
+    assert_eq!(cancels[0].client_order_id, client_order_id(CLIENT_ORDER_ID));
+    assert_eq!(cancels[0].kind, UncertainKind::Cancel);
+    assert_eq!(cancels[0].lookup, format!("client:{CLIENT_ORDER_ID}"));
 
     let state = machine.conclude_pass(&clean_reading(), secs(3));
 
@@ -537,6 +582,124 @@ fn test_a_cancel_whose_answer_was_lost_is_confirmed_by_a_query_before_the_accoun
     assert_eq!(
         machine.conclude_pass(&clean_reading(), secs(5)),
         ReconciliationState::Ready
+    );
+}
+
+/// A cancel is settled by the same bounded probe a submission is, under the reference that
+/// identifies it - and settling it returns the account to trading, which is what keeps the gate
+/// from being a permanent lock.
+#[rstest]
+fn test_an_unconfirmed_cancel_is_settled_by_a_probe_and_returns_the_account_to_trading() {
+    let mut machine = recovered_machine();
+
+    machine.note_unconfirmed_cancel(
+        client_order_id(CLIENT_ORDER_ID),
+        Some(VenueOrderId::from(VENUE_ORDER_ID)),
+        "the cancel request was not answered".to_string(),
+        secs(3),
+    );
+
+    assert!(!machine.can_submit_new_orders());
+    assert_eq!(
+        machine.probe_due(secs(3)),
+        vec![client_order_id(CLIENT_ORDER_ID)],
+        "the probe is due immediately, not at the end of the window",
+    );
+
+    // The venue order id is what a cancel is asked about under: this session already holds it, and
+    // it is unambiguous in a way the client order id is not.
+    assert_eq!(
+        machine
+            .uncertain_outcome(&client_order_id(CLIENT_ORDER_ID))
+            .map(|outcome| outcome.lookup.clone()),
+        Some(VENUE_ORDER_ID.to_string()),
+    );
+
+    // A 404 settles nothing, so the cancel is still outstanding and still stops new risk.
+    assert!(matches!(
+        machine.note_probe(
+            &client_order_id(CLIENT_ORDER_ID),
+            ProbeOutcome::NotFound,
+            secs(4)
+        ),
+        ProbeDisposition::KeepProbing { .. }
+    ));
+    assert!(!machine.can_submit_new_orders());
+    assert_eq!(machine.unconfirmed_cancels().len(), 1);
+
+    // The venue's own answer settles it.
+    assert_eq!(
+        machine.note_probe(
+            &client_order_id(CLIENT_ORDER_ID),
+            ProbeOutcome::Found,
+            secs(5)
+        ),
+        ProbeDisposition::Resolved,
+    );
+    assert!(machine.unconfirmed_cancels().is_empty());
+    assert!(machine.can_submit_new_orders());
+}
+
+/// A permit is a decision about a moment, and the moment passes. The events that revoke permission
+/// move the machine's generation, so a permit issued before one is refused afterwards even though
+/// the account is tradable again by the time the request would go out - which is the race a
+/// second, later admission check exists to close.
+#[rstest]
+fn test_a_permit_issued_before_a_revocation_is_not_valid_afterwards() {
+    let mut machine = recovered_machine();
+    let permit = machine.admission();
+
+    assert!(permit.is_granted());
+    assert_eq!(
+        machine.revalidate(&permit),
+        permit,
+        "a permit with nothing against it is still the current decision",
+    );
+
+    machine.note_unknown_submission(
+        client_order_id(CLIENT_ORDER_ID),
+        "the create request was not answered".to_string(),
+        secs(3),
+    );
+
+    assert_eq!(
+        machine.revalidate(&permit),
+        Admission::Refused {
+            reason: NewRiskRefusal::UnknownSubmissions {
+                client_order_ids: vec![client_order_id(CLIENT_ORDER_ID)],
+            },
+        },
+        "the outcome is named, not merely counted",
+    );
+
+    assert_eq!(
+        machine.note_probe(
+            &client_order_id(CLIENT_ORDER_ID),
+            ProbeOutcome::Found,
+            secs(4)
+        ),
+        ProbeDisposition::Resolved,
+    );
+    assert!(
+        machine.can_submit_new_orders(),
+        "the venue's answer settles the account",
+    );
+
+    // The old permit is still refused: the decision it carries was taken before this client learned
+    // something, and `Found` is not evidence that the earlier decision was safe to act on.
+    assert_eq!(
+        machine.revalidate(&permit),
+        Admission::Refused {
+            reason: NewRiskRefusal::Superseded,
+        },
+    );
+
+    let current = machine.admission();
+
+    assert_eq!(
+        machine.revalidate(&current),
+        current,
+        "a decision taken now is the current one",
     );
 }
 
@@ -1570,6 +1733,36 @@ fn cancel_command(order: &OrderAny) -> CancelOrder {
     )
 }
 
+/// A batch submission carrying `orders` as one native list.
+fn order_list_command(orders: &[OrderAny]) -> SubmitOrderList {
+    let inits: Vec<_> = orders
+        .iter()
+        .map(|order| order.init_event().clone())
+        .collect();
+
+    let list = OrderList::new(
+        OrderListId::from("OL-1"),
+        nvda(),
+        StrategyId::from("S-001"),
+        orders.iter().map(|order| order.client_order_id()).collect(),
+        UnixNanos::default(),
+    );
+
+    SubmitOrderList::new(
+        TraderId::from("TESTER-001"),
+        Some(ClientId::from(CLIENT_ID)),
+        StrategyId::from("S-001"),
+        list,
+        inits,
+        None, // exec_algorithm_id
+        None, // position_id
+        None, // params
+        UUID4::new(),
+        UnixNanos::default(),
+        None, // correlation_id
+    )
+}
+
 /// Drains whatever the client has emitted so far, without waiting.
 fn drain(harness: &mut Harness) -> Vec<ExecutionEvent> {
     let mut events = Vec::new();
@@ -1607,6 +1800,9 @@ async fn collect_until(
     }
 }
 
+/// The reads the two reconciliation passes make before a test's own replies: four per pass.
+const RECOVERY_READS: usize = 8;
+
 /// Waits until the mock server has received `count` requests.
 async fn wait_for_requests(mock: &MockServer, count: usize) {
     let start = Instant::now();
@@ -1619,6 +1815,76 @@ async fn wait_for_requests(mock: &MockServer, count: usize) {
         );
 
         tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+/// Waits until the mock server has received `count` requests of this test's own commands.
+///
+/// The recovery reads a client makes before it admits anything are not requests a test's own
+/// commands caused, and every count below is about those.
+async fn wait_for_writes(mock: &MockServer, count: usize) {
+    wait_for_requests(mock, count + RECOVERY_READS).await;
+}
+
+/// The four reads one pass makes when the account is empty, in the order the pass makes them.
+fn empty_pass_script() -> Vec<Reply> {
+    vec![
+        Reply::ok(orders_page(&[], None)),
+        Reply::ok(fills_page(&[], None)),
+        Reply::ok(envelope("[]")),
+        Reply::ok(envelope(&balance_json())),
+    ]
+}
+
+/// `replies` behind the two agreeing passes a new order is admitted after.
+///
+/// The account they read is empty, so the baseline the first pass adopts is empty too: a test that
+/// then trades sees its own commands and nothing else.
+fn admitted_script(replies: Vec<Reply>) -> Vec<Reply> {
+    let mut script = empty_pass_script();
+
+    script.extend(empty_pass_script());
+    script.extend(replies);
+
+    script
+}
+
+/// A harness whose account is recovered: current metadata, two agreeing passes, nothing unknown.
+///
+/// New risk is refused from construction (plan §6.4), so a test that submits has to establish this
+/// first - and the mock has to be started on [`admitted_script`], which answers the eight reads the
+/// two passes make before the test's own replies.
+async fn recovered_harness(mock: &MockServer) -> Harness {
+    let mut harness = build_harness(mock, sandbox_config());
+
+    harness.client.start().expect("start");
+    harness.client.connect().await.expect("connect");
+    harness.client.set_metadata(MetadataValidity::Current);
+    harness.client.begin_recovery(secs(1));
+    harness
+        .client
+        .reconcile_account(secs(1))
+        .await
+        .expect("the first pass reads an empty account");
+    harness
+        .client
+        .reconcile_account(secs(2))
+        .await
+        .expect("the second pass reads an empty account");
+
+    assert!(
+        harness.client.can_submit_new_orders(),
+        "the harness is admitted: a submission test needs an account new risk is allowed on",
+    );
+
+    harness
+}
+
+impl MockServer {
+    /// A server whose script answers the two reconciliation passes a submission is admitted after,
+    /// then the given replies.
+    async fn start_admitted(script: Vec<Reply>) -> Self {
+        Self::start(admitted_script(script)).await
     }
 }
 
@@ -1812,6 +2078,431 @@ async fn test_a_submission_may_be_refused_while_the_account_is_being_recovered()
     );
 }
 
+/// F01: a client that has never established a session used to pass the entrance check and send
+/// the order. New risk is refused from construction, so neither a single order nor a batch becomes
+/// a request. The events are asserted as well as the count: an order that is silently dropped is
+/// not a refusal a strategy can see.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_fresh_client_refuses_a_submission_and_a_batch_before_any_session_exists() {
+    let mock = MockServer::start(vec![Reply::ok(envelope("{}"))]).await;
+    let mut harness = build_harness(&mock, sandbox_config());
+
+    harness.client.start().expect("start");
+    harness.client.connect().await.expect("connect");
+
+    let single = limit_order("ondo_probe_fresh", OrderSide::Buy);
+
+    seed_order(&harness, &single);
+    harness
+        .client
+        .submit_order(submit_command(&single))
+        .expect("the command is handled");
+
+    let batched = limit_order("ondo_probe_fresh_2", OrderSide::Sell);
+
+    seed_order(&harness, &batched);
+    harness
+        .client
+        .submit_order_list(order_list_command(&[batched]))
+        .expect("the command is handled");
+
+    // A request that should not exist is given every chance to appear, and the mock time to record
+    // it: "not yet" is not the property under test.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    assert!(
+        mock.with_method("POST").is_empty(),
+        "no create request exists for an account this client has never read: {:?}",
+        mock.targets(),
+    );
+
+    let events = drain(&mut harness);
+    let denied: Vec<&OrderEventAny> = events
+        .iter()
+        .filter_map(|event| match event {
+            ExecutionEvent::Order(order) => Some(order),
+            _ => None,
+        })
+        .filter(|event| matches!(event, OrderEventAny::Denied(_)))
+        .collect();
+
+    assert_eq!(
+        denied.len(),
+        2,
+        "the order and the batch item are both denied: {events:?}",
+    );
+    assert!(
+        denied.iter().all(|event| match event {
+            OrderEventAny::Denied(denied) => denied.reason.contains("order-denied: reconciliation"),
+            _ => false,
+        }),
+        "each denial names the reason: {denied:?}",
+    );
+}
+
+/// The other half of F01: the account was read and recovered, and then the session ended. What the
+/// session established is unverified from that moment, so the next order is refused without a
+/// request - the state a reconnect leaves behind is not a licence to trade.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_disconnect_after_a_recovery_refuses_the_next_submission_without_a_request() {
+    let mock = MockServer::start(two_clean_passes()).await;
+    let mut harness = build_harness(&mock, sandbox_config());
+
+    harness.client.start().expect("start");
+    harness.client.connect().await.expect("connect");
+    harness.client.set_metadata(MetadataValidity::Current);
+    harness.client.begin_recovery(secs(1));
+    harness
+        .client
+        .reconcile_account(secs(1))
+        .await
+        .expect("the first pass");
+    harness
+        .client
+        .reconcile_account(secs(2))
+        .await
+        .expect("the second pass");
+
+    assert!(
+        harness.client.can_submit_new_orders(),
+        "the account is recovered"
+    );
+
+    harness.client.disconnect().await.expect("disconnect");
+
+    let single = limit_order("ondo_probe_after_disconnect", OrderSide::Buy);
+
+    seed_order(&harness, &single);
+    harness
+        .client
+        .submit_order(submit_command(&single))
+        .expect("the command is handled");
+
+    let batched = limit_order("ondo_probe_after_disconnect_2", OrderSide::Sell);
+
+    seed_order(&harness, &batched);
+    harness
+        .client
+        .submit_order_list(order_list_command(&[batched]))
+        .expect("the command is handled");
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    assert!(
+        mock.with_method("POST").is_empty(),
+        "a session that ended leaves nothing to trade on: {:?}",
+        mock.targets(),
+    );
+
+    let events = drain(&mut harness);
+    let denied = events
+        .iter()
+        .filter(|event| matches!(event, ExecutionEvent::Order(OrderEventAny::Denied(_))))
+        .count();
+
+    assert_eq!(denied, 2, "both commands are denied: {events:?}");
+}
+
+/// The gate is evaluated twice: once when the command is accepted, and once inside the submission
+/// task immediately before the request exists. This is the second one. The command is admissible
+/// when it is taken and the account is invalidated while it is still only queued, which is the
+/// window a rate-limited write path spends waiting for its budget.
+///
+/// The runtime is the single-threaded one on purpose: `submit_order` is synchronous, so a task it
+/// spawns cannot poll until this future yields, and the test - not a sleep - decides the order of
+/// the two events.
+#[tokio::test]
+async fn test_a_submission_is_refused_when_the_account_is_invalidated_before_its_request() {
+    let mock = MockServer::start(two_clean_passes()).await;
+    let mut harness = build_harness(&mock, sandbox_config());
+
+    harness.client.start().expect("start");
+    harness.client.connect().await.expect("connect");
+    harness.client.set_metadata(MetadataValidity::Current);
+    harness.client.begin_recovery(secs(1));
+    harness
+        .client
+        .reconcile_account(secs(1))
+        .await
+        .expect("the first pass");
+    harness
+        .client
+        .reconcile_account(secs(2))
+        .await
+        .expect("the second pass");
+
+    assert!(harness.client.can_submit_new_orders());
+
+    let order = limit_order("ondo_probe_queued", OrderSide::Buy);
+
+    seed_order(&harness, &order);
+    harness
+        .client
+        .submit_order(submit_command(&order))
+        .expect("the command is handled");
+
+    // The account is invalidated while the command is queued: the admission it was given is no
+    // longer the current one, and no request may follow from it.
+    harness.client.set_metadata(MetadataValidity::Stale {
+        reason: "the metadata refresh failed".to_string(),
+    });
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    assert!(
+        mock.with_method("POST").is_empty(),
+        "the queued submission is refused before its request exists: {:?}",
+        mock.targets(),
+    );
+
+    let events = drain(&mut harness);
+    let denied: Vec<&OrderEventAny> = events
+        .iter()
+        .filter_map(|event| match event {
+            ExecutionEvent::Order(order) => Some(order),
+            _ => None,
+        })
+        .filter(|event| matches!(event, OrderEventAny::Denied(_)))
+        .collect();
+
+    assert_eq!(
+        denied.len(),
+        1,
+        "the refused command is denied rather than left in flight: {events:?}",
+    );
+}
+
+/// F02: a submission whose answer was lost used to leave the account tradable. It does not any
+/// more - not after a reconciliation pass, and not before one either. The next order's write
+/// request count is zero, which is the property the plan asks for; the deny event is how the
+/// strategy learns.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_lost_submission_answer_stops_the_next_order_from_being_sent() {
+    let mut script = two_clean_passes();
+
+    // The create is answered and the answer never reaches this process.
+    script.push(Reply::answer(500, r#"{"success":false,"error":"gateway"}"#));
+
+    let mock = MockServer::start(script).await;
+    let mut harness = build_harness(&mock, sandbox_config());
+
+    harness.client.start().expect("start");
+    harness.client.connect().await.expect("connect");
+    harness.client.set_metadata(MetadataValidity::Current);
+    harness.client.begin_recovery(secs(1));
+    harness
+        .client
+        .reconcile_account(secs(1))
+        .await
+        .expect("the first pass");
+    harness
+        .client
+        .reconcile_account(secs(2))
+        .await
+        .expect("the second pass");
+
+    let first = limit_order("ondo_probe_lost", OrderSide::Buy);
+
+    seed_order(&harness, &first);
+    harness
+        .client
+        .submit_order(submit_command(&first))
+        .expect("the command is handled");
+
+    let start = Instant::now();
+
+    while harness.client.unknown_submissions().is_empty() {
+        assert!(
+            start.elapsed() <= Duration::from_secs(5),
+            "the lost answer leaves the submission unknown: {:?}",
+            mock.targets(),
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+
+    assert!(
+        !harness.client.can_submit_new_orders(),
+        "an unsettled submission is not a licence to trade",
+    );
+
+    let second = limit_order("ondo_probe_after_lost", OrderSide::Sell);
+
+    seed_order(&harness, &second);
+    harness
+        .client
+        .submit_order(submit_command(&second))
+        .expect("the command is handled");
+
+    // Give a request that should not exist every chance to appear.
+    tokio::time::sleep(Duration::from_millis(200)).await;
+
+    assert_eq!(
+        mock.with_method("POST").len(),
+        1,
+        "only the lost submission was ever sent: {:?}",
+        mock.targets(),
+    );
+
+    let events = drain(&mut harness);
+    let denied: Vec<&OrderEventAny> = events
+        .iter()
+        .filter_map(|event| match event {
+            ExecutionEvent::Order(order) => Some(order),
+            _ => None,
+        })
+        .filter(|event| matches!(event, OrderEventAny::Denied(_)))
+        .collect();
+
+    assert_eq!(
+        denied.len(),
+        1,
+        "the second submission is denied by name: {events:?}",
+    );
+}
+
+/// An unsettled outcome blocks new risk, and settling it restores the account. A gate that could
+/// never reopen would be a different defect from the one F02 describes.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_settled_submission_restores_the_account_without_a_permanent_lock() {
+    let mut script = two_clean_passes();
+
+    // The lost answer, then the probe that finds the order the venue did apply.
+    script.push(Reply::answer(500, r#"{"success":false,"error":"gateway"}"#));
+    script.push(Reply::ok(envelope(&api_order(
+        VENUE_ORDER_ID,
+        CLIENT_ORDER_ID,
+        "open",
+        "0.00",
+    ))));
+    // The order that follows the recovery.
+    script.push(Reply::ok(envelope(&api_order(
+        VENUE_ORDER_ID,
+        "ondo_probe_after_settlement",
+        "open",
+        "0.00",
+    ))));
+
+    let mock = MockServer::start(script).await;
+    let mut harness = build_harness(&mock, sandbox_config());
+
+    harness.client.start().expect("start");
+    harness.client.connect().await.expect("connect");
+    harness.client.set_metadata(MetadataValidity::Current);
+    harness.client.begin_recovery(secs(1));
+    harness
+        .client
+        .reconcile_account(secs(1))
+        .await
+        .expect("the first pass");
+    harness
+        .client
+        .reconcile_account(secs(2))
+        .await
+        .expect("the second pass");
+
+    let first = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
+
+    seed_order(&harness, &first);
+    harness
+        .client
+        .submit_order(submit_command(&first))
+        .expect("the command is handled");
+
+    let start = Instant::now();
+
+    while harness.client.unknown_submissions().is_empty() {
+        assert!(
+            start.elapsed() <= Duration::from_secs(5),
+            "the lost answer leaves the submission unknown",
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+
+    assert!(!harness.client.can_submit_new_orders());
+
+    let first_seen = harness.client.unknown_submissions()[0].first_seen;
+    let probe = harness.client.probe_unknown_submissions(first_seen).await;
+
+    assert_eq!(probe.len(), 1);
+    assert_eq!(probe[0].disposition, ProbeDisposition::Resolved);
+    assert!(harness.client.unknown_submissions().is_empty());
+
+    assert!(
+        harness.client.can_submit_new_orders(),
+        "the venue's own answer settles the submission and the account is tradable again",
+    );
+
+    let second = limit_order("ondo_probe_after_settlement", OrderSide::Sell);
+
+    seed_order(&harness, &second);
+    harness
+        .client
+        .submit_order(submit_command(&second))
+        .expect("the command is handled");
+
+    wait_for_requests(&mock, 11).await;
+
+    assert_eq!(
+        mock.with_method("POST").len(),
+        2,
+        "the settled account sends the next order: {:?}",
+        mock.targets(),
+    );
+}
+
+/// A cancel the venue accepted without reporting the order is not a cancel, and a confirming query
+/// that fails leaves it exactly there. F02's other half: that has to be registered, or the account
+/// goes on trading on a state no answer has stated.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_cancel_that_carried_no_order_stays_unconfirmed_when_its_query_fails() {
+    let mut script = two_clean_passes();
+
+    // The cancel is answered with a success carrying no readable order, and the query that would
+    // settle it fails.
+    script.push(Reply::ok(envelope("{}")));
+    script.push(Reply::answer(
+        404,
+        r#"{"success":false,"error":"not found"}"#,
+    ));
+
+    let mock = MockServer::start(script).await;
+    let mut harness = build_harness(&mock, sandbox_config());
+
+    harness.client.start().expect("start");
+    harness.client.connect().await.expect("connect");
+    harness.client.set_metadata(MetadataValidity::Current);
+    harness.client.begin_recovery(secs(1));
+    harness
+        .client
+        .reconcile_account(secs(1))
+        .await
+        .expect("the first pass");
+    harness
+        .client
+        .reconcile_account(secs(2))
+        .await
+        .expect("the second pass");
+
+    let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
+
+    seed_order(&harness, &order);
+    harness
+        .client
+        .cancel_order(cancel_command(&order))
+        .expect("the command is handled");
+
+    // The cancel and its confirming query.
+    wait_for_requests(&mock, 10).await;
+
+    assert!(
+        !harness.client.unconfirmed_cancels().is_empty(),
+        "the cancel stays unconfirmed until an answer states the order's state: {:?}",
+        mock.targets(),
+    );
+    assert!(!harness.client.can_submit_new_orders());
+    assert!(harness.client.refuses_new_risk());
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn test_a_pass_that_cannot_walk_the_fills_page_leaves_the_account_uncertain() {
     // The fills endpoint repeats a cursor: a walk that stopped early must not look like a history
@@ -1851,7 +2542,7 @@ async fn test_a_pass_that_cannot_walk_the_fills_page_leaves_the_account_uncertai
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_a_submission_whose_answer_was_lost_is_probed_by_its_client_id_and_never_resent() {
-    let mock = MockServer::start(vec![
+    let mock = MockServer::start_admitted(vec![
         // The create is answered, the answer never reaches this process (the venue applied it).
         Reply::answer(500, r#"{"success":false,"error":"gateway"}"#),
         // The probe by client order id finds it.
@@ -1863,10 +2554,7 @@ async fn test_a_submission_whose_answer_was_lost_is_probed_by_its_client_id_and_
         ))),
     ])
     .await;
-    let mut harness = build_harness(&mock, sandbox_config());
-
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let harness = recovered_harness(&mock).await;
 
     let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
 
@@ -1876,7 +2564,7 @@ async fn test_a_submission_whose_answer_was_lost_is_probed_by_its_client_id_and_
         .submit_order(submit_command(&order))
         .expect("the command is handled");
 
-    wait_for_requests(&mock, 1).await;
+    wait_for_writes(&mock, 1).await;
 
     // Give the spawned submission task time to record the unknown outcome.
     let start = Instant::now();
@@ -1915,7 +2603,7 @@ async fn test_a_submission_whose_answer_was_lost_is_probed_by_its_client_id_and_
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_a_404_probe_inside_the_window_neither_settles_nor_resubmits_the_order() {
-    let mock = MockServer::start(vec![
+    let mock = MockServer::start_admitted(vec![
         Reply::answer(500, r#"{"success":false,"error":"gateway"}"#),
         Reply::answer(404, r#"{"success":false,"error":"not found"}"#),
         Reply::answer(404, r#"{"success":false,"error":"not found"}"#),
@@ -1927,10 +2615,7 @@ async fn test_a_404_probe_inside_the_window_neither_settles_nor_resubmits_the_or
         ))),
     ])
     .await;
-    let mut harness = build_harness(&mock, sandbox_config());
-
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let harness = recovered_harness(&mock).await;
 
     let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
 
@@ -1940,7 +2625,7 @@ async fn test_a_404_probe_inside_the_window_neither_settles_nor_resubmits_the_or
         .submit_order(submit_command(&order))
         .expect("the command is handled");
 
-    wait_for_requests(&mock, 1).await;
+    wait_for_writes(&mock, 1).await;
 
     let start = Instant::now();
 
@@ -2004,15 +2689,12 @@ async fn test_a_404_probe_inside_the_window_neither_settles_nor_resubmits_the_or
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_thirty_seconds_without_an_answer_stops_the_probe_and_keeps_the_order_unknown() {
-    let mock = MockServer::start(vec![Reply::answer(
+    let mock = MockServer::start_admitted(vec![Reply::answer(
         500,
         r#"{"success":false,"error":"gateway"}"#,
     )])
     .await;
-    let mut harness = build_harness(&mock, sandbox_config());
-
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let harness = recovered_harness(&mock).await;
 
     let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
 
@@ -2022,7 +2704,7 @@ async fn test_thirty_seconds_without_an_answer_stops_the_probe_and_keeps_the_ord
         .submit_order(submit_command(&order))
         .expect("the command is handled");
 
-    wait_for_requests(&mock, 1).await;
+    wait_for_writes(&mock, 1).await;
 
     let start = Instant::now();
 
@@ -2054,7 +2736,7 @@ async fn test_thirty_seconds_without_an_answer_stops_the_probe_and_keeps_the_ord
 #[tokio::test(flavor = "multi_thread")]
 async fn test_the_fill_history_is_walked_across_pages_and_every_fill_is_applied_once() {
     // Two pages, and the second repeats the first page's fill the way a paginated endpoint can.
-    let mock = MockServer::start(vec![
+    let mock = MockServer::start_admitted(vec![
         Reply::ok(envelope(&api_order(
             VENUE_ORDER_ID,
             CLIENT_ORDER_ID,
@@ -2077,10 +2759,7 @@ async fn test_the_fill_history_is_walked_across_pages_and_every_fill_is_applied_
         Reply::ok(envelope(&balance_json())),
     ])
     .await;
-    let mut harness = build_harness(&mock, sandbox_config());
-
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let harness = recovered_harness(&mock).await;
 
     let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
 
@@ -2089,7 +2768,7 @@ async fn test_the_fill_history_is_walked_across_pages_and_every_fill_is_applied_
         .client
         .submit_order(submit_command(&order))
         .expect("the command is handled");
-    wait_for_requests(&mock, 1).await;
+    wait_for_writes(&mock, 1).await;
     harness.client.begin_recovery(secs(1));
 
     harness
@@ -2101,7 +2780,7 @@ async fn test_the_fill_history_is_walked_across_pages_and_every_fill_is_applied_
     // Both pages were read, and the fill the second page repeated is still one fill.
     assert_eq!(harness.client.applied_fill_count(), 2);
     assert_eq!(
-        mock.targets()
+        mock.targets()[RECOVERY_READS..]
             .iter()
             .filter(|target| target.starts_with("/v1/perps/fills"))
             .count(),
@@ -2121,7 +2800,7 @@ async fn test_the_fill_history_is_walked_across_pages_and_every_fill_is_applied_
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_a_fill_that_lands_while_a_cancel_is_in_flight_is_counted_and_the_position_agrees() {
-    let mock = MockServer::start(vec![
+    let mock = MockServer::start_admitted(vec![
         // The create is acknowledged.
         Reply::ok(envelope(&api_order(
             VENUE_ORDER_ID,
@@ -2167,10 +2846,7 @@ async fn test_a_fill_that_lands_while_a_cancel_is_in_flight_is_counted_and_the_p
         Reply::ok(envelope(&balance_json())),
     ])
     .await;
-    let mut harness = build_harness(&mock, sandbox_config());
-
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let harness = recovered_harness(&mock).await;
     harness.client.set_metadata(MetadataValidity::Current);
 
     let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
@@ -2180,12 +2856,12 @@ async fn test_a_fill_that_lands_while_a_cancel_is_in_flight_is_counted_and_the_p
         .client
         .submit_order(submit_command(&order))
         .expect("the command is handled");
-    wait_for_requests(&mock, 1).await;
+    wait_for_writes(&mock, 1).await;
     harness
         .client
         .cancel_order(cancel_command(&order))
         .expect("the command is handled");
-    wait_for_requests(&mock, 2).await;
+    wait_for_writes(&mock, 2).await;
 
     harness.client.begin_recovery(secs(1));
 
@@ -2223,7 +2899,7 @@ async fn test_a_report_that_arrived_while_the_account_was_read_is_replayed_once(
     let fills = vec![api_fill("fill-1", VENUE_ORDER_ID, CLIENT_ORDER_ID, "0.2")];
     // The create answer acknowledges the order; the REST history then carries the same fill the
     // private stream buffered while the account was being read.
-    let mock = MockServer::start(vec![
+    let mock = MockServer::start_admitted(vec![
         Reply::ok(envelope(&api_order(
             VENUE_ORDER_ID,
             CLIENT_ORDER_ID,
@@ -2239,10 +2915,7 @@ async fn test_a_report_that_arrived_while_the_account_was_read_is_replayed_once(
         Reply::ok(envelope(&balance_json())),
     ])
     .await;
-    let mut harness = build_harness(&mock, sandbox_config());
-
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let mut harness = recovered_harness(&mock).await;
 
     let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
 
@@ -2251,7 +2924,7 @@ async fn test_a_report_that_arrived_while_the_account_was_read_is_replayed_once(
         .client
         .submit_order(submit_command(&order))
         .expect("the command is handled");
-    wait_for_requests(&mock, 1).await;
+    wait_for_writes(&mock, 1).await;
 
     let mut events = Vec::new();
 
@@ -2390,7 +3063,7 @@ async fn test_an_order_this_run_did_not_place_is_reported_and_the_account_is_nev
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_a_cancel_whose_answer_was_lost_is_settled_by_a_query_not_by_the_cancel_call() {
-    let mock = MockServer::start(vec![
+    let mock = MockServer::start_admitted(vec![
         // The create is acknowledged.
         Reply::ok(envelope(&api_order(
             VENUE_ORDER_ID,
@@ -2409,10 +3082,7 @@ async fn test_a_cancel_whose_answer_was_lost_is_settled_by_a_query_not_by_the_ca
         Reply::ok(envelope(&balance_json())),
     ])
     .await;
-    let mut harness = build_harness(&mock, sandbox_config());
-
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let harness = recovered_harness(&mock).await;
 
     let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
 
@@ -2422,7 +3092,7 @@ async fn test_a_cancel_whose_answer_was_lost_is_settled_by_a_query_not_by_the_ca
         .submit_order(submit_command(&order))
         .expect("the command is handled");
 
-    wait_for_requests(&mock, 1).await;
+    wait_for_writes(&mock, 1).await;
 
     // A session begins: from here the machine governs new risk, and a cancel still travels.
     harness.client.begin_recovery(secs(1));
@@ -2491,17 +3161,14 @@ async fn test_a_cancel_whose_answer_was_lost_is_settled_by_a_query_not_by_the_ca
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_stopping_releases_the_switch_only_after_the_runs_own_orders_are_cancelled() {
-    let mock = MockServer::start(vec![Reply::ok(envelope(&api_order(
+    let mock = MockServer::start_admitted(vec![Reply::ok(envelope(&api_order(
         VENUE_ORDER_ID,
         CLIENT_ORDER_ID,
         "open",
         "0.00",
     )))])
     .await;
-    let mut harness = build_harness(&mock, sandbox_config());
-
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let harness = recovered_harness(&mock).await;
 
     // The switch is armed, so stopping has to release it as well as cancel this run's orders.
     harness.client.arm_dead_mans_switch(secs(1));
@@ -2514,7 +3181,7 @@ async fn test_stopping_releases_the_switch_only_after_the_runs_own_orders_are_ca
         .client
         .submit_order(submit_command(&order))
         .expect("the command is handled");
-    wait_for_requests(&mock, 1).await;
+    wait_for_writes(&mock, 1).await;
 
     assert_eq!(
         harness.client.stop_sequence(),
@@ -2554,7 +3221,7 @@ async fn test_stopping_a_client_with_no_switch_has_nothing_to_release() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_the_cancel_path_still_works_while_the_account_is_not_ready() {
-    let mock = MockServer::start(vec![
+    let mock = MockServer::start_admitted(vec![
         Reply::ok(envelope(&api_order(
             VENUE_ORDER_ID,
             CLIENT_ORDER_ID,
@@ -2569,10 +3236,7 @@ async fn test_the_cancel_path_still_works_while_the_account_is_not_ready() {
         ))),
     ])
     .await;
-    let mut harness = build_harness(&mock, sandbox_config());
-
-    harness.client.start().expect("start");
-    harness.client.connect().await.expect("connect");
+    let harness = recovered_harness(&mock).await;
 
     let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
 
@@ -2581,9 +3245,9 @@ async fn test_the_cancel_path_still_works_while_the_account_is_not_ready() {
         .client
         .submit_order(submit_command(&order))
         .expect("the command is handled");
-    wait_for_requests(&mock, 1).await;
+    wait_for_writes(&mock, 1).await;
 
-    // The account has never been read, so this client is not ready and refuses new risk.
+    // A recovery begins, and this client stops admitting new risk while cancels keep travelling.
     harness.client.begin_recovery(secs(1));
 
     assert!(harness.client.refuses_new_risk());
@@ -2595,7 +3259,7 @@ async fn test_the_cancel_path_still_works_while_the_account_is_not_ready() {
 
     // Plan §6.4: cancels and queries still go while the account is recovering; only new risk
     // waits. The order ends canceled, from the venue's own answer.
-    wait_for_requests(&mock, 2).await;
+    wait_for_writes(&mock, 2).await;
 
     let start = Instant::now();
 

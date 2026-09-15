@@ -40,6 +40,23 @@
 //! verify) the policy's exponential backoff applies, and the attempt count is bounded by the policy.
 //! A **POST** is never replayed. A 4xx rejection is terminal and is never retried in a loop.
 //!
+//! # The new-risk guard
+//!
+//! A signed `POST` **is** new risk: the venue's only signed POSTs create orders. So the send point
+//! carries one more gate than the caller's own checks ([`OndoNewRiskGuard`]), and it is the last one
+//! there is - after the shared budget has been acquired and before the request is built. Between the
+//! caller's decision and the wire there is a wait for that budget, and the account can stop
+//! admitting new risk inside it; this is where that is caught. The gate is a re-check of the *same*
+//! run generation the caller was admitted under ([`NewRiskPermit`]), not a fresh reading of the
+//! account, so a permit that has been superseded cannot be re-admitted by a later state.
+//!
+//! A refusal is not an unknown outcome: the request was never built, so nothing reached the venue,
+//! and it is reported as [`OndoNewRiskSendError::Refused`] rather than as a transport failure.
+//!
+//! A signed `DELETE` carries **no** such gate. A cancel reduces risk, and the plan requires that
+//! "cannot place new orders" never blocks the cleanup that follows from an unsettled one; a gate
+//! here would refuse exactly the cancels an unknown outcome makes necessary.
+//!
 //! # The authenticated surface
 //!
 //! A client built with a [`OndoCredential`] signs every private request with that credential
@@ -57,8 +74,15 @@
 //! `POST .../cancel` - which is what [`Self::delete_signed_raw`] exists for.
 //!
 //! - The environment gate ([`crate::common::credential::validate_authenticated_environment`]) runs
-//!   in the constructor, before the client exists: a sandbox credential with a production base URL
-//!   is a build error, not a request the venue gets to refuse.
+//!   in the constructor, before the client exists: a sandbox credential with a base URL outside the
+//!   endpoint allowlist ([`crate::common::endpoint::OndoEndpointPolicy`] - the environment's own
+//!   host, or a loopback test service) is a build error, not a request the venue gets to refuse.
+//!   The URL is judged by the parser the transport itself uses, so it is the *authority* that is
+//!   admitted and not a string that resembles it.
+//! - An authenticated client refuses redirects outright ([`HttpRedirectPolicy::Reject`]): the
+//!   signature headers travel as this adapter's own names, which the transport's cross-host
+//!   sensitive-header stripping does not cover, so a followed hop would carry a valid signature to
+//!   whichever authority the answer named. The public transport keeps the default policy.
 //! - Sign-then-send shares the *same* [`OndoRateBudget`] as the public reads: a signed request
 //!   acquires a slot through [`OndoRateBudget::acquire`] exactly where a public read does, so the
 //!   in-process budget is one budget, not one per surface (§4.4). The priority class travels with
@@ -84,7 +108,7 @@ use std::{
 };
 
 use nautilus_network::{
-    http::{HttpClient, HttpClientError, HttpResponse, Method},
+    http::{HttpClient, HttpClientError, HttpRedirectPolicy, HttpResponse, Method},
     retry::{RetryConfig, RetryError, RetryManager, create_http_retry_manager},
 };
 use serde::Deserialize;
@@ -94,6 +118,7 @@ use crate::{
     common::{
         consts::ONDO_HTTP_TIMEOUT_SECS,
         credential::{OndoCredential, validate_authenticated_environment},
+        endpoint::OndoEndpoint,
     },
     http::{
         error::{
@@ -119,6 +144,13 @@ use crate::{
         check_clock_skew, http_date_offset_secs, now_millis, now_secs, sign_rest, signed_headers,
     },
 };
+
+/// What a signed `POST` is refused with when the client holds no new-risk guard.
+///
+/// An execution client always installs one; a client built without one is a client whose write
+/// surface cannot say whether the account admits new risk, and this adapter does not send from one.
+const NO_NEW_RISK_GUARD: &str =
+    "this client has no new-risk guard, so a signed write cannot be admitted";
 
 /// The response header a 429 carries its requested wait in.
 ///
@@ -200,6 +232,49 @@ fn header_value<'a>(headers: &'a HashMap<String, String>, name: &str) -> Option<
         .map(|(_key, value)| value.as_str())
 }
 
+/// The admission a new-risk write was granted under, presented again at the send point.
+///
+/// A permit is the *claim*, not the licence: the caller took it from the account's admission
+/// decision, and [`OndoNewRiskGuard::revalidate`] is where the same claim is re-checked against the
+/// account's current state. Carrying the generation is what makes that a re-check: a guard that only
+/// reads the state again would admit a permit the account has since superseded, whenever the account
+/// happens to admit new risk again.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct NewRiskPermit(u64);
+
+impl NewRiskPermit {
+    /// Wraps the run generation an admission decision was granted under.
+    #[must_use]
+    pub const fn new(generation: u64) -> Self {
+        Self(generation)
+    }
+
+    /// Returns the run generation this permit was granted under.
+    #[must_use]
+    pub const fn generation(self) -> u64 {
+        self.0
+    }
+}
+
+/// The account's own say on whether a new-risk write may leave this process.
+///
+/// The transport holds one when it is built with a credential, and consults it at the one point
+/// where the question is still answerable: inside the signed `POST`, **after** the shared rate
+/// budget has been acquired and **before** a single byte of the request exists. Everything earlier
+/// is a decision the caller took on a state that a wait can invalidate; everything later is a
+/// request that has already been sent.
+///
+/// It is deliberately not consulted on the cancel path: see the module docs, "The new-risk guard".
+pub trait OndoNewRiskGuard: Send + Sync + std::fmt::Debug {
+    /// Re-checks `permit` against the account as it stands now.
+    ///
+    /// # Errors
+    ///
+    /// Returns the account's own reason for refusing the write. A refusal is a decision, not an
+    /// unknown outcome: no request was built, so nothing reached the venue.
+    fn revalidate(&self, permit: NewRiskPermit) -> Result<(), String>;
+}
+
 /// A successful public read: its status, the response headers this client retains, and its body.
 ///
 /// The headers are the ones named in [`RAW_MD_HEADER_WHITELIST`]: the transport is configured with
@@ -237,6 +312,13 @@ pub struct OndoHttpClient {
     retry_manager: RetryManager<OndoHttpError>,
     budget: OndoRateBudget,
     auth: Option<Arc<OndoAuth>>,
+    /// The authority class this client's signed requests go to, or [`None`] for a public client.
+    endpoint: Option<OndoEndpoint>,
+    /// The account's say on new-risk writes, or [`None`] for a client that has none.
+    ///
+    /// An authenticated client without one refuses every signed `POST`: a write surface that cannot
+    /// say whether the account admits new risk is not a write surface this adapter sends from.
+    new_risk_guard: Option<Arc<dyn OndoNewRiskGuard>>,
 }
 
 #[bon::bon]
@@ -258,12 +340,18 @@ impl OndoHttpClient {
     /// goes through [`OndoRateBudget::acquire`] in this client, which is the one place a priority
     /// request will reserve its slot.
     ///
+    /// `new_risk_guard` is the account's say on new-risk writes, consulted at the send point of
+    /// every signed `POST` ([`Self::post_signed_raw`]). An authenticated client built without one
+    /// refuses every such write rather than sending it unverified, so whatever builds the execution
+    /// client is obliged to hand one in.
+    ///
     /// # Errors
     ///
-    /// Returns [`OndoHttpError::Network`] if the underlying HTTP client cannot be built (a
-    /// malformed base URL is not detected here; it surfaces on the first request), or
+    /// Returns [`OndoHttpError::Network`] if the underlying HTTP client cannot be built, or
     /// [`OndoHttpError::Environment`] if a credential was given for an environment or a base URL
-    /// the gate refuses.
+    /// the endpoint policy refuses: the base URL is judged as a URL (scheme, host, port, userinfo),
+    /// not as a string, and a base URL the policy cannot place is a construction error rather than
+    /// a request the venue gets to answer.
     #[builder]
     pub fn new(
         base_url: String,
@@ -271,7 +359,30 @@ impl OndoHttpClient {
         budget: Option<OndoRateBudget>,
         retry_config: Option<RetryConfig>,
         credential: Option<OndoCredential>,
+        new_risk_guard: Option<Arc<dyn OndoNewRiskGuard>>,
     ) -> OndoHttpResult<Self> {
+        let base_url = base_url.trim_end_matches('/').to_string();
+
+        // The gate runs before the client holds the credential at all, so a refused session has no
+        // object to send from. It also decides the redirect policy below, which is why the
+        // transport is built after it rather than before.
+        let (auth, endpoint) = match credential {
+            Some(credential) => {
+                let endpoint =
+                    validate_authenticated_environment(credential.environment(), &base_url)?;
+
+                if endpoint == OndoEndpoint::LoopbackTestService {
+                    log::warn!(
+                        "The authenticated Ondo Perps transport is pointed at a loopback test \
+                         service ({base_url}): this session cannot reach the venue",
+                    );
+                }
+
+                (Some(Arc::new(OndoAuth::new(credential))), Some(endpoint))
+            }
+            None => (None, None),
+        };
+
         let client = HttpClient::builder()
             .header_keys(
                 RAW_MD_HEADER_WHITELIST
@@ -281,6 +392,19 @@ impl OndoHttpClient {
             )
             .timeout_secs(timeout_secs)
             .rate_limiters(Vec::new())
+            // An authenticated request is never replayed through a redirect. The transport follows
+            // up to ten hops by default and re-sends the caller's headers on each one; the headers
+            // that carry this adapter's signature are its own names, so the stripping the transport
+            // applies to the standard credential headers on a cross-host hop does not reach them.
+            // `Reject` is the only setting that makes such a hop impossible: the transport exposes
+            // no per-hop hook, and following a hop and stripping the headers afterwards is not
+            // something it offers. A public read carries no credential and keeps the default
+            // policy.
+            .redirect_policy(if auth.is_some() {
+                HttpRedirectPolicy::Reject
+            } else {
+                HttpRedirectPolicy::Follow
+            })
             .build()
             .map_err(|error| OndoHttpError::Network(error.to_string()))?;
 
@@ -289,24 +413,14 @@ impl OndoHttpClient {
             None => create_http_retry_manager(),
         };
 
-        let base_url = base_url.trim_end_matches('/').to_string();
-
-        // The gate runs before the client holds the credential at all, so a refused session has no
-        // object to send from.
-        let auth = match credential {
-            Some(credential) => {
-                validate_authenticated_environment(credential.environment(), &base_url)?;
-                Some(Arc::new(OndoAuth::new(credential)))
-            }
-            None => None,
-        };
-
         Ok(Self {
             base_url,
             client,
             retry_manager,
             budget: budget.unwrap_or_default(),
             auth,
+            endpoint,
+            new_risk_guard,
         })
     }
 }
@@ -462,6 +576,18 @@ impl OndoHttpClient {
         self.auth.is_some()
     }
 
+    /// Returns the authority class this client signs for, or [`None`] when it is the public
+    /// transport, which carries no credential and is not gated.
+    ///
+    /// The class is the endpoint policy's decision, made once in the constructor:
+    /// [`OndoEndpoint::Official`] is the environment's own host, and
+    /// [`OndoEndpoint::LoopbackTestService`] is the explicit local test service a session cannot
+    /// reach the venue from.
+    #[must_use]
+    pub const fn endpoint_kind(&self) -> Option<OndoEndpoint> {
+        self.endpoint
+    }
+
     /// Calls `GET /v1/account` and returns the envelope it answered with.
     ///
     /// **The path is documented but unverified**: the frozen REST spec declares `GET /v1/account`
@@ -609,19 +735,30 @@ impl OndoHttpClient {
     /// [`OndoRequestPriority::Normal`] for a submission. The body handed here is the body signed
     /// and the body sent - the same `Vec<u8>`, moved, never re-encoded.
     ///
+    /// `permit` is the admission the caller was granted for this write, and **this is where it
+    /// stops being a claim**: the guard is consulted after the budget wait and before the request
+    /// is built, so a wait that outlives the admission cannot produce a request. A signed `POST` is
+    /// an order creation - the venue has no other - so every one of them passes this gate, and a
+    /// client that has no guard refuses rather than sends.
+    ///
     /// # Errors
     ///
-    /// See [`Self::get_signed`]; a 4xx rejection is terminal.
+    /// Returns [`OndoNewRiskSendError::Refused`] when the guard refuses (or when there is no guard
+    /// to admit the write): nothing was sent, and the reason is the account's. Otherwise see
+    /// [`Self::get_signed`]; a 4xx rejection is terminal.
     pub async fn post_signed_raw(
         &self,
         target: &OndoRequestTarget,
         body: Vec<u8>,
         priority: OndoRequestPriority,
-    ) -> OndoHttpResult<OndoPrivateResponse> {
+        permit: NewRiskPermit,
+    ) -> Result<OndoPrivateResponse, OndoNewRiskSendError> {
         let auth = self.auth(target)?;
         let url = self.url(target);
 
         self.budget.acquire(priority).await;
+
+        self.admit_new_risk(permit)?;
 
         let headers = signed_request_headers(auth, "POST", target, &body)?;
         let response = self
@@ -640,7 +777,7 @@ impl OndoHttpClient {
 
         auth.observe(&response.headers);
 
-        check_private_response(response, auth)
+        check_private_response(response, auth).map_err(OndoNewRiskSendError::from)
     }
 
     /// Sends a **single-shot** signed `DELETE` and returns the envelope it answered with.
@@ -653,6 +790,11 @@ impl OndoHttpClient {
     /// unknown, and a replay could cancel twice. Everything else is deliberately identical to
     /// [`Self::post_signed_raw`] - the same budget acquisition, the same clock observation, the
     /// same private-response classification - so the two write paths cannot drift apart.
+    ///
+    /// The one thing it does **not** carry is the new-risk guard, and that is the point of it: a
+    /// cancel reduces risk, and an account that has stopped admitting new risk is exactly an account
+    /// whose resting orders have to be cleaned up. Gating this path would refuse the cancels an
+    /// unknown outcome makes necessary.
     ///
     /// The body is empty and is signed as empty: the cancel endpoints carry their parameters in
     /// the path and query, which [`OndoRequestTarget::as_str`] has already serialized once.
@@ -718,7 +860,9 @@ impl OndoHttpClient {
     ///
     /// # Errors
     ///
-    /// Returns a transport error or a classified rejection - a 400 carrying
+    /// Returns [`OndoNewRiskSendError::Refused`] when the account stops admitting new risk while
+    /// the request waits for the budget: no request was built, so no order was created. Otherwise a
+    /// transport error or a classified rejection - a 400 carrying
     /// [`crate::http::orders::ONDO_POST_ONLY_HAS_MATCH`] is the one the caller must report as a
     /// post-only rejection - or [`OndoHttpError::Decode`] when the answer is not the documented
     /// `ApiOrder` payload. A decode failure after a 2xx is **not** evidence the order was not
@@ -728,12 +872,13 @@ impl OndoHttpClient {
         &self,
         command: &OndoOrderCommand,
         priority: OndoRequestPriority,
-    ) -> OndoHttpResult<OndoApiOrder> {
+        permit: NewRiskPermit,
+    ) -> Result<OndoApiOrder, OndoNewRiskSendError> {
         let response = self
-            .post_signed_raw(&create_order_target(), command.body(), priority)
+            .post_signed_raw(&create_order_target(), command.body(), priority, permit)
             .await?;
 
-        OndoApiOrder::from_text(response.raw_result())
+        Ok(OndoApiOrder::from_text(response.raw_result())?)
     }
 
     /// Calls `POST /v1/perps/orders/batch` and returns the per-item answer.
@@ -744,19 +889,21 @@ impl OndoHttpClient {
     ///
     /// # Errors
     ///
-    /// Returns [`OndoBatchSendError::Local`] when the batch is one this adapter refuses to send
-    /// (empty, past the venue's item cap, or carrying an item that is itself refused), and
-    /// [`OndoBatchSendError::Http`] for the transport and decode failures
-    /// [`Self::create_order`] documents.
+    /// Returns [`OndoNewRiskSendError::Local`] when the batch is one this adapter refuses to send
+    /// (empty, past the venue's item cap, or carrying an item that is itself refused),
+    /// [`OndoNewRiskSendError::Refused`] when the account stops admitting new risk while the batch
+    /// waits for the budget, and [`OndoNewRiskSendError::Http`] for the transport and decode
+    /// failures [`Self::create_order`] documents.
     pub async fn create_orders_batch(
         &self,
         commands: &[OndoOrderCommand],
         priority: OndoRequestPriority,
-    ) -> Result<OndoBatchAddOrderResponse, OndoBatchSendError> {
+        permit: NewRiskPermit,
+    ) -> Result<OndoBatchAddOrderResponse, OndoNewRiskSendError> {
         let body = batch_body(commands)?;
 
         let response = self
-            .post_signed_raw(&batch_create_target(), body, priority)
+            .post_signed_raw(&batch_create_target(), body, priority, permit)
             .await?;
 
         Ok(OndoBatchAddOrderResponse::from_text(response.raw_result())?)
@@ -873,6 +1020,29 @@ impl OndoHttpClient {
         Ok(read_cancel_answer(response.raw_result()))
     }
 
+    /// Asks the account whether `permit` still admits a new-risk write.
+    ///
+    /// This is the last gate before the wire and the only one the caller cannot be late for: it
+    /// runs after the shared budget has been taken, so it sees the state the request would be built
+    /// in rather than the state the command was accepted in.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`OndoNewRiskSendError::Refused`] when the guard refuses the permit, and the same
+    /// when there is no guard at all: an authenticated client that cannot answer this question does
+    /// not send.
+    fn admit_new_risk(&self, permit: NewRiskPermit) -> Result<(), OndoNewRiskSendError> {
+        let Some(guard) = self.new_risk_guard.as_ref() else {
+            return Err(OndoNewRiskSendError::Refused {
+                reason: NO_NEW_RISK_GUARD.to_string(),
+            });
+        };
+
+        guard
+            .revalidate(permit)
+            .map_err(|reason| OndoNewRiskSendError::Refused { reason })
+    }
+
     /// Returns the credential this client signs with.
     fn auth(&self, target: &OndoRequestTarget) -> OndoHttpResult<&OndoAuth> {
         self.auth
@@ -977,13 +1147,27 @@ pub enum OndoCancelAnswer {
     },
 }
 
-/// Why a batch create request could not be sent.
+/// Why a new-risk write did not go out, and what happened when it did.
 ///
-/// The two cases are deliberately distinct: a local refusal never became a request, so it says
-/// nothing about the venue, while an [`Self::Http`] failure may have left orders resting.
+/// The three cases are deliberately distinct. The first two never became a request, so they say
+/// nothing about the venue: a [`Self::Refused`] write was admitted when it was accepted and the
+/// account stopped admitting it before the request existed, and a [`Self::Local`] one was refused
+/// by this adapter for what it is. Only [`Self::Http`] leaves the question open, and it is the one
+/// the caller owes a probe to.
 #[derive(Debug, thiserror::Error)]
-pub enum OndoBatchSendError {
-    /// The batch was refused by this adapter, before any request existed.
+pub enum OndoNewRiskSendError {
+    /// The guard refused the write at the send point, after the budget wait and before the request
+    /// was built.
+    ///
+    /// Nothing was sent, so this is a decision rather than an unknown outcome: the caller reports
+    /// the refusal and registers no uncertainty. `reason` is the account's own, and is what a
+    /// strategy is told.
+    #[error("the new-risk write was refused before a request existed: {reason}")]
+    Refused {
+        /// Why the account refuses new risk, as the guard reported it.
+        reason: String,
+    },
+    /// The write was refused by this adapter, before any request existed.
     #[error(transparent)]
     Local(#[from] OndoBatchError),
     /// The request was made and its answer could not be used.

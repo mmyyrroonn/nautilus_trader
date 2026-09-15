@@ -18,8 +18,13 @@
 //!
 //! Three things live here, and they are one state machine's three faces:
 //!
-//! 1. [`ReconciliationMachine`] - the account's state, and the one predicate that decides whether
-//!    new risk may be taken ([`ReconciliationMachine::can_submit_new_orders`]).
+//! 1. [`ReconciliationMachine`] - the account's state, and the one decision that governs whether
+//!    new risk may be taken ([`ReconciliationMachine::admission`]). It answers `Granted` for
+//!    exactly one combination: a recovered account, current metadata, a switch that permits orders,
+//!    and no outcome this client has left unsettled. Everything else - including a machine that has
+//!    never held a session - is [`Admission::Refused`], and the permit a submission is given is
+//!    re-verified against the same run generation before its request exists
+//!    ([`ReconciliationMachine::revalidate`]).
 //! 2. The account's reading and its judgments: what the venue said ([`AccountReading`]), what that
 //!    implies ([`AccountJudgment`], [`Finding`]), and the mappings the plan fixes - a `short`
 //!    position carried by a positive number (§6.4), a `neutral` position zeroed explicitly, five
@@ -53,7 +58,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use nautilus_core::UnixNanos;
-use nautilus_model::identifiers::{AccountId, ClientOrderId, InstrumentId};
+use nautilus_model::identifiers::{AccountId, ClientOrderId, InstrumentId, VenueOrderId};
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 
@@ -106,6 +111,127 @@ impl ReconciliationState {
             Self::Recovering => "recovering",
             Self::Ready => "ready",
             Self::Uncertain => "uncertain",
+        }
+    }
+}
+
+/// Why a new order is refused (plan §6.4).
+///
+/// The variants are the conditions a submission is checked against, in the order
+/// [`ReconciliationMachine::admission`] applies them. They are named rather than rendered so a
+/// caller can act on one, and so a refusal reason is a statement about a specific condition rather
+/// than a sentence assembled at the call site.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NewRiskRefusal {
+    /// The admission a caller presented is not the current one: something that revokes permission
+    /// happened after it was issued, even if the account is admissible again by now.
+    ///
+    /// Only [`ReconciliationMachine::revalidate`] answers this. A permit is good for the run
+    /// generation that issued it and for nothing later.
+    Superseded,
+    /// Submissions whose outcome this client has not settled (plan §6.3).
+    UnknownSubmissions {
+        /// The client order ids the submissions were made under.
+        client_order_ids: Vec<ClientOrderId>,
+    },
+    /// Cancels no venue answer has settled (plan §6.3).
+    UnconfirmedCancels {
+        /// The client order ids the cancels were made under.
+        client_order_ids: Vec<ClientOrderId>,
+    },
+    /// The metadata this client trades on is not current, so nothing can be priced or sized on it.
+    MetadataStale {
+        /// Why the metadata is not usable.
+        reason: String,
+    },
+    /// The dead man's switch does not permit orders.
+    DeadMansSwitch(DeadMansSwitchState),
+    /// The account's reconciliation state is not [`ReconciliationState::Ready`].
+    AccountState(ReconciliationState),
+}
+
+impl NewRiskRefusal {
+    /// Returns a human-readable statement of the refusal.
+    #[must_use]
+    pub fn reason(&self) -> String {
+        match self {
+            Self::Superseded => {
+                "the admission this order was given is no longer current".to_string()
+            }
+            Self::UnknownSubmissions { client_order_ids } => format!(
+                "the outcome of {} submission(s) is unknown: {}",
+                client_order_ids.len(),
+                names(client_order_ids),
+            ),
+            Self::UnconfirmedCancels { client_order_ids } => format!(
+                "{} cancel(s) were not confirmed by any venue answer: {}",
+                client_order_ids.len(),
+                names(client_order_ids),
+            ),
+            Self::MetadataStale { reason } => {
+                format!("the instrument metadata is not current: {reason}")
+            }
+            Self::DeadMansSwitch(state) => match state {
+                DeadMansSwitchState::NotRequired => {
+                    "the dead man's switch is not required".to_string()
+                }
+                DeadMansSwitchState::Disarmed => "the dead man's switch is not armed".to_string(),
+                DeadMansSwitchState::Arming => {
+                    "the dead man's switch is not yet confirmed".to_string()
+                }
+                DeadMansSwitchState::Armed => "the dead man's switch is armed".to_string(),
+                DeadMansSwitchState::Failed { reason } => {
+                    format!("the dead man's switch failed: {reason}")
+                }
+                DeadMansSwitchState::Expired => "the dead man's switch expired".to_string(),
+            },
+            Self::AccountState(state) => format!("the account is {}", state.as_str()),
+        }
+    }
+}
+
+/// Renders client order ids for a refusal reason.
+fn names(client_order_ids: &[ClientOrderId]) -> String {
+    client_order_ids
+        .iter()
+        .map(ClientOrderId::to_string)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// The one decision that governs new risk (plan §6.4).
+///
+/// A granted admission carries the run generation it was granted under. The generation is the
+/// machine's own count of the events that revoke permission, so a caller can hold a decision it was
+/// given and ask whether it is still the current one before acting on it - which is what
+/// [`ReconciliationMachine::revalidate`] answers.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Admission {
+    /// A new order may be submitted.
+    Granted {
+        /// The run generation this decision belongs to.
+        generation: u64,
+    },
+    /// A new order must be refused.
+    Refused {
+        /// Why.
+        reason: NewRiskRefusal,
+    },
+}
+
+impl Admission {
+    /// Returns whether this decision permits a new order.
+    #[must_use]
+    pub const fn is_granted(&self) -> bool {
+        matches!(self, Self::Granted { .. })
+    }
+
+    /// Returns the generation this decision belongs to, when it grants.
+    #[must_use]
+    pub const fn generation(&self) -> Option<u64> {
+        match self {
+            Self::Granted { generation } => Some(*generation),
+            Self::Refused { .. } => None,
         }
     }
 }
@@ -922,16 +1048,38 @@ impl ReconciliationBuffer {
     }
 }
 
-/// A submission whose outcome is unknown (plan §6.3).
+/// Which write an [`UncertainOutcome`] is about.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UncertainKind {
+    /// A submission whose answer was lost. Its venue order id is unknown **by construction** -
+    /// that is what an unanswered submission is - so the reference a probe uses is always the
+    /// client order id it was made under.
+    Submission,
+    /// A cancel no venue answer has settled. The venue order id is usually known here, because the
+    /// order was already resting when the cancel was sent.
+    Cancel,
+}
+
+/// One write whose effect this client has not settled (plan §6.3).
+///
+/// A submission whose answer was lost and a cancel no answer has confirmed are the same problem -
+/// a write the venue may or may not have applied - so they share one record and one bounded probe.
+/// What differs is the reference the probe uses and the map the record lives in.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct UnknownSubmission {
-    /// The client order id the submission was made under, which is the one a probe uses.
+pub struct UncertainOutcome {
+    /// The client order id the write was made under.
     pub client_order_id: ClientOrderId,
-    /// The lookup reference a probe must use: `client:{clientOrderId}`.
+    /// The venue's order id, when this session learned one before the outcome was lost.
+    pub venue_order_id: Option<VenueOrderId>,
+    /// Which write this is.
+    pub kind: UncertainKind,
+    /// The reference a probe must use to ask the venue about it.
     ///
-    /// A **new** client order id would be a second order, so this is the only reference the probe
-    /// is ever given.
+    /// A **new** client order id would be a second order, so a probe is never given one: it is
+    /// either the `client:{clientOrderId}` form or the venue order id this session already holds.
     pub lookup: String,
+    /// Why the outcome is unknown, as this client saw it.
+    pub reason: String,
     /// When the outcome became unknown.
     pub first_seen: UnixNanos,
     /// The last probe's instant, when one has been made.
@@ -944,6 +1092,48 @@ pub struct UnknownSubmission {
     pub last_probe_reason: Option<String>,
     /// Whether the window has passed and probing has stopped.
     pub abandoned: bool,
+}
+
+impl UncertainOutcome {
+    /// Creates a record for one unsettled write, due for its first probe immediately.
+    #[must_use]
+    fn new(
+        kind: UncertainKind,
+        client_order_id: ClientOrderId,
+        venue_order_id: Option<VenueOrderId>,
+        reason: String,
+        now: UnixNanos,
+    ) -> Self {
+        Self {
+            client_order_id,
+            venue_order_id,
+            kind,
+            lookup: lookup_for(kind, client_order_id, venue_order_id),
+            reason,
+            first_seen: now,
+            last_probe: None,
+            next_probe: now,
+            attempts: 0,
+            last_probe_reason: None,
+            abandoned: false,
+        }
+    }
+}
+
+/// Returns the reference a probe of one unsettled write uses.
+///
+/// A submission is asked about under the client order id it was made with. A cancel prefers the
+/// venue order id, which is unambiguous, and falls back to the same client-order-id form for an
+/// order whose venue id this session never observed (plan §6.2, §6.3).
+fn lookup_for(
+    kind: UncertainKind,
+    client_order_id: ClientOrderId,
+    venue_order_id: Option<VenueOrderId>,
+) -> String {
+    match (kind, venue_order_id) {
+        (UncertainKind::Cancel, Some(venue_order_id)) => venue_order_id.to_string(),
+        _ => format!("client:{client_order_id}"),
+    }
 }
 
 /// A submission left to a human after its window expired (plan §6.3).
@@ -1151,8 +1341,9 @@ pub struct ReconciliationMachine {
     session_established: bool,
     metadata: MetadataValidity,
     dms: DeadMansSwitch,
-    unknown: BTreeMap<ClientOrderId, UnknownSubmission>,
-    unconfirmed_cancels: BTreeMap<ClientOrderId, UnixNanos>,
+    unknown: BTreeMap<ClientOrderId, UncertainOutcome>,
+    unconfirmed_cancels: BTreeMap<ClientOrderId, UncertainOutcome>,
+    generation: u64,
     baseline: BTreeMap<InstrumentId, Decimal>,
     baseline_adopted: bool,
     confirmations: usize,
@@ -1176,6 +1367,7 @@ impl ReconciliationMachine {
             dms: DeadMansSwitch::new(timeout_seconds),
             unknown: BTreeMap::new(),
             unconfirmed_cancels: BTreeMap::new(),
+            generation: 0,
             baseline: BTreeMap::new(),
             baseline_adopted: false,
             confirmations: 0,
@@ -1200,36 +1392,123 @@ impl ReconciliationMachine {
 
     /// Returns whether a session has been established at any point in this process's life.
     ///
-    /// A machine that has never held a session does not govern new risk: there is no venue state it
-    /// could be uncertain about, and the client's own local refusals are all there is to apply. A
-    /// session that has begun - and then been disconnected, however long ago - is governed for the
-    /// rest of the process's life, because the venue state it established is now unverified.
+    /// This is an observation, not a condition of anything. It used to excuse a machine that had
+    /// never held a session from governing new risk, on the reasoning that there was no venue state
+    /// to be uncertain about yet; that reasoning was wrong. A venue state nobody has read is the
+    /// least verified state there is, and the entrance check is what stops an order against it.
     #[must_use]
     pub const fn session_established(&self) -> bool {
         self.session_established
     }
 
-    /// Returns whether a **new** order may be submitted (plan Task 8).
+    /// Returns the one decision that governs new risk (plan §6.4, Task 8).
     ///
-    /// Fail-closed: this is `true` only for [`ReconciliationState::Ready`], with metadata this
-    /// client can trade on and a switch that permits orders. Every other combination - recovering,
-    /// uncertain, disconnected, stale metadata, a required switch that is not armed - answers
-    /// `false`.
+    /// Fail-closed, and total: `Granted` for exactly one combination - [`ReconciliationState::Ready`]
+    /// with metadata this client can trade on, a switch that permits orders, and nothing left
+    /// unsettled - and [`Admission::Refused`] for every other, including the machine that has never
+    /// held a session.
+    #[must_use]
+    pub fn admission(&self) -> Admission {
+        match self.new_risk_refusal() {
+            None => Admission::Granted {
+                generation: self.generation,
+            },
+            Some(reason) => Admission::Refused { reason },
+        }
+    }
+
+    /// Re-verifies an admission permit immediately before a request is sent.
+    ///
+    /// The account is checked again rather than trusted, so a state that changed while a command
+    /// queued is caught, and the permit's generation is checked with it: a permit is good only for
+    /// the generation that issued it. The events that move the generation are exactly the ones that
+    /// revoke permission ([`Self::invalidate_admissions`]), so a permit whose generation is stale
+    /// was issued before something this client has since learned, and acting on it would act on a
+    /// decision that is no longer the current one - even when the account is admissible again by
+    /// the time the request would go out.
+    #[must_use]
+    pub fn revalidate(&self, permit: &Admission) -> Admission {
+        let current = self.admission();
+
+        if let Admission::Granted { generation } = permit
+            && current.generation() == Some(*generation)
+        {
+            return current;
+        }
+
+        Admission::Refused {
+            reason: match current {
+                Admission::Refused { reason } => reason,
+                Admission::Granted { .. } => NewRiskRefusal::Superseded,
+            },
+        }
+    }
+
+    /// Returns whether a **new** order may be submitted.
+    ///
+    /// [`Self::admission`]'s `Granted`, as a predicate.
     #[must_use]
     pub fn can_submit_new_orders(&self) -> bool {
-        self.state == ReconciliationState::Ready
-            && self.metadata.is_usable()
-            && self.dms.permits_new_orders()
+        self.admission().is_granted()
     }
 
     /// Returns whether this client must refuse a new order right now.
     ///
-    /// [`Self::can_submit_new_orders`] once a session exists. Before any session the machine does
-    /// not govern: this is the one difference between the two, and it is deliberate - the predicate
-    /// answers a question about a recovered account, and there is no account yet.
+    /// The negation of [`Self::can_submit_new_orders`], and it holds from construction: a client
+    /// that has established nothing has verified nothing, so there is no state a new order could be
+    /// placed against.
     #[must_use]
     pub fn refuses_new_risk(&self) -> bool {
-        self.session_established && !self.can_submit_new_orders()
+        !self.can_submit_new_orders()
+    }
+
+    /// Returns why a new order may not be submitted, or [`None`] when it may be.
+    ///
+    /// The conditions are checked in the order they are most useful to report. An outcome this
+    /// client has left unsettled comes first: it is the one that is specific to this run and the
+    /// one a caller has to chase. The account's own state comes next, because it is the headline -
+    /// a disconnected machine is disconnected whatever else is true of it - and the two conditions
+    /// that qualify an otherwise tradable account - metadata that cannot price an order, a switch
+    /// that does not permit one - come last.
+    #[must_use]
+    pub fn new_risk_refusal(&self) -> Option<NewRiskRefusal> {
+        if !self.unknown.is_empty() {
+            return Some(NewRiskRefusal::UnknownSubmissions {
+                client_order_ids: self.unknown.keys().copied().collect(),
+            });
+        }
+
+        if !self.unconfirmed_cancels.is_empty() {
+            return Some(NewRiskRefusal::UnconfirmedCancels {
+                client_order_ids: self.unconfirmed_cancels.keys().copied().collect(),
+            });
+        }
+
+        if self.state != ReconciliationState::Ready {
+            return Some(NewRiskRefusal::AccountState(self.state));
+        }
+
+        if let MetadataValidity::Stale { reason } = &self.metadata {
+            return Some(NewRiskRefusal::MetadataStale {
+                reason: reason.clone(),
+            });
+        }
+
+        if !self.dms.permits_new_orders() {
+            return Some(NewRiskRefusal::DeadMansSwitch(self.dms.state()));
+        }
+
+        None
+    }
+
+    /// Invalidates every admission permit issued before this point.
+    ///
+    /// The generation is a count of the events that revoke permission, not of every change: the
+    /// steady-state transitions - a pass that reads an already-[`ReconciliationState::Ready`]
+    /// account again, a renewal of an armed switch, the settlement of an unknown outcome - leave it
+    /// alone, because a permit issued before them is still the current decision.
+    fn invalidate_admissions(&mut self) {
+        self.generation = self.generation.wrapping_add(1);
     }
 
     /// Returns how many consecutive agreeing passes the machine has seen.
@@ -1269,7 +1548,14 @@ impl ReconciliationMachine {
     }
 
     /// Records whether the metadata this client trades on is usable.
+    ///
+    /// Metadata becoming usable only widens what is permitted, so it invalidates nothing; metadata
+    /// that stops being usable revokes every permit issued while it was current.
     pub fn set_metadata(&mut self, validity: MetadataValidity) {
+        if !validity.is_usable() {
+            self.invalidate_admissions();
+        }
+
         self.metadata = validity;
     }
 
@@ -1296,6 +1582,7 @@ impl ReconciliationMachine {
 
         self.session_established = true;
         self.state = ReconciliationState::Recovering;
+        self.invalidate_admissions();
     }
 
     /// Records that the session ended.
@@ -1306,19 +1593,43 @@ impl ReconciliationMachine {
         self.state = ReconciliationState::Disconnected;
         self.confirmations = 0;
         self.last_fingerprint = None;
+        self.invalidate_admissions();
     }
 
-    /// Records the frames to send for an unconfirmed cancel.
-    pub fn note_unconfirmed_cancel(&mut self, client_order_id: ClientOrderId, now: UnixNanos) {
-        self.unconfirmed_cancels
-            .entry(client_order_id)
-            .or_insert(now);
+    /// Records a cancel no venue answer has settled.
+    ///
+    /// A cancel API call is not a cancel (plan §6.3), so the caller registers this **before** it
+    /// runs the confirming query: a query that fails then leaves the cancel outstanding rather than
+    /// leaving nothing behind at all. Registration stops new risk immediately - the account is not
+    /// tradable while an order's state is one no answer has stated.
+    pub fn note_unconfirmed_cancel(
+        &mut self,
+        client_order_id: ClientOrderId,
+        venue_order_id: Option<VenueOrderId>,
+        reason: String,
+        now: UnixNanos,
+    ) {
+        if self.unconfirmed_cancels.contains_key(&client_order_id) {
+            return;
+        }
+
+        self.unconfirmed_cancels.insert(
+            client_order_id,
+            UncertainOutcome::new(
+                UncertainKind::Cancel,
+                client_order_id,
+                venue_order_id,
+                reason,
+                now,
+            ),
+        );
+        self.invalidate_admissions();
     }
 
-    /// Returns the cancels no venue answer has settled.
+    /// Returns the cancels no venue answer has settled, in client order id order.
     #[must_use]
-    pub fn unconfirmed_cancels(&self) -> Vec<ClientOrderId> {
-        self.unconfirmed_cancels.keys().copied().collect()
+    pub fn unconfirmed_cancels(&self) -> Vec<UncertainOutcome> {
+        self.unconfirmed_cancels.values().cloned().collect()
     }
 
     /// Records that a venue answer settled a cancel.
@@ -1329,45 +1640,69 @@ impl ReconciliationMachine {
     }
 
     /// Records a submission whose outcome became unknown.
-    pub fn note_unknown_submission(&mut self, client_order_id: ClientOrderId, now: UnixNanos) {
-        self.unknown
-            .entry(client_order_id)
-            .or_insert(UnknownSubmission {
+    ///
+    /// No venue order id is recorded because there is none to record: an unanswered submission is
+    /// exactly one whose venue order id this session never observed. Registration stops new risk
+    /// immediately, without waiting for a reconciliation pass to notice (plan §6.3).
+    pub fn note_unknown_submission(
+        &mut self,
+        client_order_id: ClientOrderId,
+        reason: String,
+        now: UnixNanos,
+    ) {
+        if self.unknown.contains_key(&client_order_id) {
+            return;
+        }
+
+        self.unknown.insert(
+            client_order_id,
+            UncertainOutcome::new(
+                UncertainKind::Submission,
                 client_order_id,
-                lookup: format!("client:{client_order_id}"),
-                first_seen: now,
-                last_probe: None,
-                next_probe: now,
-                attempts: 0,
-                last_probe_reason: None,
-                abandoned: false,
-            });
+                None,
+                reason,
+                now,
+            ),
+        );
+        self.invalidate_admissions();
     }
 
     /// Returns the submissions whose outcome is unknown, in client order id order.
     #[must_use]
-    pub fn unknown_submissions(&self) -> Vec<UnknownSubmission> {
+    pub fn unknown_submissions(&self) -> Vec<UncertainOutcome> {
         self.unknown.values().cloned().collect()
     }
 
-    /// Returns the unknown submissions a probe is due for at `now`.
+    /// Returns the record one unsettled write is held under, whichever map holds it.
+    #[must_use]
+    pub fn uncertain_outcome(&self, client_order_id: &ClientOrderId) -> Option<&UncertainOutcome> {
+        self.unknown
+            .get(client_order_id)
+            .or_else(|| self.unconfirmed_cancels.get(client_order_id))
+    }
+
+    /// Returns the writes a probe is due for at `now`: unsettled submissions and unsettled cancels.
     ///
-    /// An abandoned submission is never due: plan §6.3 stops the probe once the window passes, and
-    /// a probe that kept going would be a busy loop against the venue rather than a reconciliation.
+    /// An abandoned outcome is never due: plan §6.3 stops the probe once the window passes, and a
+    /// probe that kept going would be a busy loop against the rate-limited venue rather than a
+    /// reconciliation.
     #[must_use]
     pub fn probe_due(&self, now: UnixNanos) -> Vec<ClientOrderId> {
         self.unknown
             .values()
-            .filter(|submission| !submission.abandoned && now >= submission.next_probe)
-            .filter(|submission| !past_window(submission, now))
-            .map(|submission| submission.client_order_id)
+            .chain(self.unconfirmed_cancels.values())
+            .filter(|outcome| !outcome.abandoned && now >= outcome.next_probe)
+            .filter(|outcome| !past_window(outcome, now))
+            .map(|outcome| outcome.client_order_id)
             .collect()
     }
 
     /// Applies one probe's outcome.
     ///
-    /// `Found` settles the submission. `NotFound` and an inconclusive probe settle nothing: the
-    /// outcome stays unknown until the window expires or a later probe finds the order.
+    /// `Found` settles the outcome, whichever map holds it: the venue's answer is the answer to
+    /// both "was the submission applied" and "did the cancel take". `NotFound` and an inconclusive
+    /// probe settle nothing: the outcome stays unsettled until the window expires or a later probe
+    /// finds the order.
     pub fn note_probe(
         &mut self,
         client_order_id: &ClientOrderId,
@@ -1377,6 +1712,7 @@ impl ReconciliationMachine {
         let reason = match outcome {
             ProbeOutcome::Found => {
                 self.unknown.remove(client_order_id);
+                self.unconfirmed_cancels.remove(client_order_id);
 
                 return ProbeDisposition::Resolved;
             }
@@ -1388,7 +1724,11 @@ impl ReconciliationMachine {
             ProbeOutcome::Inconclusive { reason } => reason,
         };
 
-        let Some(submission) = self.unknown.get_mut(client_order_id) else {
+        let Some(submission) = self
+            .unknown
+            .get_mut(client_order_id)
+            .or_else(|| self.unconfirmed_cancels.get_mut(client_order_id))
+        else {
             return ProbeDisposition::Abandoned;
         };
 
@@ -1409,22 +1749,30 @@ impl ReconciliationMachine {
         }
     }
 
-    /// Expires every unknown submission whose window has passed, returning the abandoned ones.
+    /// Expires every unsettled outcome whose window has passed, returning the abandoned ones.
+    ///
+    /// An abandoned outcome is **not** discarded: the write it describes may still have been
+    /// applied, so it keeps blocking new risk and stays in the record a human has to reconcile. What
+    /// ends here is the probing.
     pub fn expire_unknown_submissions(&mut self, now: UnixNanos) -> Vec<AbandonedSubmission> {
         let mut abandoned = Vec::new();
 
-        for submission in self.unknown.values_mut() {
-            if submission.abandoned || !past_window(submission, now) {
+        for outcome in self
+            .unknown
+            .values_mut()
+            .chain(self.unconfirmed_cancels.values_mut())
+        {
+            if outcome.abandoned || !past_window(outcome, now) {
                 continue;
             }
 
-            submission.abandoned = true;
+            outcome.abandoned = true;
 
             abandoned.push(AbandonedSubmission {
-                client_order_id: submission.client_order_id,
-                lookup: submission.lookup.clone(),
-                attempts: submission.attempts,
-                elapsed_ns: now.as_u64().saturating_sub(submission.first_seen.as_u64()),
+                client_order_id: outcome.client_order_id,
+                lookup: outcome.lookup.clone(),
+                attempts: outcome.attempts,
+                elapsed_ns: now.as_u64().saturating_sub(outcome.first_seen.as_u64()),
             });
         }
 
@@ -1434,11 +1782,13 @@ impl ReconciliationMachine {
     /// Clears an unknown submission that has been settled outside this machine.
     ///
     /// The caller is the venue's answer, or a human reconciling the account by hand. Nothing inside
-    /// this adapter clears one on its own: the order was neither confirmed nor denied.
+    /// this adapter clears one on its own: the order was neither confirmed nor denied. An
+    /// unconfirmed cancel is settled the same way through [`Self::confirm_cancel`], which is the
+    /// same statement - a venue answer, or a human's, stating what became of the order.
     pub fn clear_unknown_submission(
         &mut self,
         client_order_id: &ClientOrderId,
-    ) -> Option<UnknownSubmission> {
+    ) -> Option<UncertainOutcome> {
         self.unknown.remove(client_order_id)
     }
 
@@ -1453,6 +1803,7 @@ impl ReconciliationMachine {
         self.state = ReconciliationState::Uncertain;
         self.confirmations = 0;
         self.last_fingerprint = None;
+        self.invalidate_admissions();
     }
 
     /// Records that a pass could not read the account, and judges it accordingly.
@@ -1463,6 +1814,7 @@ impl ReconciliationMachine {
         self.state = ReconciliationState::Uncertain;
         self.confirmations = 0;
         self.last_fingerprint = None;
+        self.invalidate_admissions();
 
         self.state
     }
@@ -1523,6 +1875,7 @@ impl ReconciliationMachine {
             self.confirmations = 0;
             self.last_fingerprint = None;
             self.state = ReconciliationState::Uncertain;
+            self.invalidate_admissions();
 
             return self.state;
         }
@@ -1540,6 +1893,14 @@ impl ReconciliationMachine {
         } else {
             ReconciliationState::Recovering
         };
+
+        // A pass that leaves the account tradable revokes nothing: the permit a caller holds was
+        // issued under this same decision, and a periodic pass reading an unchanged account is not
+        // a reason to refuse a submission the strategy has already made. Any other outcome
+        // invalidates, whether or not the state was Ready before it.
+        if self.state != ReconciliationState::Ready {
+            self.invalidate_admissions();
+        }
 
         self.state
     }
@@ -1748,9 +2109,9 @@ impl ReconciliationMachine {
     }
 }
 
-/// Returns whether an unknown submission's window has passed at `now` (plan §6.3).
-fn past_window(submission: &UnknownSubmission, now: UnixNanos) -> bool {
-    now.as_u64().saturating_sub(submission.first_seen.as_u64())
+/// Returns whether an unsettled outcome's window has passed at `now` (plan §6.3).
+fn past_window(outcome: &UncertainOutcome, now: UnixNanos) -> bool {
+    now.as_u64().saturating_sub(outcome.first_seen.as_u64())
         >= ONDO_SUBMISSION_UNKNOWN_SECS * 1_000_000_000
 }
 

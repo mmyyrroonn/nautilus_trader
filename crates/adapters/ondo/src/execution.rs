@@ -49,9 +49,12 @@
 //!
 //! [`OndoExecutionClient::new`] validates the configuration, resolves the REST base URL, and runs
 //! [`validate_authenticated_environment`] on the pair. A production configuration is refused there,
-//! before a credential is read and before any socket exists, and
+//! as is a base URL that is not the endpoint this session may sign for
+//! ([`crate::common::endpoint::OndoEndpointPolicy`]: the sandbox host, or a loopback test service),
+//! before a credential is read and before any socket exists - and
 //! [`OndoExecutionConfigError::ProductionOrdersUnsupported`] refuses `allow_production_orders`
-//! whatever it is set to. There is no production write branch to configure open (plan §1, §4.1).
+//! whatever it is set to, production endpoint or not. There is no production write branch to
+//! configure open (plan §1, §4.1, §R0.3).
 //!
 //! # The unknown outcome
 //!
@@ -102,7 +105,9 @@ use crate::{
     },
     config::OndoExecutionClientConfig,
     http::{
-        client::{OndoBatchSendError, OndoCancelAnswer, OndoHttpClient},
+        client::{
+            NewRiskPermit, OndoCancelAnswer, OndoHttpClient, OndoNewRiskGuard, OndoNewRiskSendError,
+        },
         error::OndoHttpError,
         orders::{
             ONDO_POST_ONLY_HAS_MATCH, OndoApiOrder, OndoCancelRejection, OndoOrderCommand,
@@ -113,9 +118,10 @@ use crate::{
         rate_limit::OndoRequestPriority,
     },
     reconciliation::{
-        AccountJudgment, AccountReading, BalanceReading, DeadMansSwitchMessage, MetadataValidity,
-        OrderReading, PositionReading, ProbeOutcome, ProbeReport, ReconciliationBuffer,
-        ReconciliationMachine, ReconciliationState, StopStep, balance_member,
+        AccountJudgment, AccountReading, Admission, BalanceReading, DeadMansSwitchMessage,
+        MetadataValidity, NewRiskRefusal, OrderReading, PositionReading, ProbeOutcome, ProbeReport,
+        ReconciliationBuffer, ReconciliationMachine, ReconciliationState, StopStep,
+        UncertainOutcome, balance_member,
     },
 };
 
@@ -760,6 +766,59 @@ impl OndoReporter {
         }
     }
 
+    /// Inserts the state a submission starts from.
+    ///
+    /// This lives on the reporter rather than on the client because the submission task that needs
+    /// it runs after the command has left the client's own borrow: the task owns a clone of the
+    /// reporter and nothing else.
+    fn track_submission(
+        &self,
+        command: &OndoOrderCommand,
+        client_order_id: ClientOrderId,
+        instrument_id: InstrumentId,
+    ) {
+        self.state.write().orders.insert(
+            client_order_id,
+            OndoOrderState {
+                client_order_id,
+                venue_order_id: None,
+                instrument_id,
+                side: command.side,
+                order_type: command.order_type,
+                time_in_force: command.time_in_force,
+                quantity: command.quantity,
+                price: command.price,
+                reduce_only: command.reduce_only,
+                post_only: command.post_only,
+                status: OndoOrderStatus::Pending,
+                accepted: false,
+                filled: Quantity::from("0"),
+                venue_fee: None,
+                last_fill_size: None,
+                venue_filled: None,
+                last_raw: String::new(),
+                reconciliation_needed: false,
+                resolved: false,
+                pending_fills: Vec::new(),
+            },
+        );
+    }
+
+    /// Returns the orders this client is still tracking on `market`, with the venue order id each
+    /// one is known by.
+    fn tracked_orders_on(&self, market: &str) -> Vec<(ClientOrderId, Option<VenueOrderId>)> {
+        self.state
+            .read()
+            .orders
+            .values()
+            .filter(|state| {
+                instrument_id_to_market(&state.instrument_id)
+                    .is_ok_and(|instrument_market| instrument_market == market)
+            })
+            .map(|state| (state.client_order_id, state.venue_order_id))
+            .collect()
+    }
+
     /// Drops an order from the index after a refusal that never reached the venue's book.
     fn forget(&self, client_order_id: &ClientOrderId) {
         let mut state = self.state.write();
@@ -976,7 +1035,8 @@ impl OndoExecutionClient {
     /// 1. [`OndoExecutionClientConfig::validate`], which refuses `allow_production_orders` and a
     ///    missing account;
     /// 2. [`validate_authenticated_environment`] on the resolved base URL, which refuses production
-    ///    outright;
+    ///    and every authority the endpoint allowlist does not carry - the sandbox host and a
+    ///    loopback test service are the only two it admits;
     /// 3. the credential: the configuration's own pair when it carries one, otherwise
     ///    [`crate::common::credential::resolve_credential`] from the process environment, which
     ///    errors naming the missing variable instead of falling back to another account.
@@ -1011,6 +1071,9 @@ impl OndoExecutionClient {
     ) -> anyhow::Result<Self> {
         config.validate()?;
 
+        // The endpoint gate runs on the configuration's own environment and base URL, before the
+        // credential is resolved and before a client exists. The transport applies the same policy
+        // again to the credential it is handed, so a refused endpoint is refused at both layers.
         let base_url = config.http_base_url().to_string();
         validate_authenticated_environment(config.environment, &base_url)?;
 
@@ -1029,11 +1092,21 @@ impl OndoExecutionClient {
         let account_id = core.account_id;
         let clock = get_atomic_clock_realtime();
 
+        // The account's state machine is built before the transport, because the transport is built
+        // with the guard that reads it: a signed write has to re-check the account at the send
+        // point, and a client that cannot do that is a client this adapter does not order from.
+        let reconciliation = Arc::new(RwLock::new(ReconciliationMachine::new(
+            account_id,
+            config.dms_timeout_secs,
+        )));
+
         let http_client = OndoHttpClient::builder()
             .base_url(base_url)
             .timeout_secs(config.http_timeout_secs)
             .maybe_budget(budget)
             .credential(credential)
+            .new_risk_guard(Arc::new(RunAdmission::new(Arc::clone(&reconciliation)))
+                as Arc<dyn OndoNewRiskGuard>)
             .build()
             .map_err(|error| {
                 anyhow::anyhow!("Failed to build the Ondo Perps HTTP client: {error}")
@@ -1053,11 +1126,6 @@ impl OndoExecutionClient {
             emitter,
             state: Arc::new(RwLock::new(OndoPrivateState::default())),
         };
-
-        let reconciliation = Arc::new(RwLock::new(ReconciliationMachine::new(
-            account_id,
-            config.dms_timeout_secs,
-        )));
 
         Ok(Self {
             core,
@@ -1147,8 +1215,9 @@ impl OndoExecutionClient {
     /// Returns whether a new order may be submitted (plan Task 8).
     ///
     /// Fail-closed, and the whole reason the recovery exists: `true` only for a recovered account
-    /// with usable metadata and a switch that permits orders. Cancels and queries are not governed
-    /// by this - they travel while the account is being recovered (§4.4's priority class).
+    /// with usable metadata, a switch that permits orders and nothing left unsettled. Cancels and
+    /// queries are not governed by this - they travel while the account is being recovered (§4.4's
+    /// priority class).
     #[must_use]
     pub fn can_submit_new_orders(&self) -> bool {
         self.reconciliation.read().can_submit_new_orders()
@@ -1156,37 +1225,34 @@ impl OndoExecutionClient {
 
     /// Returns whether this client must refuse a new order right now.
     ///
-    /// [`Self::can_submit_new_orders`] once a session has been established; a client whose session
-    /// never began is governed by its local refusals alone (see
-    /// [`ReconciliationMachine::refuses_new_risk`]).
+    /// Holds from construction: a client that has established nothing has verified nothing, so
+    /// there is no account state a new order could be placed against.
     #[must_use]
     pub fn refuses_new_risk(&self) -> bool {
         self.reconciliation.read().refuses_new_risk()
     }
 
-    /// Renders why a new order is refused while the account is not ready.
-    fn new_risk_refusal_reason(&self) -> String {
-        let machine = self.reconciliation.read();
+    /// Returns why a new order would be refused, or [`None`] when one may be submitted.
+    #[must_use]
+    pub fn new_risk_refusal(&self) -> Option<NewRiskRefusal> {
+        self.reconciliation.read().new_risk_refusal()
+    }
 
-        let detail = if !machine.metadata().is_usable() {
-            "the instrument metadata is not current".to_string()
-        } else if !machine.dead_mans_switch().permits_new_orders() {
-            format!(
-                "the dead man's switch is {}",
-                match machine.dead_mans_switch().state() {
-                    crate::reconciliation::DeadMansSwitchState::NotRequired => "not required",
-                    crate::reconciliation::DeadMansSwitchState::Disarmed => "not armed",
-                    crate::reconciliation::DeadMansSwitchState::Arming => "not yet confirmed",
-                    crate::reconciliation::DeadMansSwitchState::Armed => "armed",
-                    crate::reconciliation::DeadMansSwitchState::Failed { .. } => "failed",
-                    crate::reconciliation::DeadMansSwitchState::Expired => "expired",
-                }
-            )
-        } else {
-            format!("the account is {}", machine.state().as_str())
-        };
+    /// The one admission decision, taken under the lock that reads it.
+    fn admission(&self) -> Admission {
+        self.reconciliation.read().admission()
+    }
 
-        format!("order-denied: reconciliation: {detail}")
+    /// Denies one command the account does not admit, by name and with its reason.
+    fn deny_submission(&self, order: &OrderAny, reason: &NewRiskRefusal) {
+        log::error!(
+            "Ondo refused to submit {}: {}",
+            order.client_order_id(),
+            reason.reason(),
+        );
+        self.reporter
+            .emitter
+            .emit_order_denied(order, &new_risk_refusal_reason(reason));
     }
 
     /// Begins a recovery: the account is about to be read, and new risk stops until it converges.
@@ -1218,14 +1284,23 @@ impl OndoExecutionClient {
 
     /// Returns the submissions whose outcome is unknown.
     #[must_use]
-    pub fn unknown_submissions(&self) -> Vec<crate::reconciliation::UnknownSubmission> {
+    pub fn unknown_submissions(&self) -> Vec<UncertainOutcome> {
         self.reconciliation.read().unknown_submissions()
     }
 
     /// Returns the cancels no venue answer has settled.
     #[must_use]
-    pub fn unconfirmed_cancels(&self) -> Vec<ClientOrderId> {
+    pub fn unconfirmed_cancels(&self) -> Vec<UncertainOutcome> {
         self.reconciliation.read().unconfirmed_cancels()
+    }
+
+    /// Returns the record one unsettled write is held under, whichever map holds it.
+    #[must_use]
+    pub fn uncertain_outcome(&self, client_order_id: &ClientOrderId) -> Option<UncertainOutcome> {
+        self.reconciliation
+            .read()
+            .uncertain_outcome(client_order_id)
+            .cloned()
     }
 
     /// Records whether the metadata this client trades on is usable (plan §4.1).
@@ -1341,20 +1416,31 @@ impl OndoExecutionClient {
         }
     }
 
-    /// Probes every unknown submission a probe is due for, by its **own** client order id.
+    /// Probes every unsettled write a probe is due for, under the reference that identifies it.
     ///
-    /// A probe that finds the order applies it; a 404 settles nothing (plan §6.3), and an
-    /// inconclusive probe settles nothing either. Nothing here creates an order: the submission
-    /// stays as it was made, under the client order id it was made with.
+    /// A submission is asked about under the client order id it was made with, a cancel under the
+    /// venue order id when this session has one - a probe never invents a new client order id,
+    /// because that would be a second order. A probe that finds the order applies it and settles
+    /// the outcome; a 404 settles nothing (plan §6.3), and an inconclusive probe settles nothing
+    /// either.
     #[must_use]
     pub async fn probe_unknown_submissions(&self, now: UnixNanos) -> Vec<ProbeReport> {
         let due = self.reconciliation.read().probe_due(now);
         let mut reports = Vec::new();
 
         for client_order_id in due {
+            let Some(lookup) = self
+                .reconciliation
+                .read()
+                .uncertain_outcome(&client_order_id)
+                .map(|outcome| outcome.lookup.clone())
+            else {
+                continue;
+            };
+
             let outcome = match self
                 .http_client
-                .get_client_order(client_order_id.as_str(), OndoRequestPriority::High)
+                .get_order(&lookup, OndoRequestPriority::High)
                 .await
             {
                 Ok(payload) => {
@@ -1373,7 +1459,8 @@ impl OndoExecutionClient {
                     .note_probe(&client_order_id, outcome, now);
 
             log::warn!(
-                "Ondo probed the unknown submission {client_order_id} ({:?}): {disposition:?}",
+                "Ondo probed the unsettled write {client_order_id} ({lookup}) at {:?}: \
+                 {disposition:?}",
                 self.reconciliation.read().state(),
             );
 
@@ -1699,40 +1786,6 @@ impl OndoExecutionClient {
             None => self.reporter.order_ref(client_order_id),
         }
     }
-
-    /// Inserts the state a submission starts from.
-    fn track_submission(
-        &self,
-        command: &OndoOrderCommand,
-        client_order_id: ClientOrderId,
-        instrument_id: InstrumentId,
-    ) {
-        self.reporter.state.write().orders.insert(
-            client_order_id,
-            OndoOrderState {
-                client_order_id,
-                venue_order_id: None,
-                instrument_id,
-                side: command.side,
-                order_type: command.order_type,
-                time_in_force: command.time_in_force,
-                quantity: command.quantity,
-                price: command.price,
-                reduce_only: command.reduce_only,
-                post_only: command.post_only,
-                status: OndoOrderStatus::Pending,
-                accepted: false,
-                filled: Quantity::from("0"),
-                venue_fee: None,
-                last_fill_size: None,
-                venue_filled: None,
-                last_raw: String::new(),
-                reconciliation_needed: false,
-                resolved: false,
-                pending_fills: Vec::new(),
-            },
-        );
-    }
 }
 
 #[async_trait(?Send)]
@@ -1885,6 +1938,18 @@ impl ExecutionClient for OndoExecutionClient {
     /// The command is validated first, so an order this adapter cannot express is denied before a
     /// request exists: `Initialized -> Denied` is a legal transition and `Submitted -> Denied` is
     /// not, which is why nothing is emitted until the command is known good.
+    ///
+    /// Admission is decided three times - here, again inside the task immediately before the
+    /// request exists, and once more at the send point itself (plan §6.4). The first gate is what a
+    /// strategy sees; the second is what makes the decision binding on the command, because a
+    /// command can be admitted and then wait for a task slot or a scheduling turn; the third is
+    /// what makes it binding on the *request*, because between the second gate and the wire there is
+    /// a wait for the shared rate budget - the one wait this client does not control - and the
+    /// account can stop admitting new risk inside it. `Submitted` is emitted at the second gate
+    /// rather than here, so a command the account stopped admitting is denied from `Initialized` -
+    /// the legal transition - instead of from a state it never reached; a command refused at the
+    /// third gate has already been submitted, so it is rejected rather than denied, which is the
+    /// terminal transition `Submitted` does have.
     fn submit_order(&self, cmd: SubmitOrder) -> anyhow::Result<()> {
         let order = self.core.cache().try_order_owned(&cmd.client_order_id)?;
 
@@ -1896,17 +1961,14 @@ impl ExecutionClient for OndoExecutionClient {
         // Plan §6.4: new risk waits for a recovered account. A command refused here leaves no trace
         // at the venue, which is the point - the alternative is an order placed against an account
         // whose state is unknown.
-        if self.refuses_new_risk() {
-            let reason = self.new_risk_refusal_reason();
+        let permit = match self.admission() {
+            Admission::Granted { generation } => generation,
+            Admission::Refused { reason } => {
+                self.deny_submission(&order, &reason);
 
-            log::error!(
-                "Ondo refused to submit {} while the account is not ready: {reason}",
-                cmd.client_order_id,
-            );
-            self.reporter.emitter.emit_order_denied(&order, &reason);
-
-            return Ok(());
-        }
+                return Ok(());
+            }
+        };
 
         let command = match OndoOrderCommand::from_init(&cmd.order_init) {
             Ok(command) => command,
@@ -1927,23 +1989,65 @@ impl ExecutionClient for OndoExecutionClient {
             return Ok(());
         };
 
-        self.track_submission(&command, cmd.client_order_id, cmd.instrument_id);
-        self.reporter.emitter.emit_order_submitted(&order);
-
         let http_client = self.http_client.clone();
         let reporter = self.reporter.clone();
         let reconciliation = Arc::clone(&self.reconciliation);
         let client_order_id = cmd.client_order_id;
+        let instrument_id = cmd.instrument_id;
 
         spawner.spawn(async move {
+            if let Admission::Refused { reason } =
+                revalidate(&reconciliation, &Admission::Granted { generation: permit })
+            {
+                log::error!(
+                    "Ondo refused to submit {client_order_id} at the request boundary: {}",
+                    reason.reason(),
+                );
+                reporter
+                    .emitter
+                    .emit_order_denied(&order, &new_risk_refusal_reason(&reason));
+
+                return;
+            }
+
+            reporter.track_submission(&command, client_order_id, instrument_id);
+            reporter.emitter.emit_order_submitted(&order);
+
             match http_client
-                .create_order(&command, OndoRequestPriority::Normal)
+                .create_order(
+                    &command,
+                    OndoRequestPriority::Normal,
+                    NewRiskPermit::new(permit),
+                )
                 .await
             {
                 Ok(payload) => {
                     reporter.apply_order(&payload, Acceptance::Event, Some(&order));
                 }
-                Err(error) if is_definitive_refusal(&error) => {
+                Err(OndoNewRiskSendError::Refused { reason }) => {
+                    // The account stopped admitting this order while it waited for the shared
+                    // budget, so the request was never built and nothing rests at the venue. The
+                    // order is not in flight and is not unknown: it is terminalised with the
+                    // account's own reason, and no probe is owed for a request that never existed.
+                    log::error!("Ondo refused order {client_order_id} at the send point: {reason}");
+                    reporter
+                        .emitter
+                        .emit_order_rejected(&order, &reason, reporter.now(), false);
+                    reporter.forget(&client_order_id);
+                }
+                Err(OndoNewRiskSendError::Local(error)) => {
+                    // A single order has no batch-level validation to fail, so this arm is the
+                    // batch's own refusal class reported the same way: nothing was sent.
+                    log::error!("Ondo refused order {client_order_id} locally: {error}");
+                    reporter.emitter.emit_order_rejected(
+                        &order,
+                        &format!("batch-order-error: {error}"),
+                        reporter.now(),
+                        false,
+                    );
+                    reporter.forget(&client_order_id);
+                }
+                Err(OndoNewRiskSendError::Http(error)) if is_definitive_refusal(&error) => {
                     // The venue answered and refused, or the request never left this process.
                     // Either way the order is not resting, so it is rejected rather than left in
                     // flight.
@@ -1956,18 +2060,21 @@ impl ExecutionClient for OndoExecutionClient {
                     );
                     reporter.forget(&client_order_id);
                 }
-                Err(error) => {
+                Err(OndoNewRiskSendError::Http(error)) => {
                     // Plan §6.3: the request may have been applied. The order is neither accepted
                     // nor rejected, it is never resubmitted, and the bounded query window is what
                     // resolves it - under the same client order id, which is recorded here so a
-                    // probe can find it and nothing can forget it.
+                    // probe can find it and nothing can forget it. Recording it also stops new
+                    // risk, immediately and without waiting for a pass.
                     log::error!(
                         "Ondo left the outcome of order {client_order_id} unknown ({error}); the \
                          order stays in flight and is not resubmitted"
                     );
-                    reconciliation
-                        .write()
-                        .note_unknown_submission(client_order_id, reporter.now());
+                    reconciliation.write().note_unknown_submission(
+                        client_order_id,
+                        format!("the create request was not answered: {error}"),
+                        reporter.now(),
+                    );
                 }
             }
         })?;
@@ -1980,30 +2087,38 @@ impl ExecutionClient for OndoExecutionClient {
     /// A 2xx answer is **not** a success per item: the venue reports the added and the refused
     /// items separately and each is reported on its own. An item the venue refused without echoing
     /// a client order id is reported as unattributed rather than attributed to the wrong order.
+    ///
+    /// Admission is decided on exactly the same terms as a single order - the same decision, taken
+    /// twice, for the same reason - and an item the venue's answer does not account for is
+    /// registered as an unknown outcome rather than left as a log line (plan §6.3).
     fn submit_order_list(&self, cmd: SubmitOrderList) -> anyhow::Result<()> {
         if cmd.order_inits.is_empty() {
             log::warn!("Cannot submit an empty order list");
             return Ok(());
         }
 
-        // A batch is new risk too, so plan §6.4 stops it with the same predicate a single order
+        // A batch is new risk too, so plan §6.4 stops it with the same decision a single order
         // meets. Every item is denied by name, and no batch request exists to have been applied.
-        if self.refuses_new_risk() {
-            let reason = self.new_risk_refusal_reason();
+        let permit = match self.admission() {
+            Admission::Granted { generation } => generation,
+            Admission::Refused { reason } => {
+                log::error!(
+                    "Ondo refused a {}-order batch: {}",
+                    cmd.order_inits.len(),
+                    reason.reason(),
+                );
 
-            log::error!(
-                "Ondo refused a {}-order batch while the account is not ready: {reason}",
-                cmd.order_inits.len(),
-            );
-
-            for init in &cmd.order_inits {
-                if let Ok(order) = self.core.cache().try_order_owned(&init.client_order_id) {
-                    self.reporter.emitter.emit_order_denied(&order, &reason);
+                for init in &cmd.order_inits {
+                    if let Ok(order) = self.core.cache().try_order_owned(&init.client_order_id) {
+                        self.reporter
+                            .emitter
+                            .emit_order_denied(&order, &new_risk_refusal_reason(&reason));
+                    }
                 }
-            }
 
-            return Ok(());
-        }
+                return Ok(());
+            }
+        };
 
         let mut commands = Vec::with_capacity(cmd.order_inits.len());
         let mut orders = Vec::with_capacity(cmd.order_inits.len());
@@ -2041,29 +2156,71 @@ impl ExecutionClient for OndoExecutionClient {
             return Ok(());
         };
 
-        for (command, instrument_id) in commands.iter().zip(instrument_ids.iter()) {
-            self.track_submission(command, command.client_order_id, *instrument_id);
-        }
-
-        for order in &orders {
-            self.reporter.emitter.emit_order_submitted(order);
-        }
-
         let http_client = self.http_client.clone();
         let reporter = self.reporter.clone();
+        let reconciliation = Arc::clone(&self.reconciliation);
         let client_order_ids: Vec<ClientOrderId> = commands
             .iter()
             .map(|command| command.client_order_id)
             .collect();
 
         spawner.spawn(async move {
+            if let Admission::Refused { reason } =
+                revalidate(&reconciliation, &Admission::Granted { generation: permit })
+            {
+                log::error!(
+                    "Ondo refused a {}-order batch at the request boundary: {}",
+                    orders.len(),
+                    reason.reason(),
+                );
+
+                for order in &orders {
+                    reporter
+                        .emitter
+                        .emit_order_denied(order, &new_risk_refusal_reason(&reason));
+                }
+
+                return;
+            }
+
+            for (command, instrument_id) in commands.iter().zip(instrument_ids.iter()) {
+                reporter.track_submission(command, command.client_order_id, *instrument_id);
+            }
+
+            for order in &orders {
+                reporter.emitter.emit_order_submitted(order);
+            }
+
             let response = match http_client
-                .create_orders_batch(&commands, OndoRequestPriority::Normal)
+                .create_orders_batch(
+                    &commands,
+                    OndoRequestPriority::Normal,
+                    NewRiskPermit::new(permit),
+                )
                 .await
             {
                 Ok(response) => response,
-                Err(OndoBatchSendError::Local(error)) => {
-                    // The batch never became a request, so no item can be resting.
+                Err(OndoNewRiskSendError::Refused { reason }) => {
+                    // The account stopped admitting the list while it waited for the shared budget,
+                    // so no item of it became a request. Every item is terminalised with the
+                    // account's own reason, and none of them is an unknown outcome.
+                    log::error!(
+                        "Ondo refused a {}-order batch at the send point: {reason}",
+                        orders.len(),
+                    );
+
+                    for order in &orders {
+                        reporter
+                            .emitter
+                            .emit_order_rejected(order, &reason, reporter.now(), false);
+                        reporter.forget(&order.client_order_id());
+                    }
+
+                    return;
+                }
+                Err(OndoNewRiskSendError::Local(error)) => {
+                    // The batch never became a request, so no item can be resting: this is the one
+                    // batch failure that is definitively not an unknown outcome.
                     log::error!("Ondo refused the batch locally: {error}");
 
                     for order in &orders {
@@ -2078,12 +2235,24 @@ impl ExecutionClient for OndoExecutionClient {
 
                     return;
                 }
-                Err(OndoBatchSendError::Http(error)) => {
+                Err(OndoNewRiskSendError::Http(error)) => {
+                    // The request was made and its answer could not be used, so **every** item's
+                    // outcome is unknown: the venue may have applied all of them, some of them or
+                    // none. Nothing is resubmitted, and each item keeps its own client order id so
+                    // a probe can ask about it (plan §6.3).
                     log::error!(
                         "Ondo left the outcome of a {}-order batch unknown ({error}); the orders \
                          stay in flight and are not resubmitted",
                         client_order_ids.len(),
                     );
+
+                    for client_order_id in &client_order_ids {
+                        reconciliation.write().note_unknown_submission(
+                            *client_order_id,
+                            format!("the batch request was not answered: {error}"),
+                            reporter.now(),
+                        );
+                    }
 
                     return;
                 }
@@ -2092,10 +2261,25 @@ impl ExecutionClient for OndoExecutionClient {
             let mut reported: Vec<ClientOrderId> = Vec::new();
 
             for payload in response.added() {
-                reporter.apply_order(payload, Acceptance::Event, order_for(&orders, payload));
+                let order = order_for(&orders, payload);
 
-                if let Some(client_order_id) = payload.client_order_id() {
-                    reported.push(ClientOrderId::from(client_order_id));
+                if order.is_none() {
+                    // The venue added an order that names none of this client's submissions. It is
+                    // applied - it is a real order the venue stated - but it accounts for none of
+                    // them, so it does not settle the item that was sent.
+                    log::error!(
+                        "Ondo's batch answer added the order {} (client order id `{}`), which \
+                         names no order this client submitted; it is applied without attributing \
+                         any item to it",
+                        payload.order_id(),
+                        payload.client_order_id().unwrap_or("none"),
+                    );
+                }
+
+                reporter.apply_order(payload, Acceptance::Event, order);
+
+                if let Some(order) = order {
+                    reported.push(order.client_order_id());
                 }
             }
 
@@ -2104,14 +2288,23 @@ impl ExecutionClient for OndoExecutionClient {
             }
 
             for client_order_id in &client_order_ids {
-                if !reported.contains(client_order_id) {
-                    // A 2xx that names neither an added nor a refused order for an item leaves
-                    // that item's outcome unknown; it is not terminalised here (plan §6.3).
-                    log::error!(
-                        "Ondo's batch answer named neither an added nor a refused order for \
-                         {client_order_id}; it stays in flight"
-                    );
+                if reported.contains(client_order_id) {
+                    continue;
                 }
+
+                // A 2xx that names neither an added nor a refused order for an item leaves that
+                // item's outcome unknown; it is not terminalised here, and it is registered so the
+                // probe can find it and the account stops admitting new risk (plan §6.3).
+                log::error!(
+                    "Ondo's batch answer named neither an added nor a refused order for \
+                     {client_order_id}; it stays in flight"
+                );
+                reconciliation.write().note_unknown_submission(
+                    *client_order_id,
+                    "the batch answer named neither an added nor a refused order for it"
+                        .to_string(),
+                    reporter.now(),
+                );
             }
         })?;
 
@@ -2172,10 +2365,19 @@ impl ExecutionClient for OndoExecutionClient {
                     reporter.apply_order(&order, Acceptance::Report, None);
                 }
                 Ok(OndoCancelAnswer::Unconfirmed { raw }) => {
-                    // Plan §6.3: the cancel API being called is not the order being cancelled.
+                    // Plan §6.3: the cancel API being called is not the order being cancelled. The
+                    // cancel is registered **before** the query that would settle it, so a query
+                    // that cannot be answered leaves it outstanding rather than leaving nothing
+                    // behind at all.
                     log::warn!(
                         "Ondo accepted the cancel of {client_order_id} without reporting the \
                          order, so its state is confirmed by a query ({raw})"
+                    );
+                    reconciliation.write().note_unconfirmed_cancel(
+                        client_order_id,
+                        venue_order_id,
+                        format!("the cancel was accepted without an order payload ({raw})"),
+                        reporter.now(),
                     );
 
                     confirm_cancel(&http_client, &reporter, &reconciliation, &client_order_id)
@@ -2187,6 +2389,18 @@ impl ExecutionClient for OndoExecutionClient {
                     log::warn!("Ondo refused the cancel of {client_order_id}: {error}");
 
                     if rejection.requires_query() {
+                        // The venue's own state machine cannot say whether this order is
+                        // cancelable, which is exactly the case the query exists for - and until
+                        // it answers, the cancel is outstanding.
+                        reconciliation.write().note_unconfirmed_cancel(
+                            client_order_id,
+                            venue_order_id,
+                            format!(
+                                "the cancel was refused with a code that requires a query: {error}"
+                            ),
+                            reporter.now(),
+                        );
+
                         confirm_cancel(&http_client, &reporter, &reconciliation, &client_order_id)
                             .await;
                     } else {
@@ -2208,9 +2422,12 @@ impl ExecutionClient for OndoExecutionClient {
                         "Ambiguous Ondo cancel failure for {client_order_id}; its state is \
                          confirmed by a query: {error}"
                     );
-                    reconciliation
-                        .write()
-                        .note_unconfirmed_cancel(client_order_id, reporter.now());
+                    reconciliation.write().note_unconfirmed_cancel(
+                        client_order_id,
+                        venue_order_id,
+                        format!("the cancel request was not answered: {error}"),
+                        reporter.now(),
+                    );
 
                     confirm_cancel(&http_client, &reporter, &reconciliation, &client_order_id)
                         .await;
@@ -2253,8 +2470,12 @@ impl ExecutionClient for OndoExecutionClient {
 
         let http_client = self.http_client.clone();
         let reporter = self.reporter.clone();
+        let reconciliation = Arc::clone(&self.reconciliation);
 
         spawner.spawn(async move {
+            // The orders a market cancel speaks for are the ones this client is tracking on that
+            // market. They are collected before the request so the ambiguous paths below have the
+            // set to register.
             match http_client
                 .cancel_market_orders(&market, OndoRequestPriority::High)
                 .await
@@ -2265,14 +2486,27 @@ impl ExecutionClient for OndoExecutionClient {
                 Ok(OndoCancelAnswer::Unconfirmed { raw }) => {
                     // The documented 200 of this endpoint carries no order (plan §6.3): the cancel
                     // API having answered is not the orders having been cancelled, so the state of
-                    // every order on the market is confirmed from the venue's own list.
+                    // every order on the market is confirmed from the venue's own list. They are
+                    // registered first, so a confirming read that cannot be answered leaves them
+                    // outstanding rather than leaving nothing behind.
                     log::warn!(
                         "Ondo accepted the market cancel for {market} without reporting an order, \
                          so the orders' states are confirmed by a query ({raw})"
                     );
 
+                    register_market_cancel(
+                        &reporter,
+                        &reconciliation,
+                        &market,
+                        format!(
+                            "the market cancel for {market} was accepted without an order \
+                                 payload ({raw})"
+                        ),
+                    );
+
                     if let Err(error) =
-                        confirm_market_cancel(&http_client, &reporter, &market).await
+                        confirm_market_cancel(&http_client, &reporter, &reconciliation, &market)
+                            .await
                     {
                         log::warn!(
                             "The confirming read after the Ondo market cancel for {market} failed: \
@@ -2280,11 +2514,36 @@ impl ExecutionClient for OndoExecutionClient {
                         );
                     }
                 }
-                Err(error) => {
-                    // A refusal is definitive - the orders were not cancelled, which is the state
-                    // this client already holds - and anything else is ambiguous, which is
-                    // reconciliation's to settle rather than a rejection that never happened.
+                Err(error) if is_definitive_refusal(&error) => {
+                    // A refusal is definitive: the orders were not cancelled, which is the state
+                    // this client already holds.
                     log::warn!("Ondo market cancel failed for {market}: {error}");
+                }
+                Err(error) => {
+                    // Ambiguous: the venue may still act on it. A cancel API call is not a cancel,
+                    // so the orders' states are confirmed by a query - and until that query
+                    // answers, the cancels are outstanding (plan §6.3).
+                    log::warn!(
+                        "Ambiguous Ondo market cancel failure for {market}; the orders' states are \
+                         confirmed by a query: {error}"
+                    );
+
+                    register_market_cancel(
+                        &reporter,
+                        &reconciliation,
+                        &market,
+                        format!("the market cancel for {market} was not answered: {error}"),
+                    );
+
+                    if let Err(error) =
+                        confirm_market_cancel(&http_client, &reporter, &reconciliation, &market)
+                            .await
+                    {
+                        log::warn!(
+                            "The confirming read after the Ondo market cancel for {market} failed: \
+                             {error}; the orders' states stay unconfirmed"
+                        );
+                    }
                 }
             }
         })?;
@@ -2560,12 +2819,14 @@ async fn confirm_cancel(
 /// A market cancel answers for a whole market rather than for one order, so the confirming read is
 /// the venue's own order list for that market - the same endpoint §6.4's bounded reconciliation
 /// reads - and each payload it carries is applied through the path every other answer takes. An
-/// order the venue still reports as working stays working; one it reports as ended ends.
+/// order the venue still reports as working stays working; one it reports as ended ends. Each order
+/// the read names is also settled as a cancel: the venue's own answer about it is what the query
+/// was for.
 ///
 /// An order the venue does not list is **not** concluded to be gone. Absent evidence is not
 /// evidence: the list is paginated and none of the frozen material states what it omits, so nothing
-/// is reported for a missing order and it keeps the state it had. What settles a state no answer has
-/// stated is the reconciliation read, not a guess here.
+/// is reported for a missing order and it keeps the state it had - including its outstanding cancel,
+/// which is what keeps this client from trading on a state no answer has stated.
 ///
 /// # Errors
 ///
@@ -2574,6 +2835,7 @@ async fn confirm_cancel(
 async fn confirm_market_cancel(
     http_client: &OndoHttpClient,
     reporter: &OndoReporter,
+    reconciliation: &Arc<RwLock<ReconciliationMachine>>,
     market: &str,
 ) -> anyhow::Result<()> {
     let mut query = OndoPrivateReadQuery::new().with_market(market);
@@ -2589,6 +2851,12 @@ async fn confirm_market_cancel(
             match OndoApiOrder::from_text(item.get()) {
                 Ok(payload) => {
                     reporter.apply_order(&payload, Acceptance::Report, None);
+
+                    if let Some(client_order_id) = payload.client_order_id() {
+                        reconciliation
+                            .write()
+                            .confirm_cancel(&ClientOrderId::from(client_order_id));
+                    }
                 }
                 Err(error) => log::error!(
                     "An order in the confirming read for {market} could not be read and is not \
@@ -2605,6 +2873,74 @@ async fn confirm_market_cancel(
     }
 
     Ok(())
+}
+
+/// Registers every order this client tracks on `market` as a cancel no answer has settled.
+///
+/// A market cancel speaks for a whole market, so the orders it may have taken are the ones this
+/// client is tracking there. Registering them is what stops new risk until the venue's own list
+/// says what became of each (plan §6.3).
+fn register_market_cancel(
+    reporter: &OndoReporter,
+    reconciliation: &Arc<RwLock<ReconciliationMachine>>,
+    market: &str,
+    reason: String,
+) {
+    let mut machine = reconciliation.write();
+
+    for (client_order_id, venue_order_id) in reporter.tracked_orders_on(market) {
+        machine.note_unconfirmed_cancel(
+            client_order_id,
+            venue_order_id,
+            reason.clone(),
+            reporter.now(),
+        );
+    }
+}
+
+/// Takes the admission decision under the same lock that reads it.
+fn revalidate(
+    reconciliation: &Arc<RwLock<ReconciliationMachine>>,
+    permit: &Admission,
+) -> Admission {
+    reconciliation.read().revalidate(permit)
+}
+
+/// Renders a refusal as the reason an order was denied.
+fn new_risk_refusal_reason(refusal: &NewRiskRefusal) -> String {
+    format!("order-denied: reconciliation: {}", refusal.reason())
+}
+
+/// This run's answer to the send point's question: does the account still admit new risk?
+///
+/// It holds the state machine rather than any copy of its verdict, because a verdict is only worth
+/// something at the moment it is asked for. The transport asks *after* the request has waited for
+/// the shared budget - which is after every decision this client could have taken - so the answer
+/// has to be read from the account as it stands then, and it has to be read as a re-check of the
+/// permit the command was admitted under rather than as a fresh question with a fresh answer
+/// ([`ReconciliationMachine::revalidate`]).
+#[derive(Debug)]
+struct RunAdmission {
+    reconciliation: Arc<RwLock<ReconciliationMachine>>,
+}
+
+impl RunAdmission {
+    fn new(reconciliation: Arc<RwLock<ReconciliationMachine>>) -> Self {
+        Self { reconciliation }
+    }
+}
+
+impl OndoNewRiskGuard for RunAdmission {
+    fn revalidate(&self, permit: NewRiskPermit) -> Result<(), String> {
+        let permit = Admission::Granted {
+            generation: permit.generation(),
+        };
+
+        match self.reconciliation.read().revalidate(&permit) {
+            Admission::Granted { .. } => Ok(()),
+            Admission::Refused { reason } => Err(new_risk_refusal_reason(&reason)),
+        }
+    }
 }
 
 /// Reports one refused batch item against the order it belongs to.

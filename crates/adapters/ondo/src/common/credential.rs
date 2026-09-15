@@ -26,17 +26,23 @@
 //! environment variable is looked up, and again by the authenticated HTTP client's constructor
 //! before the client exists. Its rules (plan §1: the execution client defaults to sandbox, must
 //! error when credentials are absent, and must never fall back to another account or to
-//! production; §6.1: no automatic protocol or environment switching):
+//! production; §6.1: no automatic protocol or environment switching; §R0.3: the endpoint is an
+//! allowlist):
 //!
 //! 1. an authenticated session may only be opened for [`OndoEnvironment::Sandbox`]; a production
 //!    configuration is refused with [`OndoEnvironmentError::ProductionForbidden`], whatever URL it
 //!    carries;
-//! 2. the base URL host may not be the production host or a subdomain of it, so the configuration's
-//!    own `base_url_http` override cannot aim a sandbox credential at production. That refusal is
-//!    [`OndoEnvironmentError::ProductionHostForbidden`].
+//! 2. the base URL must be an endpoint this session may sign for, which is
+//!    [`crate::common::endpoint::OndoEndpointPolicy`]'s decision: the official host of the session's
+//!    own environment ([`OndoEndpoint::Official`]) or a loopback test service
+//!    ([`OndoEndpoint::LoopbackTestService`]). Anything else - another remote host, a lookalike of
+//!    the official host, userinfo, a non-TLS remote service, an unreadable URL - is refused, and a
+//!    host inside the production domain is refused *as production*
+//!    ([`OndoEnvironmentError::ProductionHostForbidden`]) before any other rule is consulted.
 //!
 //! Neither refusal reads a credential, opens a socket, or has a fallback: there is one gate and one
-//! answer.
+//! answer. The URL is judged as the transport's own parser reads it, so what is admitted here is
+//! what would be dialled.
 //!
 //! # The secret cannot leak
 //!
@@ -60,40 +66,21 @@ use std::fmt;
 use nautilus_core::string::secret::{REDACTED, mask_api_key};
 use zeroize::ZeroizeOnDrop;
 
-use crate::common::enums::OndoEnvironment;
+// The gate's own types are the endpoint policy's: an authenticated session and the endpoint it
+// signs for are one decision, and the URL rules live in `common::endpoint` so REST and the private
+// WebSocket share them. Re-exported here because this is the path every caller already imports the
+// gate's error from.
+pub use crate::common::endpoint::{OndoEndpoint, OndoEnvironmentError};
+use crate::common::{
+    endpoint::{OndoEndpointPolicy, OndoSchemeFamily},
+    enums::OndoEnvironment,
+};
 
 /// The environment variable holding the sandbox API key id (plan §7 Task 9).
 pub const ONDO_SANDBOX_API_KEY_VAR: &str = "ONDO_SANDBOX_API_KEY";
 
 /// The environment variable holding the sandbox API secret (plan §7 Task 9).
 pub const ONDO_SANDBOX_API_SECRET_VAR: &str = "ONDO_SANDBOX_API_SECRET";
-
-/// The registrable domain every production host belongs to.
-///
-/// Derived from [`crate::common::consts::ONDO_HTTP_BASE_URL_PRODUCTION`] rather than written out
-/// twice: the gate refuses this domain and any subdomain of it. The sandbox host is a different
-/// registrable domain (`ondoperps-sandbox.xyz`), so it is not caught by this rule.
-const ONDO_PRODUCTION_DOMAIN: &str = "ondoperps.xyz";
-
-/// Why an environment cannot carry an authenticated session.
-#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
-pub enum OndoEnvironmentError {
-    /// Production is not an environment this adapter may authenticate against.
-    #[error(
-        "an authenticated Ondo Perps session may not be opened against production: this adapter \
-         authenticates the sandbox environment only (plan §1, §6.1)"
-    )]
-    ProductionForbidden,
-    /// The base URL points at the production venue.
-    #[error(
-        "the base URL host `{host}` belongs to the production Ondo Perps domain, so a sandbox \
-         credential may not be sent to it"
-    )]
-    ProductionHostForbidden {
-        /// The host the rule matched.
-        host: String,
-    },
-}
 
 /// Why a credential could not be resolved.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
@@ -117,57 +104,29 @@ pub enum CredentialError {
     },
 }
 
-/// Enforces the gate an authenticated session must pass.
+/// Enforces the gate an authenticated REST session must pass.
 ///
-/// This is the only place an environment and a base URL are judged, and it reads nothing: it takes
-/// no credential, opens no socket, and has no fallback path. Call it - or let
-/// [`resolve_credential`] call it - before reading a key.
+/// This is the one place an environment and a base URL are judged for the REST surface, and it
+/// reads nothing: it takes no credential, opens no socket, and has no fallback path. Call it - or
+/// let [`resolve_credential`] call it - before reading a key. It is the REST policy
+/// ([`OndoSchemeFamily::Http`]) of [`crate::common::endpoint::OndoEndpointPolicy`], which the
+/// private WebSocket applies for its own schemes.
 ///
 /// # Errors
 ///
-/// Returns [`OndoEnvironmentError::ProductionForbidden`] when `environment` is
-/// [`OndoEnvironment::Production`], and [`OndoEnvironmentError::ProductionHostForbidden`] when
-/// `base_url`'s host is the production domain or a subdomain of it. A URL whose host cannot be read
-/// is not the production host and is accepted: the rule's job is to make production unreachable,
-/// not to allow-list hosts (a local test server is an explicit, documented use of
-/// `base_url_http`).
+/// Returns the policy's refusal: [`OndoEnvironmentError::ProductionForbidden`] for any environment
+/// other than [`OndoEnvironment::Sandbox`], and otherwise
+/// [`OndoEnvironmentError::ProductionHostForbidden`],
+/// [`OndoEnvironmentError::UserInfoForbidden`], [`OndoEnvironmentError::HostNotAllowed`],
+/// [`OndoEnvironmentError::UnsupportedScheme`], [`OndoEnvironmentError::PortNotAllowed`] or
+/// [`OndoEnvironmentError::MalformedUrl`]. A URL the gate cannot place is refused, not passed
+/// through: the allowlist admits the environment's official host and a loopback test service, and
+/// nothing else.
 pub fn validate_authenticated_environment(
     environment: OndoEnvironment,
     base_url: &str,
-) -> Result<(), OndoEnvironmentError> {
-    if environment != OndoEnvironment::Sandbox {
-        return Err(OndoEnvironmentError::ProductionForbidden);
-    }
-
-    let Some(host) = host_of(base_url) else {
-        return Ok(());
-    };
-
-    if host == ONDO_PRODUCTION_DOMAIN || host.ends_with(&format!(".{ONDO_PRODUCTION_DOMAIN}")) {
-        return Err(OndoEnvironmentError::ProductionHostForbidden { host });
-    }
-
-    Ok(())
-}
-
-/// Returns the lowercased host of `base_url`, when it carries one.
-fn host_of(base_url: &str) -> Option<String> {
-    let after_scheme = base_url
-        .split_once("://")
-        .map_or(base_url, |(_scheme, rest)| rest);
-    let authority = after_scheme.split(['/', '?', '#']).next()?;
-    // `user:password@host`
-    let authority = authority
-        .rsplit_once('@')
-        .map_or(authority, |(_userinfo, host)| host);
-    // An IPv6 literal is bracketed; anything else ends at its port.
-    let host = match authority.strip_prefix('[') {
-        Some(rest) => rest.split_once(']').map(|(host, _port)| host)?,
-        None => authority.split(':').next()?,
-    };
-    let host = host.trim_end_matches('.').to_ascii_lowercase();
-
-    (!host.is_empty()).then_some(host)
+) -> Result<OndoEndpoint, OndoEnvironmentError> {
+    OndoEndpointPolicy::authenticated(environment, OndoSchemeFamily::Http).classify(base_url)
 }
 
 /// Resolves the sandbox credential from the process environment.
@@ -349,36 +308,36 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
-    use crate::common::consts::ONDO_HTTP_BASE_URL_PRODUCTION;
+    use crate::common::consts::ONDO_HTTP_BASE_URL_SANDBOX;
 
     const SANDBOX_URL: &str = "https://api.ondoperps-sandbox.xyz";
 
+    /// The gate this module exposes is the REST policy, not a second implementation of it: the
+    /// endpoint rules live with the endpoint type, and what is judged here is the same pair.
     #[rstest]
-    fn test_the_production_domain_covers_the_documented_production_base_url() {
-        let host = host_of(ONDO_HTTP_BASE_URL_PRODUCTION).expect("the production URL has a host");
-
-        assert!(
-            host == ONDO_PRODUCTION_DOMAIN || host.ends_with(&format!(".{ONDO_PRODUCTION_DOMAIN}")),
-            "`{host}` must be inside the domain the gate refuses",
+    fn test_the_gate_is_the_rest_endpoint_policy() {
+        assert_eq!(
+            validate_authenticated_environment(
+                OndoEnvironment::Sandbox,
+                ONDO_HTTP_BASE_URL_SANDBOX
+            ),
+            Ok(OndoEndpoint::Official),
         );
-        assert!(
-            host_of(SANDBOX_URL)
-                .is_some_and(|host| !host.ends_with(&format!(".{ONDO_PRODUCTION_DOMAIN}"))),
-            "the sandbox host must not be inside the production domain",
+        assert_eq!(
+            validate_authenticated_environment(OndoEnvironment::Sandbox, "http://127.0.0.1:8080"),
+            Ok(OndoEndpoint::LoopbackTestService),
         );
-    }
-
-    #[rstest]
-    #[case::scheme_and_path("https://api.ondoperps.xyz/v1/markets", Some("api.ondoperps.xyz"))]
-    #[case::no_scheme("api.ondoperps.xyz:8443", Some("api.ondoperps.xyz"))]
-    #[case::trailing_root_dot("api.ondoperps.xyz.", Some("api.ondoperps.xyz"))]
-    #[case::userinfo("https://key:secret@api.ondoperps.xyz", Some("api.ondoperps.xyz"))]
-    #[case::upper_case("HTTPS://API.ONDOPERPS.XYZ", Some("api.ondoperps.xyz"))]
-    #[case::ipv6("http://[::1]:8080/ws", Some("::1"))]
-    #[case::loopback("http://127.0.0.1:8080", Some("127.0.0.1"))]
-    #[case::empty("", None)]
-    fn test_host_extraction(#[case] url: &str, #[case] expected: Option<&str>) {
-        assert_eq!(host_of(url).as_deref(), expected);
+        assert_eq!(
+            validate_authenticated_environment(
+                OndoEnvironment::Sandbox,
+                "wss://api.ondoperps-sandbox.xyz/ws"
+            ),
+            Err(OndoEnvironmentError::UnsupportedScheme {
+                scheme: "wss".to_string(),
+                expected: "https",
+            }),
+            "a WebSocket URL is not a REST endpoint: the families are separate",
+        );
     }
 
     /// The gate runs before any variable is read: the lookup panics if it is ever called, so a

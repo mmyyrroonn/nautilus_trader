@@ -31,16 +31,25 @@ use std::{
     collections::VecDeque,
     net::SocketAddr,
     num::NonZeroU32,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
 use nautilus_core::string::secret::REDACTED;
 use nautilus_network::{http::StatusCode, ratelimiter::quota::Quota, retry::RetryConfig};
 use nautilus_ondo::{
-    common::{credential::OndoCredential, enums::OndoEnvironment},
+    common::{
+        credential::{OndoCredential, OndoEnvironmentError},
+        endpoint::OndoEndpoint,
+        enums::OndoEnvironment,
+    },
     http::{
-        client::{OndoCancelAnswer, OndoHttpClient},
+        client::{
+            NewRiskPermit, OndoCancelAnswer, OndoHttpClient, OndoNewRiskGuard, OndoNewRiskSendError,
+        },
         error::{OndoAuthFailure, OndoHttpError},
         orders::{OndoOrderStatus, market_cancel_target},
         private::{ACCOUNT_PATH, OndoPrivateReadQuery},
@@ -997,12 +1006,28 @@ fn fake_credential() -> OndoCredential {
     .expect("the fake unit-test credential builds")
 }
 
+/// The authenticated mock client, with a new-risk guard that admits every write.
+///
+/// A signed `POST` is an order creation, so the transport consults a guard before it sends one, and
+/// an authenticated client without a guard refuses rather than sends. These tests are about the
+/// transport, so theirs is one that always admits; the guard's own behaviour is tested where it
+/// belongs, in the section at the end of this file.
 fn signed_client_for(server: &MockServer, retry: RetryConfig) -> OndoHttpClient {
+    signed_client_with_guard(server, retry, Arc::new(TestGuard::admitting()))
+}
+
+/// [`signed_client_for`] with the guard the caller keeps, so a test can drive it.
+fn signed_client_with_guard(
+    server: &MockServer,
+    retry: RetryConfig,
+    guard: Arc<TestGuard>,
+) -> OndoHttpClient {
     OndoHttpClient::builder()
         .base_url(server.url())
         .budget(test_budget())
         .retry_config(retry)
         .credential(fake_credential())
+        .new_risk_guard(guard as Arc<dyn OndoNewRiskGuard>)
         .build()
         .expect("the authenticated mock client builds")
 }
@@ -1305,7 +1330,7 @@ async fn test_a_signed_post_is_single_shot_and_signed_over_its_body() {
     // its signature must cover the body the server received.
     let server = MockServer::start(vec![Reply::answer(503, "busy"), Reply::ok(ORDERS_BODY)]).await;
     let client = signed_client_for(&server, retry_policy(3, 1, 2, Some(5_000)));
-    let request = r#"{"market":"NVDA-USD.P","side":"buy","type":"limit","size":"0.01","price":"100.00","clientOrderId":"ondo_probe_example_1"}"#;
+    let request = ORDER_REQUEST_BODY;
     let target = OndoRequestTarget::new(ORDERS_PATH);
 
     let error = client
@@ -1313,12 +1338,16 @@ async fn test_a_signed_post_is_single_shot_and_signed_over_its_body() {
             &target,
             request.as_bytes().to_vec(),
             OndoRequestPriority::Normal,
+            NewRiskPermit::new(1),
         )
         .await
         .expect_err("a 503 is an error on the signed POST path");
 
     assert!(
-        matches!(error, OndoHttpError::Http { status: 503, .. }),
+        matches!(
+            error,
+            OndoNewRiskSendError::Http(OndoHttpError::Http { status: 503, .. })
+        ),
         "a 5xx is not an auth failure, was {error:?}",
     );
 
@@ -1482,6 +1511,98 @@ async fn test_a_client_without_a_credential_refuses_to_sign_a_private_read() {
     );
 }
 
+// ------------------------------------------------------------------------------------------------
+// A signed request is never carried to another authority
+// ------------------------------------------------------------------------------------------------
+
+/// A signed request carries `ONDO-KEY-ID`, `ONDO-SIGNATURE` and `ONDO-TIMESTAMP`. The underlying
+/// transport follows up to ten redirects by default and re-sends the caller's headers on every hop;
+/// the names above are this adapter's own, so the HTTP client's sensitive-header stripping (which
+/// covers `Authorization`, `Cookie` and `Proxy-Authorization`) does not reach them. A redirect is
+/// therefore the one path by which a signature could be replayed against another authority, and the
+/// authenticated transport refuses the hop instead.
+#[tokio::test]
+async fn test_a_signed_request_does_not_follow_a_redirect_to_another_authority() {
+    let elsewhere = MockServer::start(vec![Reply::ok(ACCOUNT_BODY)]).await;
+    let redirecting = MockServer::start(vec![Reply::with_header(
+        302,
+        "Location",
+        &format!("{}{}", elsewhere.url(), ACCOUNT_PATH),
+        "",
+    )])
+    .await;
+
+    let client = signed_client_for(&redirecting, retry_policy(0, 1, 2, Some(5_000)));
+
+    let error = match client.get_account().await {
+        Ok(response) => {
+            panic!("a redirect is not a signed answer and must not be read as one: {response:?}",)
+        }
+        Err(error) => error,
+    };
+
+    assert!(
+        matches!(error, OndoHttpError::Http { status: 302, .. }),
+        "the redirect is answered as the status it is, was {error:?}",
+    );
+    assert_eq!(
+        redirecting.captured().len(),
+        1,
+        "the request is sent once, and a redirect is never replayed",
+    );
+    assert!(
+        elsewhere.captured().is_empty(),
+        "the signed request must not be carried to the authority the redirect names",
+    );
+}
+
+/// The mock server is the explicit local test service, and the client says which authority class it
+/// signs for: a signed session on a loopback mock cannot reach the venue, and the public client
+/// signs for nothing at all.
+#[tokio::test]
+async fn test_an_authenticated_client_reports_the_endpoint_class_it_signs_for() {
+    let server = MockServer::start(vec![Reply::ok(MARKETS_BODY)]).await;
+
+    assert_eq!(
+        signed_client_for(&server, retry_policy(0, 1, 2, Some(5_000))).endpoint_kind(),
+        Some(OndoEndpoint::LoopbackTestService),
+    );
+    assert_eq!(
+        test_client(&server).endpoint_kind(),
+        None,
+        "the public transport carries no credential and is not gated",
+    );
+}
+
+/// The refusal is a construction-time decision, so a client that would send to a refused authority
+/// is never built. The mock server's own listener is used under a name the policy refuses
+/// (`0.0.0.0`, which is not a loopback address), so "nothing was sent" is an observation about a
+/// reachable listener rather than about a host that was never up.
+#[tokio::test]
+async fn test_an_endpoint_outside_the_allowlist_is_refused_before_a_client_exists() {
+    let server = MockServer::start(vec![Reply::ok(ACCOUNT_BODY)]).await;
+    let refused = server.url().replace("127.0.0.1", "0.0.0.0");
+
+    let error = OndoHttpClient::builder()
+        .base_url(refused)
+        .credential(fake_credential())
+        .build()
+        .expect_err("a host that is neither the sandbox authority nor loopback is refused");
+
+    assert!(
+        matches!(
+            error,
+            OndoHttpError::Environment(OndoEnvironmentError::HostNotAllowed { ref host })
+                if host == "0.0.0.0"
+        ),
+        "the refusal is the endpoint gate's, was {error:?}",
+    );
+    assert!(
+        server.captured().is_empty(),
+        "no request is made: the refusal happens before the client exists",
+    );
+}
+
 /// §4.4: a signed request draws on the *same* in-process budget as a public read, so it cannot
 /// exceed it. The budget's only slot is spent before the read is spawned and the clock is paused, so
 /// a signed read that bypassed the budget would reach the (closed) port and finish at once.
@@ -1517,4 +1638,246 @@ async fn test_a_signed_read_draws_on_the_same_budget_as_a_public_read() {
     );
 
     handle.abort();
+}
+
+// ------------------------------------------------------------------------------------------------
+// The new-risk guard (plan §6.4)
+// ------------------------------------------------------------------------------------------------
+
+/// A `POST /v1/perps/orders` body: the documented create schema.
+const ORDER_REQUEST_BODY: &str = r#"{"market":"NVDA-USD.P","side":"buy","type":"limit","size":"0.01","price":"100.00","clientOrderId":"ondo_probe_example_1"}"#;
+
+/// What a test guard refuses a write with. The transport only carries it; what the account's own
+/// guard renders is tested where that guard lives.
+const TEST_REFUSAL: &str = "order-denied: reconciliation: the account stopped admitting new risk";
+
+/// A new-risk guard a transport test drives by hand.
+///
+/// It admits until it is told not to, and it keeps every permit it was asked about - so a test can
+/// assert *when* the send point asks (after the wait for the budget, never before it) and *what* it
+/// asks with (the generation the caller was admitted under, not a fresh reading).
+#[derive(Debug, Default)]
+struct TestGuard {
+    refusing: AtomicBool,
+    seen: Mutex<Vec<u64>>,
+}
+
+impl TestGuard {
+    fn admitting() -> Self {
+        Self::default()
+    }
+
+    fn refusing() -> Self {
+        Self {
+            refusing: AtomicBool::new(true),
+            seen: Mutex::new(Vec::new()),
+        }
+    }
+
+    /// Stops admitting: the account's state changed while the request waited.
+    fn refuse(&self) {
+        self.refusing.store(true, Ordering::SeqCst);
+    }
+
+    fn asked(&self) -> usize {
+        self.seen.lock().expect("the guard's log").len()
+    }
+
+    fn permits(&self) -> Vec<u64> {
+        self.seen.lock().expect("the guard's log").clone()
+    }
+}
+
+impl OndoNewRiskGuard for TestGuard {
+    fn revalidate(&self, permit: NewRiskPermit) -> Result<(), String> {
+        self.seen
+            .lock()
+            .expect("the guard's log")
+            .push(permit.generation());
+
+        if self.refusing.load(Ordering::SeqCst) {
+            Err(TEST_REFUSAL.to_string())
+        } else {
+            Ok(())
+        }
+    }
+}
+
+/// The other half of the guard's contract: an admitted write goes out, unchanged and signed.
+#[tokio::test]
+async fn test_a_new_risk_write_whose_guard_admits_reaches_the_venue() {
+    let server = MockServer::start(vec![Reply::ok(ORDERS_BODY)]).await;
+    let guard = Arc::new(TestGuard::admitting());
+    let client =
+        signed_client_with_guard(&server, retry_policy(2, 1, 2, Some(5_000)), guard.clone());
+
+    let response = client
+        .post_signed_raw(
+            &OndoRequestTarget::new(ORDERS_PATH),
+            ORDER_REQUEST_BODY.as_bytes().to_vec(),
+            OndoRequestPriority::Normal,
+            NewRiskPermit::new(11),
+        )
+        .await
+        .expect("an admitted write is sent");
+
+    assert_eq!(response.raw_result(), r#"{"orderId":"order-1"}"#);
+
+    let captured = server.captured();
+    assert_eq!(captured.len(), 1, "the write is sent once");
+    assert_eq!(captured[0].target, ORDERS_PATH);
+    assert_eq!(captured[0].body, ORDER_REQUEST_BODY);
+    assert_eq!(
+        request_header(&captured[0], ONDO_SIGN_HEADER).as_deref(),
+        Some(resign_captured(&captured[0]).as_str()),
+        "the gate does not change what is signed or what is sent",
+    );
+    assert_eq!(
+        guard.permits(),
+        vec![11],
+        "the send point re-checks the permit the caller was admitted under",
+    );
+}
+
+/// R0.1's window at the transport: the guard is consulted **after** the request has waited for the
+/// shared budget and **before** it exists. The clock is stopped and the budget's only slot is spent
+/// before the write is spawned, so the wait is this test's to end - and the base URL is a closed
+/// port, which is what makes "nothing was sent" observable rather than assumed: a request that went
+/// out anyway could only come back as a transport error.
+#[tokio::test(start_paused = true)]
+async fn test_a_new_risk_write_is_refused_by_its_guard_after_the_budget_wait() {
+    let budget =
+        OndoRateBudget::with_quota(Quota::per_second(NonZeroU32::new(1).unwrap()).unwrap());
+    let guard = Arc::new(TestGuard::admitting());
+    let client = OndoHttpClient::builder()
+        .base_url("http://127.0.0.1:1".to_string())
+        .budget(budget.clone())
+        .credential(fake_credential())
+        .new_risk_guard(Arc::clone(&guard) as Arc<dyn OndoNewRiskGuard>)
+        .build()
+        .expect("the client builds");
+
+    budget.acquire(OndoRequestPriority::Normal).await;
+
+    let handle = tokio::spawn(async move {
+        client
+            .post_signed_raw(
+                &OndoRequestTarget::new(ORDERS_PATH),
+                ORDER_REQUEST_BODY.as_bytes().to_vec(),
+                OndoRequestPriority::Normal,
+                NewRiskPermit::new(7),
+            )
+            .await
+    });
+
+    for _ in 0..64 {
+        tokio::task::yield_now().await;
+    }
+
+    assert!(
+        !handle.is_finished(),
+        "the write waits for the shared slot instead of taking its own",
+    );
+    assert_eq!(
+        guard.asked(),
+        0,
+        "the guard is asked at the send point, not while the request queues",
+    );
+
+    // The account stops admitting new risk while the write is queued.
+    guard.refuse();
+
+    // Release the budget: the write resumes and reaches the send point.
+    tokio::time::advance(Duration::from_secs(1)).await;
+
+    for _ in 0..64 {
+        tokio::task::yield_now().await;
+    }
+
+    let outcome = handle.await.expect("the write task completes");
+
+    assert!(
+        matches!(outcome, Err(OndoNewRiskSendError::Refused { ref reason }) if reason == TEST_REFUSAL),
+        "the account's refusal is the outcome, not a request that went out: {outcome:?}",
+    );
+    assert_eq!(
+        guard.permits(),
+        vec![7],
+        "the permit is re-checked as the one the caller held, after the wait",
+    );
+}
+
+/// A client that cannot answer "does the account admit new risk?" does not send. The transport is
+/// the last gate before the wire, so the failure it must not have is the quiet one.
+#[tokio::test]
+async fn test_an_authenticated_client_without_a_new_risk_guard_refuses_a_signed_post() {
+    let server = MockServer::start(vec![Reply::ok(ORDERS_BODY)]).await;
+    let client = OndoHttpClient::builder()
+        .base_url(server.url())
+        .budget(test_budget())
+        .retry_config(retry_policy(2, 1, 2, Some(5_000)))
+        .credential(fake_credential())
+        .build()
+        .expect("the authenticated mock client builds");
+
+    let outcome = client
+        .post_signed_raw(
+            &OndoRequestTarget::new(ORDERS_PATH),
+            ORDER_REQUEST_BODY.as_bytes().to_vec(),
+            OndoRequestPriority::Normal,
+            NewRiskPermit::new(1),
+        )
+        .await;
+
+    assert!(
+        matches!(outcome, Err(OndoNewRiskSendError::Refused { .. })),
+        "a write that cannot be admitted is not sent: {outcome:?}",
+    );
+    assert!(
+        server.captured().is_empty(),
+        "the refusal happens before a request exists",
+    );
+}
+
+/// The cancel path carries no new-risk gate, and that is deliberate: a cancel reduces risk, and an
+/// account that has stopped admitting new risk is exactly an account whose resting orders have to
+/// be cleaned up. Gating it would refuse the cancels an unknown outcome makes necessary.
+#[tokio::test]
+async fn test_a_refusing_new_risk_guard_does_not_stop_a_cancel() {
+    let server = MockServer::start(vec![Reply::ok(CANCELLED_ORDER_BODY)]).await;
+    let guard = Arc::new(TestGuard::refusing());
+    let client =
+        signed_client_with_guard(&server, retry_policy(2, 1, 2, Some(5_000)), guard.clone());
+
+    let refused = client
+        .post_signed_raw(
+            &OndoRequestTarget::new(ORDERS_PATH),
+            ORDER_REQUEST_BODY.as_bytes().to_vec(),
+            OndoRequestPriority::Normal,
+            NewRiskPermit::new(3),
+        )
+        .await;
+    assert!(
+        matches!(refused, Err(OndoNewRiskSendError::Refused { .. })),
+        "new risk is refused: {refused:?}",
+    );
+
+    match client
+        .cancel_order("order-1", OndoRequestPriority::High)
+        .await
+        .expect("the cancel is sent")
+    {
+        OndoCancelAnswer::Order(order) => assert_eq!(order.order_id(), "order-1"),
+        other => panic!("expected the order the venue sent, was {other:?}"),
+    }
+
+    let captured = server.captured();
+    assert_eq!(captured.len(), 1, "only the cancel became a request");
+    assert_eq!(captured[0].method, "DELETE");
+    assert_eq!(captured[0].target, "/v1/perps/orders/order-1");
+    assert_eq!(
+        guard.asked(),
+        1,
+        "the cancel path does not consult the new-risk guard",
+    );
 }

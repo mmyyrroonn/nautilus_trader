@@ -17,5 +17,6 @@
 
 pub mod consts;
 pub mod credential;
+pub mod endpoint;
 pub mod enums;
 pub mod parse;

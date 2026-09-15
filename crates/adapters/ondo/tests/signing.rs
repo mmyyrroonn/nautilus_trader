@@ -30,7 +30,8 @@ use nautilus_ondo::{
     common::{
         credential::{
             CredentialError, ONDO_SANDBOX_API_KEY_VAR, ONDO_SANDBOX_API_SECRET_VAR, OndoCredential,
-            OndoEnvironmentError, resolve_credential, validate_authenticated_environment,
+            OndoEndpoint, OndoEnvironmentError, resolve_credential,
+            validate_authenticated_environment,
         },
         enums::OndoEnvironment,
     },
@@ -566,11 +567,11 @@ fn test_the_sandbox_gate_refuses_production_in_every_form() {
             OndoEnvironment::Sandbox,
             "https://api.ondoperps-sandbox.xyz",
         ),
-        Ok(()),
+        Ok(OndoEndpoint::Official),
     );
     assert_eq!(
         validate_authenticated_environment(OndoEnvironment::Sandbox, "http://127.0.0.1:8080"),
-        Ok(()),
+        Ok(OndoEndpoint::LoopbackTestService),
     );
 
     // The config type's own override slot is what makes this reachable: `base_url_http` may be set
@@ -587,13 +588,19 @@ fn test_the_sandbox_gate_refuses_production_in_every_form() {
             host: "ondoperps.xyz".to_string(),
         }),
     );
+
+    // A host that merely contains the production host is not the production host - and, under the
+    // allowlist, it is not the official host either, so it is refused. This case used to be the
+    // gate's *acceptance* case, which is exactly the hole the allowlist closes: the old rule
+    // refused production and admitted every other host.
     assert_eq!(
         validate_authenticated_environment(
             OndoEnvironment::Sandbox,
             "https://api.ondoperps.xyz.evil.example",
         ),
-        Ok(()),
-        "a host that merely contains the production host is not the production host",
+        Err(OndoEnvironmentError::HostNotAllowed {
+            host: "api.ondoperps.xyz.evil.example".to_string(),
+        }),
     );
 
     // Production is refused whatever the URL says, so a production configuration can never be
@@ -664,6 +671,162 @@ fn test_a_production_base_url_cannot_bypass_the_sandbox_gate() {
 fn test_the_sandbox_credential_variables_are_the_documented_names() {
     assert_eq!(ONDO_SANDBOX_API_KEY_VAR, "ONDO_SANDBOX_API_KEY");
     assert_eq!(ONDO_SANDBOX_API_SECRET_VAR, "ONDO_SANDBOX_API_SECRET");
+}
+
+// ------------------------------------------------------------------------------------------------
+// The endpoint gate is an allowlist, not a production blacklist
+// ------------------------------------------------------------------------------------------------
+
+/// An authenticated session signs for exactly two authorities: the official host of its own
+/// environment, and a loopback test service. Every other authority - however it is spelled - is
+/// refused, with the reason it was refused, and the refusal happens before a credential is read.
+#[rstest]
+#[case::an_unrelated_remote_host(
+    "https://evil.example",
+    OndoEnvironmentError::HostNotAllowed { host: "evil.example".to_string() }
+)]
+#[case::a_host_that_merely_contains_the_sandbox_host(
+    "https://api.ondoperps-sandbox.xyz.evil.example",
+    OndoEnvironmentError::HostNotAllowed { host: "api.ondoperps-sandbox.xyz.evil.example".to_string() }
+)]
+#[case::a_subdomain_of_the_sandbox_host(
+    "https://eu.api.ondoperps-sandbox.xyz",
+    OndoEnvironmentError::HostNotAllowed { host: "eu.api.ondoperps-sandbox.xyz".to_string() }
+)]
+#[case::the_loopback_name(
+    "http://localhost:8080",
+    OndoEnvironmentError::HostNotAllowed { host: "localhost".to_string() }
+)]
+#[case::a_private_network_address(
+    "http://192.168.1.10:8080",
+    OndoEnvironmentError::HostNotAllowed { host: "192.168.1.10".to_string() }
+)]
+#[case::an_unencrypted_remote_service(
+    "http://evil.example",
+    OndoEnvironmentError::HostNotAllowed { host: "evil.example".to_string() }
+)]
+#[case::the_sandbox_host_over_plain_http(
+    "http://api.ondoperps-sandbox.xyz",
+    OndoEnvironmentError::UnsupportedScheme { scheme: "http".to_string(), expected: "https" }
+)]
+#[case::the_sandbox_host_on_another_port(
+    "https://api.ondoperps-sandbox.xyz:8443",
+    OndoEnvironmentError::PortNotAllowed { host: "api.ondoperps-sandbox.xyz".to_string(), port: 8443 }
+)]
+#[case::userinfo_in_front_of_the_sandbox_host(
+    "https://key:secret@api.ondoperps-sandbox.xyz",
+    OndoEnvironmentError::UserInfoForbidden
+)]
+#[case::userinfo_in_front_of_an_unrelated_host(
+    "https://api.ondoperps-sandbox.xyz:443@evil.example",
+    OndoEnvironmentError::UserInfoForbidden
+)]
+#[case::a_homoglyph_of_the_sandbox_host(
+    "https://\u{0430}pi.ondoperps-sandbox.xyz",
+    OndoEnvironmentError::HostNotAllowed { host: "xn--pi-6kc.ondoperps-sandbox.xyz".to_string() }
+)]
+#[case::an_empty_url("", OndoEnvironmentError::MalformedUrl)]
+#[case::a_bare_word("not a url", OndoEnvironmentError::MalformedUrl)]
+#[case::a_scheme_less_host("api.ondoperps-sandbox.xyz:8443", OndoEnvironmentError::MalformedUrl)]
+#[case::a_scheme_relative_url(
+    "//api.ondoperps-sandbox.xyz/v1/markets",
+    OndoEnvironmentError::MalformedUrl
+)]
+fn test_the_endpoint_gate_refuses_every_authority_outside_the_allowlist(
+    #[case] url: &str,
+    #[case] expected: OndoEnvironmentError,
+) {
+    let error = validate_authenticated_environment(OndoEnvironment::Sandbox, url)
+        .expect_err("the allowlist admits two authorities and this URL is neither");
+
+    assert_eq!(error, expected, "{url}");
+    // The refusal says what it refused and where the rule comes from; nothing in it echoes a URL.
+    assert!(error.to_string().contains("base URL"), "{error}");
+}
+
+/// ... and the two authorities it does admit. A case variant and a trailing root dot are the same
+/// authority, not a different one: the URL parser normalises both, and the parser is what the
+/// transport itself uses.
+#[rstest]
+#[case::the_official_sandbox_host("https://api.ondoperps-sandbox.xyz", OndoEndpoint::Official)]
+#[case::the_official_host_in_another_case(
+    "HTTPS://Api.OndoPerps-Sandbox.Xyz",
+    OndoEndpoint::Official
+)]
+#[case::the_official_host_with_a_trailing_root_dot(
+    "https://api.ondoperps-sandbox.xyz.",
+    OndoEndpoint::Official
+)]
+#[case::the_official_host_with_its_default_port(
+    "https://api.ondoperps-sandbox.xyz:443",
+    OndoEndpoint::Official
+)]
+#[case::a_loopback_test_service("http://127.0.0.1:8080", OndoEndpoint::LoopbackTestService)]
+#[case::a_loopback_test_service_with_a_path(
+    "http://127.0.0.1:8080/v1/markets",
+    OndoEndpoint::LoopbackTestService
+)]
+#[case::an_ipv6_loopback_test_service("http://[::1]:8080", OndoEndpoint::LoopbackTestService)]
+#[case::an_encrypted_loopback_test_service(
+    "https://127.0.0.1:8443",
+    OndoEndpoint::LoopbackTestService
+)]
+fn test_the_endpoint_gate_admits_the_sandbox_authority_and_a_loopback_test_service(
+    #[case] url: &str,
+    #[case] expected: OndoEndpoint,
+) {
+    assert_eq!(
+        validate_authenticated_environment(OndoEnvironment::Sandbox, url),
+        Ok(expected),
+        "`{url}` is an endpoint this adapter may sign for",
+    );
+}
+
+/// The production blacklist the allowlist replaces refused every one of these, so the allowlist
+/// must refuse them too: a rule that is stricter in one place and weaker in another has not made
+/// production unreachable.
+#[rstest]
+#[case::the_production_host("https://api.ondoperps.xyz")]
+#[case::the_production_apex("https://ondoperps.xyz")]
+#[case::another_production_subdomain("https://ws.ondoperps.xyz")]
+#[case::the_production_host_in_another_case("HTTPS://API.ONDOPERPS.XYZ")]
+#[case::the_production_host_on_another_port("https://api.ondoperps.xyz:8443")]
+#[case::the_production_host_with_a_trailing_root_dot("https://api.ondoperps.xyz.")]
+#[case::the_production_host_behind_userinfo("https://key:secret@api.ondoperps.xyz")]
+#[case::a_scheme_less_production_host("api.ondoperps.xyz:8443")]
+fn test_the_endpoint_gate_is_not_weaker_than_the_production_blacklist_it_replaces(
+    #[case] url: &str,
+) {
+    assert!(
+        validate_authenticated_environment(OndoEnvironment::Sandbox, url).is_err(),
+        "`{url}` was refused before and must still be refused",
+    );
+}
+
+/// The authenticated transport is where the credential would actually be sent, so it applies the
+/// same gate to its own base URL: a client that cannot pass it does not exist, and nothing can be
+/// sent from it.
+#[rstest]
+#[case::an_unrelated_remote_host("https://evil.example")]
+#[case::a_host_that_merely_contains_the_sandbox_host(
+    "https://api.ondoperps-sandbox.xyz.evil.example"
+)]
+#[case::userinfo_in_front_of_the_sandbox_host("https://key:secret@api.ondoperps-sandbox.xyz")]
+#[case::the_sandbox_host_over_plain_http("http://api.ondoperps-sandbox.xyz")]
+#[case::the_production_host("https://api.ondoperps.xyz")]
+fn test_an_authenticated_client_is_not_built_on_an_endpoint_outside_the_allowlist(
+    #[case] url: &str,
+) {
+    let error = OndoHttpClient::builder()
+        .base_url(url.to_string())
+        .credential(credential())
+        .build()
+        .expect_err("an authenticated client cannot be built on an endpoint the gate refuses");
+
+    assert!(
+        matches!(error, OndoHttpError::Environment(_)),
+        "the refusal is the environment gate's, was {error:?}",
+    );
 }
 
 // ------------------------------------------------------------------------------------------------
