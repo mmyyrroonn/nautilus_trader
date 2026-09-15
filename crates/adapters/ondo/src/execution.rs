@@ -2498,7 +2498,7 @@ impl ExecutionClient for OndoExecutionClient {
                         &reporter,
                         &reconciliation,
                         &market,
-                        format!(
+                        &format!(
                             "the market cancel for {market} was accepted without an order \
                                  payload ({raw})"
                         ),
@@ -2532,7 +2532,7 @@ impl ExecutionClient for OndoExecutionClient {
                         &reporter,
                         &reconciliation,
                         &market,
-                        format!("the market cancel for {market} was not answered: {error}"),
+                        &format!("the market cancel for {market} was not answered: {error}"),
                     );
 
                     if let Err(error) =
@@ -2884,7 +2884,7 @@ fn register_market_cancel(
     reporter: &OndoReporter,
     reconciliation: &Arc<RwLock<ReconciliationMachine>>,
     market: &str,
-    reason: String,
+    reason: &str,
 ) {
     let mut machine = reconciliation.write();
 
@@ -2892,7 +2892,7 @@ fn register_market_cancel(
         machine.note_unconfirmed_cancel(
             client_order_id,
             venue_order_id,
-            reason.clone(),
+            reason.to_string(),
             reporter.now(),
         );
     }
