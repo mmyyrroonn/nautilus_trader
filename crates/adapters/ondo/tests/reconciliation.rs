@@ -2072,6 +2072,17 @@ async fn serve_connection(
         buffer.extend_from_slice(&chunk[..read]);
 
         if let Some(request) = parse_request(&buffer) {
+            // The execution client's private transport is pointed at this same address (see
+            // `build_harness`), and a WebSocket upgrade is not one of this harness's scripted REST
+            // replies: answering it from the script would shift every reply the test scripted. It
+            // is refused here and consumes nothing, which is what "this harness serves REST only"
+            // means - and it is why the private session stays unauthenticated in these tests.
+            if is_websocket_upgrade(&buffer) {
+                write_response(&mut stream, 400, r#"{"success":false}"#).await;
+
+                return;
+            }
+
             seen.lock().expect("mock server request log").push(request);
             break;
         }
@@ -2090,6 +2101,19 @@ async fn serve_connection(
         Some(Reply::Answer { status, body }) => write_response(&mut stream, status, &body).await,
         None => drop(stream),
     }
+}
+
+/// Whether one request asks for a WebSocket upgrade rather than being one of this harness's REST
+/// calls.
+fn is_websocket_upgrade(buffer: &[u8]) -> bool {
+    let text = String::from_utf8_lossy(buffer);
+    let head = text.split("\r\n\r\n").next().unwrap_or_default();
+
+    head.lines().any(|line| {
+        line.split_once(':').is_some_and(|(name, value)| {
+            name.eq_ignore_ascii_case("upgrade") && value.trim().eq_ignore_ascii_case("websocket")
+        })
+    })
 }
 
 /// Parses one HTTP/1.1 request once its body is complete.
@@ -2222,6 +2246,11 @@ fn build_harness(mock: &MockServer, config: OndoExecutionClientConfig) -> Harnes
 
     let config = OndoExecutionClientConfig {
         base_url_http: Some(mock.url()),
+        // The private transport dials the same loopback authority, which refuses the upgrade: this
+        // harness is a REST surface, and the account session stays unauthenticated here. The
+        // endpoint is named rather than left to the environment default so that no test can reach
+        // the venue's own host by omission.
+        base_url_ws: Some(format!("ws://{}/ws", mock.addr)),
         account_id: Some(account_id),
         ..config
     };

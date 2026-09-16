@@ -129,6 +129,25 @@ pub fn validate_authenticated_environment(
     OndoEndpointPolicy::authenticated(environment, OndoSchemeFamily::Http).classify(base_url)
 }
 
+/// Enforces the gate an authenticated private WebSocket session must pass.
+///
+/// The same decision as [`validate_authenticated_environment`], for the other scheme family: the
+/// two surfaces of one authenticated session are held to one policy
+/// ([`OndoEndpointPolicy`]), and the only thing that differs is which schemes the endpoint's own
+/// authority uses. A private session dials `wss://` for the official host and `ws://` or `wss://`
+/// for a loopback test service, and a `https://` URL is refused here exactly as a `wss://` one is
+/// refused there.
+///
+/// # Errors
+///
+/// Returns the policy's refusal; see [`validate_authenticated_environment`].
+pub fn validate_authenticated_websocket_environment(
+    environment: OndoEnvironment,
+    base_url: &str,
+) -> Result<OndoEndpoint, OndoEnvironmentError> {
+    OndoEndpointPolicy::authenticated(environment, OndoSchemeFamily::WebSocket).classify(base_url)
+}
+
 /// Resolves the sandbox credential from the process environment.
 ///
 /// The environment gate ([`validate_authenticated_environment`]) runs first, so a production

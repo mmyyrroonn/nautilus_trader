@@ -21,11 +21,17 @@
 //! | [`parse`] | Wire bytes to Nautilus domain values, including the one place a wire number is converted. |
 //! | [`book`] | The book state machine: full replacement, event-time ordering, session ownership. |
 //! | [`client`] | The session state machine and the transport: one connection, heartbeat, idle bound, reconnect. |
+//! | [`private`] | The **private** surface: the login handshake, the account's channels, and the transport that owns them. |
+//!
+//! The two surfaces are separate connections on purpose: the public data client reads no key, and
+//! the private channels require a login. See [`private`] for why that split is required rather than
+//! convenient.
 
 pub mod book;
 pub mod client;
 pub mod messages;
 pub mod parse;
+pub mod private;
 
 pub use book::{BookCounters, OndoBookState, OrderBookLevels, SnapshotOutcome};
 pub use client::{

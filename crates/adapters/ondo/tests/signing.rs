@@ -25,6 +25,8 @@
 //! 401/403 from the real path looks like) is exercised in `tests/http_client.rs`, next to the
 //! scripted mock server that already captures request heads.
 
+use std::sync::Arc;
+
 use nautilus_core::{hex, string::secret::REDACTED};
 use nautilus_ondo::{
     common::{
@@ -640,7 +642,7 @@ fn test_a_production_base_url_cannot_bypass_the_sandbox_gate() {
     // authenticated client with a production base URL does not exist, so nothing can send from it.
     let error = OndoHttpClient::builder()
         .base_url("https://api.ondoperps.xyz".to_string())
-        .credential(credential())
+        .credential(Arc::new(credential()))
         .build()
         .expect_err("an authenticated client cannot be built on the production host");
 
@@ -655,7 +657,7 @@ fn test_a_production_base_url_cannot_bypass_the_sandbox_gate() {
     // The sandbox host, and the same credential, build: the gate is not merely refusing everything.
     let client = OndoHttpClient::builder()
         .base_url("https://api.ondoperps-sandbox.xyz".to_string())
-        .credential(credential())
+        .credential(Arc::new(credential()))
         .build()
         .expect("the sandbox client builds");
 
@@ -819,7 +821,7 @@ fn test_an_authenticated_client_is_not_built_on_an_endpoint_outside_the_allowlis
 ) {
     let error = OndoHttpClient::builder()
         .base_url(url.to_string())
-        .credential(credential())
+        .credential(Arc::new(credential()))
         .build()
         .expect_err("an authenticated client cannot be built on an endpoint the gate refuses");
 

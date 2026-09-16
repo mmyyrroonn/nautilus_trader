@@ -108,8 +108,19 @@ impl OndoExecutionClientConfig {
     /// `allow_production_orders` exists so that asking for production order entry can be refused
     /// by name. Setting it does not enable anything: this phase returns an unsupported error.
     ///
-    /// `dms_timeout_secs` and `reconcile_interval_secs` fix the configuration surface for the
-    /// dead man's switch and the reconciliation interval that a later phase arms.
+    /// `base_url_ws` is the **private** WebSocket endpoint, and it is held to the same allowlist as
+    /// `base_url_http`: the official host of the selected environment, or an explicit local test
+    /// service. It is where the account session comes up when the client connects - the login, the
+    /// order and fill reports, and the dead man's switch - and a value that is not an endpoint this
+    /// session may sign for is refused before the client exists.
+    ///
+    /// `account_read_only` makes the client an account read-only session: it reads the account and
+    /// places no order at all, and it never subscribes to the dead man's switch, whose arm cancels
+    /// resting orders.
+    ///
+    /// `dms_timeout_secs` and `reconcile_interval_secs` are the dead man's switch's timeout - which
+    /// the private transport arms and renews at half of - and the interval its run loop reconciles
+    /// the account on.
     #[new]
     #[pyo3(signature = (
         environment = None,
@@ -117,6 +128,8 @@ impl OndoExecutionClientConfig {
         api_key = None,
         api_secret = None,
         base_url_http = None,
+        base_url_ws = None,
+        account_read_only = None,
         http_timeout_secs = None,
         dms_timeout_secs = None,
         reconcile_interval_secs = None,
@@ -129,6 +142,8 @@ impl OndoExecutionClientConfig {
         api_key: Option<String>,
         api_secret: Option<String>,
         base_url_http: Option<String>,
+        base_url_ws: Option<String>,
+        account_read_only: Option<bool>,
         http_timeout_secs: Option<u64>,
         dms_timeout_secs: Option<u64>,
         reconcile_interval_secs: Option<u64>,
@@ -142,6 +157,8 @@ impl OndoExecutionClientConfig {
             api_key,
             api_secret,
             base_url_http: base_url_http.or(defaults.base_url_http),
+            base_url_ws: base_url_ws.or(defaults.base_url_ws),
+            account_read_only: account_read_only.unwrap_or(defaults.account_read_only),
             http_timeout_secs: http_timeout_secs.unwrap_or(defaults.http_timeout_secs),
             dms_timeout_secs: dms_timeout_secs.unwrap_or(defaults.dms_timeout_secs),
             reconcile_interval_secs: reconcile_interval_secs

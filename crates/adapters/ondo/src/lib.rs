@@ -30,12 +30,15 @@
 //!   into Nautilus instruments, the REST transport, and the private (authenticated) read surface.
 //!   The schema is parsed once and shared with the WebSocket layer, so precision is never derived
 //!   twice.
-//! - [`websocket`] - the public feed: message schema, wire-to-domain parsing, the book state
-//!   machine, and the connection lifecycle.
+//! - [`websocket`] - the two connections the venue needs: the public feed (message schema,
+//!   wire-to-domain parsing, the book state machine, the connection lifecycle) and
+//!   [`websocket::private`], the login-required account session with its own socket.
 //! - [`data`] - the `DataClient`: market metadata and its refresh, the public subscriptions, and the
 //!   publication of feed states and market data into the data engine.
 //! - [`execution`] - the `ExecutionClient`: the order write surface with its local refusals, the
 //!   order index, the `(account_id, fill.id)` dedup ledger, and the private order and fill reports.
+//!   Its account half ([`execution::OndoAccountRuntime`]) is shared with the private transport,
+//!   which is what makes one account rather than two that agree.
 //! - [`reconciliation`] - the account: the four-state recovery machine and its fail-closed
 //!   `can_submit_new_orders`, the judgments a pass makes over what the venue said, the durable
 //!   ledger journal, and the account-level dead man's switch.
@@ -49,9 +52,17 @@
 //! - [`python`] - the Python surface (`python` feature): venue constants, the environment, the two
 //!   client configurations and their factories, and the public HTTP client.
 //!
-//! The private WebSocket transport is a later phase: the reconciliation machine, the buffer a
-//! stream's reports are held in, and the dead man's switch's frames are in [`reconciliation`], and
-//! [`execution`] documents exactly which seams are already in place for the transport itself.
+//! # The two connections, and why they are two
+//!
+//! The public data client reads no key and loads no `.env`, and the account's channels require a
+//! login. Those are one decision, not two: [`websocket::private`] owns the second socket, the
+//! credential, and the login handshake, and [`data`] keeps none of them. The account's state - what
+//! a report means, whether a recovery may run, what the dead man's switch permits - stays in
+//! [`reconciliation`] and [`execution`], whichever connection delivered the report.
+//!
+//! The private transport is offline-verified only in this phase. No sandbox key exists, so the
+//! login digest's concatenation order, the switch's renewal message and the shape of a real private
+//! frame are all unverified against the venue (plan §R5.2).
 //!
 //! Every price, quantity and fee this adapter reads is a decimal string. Values are kept as
 //! [`rust_decimal::Decimal`] or Nautilus domain types, and nothing routes through `f64`.

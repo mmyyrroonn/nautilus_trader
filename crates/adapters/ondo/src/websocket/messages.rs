@@ -96,6 +96,17 @@ impl WsChannel {
 }
 
 /// A client-to-server operation.
+///
+/// `#[serde(rename_all = "lowercase")]` spells every variant exactly as the venue's own
+/// `Client → Server` table does (`ping`, `login`, `subscribe`, `unsubscribe`), so the wire name is
+/// never written twice.
+///
+/// **Adding a variant here is not purely additive.** Every exhaustive `match` on this type becomes
+/// a compile error, which is the point: each one has to be answered deliberately rather than
+/// absorbed by a catch-all. The two that exist are [`Self::as_str`] and
+/// [`crate::recording::PublicFrame::outbound`]'s operation classification, and the second is a
+/// security boundary - a `login` body carries the HMAC signature and must be refused by name
+/// rather than fall through.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum WsOp {
@@ -106,6 +117,12 @@ pub enum WsOp {
     /// The application-level heartbeat. The protocol-level ping is not sufficient: the venue
     /// idles a connection out after 180 s without an application-level request.
     Ping,
+    /// Authenticate the connection for the private channels.
+    ///
+    /// This operation belongs to the private transport alone
+    /// ([`crate::websocket::private`]): the public data client has no credential and cannot build
+    /// one, and a login frame is refused by every recording boundary in this crate.
+    Login,
 }
 
 impl WsOp {
@@ -116,6 +133,7 @@ impl WsOp {
             Self::Subscribe => "subscribe",
             Self::Unsubscribe => "unsubscribe",
             Self::Ping => "ping",
+            Self::Login => "login",
         }
     }
 }

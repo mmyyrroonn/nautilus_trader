@@ -217,14 +217,33 @@ pub struct OndoExecutionClientConfig {
     /// uses rather than as a string (plan §R0.3). The default resolves to the official sandbox
     /// host, which is never loopback, so a test service is always an explicit override.
     pub base_url_http: Option<String>,
+    /// Override for the private WebSocket URL.
+    ///
+    /// Judged by the **same** policy as [`Self::base_url_http`], for the WebSocket scheme family:
+    /// the official host of [`Self::environment`] on `wss` and the scheme's default port, or a
+    /// loopback test service on `ws`/`wss`
+    /// ([`crate::common::credential::validate_authenticated_websocket_environment`]). The default
+    /// resolves to [`crate::common::consts::ws_url`] of the configured environment, which is never
+    /// loopback, so the production host is not reachable by omitting a value and a test service is
+    /// always an explicit override.
+    pub base_url_ws: Option<String>,
+    /// Whether this client is an account **read-only** session.
+    ///
+    /// A read-only session reads the account over the private stream and never places an order:
+    /// [`crate::reconciliation::NewRiskRefusal::AccountIsReadOnly`] refuses every submission
+    /// whatever the account reads, and the private transport never subscribes to the account's dead
+    /// man's switch, whose arm cancels resting orders (plan §0). Defaults to `false`.
+    #[builder(default)]
+    pub account_read_only: bool,
     /// The HTTP request timeout in seconds.
     #[builder(default = ONDO_HTTP_TIMEOUT_SECS)]
     pub http_timeout_secs: u64,
-    /// The dead man's switch timeout in seconds (plan §6.4). Task 8 arms it; it is carried here so
-    /// the configuration surface is fixed once.
+    /// The dead man's switch timeout in seconds (plan §6.4). The private transport arms it and
+    /// renews it at half this interval.
     #[builder(default = ONDO_DMS_TIMEOUT_SECS)]
     pub dms_timeout_secs: u64,
-    /// The interval between account reconciliations, in seconds (plan §6.4). Task 8 runs it.
+    /// The interval between account reconciliations, in seconds (plan §6.4). The private
+    /// transport's run loop is the caller.
     #[builder(default = ONDO_RECONCILE_INTERVAL_SECS)]
     pub reconcile_interval_secs: u64,
     /// Whether production order entry was requested. Refused, always (see the type documentation).
@@ -245,6 +264,8 @@ nautilus_core::impl_pyo3_config_getters!(OndoExecutionClientConfig {
     environment: OndoEnvironment,
     account_id: Option<AccountId>,
     base_url_http: Option<String>,
+    base_url_ws: Option<String>,
+    account_read_only: bool,
     http_timeout_secs: u64,
     dms_timeout_secs: u64,
     reconcile_interval_secs: u64,
@@ -259,6 +280,8 @@ impl std::fmt::Debug for OndoExecutionClientConfig {
             .field("api_key", &self.api_key.as_ref().map(|_| REDACTED))
             .field("api_secret", &self.api_secret.as_ref().map(|_| REDACTED))
             .field("base_url_http", &self.base_url_http)
+            .field("base_url_ws", &self.base_url_ws)
+            .field("account_read_only", &self.account_read_only)
             .field("http_timeout_secs", &self.http_timeout_secs)
             .field("dms_timeout_secs", &self.dms_timeout_secs)
             .field("reconcile_interval_secs", &self.reconcile_interval_secs)
@@ -280,6 +303,27 @@ impl OndoExecutionClientConfig {
         self.base_url_http
             .as_deref()
             .unwrap_or_else(|| http_base_url(self.environment))
+    }
+
+    /// Returns the private WebSocket URL this configuration resolves to.
+    #[must_use]
+    pub fn ws_url(&self) -> &str {
+        self.base_url_ws
+            .as_deref()
+            .unwrap_or_else(|| ws_url(self.environment))
+    }
+
+    /// Returns the stream mode this configuration asks for.
+    ///
+    /// One decision, taken from one member: a read-only account session never subscribes to the
+    /// switch, and the mode is what carries that to the transport.
+    #[must_use]
+    pub const fn stream_mode(&self) -> crate::websocket::private::PrivateStreamMode {
+        if self.account_read_only {
+            crate::websocket::private::PrivateStreamMode::ReadOnly
+        } else {
+            crate::websocket::private::PrivateStreamMode::Trading
+        }
     }
 
     /// Returns whether this configuration carries an explicit credential pair.

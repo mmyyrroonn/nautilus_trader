@@ -108,7 +108,10 @@ use rust_decimal::Decimal;
 use crate::{
     common::{
         consts::ONDO_SETTLEMENT_CURRENCY,
-        credential::{OndoCredential, validate_authenticated_environment},
+        credential::{
+            OndoCredential, validate_authenticated_environment,
+            validate_authenticated_websocket_environment,
+        },
         parse::{instrument_id_to_market, market_to_instrument_id, parse_decimal, parse_timestamp},
     },
     config::OndoExecutionClientConfig,
@@ -127,10 +130,11 @@ use crate::{
     },
     reconciliation::{
         AccountJudgment, AccountReading, Admission, BalanceReading, DeadMansSwitchMessage,
-        DrainedReports, MetadataValidity, NewRiskRefusal, OrderReading, PositionReading,
-        ProbeOutcome, ProbeReport, ReconciliationBuffer, ReconciliationMachine,
+        DeadMansSwitchState, DrainedReports, MetadataValidity, NewRiskRefusal, OrderReading,
+        PositionReading, ProbeOutcome, ProbeReport, ReconciliationBuffer, ReconciliationMachine,
         ReconciliationState, RecoveryPassRefusal, StopStep, UncertainOutcome, balance_member,
     },
+    websocket::private::{OndoPrivateStream, PrivateRunSnapshot, SharedPrivateDiagnostics},
 };
 
 /// How many pages of orders or fills one report generation walks at most.
@@ -430,6 +434,22 @@ pub enum OndoFillApplication {
     /// The fill named an order this client neither submitted nor tracks, so it was neither
     /// recorded nor reported.
     Untracked,
+}
+
+/// Which of the two ingestion seams a private report went to.
+///
+/// The answer is [`OndoAccountRuntime::ingest_stream_order`]'s, never the transport's: a report
+/// applied now and a report held for a pass are the two halves of the recovery's merge protocol,
+/// and the decision between them is part of the protocol rather than a transport detail
+/// (plan §R3.1).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OndoStreamIngestion {
+    /// No pass was reading the account, so the report was applied through the same state machine
+    /// the REST pages go through, where the dedup ledger and the order index make it safe.
+    Applied,
+    /// A pass owns the account, so the report was held for the pass to replay after its REST pages,
+    /// where the newest information wins (plan §6.4).
+    Buffered,
 }
 
 /// How the acknowledgement of a submission **this client made** is reported.
@@ -1198,6 +1218,16 @@ impl PassOwnership {
         Some(PassGuard { owner: self, id })
     }
 
+    /// Returns whether a pass owns the account right now.
+    ///
+    /// This is the **only** answer to that question in this crate. The inbound routing decision
+    /// ([`OndoAccountRuntime::ingest_stream_order`]) reads it rather than keeping a flag of its own:
+    /// a second source of "is a pass running" would be able to disagree with the claim, and the
+    /// claim is what a pass actually holds.
+    fn is_claimed(&self) -> bool {
+        self.claimed_by.load(Ordering::Acquire) != 0
+    }
+
     /// Issues the id that names the next claim.
     ///
     /// Zero means "no owner", so the counter starts at one and a wrapped counter skips past it: a
@@ -1259,13 +1289,20 @@ pub struct OndoExecutionClient {
     /// The account's state, shared with every spawned task the way the reporter is: a submission
     /// that loses its answer records the unknown outcome from inside its own task.
     reconciliation: Arc<RwLock<ReconciliationMachine>>,
-    /// The private reports that arrived while a pass was reading the account (plan §6.4).
-    buffer: Arc<RwLock<ReconciliationBuffer>>,
-    /// The one recovery pass that may read and conclude the account at a time (plan §6.4).
+    /// The account half, shared with the private transport.
     ///
-    /// Shared with nothing: a pass is this client's own, and a second pass on the same client is the
-    /// case the claim exists to refuse.
-    pass: PassOwnership,
+    /// A transport task must be `Send` and this client is not, so the transport is handed this
+    /// rather than the client. It holds the same instances through the same `Arc`s, which is what
+    /// makes the report buffer, the recovery claim, the reconciliation machine and the event
+    /// emitter one set of objects rather than two that agree.
+    account: OndoAccountRuntime,
+    /// The credential, shared with the private transport's login rather than copied into it.
+    ///
+    /// One [`Arc<OndoCredential>`] signs the REST requests and the WebSocket login alike: the
+    /// secret exists once in the process, and neither surface can print it.
+    credential: Arc<OndoCredential>,
+    /// The private transport, once [`Self::connect`] has started it.
+    private_stream: Option<OndoPrivateStream>,
     tasks: TaskGroup,
 }
 
@@ -1320,6 +1357,12 @@ impl OndoExecutionClient {
         let base_url = config.http_base_url().to_string();
         validate_authenticated_environment(config.environment, &base_url)?;
 
+        // The private WebSocket is judged by the same policy, for its own scheme family, and also
+        // before the credential is read: a session that may not sign for its REST endpoint may not
+        // sign a login frame for an arbitrary socket either (plan §R3.1, §R0.3).
+        let ws_url = config.ws_url().to_string();
+        validate_authenticated_websocket_environment(config.environment, &ws_url)?;
+
         let credential = match credential {
             Some(credential) => credential,
             None if config.has_explicit_credentials() => OndoCredential::new(
@@ -1331,6 +1374,9 @@ impl OndoExecutionClient {
             None => crate::common::credential::resolve_credential(config.environment, &base_url)
                 .map_err(|error| anyhow::anyhow!("no Ondo Perps credential: {error}"))?,
         };
+        // One handle, two surfaces: the REST transport signs with this, and so does the private
+        // login. Neither takes a copy of the secret, and nothing outside this crate can reach one.
+        let credential = Arc::new(credential);
 
         let account_id = core.account_id;
         let clock = get_atomic_clock_realtime();
@@ -1343,11 +1389,17 @@ impl OndoExecutionClient {
             config.dms_timeout_secs,
         )));
 
+        // A read-only session is a property of the client rather than a promise its caller keeps:
+        // it is marked before anything can be sent, and there is no way back from it (plan §0).
+        if config.account_read_only {
+            reconciliation.write().mark_account_read_only();
+        }
+
         let http_client = OndoHttpClient::builder()
             .base_url(base_url)
             .timeout_secs(config.http_timeout_secs)
             .maybe_budget(budget)
-            .credential(credential)
+            .credential(Arc::clone(&credential))
             .new_risk_guard(Arc::new(RunAdmission::new(Arc::clone(&reconciliation)))
                 as Arc<dyn OndoNewRiskGuard>)
             .build()
@@ -1370,14 +1422,27 @@ impl OndoExecutionClient {
             state: Arc::new(RwLock::new(OndoPrivateState::default())),
         };
 
+        let pass = Arc::new(PassOwnership::default());
+        let account = OndoAccountRuntime {
+            reconciliation: Arc::clone(&reconciliation),
+            buffer: Arc::new(RwLock::new(ReconciliationBuffer::new())),
+            pass: Arc::clone(&pass),
+            reporter: reporter.clone(),
+            http_client: http_client.clone(),
+            clock,
+            reconcile_interval_secs: config.reconcile_interval_secs,
+            dms_timeout_secs: config.dms_timeout_secs,
+        };
+
         Ok(Self {
             core,
             config,
             http_client,
             reporter,
             reconciliation,
-            buffer: Arc::new(RwLock::new(ReconciliationBuffer::new())),
-            pass: PassOwnership::default(),
+            account,
+            credential,
+            private_stream: None,
             tasks: TaskGroup::new(),
         })
     }
@@ -1392,6 +1457,56 @@ impl OndoExecutionClient {
     #[must_use]
     pub fn http_client(&self) -> OndoHttpClient {
         self.http_client.clone()
+    }
+
+    /// Returns the account half, shared with the private transport.
+    ///
+    /// This is the handle a transport drives the account through, and the one a caller outside this
+    /// crate uses to reach the account without the client's own borrow.
+    #[must_use]
+    pub fn account(&self) -> OndoAccountRuntime {
+        self.account.clone()
+    }
+
+    /// Returns whether this client is an account read-only session.
+    #[must_use]
+    pub fn is_account_read_only(&self) -> bool {
+        self.account.is_account_read_only()
+    }
+
+    /// Returns the private session's run state and the detail that explains it.
+    ///
+    /// A client whose transport has not been started reports
+    /// [`crate::websocket::private::PrivateRunState::Disconnected`]: no account session exists,
+    /// which is exactly what that state says.
+    #[must_use]
+    pub fn private_run_state(&self) -> PrivateRunSnapshot {
+        match &self.private_stream {
+            Some(stream) => stream.run_state(),
+            None => PrivateRunSnapshot::new(
+                crate::websocket::private::PrivateRunState::Disconnected,
+                "no private transport has been started",
+            ),
+        }
+    }
+
+    /// Returns the private session's diagnostic record, once a transport has been started.
+    #[must_use]
+    pub fn private_diagnostics(&self) -> Option<SharedPrivateDiagnostics> {
+        self.private_stream
+            .as_ref()
+            .map(OndoPrivateStream::diagnostics)
+    }
+
+    /// Returns whether the private transport's task is still alive.
+    ///
+    /// `false` for a client whose transport has not been started, and `false` once it has ended -
+    /// which is what makes a bounded shutdown checkable rather than asserted.
+    #[must_use]
+    pub fn private_stream_is_running(&self) -> bool {
+        self.private_stream
+            .as_ref()
+            .is_some_and(OndoPrivateStream::is_running)
     }
 
     /// Returns the number of orders this client is tracking.
@@ -1515,7 +1630,7 @@ impl OndoExecutionClient {
     /// account mode. It is the client's own `connect` that does **not** call it: a recovery is a
     /// decision to read the account, not a socket coming up.
     pub fn begin_recovery(&self, now: UnixNanos) {
-        self.reconciliation.write().begin_recovery(now);
+        self.account.begin_recovery(now);
     }
 
     /// Returns how many consecutive agreeing passes the last recovery has seen.
@@ -1555,6 +1670,388 @@ impl OndoExecutionClient {
             .read()
             .uncertain_outcome(client_order_id)
             .cloned()
+    }
+
+    /// Records whether the metadata this client trades on is usable (plan §4.1).
+    pub fn set_metadata(&self, validity: MetadataValidity) {
+        self.account.set_metadata(validity);
+    }
+
+    /// Arms the dead man's switch, returning the frame the private stream must send.
+    ///
+    /// New orders wait for the venue's confirmation: an unconfirmed arm is not an arm (§6.4).
+    pub fn arm_dead_mans_switch(&self, now: UnixNanos) -> DeadMansSwitchMessage {
+        self.account.arm_dead_mans_switch(now)
+    }
+
+    /// Applies the venue's confirmation of the switch.
+    pub fn confirm_dead_mans_switch(&self, now: UnixNanos) {
+        self.account.confirm_dead_mans_switch(now);
+    }
+
+    /// Renews an armed switch, returning the frame to send, or [`None`] when there is nothing to
+    /// renew.
+    #[must_use]
+    pub fn renew_dead_mans_switch(&self, now: UnixNanos) -> Option<DeadMansSwitchMessage> {
+        self.account.renew_dead_mans_switch(now)
+    }
+
+    /// Records that the switch failed, which stops new orders.
+    pub fn note_dead_mans_switch_failed(&self, reason: String) {
+        self.account.note_dead_mans_switch_failed(reason);
+    }
+
+    /// Records that the switch fired: the venue cancelled this account's resting orders.
+    ///
+    /// The account becomes uncertain, because what the cancellation left behind has to be read, and
+    /// no position is closed by a switch (plan §6.4).
+    pub fn note_dead_mans_switch_fired(&self, now: UnixNanos) {
+        self.account.note_dead_mans_switch_fired(now);
+    }
+
+    /// Returns the steps a stop takes, in the order it takes them (plan §6.4).
+    ///
+    /// The switch is released only after this run's own orders are cancelled and confirmed: a
+    /// released switch cancels nothing, and the orders it was covering would be left resting.
+    #[must_use]
+    pub fn stop_sequence(&self) -> Vec<StopStep> {
+        let mut steps = vec![StopStep::CancelOwnOrders, StopStep::ConfirmOwnOrders];
+
+        if self.reconciliation.read().dead_mans_switch().is_required() {
+            steps.push(StopStep::ReleaseDeadMansSwitch);
+        }
+
+        steps.push(StopStep::ClosePrivateStream);
+
+        steps
+    }
+
+    /// Records a private report that arrived while the account was being read.
+    ///
+    /// The report is held rather than applied so the pass can replay it through the same state
+    /// machine the REST pages go through, where it is deduped (plan §6.4). It is attributed to the
+    /// recovery the account is in at this instant: a report recorded before this recovery began, or
+    /// after the session it belonged to ended, is refused when the pass drains rather than applied
+    /// as current state.
+    ///
+    /// A report the bounded buffer refuses for want of room is **not** dropped quietly: the account
+    /// becomes uncertain until a pass has read it whole again (plan §6.4).
+    pub fn buffer_stream_order(&self, payload: OndoApiOrder) {
+        self.account.buffer_stream_order(payload);
+    }
+
+    /// Records a private fill that arrived while the account was being read.
+    ///
+    /// Buffered, attributed and bounded exactly as [`Self::buffer_stream_order`] buffers an order
+    /// report.
+    pub fn buffer_stream_fill(&self, fill: OndoApiFill) {
+        self.account.buffer_stream_fill(fill);
+    }
+
+    /// Reads the account once and concludes a pass (plan §6.4).
+    ///
+    /// The reads are the venue's own lists, walked with the same bounded [`CursorWalk`] every other
+    /// history read uses, and every payload is applied through [`Self::apply_order`] and
+    /// [`Self::apply_fill`] - the one state machine, so the stream and this pass can never disagree
+    /// about what a payload means. The reports the stream buffered while the pass read are replayed
+    /// into it, after the last read and under the boundary that ends the pass, where the ledger and
+    /// the order index dedupe them.
+    ///
+    /// One pass owns the account at a time: two would both drain the buffer - the second finding it
+    /// empty - and each would conclude a reading the other half-wrote.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`RecoveryPassRefusal::AlreadyRunning`] when another pass owns the account, without
+    /// reading anything and without judging this one; and an error when the account cannot be read
+    /// completely - a failed request, an unreadable page, a cursor that will not advance. The
+    /// machine is left [`ReconciliationState::Uncertain`] in that case, because a pass that stopped
+    /// early must not look like an account that was read.
+    pub async fn reconcile_account(&self, now: UnixNanos) -> anyhow::Result<AccountJudgment> {
+        self.account.reconcile_account(now).await
+    }
+
+    /// Probes every unsettled write a probe is due for, under the reference that identifies it.
+    ///
+    /// A submission is asked about under the client order id it was made with, a cancel under the
+    /// venue order id when this session has one - a probe never invents a new client order id,
+    /// because that would be a second order. A probe that finds the order applies it and settles
+    /// the outcome; a 404 settles nothing (plan §6.3), and an inconclusive probe settles nothing
+    /// either.
+    #[must_use]
+    pub async fn probe_unknown_submissions(&self, now: UnixNanos) -> Vec<ProbeReport> {
+        self.account.probe_unknown_submissions(now).await
+    }
+
+    /// Expires the unknown submissions whose window has passed (plan §6.3).
+    ///
+    /// Probing stops, the submissions stay unknown, and what comes back is exactly what a human
+    /// reconciling the account by hand needs: the client order ids and how long they have been
+    /// unknown.
+    #[must_use]
+    pub fn abandon_unknown_submissions(
+        &self,
+        now: UnixNanos,
+    ) -> Vec<crate::reconciliation::AbandonedSubmission> {
+        self.account.abandon_unknown_submissions(now)
+    }
+
+    /// Applies one `ApiOrder` payload: the create answer, a lookup answer, a cancel answer or a
+    /// reconciliation read.
+    ///
+    /// This is the ingestion seam the private stream and Task 8's reconciliation will drive. It is
+    /// idempotent: a payload that repeats state already applied and reported returns
+    /// [`OndoOrderApplication::Unchanged`] and emits nothing, so an acknowledgement cannot be
+    /// reported twice. A payload that acknowledges the order flushes the fills that arrived before
+    /// it, oldest first, so a fill that preceded the ACK is still reported after it.
+    pub fn apply_order(&self, payload: &OndoApiOrder) -> OndoOrderApplication {
+        self.account.apply_order(payload)
+    }
+
+    /// Applies one `ApiFill` payload: the one path a fill is ever counted from.
+    ///
+    /// # Errors
+    ///
+    /// See [`OndoReporter::apply_fill`].
+    pub fn apply_fill(&self, fill: &OndoApiFill) -> anyhow::Result<OndoFillApplication> {
+        self.account.apply_fill(fill)
+    }
+
+    /// Applies a whole page of fills, returning what each one did.
+    ///
+    /// # Errors
+    ///
+    /// Returns the first fill's error; the fills before it have already been applied, which is
+    /// what the dedup ledger makes safe to retry.
+    pub fn apply_fills(&self, fills: &[OndoApiFill]) -> anyhow::Result<Vec<OndoFillApplication>> {
+        self.account.apply_fills(fills)
+    }
+
+    /// Returns a spawner for this client's task generation, or [`None`] when it is shut down.
+    fn spawner(&self) -> Option<TaskSpawner> {
+        match self.tasks.spawner() {
+            Ok(spawner) => Some(spawner),
+            Err(error) => {
+                log::error!("The Ondo Perps execution client cannot spawn a task: {error}");
+                None
+            }
+        }
+    }
+
+    /// Returns the order reference to use for a cancel or a query.
+    ///
+    /// A venue order id the caller already holds wins; otherwise the index is asked, and the
+    /// `client:{clientOrderId}` form is the fallback for an order whose venue id this session has
+    /// not observed yet (plan §6.2, §6.3).
+    fn order_ref(
+        &self,
+        client_order_id: &ClientOrderId,
+        venue_order_id: Option<VenueOrderId>,
+    ) -> String {
+        match venue_order_id {
+            Some(venue_order_id) => venue_order_id.to_string(),
+            None => self.reporter.order_ref(client_order_id),
+        }
+    }
+}
+
+/// The account half of the execution client, shared with the private transport.
+///
+/// A private transport runs on the global Tokio runtime and must be `Send + 'static`, so it
+/// cannot hold the client: [`OndoExecutionClient`] carries the RC-based cache and the task
+/// group. What the transport needs is the account - its reconciliation machine, its report
+/// buffer, its one recovery claim, its reporter and its signed HTTP client - and that is what
+/// this type is. It holds the *same* instances the client does, through the same `Arc`s, so
+/// there is one account with one state, not two that agree.
+///
+/// # The one recovery claim
+///
+/// `pass` is the client's own [`PassOwnership`], not a copy: whether a recovery is in flight
+/// has exactly one truth source, and both the periodic pass and the transport's inbound routing
+/// read it there (plan §R3.1).
+///
+/// # What a transport may and may not decide
+///
+/// It may decide *when* to begin a recovery, to reconcile, to probe, to refresh metadata and to
+/// arm or renew the switch. It may not decide what a report does to the account: that is
+/// [`Self::ingest_stream_order`] and [`Self::ingest_stream_fill`], which is the one place the
+/// apply-or-buffer decision lives.
+#[derive(Debug, Clone)]
+pub struct OndoAccountRuntime {
+    reconciliation: Arc<RwLock<ReconciliationMachine>>,
+    buffer: Arc<RwLock<ReconciliationBuffer>>,
+    pass: Arc<PassOwnership>,
+    reporter: OndoReporter,
+    http_client: OndoHttpClient,
+    clock: &'static AtomicTime,
+    reconcile_interval_secs: u64,
+    dms_timeout_secs: u64,
+}
+
+impl OndoAccountRuntime {
+    /// Returns the local wall clock this runtime stamps with.
+    #[must_use]
+    pub fn now(&self) -> UnixNanos {
+        self.clock.get_time_ns()
+    }
+
+    /// Returns the configured interval between account reconciliations, in seconds.
+    #[must_use]
+    pub const fn reconcile_interval_secs(&self) -> u64 {
+        self.reconcile_interval_secs
+    }
+
+    /// Returns the configured dead man's switch timeout, in seconds.
+    #[must_use]
+    pub const fn dms_timeout_secs(&self) -> u64 {
+        self.dms_timeout_secs
+    }
+
+    /// Returns a clone of the signed HTTP client.
+    #[must_use]
+    pub fn http_client(&self) -> OndoHttpClient {
+        self.http_client.clone()
+    }
+
+    /// Returns the account's reconciliation state.
+    #[must_use]
+    pub fn reconciliation_state(&self) -> ReconciliationState {
+        self.reconciliation.read().state()
+    }
+
+    /// Returns whether this client is an account read-only session.
+    #[must_use]
+    pub fn is_account_read_only(&self) -> bool {
+        self.reconciliation.read().is_account_read_only()
+    }
+
+    /// Returns whether the switch permits new orders.
+    #[must_use]
+    pub fn dead_mans_switch_permits_orders(&self) -> bool {
+        self.reconciliation
+            .read()
+            .dead_mans_switch()
+            .permits_new_orders()
+    }
+
+    /// Returns whether the switch is waiting for the venue's acknowledgement.
+    ///
+    /// A venue error or a failed send while this is true means the arm may never have taken, which
+    /// is why the transport fails the switch closed rather than assuming it did.
+    #[must_use]
+    pub fn dead_mans_switch_is_arming(&self) -> bool {
+        self.reconciliation.read().dead_mans_switch().state() == DeadMansSwitchState::Arming
+    }
+
+    /// Returns how many times an armed switch has been renewed.
+    #[must_use]
+    pub fn dead_mans_switch_renewals(&self) -> u64 {
+        self.reconciliation.read().dead_mans_switch().renewals()
+    }
+
+    /// Records that the session ended.
+    ///
+    /// The account is unverified from here: new risk stops until a recovery converges again, while
+    /// cancels and queries still travel (plan §6.4).
+    pub fn note_session_ended(&self, now: UnixNanos) {
+        self.reconciliation.write().note_disconnected(now);
+    }
+
+    /// Releases the switch, returning the frame the private stream must send (plan §6.4).
+    ///
+    /// The wrapper [`crate::reconciliation::DeadMansSwitch::release`] was missing: the switch could
+    /// build the frame and nothing could put it on a socket, so
+    /// [`crate::reconciliation::StopStep::ReleaseDeadMansSwitch`] was a step no caller could carry
+    /// out.
+    ///
+    /// **This is not the stop path.** The order the stop sequence fixes is a requirement - this
+    /// run's orders are cancelled and confirmed *before* anything is released, because a released
+    /// switch cancels nothing and the orders it was covering would be left resting - and executing
+    /// that sequence is plan §R3.3's. It exists here so that the step has a caller when it does,
+    /// and it is the same shape as the five hooks beside it.
+    pub fn release_dead_mans_switch(&self, now: UnixNanos) -> DeadMansSwitchMessage {
+        self.reconciliation
+            .write()
+            .dead_mans_switch_mut()
+            .release(now)
+    }
+
+    /// Routes one private order report to the seam that owns the account right now.
+    ///
+    /// **This is the one place that decision is made**, and it is made here rather than in the
+    /// transport because it is part of the recovery's merge protocol: a report that arrives while a
+    /// pass is reading the account is *held* so the pass can replay it after the REST pages, and a
+    /// report that arrives when no pass is running is applied now, where the dedup ledger and the
+    /// order index make it safe (plan §6.4, §R3.1).
+    ///
+    /// The check and the hold happen under the buffer's own write lock, which is the lock
+    /// [`Self::close_pass`] takes to drain and end the pass. So a report that reads "a pass is
+    /// running" is a report the running pass has not drained yet - not one stranded behind a drain
+    /// that has already happened.
+    ///
+    /// What this cannot close, and does not pretend to: a report applied directly in the instant
+    /// before a pass claims the account is already applied when that pass reads the REST pages. The
+    /// buffer exists for the *ordering* hazard of a pass in flight, not for a venue whose REST
+    /// history lags its own stream - and the recovery's second agreeing pass is what catches that.
+    pub fn ingest_stream_order(&self, payload: OndoApiOrder) -> OndoStreamIngestion {
+        let mut buffer = self.buffer.write();
+
+        if self.pass.is_claimed() {
+            let generation = self.reconciliation.read().recovery_generation();
+            buffer.record_order(payload, generation);
+
+            let dropped = buffer.take_dropped();
+            drop(buffer);
+            self.note_refused_reports(dropped);
+
+            return OndoStreamIngestion::Buffered;
+        }
+
+        drop(buffer);
+        self.apply_order(&payload);
+
+        OndoStreamIngestion::Applied
+    }
+
+    /// Routes one private fill report to the seam that owns the account right now.
+    ///
+    /// The same decision as [`Self::ingest_stream_order`], under the same boundary, for the same
+    /// reason.
+    pub fn ingest_stream_fill(&self, fill: OndoApiFill) -> OndoStreamIngestion {
+        let mut buffer = self.buffer.write();
+
+        if self.pass.is_claimed() {
+            let generation = self.reconciliation.read().recovery_generation();
+            buffer.record_fill(fill, generation);
+
+            let dropped = buffer.take_dropped();
+            drop(buffer);
+            self.note_refused_reports(dropped);
+
+            return OndoStreamIngestion::Buffered;
+        }
+
+        drop(buffer);
+
+        if let Err(error) = self.apply_fill(&fill) {
+            // A fill the state machine cannot express at all is a report the account saw and could
+            // not apply, so it is a loss rather than a silent skip (plan §6.4).
+            self.note_lost_reports(
+                1,
+                format!("the fill {} could not be applied: {error}", fill.id()),
+            );
+        }
+
+        OndoStreamIngestion::Applied
+    }
+
+    /// Begins a recovery: the account is about to be read, and new risk stops until it converges.
+    ///
+    /// The private stream's connect and reconnect hooks call this, and so does the sandbox probe's
+    /// account mode. It is the client's own `connect` that does **not** call it: a recovery is a
+    /// decision to read the account, not a socket coming up.
+    pub fn begin_recovery(&self, now: UnixNanos) {
+        self.reconciliation.write().begin_recovery(now);
     }
 
     /// Records whether the metadata this client trades on is usable (plan §4.1).
@@ -1601,23 +2098,6 @@ impl OndoExecutionClient {
     /// no position is closed by a switch (plan §6.4).
     pub fn note_dead_mans_switch_fired(&self, now: UnixNanos) {
         self.reconciliation.write().note_switch_fired(now);
-    }
-
-    /// Returns the steps a stop takes, in the order it takes them (plan §6.4).
-    ///
-    /// The switch is released only after this run's own orders are cancelled and confirmed: a
-    /// released switch cancels nothing, and the orders it was covering would be left resting.
-    #[must_use]
-    pub fn stop_sequence(&self) -> Vec<StopStep> {
-        let mut steps = vec![StopStep::CancelOwnOrders, StopStep::ConfirmOwnOrders];
-
-        if self.reconciliation.read().dead_mans_switch().is_required() {
-            steps.push(StopStep::ReleaseDeadMansSwitch);
-        }
-
-        steps.push(StopStep::ClosePrivateStream);
-
-        steps
     }
 
     /// Records a private report that arrived while the account was being read.
@@ -1676,7 +2156,11 @@ impl OndoExecutionClient {
     }
 
     /// Records reports the recovery could not apply to the account.
-    fn note_lost_reports(&self, count: usize, reason: String) {
+    ///
+    /// Public because the private transport is a caller: a frame it could not decode is a report
+    /// the account lost, and saying so is what stops the account reading Ready over a hole
+    /// (plan §R3.1).
+    pub fn note_lost_reports(&self, count: usize, reason: String) {
         log::error!("Ondo lost {count} report(s) during recovery: {reason}");
         self.reconciliation.write().note_lost_reports(count, reason);
     }
@@ -2171,37 +2655,30 @@ impl OndoExecutionClient {
     pub fn apply_fills(&self, fills: &[OndoApiFill]) -> anyhow::Result<Vec<OndoFillApplication>> {
         fills.iter().map(|fill| self.apply_fill(fill)).collect()
     }
-
-    /// Returns a spawner for this client's task generation, or [`None`] when it is shut down.
-    fn spawner(&self) -> Option<TaskSpawner> {
-        match self.tasks.spawner() {
-            Ok(spawner) => Some(spawner),
-            Err(error) => {
-                log::error!("The Ondo Perps execution client cannot spawn a task: {error}");
-                None
-            }
-        }
-    }
-
-    /// Returns the order reference to use for a cancel or a query.
-    ///
-    /// A venue order id the caller already holds wins; otherwise the index is asked, and the
-    /// `client:{clientOrderId}` form is the fallback for an order whose venue id this session has
-    /// not observed yet (plan §6.2, §6.3).
-    fn order_ref(
-        &self,
-        client_order_id: &ClientOrderId,
-        venue_order_id: Option<VenueOrderId>,
-    ) -> String {
-        match venue_order_id {
-            Some(venue_order_id) => venue_order_id.to_string(),
-            None => self.reporter.order_ref(client_order_id),
-        }
-    }
 }
 
 #[async_trait(?Send)]
 impl ExecutionClient for OndoExecutionClient {
+    /// Returns whether this client's own connection has been established.
+    ///
+    /// **This is not "the account is verified", and it is deliberately not moved by the private
+    /// socket.** Two facts are separate here and are reported separately:
+    ///
+    /// - *what this flag means*: the client has been connected and not disconnected. It describes
+    ///   the client as the engine routes to it, and the transport that carries a cancel or a query
+    ///   is REST, which a private socket's failure does not touch. A private socket loss that also
+    ///   reported the whole client down would say its risk-clearing paths were unusable at exactly
+    ///   the moment they are needed.
+    /// - *what stops new risk*: the account's admission decision, and only that. A private
+    ///   connection ending moves it ([`OndoAccountRuntime::note_session_ended`] ->
+    ///   `ReconciliationState::Disconnected`), and every submission is refused from there until a
+    ///   recovery converges - checked again at the send point
+    ///   ([`crate::http::client::OndoNewRiskGuard`]), so no queued command slips through.
+    ///
+    /// The private session's own state is [`Self::private_run_state`], and it is the one to read
+    /// for "is the account session up". Nothing in the engine gates on this flag (it is read by
+    /// `check_connected` and the connection-status report), so moving it would buy no safety and
+    /// would cost a true statement about a still-usable transport.
     fn is_connected(&self) -> bool {
         self.core.is_connected()
     }
@@ -2276,13 +2753,15 @@ impl ExecutionClient for OndoExecutionClient {
 
         log::info!("Stopping Ondo Perps execution client");
         self.tasks.abort();
+        // The private transport is not in the task group: it owns its own task and its own socket,
+        // so it is stopped here. Dropping the handle cancels it; [`Self::disconnect`] is the path
+        // that waits for it, and this one is synchronous by contract.
+        self.private_stream = None;
         self.core.set_stopped();
         self.core.set_disconnected();
         // A stopped client holds no verified account: were it to be reset and reused, new risk
         // would wait for a recovery rather than resume on the state the last session read.
-        self.reconciliation
-            .write()
-            .note_disconnected(self.reporter.now());
+        self.account.note_session_ended(self.reporter.now());
 
         Ok(())
     }
@@ -2306,13 +2785,40 @@ impl ExecutionClient for OndoExecutionClient {
         Ok(())
     }
 
-    /// Marks the client connected.
+    /// Marks the client connected and starts the private transport.
     ///
-    /// This opens no socket: the private stream and its buffered reports are a later phase, and a
-    /// recovery is begun by [`Self::begin_recovery`] - the hook the stream's connect and reconnect
-    /// paths call - rather than by a socket coming up. What this method does settle is the order
-    /// path's state, so the state the request path works in is explicit rather than implied.
+    /// The socket the client opens here is the **private** one: the account's reports and its dead
+    /// man's switch are the account session, and this is what begins one. It is also the caller the
+    /// recovery was waiting for - the transport's own connect hook calls [`Self::begin_recovery`],
+    /// because a recovery is a decision to read the account and the transport is what makes that
+    /// decision (plan §6.4).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the transport cannot be started: no Tokio runtime to host it, or a
+    /// reconnect policy that cannot be built. A client whose transport will not start is a client
+    /// that cannot read its account, so the failure is reported rather than swallowed - it is
+    /// refused before the connection state moves, so a failed start does not leave a client that
+    /// looks connected.
     async fn connect(&mut self) -> anyhow::Result<()> {
+        if self.private_stream.is_none() {
+            let stream = OndoPrivateStream::start(
+                self.config.ws_url().to_string(),
+                self.account.clone(),
+                Arc::clone(&self.credential),
+                self.config.stream_mode(),
+                crate::common::consts::ONDO_WS_HEARTBEAT_SECS,
+            )?;
+
+            log::info!(
+                "Ondo Perps private transport started: url={}, mode={}",
+                stream.url(),
+                self.config.stream_mode(),
+            );
+
+            self.private_stream = Some(stream);
+        }
+
         if self.core.is_connected() {
             return Ok(());
         }
@@ -2327,15 +2833,35 @@ impl ExecutionClient for OndoExecutionClient {
     ///
     /// A session that ends leaves the venue state the session established unread: new risk stops
     /// until a recovery converges again (plan §6.4). Cancels and queries still travel.
+    ///
+    /// The private transport is stopped with it and awaited, boundedly, so a disconnected client is
+    /// not a client with a socket still reading. What is deliberately **not** done here is releasing
+    /// the dead man's switch: a released switch cancels nothing, and this run's orders have not been
+    /// confirmed cancelled - the order the stop sequence fixes is a requirement, and carrying it out
+    /// is plan §R3.3's ([`Self::release_dead_mans_switch`]).
     async fn disconnect(&mut self) -> anyhow::Result<()> {
+        if let Some(mut stream) = self.private_stream.take() {
+            stream.stop().await;
+
+            log::info!(
+                "Ondo Perps private transport stopped: {:?}",
+                stream.run_state(),
+            );
+
+            if stream.is_running() {
+                log::error!(
+                    "The Ondo Perps private transport task outlived its stop timeout; it has been \
+                     aborted and is still winding down",
+                );
+            }
+        }
+
         if self.core.is_disconnected() {
             return Ok(());
         }
 
         self.core.set_disconnected();
-        self.reconciliation
-            .write()
-            .note_disconnected(self.reporter.now());
+        self.account.note_session_ended(self.reporter.now());
         log::info!("Ondo Perps execution client disconnected");
 
         Ok(())

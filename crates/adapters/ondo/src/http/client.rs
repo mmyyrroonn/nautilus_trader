@@ -173,16 +173,18 @@ const NO_SERVER_OFFSET: i64 = i64::MIN;
 /// The credential a client signs with, and the clock evidence it has gathered.
 ///
 /// The credential is held once and shared through an [`Arc`] - it is deliberately not `Clone` - so
-/// cloning the client never copies the secret.
+/// cloning the client never copies the secret. The same handle is what the client's constructor is
+/// handed, which is how one credential signs both the REST requests and the private WebSocket's
+/// login frame without either surface holding a second copy of the secret.
 #[derive(Debug)]
 struct OndoAuth {
-    credential: OndoCredential,
+    credential: Arc<OndoCredential>,
     /// Local time minus venue time, in whole seconds, from the last `Date` header the venue sent.
     server_offset_secs: AtomicI64,
 }
 
 impl OndoAuth {
-    fn new(credential: OndoCredential) -> Self {
+    fn new(credential: Arc<OndoCredential>) -> Self {
         Self {
             credential,
             server_offset_secs: AtomicI64::new(NO_SERVER_OFFSET),
@@ -358,7 +360,7 @@ impl OndoHttpClient {
         #[builder(default = ONDO_HTTP_TIMEOUT_SECS)] timeout_secs: u64,
         budget: Option<OndoRateBudget>,
         retry_config: Option<RetryConfig>,
-        credential: Option<OndoCredential>,
+        credential: Option<Arc<OndoCredential>>,
         new_risk_guard: Option<Arc<dyn OndoNewRiskGuard>>,
     ) -> OndoHttpResult<Self> {
         let base_url = base_url.trim_end_matches('/').to_string();

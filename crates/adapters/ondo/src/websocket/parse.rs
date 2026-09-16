@@ -89,7 +89,87 @@ pub enum EventTimeSource {
     LocalReceive,
 }
 
-/// A parsed server frame.
+/// The header of a server frame: every envelope member except `data`.
+///
+/// Both the public and the private parser derive exactly these facts, and they derive them the same
+/// way, so the work happens once here rather than once per surface. What is *not* shared is `data`:
+/// a public item decodes from a [`serde_json::Value`], while a private one has to stay the bytes
+/// the venue sent, because [`crate::http::private::OndoApiFill::from_raw`] takes a
+/// [`serde_json::value::RawValue`] and a `Value` has already lost them.
+///
+/// Two rules live here rather than at either call site:
+///
+/// - the **undeclared** envelope `timestamp` is read exactly when it is present
+///   (`test_data/conflicts.md` conflict 7) and an unreadable one is an error, never a `None`;
+/// - the `code` member is rendered as text whichever JSON shape it arrived in.
+#[derive(Clone, Debug)]
+pub(crate) struct FrameHeader {
+    /// The classified message type.
+    pub kind: WsMessageType,
+    /// The wire message type, kept verbatim so an unknown type stays diagnosable.
+    pub kind_raw: String,
+    /// The raw channel name, as sent.
+    pub channel: Option<String>,
+    /// The server send/batch time, parsed exactly.
+    pub timestamp: Option<UnixNanos>,
+    /// The server send/batch time, verbatim.
+    pub timestamp_raw: Option<String>,
+    /// An error description, when the venue sent one.
+    pub message: Option<String>,
+    /// An error code, when the venue sent one.
+    pub code: Option<String>,
+}
+
+impl FrameHeader {
+    /// Classifies the members every frame carries, whichever surface it arrived on.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the envelope carries a `timestamp` that is not an RFC 3339 instant. A
+    /// frame with no `timestamp` member is accepted: the member is sent by the server but not
+    /// declared by the official spec (conflict 7).
+    pub(crate) fn classify(
+        kind_raw: &str,
+        channel: Option<&str>,
+        timestamp_raw: Option<&str>,
+        message: Option<&str>,
+        code: Option<&str>,
+    ) -> anyhow::Result<Self> {
+        let (timestamp, timestamp_raw) = match timestamp_raw {
+            Some(raw_timestamp) => {
+                let parsed = parse_timestamp(raw_timestamp).with_context(|| {
+                    format!("invalid envelope `timestamp` `{raw_timestamp}` in an Ondo frame")
+                })?;
+
+                (Some(parsed), Some(raw_timestamp.to_string()))
+            }
+            None => (None, None),
+        };
+
+        Ok(Self {
+            kind: WsMessageType::from_wire(kind_raw),
+            kind_raw: kind_raw.to_string(),
+            channel: channel.map(ToString::to_string),
+            timestamp,
+            timestamp_raw,
+            message: message.map(ToString::to_string),
+            code: code.map(code_text),
+        })
+    }
+}
+
+/// Renders the `code` member as text: a JSON string is its content, anything else is its JSON text.
+///
+/// The venue documents `code` as a string and has been seen to send other shapes, so the member is
+/// read rather than required to be one.
+pub(crate) fn code_text(raw: &str) -> String {
+    match serde_json::from_str::<serde_json::Value>(raw) {
+        Ok(serde_json::Value::String(text)) => text,
+        _ => raw.to_string(),
+    }
+}
+
+/// A parsed public server frame.
 #[derive(Clone, Debug)]
 pub struct ServerMessage {
     /// The classified message type.
@@ -206,31 +286,24 @@ pub fn parse_server_message(text: &str) -> anyhow::Result<ServerMessage> {
     let raw: RawServerMessage =
         serde_json::from_str(text).context("failed to decode an Ondo WebSocket frame")?;
 
-    let (timestamp, timestamp_raw) = match raw.timestamp {
-        Some(raw_timestamp) => {
-            let parsed = parse_timestamp(&raw_timestamp).with_context(|| {
-                format!("invalid envelope `timestamp` `{raw_timestamp}` in an Ondo frame")
-            })?;
-
-            (Some(parsed), Some(raw_timestamp))
-        }
-        None => (None, None),
-    };
-
-    let code = raw.code.as_ref().map(|code| match code {
-        serde_json::Value::String(text) => text.clone(),
-        other => other.to_string(),
-    });
+    let code = raw.code.as_ref().map(ToString::to_string);
+    let header = FrameHeader::classify(
+        &raw.kind,
+        raw.channel.as_deref(),
+        raw.timestamp.as_deref(),
+        raw.message.as_deref(),
+        code.as_deref(),
+    )?;
 
     Ok(ServerMessage {
-        kind: WsMessageType::from_wire(&raw.kind),
-        kind_raw: raw.kind,
-        channel: raw.channel,
-        timestamp,
-        timestamp_raw,
+        kind: header.kind,
+        kind_raw: header.kind_raw,
+        channel: header.channel,
+        timestamp: header.timestamp,
+        timestamp_raw: header.timestamp_raw,
         data: raw.data,
-        message: raw.message,
-        code,
+        message: header.message,
+        code: header.code,
     })
 }
 

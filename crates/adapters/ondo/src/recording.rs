@@ -312,6 +312,14 @@ impl PublicFrame {
         let op = value.get("op").and_then(serde_json::Value::as_str);
 
         match op.and_then(public_op) {
+            // Answered by name rather than left to a catch-all. A `login` body carries the API key
+            // id and the HMAC signature, and this arm is the whitelist saying so. It is unreachable
+            // through `public_op` today - `RAW_MD_PUBLIC_OPS` does not carry `WsOp::Login` - and it
+            // is spelled out anyway, so that widening that list can never silently widen what a file
+            // may hold.
+            Some(WsOp::Login) => Err(NotPublicFrame::new(
+                "a login request carries a credential signature and is never recorded",
+            )),
             Some(WsOp::Ping) => Ok(Self {
                 payload: body.to_string(),
                 direction: FrameDirection::Outbound,

@@ -126,6 +126,14 @@ impl ReconciliationState {
 /// than a sentence assembled at the call site.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum NewRiskRefusal {
+    /// This client was configured as an account **read-only** session.
+    ///
+    /// It is not a state and nothing clears it: a read-only client reads the account and never
+    /// places an order, whatever the account reads and whoever asks. It is checked before every
+    /// other condition because it is the client's own definition rather than a condition to chase,
+    /// and naming anything else first would send an operator looking for a problem that does not
+    /// exist.
+    AccountIsReadOnly,
     /// The admission a caller presented is not the current one: something that revokes permission
     /// happened after it was issued, even if the account is admissible again by now.
     ///
@@ -158,6 +166,11 @@ impl NewRiskRefusal {
     #[must_use]
     pub fn reason(&self) -> String {
         match self {
+            Self::AccountIsReadOnly => {
+                "this client was configured as an account read-only session, which places no \
+                 orders at all"
+                    .to_string()
+            }
             Self::Superseded => {
                 "the admission this order was given is no longer current".to_string()
             }
@@ -283,6 +296,24 @@ impl DeadMansSwitchMessage {
             channel: ONDO_DMS_CHANNEL.to_string(),
             timeout_seconds,
         }
+    }
+
+    /// Serializes the frame the private stream sends.
+    ///
+    /// This is the send half the type was missing: [`crate::reconciliation::DeadMansSwitch`] built
+    /// the frame and nothing could put it on a socket, so
+    /// [`crate::reconciliation::StopStep::ReleaseDeadMansSwitch`] was a step no caller could carry
+    /// out. The body is public - an operation, a channel name and a timeout - and carries no
+    /// credential, so unlike a login frame it is recorded by the private transport as the fact that
+    /// it was sent.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the body cannot be serialized, which cannot happen for a well-formed
+    /// value of this type and is surfaced rather than unwrapped.
+    pub fn to_json_text(&self) -> anyhow::Result<String> {
+        serde_json::to_string(self)
+            .map_err(|error| anyhow::anyhow!("failed to serialize the Ondo switch frame: {error}"))
     }
 }
 
@@ -1538,6 +1569,8 @@ struct ReportLoss {
 #[derive(Debug)]
 pub struct ReconciliationMachine {
     account_id: AccountId,
+    /// Whether this client is an account read-only session. Set once, and never cleared.
+    account_read_only: bool,
     state: ReconciliationState,
     session_established: bool,
     metadata: MetadataValidity,
@@ -1562,6 +1595,7 @@ impl ReconciliationMachine {
     pub fn new(account_id: AccountId, timeout_seconds: u64) -> Self {
         Self {
             account_id,
+            account_read_only: false,
             state: ReconciliationState::Disconnected,
             session_established: false,
             metadata: MetadataValidity::Stale {
@@ -1593,6 +1627,27 @@ impl ReconciliationMachine {
     #[must_use]
     pub const fn state(&self) -> ReconciliationState {
         self.state
+    }
+
+    /// Marks this client as an account read-only session.
+    ///
+    /// A read-only session reads the account and never places an order
+    /// ([`NewRiskRefusal::AccountIsReadOnly`]), which is what makes "read-only" a property of the
+    /// client rather than a promise its caller keeps. The private transport subscribes to the
+    /// account's reports for such a client and never arms the switch, whose arm has a cancelling
+    /// side effect ([`crate::websocket::private::session::PrivateStreamMode::ReadOnly`], plan §0).
+    ///
+    /// It is idempotent and there is no way back: a caller cannot make a read-only client tradable
+    /// by forgetting that it asked for one.
+    pub fn mark_account_read_only(&mut self) {
+        self.account_read_only = true;
+        self.invalidate_admissions();
+    }
+
+    /// Returns whether this client is an account read-only session.
+    #[must_use]
+    pub const fn is_account_read_only(&self) -> bool {
+        self.account_read_only
     }
 
     /// Returns whether a session has been established at any point in this process's life.
@@ -1677,6 +1732,10 @@ impl ReconciliationMachine {
     /// that does not permit one - come last.
     #[must_use]
     pub fn new_risk_refusal(&self) -> Option<NewRiskRefusal> {
+        if self.account_read_only {
+            return Some(NewRiskRefusal::AccountIsReadOnly);
+        }
+
         if !self.unknown.is_empty() {
             return Some(NewRiskRefusal::UnknownSubmissions {
                 client_order_ids: self.unknown.keys().copied().collect(),

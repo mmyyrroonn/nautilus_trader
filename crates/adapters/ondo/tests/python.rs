@@ -43,6 +43,7 @@ use nautilus_ondo::{
     config::{OndoDataClientConfig, OndoExecutionClientConfig},
     factories::{OndoDataClientFactory, OndoExecutionClientFactory},
     http::{client::OndoHttpClient, rate_limit::shared_rest_budget},
+    websocket::private::PrivateStreamMode,
 };
 use nautilus_system::get_global_pyo3_registry;
 use pyo3::{
@@ -559,6 +560,85 @@ fn test_the_http_client_constructs_offline_and_exposes_the_four_reads() {
             assert!(
                 !client.hasattr(absent).unwrap(),
                 "{absent} must not be on the public Python surface",
+            );
+        }
+    });
+}
+
+/// The private account session's two configuration members reach Python, and the credential still
+/// does not.
+///
+/// The execution configuration is the one surface that takes an API key pair, so every addition to
+/// it is a place a secret could start being readable. `base_url_ws` and `account_read_only` are
+/// settings, not credentials: they say where the account session comes up and whether it may place
+/// an order, and the assertion that neither half of the key pair is readable is made again here,
+/// next to them, rather than only where the surface was first pinned (plan §R3.1).
+#[rstest]
+fn test_the_private_session_is_configurable_from_python_and_carries_no_secret() {
+    setup_data_event_sender();
+    Python::initialize();
+
+    Python::attach(|py| {
+        // The scratch module, not the process-global registration: the factory extractor is
+        // registered once per process and another test already owns that.
+        let module = scratch_module(py);
+
+        let config_type = module
+            .getattr("OndoExecutionClientConfig")
+            .expect("the execution config is exported");
+
+        let kwargs = PyDict::new(py);
+        kwargs
+            .set_item("base_url_ws", "ws://127.0.0.1:8080/ws")
+            .expect("the keyword is settable");
+        kwargs
+            .set_item("account_read_only", true)
+            .expect("the keyword is settable");
+
+        let instance = config_type
+            .call((), Some(&kwargs))
+            .expect("the execution config accepts the private session's settings");
+
+        let config: OndoExecutionClientConfig = instance
+            .extract()
+            .expect("the config extracts back into Rust");
+
+        assert_eq!(
+            config.base_url_ws.as_deref(),
+            Some("ws://127.0.0.1:8080/ws"),
+            "the private endpoint is a configuration member",
+        );
+        assert!(config.account_read_only);
+        assert_eq!(config.ws_url(), "ws://127.0.0.1:8080/ws");
+        assert_eq!(config.stream_mode(), PrivateStreamMode::ReadOnly);
+
+        assert_eq!(
+            instance
+                .getattr("base_url_ws")
+                .expect("the private endpoint is readable")
+                .extract::<String>()
+                .expect("it is a string"),
+            "ws://127.0.0.1:8080/ws",
+        );
+        assert!(
+            instance
+                .getattr("account_read_only")
+                .expect("the read-only flag is readable")
+                .extract::<bool>()
+                .expect("it is a bool"),
+        );
+
+        // The rendering names the session and never a credential, and neither half of the key pair
+        // has become readable by being next to it.
+        let rendered = instance.repr().expect("the config renders").to_string();
+
+        assert!(rendered.contains("account_read_only"), "{rendered}");
+        assert!(rendered.contains("base_url_ws"), "{rendered}");
+
+        for secret in ["api_key", "api_secret", "key_id", "secret"] {
+            assert!(
+                !instance.hasattr(secret).unwrap(),
+                "OndoExecutionClientConfig must not expose `{secret}` to Python",
             );
         }
     });

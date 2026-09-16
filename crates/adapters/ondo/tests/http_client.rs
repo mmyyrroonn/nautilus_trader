@@ -1026,7 +1026,7 @@ fn signed_client_with_guard(
         .base_url(server.url())
         .budget(test_budget())
         .retry_config(retry)
-        .credential(fake_credential())
+        .credential(Arc::new(fake_credential()))
         .new_risk_guard(guard as Arc<dyn OndoNewRiskGuard>)
         .build()
         .expect("the authenticated mock client builds")
@@ -1585,7 +1585,7 @@ async fn test_an_endpoint_outside_the_allowlist_is_refused_before_a_client_exist
 
     let error = OndoHttpClient::builder()
         .base_url(refused)
-        .credential(fake_credential())
+        .credential(Arc::new(fake_credential()))
         .build()
         .expect_err("a host that is neither the sandbox authority nor loopback is refused");
 
@@ -1613,7 +1613,7 @@ async fn test_a_signed_read_draws_on_the_same_budget_as_a_public_read() {
     let client = OndoHttpClient::builder()
         .base_url("http://127.0.0.1:1".to_string())
         .budget(budget.clone())
-        .credential(fake_credential())
+        .credential(Arc::new(fake_credential()))
         .build()
         .expect("the client builds");
 
@@ -1752,7 +1752,7 @@ async fn test_a_new_risk_write_is_refused_by_its_guard_after_the_budget_wait() {
     let client = OndoHttpClient::builder()
         .base_url("http://127.0.0.1:1".to_string())
         .budget(budget.clone())
-        .credential(fake_credential())
+        .credential(Arc::new(fake_credential()))
         .new_risk_guard(Arc::clone(&guard) as Arc<dyn OndoNewRiskGuard>)
         .build()
         .expect("the client builds");
@@ -1816,7 +1816,7 @@ async fn test_an_authenticated_client_without_a_new_risk_guard_refuses_a_signed_
         .base_url(server.url())
         .budget(test_budget())
         .retry_config(retry_policy(2, 1, 2, Some(5_000)))
-        .credential(fake_credential())
+        .credential(Arc::new(fake_credential()))
         .build()
         .expect("the authenticated mock client builds");
 
