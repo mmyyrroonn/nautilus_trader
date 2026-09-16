@@ -4695,6 +4695,70 @@ fn test_a_journal_that_stopped_accepting_writes_is_stated_and_refuses_no_order()
     assert!(machine.can_submit_new_orders());
 }
 
+/// A journal status and the refusal it raises are one answer rather than two.
+///
+/// [`JournalStatus::permits_new_orders`] is defined as the absence of
+/// [`JournalStatus::new_risk_refusal`], and this holds it to that for every status there is: the
+/// answer admission acts on and the answer a caller reads come from one match, so they cannot come
+/// apart. What this replaced was two matches over the same variants - they agreed on the day they
+/// were written, and an edit to one of them would have silently decided the policy for the other.
+#[rstest]
+#[case::failed(
+    JournalStatus::Failed {
+        path: "C:/ondo/ledger.json".to_string(),
+        reason: "the checkpoint records 2 fills and the file holds 1".to_string(),
+    },
+    false
+)]
+#[case::restored(
+    JournalStatus::Restored {
+        path: "C:/ondo/ledger.json".to_string(),
+        fills: 4,
+        orders: 2,
+        unsettled: 1,
+        watermark: Some(secs(118)),
+    },
+    true
+)]
+#[case::degraded(
+    JournalStatus::Degraded {
+        path: "C:/ondo/ledger.json".to_string(),
+        failures: 3,
+        last_written_at: Some(secs(120)),
+        watermark: Some(secs(118)),
+    },
+    true
+)]
+#[case::not_configured(
+    JournalStatus::NotConfigured {
+        reason: "no journal path was configured for this machine".to_string(),
+    },
+    true
+)]
+fn test_a_journal_status_permits_exactly_what_it_raises_no_refusal_for(
+    #[case] status: JournalStatus,
+    #[case] permits: bool,
+) {
+    assert_eq!(
+        status.new_risk_refusal().is_none(),
+        permits,
+        "the refusal the status raises is the policy: {status:?}",
+    );
+    assert_eq!(
+        status.permits_new_orders(),
+        permits,
+        "and the permit a caller reads is the same answer: {status:?}",
+    );
+
+    match status.new_risk_refusal() {
+        Some(NewRiskRefusal::JournalUnavailable { reason }) => assert_eq!(
+            reason, "the checkpoint records 2 fills and the file holds 1",
+            "the refusal carries the status's own reason, not one decided again",
+        ),
+        other => assert_eq!(other, None, "only a journal that could not be read refuses"),
+    }
+}
+
 /// The unsettled writes a journal holds are re-registered, and their window is **inherited**.
 #[rstest]
 fn test_a_restored_journal_puts_the_unsettled_writes_back_with_their_window() {

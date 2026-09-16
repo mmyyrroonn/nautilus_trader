@@ -2536,15 +2536,34 @@ impl JournalStatus {
         }
     }
 
-    /// Returns whether this status permits new risk.
+    /// Returns the refusal this status raises, when it raises one.
     ///
-    /// Only [`Self::Failed`] does not. [`Self::Degraded`] is deliberately among the ones that do: a
+    /// This is the **single** encoding of "a journal status that stops new risk". Only
+    /// [`Self::Failed`] raises one: [`Self::Degraded`] is deliberately passed over, because a
     /// journal that stopped accepting writes loses durability, not memory, and a crash from there
     /// replays under trade ids the engine dedupes - the same outcome as the supported
     /// [`Self::NotConfigured`] mode, which no configuration refuses.
+    ///
+    /// [`Self::permits_new_orders`] is defined as the absence of this refusal rather than as a
+    /// second match on the same variants, so the answer admission acts on and the answer a caller
+    /// reads cannot come apart.
     #[must_use]
-    pub const fn permits_new_orders(&self) -> bool {
-        !matches!(self, Self::Failed { .. })
+    pub fn new_risk_refusal(&self) -> Option<NewRiskRefusal> {
+        match self {
+            Self::Failed { reason, .. } => Some(NewRiskRefusal::JournalUnavailable {
+                reason: reason.clone(),
+            }),
+            Self::NotConfigured { .. } | Self::Restored { .. } | Self::Degraded { .. } => None,
+        }
+    }
+
+    /// Returns whether this status permits new risk.
+    ///
+    /// It refuses exactly when [`Self::new_risk_refusal`] returns a refusal - one match decides
+    /// both, so the two cannot disagree about which statuses stop new risk.
+    #[must_use]
+    pub fn permits_new_orders(&self) -> bool {
+        self.new_risk_refusal().is_none()
     }
 
     /// Returns a human-readable statement of the status.
@@ -2806,11 +2825,10 @@ impl ReconciliationMachine {
 
         // The journal comes before every condition about the account, because it is not one: it is
         // this client's own memory of its own traffic. A run that cannot read it does not know
-        // which fills it already applied, and no reading of the venue can tell it.
-        if let JournalStatus::Failed { reason, .. } = &self.journal {
-            return Some(NewRiskRefusal::JournalUnavailable {
-                reason: reason.clone(),
-            });
+        // which fills it already applied, and no reading of the venue can tell it. The status
+        // raises the refusal itself, so this asks it rather than deciding a second time.
+        if let Some(refusal) = self.journal.new_risk_refusal() {
+            return Some(refusal);
         }
 
         if !self.unknown.is_empty() {

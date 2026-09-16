@@ -636,7 +636,10 @@ struct OndoPrivateState {
     /// The newest applied fill's instant, which is how far the ledger reaches.
     ///
     /// It is a fact about the fills this client **applied**, so it moves where they move and
-    /// nowhere else, and it survives a restart through the journal's watermark.
+    /// nowhere else. It survives a restart by being read back out of the journal's own watermark
+    /// ([`OndoAccountRuntime::load_journal`] puts it back through the same monotone rule this uses,
+    /// not by a second path), so a run that restored a ledger and then applied nothing new reports
+    /// the coverage it actually holds rather than none.
     watermark: Option<UnixNanos>,
 }
 
@@ -2402,6 +2405,17 @@ impl OndoAccountRuntime {
 
             state.restore_orders(orders);
 
+            // The watermark is a fact about the fills this client **applied**, and the ledger just
+            // restored is the record of exactly those. Reading it back here is what makes the
+            // field's own claim true: a run that restored a ledger and has applied nothing new
+            // still reports the coverage it holds rather than none, so a restart does not present
+            // itself as a client that has never seen a fill. It is put back through
+            // [`OndoPrivateState::observe_fill`] - the same monotone rule the live path uses -
+            // rather than assigned, so there is one rule and not two that could disagree.
+            if let Some(watermark) = journal.watermark() {
+                state.observe_fill(watermark);
+            }
+
             restored
         };
 
@@ -2923,7 +2937,7 @@ impl OndoAccountRuntime {
         // pass unnoticed: it is recorded on the reading and reported by the funding judgment, so
         // the pass says "the funding could not be read" rather than "the funding is fine"
         // (plan §R3.2).
-        match self.read_funding().await {
+        match self.read_funding(now).await {
             Ok(payments) => reading.funding = payments,
             Err(error) => {
                 log::error!("Ondo funding history could not be read: {error}");
@@ -3167,7 +3181,50 @@ impl OndoAccountRuntime {
     /// `FundingFeeTransfer` is an event with an instant, and the funding ledger is reconciled over a
     /// window, so a record that cannot be placed is one this adapter says it could not read rather
     /// than one it quietly counts.
-    async fn read_funding(&self) -> anyhow::Result<Vec<FundingPayment>> {
+    ///
+    /// # The walk ends where the reconciliation starts
+    ///
+    /// The bound is the funding ledger's baseline instant
+    /// ([`crate::reconciliation::FundingLedger::baseline`]): the moment of the first readable
+    /// `totalFundingPayments`, which `judge_funding` establishes at `reading.read_at` - this same
+    /// `now`. Before any pass has read such a total there is no baseline to bound by, and the bound
+    /// is `now` itself, because that is the instant this pass's own judgment is about to establish
+    /// one at: a payment older than that is not one the window that opens there reaches, and while
+    /// there is no baseline `accounted_since_baseline` counts nothing at all.
+    ///
+    /// The venue returns this history most recent first - the frozen spec's own ordering - so a page
+    /// whose every record lies before that bound is the last page worth asking for: every deeper
+    /// page lies before it too. This is what keeps [`REPORT_MAX_PAGES`] a backstop rather than a
+    /// cliff. The cap is not a window whose effect this adapter can see either, since no `limit` is
+    /// sent and the venue's page size is its own default: "100 pages" is not "100 records", and an
+    /// account whose funding history runs past the cap would otherwise fail this read on **every**
+    /// pass, for ever, while this adapter had been wrong about nothing. Such a failure is honest -
+    /// funding that cannot be read books nothing and is reported as such - but it is permanent, and
+    /// it is a cashflow this adapter could have read in one page.
+    ///
+    /// Stopping early does not make the read incomplete, and that is the part to check rather than
+    /// assume. The reconciliation counts exactly the payments at or after the window's start
+    /// ([`crate::reconciliation::FundingLedger::accounted_since_baseline`]), and the walk returns
+    /// every one of those: it stops only on a page that is *entirely* before the bound, having read
+    /// every page between that one and the newest. The records it never asks for are records the
+    /// judgment would not count. Nor is the stop load-bearing for correctness - were the venue to
+    /// order a page against its documented order, a counted payment would go missing from the sum
+    /// and the reconciliation would state the gap that leaves
+    /// ([`FundingReconciliation::Unreconciled`]) rather than call the account clean.
+    ///
+    /// Only a page that **carries** records, all of them before the bound, ends the walk. An empty
+    /// page says nothing about the order of what lies beyond it, so it is followed to the cursor it
+    /// carried: reading "a page with no records" as "no records left" is the silent truncation this
+    /// endpoint's `nextCursor` handling exists to avoid.
+    async fn read_funding(&self, now: UnixNanos) -> anyhow::Result<Vec<FundingPayment>> {
+        // Read before the first request, so no lock is held across the walk's awaits.
+        let since = self
+            .reconciliation
+            .read()
+            .funding()
+            .baseline()
+            .map_or(now, |(since, _baseline)| since);
+
         let mut walk = CursorWalk::new(REPORT_MAX_PAGES);
         let mut query = OndoPrivateReadQuery::new();
         let mut payments = Vec::new();
@@ -3181,8 +3238,23 @@ impl OndoAccountRuntime {
                     anyhow::anyhow!("the funding history could not be read: {error}")
                 })?;
 
+            let mut page = 0_usize;
+            let mut before_the_window = true;
+
             for fee in response.funding_fees()? {
-                payments.push(funding_payment(&fee)?);
+                let payment = funding_payment(&fee)?;
+
+                page += 1;
+
+                if payment.time >= since {
+                    before_the_window = false;
+                }
+
+                payments.push(payment);
+            }
+
+            if page > 0 && before_the_window {
+                break;
             }
 
             let Some(cursor) = walk.advance(response.cursor())? else {

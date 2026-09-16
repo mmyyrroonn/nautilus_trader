@@ -1881,6 +1881,13 @@ async fn test_a_fill_recorded_in_the_checkpoint_is_not_replayed_after_a_restart(
         "and the checkpoint holds it",
     );
 
+    // The watermark travels with the fills, because it is a fact about them. Captured here so the
+    // restart below can be held to it rather than to a literal.
+    let watermark_with_the_fill = journal_at(&journal)
+        .expect("the run wrote a checkpoint")
+        .watermark()
+        .expect("a run that applied a fill has an instant to describe its coverage by");
+
     drop(first);
 
     // The restart reads the same history. The fill is in the restored ledger, so it is a duplicate
@@ -1902,6 +1909,18 @@ async fn test_a_fill_recorded_in_the_checkpoint_is_not_replayed_after_a_restart(
         second.client.reconciliation_state(),
         ReconciliationState::Ready,
         "the account converges: a duplicate is not a disagreement",
+    );
+
+    // The restart's own checkpoints are written from a state it restored rather than built. A run
+    // that put the ledger back but not the instant it reaches would rewrite the file with no
+    // coverage at all, so this is what makes the field's claim - that the watermark survives a
+    // restart through the journal - a fact about the code instead of a sentence about it.
+    assert_eq!(
+        journal_at(&journal)
+            .expect("the restart rewrote the checkpoint")
+            .watermark(),
+        Some(watermark_with_the_fill),
+        "the coverage the restored ledger reaches is the coverage this run reports",
     );
 
     second.client.stop().expect("stop");

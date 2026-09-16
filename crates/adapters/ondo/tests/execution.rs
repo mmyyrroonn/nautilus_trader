@@ -77,7 +77,7 @@ use nautilus_ondo::{
     execution::{OndoExecutionClient, OndoFillApplication, OndoOrderApplication},
     http::{
         orders::{OndoApiOrder, OndoOrderStatus},
-        private::OndoApiFill,
+        private::{FUNDING_FEES_PATH, OndoApiFill},
         rate_limit::{ONDO_REST_BUCKET, OndoRateBudget},
     },
     reconciliation::{
@@ -4469,6 +4469,48 @@ fn funding_fee(market: &str, time: &str, amount: &str) -> String {
     )
 }
 
+/// One page of a paginated list: the `result` array with the `pageInfo` a cursor walk follows,
+/// which is the shape the frozen spec documents for `GET /v1/perps/funding_fees`.
+fn funding_page(records: &[String], next: Option<&str>) -> String {
+    let items = format!("[{}]", records.join(","));
+
+    match next {
+        Some(cursor) => {
+            format!(r#"{{"success":true,"result":{items},"pageInfo":{{"nextCursor":"{cursor}"}}}}"#)
+        }
+        None => envelope(&items),
+    }
+}
+
+/// A pass's five reads for an account with `balance`, whose funding history is the pages a walk
+/// would ask for in order.
+fn pass_reads_paged(balance: &str, funding_pages: &[String]) -> Vec<Reply> {
+    let mut reads = vec![
+        Reply::ok(envelope("[]")),
+        Reply::ok(envelope("[]")),
+        Reply::ok(envelope("[]")),
+        Reply::ok(envelope(balance)),
+    ];
+
+    reads.extend(funding_pages.iter().map(|page| Reply::ok(page.clone())));
+
+    reads
+}
+
+/// The requests the client made for the funding history, in order.
+fn funding_reads(mock: &MockServer) -> Vec<String> {
+    mock.targets()
+        .into_iter()
+        .filter(|target| target.starts_with(FUNDING_FEES_PATH))
+        .collect()
+}
+
+/// The instant an RFC 3339 timestamp names, so a test can say when the client's clock reads in the
+/// same terms the venue states a payment's `time` in.
+fn instant(timestamp: &str) -> UnixNanos {
+    parse_timestamp(timestamp).expect("a readable timestamp")
+}
+
 /// A pass's five reads for an account with `balance` and `funding`.
 fn pass_reads(balance: &str, funding: &[String]) -> Vec<Reply> {
     vec![
@@ -4803,6 +4845,214 @@ async fn test_a_funding_read_that_failed_books_nothing_and_is_reported() {
     assert!(
         !judgment.is_uncertain(),
         "and it does not make the account's own state unknown",
+    );
+}
+
+/// A funding history far deeper than the page cap is read without reaching it: the walk ends where
+/// the reconciliation starts, not at the ceiling.
+#[tokio::test]
+async fn test_a_funding_history_deeper_than_the_page_cap_is_read_without_reaching_it() {
+    // The venue's history is 105 pages here, five more than `REPORT_MAX_PAGES`, and every page past
+    // the second lies entirely before the account's baseline. Before the walk was bounded by that
+    // baseline it asked for all of them and failed the read on the cap - on every pass, for ever.
+    let baseline_at = "2025-03-05T14:30:00Z";
+    // The payment on the newest page sits at exactly the instant the baseline is established, which
+    // is inside the window (`time >= since`), so the walk has a reason to ask for one more page.
+    // Its amount is zero, so accounting it agrees with a total that has not moved: this test is
+    // about how far the walk goes, not about what a payment does to the reconciliation.
+    let inside_the_window = funding_fee(NVDA_MARKET, baseline_at, "0.00");
+    let before_the_window = funding_fee(NVDA_MARKET, "2025-03-05T13:00:00Z", "-9.99");
+    let pages: Vec<String> = (1..=105)
+        .map(|page| {
+            let next = (page < 105).then(|| format!("page-{}", page + 1));
+            let records = match page {
+                1 => [inside_the_window.clone()],
+                _ => [before_the_window.clone()],
+            };
+
+            funding_page(&records, next.as_deref())
+        })
+        .collect();
+
+    let balance = balance_body("4950.00", "0.00", "4950.00", "112.50", false, "0.00");
+    let mock = MockServer::start(pass_reads_paged(&balance, &pages)).await;
+    let mut harness = build_harness(&mock, sandbox_config());
+
+    harness.client.start().expect("start");
+    harness.client.connect().await.expect("connect");
+    harness.client.begin_recovery(UnixNanos::default());
+    harness
+        .client
+        .reconcile_account(instant(baseline_at))
+        .await
+        .expect("the pass reads the account");
+
+    let reads = funding_reads(&mock);
+
+    assert_eq!(
+        reads.len(),
+        2,
+        "the walk stopped at the first page that lay before the window: {reads:?}",
+    );
+
+    let funding = harness.client.account();
+
+    assert!(
+        funding.funding_reconciliation().is_reconciled(),
+        "the history was read rather than failing on the cap: {:?}",
+        funding.funding_reconciliation(),
+    );
+    assert_eq!(
+        funding.funding_payments().len(),
+        2,
+        "the two pages that were read, and neither of the 103 that were not",
+    );
+    assert!(
+        harness.client.last_judgment().expect("judged").is_clean(),
+        "and nothing about the account is left unexplained",
+    );
+}
+
+/// A funding walk stops on the first page that lies entirely before the baseline the reconciliation
+/// starts from - and the records on it are evidence, not something counted against the total.
+#[tokio::test]
+async fn test_a_funding_walk_stops_on_the_first_page_that_lies_before_the_baseline() {
+    let baseline_at = "2025-03-05T14:30:00Z";
+    let opening = balance_body("4950.00", "0.00", "4950.00", "112.50", false, "0.00");
+    let paid = balance_body("4950.00", "0.00", "4950.00", "112.50", false, "-15.67");
+    let mut script = pass_reads(&opening, &[]);
+
+    // The second pass reads a page inside the window, a page before it, and - were the walk to go
+    // on - a third one. The second is where it stops, and the third is never asked for.
+    script.extend(pass_reads_paged(
+        &paid,
+        &[
+            funding_page(
+                &[funding_fee(NVDA_MARKET, "2025-03-05T15:00:00Z", "-15.67")],
+                Some("page-2"),
+            ),
+            funding_page(
+                &[funding_fee(NVDA_MARKET, "2025-03-05T13:00:00Z", "-4.00")],
+                Some("page-3"),
+            ),
+            funding_page(
+                &[funding_fee(NVDA_MARKET, "2025-03-05T12:00:00Z", "-1.00")],
+                None,
+            ),
+        ],
+    ));
+
+    let mock = MockServer::start(script).await;
+    let mut harness = build_harness(&mock, sandbox_config());
+
+    harness.client.start().expect("start");
+    harness.client.connect().await.expect("connect");
+    harness.client.begin_recovery(UnixNanos::default());
+    harness
+        .client
+        .reconcile_account(instant(baseline_at))
+        .await
+        .expect("the first pass reads the account, and its total is the baseline");
+    harness
+        .client
+        .reconcile_account(instant("2025-03-05T15:30:00Z"))
+        .await
+        .expect("the second pass reads the account the payment landed in");
+
+    let reads = funding_reads(&mock);
+
+    assert_eq!(
+        reads.len(),
+        3,
+        "one funding read in the first pass and two in the second: {reads:?}",
+    );
+    assert!(
+        !reads.iter().any(|target| target.contains("page-3")),
+        "the page that lay wholly before the baseline ended the walk: {reads:?}",
+    );
+
+    let funding = harness.client.account();
+
+    assert!(
+        funding.funding_reconciliation().is_reconciled(),
+        "the payment the window covers was read, and it matches the venue's own total: {:?}",
+        funding.funding_reconciliation(),
+    );
+
+    let accounted = funding.funding_payments();
+
+    assert_eq!(accounted.len(), 2, "the two pages that were read");
+    assert!(
+        !accounted.iter().any(|payment| payment.amount
+            == rust_decimal::Decimal::from_str_exact("-1.00").expect("decimal")),
+        "and not the page the walk stopped short of: {accounted:?}",
+    );
+    assert!(
+        harness.client.last_judgment().expect("judged").is_clean(),
+        "a payment from before the baseline is recorded without being counted against it",
+    );
+}
+
+/// An empty page does not end the walk: a page with no records says nothing about the order of what
+/// lies beyond it, so it is followed to the cursor it carried.
+#[tokio::test]
+async fn test_an_empty_funding_page_does_not_end_the_walk() {
+    let baseline_at = "2025-03-05T14:30:00Z";
+    let opening = balance_body("4950.00", "0.00", "4950.00", "112.50", false, "0.00");
+    let paid = balance_body("4950.00", "0.00", "4950.00", "112.50", false, "-15.67");
+    let mut script = pass_reads(&opening, &[]);
+
+    script.extend(pass_reads_paged(
+        &paid,
+        &[
+            funding_page(&[], Some("page-2")),
+            funding_page(
+                &[funding_fee(NVDA_MARKET, "2025-03-05T15:00:00Z", "-15.67")],
+                Some("page-3"),
+            ),
+            funding_page(
+                &[funding_fee(NVDA_MARKET, "2025-03-05T13:00:00Z", "-4.00")],
+                None,
+            ),
+        ],
+    ));
+
+    let mock = MockServer::start(script).await;
+    let mut harness = build_harness(&mock, sandbox_config());
+
+    harness.client.start().expect("start");
+    harness.client.connect().await.expect("connect");
+    harness.client.begin_recovery(UnixNanos::default());
+    harness
+        .client
+        .reconcile_account(instant(baseline_at))
+        .await
+        .expect("the first pass reads the account, and its total is the baseline");
+    harness
+        .client
+        .reconcile_account(instant("2025-03-05T15:30:00Z"))
+        .await
+        .expect("the second pass reads the account the payment landed in");
+
+    let reads = funding_reads(&mock);
+
+    assert_eq!(
+        reads.len(),
+        4,
+        "the empty page was followed to the cursor it carried, not read as the end: {reads:?}",
+    );
+
+    let funding = harness.client.account();
+
+    assert!(
+        funding.funding_reconciliation().is_reconciled(),
+        "the payment behind the empty page was read, and it matches the venue's total: {:?}",
+        funding.funding_reconciliation(),
+    );
+    assert_eq!(funding.funding_payments().len(), 2);
+    assert!(
+        harness.client.last_judgment().expect("judged").is_clean(),
+        "nothing about the account is left unexplained",
     );
 }
 
