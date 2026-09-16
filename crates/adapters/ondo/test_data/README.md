@@ -1,16 +1,20 @@
-# Ondo Perps adapter test data (P0)
+# Ondo Perps adapter test data (P0 freeze)
 
-This directory is the P0 (protocol + environment freeze) artifact for the Ondo Perps adapter.
-It contains **fixtures and evidence only**. There is deliberately no `Cargo.toml`, no `src/`, and
-no `tests/` here yet — Task 1 owns those. Nothing here has been validated against a live
-authenticated endpoint.
+This directory holds the P0 (protocol + environment freeze) artifact for the Ondo Perps adapter:
+the captured and official fixtures, their manifest, and the conflict table. Those fixture bodies,
+and the hashes `manifest.json` records for them, are still exactly what the freeze wrote. It
+contains **fixtures and evidence only** — there is deliberately no `Cargo.toml`, no `src/` and no
+`tests/` here, because the crate that consumes these fixtures is the parent directory. Nothing here
+has been validated against a live authenticated endpoint.
 
-- `manifest.json` — the machine-readable index: one entry per fixture with its kind, source,
-  capture time and SHA256, plus the two repo HEADs, tool versions and the unresolved list.
+- `manifest.json` — the machine-readable index: one entry per P0 protocol fixture with its kind,
+  source, capture time and SHA256, plus the two repo HEADs, tool versions and the unresolved list.
   **Always read the fixture's `kind` from the manifest, not from its file name.**
 - `conflicts.md` — the official-document conflict table (REST headers, WS HMAC order, FOK,
   `fill.direction`, market status, plus two schema-vs-observation gaps).
 - `ws/` — WebSocket fixtures. `rest/` — REST fixtures (one synthetic, one observed).
+- `signing_rest_vectors.json` — the signing vectors `tests/signing.rs` loads; it has no
+  `manifest.json` entry.
 
 ## Fixture legend: `observed` vs `official-example` vs `synthetic`
 
@@ -72,9 +76,9 @@ parse it through `f64`.
 | `depthBooksPerps` | `{"op":"subscribe","channel":"depthBooksPerps","markets":[...],"limit":10}` (optional `depthLevels` *(spec)*) | `BookSnapshot` with full bid/ask arrays | identical to `topOfBooksPerps`, arrays are longer | **`depthLevels` is a price-grouping value, NOT a number of levels** (spec example `"0.01"`). `limit` = max levels, `0` means unlimited *(spec)*. No exchange sequence number and no checksum anywhere in the frame. Each observed frame is a complete replacement of the covered range; `limit=10` proves at most 10 levels, never the whole book. |
 | `tradesPerps` | `{"op":"subscribe","channel":"tradesPerps","markets":[...],"numPastTrades":0}` | `Trade` | `data[].market`, `data[].price`, `data[].size`, `data[].cost`, `data[].aggressor_side`, `data[].time`, `data[].id` | `price` USD/base, `size` base, `cost` quote (= price × size). `aggressor_side` ∈ {`buy`,`sell`} (snake_case on the wire). `id` = trade id, usable for dedupe. |
 | `fundingRatesPerps` | `{"op":"subscribe","channel":"fundingRatesPerps","markets":[...]}` | `FundingRate` | `data[].market`, `data[].rate`, `data[].intervalEnds`, `data[].premiums[]` → `premiums[].market`, `.time`, `.mark`, `.bid`, `.ask`, `.premiumIndex` | **`rate` is an hourly decimal fraction.** Observed `0.0000063` = 0.063 bp/h (`×1e4` → bp/h; `0.0001` = 1 bp/h). Never divide by 100 and never multiply by 8. **`intervalEnds` is a settlement time** (observed `2026-09-14T12:00:00Z`), not the event time and not a `ts_event`. Premium samples are per-minute; `premiumIndex` is a dimensionless ratio. |
-| `markPricesPerps` | `{"op":"subscribe","channel":"markPricesPerps","markets":[...]}` | `MarkPrice` | `data[].market`, `data[].markPrice` | **No observed sample in this phase.** `markPrice` is a quote-currency decimal string. Provisional only. |
-| `kLinePerps` | subscribe *(spec)* | `Kline` | not analysed in P0 | out of the P1 scope |
-| private channels (`ordersPerps`, `fillsPerps`, `positionsPerps`, `balancePerps`, `fundingPaymentsPerps`, `liquidationPerps`, `liquidationAnnouncementsPerps`, `marginTransfersPerps`, `ordersSummariesPerps`, `cancelAllOrdersAfterPerps`, `deposits`, `withdrawals`) | require `{"op":"login","args":{...}}` first | `Order`, `Fill`, `Position`, `Balance`, … | see `conflicts.md` conflicts 1–4 | **No fixture in P0.** Synthetic only, and only once a sandbox response exists; secrets must never be captured. |
+| `markPricesPerps` | `{"op":"subscribe","channel":"markPricesPerps","markets":[...]}` | `MarkPrice` | `data[].market`, `data[].markPrice` | **No observed sample to date.** `markPrice` is a quote-currency decimal string. Provisional only. |
+| `kLinePerps` | subscribe *(spec)* | `Kline` | not analysed | out of scope |
+| private channels (`ordersPerps`, `fillsPerps`, `positionsPerps`, `balancePerps`, `fundingPaymentsPerps`, `liquidationPerps`, `liquidationAnnouncementsPerps`, `marginTransfersPerps`, `ordersSummariesPerps`, `cancelAllOrdersAfterPerps`, `deposits`, `withdrawals`) | require `{"op":"login","args":{...}}` first | `Order`, `Fill`, `Position`, `Balance`, … | see `conflicts.md` conflicts 1–4 | **No fixture here.** Synthetic only, and only once a sandbox response exists; secrets must never be captured. |
 
 Connection facts *(spec)*: 32 KB max message, 25 requests/second (burst 50), idle disconnect at
 180 s, application-level heartbeat `{"op":"ping"}` → `{"type":"pong"}`.
@@ -114,11 +118,14 @@ Auth header names and the WS login digest are **conflicts, not facts** — see `
 
 ## Support matrix (per plan §1, frozen at P0)
 
-| Capability | P0 stance |
+The stance is the P0 decision and has not changed; what the adapter now does about each row is
+described in [`../README.md`](../README.md).
+
+| Capability | Stance |
 |---|---|
-| Instrument (from `baseIncrement`/`quoteIncrement`), `QuoteTick`, L2 snapshot → `CLEAR + ADD` with `F_SNAPSHOT`/`F_LAST`, `TradeTick`, `FundingRateUpdate`, mark price | **Supported (planned P1)** |
-| Limit `GTC`/`IOC`, Market (by base `size`), `postOnly`, `reduceOnly` | **Supported (planned P3)** |
-| Single submit, list submit (≤20), single cancel, per-market cancel, order/fill/position/balance queries, funding-fee reconciliation, reconnect + reconciliation, dead-man's switch | **Supported (planned P3)** |
+| Instrument (from `baseIncrement`/`quoteIncrement`), `QuoteTick`, L2 snapshot → `CLEAR + ADD` with `F_SNAPSHOT`/`F_LAST`, `TradeTick`, `FundingRateUpdate`, mark price | **Supported (implemented)** |
+| Limit `GTC`/`IOC`, Market (by base `size`), `postOnly`, `reduceOnly` | **Supported (implemented)** |
+| Single submit, list submit (≤20), single cancel, per-market cancel, order/fill/position/balance queries, funding-fee reconciliation, reconnect + reconciliation, dead-man's switch | **Supported (implemented)** — except the dead-man's switch, which is implemented and offline-tested but **not accepted**: no sandbox run has confirmed the venue's renewal or trigger semantics |
 | Atomic amend/replace | **Explicitly unsupported** — return a named unsupported error; never emulate as cancel+new |
 | `FOK`, `GTD` | **Explicitly unsupported on create** (conflict 3); incoming WS order reports carrying them are still parsed and preserved |
 | TWAP | **Explicitly unsupported** |

@@ -1629,8 +1629,13 @@ async fn harness_with_one_order(
         .client
         .submit_order(submit_command(&order))
         .expect("the command is handled");
-    wait_until(&mut harness, "a tracked order", |client, _events| {
-        client.tracks(&ClientOrderId::from(CLIENT_ORDER_ID))
+    // The order index is written before the create request is sent, so `tracks` alone returns while
+    // `venue_order_id` is still `None`; the stop reads that id to name the cancel, and the test
+    // below asserts the request names it. Wait for the id itself, not for mere presence.
+    wait_until(&mut harness, "the venue order id", |client, _events| {
+        client
+            .order_state(&ClientOrderId::from(CLIENT_ORDER_ID))
+            .is_some_and(|state| state.venue_order_id.is_some())
     })
     .await;
 
