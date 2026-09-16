@@ -42,8 +42,8 @@ use nautilus_common::{
         DataEvent, ExecutionEvent,
         execution::{
             CancelAllOrders, CancelOrder, ExecutionReport, GenerateFillReportsBuilder,
-            GenerateOrderStatusReport, GenerateOrderStatusReportsBuilder, ModifyOrder, QueryOrder,
-            SubmitOrder, SubmitOrderList,
+            GenerateOrderStatusReport, GenerateOrderStatusReportsBuilder,
+            GeneratePositionStatusReports, ModifyOrder, QueryOrder, SubmitOrder, SubmitOrderList,
         },
     },
     testing::wait_until_async,
@@ -51,7 +51,11 @@ use nautilus_common::{
 use nautilus_core::{UUID4, UnixNanos};
 use nautilus_live::ExecutionClientCore;
 use nautilus_model::{
-    enums::{AccountType, LiquiditySide, OmsType, OrderSide, OrderStatus, OrderType, TimeInForce},
+    enums::{
+        AccountType, LiquiditySide, OmsType, OrderSide, OrderStatus, OrderType, PositionSide,
+        TimeInForce,
+    },
+    events::AccountState,
     events::OrderEventAny,
     identifiers::{
         AccountId, ClientId, ClientOrderId, InstrumentId, OrderListId, StrategyId, TradeId,
@@ -59,7 +63,7 @@ use nautilus_model::{
     },
     orders::{Order, OrderAny, OrderList, builder::OrderTestBuilder},
     reports::{FillReport, OrderStatusReport},
-    types::{Currency, Price, Quantity},
+    types::{Currency, Money, Price, Quantity},
 };
 use nautilus_network::ratelimiter::quota::Quota;
 use nautilus_ondo::{
@@ -76,7 +80,10 @@ use nautilus_ondo::{
         private::OndoApiFill,
         rate_limit::{ONDO_REST_BUCKET, OndoRateBudget},
     },
-    reconciliation::{MetadataValidity, ReconciliationState, RecoveryPassRefusal},
+    reconciliation::{
+        Finding, LiquidationState, MetadataValidity, NewRiskRefusal, ReconciliationState,
+        RecoveryPassRefusal,
+    },
     signing::{ONDO_KEY_ID_HEADER, ONDO_SIGN_HEADER, ONDO_TIMESTAMP_HEADER},
 };
 use rstest::rstest;
@@ -94,6 +101,7 @@ const CLIENT_ID: &str = "ONDO-EXEC";
 const TEST_KEY_ID: &str = "ondoKeyId_UNIT_TEST_ONLY";
 const TEST_API_SECRET: &str = "ondoApiSecret_UNIT_TEST_ONLY";
 const NVDA: &str = "NVDA-USD-PERP.ONDO";
+const NVDA_MARKET: &str = "NVDA-USD.P";
 const VENUE_ORDER_ID: &str = "197ec08e001658690721be129e7fa595";
 const CLIENT_ORDER_ID: &str = "ondo_probe_1";
 
@@ -766,8 +774,8 @@ fn total_commission(reports: &[FillReport]) -> rust_decimal::Decimal {
         })
 }
 
-/// The reads the two reconciliation passes make before a test's own replies: four per pass.
-const RECOVERY_READS: usize = 8;
+/// The reads the two reconciliation passes make before a test's own replies: five per pass.
+const RECOVERY_READS: usize = 10;
 
 /// Waits until the mock server has received `count` requests.
 async fn wait_for_requests(mock: &MockServer, count: usize) {
@@ -805,14 +813,15 @@ fn position_json(net_quantity: &str) -> String {
     )
 }
 
-/// The four reads one reconciliation pass makes when the account is empty and healthy, in the
-/// order the pass makes them: orders, fills, positions, balance.
+/// The five reads one reconciliation pass makes when the account is empty and healthy, in the
+/// order the pass makes them: orders, fills, positions, balance, funding.
 fn clean_pass_reads() -> Vec<Reply> {
     vec![
         Reply::ok(envelope("[]")),
         Reply::ok(envelope("[]")),
         Reply::ok(envelope("[]")),
         Reply::ok(envelope(BALANCE_BODY)),
+        Reply::ok(envelope("[]")),
     ]
 }
 
@@ -829,7 +838,7 @@ fn admitted_script(replies: Vec<Reply>) -> Vec<Reply> {
 /// A harness whose account is recovered: current metadata, two agreeing passes, nothing unknown.
 ///
 /// New risk is refused from construction (plan §6.4), so a test that submits has to establish this
-/// first - and the mock has to be started on [`admitted_script`], which answers the eight reads the
+/// first - and the mock has to be started on [`admitted_script`], which answers the ten reads the
 /// two passes make before the test's own replies.
 async fn recovered_harness(mock: &MockServer) -> Harness {
     recovered_harness_on(mock, test_budget()).await
@@ -2258,7 +2267,7 @@ async fn test_a_batch_whose_answer_was_lost_leaves_every_item_unknown() {
         .expect("the command is handled");
 
     // The eight reads the two passes made, and the batch.
-    wait_for_requests(&mock, 9).await;
+    wait_for_requests(&mock, RECOVERY_READS + 1).await;
     tokio::time::sleep(Duration::from_millis(100)).await;
 
     assert_eq!(
@@ -2329,7 +2338,7 @@ async fn test_a_batch_answer_that_omits_an_item_leaves_that_item_unknown() {
         .client
         .submit_order_list(order_list_command(&orders))
         .expect("the command is handled");
-    wait_for_requests(&mock, 9).await;
+    wait_for_requests(&mock, RECOVERY_READS + 1).await;
 
     let unknown = harness.client.unknown_submissions();
 
@@ -2387,7 +2396,7 @@ async fn test_a_batch_of_three_answered_for_one_leaves_the_other_two_unknown() {
         .client
         .submit_order_list(order_list_command(&orders))
         .expect("the command is handled");
-    wait_for_requests(&mock, 9).await;
+    wait_for_requests(&mock, RECOVERY_READS + 1).await;
 
     let unknown = harness.client.unknown_submissions();
 
@@ -2445,7 +2454,7 @@ async fn test_a_batch_answer_that_names_a_foreign_order_leaves_the_item_unknown(
         .client
         .submit_order_list(order_list_command(&[order]))
         .expect("the command is handled");
-    wait_for_requests(&mock, 9).await;
+    wait_for_requests(&mock, RECOVERY_READS + 1).await;
 
     let unknown = harness.client.unknown_submissions();
 
@@ -4127,6 +4136,8 @@ async fn test_a_fill_that_arrives_during_the_last_reads_is_in_that_passes_readin
             body: envelope(&format!("[{}]", position_json("0.20"))),
         },
         Reply::ok(envelope(BALANCE_BODY)),
+        // The funding read, which follows the balance.
+        Reply::ok(envelope("[]")),
     ])
     .await;
     let harness = recovered_harness(&mock).await;
@@ -4226,6 +4237,7 @@ async fn test_reports_arriving_at_the_drain_boundary_land_in_exactly_one_pass() 
             Reply::ok(envelope("[]")),
             Reply::ok(envelope(&format!("[{}]", position_json("0.80")))),
             Reply::ok(envelope(BALANCE_BODY)),
+            Reply::ok(envelope("[]")),
         ]
     };
     let mut script = vec![Reply::ok(envelope(&order_json(
@@ -4409,5 +4421,527 @@ async fn test_a_second_recovery_pass_is_refused_while_one_owns_the_account() {
         harness.client.reconciliation_state(),
         ReconciliationState::Recovering,
         "one agreeing pass, concluded by the pass that owned it",
+    );
+}
+
+// ------------------------------------------------------------------------------------------------
+// The account the engine is told about (plan §R3.2)
+// ------------------------------------------------------------------------------------------------
+
+/// One USDC amount, at the settlement currency's own precision.
+fn usdc(value: &str) -> Money {
+    Money::from_decimal(
+        rust_decimal::Decimal::from_str_exact(value).expect("decimal"),
+        Currency::from(ONDO_SETTLEMENT_CURRENCY),
+    )
+    .expect("money")
+}
+
+/// Every account state the client published, whichever envelope carried it.
+fn account_states(events: &[ExecutionEvent]) -> Vec<AccountState> {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            ExecutionEvent::Account(state) => Some(state.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The balance summary a venue answers a pass with, with every documented member spelled out.
+fn balance_body(
+    margin: &str,
+    used: &str,
+    available: &str,
+    maintenance: &str,
+    under_liquidation: bool,
+    funding: &str,
+) -> String {
+    format!(
+        r#"{{"walletBalance":"5000.00","realizedPnl":"0.00","unrealizedPnl":"0.00","marginBalance":"{margin}","usedMargin":"{used}","availableMargin":"{available}","withdrawableMargin":"{available}","maintenanceMarginRequirement":"{maintenance}","totalMaintenanceMargin":"0.00","marginRatio":"0.00","leverage":"0.00","underLiquidation":{under_liquidation},"totalFundingPayments":"{funding}","totalTradingFees":"0.00","totalPnL":"0.00","netInvested":"5000.00"}}"#,
+    )
+}
+
+/// One funding payment in the venue's documented `FundingFeeTransfer` shape.
+fn funding_fee(market: &str, time: &str, amount: &str) -> String {
+    format!(
+        r#"{{"market":"{market}","time":"{time}","markPrice":"227.50","positionSize":"1.00","positionDirection":"long","rate":"0.0000125","payer":"long","amount":"{amount}"}}"#,
+    )
+}
+
+/// A pass's five reads for an account with `balance` and `funding`.
+fn pass_reads(balance: &str, funding: &[String]) -> Vec<Reply> {
+    vec![
+        Reply::ok(envelope("[]")),
+        Reply::ok(envelope("[]")),
+        Reply::ok(envelope("[]")),
+        Reply::ok(envelope(balance)),
+        Reply::ok(envelope(&format!("[{}]", funding.join(",")))),
+    ]
+}
+
+/// The account the engine's cache holds is the account this adapter read, and it arrives the way
+/// every other execution event does: through the emitter and the event channel.
+#[tokio::test]
+async fn test_a_verified_balance_reaches_the_engine_as_a_nautilus_account_state() {
+    let balance = balance_body("4950.00", "1125.00", "3825.00", "112.50", false, "-5.67");
+    let mock = MockServer::start(vec![
+        Reply::ok(envelope("[]")),
+        Reply::ok(envelope("[]")),
+        Reply::ok(envelope("[]")),
+        Reply::ok(envelope(&balance)),
+        Reply::ok(envelope("[]")),
+        Reply::ok(envelope("[]")),
+        Reply::ok(envelope("[]")),
+        Reply::ok(envelope("[]")),
+        Reply::ok(envelope(&balance)),
+        Reply::ok(envelope("[]")),
+    ])
+    .await;
+    let mut harness = build_harness(&mock, sandbox_config());
+
+    harness.client.start().expect("start");
+    harness.client.connect().await.expect("connect");
+    harness.client.begin_recovery(UnixNanos::default());
+    harness
+        .client
+        .reconcile_account(UnixNanos::default())
+        .await
+        .expect("the pass reads the account");
+
+    let states = account_states(&drain(&mut harness));
+
+    assert_eq!(states.len(), 1, "one concluded pass, one account state");
+
+    let state = &states[0];
+    let settlement = Currency::from(ONDO_SETTLEMENT_CURRENCY);
+
+    assert_eq!(state.account_id, AccountId::from(ACCOUNT_ID));
+    assert!(
+        state.is_reported,
+        "the venue reported it, this adapter did not calculate it"
+    );
+    assert_eq!(state.balances.len(), 1);
+
+    let reported = state.balances[0];
+
+    assert_eq!(reported.currency, settlement);
+    assert_eq!(reported.total, usdc("4950.00"));
+    assert_eq!(reported.locked, usdc("1125.00"));
+    assert_eq!(reported.free, usdc("3825.00"));
+    assert_eq!(
+        reported.total,
+        reported.locked.checked_add(reported.free).expect("the sum"),
+        "the venue's own arithmetic is carried, not re-derived",
+    );
+
+    // The maintenance requirement travels as the margin balance's maintenance side.
+    assert_eq!(state.margins.len(), 1);
+    assert_eq!(state.margins[0].maintenance, usdc("112.50"));
+    assert_eq!(state.margins[0].initial, usdc("1125.00"));
+}
+
+/// A pass that verified no balance publishes no account state: unknown or missing numbers are
+/// never reported as a normal state.
+#[tokio::test]
+async fn test_a_balance_that_is_not_the_whole_account_publishes_no_account_state() {
+    // The venue reports a second collateral asset, so the USDC view is not the account.
+    let partial = format!(
+        r#"{{"walletBalance":"5000.00","marginBalance":"4950.00","usedMargin":"1125.00","availableMargin":"3825.00","withdrawableMargin":"3825.00","maintenanceMarginRequirement":"112.50","underLiquidation":false,"totalFundingPayments":"0.00","USDT":"250.00"}}"#,
+    );
+    let mock = MockServer::start(vec![
+        Reply::ok(envelope("[]")),
+        Reply::ok(envelope("[]")),
+        Reply::ok(envelope("[]")),
+        Reply::ok(envelope(&partial)),
+        Reply::ok(envelope("[]")),
+    ])
+    .await;
+    let mut harness = build_harness(&mock, sandbox_config());
+
+    harness.client.start().expect("start");
+    harness.client.connect().await.expect("connect");
+    harness.client.begin_recovery(UnixNanos::default());
+    harness
+        .client
+        .reconcile_account(UnixNanos::default())
+        .await
+        .expect("the pass reads the account");
+
+    let states = account_states(&drain(&mut harness));
+
+    assert!(
+        states.is_empty(),
+        "a USDC-only view of a multi-collateral account is not the account: {states:?}",
+    );
+    assert_eq!(
+        harness.client.reconciliation_state(),
+        ReconciliationState::Uncertain,
+    );
+}
+
+/// A balance the venue states is underwater is published as it was read: the signs are the
+/// venue's, and clamping them to zero would report a healthy account.
+#[tokio::test]
+async fn test_a_negative_balance_is_published_negative_and_stops_new_risk() {
+    let balance = balance_body("-1250.00", "100.00", "-1350.00", "112.50", false, "0.00");
+    let mock = MockServer::start(pass_reads(&balance, &[])).await;
+    let mut harness = build_harness(&mock, sandbox_config());
+
+    harness.client.start().expect("start");
+    harness.client.connect().await.expect("connect");
+    harness.client.begin_recovery(UnixNanos::default());
+    harness
+        .client
+        .reconcile_account(UnixNanos::default())
+        .await
+        .expect("the pass reads the account");
+
+    let states = account_states(&drain(&mut harness));
+
+    assert_eq!(states.len(), 1);
+    assert_eq!(
+        states[0].balances[0].total,
+        usdc("-1250.00"),
+        "an underwater account is reported underwater",
+    );
+    assert_eq!(states[0].balances[0].free, usdc("-1350.00"));
+    assert!(
+        !harness.client.can_submit_new_orders(),
+        "and nothing new is opened against it",
+    );
+}
+
+/// The native position report is the venue's position - its quantity, its direction and its own
+/// average entry price - and it is not synthesised from a local net.
+#[tokio::test]
+async fn test_the_position_report_is_the_venue_position() {
+    let mock = MockServer::start(vec![Reply::ok(envelope(&format!(
+        "[{},{}]",
+        position_json("0.25"),
+        r#"{"market":"TSLA-USD.P","direction":"short","netQuantity":"3.00","averageEntryPrice":"410.25","usedMargin":"1230.75","unrealizedPnl":"0.00","markPrice":"410.25","liquidationPrice":"500.00","bankruptcyPrice":"520.00","maintenanceMargin":"61.50","notionalValue":"1230.75","leverage":"2.0","netFundingSinceNeutral":"0.00","returnOnEquity":"0.00"}"#,
+    )))])
+    .await;
+    let harness = build_harness(&mock, sandbox_config());
+    let cmd = GeneratePositionStatusReports::new(
+        UUID4::new(),
+        UnixNanos::default(),
+        None, // instrument_id
+        None,
+        None,
+        None,
+        None,
+    );
+
+    let reports = harness
+        .client
+        .generate_position_status_reports(&cmd)
+        .await
+        .expect("the positions read");
+
+    assert_eq!(reports.len(), 2);
+
+    let long = reports
+        .iter()
+        .find(|report| report.instrument_id == InstrumentId::from(NVDA))
+        .expect("NVDA is reported");
+
+    assert_eq!(long.position_side, PositionSide::Long);
+    assert_eq!(long.quantity, Quantity::from("0.25"));
+    assert_eq!(
+        long.signed_decimal_qty,
+        rust_decimal::Decimal::from_str_exact("0.25").expect("decimal"),
+        "the venue's direction carries the sign, once",
+    );
+    assert_eq!(
+        long.avg_px_open,
+        Some(rust_decimal::Decimal::from_str_exact("227.50").expect("decimal")),
+        "the venue's own average entry price",
+    );
+    assert_eq!(long.account_id, AccountId::from(ACCOUNT_ID));
+
+    let short = reports
+        .iter()
+        .find(|report| report.instrument_id == InstrumentId::from("TSLA-USD-PERP.ONDO"))
+        .expect("TSLA is reported");
+
+    assert_eq!(short.position_side, PositionSide::Short);
+    assert_eq!(short.quantity, Quantity::from("3.00"));
+    assert_eq!(
+        short.signed_decimal_qty,
+        rust_decimal::Decimal::from_str_exact("-3.00").expect("decimal"),
+        "a short is a negative signed quantity and a positive size",
+    );
+
+    // The command's own filter narrows the answer and never widens it.
+    let filtered = GeneratePositionStatusReports::new(
+        UUID4::new(),
+        UnixNanos::default(),
+        Some(InstrumentId::from(NVDA)),
+        None,
+        None,
+        None,
+        None,
+    );
+    let reports = harness
+        .client
+        .generate_position_status_reports(&filtered)
+        .await
+        .expect("the positions read again");
+
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0].instrument_id, InstrumentId::from(NVDA));
+
+    assert_eq!(
+        writes(&mock).len(),
+        0,
+        "a position report is a read: nothing was sent that could change the account",
+    );
+}
+
+/// The funding **payment** the venue stated is accounted; the funding **rate** is never multiplied
+/// by a position to produce one.
+#[tokio::test]
+async fn test_a_stated_funding_payment_is_accounted_and_a_rate_is_never_multiplied_into_one() {
+    let opening = balance_body("4950.00", "0.00", "4950.00", "112.50", false, "0.00");
+    let paid = balance_body("4950.00", "0.00", "4950.00", "112.50", false, "-15.67");
+    let fee = funding_fee(NVDA_MARKET, "2025-03-05T14:30:01.000000000Z", "-15.67");
+    let mut script = pass_reads(&opening, &[]);
+
+    script.extend(pass_reads(&paid, &[fee]));
+
+    let mock = MockServer::start(script).await;
+    let mut harness = build_harness(&mock, sandbox_config());
+
+    harness.client.start().expect("start");
+    harness.client.connect().await.expect("connect");
+    harness.client.begin_recovery(UnixNanos::default());
+
+    // The first pass reads the account before the payment: the venue's cumulative total is the
+    // baseline everything after it is measured from.
+    harness
+        .client
+        .reconcile_account(UnixNanos::default())
+        .await
+        .expect("the first pass reads the account");
+    harness
+        .client
+        .reconcile_account(UnixNanos::default())
+        .await
+        .expect("the second pass reads the account the payment landed in");
+
+    let funding = harness.client.account();
+
+    assert!(
+        funding.funding_reconciliation().is_reconciled(),
+        "the venue's own total and the payment it published agree",
+    );
+
+    let accounted = funding.funding_payments();
+
+    assert_eq!(accounted.len(), 1);
+    assert_eq!(accounted[0].market, NVDA_MARKET);
+    assert_eq!(
+        accounted[0].amount,
+        rust_decimal::Decimal::from_str_exact("-15.67").expect("decimal"),
+    );
+    assert_eq!(
+        accounted[0].rate,
+        Some(rust_decimal::Decimal::from_str_exact("0.0000125").expect("decimal")),
+        "the rate is kept as evidence about the payment",
+    );
+    assert!(
+        harness.client.last_judgment().expect("judged").is_clean(),
+        "nothing about the account is left unexplained",
+    );
+}
+
+/// A funding history that cannot be read is reported and books nothing; the account's own state is
+/// still read, so the pass concludes rather than failing on a cashflow it could not see.
+#[tokio::test]
+async fn test_a_funding_read_that_failed_books_nothing_and_is_reported() {
+    let balance = balance_body("4950.00", "0.00", "4950.00", "112.50", false, "-15.67");
+    let mock = MockServer::start(vec![
+        Reply::ok(envelope("[]")),
+        Reply::ok(envelope("[]")),
+        Reply::ok(envelope("[]")),
+        Reply::ok(envelope(&balance)),
+        // The funding path is not answered at all.
+        Reply::answer(404, r#"{"success":false}"#),
+    ])
+    .await;
+    let mut harness = build_harness(&mock, sandbox_config());
+
+    harness.client.start().expect("start");
+    harness.client.connect().await.expect("connect");
+    harness.client.begin_recovery(UnixNanos::default());
+    harness
+        .client
+        .reconcile_account(UnixNanos::default())
+        .await
+        .expect("the account itself was read");
+
+    let funding = harness.client.account();
+
+    assert_eq!(
+        funding.funding_payments().len(),
+        0,
+        "nothing was read, so nothing is booked"
+    );
+    assert!(!funding.funding_reconciliation().is_reconciled());
+
+    let judgment = harness.client.last_judgment().expect("judged");
+
+    assert!(
+        judgment
+            .findings
+            .iter()
+            .any(|finding| matches!(finding, Finding::FundingUnreadable { .. })),
+        "the gap is said out loud: {:?}",
+        judgment.reasons(),
+    );
+    assert!(
+        !judgment.is_uncertain(),
+        "and it does not make the account's own state unknown",
+    );
+}
+
+/// An account the venue is liquidating is refused a new order by name, before any request.
+#[tokio::test]
+async fn test_an_account_under_liquidation_refuses_the_next_order_without_a_request() {
+    let liquidating = balance_body("4950.00", "0.00", "4950.00", "112.50", true, "0.00");
+    let mut script = clean_pass_reads();
+
+    script.extend(clean_pass_reads());
+    script.extend(pass_reads(&liquidating, &[]));
+
+    let mock = MockServer::start(script).await;
+    let mut harness = recovered_harness(&mock).await;
+
+    // The harness converged on a clear account; the venue is now liquidating it. The pass that
+    // reads that is a steady-state pass: the account is not re-recovered over a condition the
+    // venue stated.
+    harness
+        .client
+        .reconcile_account(UnixNanos::default())
+        .await
+        .expect("the pass reads the liquidating account");
+
+    assert_eq!(
+        harness.client.new_risk_refusal(),
+        Some(NewRiskRefusal::Liquidation(
+            LiquidationState::UnderLiquidation
+        )),
+    );
+
+    let order = limit_order("ondo_after_liquidation", OrderSide::Buy);
+
+    seed_order(&harness, &order);
+    harness
+        .client
+        .submit_order(submit_command(&order))
+        .expect("the command is handled");
+
+    let events = drain(&mut harness);
+    let denied: Vec<&OrderEventAny> = order_events(&events)
+        .into_iter()
+        .filter(|event| matches!(event, OrderEventAny::Denied(_)))
+        .collect();
+
+    assert_eq!(denied.len(), 1, "the command is denied, not submitted");
+
+    let reason = match denied[0] {
+        OrderEventAny::Denied(event) => event.reason.to_string(),
+        other => panic!("expected a denial, was {other:?}"),
+    };
+
+    assert!(reason.contains("liquidating"), "was `{reason}`");
+    assert_eq!(
+        writes(&mock).len(),
+        0,
+        "and nothing was sent: a denied order never leaves the process",
+    );
+}
+
+/// Bulk position coverage is **not** promised, and one unreadable row is why.
+///
+/// The venue documents its position list as every open position the account holds, and this adapter
+/// reports every row of it that it can name - so for an account whose rows all read, the reports are
+/// the account's positions. What the flag would promise is something else: that an instrument with
+/// **no** report is flat. One row whose direction this adapter cannot read is an instrument it
+/// cannot report, and under that promise the engine would read the missing report as a flat
+/// position - the false-clean judgment plan §6.3 forbids. The promise is therefore not made, and the
+/// reports are still produced.
+#[tokio::test]
+async fn test_bulk_position_coverage_is_not_promised_however_readable_the_rows_are() {
+    let mock = MockServer::start(vec![Reply::ok(envelope(&format!(
+        "[{}]",
+        position_json("0.25"),
+    )))])
+    .await;
+    let harness = build_harness(&mock, sandbox_config());
+
+    assert!(
+        !harness
+            .client
+            .provides_bulk_position_coverage(InstrumentId::from(NVDA)),
+        "an absent position report is never evidence that a position is flat",
+    );
+
+    // The row reads, so it is reported: what is withheld is the promise about the rows that would
+    // not read, not the rows that do.
+    let reports = harness
+        .client
+        .generate_position_status_reports(&GeneratePositionStatusReports::new(
+            UUID4::new(),
+            UnixNanos::default(),
+            None,
+            None,
+            None,
+            None,
+            None,
+        ))
+        .await
+        .expect("the positions read");
+
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0].quantity, Quantity::from("0.25"));
+}
+
+/// The two rows this adapter cannot report are not reported, and neither is guessed at.
+///
+/// One is a market it cannot map onto an instrument at all. The other is the row the coverage
+/// argument turns on: a market it *can* name whose direction is a spelling it cannot read. The
+/// quantity is right there in the payload, and reporting it as a long would be inventing the one
+/// fact the venue did not state - a position on the wrong side is worse than a position the engine
+/// does not hear about, because the second is what the missing coverage promise already tells it to
+/// expect.
+#[tokio::test]
+async fn test_a_position_row_this_adapter_cannot_read_is_never_guessed_into_a_report() {
+    let mock = MockServer::start(vec![Reply::ok(envelope(&format!(
+        "[{},{}]",
+        r#"{"market":"SOMETHING-USD","direction":"long","netQuantity":"2.00"}"#,
+        r#"{"market":"TSLA-USD.P","direction":"sideways","netQuantity":"3.00"}"#,
+    )))])
+    .await;
+    let harness = build_harness(&mock, sandbox_config());
+
+    let reports = harness
+        .client
+        .generate_position_status_reports(&GeneratePositionStatusReports::new(
+            UUID4::new(),
+            UnixNanos::default(),
+            None,
+            None,
+            None,
+            None,
+            None,
+        ))
+        .await
+        .expect("the positions read");
+
+    assert!(
+        reports.is_empty(),
+        "an unmappable market and an unreadable direction are both unreportable: {reports:?}",
     );
 }

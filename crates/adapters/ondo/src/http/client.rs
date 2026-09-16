@@ -132,7 +132,8 @@ use crate::{
             market_cancel_target, order_lookup_target,
         },
         private::{
-            ACCOUNT_PATH, BALANCE_PATH, OndoPrivateReadQuery, OndoPrivateResponse, POSITIONS_PATH,
+            ACCOUNT_PATH, BALANCE_PATH, FUNDING_FEES_PATH, OndoPrivateReadQuery,
+            OndoPrivateResponse, POSITIONS_PATH,
         },
         query::{
             CONTRACTS_PATH, FILLS_PATH, MARKETS_PATH, ORDERS_PATH, OndoRequestTarget, STATUS_PATH,
@@ -656,6 +657,27 @@ impl OndoHttpClient {
     ) -> OndoHttpResult<OndoPrivateResponse> {
         self.get_signed(&query.target(POSITIONS_PATH), OndoRequestPriority::Normal)
             .await
+    }
+
+    /// Calls `GET /v1/perps/funding_fees` and returns one page of funding payments.
+    ///
+    /// **The path is documented but unverified**: the frozen REST spec declares it (`summary: "Get
+    /// Funding Fee Payments"`) and documents every member of a record as required. The response's
+    /// [`OndoPrivateResponse::funding_fees`] reads them, with every decimal left as the string the
+    /// venue sent.
+    ///
+    /// # Errors
+    ///
+    /// See [`Self::get_account`].
+    pub async fn get_funding_fees(
+        &self,
+        query: &OndoPrivateReadQuery,
+    ) -> OndoHttpResult<OndoPrivateResponse> {
+        self.get_signed(
+            &query.target(FUNDING_FEES_PATH),
+            OndoRequestPriority::Normal,
+        )
+        .await
     }
 
     /// Calls `GET /v1/perps/balance` and returns the account's balances.

@@ -121,6 +121,16 @@ impl OndoExecutionClientConfig {
     /// `dms_timeout_secs` and `reconcile_interval_secs` are the dead man's switch's timeout - which
     /// the private transport arms and renews at half of - and the interval its run loop reconciles
     /// the account on.
+    ///
+    /// `journal_path` is where the durable ledger journal is kept. **Omitting it is a supported
+    /// mode and it is stated rather than silent**: nothing is written, the dedup ledger lives for
+    /// this process only, and a restart begins with an empty one - which the client reports
+    /// (`OndoAccountRuntime.journal_status()`) and logs. A path that is configured and cannot be
+    /// restored is a different thing entirely: the run refuses new risk until a human has looked
+    /// at the file, because a fill it already applied could otherwise be counted a second time.
+    /// A path that was restored and then stops accepting writes is a third: the client reports it
+    /// as degraded, with the instant of the last write that reached the disk, and keeps trading.
+    /// The file holds no credential.
     #[new]
     #[pyo3(signature = (
         environment = None,
@@ -133,6 +143,7 @@ impl OndoExecutionClientConfig {
         http_timeout_secs = None,
         dms_timeout_secs = None,
         reconcile_interval_secs = None,
+        journal_path = None,
         allow_production_orders = None,
     ))]
     #[expect(clippy::too_many_arguments)]
@@ -147,6 +158,7 @@ impl OndoExecutionClientConfig {
         http_timeout_secs: Option<u64>,
         dms_timeout_secs: Option<u64>,
         reconcile_interval_secs: Option<u64>,
+        journal_path: Option<String>,
         allow_production_orders: Option<bool>,
     ) -> Self {
         let defaults = Self::default();
@@ -163,6 +175,7 @@ impl OndoExecutionClientConfig {
             dms_timeout_secs: dms_timeout_secs.unwrap_or(defaults.dms_timeout_secs),
             reconcile_interval_secs: reconcile_interval_secs
                 .unwrap_or(defaults.reconcile_interval_secs),
+            journal_path: journal_path.or(defaults.journal_path),
             allow_production_orders: allow_production_orders
                 .unwrap_or(defaults.allow_production_orders),
         }

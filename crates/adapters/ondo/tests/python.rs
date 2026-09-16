@@ -569,10 +569,11 @@ fn test_the_http_client_constructs_offline_and_exposes_the_four_reads() {
 /// does not.
 ///
 /// The execution configuration is the one surface that takes an API key pair, so every addition to
-/// it is a place a secret could start being readable. `base_url_ws` and `account_read_only` are
-/// settings, not credentials: they say where the account session comes up and whether it may place
-/// an order, and the assertion that neither half of the key pair is readable is made again here,
-/// next to them, rather than only where the surface was first pinned (plan §R3.1).
+/// it is a place a secret could start being readable. `base_url_ws`, `account_read_only` and
+/// `journal_path` are settings, not credentials: they say where the account session comes up,
+/// whether it may place an order, and where its durable ledger is kept - a filesystem path that
+/// holds no key material. The assertion that neither half of the key pair is readable is made again
+/// here, next to them, rather than only where the surface was first pinned (plan §R3.1, §R3.2).
 #[rstest]
 fn test_the_private_session_is_configurable_from_python_and_carries_no_secret() {
     setup_data_event_sender();
@@ -594,6 +595,9 @@ fn test_the_private_session_is_configurable_from_python_and_carries_no_secret() 
         kwargs
             .set_item("account_read_only", true)
             .expect("the keyword is settable");
+        kwargs
+            .set_item("journal_path", "C:/tmp/ondo-journal.json")
+            .expect("the keyword is settable");
 
         let instance = config_type
             .call((), Some(&kwargs))
@@ -611,6 +615,11 @@ fn test_the_private_session_is_configurable_from_python_and_carries_no_secret() 
         assert!(config.account_read_only);
         assert_eq!(config.ws_url(), "ws://127.0.0.1:8080/ws");
         assert_eq!(config.stream_mode(), PrivateStreamMode::ReadOnly);
+        assert_eq!(
+            config.journal_path.as_deref(),
+            Some("C:/tmp/ondo-journal.json"),
+            "the durable journal's path is a configuration member",
+        );
 
         assert_eq!(
             instance
@@ -627,6 +636,14 @@ fn test_the_private_session_is_configurable_from_python_and_carries_no_secret() 
                 .extract::<bool>()
                 .expect("it is a bool"),
         );
+        assert_eq!(
+            instance
+                .getattr("journal_path")
+                .expect("the journal path is readable")
+                .extract::<String>()
+                .expect("it is a string"),
+            "C:/tmp/ondo-journal.json",
+        );
 
         // The rendering names the session and never a credential, and neither half of the key pair
         // has become readable by being next to it.
@@ -634,6 +651,7 @@ fn test_the_private_session_is_configurable_from_python_and_carries_no_secret() 
 
         assert!(rendered.contains("account_read_only"), "{rendered}");
         assert!(rendered.contains("base_url_ws"), "{rendered}");
+        assert!(rendered.contains("journal_path"), "{rendered}");
 
         for secret in ["api_key", "api_secret", "key_id", "secret"] {
             assert!(

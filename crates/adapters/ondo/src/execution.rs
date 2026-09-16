@@ -33,17 +33,67 @@
 //!   [`ExecutionReport`](nautilus_common::messages::execution::ExecutionReport) for a status and
 //!   for a fill. No adapter-private reporting type crosses this boundary.
 //!
+//! # The account, as this client reports it (plan §6.4, §R3.2)
+//!
+//! A concluded reconciliation pass is the internal reader: it publishes the account the machine
+//! **verified** as a Nautilus account state through the same emitter and event channel every other
+//! execution event travels, reads the account's open positions into native
+//! [`PositionStatusReport`]s, and checkpoints the durable journal. Three things about that are
+//! deliberate:
+//!
+//! - **Only a verified balance is published.** A pass that could not read the balance, or read one
+//!   that is not the whole account, publishes nothing and says why
+//!   ([`ReconciliationMachine::verified_balance`]). A negative equity *is* published, negative
+//!   signs intact, because it is a state the venue stated.
+//! - **Bulk position coverage stays `false`.** The venue documents its position list as every open
+//!   position the account holds, and this adapter reports every row of it that it can name - but
+//!   `provides_bulk_position_coverage` is a *promise about the rows it cannot name*, and a row whose
+//!   direction or market this adapter cannot read is one it cannot report. The engine reads a
+//!   coverage promise as "an instrument with no report is flat"; one unreadable row would make that
+//!   a fabricated flat position, which is the false-clean judgment plan §6.3 forbids. So the
+//!   promise is not made, and the reports are still produced.
+//! - **The funding axis is separate, and it never invents a payment.** The public funding *rate* is
+//!   market data, the balance's `totalFundingPayments` is a running total, and only a
+//!   `FundingFeeTransfer` record is a payment; the first two are never multiplied together to
+//!   produce the third (plan §R3.2).
+//!
+//! # The foreign account
+//!
+//! The account is not this client's alone, and the policy for everything on it that this run did
+//! not create is one policy with four parts:
+//!
+//! 1. **Identified, never adopted.** An order the venue reports that this client does not track is
+//!    a [`crate::reconciliation::Finding::ForeignOrder`] carrying the venue's own status. It is
+//!    never inserted into the order index, never given a Nautilus identity, and never reported as
+//!    one of this run's orders. A position this run did not create is not a finding at all: the
+//!    first whole read adopts it into the position **baseline**, so it is carried and reconciled
+//!    against this client's own fills rather than being mistaken for one of them.
+//! 2. **Never cancelled and never modified.** Nothing in this adapter's own paths - recovery,
+//!    reconciliation, the unknown-outcome probe, the dead man's switch's own trigger - cancels an
+//!    order. The one path that can is [`ExecutionClient::cancel_all_orders`], which the *engine*
+//!    asks for on an instrument this client trades, and which the venue implements as a
+//!    market-wide cancel: the request speaks for a whole market, so it is not scoped to this run's
+//!    orders however much this adapter would like it to be. It is issued only when a caller asks
+//!    for it, never as a way to tidy the account - and the stop path that would otherwise be
+//!    tempted to use it is plan §R3.3's, whose first requirement is that a stop never uses a
+//!    market-wide delete to clean up after another run.
+//! 3. **Reported read-only.** A foreign order's *readable* status is a known state: the account is
+//!    not uncertain because of it, and this client keeps trading. An unreadable one - an unknown
+//!    status, or an `untriggered` conditional this adapter does not create - keeps the account
+//!    uncertain, because the alternative is treating a state nobody can read as a state that is
+//!    fine.
+//! 4. **Isolated by identity.** Its fills are not counted (a fill resolves only through this
+//!    client's own order index) and its quantity never enters `applied_net`, so the position
+//!    judgment compares the venue against this client's own fills *plus* the baseline - which is
+//!    what keeps another run's trading from looking like this run's mistake.
+//!
 //! # What this client does not own
 //!
-//! The private WebSocket stream, the startup and reconnect reconciliation, the account and balance
-//! mapping, and the dead man's switch are Task 8's (plan §6.4). The ingestion seams they will drive
-//! ([`OndoExecutionClient::apply_order`] and [`OndoExecutionClient::apply_fill`]) are here, because
-//! the dedup ledger and the status machine are what make them safe to call from more than one
-//! source.
-//!
-//! For the same reason this phase reports no positions through a bulk path:
-//! [`OndoExecutionClient::provides_bulk_position_coverage`] answers `false`, so an absent position
-//! report is never read as a flat account before Task 8 implements the real one.
+//! The private WebSocket stream, the startup and reconnect reconciliation and the dead man's switch
+//! are R3.1's and R3.3's (plan §6.4). The ingestion seams they drive
+//! ([`OndoAccountRuntime::ingest_stream_order`] and [`OndoAccountRuntime::ingest_stream_fill`]) are
+//! here, because the dedup ledger and the status machine are what make them safe to call from more
+//! than one source.
 //!
 //! # The environment is closed before anything else happens
 //!
@@ -96,7 +146,7 @@ use nautilus_live::{
 };
 use nautilus_model::{
     accounts::AccountAny,
-    enums::{LiquiditySide, OmsType, OrderSide, OrderStatus, OrderType, TimeInForce},
+    enums::{LiquiditySide, OmsType, OrderSide, OrderStatus, OrderType, PositionSide, TimeInForce},
     identifiers::{AccountId, ClientId, ClientOrderId, InstrumentId, TradeId, Venue, VenueOrderId},
     orders::{Order, OrderAny},
     reports::{FillReport, OrderStatusReport, PositionStatusReport},
@@ -124,14 +174,19 @@ use crate::{
             ONDO_POST_ONLY_HAS_MATCH, OndoApiOrder, OndoCancelRejection, OndoOrderCommand,
             OndoOrderError, OndoOrderStatus, OndoRejectedOrder, OndoSide, client_lookup_value,
         },
-        private::{OndoApiFill, OndoFillDirection, OndoOrderHistoryStatus, OndoPrivateReadQuery},
+        private::{
+            OndoApiFill, OndoApiFundingFee, OndoFillDirection, OndoOrderHistoryStatus,
+            OndoPrivateReadQuery,
+        },
         query::{CursorWalk, FILLS_PATH, ORDERS_PATH},
         rate_limit::OndoRequestPriority,
     },
     reconciliation::{
         AccountJudgment, AccountReading, Admission, BalanceReading, DeadMansSwitchMessage,
-        DeadMansSwitchState, DrainedReports, MetadataValidity, NewRiskRefusal, OrderReading,
-        PositionReading, ProbeOutcome, ProbeReport, ReconciliationBuffer, ReconciliationMachine,
+        DeadMansSwitchState, DrainedReports, FundingPayment, FundingReconciliation, JournalOrder,
+        JournalSnapshot, JournalStatus, LedgerJournal, LiquidationState, MappedBalance,
+        MetadataValidity, NewRiskRefusal, OrderReading, PositionDirection, PositionReading,
+        ProbeOutcome, ProbeReport, ReconciliationBuffer, ReconciliationMachine,
         ReconciliationState, RecoveryPassRefusal, StopStep, UncertainOutcome, balance_member,
     },
     websocket::private::{OndoPrivateStream, PrivateRunSnapshot, SharedPrivateDiagnostics},
@@ -170,6 +225,44 @@ const DOCUMENTED_BALANCE_MEMBERS: [&str; 16] = [
 /// The settlement currency every fee, commission and balance on this venue is denominated in.
 fn settlement_currency() -> Currency {
     Currency::from(ONDO_SETTLEMENT_CURRENCY)
+}
+
+/// Builds the Nautilus balance and margin shapes from a verified balance mapping.
+///
+/// One currency, and the venue's own three numbers: `total` is equity, `locked` is the margin the
+/// venue says is committed, and `free` is derived from the two at the settlement currency's
+/// precision so the model's `total = locked + free` invariant holds by construction. Margins are
+/// carried only when the venue sent a readable maintenance requirement - a `MarginBalance` is a
+/// pair, and inventing one of its sides would be a fabricated risk figure - which leaves the
+/// balances reported and the margins empty rather than the account unreported.
+///
+/// # Errors
+///
+/// Returns an error when a number the venue sent cannot be represented in the settlement currency,
+/// which is a value this adapter refuses to round into something else.
+fn account_state_parts(
+    balance: &MappedBalance,
+) -> anyhow::Result<(Vec<AccountBalance>, Vec<MarginBalance>)> {
+    let currency = settlement_currency();
+    let money = |value: Decimal| {
+        Money::from_decimal(value, currency).map_err(|error| anyhow::anyhow!("{error}"))
+    };
+
+    let balances = vec![
+        AccountBalance::from_total_and_locked(balance.total(), balance.locked(), currency)
+            .map_err(|error| anyhow::anyhow!("{error}"))?,
+    ];
+
+    let margins = match balance.maintenance() {
+        Some(maintenance) => vec![MarginBalance::new(
+            money(balance.locked())?,
+            money(maintenance)?,
+            None,
+        )],
+        None => Vec::new(),
+    };
+
+    Ok((balances, margins))
 }
 
 /// The dedup key of an applied fill: `(account_id, fill.id)` (plan §6.3).
@@ -306,6 +399,75 @@ pub struct OndoOrderState {
 }
 
 impl OndoOrderState {
+    /// Reads an order back from a journal entry (plan §R3.2).
+    ///
+    /// Every member is parsed fallibly. A journal is a file, and a file is something a person can
+    /// edit: a value this adapter cannot read is a journal it refuses - the run then reports
+    /// [`JournalStatus::Failed`] and takes no new risk - rather than one it reads as a default.
+    /// The two diagnostics a payload carries and the journal does not (`venue_fee`, `last_raw`)
+    /// come back on the first pass that re-reads the order from the venue, which is the same pass
+    /// that re-derives everything else.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the member that could not be read.
+    pub fn from_journal(entry: &JournalOrder) -> anyhow::Result<Self> {
+        fn read<T>(member: &str, value: &str) -> anyhow::Result<T>
+        where
+            T: std::str::FromStr,
+            T::Err: std::fmt::Display,
+        {
+            value.parse::<T>().map_err(|error| {
+                anyhow::anyhow!(
+                    "the journal's `{member}` value `{value}` could not be read: {error}"
+                )
+            })
+        }
+
+        let instrument_id = entry
+            .instrument_id
+            .parse::<InstrumentId>()
+            .map_err(|error| {
+                anyhow::anyhow!(
+                    "the journal's `instrument_id` value `{}` could not be read: {error}",
+                    entry.instrument_id,
+                )
+            })?;
+
+        let price = match entry.price.as_deref() {
+            Some(price) => Some(read::<Price>("price", price)?),
+            None => None,
+        };
+
+        let venue_filled = match entry.venue_filled.as_deref() {
+            Some(filled) => Some(read::<Quantity>("venue_filled", filled)?),
+            None => None,
+        };
+
+        Ok(Self {
+            client_order_id: ClientOrderId::from(entry.client_order_id.as_str()),
+            venue_order_id: entry.venue_order_id.as_deref().map(VenueOrderId::from),
+            instrument_id,
+            side: read::<OrderSide>("side", &entry.side)?,
+            order_type: read::<OrderType>("order_type", &entry.order_type)?,
+            time_in_force: read::<TimeInForce>("time_in_force", &entry.time_in_force)?,
+            quantity: read::<Quantity>("quantity", &entry.quantity)?,
+            price,
+            reduce_only: entry.reduce_only,
+            post_only: entry.post_only,
+            status: OndoOrderStatus::from_raw(&entry.status),
+            accepted: entry.accepted,
+            filled: read::<Quantity>("filled", &entry.filled)?,
+            venue_fee: None,
+            last_fill_size: None,
+            venue_filled,
+            last_raw: String::new(),
+            unappliable_fill: entry.unappliable_fill,
+            resolved: entry.resolved,
+            pending_fills: Vec::new(),
+        })
+    }
+
     /// Returns the venue's terminal filled quantity when the applied fills do not account for it.
     ///
     /// This is **recomputed, not accumulated**: plan §6.3 makes a terminal status terminal only once
@@ -465,12 +627,17 @@ enum Acceptance {
     Report,
 }
 
-/// The order index and the fill ledger.
+/// The order index, the fill ledger and the watermark a journal is written from.
 #[derive(Debug, Default)]
 struct OndoPrivateState {
     orders: AHashMap<ClientOrderId, OndoOrderState>,
     by_venue_order_id: AHashMap<String, ClientOrderId>,
     fills: OndoFillLedger,
+    /// The newest applied fill's instant, which is how far the ledger reaches.
+    ///
+    /// It is a fact about the fills this client **applied**, so it moves where they move and
+    /// nowhere else, and it survives a restart through the journal's watermark.
+    watermark: Option<UnixNanos>,
 }
 
 impl OndoPrivateState {
@@ -511,6 +678,30 @@ impl OndoPrivateState {
     /// Returns the client order id this session has seen for a venue order id.
     fn client_order_id_for(&self, venue_order_id: &VenueOrderId) -> Option<ClientOrderId> {
         self.by_venue_order_id.get(venue_order_id.as_str()).copied()
+    }
+
+    /// Puts back the order associations a restored journal holds.
+    ///
+    /// The index is rebuilt exactly as a submission builds it - the order under its Nautilus id,
+    /// the venue's id pointing at it - so a payload that arrives after the restart resolves to the
+    /// same order it resolved to before it.
+    fn restore_orders(&mut self, orders: Vec<OndoOrderState>) {
+        for order in orders {
+            if let Some(venue_order_id) = order.venue_order_id {
+                self.by_venue_order_id
+                    .insert(venue_order_id.to_string(), order.client_order_id);
+            }
+
+            self.orders.insert(order.client_order_id, order);
+        }
+    }
+
+    /// Moves the watermark to `ts_event` when it is newer than the one held.
+    fn observe_fill(&mut self, ts_event: UnixNanos) {
+        self.watermark = Some(match self.watermark {
+            Some(current) => current.max(ts_event),
+            None => ts_event,
+        });
     }
 
     /// Returns the signed net quantity this session's applied fills add up to, per instrument.
@@ -701,6 +892,7 @@ impl OndoReporter {
         // counted as applied.
         let report = self.fill_report(Some(client_order_id), fill)?;
         let quantity = report.last_qty;
+        let ts_event = report.ts_event;
 
         {
             let mut state = self.state.write();
@@ -708,6 +900,8 @@ impl OndoReporter {
             if !state.fills.record(account_id, fill.id()) {
                 return Ok(OndoFillApplication::Duplicate);
             }
+
+            state.observe_fill(ts_event);
 
             let Some(entry) = state.orders.get_mut(&client_order_id) else {
                 state.fills.forget(account_id, fill.id());
@@ -1140,6 +1334,35 @@ impl OndoReporter {
     }
 }
 
+/// Writes one order's association and applied state into the form a restart reads back.
+///
+/// The enums are written as their `SCREAMING_SNAKE_CASE` names, which is what their own `FromStr`
+/// reads, and the venue's status is written as the venue spells it - a status this adapter does not
+/// know round-trips unchanged, because that is what the order index holds.
+impl JournalOrder {
+    #[must_use]
+    pub fn from_state(state: &OndoOrderState) -> Self {
+        Self {
+            client_order_id: state.client_order_id.to_string(),
+            venue_order_id: state.venue_order_id.as_ref().map(ToString::to_string),
+            instrument_id: state.instrument_id.to_string(),
+            side: state.side.as_ref().to_string(),
+            order_type: state.order_type.as_ref().to_string(),
+            time_in_force: state.time_in_force.as_ref().to_string(),
+            quantity: state.quantity.to_string(),
+            price: state.price.as_ref().map(ToString::to_string),
+            reduce_only: state.reduce_only,
+            post_only: state.post_only,
+            status: state.status.as_str().to_string(),
+            accepted: state.accepted,
+            filled: state.filled.to_string(),
+            venue_filled: state.venue_filled.as_ref().map(ToString::to_string),
+            unappliable_fill: state.unappliable_fill,
+            resolved: state.resolved,
+        }
+    }
+}
+
 /// What one payload did to a tracked order.
 #[derive(Debug)]
 struct Advance {
@@ -1432,7 +1655,18 @@ impl OndoExecutionClient {
             clock,
             reconcile_interval_secs: config.reconcile_interval_secs,
             dms_timeout_secs: config.dms_timeout_secs,
+            journal: config
+                .journal_path
+                .as_deref()
+                .filter(|path| !path.trim().is_empty())
+                .map(|path| JournalHandle::new(std::path::PathBuf::from(path))),
         };
+
+        // The journal is restored here - before the client exists, and therefore before anything
+        // can be admitted. A run whose journal cannot be read is a run whose ledger is missing, and
+        // the machine refuses new risk from that moment until a human has looked at the file
+        // (plan §R3.2).
+        account.restore_journal(clock.get_time_ns());
 
         Ok(Self {
             core,
@@ -1886,6 +2120,121 @@ pub struct OndoAccountRuntime {
     clock: &'static AtomicTime,
     reconcile_interval_secs: u64,
     dms_timeout_secs: u64,
+    /// The durable journal, when one was configured (plan §R3.2).
+    ///
+    /// [`None`] is a supported mode and it is not a quiet one: nothing is written, the ledger
+    /// lives for this process, and [`ReconciliationMachine::journal`] says so.
+    journal: Option<JournalHandle>,
+}
+
+/// Where a journal checkpoint is written, and how many writes have failed.
+///
+/// It is a handle rather than a method because not every writer is the runtime: a submission that
+/// has just decided its own outcome checkpoints from inside its own task, where the client's own
+/// borrow does not reach. Cloning it is what lets that task write the journal the next pass writes.
+#[derive(Debug, Clone)]
+struct JournalHandle {
+    path: Arc<std::path::Path>,
+    write_failures: Arc<AtomicU64>,
+    /// The instant of the last write that succeeded, in nanoseconds; zero is "never".
+    last_written_at: Arc<AtomicU64>,
+    /// The newest applied fill that write covered, in nanoseconds; zero is "none".
+    watermark: Arc<AtomicU64>,
+}
+
+impl JournalHandle {
+    fn new(path: std::path::PathBuf) -> Self {
+        Self {
+            path: Arc::from(path),
+            write_failures: Arc::new(AtomicU64::new(0)),
+            last_written_at: Arc::new(AtomicU64::new(0)),
+            watermark: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+
+    fn write_failures(&self) -> u64 {
+        self.write_failures.load(Ordering::SeqCst)
+    }
+
+    /// Returns when the last write that reached the disk was taken, when one ever was.
+    fn last_written_at(&self) -> Option<UnixNanos> {
+        match self.last_written_at.load(Ordering::SeqCst) {
+            0 => None,
+            nanos => Some(UnixNanos::from(nanos)),
+        }
+    }
+
+    /// Returns the newest applied fill the last successful write covered, when it covered one.
+    fn watermark(&self) -> Option<UnixNanos> {
+        match self.watermark.load(Ordering::SeqCst) {
+            0 => None,
+            nanos => Some(UnixNanos::from(nanos)),
+        }
+    }
+
+    /// Writes one checkpoint of the account as it stands.
+    ///
+    /// A failed write is **not** lost memory - the ledger, the order index and the unsettled writes
+    /// are all still in this process - so it does not stop risk the way an unreadable journal does.
+    /// What it does mean is that the next restart may have to re-apply fills this run has already
+    /// reported, which is what the count is for and why the failure is logged loudly.
+    ///
+    /// A submission and a concluded pass both call this, and neither is a transcript of the other:
+    /// what is written is the account as it stands, so the later write is always the more complete
+    /// one.
+    fn write(
+        &self,
+        account_id: AccountId,
+        now: UnixNanos,
+        state: &OndoPrivateState,
+        machine: &ReconciliationMachine,
+    ) {
+        let journal = LedgerJournal::from_snapshot(JournalSnapshot {
+            account_id,
+            watermark: state.watermark,
+            written_at: now,
+            ledger: &state.fills,
+            orders: state
+                .orders
+                .values()
+                .map(JournalOrder::from_state)
+                .collect(),
+            unsettled: machine.unsettled_journal_entries(),
+        });
+
+        match journal.store_atomic(self.path()) {
+            Ok(()) => {
+                // Recorded only when the write reached the disk: what an operator needs from a
+                // failed journal is *when it stopped*, and a stamp taken before the write would
+                // claim coverage this run does not have.
+                self.last_written_at.store(now.as_u64(), Ordering::SeqCst);
+                self.watermark.store(
+                    state.watermark.map_or(0, |value| value.as_u64()),
+                    Ordering::SeqCst,
+                );
+
+                log::debug!(
+                    "Ondo wrote a ledger journal checkpoint to {}: {} fill(s), {} order(s), {}                  unsettled write(s)",
+                    self.path().display(),
+                    journal.len(),
+                    journal.orders().len(),
+                    journal.unsettled().len(),
+                );
+            }
+            Err(error) => {
+                self.write_failures.fetch_add(1, Ordering::SeqCst);
+
+                log::error!(
+                    "Ondo could not write the ledger journal to {}: {error}; this run keeps its                      ledger in memory, and a restart may re-apply fills it has already reported",
+                    self.path().display(),
+                );
+            }
+        }
+    }
 }
 
 impl OndoAccountRuntime {
@@ -1905,6 +2254,244 @@ impl OndoAccountRuntime {
     #[must_use]
     pub const fn dms_timeout_secs(&self) -> u64 {
         self.dms_timeout_secs
+    }
+
+    /// Returns what this run's journal did (plan §R3.2).
+    ///
+    /// A journal that was restored and has since failed to write is **not** reported as restored.
+    /// The two facts live in different places - what was read back is the machine's, and whether
+    /// writes are still landing is the write handle's - so they are joined here, at the one place a
+    /// caller asks. Reporting `Restored` for a run whose last checkpoint never reached the disk
+    /// would be exactly the run the configuration says must never exist: one that believed it was
+    /// durable.
+    ///
+    /// [`JournalStatus::Failed`] keeps its own answer: a run that could not read its journal at all
+    /// is missing a memory, not merely behind on writing one, and that one refuses new risk
+    /// whatever its writes do.
+    #[must_use]
+    pub fn journal_status(&self) -> JournalStatus {
+        let status = self.reconciliation.read().journal().clone();
+
+        let Some(handle) = self.journal.as_ref() else {
+            return status;
+        };
+
+        let failures = handle.write_failures();
+
+        match status {
+            JournalStatus::Restored {
+                path,
+                watermark: restored,
+                ..
+            } if failures > 0 => JournalStatus::Degraded {
+                path,
+                failures,
+                last_written_at: handle.last_written_at(),
+                // What the durable file holds is this run's last successful write, or - when it has
+                // not landed one - the journal that was restored into it, which is still the file's
+                // content. Both are `None` only when there was nothing to restore either.
+                watermark: handle.watermark().or(restored),
+            },
+            other => other,
+        }
+    }
+
+    /// Returns what this client can say about the account's funding (plan §R3.2).
+    ///
+    /// It is the reconciliation between the venue's **cumulative** funding total and the
+    /// **payments** this client has read, and it is the only thing that answers "is the account's
+    /// funding accounted for". The funding *rate* is public market data and is no part of it.
+    #[must_use]
+    pub fn funding_reconciliation(&self) -> FundingReconciliation {
+        self.reconciliation.read().funding().reconciliation()
+    }
+
+    /// Returns the funding payments this client has accounted, in identity order.
+    ///
+    /// Every one of them is a record the venue published; none is derived from a rate.
+    #[must_use]
+    pub fn funding_payments(&self) -> Vec<FundingPayment> {
+        self.reconciliation.read().funding().payments()
+    }
+
+    /// Returns the account's liquidation condition, as the last pass read it.
+    #[must_use]
+    pub fn liquidation(&self) -> LiquidationState {
+        self.reconciliation.read().liquidation().clone()
+    }
+
+    /// Returns the path the durable journal is written to, when one is configured.
+    #[must_use]
+    pub fn journal_path(&self) -> Option<&std::path::Path> {
+        self.journal.as_ref().map(JournalHandle::path)
+    }
+
+    /// Returns how many journal checkpoint writes have failed.
+    #[must_use]
+    pub fn journal_write_failures(&self) -> u64 {
+        self.journal
+            .as_ref()
+            .map_or(0, JournalHandle::write_failures)
+    }
+
+    /// Returns the journal as a handle a spawned task can write from.
+    fn journal_handle(&self) -> Option<JournalHandle> {
+        self.journal.clone()
+    }
+
+    /// Restores this run's journal, or records why it could not be (plan §R3.2).
+    ///
+    /// It is called once, before the client is handed to anything that could submit, and the
+    /// ordering is the point: a run that has not read its own ledger does not know which fills it
+    /// already applied, and the only safe place to be in that state is one where no order can be
+    /// sent. When there is no journal path the machine records
+    /// [`JournalStatus::NotConfigured`] and this is a no-op beyond saying so.
+    ///
+    /// Nothing here reads the venue. The account is still unverified after a restore - that is
+    /// what the recovery that follows is for - so a restart restores its memory **and then**
+    /// re-converges before any new risk, never instead of re-converging.
+    pub fn restore_journal(&self, now: UnixNanos) {
+        let Some(handle) = self.journal.as_ref() else {
+            log::warn!(
+                "Ondo has no journal path configured: the dedup ledger, the order index and the \
+                 unsettled writes live in this process's memory only, and a restart begins with an \
+                 empty one"
+            );
+
+            return;
+        };
+
+        let status = match self.load_journal(handle.path(), now) {
+            Ok(status) => status,
+            Err(error) => JournalStatus::Failed {
+                path: handle.path().display().to_string(),
+                reason: error.to_string(),
+            },
+        };
+
+        match &status {
+            JournalStatus::Failed { .. } => log::error!("Ondo {}", status.reason()),
+            _ => log::info!("Ondo {}", status.reason()),
+        }
+
+        self.reconciliation.write().set_journal(status);
+    }
+
+    /// Reads the journal and puts back everything it holds.
+    ///
+    /// The order associations are read back **before** anything is restored: a journal holding one
+    /// this adapter cannot express leaves the run exactly as it found it, because a half-restored
+    /// ledger - fills remembered, the orders they belong to not - is worse than an empty one.
+    fn load_journal(
+        &self,
+        path: &std::path::Path,
+        now: UnixNanos,
+    ) -> anyhow::Result<JournalStatus> {
+        let journal = LedgerJournal::load(path, self.reporter.account_id)?;
+
+        let orders = journal
+            .orders()
+            .iter()
+            .map(OndoOrderState::from_journal)
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        let order_count = orders.len();
+
+        let restored = {
+            let mut state = self.reporter.state.write();
+            let restored = journal.restore(&mut state.fills, self.reporter.account_id)?;
+
+            state.restore_orders(orders);
+
+            restored
+        };
+
+        let registered = self
+            .reconciliation
+            .write()
+            .restore_unsettled(journal.unsettled(), now);
+
+        Ok(JournalStatus::Restored {
+            path: path.display().to_string(),
+            fills: restored.fills,
+            orders: order_count,
+            unsettled: registered,
+            watermark: journal.watermark(),
+        })
+    }
+
+    /// Writes a checkpoint of the account as it stands, when a journal is configured.
+    ///
+    /// It is taken at the end of a pass rather than on every event, and that is the ordering the
+    /// journal's own documentation fixes: what is reported is reported first, and the journal
+    /// records it afterwards. A crash between the two leaves a fill the engine has seen and a
+    /// journal that does not hold it, which the next run reads back from the venue's history and
+    /// re-reports under the same trade id - one fill, not two. The other ordering would have the
+    /// journal claim a fill the engine never saw, and nothing downstream could tell that apart from
+    /// one it had already applied.
+    fn persist_journal(&self, now: UnixNanos) {
+        let Some(handle) = self.journal.as_ref() else {
+            return;
+        };
+
+        let state = self.reporter.state.read();
+        let machine = self.reconciliation.read();
+
+        handle.write(self.reporter.account_id, now, &state, &machine);
+    }
+
+    /// Reports the account's balance to the engine, when a pass has verified one.
+    ///
+    /// This is the internal reader plan §R3.2 asks for. Nothing outside this client drives it: a
+    /// concluded reconciliation pass is what publishes the account state, through the same emitter
+    /// and event channel every other execution event travels, so the account the engine's cache
+    /// holds is the account this adapter read.
+    ///
+    /// What it publishes is the balance the machine **verified**
+    /// ([`ReconciliationMachine::verified_balance`]): the whole account, with the venue's own
+    /// arithmetic already checked. A pass that verified no balance publishes nothing at all and
+    /// says why - unknown or missing numbers are never published as a normal state, and neither is
+    /// a USDC-only view of an account that holds something else.
+    ///
+    /// # A negative equity is published as it was read
+    ///
+    /// `total` is `marginBalance`, `locked` is `usedMargin` and `free` is `availableMargin`, and
+    /// they are published exactly as the venue sent them. `AccountBalance` derives `free` from the
+    /// other two at the currency's precision; for a negative total that derivation preserves the
+    /// locked amount and lets `free` carry the shortfall, which is the statement the venue made
+    /// rather than a repaired version of it. Clamping an underwater account to zero would report a
+    /// healthy one (plan §6.4).
+    fn publish_account_state(&self, now: UnixNanos) {
+        let (balance, findings) = {
+            let machine = self.reconciliation.read();
+
+            (
+                machine.verified_balance().cloned(),
+                machine
+                    .last_judgment()
+                    .map(AccountJudgment::reasons)
+                    .unwrap_or_default(),
+            )
+        };
+
+        let Some(balance) = balance else {
+            log::warn!(
+                "Ondo published no account state: this pass verified no balance ({})",
+                findings.join("; "),
+            );
+
+            return;
+        };
+
+        match account_state_parts(&balance) {
+            Ok((balances, margins)) => {
+                self.reporter
+                    .emitter
+                    .emit_account_state(balances, margins, true, now, None);
+            }
+            Err(error) => log::error!(
+                "Ondo could not report the account's balance as a Nautilus account state: {error}"
+            ),
+        }
     }
 
     /// Returns a clone of the signed HTTP client.
@@ -2191,9 +2778,16 @@ impl OndoAccountRuntime {
             return Err(RecoveryPassRefusal::AlreadyRunning.into());
         };
 
-        match self.read_account(&pass).await {
+        match self.read_account(&pass, now).await {
             Ok(reading) => {
                 self.reconciliation.write().conclude_pass(&reading, now);
+
+                // The two things a concluded pass produces outside the state machine: the
+                // account's state, for the engine, and the checkpoint, for the next process.
+                // Both are taken from the state the pass just concluded rather than from the
+                // reading, so what is published is what the machine judged.
+                self.publish_account_state(now);
+                self.persist_journal(now);
 
                 Ok(self
                     .reconciliation
@@ -2308,14 +2902,34 @@ impl OndoAccountRuntime {
     /// either in what the drain took or in the buffer the next pass will drain, never in neither
     /// place and never in both. After the drain nothing here can fail, so a pass that took reports
     /// out of the buffer is a pass that applied them.
-    async fn read_account(&self, pass: &PassGuard<'_>) -> anyhow::Result<AccountReading> {
+    async fn read_account(
+        &self,
+        pass: &PassGuard<'_>,
+        now: UnixNanos,
+    ) -> anyhow::Result<AccountReading> {
         let mut reading = AccountReading::default();
         let mut observed = ObservedOrders::default();
 
+        reading.read_at = now;
         self.read_orders(&mut observed).await?;
         self.read_fills(&mut reading).await?;
         reading.positions = self.read_positions().await?;
         reading.balance = Some(self.read_balance().await?);
+
+        // The funding history is a **separate axis** and a failure of it is not a failed pass. The
+        // orders, the fills, the positions and the balance are what the account *is*, and a pass
+        // that read all four has read the account; funding is a cashflow the venue records
+        // elsewhere, and its read is bounded and re-taken every pass. What a failure must not do is
+        // pass unnoticed: it is recorded on the reading and reported by the funding judgment, so
+        // the pass says "the funding could not be read" rather than "the funding is fine"
+        // (plan §R3.2).
+        match self.read_funding().await {
+            Ok(payments) => reading.funding = payments,
+            Err(error) => {
+                log::error!("Ondo funding history could not be read: {error}");
+                reading.funding_error = Some(error.to_string());
+            }
+        }
 
         let drained = self.close_pass(pass);
 
@@ -2522,14 +3136,63 @@ impl OndoAccountRuntime {
                 anyhow::bail!("the position on {market} carries no readable `netQuantity`");
             };
 
+            // The entry price is read but never required: an absent or non-string member leaves
+            // the report's own optional field empty, and a member that is a string and is not a
+            // decimal is a payload this adapter does not understand.
+            let average_entry_price = match value
+                .get("averageEntryPrice")
+                .and_then(serde_json::Value::as_str)
+            {
+                Some(price) => Some(balance_member(price, "averageEntryPrice")?),
+                None => None,
+            };
+
             readings.push(PositionReading::new(
                 market,
                 direction,
                 balance_member(net_quantity, "netQuantity")?,
+                average_entry_price,
             ));
         }
 
         Ok(readings)
+    }
+
+    /// Walks the venue's funding history, returning the payments it carries.
+    ///
+    /// The window is applied here rather than sent: `startTime`/`endTime` are documented on this
+    /// endpoint as UTC milliseconds, and a window this adapter cannot see the effect of, over an
+    /// inclusive/exclusive convention the frozen spec states only in prose, is a second filter that
+    /// could silently drop a payment. What is *not* optional is the payment's own `time`: a
+    /// `FundingFeeTransfer` is an event with an instant, and the funding ledger is reconciled over a
+    /// window, so a record that cannot be placed is one this adapter says it could not read rather
+    /// than one it quietly counts.
+    async fn read_funding(&self) -> anyhow::Result<Vec<FundingPayment>> {
+        let mut walk = CursorWalk::new(REPORT_MAX_PAGES);
+        let mut query = OndoPrivateReadQuery::new();
+        let mut payments = Vec::new();
+
+        loop {
+            let response = self
+                .http_client
+                .get_funding_fees(&query)
+                .await
+                .map_err(|error| {
+                    anyhow::anyhow!("the funding history could not be read: {error}")
+                })?;
+
+            for fee in response.funding_fees()? {
+                payments.push(funding_payment(&fee)?);
+            }
+
+            let Some(cursor) = walk.advance(response.cursor())? else {
+                break;
+            };
+
+            query = query.with_cursor(cursor);
+        }
+
+        Ok(payments)
     }
 
     /// Reads the account's balance summary.
@@ -2573,12 +3236,26 @@ impl OndoAccountRuntime {
             ));
         }
 
+        // `underLiquidation` is the one documented member that is not a decimal string: the frozen
+        // schema makes it a boolean. A member that is present and is not a boolean is a payload
+        // this adapter does not understand, and an absent one stays absent - "the venue did not
+        // say" and "the venue said no" are different facts about an account the venue is closing.
+        let under_liquidation = match object.get("underLiquidation") {
+            Some(value) => Some(value.as_bool().ok_or_else(|| {
+                anyhow::anyhow!("the balance member `underLiquidation` is not a boolean")
+            })?),
+            None => None,
+        };
+
         Ok(BalanceReading {
             wallet_balance: member("walletBalance")?,
             margin_balance: member("marginBalance")?,
             used_margin: member("usedMargin")?,
             available_margin: member("availableMargin")?,
             withdrawable_margin: member("withdrawableMargin")?,
+            maintenance_margin_requirement: member("maintenanceMarginRequirement")?,
+            under_liquidation,
+            total_funding_payments: member("totalFundingPayments")?,
             unmapped,
             raw,
         })
@@ -2930,6 +3607,7 @@ impl ExecutionClient for OndoExecutionClient {
         let http_client = self.http_client.clone();
         let reporter = self.reporter.clone();
         let reconciliation = Arc::clone(&self.reconciliation);
+        let journal = self.account.journal_handle();
         let client_order_id = cmd.client_order_id;
         let instrument_id = cmd.instrument_id;
 
@@ -3015,6 +3693,19 @@ impl ExecutionClient for OndoExecutionClient {
                     );
                 }
             }
+
+            // The submission's outcome is decided, so the order's association is checkpointed
+            // **now** rather than at the next pass. It is what a restart needs to recognize the
+            // order as this client's own: without it, an order placed moments before a crash would
+            // come back as somebody else's, and the fills of it would be neither applied nor
+            // reported (plan §R3.2). A refusal that never reached the venue has already dropped the
+            // order from the index, so what is written is the index as it stands.
+            if let Some(journal) = &journal {
+                let state = reporter.state.read();
+                let machine = reconciliation.read();
+
+                journal.write(reporter.account_id, reporter.now(), &state, &machine);
+            }
         })?;
 
         Ok(())
@@ -3030,6 +3721,8 @@ impl ExecutionClient for OndoExecutionClient {
     /// twice, for the same reason - and an item the venue's answer does not account for is
     /// registered as an unknown outcome rather than left as a log line (plan §6.3).
     fn submit_order_list(&self, cmd: SubmitOrderList) -> anyhow::Result<()> {
+        let journal = self.account.journal_handle();
+
         if cmd.order_inits.is_empty() {
             log::warn!("Cannot submit an empty order list");
             return Ok(());
@@ -3243,6 +3936,15 @@ impl ExecutionClient for OndoExecutionClient {
                         .to_string(),
                     reporter.now(),
                 );
+            }
+
+            // The batch's outcome is decided for every item it names, so the order associations go
+            // to the journal now, exactly as a single submission's do (plan §R3.2).
+            if let Some(journal) = &journal {
+                let state = reporter.state.read();
+                let machine = reconciliation.read();
+
+                journal.write(reporter.account_id, reporter.now(), &state, &machine);
             }
         })?;
 
@@ -3794,16 +4496,91 @@ impl ExecutionClient for OndoExecutionClient {
         Ok(reports)
     }
 
-    /// Returns no position reports: this phase implements none.
+    /// Reads the account's open positions and reports each of them natively (plan §R3.2).
     ///
-    /// The venue's positions are read by Task 8's reconciliation (plan §6.4), which is where the
-    /// netting semantics and the account's margin mapping are settled. Returning an empty list is
-    /// safe here only because [`Self::provides_bulk_position_coverage`] answers `false`.
+    /// The read is the venue's own `GET /v1/perps/positions`, which the frozen spec documents as
+    /// returning **all** open positions for the authenticated account with no pagination and no
+    /// parameters - the same read, and the same completeness contract, the reconciliation's
+    /// position judgment is built on. The report's quantity is the venue's `netQuantity` with the
+    /// direction carrying the sign, read through the one mapping that fixes that convention
+    /// ([`crate::reconciliation::signed_position_quantity`]), and its average open price is the
+    /// venue's `averageEntryPrice`.
+    ///
+    /// A row this adapter cannot name an instrument for is **not** reported and not skipped in
+    /// silence: it is logged, and it is what keeps [`Self::provides_bulk_position_coverage`]
+    /// answering `false` rather than letting the engine read an absent report as a flat account.
+    ///
+    /// # The report's timestamps
+    ///
+    /// A position payload carries no timestamp of its own, so `ts_last` is this read's instant.
+    /// That is the same choice [`event_time`] makes where the venue sends none, and it is
+    /// deliberately not a value read from the market: a position's "last update" is not something
+    /// this endpoint states.
     async fn generate_position_status_reports(
         &self,
-        _cmd: &GeneratePositionStatusReports,
+        cmd: &GeneratePositionStatusReports,
     ) -> anyhow::Result<Vec<PositionStatusReport>> {
-        Ok(Vec::new())
+        let now = self.reporter.now();
+        let readings = self.account.read_positions().await?;
+        let mut reports = Vec::new();
+
+        for reading in readings {
+            let Some(instrument_id) = reading.instrument_id else {
+                log::error!(
+                    "Ondo position on the unmappable market `{}` is not reported: no instrument \
+                     this adapter knows corresponds to it",
+                    reading.market,
+                );
+
+                continue;
+            };
+
+            // A direction this adapter cannot read is a row it cannot report. The venue stated a
+            // position on an instrument this adapter can name, and what the row does *not* state is
+            // which way it points - so there is no side to report and no quantity to sign. This is
+            // the row that makes a bulk coverage promise unsound, and it is named here rather than
+            // guessed at.
+            if let PositionDirection::Unknown(direction) = &reading.direction {
+                log::error!(
+                    "Ondo position on {} states the direction `{direction}`, which this adapter                      cannot read: it is not reported, and no bulk position coverage is promised                      while a row of the account's own position list can be unreadable",
+                    reading.market,
+                );
+
+                continue;
+            }
+
+            if let Some(wanted) = cmd.instrument_id
+                && wanted != instrument_id
+            {
+                continue;
+            }
+
+            // The venue's own size, unsigned, with the direction as the report's side. A
+            // `neutral` direction is the venue stating flat, and it is reported as a zero
+            // quantity rather than as an absence.
+            let quantity = Quantity::from_decimal(reading.signed.abs())
+                .map_err(|error| anyhow::anyhow!("position on {instrument_id}: {error}"))?;
+
+            let position_side = match reading.signed.cmp(&Decimal::ZERO) {
+                std::cmp::Ordering::Greater => PositionSide::Long,
+                std::cmp::Ordering::Less => PositionSide::Short,
+                std::cmp::Ordering::Equal => PositionSide::Flat,
+            };
+
+            reports.push(PositionStatusReport::new(
+                self.core.account_id,
+                instrument_id,
+                position_side,
+                quantity,
+                now,
+                now,
+                None, // report_id
+                None, // venue_position_id: this venue is netting
+                reading.average_entry_price,
+            ));
+        }
+
+        Ok(reports)
     }
 }
 
@@ -4268,6 +5045,33 @@ fn fill_timestamp(fill: &OndoApiFill) -> Option<UnixNanos> {
     fill.time()
         .and_then(|time| parse_timestamp(time).ok())
         .filter(|ts| !ts.is_zero())
+}
+
+/// Reads one funding record as a payment, or says why it cannot be one.
+///
+/// The amount and the instant are what a payment **is**, and both are required by the frozen
+/// schema: a record missing either is a payload this adapter cannot account for, and the pass says
+/// the funding could not be read rather than counting a payment whose value it guessed. The rate
+/// and the position size are evidence about the payment and are carried when the venue sent them;
+/// nothing here multiplies one by the other.
+fn funding_payment(fee: &OndoApiFundingFee) -> anyhow::Result<FundingPayment> {
+    let time = parse_timestamp(fee.time()).map_err(|error| {
+        anyhow::anyhow!("a funding payment's `time` could not be read: {error}")
+    })?;
+
+    Ok(FundingPayment {
+        market: fee.market().to_string(),
+        time,
+        amount: balance_member(fee.amount(), "amount")?,
+        rate: fee
+            .rate()
+            .map(|rate| balance_member(rate, "rate"))
+            .transpose()?,
+        position_size: fee
+            .position_size()
+            .map(|size| balance_member(size, "positionSize"))
+            .transpose()?,
+    })
 }
 
 /// Returns the liquidity side a fill carries.

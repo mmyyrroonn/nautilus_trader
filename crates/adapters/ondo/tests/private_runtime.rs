@@ -62,19 +62,25 @@ use nautilus_common::{
 use nautilus_core::{UUID4, UnixNanos};
 use nautilus_live::ExecutionClientCore;
 use nautilus_model::{
-    enums::{AccountType, OmsType, OrderSide, OrderType, TimeInForce},
+    enums::{AccountType, OmsType, OrderSide, OrderType, PositionSide, TimeInForce},
     events::OrderEventAny,
     identifiers::{AccountId, ClientId, ClientOrderId, InstrumentId, StrategyId, TraderId},
     orders::{Order, OrderAny, builder::OrderTestBuilder},
-    types::{Price, Quantity},
+    types::{Currency, Money, Price, Quantity},
 };
 use nautilus_network::ratelimiter::quota::Quota;
 use nautilus_ondo::{
-    common::{consts::ONDO_VENUE, credential::OndoCredential, enums::OndoEnvironment},
+    common::{
+        consts::{ONDO_SETTLEMENT_CURRENCY, ONDO_VENUE},
+        credential::OndoCredential,
+        enums::OndoEnvironment,
+    },
     config::OndoExecutionClientConfig,
-    execution::OndoExecutionClient,
-    http::rate_limit::OndoRateBudget,
-    reconciliation::{Finding, MetadataValidity, NewRiskRefusal, ReconciliationState, StopStep},
+    execution::{OndoExecutionClient, OndoStreamIngestion},
+    http::{private::OndoApiFill, rate_limit::OndoRateBudget},
+    reconciliation::{
+        Finding, JournalStatus, MetadataValidity, NewRiskRefusal, ReconciliationState, StopStep,
+    },
     recording::PublicFrame,
     websocket::{
         messages::WsOp,
@@ -129,6 +135,17 @@ struct Captured {
 struct RestState {
     /// The order payloads the orders read returns.
     orders: Mutex<Vec<String>>,
+    /// The fill payloads the fill history returns.
+    fills: Mutex<Vec<String>>,
+    /// The position payloads the positions read returns.
+    positions: Mutex<Vec<String>>,
+    /// The funding payment payloads the funding history returns.
+    funding: Mutex<Vec<String>>,
+    /// The answer a create request gets, when a test scripts one.
+    ///
+    /// Unset by default: an unscripted create is answered `404`, which is what every test that
+    /// asserts a submission never becomes a request relies on.
+    create_answer: Mutex<Option<String>>,
     /// Whether the orders read waits for [`Self::release`] before answering.
     hold_orders: AtomicBool,
     /// Signals that a held orders read has arrived.
@@ -141,6 +158,10 @@ impl RestState {
     fn new() -> Self {
         Self {
             orders: Mutex::new(Vec::new()),
+            fills: Mutex::new(Vec::new()),
+            positions: Mutex::new(Vec::new()),
+            funding: Mutex::new(Vec::new()),
+            create_answer: Mutex::new(None),
             hold_orders: AtomicBool::new(false),
             held: Notify::new(),
             release: Notify::new(),
@@ -227,6 +248,26 @@ impl MockRest {
             .count()
     }
 
+    /// Scripts the answer a create request gets, so a test can have a tracked order.
+    fn set_create_answer(&self, answer: &str) {
+        *self.state.create_answer.lock().expect("the create answer") = Some(answer.to_string());
+    }
+
+    /// Sets the order payloads the orders read returns.
+    fn set_orders(&self, orders: &[String]) {
+        *self.state.orders.lock().expect("the order script") = orders.to_vec();
+    }
+
+    /// Sets the fill history the fills read returns.
+    fn set_fills(&self, fills: &[String]) {
+        *self.state.fills.lock().expect("the fill script") = fills.to_vec();
+    }
+
+    /// Sets the positions the positions read returns.
+    fn set_positions(&self, positions: &[String]) {
+        *self.state.positions.lock().expect("the position script") = positions.to_vec();
+    }
+
     fn hold_orders(&self) {
         self.state.hold_orders.store(true, Ordering::SeqCst);
     }
@@ -281,13 +322,34 @@ async fn answer(stream: &mut TcpStream, state: &RestState, request: &Captured) {
             write_response(stream, 200, &page(&orders)).await;
         }
         ("GET", "/v1/perps/fills") => {
-            write_response(stream, 200, &page(&[])).await;
+            let fills = state.fills.lock().expect("the fill script").clone();
+
+            write_response(stream, 200, &page(&fills)).await;
         }
         ("GET", "/v1/perps/positions") => {
-            write_response(stream, 200, &envelope("[]")).await;
+            let positions = state.positions.lock().expect("the position script").clone();
+
+            write_response(stream, 200, &page(&positions)).await;
         }
         ("GET", "/v1/perps/balance") => {
             write_response(stream, 200, &envelope(&balance_json())).await;
+        }
+        ("GET", "/v1/perps/funding_fees") => {
+            let funding = state.funding.lock().expect("the funding script").clone();
+
+            write_response(stream, 200, &page(&funding)).await;
+        }
+        ("POST", "/v1/perps/orders") => {
+            let answer = state
+                .create_answer
+                .lock()
+                .expect("the create answer")
+                .clone();
+
+            match answer {
+                Some(answer) => write_response(stream, 200, &envelope(&answer)).await,
+                None => write_response(stream, 404, r#"{"success":false}"#).await,
+            }
         }
         _ => write_response(stream, 404, r#"{"success":false}"#).await,
     }
@@ -311,6 +373,32 @@ fn balance_json() -> String {
 fn api_order(order_id: &str, client_order_id: &str, status: &str) -> String {
     format!(
         r#"{{"orderId":"{order_id}","clientOrderId":"{client_order_id}","side":"buy","price":"227.50","size":"1.00","market":"{NVDA_MARKET}","filledSize":"0.00","lastFillSize":"0.00","filledCost":"0.00","fee":"0.00","status":"{status}","createdAt":"2025-03-05T14:30:00Z","type":"limit","timeInForce":"GTC","reduceOnly":false}}"#,
+    )
+}
+
+/// One `ApiFill` payload in the venue's documented shape.
+fn api_fill(id: &str, order_id: &str, client_order_id: &str, size: &str) -> String {
+    format!(
+        r#"{{"id":"{id}","orderId":"{order_id}","clientOrderId":"{client_order_id}","market":"{NVDA_MARKET}","price":"227.50","size":"{size}","side":"buy","direction":"openLong","fee":"0.00","time":"2025-03-05T14:30:01.000000000Z","isMaker":false}}"#,
+    )
+}
+
+/// One `ApiOrder` payload for an order the venue reports as complete.
+fn api_order_filled(
+    order_id: &str,
+    client_order_id: &str,
+    status: &str,
+    filled_size: &str,
+) -> String {
+    format!(
+        r#"{{"orderId":"{order_id}","clientOrderId":"{client_order_id}","side":"buy","price":"227.50","size":"1.00","market":"{NVDA_MARKET}","filledSize":"{filled_size}","lastFillSize":"0.00","filledCost":"0.00","fee":"0.00","status":"{status}","createdAt":"2025-03-05T14:30:00Z","type":"limit","timeInForce":"GTC","reduceOnly":false}}"#,
+    )
+}
+
+/// One `ApiPosition` payload in the venue's documented shape.
+fn api_position(net_quantity: &str) -> String {
+    format!(
+        r#"{{"market":"{NVDA_MARKET}","direction":"long","netQuantity":"{net_quantity}","averageEntryPrice":"227.50","usedMargin":"45.50","unrealizedPnl":"0.00","markPrice":"227.50","liquidationPrice":"180.00","bankruptcyPrice":"170.00","maintenanceMargin":"2.28","notionalValue":"45.50","leverage":"2.0","netFundingSinceNeutral":"0.00","returnOnEquity":"0.00"}}"#,
     )
 }
 
@@ -562,6 +650,12 @@ struct Harness {
     client: OndoExecutionClient,
     exec_rx: mpsc::UnboundedReceiver<ExecutionEvent>,
     cache: Rc<RefCell<Cache>>,
+    /// Every event this harness has taken off the channel and not yet handed to a test.
+    ///
+    /// The waits in this file poll the channel, so an event a test wants to assert on would
+    /// otherwise be consumed by a wait for something else. Nothing is discarded here: a test that
+    /// asks for the events gets all of them, in arrival order.
+    events: Vec<ExecutionEvent>,
 }
 
 fn sandbox_config() -> OndoExecutionClientConfig {
@@ -624,6 +718,7 @@ fn build_harness(
         client,
         exec_rx,
         cache,
+        events: Vec::new(),
     }
 }
 
@@ -673,14 +768,13 @@ async fn wait_until(
     mut done: impl FnMut(&OndoExecutionClient, &[ExecutionEvent]) -> bool,
 ) {
     let start = Instant::now();
-    let mut events = Vec::new();
 
     loop {
         while let Ok(event) = harness.exec_rx.try_recv() {
-            events.push(event);
+            harness.events.push(event);
         }
 
-        if done(&harness.client, &events) {
+        if done(&harness.client, &harness.events) {
             return;
         }
 
@@ -696,6 +790,18 @@ async fn wait_until(
 
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
+}
+
+/// Takes every execution event the client has emitted since the last call.
+///
+/// It is the waits' own record plus whatever has arrived since, so an event a wait consumed on its
+/// way to a different condition still reaches the test that asserts on it.
+fn drain_events(harness: &mut Harness) -> Vec<ExecutionEvent> {
+    while let Ok(event) = harness.exec_rx.try_recv() {
+        harness.events.push(event);
+    }
+
+    std::mem::take(&mut harness.events)
 }
 
 /// Starts a client and waits for its private session to be established.
@@ -1514,4 +1620,594 @@ fn test_the_session_state_machine_needs_no_socket() {
             .contains(&PrivateChannel::CancelAllOrdersAfterPerps),
         "a read-only session subscribes to no channel with a cancelling side effect",
     );
+}
+
+// ------------------------------------------------------------------------------------------------
+// The journal across a restart: the two crashes (plan §R3.2)
+// ------------------------------------------------------------------------------------------------
+//
+// Two crash semantics, and neither is "the file can be read back":
+//
+// * a fill that was **reported** and not checkpointed - the process died between the report and the
+//   next pass's write - is applied again by the restart, and it must be the *same fill* to
+//   everything downstream. The identity that makes it the same is the venue's own fill id, which
+//   the fill report carries as its `trade_id`; the engine skips a fill whose trade id is already
+//   on the position (`crates/execution/src/engine/mod.rs`, "Duplicate leg fill"), so the replay is
+//   one fill and not two;
+// * a fill that **is** in the checkpoint is not applied again at all: the restored ledger dedupes
+//   it, and no report is emitted.
+//
+// The two are the reason the journal is written *after* the events it records rather than before:
+// the first crash is recoverable because the event carries a stable identity, and the second is
+// prevented by the ledger. The opposite ordering would produce a journal claiming a fill no engine
+// ever saw, and nothing downstream could tell that from one it had already applied.
+
+/// The journal path one test owns, with its directory.
+struct JournalPath {
+    directory: std::path::PathBuf,
+    path: std::path::PathBuf,
+}
+
+impl JournalPath {
+    fn new(name: &str) -> Self {
+        let directory = std::env::temp_dir().join(format!(
+            "ondo-journal-{name}-{}",
+            nautilus_core::UUID4::new(),
+        ));
+        let path = directory.join("ledger.json");
+
+        Self { directory, path }
+    }
+
+    fn config(&self) -> OndoExecutionClientConfig {
+        OndoExecutionClientConfig {
+            journal_path: Some(self.path.display().to_string()),
+            ..sandbox_config()
+        }
+    }
+}
+
+impl Drop for JournalPath {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.directory);
+    }
+}
+
+/// The fills the harness reported, whichever envelope carried them.
+fn fill_reports(events: &[ExecutionEvent]) -> Vec<nautilus_model::reports::FillReport> {
+    events
+        .iter()
+        .flat_map(|event| match event {
+            ExecutionEvent::Report(report) => match report {
+                nautilus_common::messages::execution::ExecutionReport::Fill(fill) => {
+                    vec![(**fill).clone()]
+                }
+                nautilus_common::messages::execution::ExecutionReport::OrderWithFills(
+                    _report,
+                    fills,
+                ) => fills.clone(),
+                _ => Vec::new(),
+            },
+            _ => Vec::new(),
+        })
+        .collect()
+}
+
+/// The journal one run left behind, or [`None`] when it wrote none.
+fn journal_at(journal: &JournalPath) -> Option<nautilus_ondo::reconciliation::LedgerJournal> {
+    if !journal.path.exists() {
+        return None;
+    }
+
+    Some(
+        nautilus_ondo::reconciliation::LedgerJournal::load(
+            &journal.path,
+            AccountId::from(ACCOUNT_ID),
+        )
+        .expect("the run's journal reads back"),
+    )
+}
+
+/// A fill the venue reported and this run had not checkpointed is re-applied by the restart under
+/// the **same** identity, so the engine counts one fill.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_fill_reported_before_the_checkpoint_crash_is_replayed_under_one_identity() {
+    let journal = JournalPath::new("replay");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+
+    // The venue's order list carries the order; its fill history does not carry the fill yet.
+    rest.set_orders(&[api_order(VENUE_ORDER_ID, CLIENT_ORDER_ID, "open")]);
+    rest.set_create_answer(&api_order(VENUE_ORDER_ID, CLIENT_ORDER_ID, "open"));
+
+    let mut first = build_harness(&rest, &private, journal.config());
+
+    converge(&mut first).await;
+
+    // The run's own order: a fill belongs to an order this client placed, and an order nobody
+    // placed is identified rather than adopted (plan §6.4).
+    let order = limit_order(CLIENT_ORDER_ID);
+
+    seed_order(&first, &order);
+    first
+        .client
+        .submit_order(submit_command(&order))
+        .expect("the command is handled");
+    wait_until(&mut first, "a tracked order", |client, _events| {
+        client.tracks(&ClientOrderId::from(CLIENT_ORDER_ID))
+    })
+    .await;
+
+    // The fill arrives on the private stream, is applied and reported - and the process dies
+    // before the next checkpoint, so what the journal holds is the state before it.
+    let fill = OndoApiFill::from_raw(
+        &serde_json::value::RawValue::from_string(api_fill(
+            "fill-before-the-crash",
+            VENUE_ORDER_ID,
+            CLIENT_ORDER_ID,
+            "1.00",
+        ))
+        .expect("JSON"),
+    )
+    .expect("the fill payload reads");
+
+    assert_eq!(
+        first.client.account().ingest_stream_fill(fill.clone()),
+        OndoStreamIngestion::Applied,
+    );
+
+    let reported = fill_reports(&drain_events(&mut first));
+    let trade_id = reported
+        .first()
+        .expect("the fill leaves the process as a fill report")
+        .trade_id;
+
+    assert!(
+        !journal_at(&journal)
+            .expect("the run wrote a checkpoint while it was converging")
+            .fills()
+            .contains(&"fill-before-the-crash".to_string()),
+        "the fill was reported and not checkpointed: that is the crash this test is about",
+    );
+
+    drop(first);
+
+    // The restart. The venue's fill history now carries the same fill - the read that missed it
+    // was the one that ran before it was published - and the order it belongs to has completed.
+    rest.set_orders(&[api_order_filled(
+        VENUE_ORDER_ID,
+        CLIENT_ORDER_ID,
+        "fullyfilled",
+        "1.00",
+    )]);
+    rest.set_fills(&[api_fill(
+        "fill-before-the-crash",
+        VENUE_ORDER_ID,
+        CLIENT_ORDER_ID,
+        "1.00",
+    )]);
+    rest.set_positions(&[api_position("1.00")]);
+
+    let mut second = build_harness(&rest, &private, journal.config());
+
+    assert!(
+        matches!(
+            second.client.account().journal_status(),
+            JournalStatus::Restored { .. }
+        ),
+        "the restart restores the journal it left: {:?}",
+        second.client.account().journal_status(),
+    );
+
+    converge(&mut second).await;
+
+    let replayed = fill_reports(&drain_events(&mut second));
+
+    assert_eq!(replayed.len(), 1, "the fill is applied and reported once");
+    assert_eq!(
+        replayed[0].trade_id, trade_id,
+        "and it is the *same* fill: the venue's own fill id travels as the trade id, which is what \
+         the engine dedupes a replay against",
+    );
+    assert_eq!(replayed[0].venue_order_id.as_str(), VENUE_ORDER_ID);
+    assert_eq!(replayed[0].last_qty, Quantity::from("1.00"));
+
+    // And this run's checkpoint holds it, so a third run would not replay it again.
+    assert!(
+        journal_at(&journal)
+            .expect("the second run checkpointed")
+            .fills()
+            .contains(&"fill-before-the-crash".to_string()),
+    );
+
+    second.client.stop().expect("stop");
+}
+
+/// A fill the checkpoint holds is not applied again: the restored ledger dedupes it and nothing is
+/// reported.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_fill_recorded_in_the_checkpoint_is_not_replayed_after_a_restart() {
+    let journal = JournalPath::new("checkpointed");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+
+    rest.set_orders(&[api_order(VENUE_ORDER_ID, CLIENT_ORDER_ID, "open")]);
+    rest.set_create_answer(&api_order(VENUE_ORDER_ID, CLIENT_ORDER_ID, "open"));
+    rest.set_positions(&[api_position("1.00")]);
+
+    let mut first = build_harness(&rest, &private, journal.config());
+
+    converge(&mut first).await;
+
+    let order = limit_order(CLIENT_ORDER_ID);
+
+    seed_order(&first, &order);
+    first
+        .client
+        .submit_order(submit_command(&order))
+        .expect("the command is handled");
+    wait_until(&mut first, "a tracked order", |client, _events| {
+        client.tracks(&ClientOrderId::from(CLIENT_ORDER_ID))
+    })
+    .await;
+
+    // The venue's history carries the fill from here, and the pass that reads it applies it and
+    // writes a checkpoint that holds it.
+    rest.set_fills(&[api_fill(
+        "fill-in-the-checkpoint",
+        VENUE_ORDER_ID,
+        CLIENT_ORDER_ID,
+        "1.00",
+    )]);
+    first
+        .client
+        .account()
+        .reconcile_account(now())
+        .await
+        .expect("the pass reads the fill");
+
+    let reported = fill_reports(&drain_events(&mut first));
+
+    assert_eq!(
+        reported.len(),
+        1,
+        "the first run applies and reports the fill"
+    );
+    assert!(
+        journal_at(&journal)
+            .expect("the run wrote a checkpoint")
+            .fills()
+            .contains(&"fill-in-the-checkpoint".to_string()),
+        "and the checkpoint holds it",
+    );
+
+    drop(first);
+
+    // The restart reads the same history. The fill is in the restored ledger, so it is a duplicate
+    // rather than a fill - and a duplicate emits nothing.
+    let mut second = build_harness(&rest, &private, journal.config());
+
+    converge(&mut second).await;
+
+    assert!(
+        fill_reports(&drain_events(&mut second)).is_empty(),
+        "a fill the ledger already holds is not reported a second time",
+    );
+    assert_eq!(
+        second.client.applied_fill_count(),
+        1,
+        "and it was applied once across both runs",
+    );
+    assert_eq!(
+        second.client.reconciliation_state(),
+        ReconciliationState::Ready,
+        "the account converges: a duplicate is not a disagreement",
+    );
+
+    second.client.stop().expect("stop");
+}
+
+/// A journal that cannot be restored stops new risk, whatever the account reads.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_run_whose_journal_cannot_be_restored_refuses_new_risk() {
+    let journal = JournalPath::new("damaged");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+
+    std::fs::create_dir_all(&journal.directory).expect("the journal directory");
+
+    // A truncated body: the checkpoint still records a fill the file no longer holds.
+    let damaged = r#"{"schema_version":2,"account_id":"ONDO-SANDBOX-001","watermark_ns":null,"fills":[],"orders":[],"unsettled":[],"checkpoint":{"written_ns":1,"fills":1,"orders":0,"unsettled":0}}"#;
+
+    std::fs::write(&journal.path, damaged).expect("the damaged journal");
+
+    let mut harness = build_harness(&rest, &private, journal.config());
+
+    assert!(
+        matches!(
+            harness.client.account().journal_status(),
+            JournalStatus::Failed { .. }
+        ),
+        "a journal that disagrees with itself is not restored: {:?}",
+        harness.client.account().journal_status(),
+    );
+
+    converge(&mut harness).await;
+
+    assert_eq!(
+        harness.client.reconciliation_state(),
+        ReconciliationState::Ready,
+        "the account itself reads clean",
+    );
+
+    let refusal = harness
+        .client
+        .new_risk_refusal()
+        .expect("and new risk is still refused");
+
+    assert!(
+        matches!(refusal, NewRiskRefusal::JournalUnavailable { .. }),
+        "by name, and about the journal rather than the account: {refusal:?}",
+    );
+    assert!(refusal.reason().contains("could not be restored"));
+
+    // A submission never leaves the process.
+    let order = limit_order("ondo_without_a_journal");
+
+    seed_order(&harness, &order);
+    harness
+        .client
+        .submit_order(submit_command(&order))
+        .expect("the command is handled");
+
+    assert_eq!(rest.writes(), 0, "nothing was sent");
+
+    harness.client.stop().expect("stop");
+}
+
+/// With no journal path the run says so, and it still trades: the offline phase's mode is not a
+/// failure, and it is not silence either.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_run_with_no_journal_path_says_so_and_keeps_reading_the_account() {
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut harness = build_harness(&rest, &private, sandbox_config());
+
+    converge(&mut harness).await;
+
+    let status = harness.client.account().journal_status();
+
+    assert!(
+        matches!(status, JournalStatus::NotConfigured { .. }),
+        "the run states that it has no journal: {status:?}",
+    );
+    assert_eq!(status.as_str(), "not_configured");
+    assert!(status.reason().contains("in memory"));
+    assert!(
+        harness.client.can_submit_new_orders(),
+        "and a run without a journal is not a run that cannot trade",
+    );
+
+    harness.client.stop().expect("stop");
+}
+
+/// A journal that stops accepting writes is reported as degraded rather than restored, and trading
+/// does not stop over it: the disk stopped taking the checkpoint, the memory did not go anywhere.
+///
+/// The state the run started in is asserted first, because that is the one it must stop reporting.
+/// Nothing here is a mock of a failure: the path's parent directory is replaced with a regular file,
+/// which is what `store_atomic` cannot create a directory through.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_journal_that_stops_accepting_writes_is_reported_and_does_not_stop_trading() {
+    let journal = JournalPath::new("degraded");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut harness = build_harness(&rest, &private, journal.config());
+
+    converge(&mut harness).await;
+
+    assert_eq!(harness.client.account().journal_write_failures(), 0);
+    assert!(journal.path.exists(), "a checkpoint reached the disk");
+    assert_eq!(
+        harness.client.account().journal_status().as_str(),
+        "restored",
+        "the run is durable before the disk stops accepting writes",
+    );
+
+    std::fs::remove_dir_all(&journal.directory).expect("the journal directory is removed");
+    std::fs::write(&journal.directory, b"not a directory").expect("a file takes its place");
+
+    // One more concluded pass, which is one more checkpoint write.
+    let _ = harness.client.account().reconcile_account(now()).await;
+
+    let failures = harness.client.account().journal_write_failures();
+    let status = harness.client.account().journal_status();
+
+    assert!(failures > 0, "the checkpoint could not be written");
+    assert!(
+        matches!(status, JournalStatus::Degraded { .. }),
+        "a run whose checkpoint never reached the disk is not a run that is durable: {status:?}",
+    );
+    assert_eq!(status.as_str(), "degraded");
+    assert!(
+        !matches!(status, JournalStatus::Restored { .. }),
+        "{status:?}",
+    );
+    assert!(
+        status
+            .reason()
+            .contains(&journal.path.display().to_string()),
+        "the report names the journal that stopped: {}",
+        status.reason(),
+    );
+
+    // And it refuses nothing. The account is the one the venue reported, and the run still trades:
+    // losing durability is not losing memory, so this is a report and not a refusal.
+    assert_eq!(
+        harness.client.reconciliation_state(),
+        ReconciliationState::Ready,
+    );
+    assert_eq!(harness.client.new_risk_refusal(), None);
+    assert!(harness.client.can_submit_new_orders());
+
+    harness.client.stop().expect("stop");
+
+    let _ = std::fs::remove_file(&journal.directory);
+}
+
+/// The account state the engine is told about is the one this adapter verified, and the position
+/// report is the venue's own.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_the_verified_account_and_its_positions_reach_the_engine() {
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+
+    rest.set_orders(&[api_order(VENUE_ORDER_ID, CLIENT_ORDER_ID, "open")]);
+    rest.set_positions(&[api_position("0.25")]);
+
+    let mut harness = build_harness(&rest, &private, sandbox_config());
+
+    converge(&mut harness).await;
+
+    let events = drain_events(&mut harness);
+    let states: Vec<&nautilus_model::events::AccountState> = events
+        .iter()
+        .filter_map(|event| match event {
+            ExecutionEvent::Account(state) => Some(state),
+            _ => None,
+        })
+        .collect();
+
+    assert!(!states.is_empty(), "a concluded pass publishes the account");
+
+    let state = states.last().expect("an account state");
+    let settlement = Currency::from(ONDO_SETTLEMENT_CURRENCY);
+
+    assert!(state.is_reported);
+    assert_eq!(state.balances.len(), 1);
+    assert_eq!(state.balances[0].currency, settlement);
+    assert_eq!(
+        state.balances[0].total,
+        Money::from_decimal(
+            rust_decimal::Decimal::from_str_exact("4950.00").expect("decimal"),
+            settlement,
+        )
+        .expect("money"),
+        "the venue's equity, as the venue stated it",
+    );
+    assert_eq!(state.margins.len(), 1);
+    assert_eq!(
+        state.margins[0].maintenance,
+        Money::from_decimal(
+            rust_decimal::Decimal::from_str_exact("112.50").expect("decimal"),
+            settlement,
+        )
+        .expect("money"),
+    );
+
+    let reports = harness
+        .client
+        .generate_position_status_reports(
+            &nautilus_common::messages::execution::GeneratePositionStatusReports::new(
+                nautilus_core::UUID4::new(),
+                UnixNanos::default(),
+                None,
+                None,
+                None,
+                None,
+                None,
+            ),
+        )
+        .await
+        .expect("the positions read");
+
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0].instrument_id, InstrumentId::from(NVDA));
+    assert_eq!(reports[0].quantity, Quantity::from("0.25"));
+    assert_eq!(reports[0].position_side, PositionSide::Long);
+    assert_eq!(
+        reports[0].avg_px_open,
+        Some(rust_decimal::Decimal::from_str_exact("227.50").expect("decimal")),
+    );
+
+    harness.client.stop().expect("stop");
+}
+
+/// The account state travels the whole way: the adapter's emitter, the process's execution-event
+/// channel, the runner's own dispatcher, and the portfolio's account-update endpoint into the cache.
+///
+/// The hop this test adds over [`test_the_verified_account_and_its_positions_reach_the_engine`] is
+/// the one that is not this adapter's code: `Runner::handle_exec_event` forwards an
+/// `ExecutionEvent::Account` to the endpoint the portfolio listens on, and the handler registered
+/// there is what updates the cache. Driving the events through that dispatcher is what turns "the
+/// adapter emitted an account state" into "the engine's cache holds the account".
+#[tokio::test(flavor = "multi_thread")]
+async fn test_the_account_state_travels_from_the_emitter_into_the_cache() {
+    use nautilus_common::msgbus::{self, MessagingSwitchboard, TypedHandler};
+    use nautilus_live::runner::AsyncRunner;
+    use nautilus_model::events::AccountState;
+
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut harness = build_harness(&rest, &private, sandbox_config());
+
+    // The portfolio's own handler, registered where the live node registers it.
+    let cache = Rc::clone(&harness.cache);
+    let handler = TypedHandler::from(move |state: &AccountState| {
+        cache
+            .borrow_mut()
+            .update_account_state(state)
+            .expect("the account state enters the cache");
+    });
+
+    msgbus::register_account_state_endpoint(
+        MessagingSwitchboard::portfolio_update_account(),
+        handler,
+    );
+
+    converge(&mut harness).await;
+
+    let events = drain_events(&mut harness);
+
+    assert!(!events.is_empty(), "the pass published the account");
+
+    for event in events {
+        AsyncRunner::handle_exec_event(event);
+    }
+
+    let account = harness
+        .cache
+        .borrow()
+        .account_owned(&AccountId::from(ACCOUNT_ID))
+        .expect("the account is in the cache");
+
+    let nautilus_model::accounts::AccountAny::Margin(account) = account else {
+        panic!("an Ondo account is a margin account");
+    };
+
+    let settlement = Currency::from(ONDO_SETTLEMENT_CURRENCY);
+    let balance = account
+        .balances
+        .get(&settlement)
+        .expect("the settlement currency is reported");
+
+    assert_eq!(
+        balance.total,
+        Money::from_decimal(
+            rust_decimal::Decimal::from_str_exact("4950.00").expect("decimal"),
+            settlement,
+        )
+        .expect("money"),
+        "the account the cache holds is the account the venue stated",
+    );
+    assert_eq!(
+        balance.locked,
+        Money::from_decimal(
+            rust_decimal::Decimal::from_str_exact("0.00").expect("decimal"),
+            settlement,
+        )
+        .expect("money"),
+    );
+
+    harness.client.stop().expect("stop");
 }

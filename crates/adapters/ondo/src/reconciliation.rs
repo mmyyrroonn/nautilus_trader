@@ -140,6 +140,17 @@ pub enum NewRiskRefusal {
     /// Only [`ReconciliationMachine::revalidate`] answers this. A permit is good for the run
     /// generation that issued it and for nothing later.
     Superseded,
+    /// A journal path was configured and the journal could not be restored, so this run does not
+    /// know which fills it has already applied.
+    ///
+    /// It is not a condition of the account and no read of the venue clears it: without the ledger
+    /// a historical fill could be counted twice or a report the engine already saw could be
+    /// dropped, and neither is something a reconciliation pass can tell from the outside. Only a
+    /// journal that reads back restores the client's own memory (plan §6.4, §R3.2).
+    JournalUnavailable {
+        /// Why the journal could not be restored.
+        reason: String,
+    },
     /// Submissions whose outcome this client has not settled (plan §6.3).
     UnknownSubmissions {
         /// The client order ids the submissions were made under.
@@ -159,6 +170,13 @@ pub enum NewRiskRefusal {
     DeadMansSwitch(DeadMansSwitchState),
     /// The account's reconciliation state is not [`ReconciliationState::Ready`].
     AccountState(ReconciliationState),
+    /// The venue is liquidating the account, or its liquidation condition is not one this client
+    /// read.
+    ///
+    /// The venue is closing the account's positions itself. New risk against an account the venue
+    /// is closing is not a decision this adapter makes on a stale reading of the venue's intent,
+    /// and an unread liquidation condition is not a clear one (plan §R3.2).
+    Liquidation(LiquidationState),
 }
 
 impl NewRiskRefusal {
@@ -174,6 +192,10 @@ impl NewRiskRefusal {
             Self::Superseded => {
                 "the admission this order was given is no longer current".to_string()
             }
+            Self::JournalUnavailable { reason } => format!(
+                "the ledger journal could not be restored, so this run does not know which fills \
+                 it already applied: {reason}"
+            ),
             Self::UnknownSubmissions { client_order_ids } => format!(
                 "the outcome of {} submission(s) is unknown: {}",
                 client_order_ids.len(),
@@ -202,6 +224,80 @@ impl NewRiskRefusal {
                 DeadMansSwitchState::Expired => "the dead man's switch expired".to_string(),
             },
             Self::AccountState(state) => format!("the account is {}", state.as_str()),
+            Self::Liquidation(state) => state.reason(),
+        }
+    }
+}
+
+/// The venue's liquidation condition for the account (plan §R3.2).
+///
+/// The venue states it as the required `underLiquidation` member of its balance summary, and this
+/// adapter keeps **three** answers apart where the wire carries a boolean and a payload can be
+/// wrong: the venue is liquidating the account, it said it is not, or this client cannot say.
+/// Collapsing the third into the second is the mistake the type exists to prevent - it is exactly
+/// "the venue did not tell us" read as "the venue said no".
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LiquidationState {
+    /// The venue stated the account is not under liquidation.
+    Clear,
+    /// The venue is liquidating the account.
+    UnderLiquidation,
+    /// No balance has been read, or the balance carried no readable `underLiquidation`.
+    Unknown {
+        /// Why this client cannot say.
+        reason: String,
+    },
+}
+
+impl LiquidationState {
+    /// Reads the venue's `underLiquidation` member, with an absent one kept as unknown.
+    #[must_use]
+    pub fn from_member(under_liquidation: Option<bool>) -> Self {
+        match under_liquidation {
+            Some(true) => Self::UnderLiquidation,
+            Some(false) => Self::Clear,
+            None => Self::Unknown {
+                reason: "the venue's balance carried no readable `underLiquidation`".to_string(),
+            },
+        }
+    }
+
+    /// Returns the state a machine that has read no balance is in.
+    #[must_use]
+    pub fn unread() -> Self {
+        Self::Unknown {
+            reason: "no balance has been read yet".to_string(),
+        }
+    }
+
+    /// Returns whether this condition permits new orders.
+    #[must_use]
+    pub const fn permits_new_orders(&self) -> bool {
+        matches!(self, Self::Clear)
+    }
+
+    /// Returns the state's name, for a log line or a report.
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Clear => "clear",
+            Self::UnderLiquidation => "under_liquidation",
+            Self::Unknown { .. } => "unknown",
+        }
+    }
+
+    /// Returns a human-readable statement of the condition.
+    #[must_use]
+    pub fn reason(&self) -> String {
+        match self {
+            Self::Clear => "the account is not under liquidation".to_string(),
+            Self::UnderLiquidation => {
+                "the venue is liquidating this account, so no new risk is taken on it".to_string()
+            }
+            Self::Unknown { reason } => format!(
+                "the account's liquidation condition is not known: {reason}; an unread condition \
+                 is not a clear one"
+            ),
         }
     }
 }
@@ -566,12 +662,24 @@ pub struct PositionReading {
     pub net_quantity: Decimal,
     /// The signed position: [`signed_position_quantity`] of the two above.
     pub signed: Decimal,
+    /// The venue's `averageEntryPrice`, when it sent a readable one.
+    ///
+    /// It is what a Nautilus position status report carries as its average open price. An
+    /// unreadable one leaves the report's own optional field empty rather than refusing the
+    /// position: the entry price is not what makes a position a position, and the quantity it is
+    /// read with is judged on its own.
+    pub average_entry_price: Option<Decimal>,
 }
 
 impl PositionReading {
     /// Reads one `ApiPosition` payload onto a reading.
     #[must_use]
-    pub fn new(market: &str, direction: &str, net_quantity: Decimal) -> Self {
+    pub fn new(
+        market: &str,
+        direction: &str,
+        net_quantity: Decimal,
+        average_entry_price: Option<Decimal>,
+    ) -> Self {
         let direction = PositionDirection::from_raw(direction);
 
         Self {
@@ -580,6 +688,7 @@ impl PositionReading {
             signed: signed_position_quantity(&direction, net_quantity),
             direction,
             net_quantity,
+            average_entry_price,
         }
     }
 
@@ -627,6 +736,24 @@ pub struct BalanceReading {
     pub available_margin: Option<Decimal>,
     /// `withdrawableMargin`: the margin that may leave the account.
     pub withdrawable_margin: Option<Decimal>,
+    /// `maintenanceMarginRequirement`: the maintenance margin the open positions require. It is
+    /// what a Nautilus [`MarginBalance`](nautilus_model::types::MarginBalance) carries as its
+    /// maintenance side.
+    pub maintenance_margin_requirement: Option<Decimal>,
+    /// `underLiquidation`: whether the venue is liquidating this account.
+    ///
+    /// **Three states, not two.** The frozen schema requires the member, so an absent or
+    /// unreadable one is a payload this adapter does not understand - and a liquidation condition
+    /// nobody read is not a liquidation condition that is clear.
+    /// [`LiquidationState`] is where the three are kept apart; this is the raw reading.
+    pub under_liquidation: Option<bool>,
+    /// `totalFundingPayments`: the venue's **cumulative** funding total for the account.
+    ///
+    /// It is a running total, not this interval's payment: what it says about a period is the
+    /// difference between two readings of it, and what proves a payment is a
+    /// [`FundingPayment`] record from the funding history. The two are reconciled against each
+    /// other ([`FundingLedger`]) and never against a rate multiplied by a position.
+    pub total_funding_payments: Option<Decimal>,
     /// Members this adapter does not map: any balance member outside the documented set is kept
     /// here rather than folded into the USDC numbers, because a second collateral asset or a loan
     /// is a different account than this adapter knows how to trade (plan §6.4).
@@ -643,6 +770,7 @@ pub struct MappedBalance {
     total: Decimal,
     locked: Decimal,
     free: Decimal,
+    maintenance: Option<Decimal>,
 }
 
 impl MappedBalance {
@@ -650,6 +778,12 @@ impl MappedBalance {
     #[must_use]
     pub const fn reading(&self) -> &BalanceReading {
         &self.reading
+    }
+
+    /// Returns the maintenance margin the venue stated, when it sent a readable one.
+    #[must_use]
+    pub const fn maintenance(&self) -> Option<Decimal> {
+        self.maintenance
     }
 
     /// Returns equity (`marginBalance`), the Nautilus total.
@@ -668,6 +802,267 @@ impl MappedBalance {
     #[must_use]
     pub const fn free(&self) -> Decimal {
         self.free
+    }
+}
+
+/// One funding payment the venue stated, from a `FundingFeeTransfer` record.
+///
+/// This is the **only** thing that books funding. The frozen schema makes every member required,
+/// including `amount` - "the actual amount of USDC transferred, positive indicates a fee you
+/// earned, negative a fee you paid" - so a record is the venue stating a payment that happened.
+/// A funding *rate* is a public estimate and a `totalFundingPayments` member is a running total;
+/// neither is a payment, and multiplying the first by a position size to produce one is the
+/// arithmetic the plan forbids (plan §R3.2).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FundingPayment {
+    /// The venue's market string.
+    pub market: String,
+    /// `time`: when the venue applied the payment.
+    pub time: UnixNanos,
+    /// `amount`: the signed USDC transferred, positive for a fee earned.
+    pub amount: Decimal,
+    /// `rate`: the funding rate that led to this payment, when the venue sent a readable one.
+    ///
+    /// It is carried as evidence and never as a factor: a rate is public market data, and the
+    /// payment is the account's.
+    pub rate: Option<Decimal>,
+    /// `positionSize`: the base size of the position when the payment was applied, when readable.
+    pub position_size: Option<Decimal>,
+}
+
+impl FundingPayment {
+    /// Returns the identity a payment is accounted once against.
+    ///
+    /// The venue gives a funding record no id. The identity is therefore the payment's own facts -
+    /// the market it was paid on, the instant it was applied and the amount transferred - which is
+    /// what a second page, a second read or a second process has to agree on to be the same
+    /// payment. It is deliberately **not** `(market, time)`: two payments on one market in one
+    /// interval are two payments, and collapsing them would drop one.
+    #[must_use]
+    pub fn identity(&self) -> String {
+        format!("{}|{}|{}", self.market, self.time, self.amount)
+    }
+}
+
+/// The venue's cumulative funding total and the payment records, when they disagree.
+///
+/// The comparison is between two **changes over one window**, both measured from the baseline the
+/// first readable `totalFundingPayments` established: what the venue's running total says funding
+/// has done to this account since then, and what the payment records this client has read account
+/// for over the same window. A difference is stated here rather than booked: the missing payment
+/// is one this adapter cannot prove, and a number it invented would be indistinguishable from one
+/// it read (plan §R3.2).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FundingGap {
+    /// What the venue's cumulative total says funding has changed by since the baseline.
+    pub stated_change: Decimal,
+    /// What the payment records account for over the same window.
+    pub accounted_change: Decimal,
+    /// `stated_change - accounted_change`.
+    pub difference: Decimal,
+    /// When the baseline was read.
+    pub since: UnixNanos,
+    /// How many payment records the window accounted for.
+    pub payments: usize,
+}
+
+/// What this client can say about the account's funding (plan §R3.2).
+///
+/// The three facts the plan keeps apart are kept apart here and nowhere else: the funding **rate**
+/// is public market data and is not consulted at all, the **cumulative** total is a balance member,
+/// and the **payments** are records from the account's own funding history. Only the last books
+/// anything, and the second is what the last is checked against.
+///
+/// # A restart re-baselines rather than replays
+///
+/// The ledger is not part of the journal, and it does not need to be. The level comparison is
+/// taken from whatever `totalFundingPayments` the first balance read of this process carried, so a
+/// restart cannot double-count a payment (the baseline moves past it) and cannot lose one (every
+/// record at or after the new baseline is accounted). What a restart cannot do is claim a payment
+/// that happened before it read anything, which is why the baseline is a reading and not a
+/// construction.
+#[derive(Clone, Debug, Default)]
+pub struct FundingLedger {
+    baseline: Option<Decimal>,
+    baseline_at: Option<UnixNanos>,
+    stated: Option<Decimal>,
+    payments: BTreeMap<String, FundingPayment>,
+    read_error: Option<String>,
+}
+
+impl FundingLedger {
+    /// Creates an empty ledger.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Records the account's cumulative funding total from a balance read.
+    ///
+    /// The first readable total is the baseline: everything the account was paid before this
+    /// process read it is already inside it, and only payments at or after this instant are what
+    /// the venue's total is expected to have moved by.
+    pub fn observe_cumulative(&mut self, total: Option<Decimal>, now: UnixNanos) {
+        let Some(total) = total else {
+            return;
+        };
+
+        if self.baseline.is_none() {
+            self.baseline = Some(total);
+            self.baseline_at = Some(now);
+        }
+
+        self.stated = Some(total);
+    }
+
+    /// Records why the funding history could not be read this pass.
+    pub fn note_read_error(&mut self, error: String) {
+        self.read_error = Some(error);
+    }
+
+    /// Clears the read error, for a pass whose funding history was read.
+    pub fn clear_read_error(&mut self) {
+        self.read_error = None;
+    }
+
+    /// Accounts one payment, returning `true` when it was one this ledger had not seen.
+    ///
+    /// A payment already accounted for is not counted again: the venue's history is paginated and
+    /// re-read every pass, so the same record arrives on every read and the identity is what makes
+    /// it one payment rather than one per read.
+    pub fn account(&mut self, payment: FundingPayment) -> bool {
+        self.payments.insert(payment.identity(), payment).is_none()
+    }
+
+    /// Accounts a whole read, returning how many of the payments were new.
+    pub fn account_all(&mut self, payments: impl IntoIterator<Item = FundingPayment>) -> usize {
+        payments
+            .into_iter()
+            .filter(|payment| self.account(payment.clone()))
+            .count()
+    }
+
+    /// Returns the cumulative total the venue last stated.
+    #[must_use]
+    pub const fn stated(&self) -> Option<Decimal> {
+        self.stated
+    }
+
+    /// Returns the baseline the level comparison is measured from.
+    #[must_use]
+    pub const fn baseline(&self) -> Option<(UnixNanos, Decimal)> {
+        match (self.baseline_at, self.baseline) {
+            (Some(at), Some(value)) => Some((at, value)),
+            _ => None,
+        }
+    }
+
+    /// Returns how many distinct payments this ledger has accounted.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.payments.len()
+    }
+
+    /// Returns whether this ledger has accounted no payments at all.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.payments.is_empty()
+    }
+
+    /// Returns every payment this ledger has accounted, in identity order.
+    #[must_use]
+    pub fn payments(&self) -> Vec<FundingPayment> {
+        self.payments.values().cloned().collect()
+    }
+
+    /// Returns the sum of the payments the window since the baseline accounted for.
+    #[must_use]
+    pub fn accounted_since_baseline(&self) -> Decimal {
+        let Some((since, _baseline)) = self.baseline() else {
+            return Decimal::ZERO;
+        };
+
+        self.payments
+            .values()
+            .filter(|payment| payment.time >= since)
+            .fold(Decimal::ZERO, |sum, payment| sum + payment.amount)
+    }
+
+    /// Returns how many payments the window since the baseline accounted for.
+    #[must_use]
+    pub fn payments_since_baseline(&self) -> usize {
+        let Some((since, _baseline)) = self.baseline() else {
+            return 0;
+        };
+
+        self.payments
+            .values()
+            .filter(|payment| payment.time >= since)
+            .count()
+    }
+
+    /// Returns the account's funding reconciliation, derived from what has been read.
+    ///
+    /// It is **recomputed, not accumulated**: both sides of the comparison are read off the
+    /// baseline every time, so a payment the venue published after the balance read that already
+    /// included it shows as a gap in the pass that saw only one of the two and is closed by the
+    /// pass that sees both, rather than being carried forward as a discrepancy of its own.
+    #[must_use]
+    pub fn reconciliation(&self) -> FundingReconciliation {
+        if let Some(reason) = &self.read_error {
+            return FundingReconciliation::Unreadable {
+                reason: reason.clone(),
+            };
+        }
+
+        let (Some((since, baseline)), Some(stated)) = (self.baseline(), self.stated) else {
+            return FundingReconciliation::Unreadable {
+                reason: "the venue's balance has not carried a readable `totalFundingPayments`"
+                    .to_string(),
+            };
+        };
+
+        let accounted_change = self.accounted_since_baseline();
+        let stated_change = stated - baseline;
+
+        if stated_change == accounted_change {
+            return FundingReconciliation::Reconciled {
+                accounted: accounted_change,
+            };
+        }
+
+        FundingReconciliation::Unreconciled(FundingGap {
+            stated_change,
+            accounted_change,
+            difference: stated_change - accounted_change,
+            since,
+            payments: self.payments_since_baseline(),
+        })
+    }
+}
+
+/// What this client can say about the account's funding, as one of three answers.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FundingReconciliation {
+    /// The venue's cumulative total and the payment records agree over the window.
+    Reconciled {
+        /// What the payments accounted for since the baseline.
+        accounted: Decimal,
+    },
+    /// They do not, and the difference is what this client cannot prove.
+    Unreconciled(FundingGap),
+    /// Nothing about the account's funding could be read this pass.
+    Unreadable {
+        /// Why.
+        reason: String,
+    },
+}
+
+impl FundingReconciliation {
+    /// Returns whether the account's funding is fully accounted for.
+    #[must_use]
+    pub const fn is_reconciled(&self) -> bool {
+        matches!(self, Self::Reconciled { .. })
     }
 }
 
@@ -786,6 +1181,33 @@ pub enum Finding {
         /// Why the pass failed.
         reason: String,
     },
+    /// The account's funding could not be read this pass: the funding history failed, or the
+    /// balance carried no readable cumulative total to check it against.
+    ///
+    /// Nothing is booked from it - a payment this client did not read is not a payment it may
+    /// invent - and the gap stays visible here until a pass reads both sides (plan §R3.2).
+    FundingUnreadable {
+        /// Why.
+        reason: String,
+    },
+    /// The venue's cumulative funding total and the payment records this client has read do not
+    /// agree over the window they are compared on (plan §R3.2).
+    ///
+    /// The difference is **stated, not booked**: it is a payment (or a repayment) this adapter
+    /// cannot prove, and the alternative - pricing a rate against a position size - would produce
+    /// a number indistinguishable from a read one.
+    FundingUnreconciled {
+        /// What the venue's running total says funding changed by.
+        stated_change: Decimal,
+        /// What the payment records account for.
+        accounted_change: Decimal,
+        /// The unaccounted difference.
+        difference: Decimal,
+        /// When the baseline the comparison starts from was read.
+        since: UnixNanos,
+        /// How many payment records the window carried.
+        payments: usize,
+    },
     /// Reports the recovery observed and could not apply to the account (plan §6.4).
     ///
     /// Three things are one condition: a report the bounded buffer refused for want of room, a
@@ -807,12 +1229,21 @@ impl Finding {
     /// A readable order this run did not create is not one of these: it is a state the venue
     /// stated. An order of unknown status is, whether this run created it or not - plan §6.3's
     /// table puts both in the column that stops an account being judged clean.
+    ///
+    /// The two funding findings are deliberately not among them either, and the reason is what an
+    /// account being uncertain *buys*: it stops new risk until a pass reads the account whole.
+    /// Funding is a cashflow axis, not the account's order and position state - the balance that
+    /// carries it is read fresh by every pass and is the venue's own number, so a payment this
+    /// client could not account for does not make the position the venue reported any less read.
+    /// It is reported, it is never booked, and it is never turned into an order refusal it cannot
+    /// justify.
     #[must_use]
     pub fn is_uncertain(&self) -> bool {
         match self {
             Self::ForeignOrder { status, .. } => {
                 !status.is_known() || *status == OndoOrderStatus::Untriggered
             }
+            Self::FundingUnreadable { .. } | Self::FundingUnreconciled { .. } => false,
             _ => true,
         }
     }
@@ -888,6 +1319,20 @@ impl Finding {
                 format!("the cancel of {client_order_id} was not confirmed by any venue answer")
             }
             Self::ReadFailed { reason } => format!("the account could not be read: {reason}"),
+            Self::FundingUnreadable { reason } => {
+                format!("the account's funding could not be read: {reason}")
+            }
+            Self::FundingUnreconciled {
+                stated_change,
+                accounted_change,
+                difference,
+                since,
+                payments,
+            } => format!(
+                "the venue's cumulative funding has changed by {stated_change} since {since} and \
+                 the {payments} payment record(s) read account for {accounted_change}; the \
+                 difference of {difference} is not booked"
+            ),
             Self::LostReports { count, reason } => {
                 format!("{count} report(s) the recovery could not apply: {reason}")
             }
@@ -966,6 +1411,18 @@ pub struct AccountReading {
     pub applied_net: BTreeMap<InstrumentId, Decimal>,
     /// The ids of the fills this pass applied, in the order they were applied.
     pub fills: Vec<String>,
+    /// The funding payments the venue's funding history carried for this pass.
+    ///
+    /// A pass that could not read the history carries none and says so in
+    /// [`Self::funding_error`]; the two are never the same fact.
+    pub funding: Vec<FundingPayment>,
+    /// Why the funding history could not be read, when it could not.
+    pub funding_error: Option<String>,
+    /// The instant this pass read the account at.
+    ///
+    /// It is the instant a balance's cumulative funding total is stamped with, and therefore the
+    /// instant the funding window opens at ([`FundingLedger`]).
+    pub read_at: UnixNanos,
 }
 
 impl AccountReading {
@@ -1259,7 +1716,7 @@ impl ReconciliationBuffer {
 }
 
 /// Which write an [`UncertainOutcome`] is about.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UncertainKind {
     /// A submission whose answer was lost. Its venue order id is unknown **by construction** -
     /// that is what an unanswered submission is - so the reference a probe uses is always the
@@ -1414,15 +1871,287 @@ pub enum StopStep {
     ClosePrivateStream,
 }
 
-/// The dedup ledger and its watermark, in a form that survives a restart (plan §6.4).
+/// One order's association and applied state, in the form a restart reads back (plan §R3.2).
+///
+/// The venue order id is what resolves a payload to a Nautilus order, and `filled` is the sum of
+/// the fills this client applied to it. Both have to survive a restart, and for one reason: a
+/// ledger that remembered its fills but not the orders they belong to would re-read the venue's
+/// history, find every fill already applied, and never move the order's applied total - so a
+/// terminal order would stay unresolved for good and `applied_net` would claim a position on an
+/// instrument the account does not hold.
+///
+/// Every member is the string the venue or the model spelled, so a journal is readable by a human
+/// and a value that cannot be read back is refused rather than quietly defaulted.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JournalOrder {
+    pub(crate) client_order_id: String,
+    pub(crate) venue_order_id: Option<String>,
+    pub(crate) instrument_id: String,
+    pub(crate) side: String,
+    pub(crate) order_type: String,
+    pub(crate) time_in_force: String,
+    pub(crate) quantity: String,
+    pub(crate) price: Option<String>,
+    pub(crate) reduce_only: bool,
+    pub(crate) post_only: bool,
+    pub(crate) status: String,
+    pub(crate) accepted: bool,
+    pub(crate) filled: String,
+    pub(crate) venue_filled: Option<String>,
+    pub(crate) unappliable_fill: bool,
+    pub(crate) resolved: bool,
+}
+
+impl JournalOrder {
+    /// Returns the Nautilus client order id.
+    #[must_use]
+    pub fn client_order_id(&self) -> &str {
+        &self.client_order_id
+    }
+
+    /// Returns the venue's order id, when this session had learned one.
+    #[must_use]
+    pub fn venue_order_id(&self) -> Option<&str> {
+        self.venue_order_id.as_deref()
+    }
+
+    /// Returns the Nautilus instrument id.
+    #[must_use]
+    pub fn instrument_id(&self) -> &str {
+        &self.instrument_id
+    }
+
+    /// Returns the venue's status, verbatim.
+    #[must_use]
+    pub fn status(&self) -> &str {
+        &self.status
+    }
+
+    /// Returns the quantity the applied fills add up to.
+    #[must_use]
+    pub fn filled(&self) -> &str {
+        &self.filled
+    }
+
+    /// Returns whether the venue had acknowledged the order.
+    #[must_use]
+    pub const fn accepted(&self) -> bool {
+        self.accepted
+    }
+
+    /// Returns whether the order ended in a state this adapter confirmed.
+    #[must_use]
+    pub const fn resolved(&self) -> bool {
+        self.resolved
+    }
+}
+
+/// One write this client had left unsettled, in the form a restart reads back (plan §R3.2).
+///
+/// An unknown submission and an unconfirmed cancel both block new risk, and both are facts about
+/// the *run* rather than about the account: no read of the venue can tell this client that it once
+/// sent a request whose answer it never saw. A restart that dropped them would start with an empty
+/// map and a clear conscience, which is exactly the "清空 map 获得 Ready" the plan forbids.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JournalUnsettled {
+    /// The Nautilus client order id the write was made under.
+    pub client_order_id: String,
+    /// The venue's order id, when this session learned one before the outcome was lost.
+    pub venue_order_id: Option<String>,
+    /// Which write this is.
+    pub kind: UncertainKind,
+    /// The reference a probe must use to ask the venue about it.
+    pub lookup: String,
+    /// Why the outcome is unknown, as this client saw it.
+    pub reason: String,
+    /// When the outcome became unknown, in nanoseconds since the Unix epoch.
+    pub first_seen_ns: u64,
+    /// How many probes had been answered when this was written.
+    pub attempts: u32,
+    /// Whether the probe window had already expired when this was written.
+    pub abandoned: bool,
+}
+
+impl JournalUnsettled {
+    /// Returns the client order id the write was made under.
+    #[must_use]
+    pub fn client_order_id(&self) -> &str {
+        &self.client_order_id
+    }
+
+    /// Returns the reference a probe asks the venue about it under.
+    #[must_use]
+    pub fn lookup(&self) -> &str {
+        &self.lookup
+    }
+
+    /// Returns which write this is.
+    #[must_use]
+    pub const fn kind(&self) -> UncertainKind {
+        self.kind
+    }
+
+    /// Returns when the outcome became unknown.
+    #[must_use]
+    pub fn first_seen(&self) -> UnixNanos {
+        UnixNanos::from(self.first_seen_ns)
+    }
+
+    /// Returns whether the probe window had already expired when this was written.
+    #[must_use]
+    pub const fn abandoned(&self) -> bool {
+        self.abandoned
+    }
+
+    /// Returns how many probes had been answered when this was written.
+    #[must_use]
+    pub const fn attempts(&self) -> u32 {
+        self.attempts
+    }
+
+    /// Writes one unsettled write into the form a restart reads back.
+    ///
+    /// The probe's own bookkeeping - when the next probe is due, why the last one settled nothing -
+    /// is deliberately not written. The instant a probe is due is a decision the run that probes
+    /// makes, and the window that bounds it is measured from `first_seen`, which **is** written: a
+    /// restart therefore resumes the window where it stood rather than starting a fresh one.
+    #[must_use]
+    fn from_outcome(outcome: &UncertainOutcome) -> Self {
+        Self {
+            client_order_id: outcome.client_order_id.to_string(),
+            venue_order_id: outcome.venue_order_id.as_ref().map(ToString::to_string),
+            kind: outcome.kind,
+            lookup: outcome.lookup.clone(),
+            reason: outcome.reason.clone(),
+            first_seen_ns: outcome.first_seen.as_u64(),
+            attempts: outcome.attempts,
+            abandoned: outcome.abandoned,
+        }
+    }
+}
+
+/// What one journal write covers, so a read can check the file against itself.
+///
+/// A journal is written whole and replaced atomically, so a file that parses is a file that was
+/// written in one piece. The counts are what makes that checkable rather than assumed: a
+/// truncated body, a hand-edited file or a merge of two runs shows up as a checkpoint that
+/// disagrees with the lists beside it, and the read is refused rather than restored (plan §R3.2).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JournalCheckpoint {
+    pub(crate) written_ns: u64,
+    pub(crate) fills: usize,
+    pub(crate) orders: usize,
+    pub(crate) unsettled: usize,
+}
+
+impl JournalCheckpoint {
+    /// Returns when the journal was written.
+    #[must_use]
+    pub fn written_at(&self) -> UnixNanos {
+        UnixNanos::from(self.written_ns)
+    }
+
+    /// Returns how many fills the write covered.
+    #[must_use]
+    pub const fn fills(&self) -> usize {
+        self.fills
+    }
+
+    /// Returns how many orders the write covered.
+    #[must_use]
+    pub const fn orders(&self) -> usize {
+        self.orders
+    }
+
+    /// Returns how many unsettled writes the write covered.
+    #[must_use]
+    pub const fn unsettled(&self) -> usize {
+        self.unsettled
+    }
+}
+
+/// Everything one journal write records, taken from the account as it stands.
+///
+/// It is what a checkpoint is written from, and it is deliberately not `Default`: a snapshot with
+/// no account, no ledger and no instant is not a snapshot of anything, and a journal built from
+/// one would restore an empty ledger over a real one.
+#[derive(Debug)]
+pub struct JournalSnapshot<'a> {
+    /// The account the journal belongs to.
+    pub account_id: AccountId,
+    /// The newest applied fill's instant, when one has been applied.
+    pub watermark: Option<UnixNanos>,
+    /// The instant the write is taken at.
+    pub written_at: UnixNanos,
+    /// The dedup ledger as it stands.
+    pub ledger: &'a OndoFillLedger,
+    /// The order associations and applied state, as they stand.
+    pub orders: Vec<JournalOrder>,
+    /// The writes this run has left unsettled, as they stand.
+    pub unsettled: Vec<JournalUnsettled>,
+}
+
+/// How many journal writes this process has made.
+///
+/// It is what makes a temporary file's name unique: two writers - a concluded pass and a submission
+/// that has just decided its outcome - write their own temporary file and publish it by renaming it
+/// onto the journal's own name, so neither can interleave inside the other's body. What a reader
+/// sees is one of the two complete snapshots rather than a mixture of them, and the later writer
+/// wins.
+static JOURNAL_WRITES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// The one member every version of the journal carries, read on its own to refuse a version this
+/// adapter does not read by its version rather than by a member it does not have.
+#[derive(Deserialize)]
+struct SchemaProbe {
+    schema_version: u32,
+}
+
+/// What a restore put back, so the caller can say what it read (plan §R3.2).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct JournalRestore {
+    /// How many fills the dedup ledger took.
+    pub fills: usize,
+    /// The order associations to rebuild the order index from.
+    pub orders: Vec<JournalOrder>,
+    /// The unsettled writes to re-register with the reconciliation machine.
+    pub unsettled: Vec<JournalUnsettled>,
+}
+
+impl JournalRestore {
+    /// Returns whether the journal held anything at all.
+    ///
+    /// A first run reads an absent file as an empty journal: nothing was restored, and that is a
+    /// statement about the file rather than about the account.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.fills == 0 && self.orders.is_empty() && self.unsettled.is_empty()
+    }
+}
+
+/// The dedup ledger, the order associations and the unsettled writes, in a form that survives a
+/// restart (plan §6.4, §R3.2).
 ///
 /// The ledger is the `(account_id, fill.id)` set a fill is applied once against, and the plan
 /// forbids an arbitrary short TTL in its place: a restart that forgot it would count a historical
-/// fill a second time. The watermark is the newest applied fill's instant, kept so a restart can
-/// say how far the ledger reaches.
+/// fill a second time. What else has to survive is everything a read of the venue cannot
+/// re-derive: which order a venue order id belongs to, what the applied fills on it add up to, and
+/// which writes this client sent whose answers it never saw.
 ///
 /// A journal is one account's. Restoring it into another account is refused rather than merged -
 /// silently adopting another account's ids would suppress that account's first fills.
+///
+/// # It is written whole, and it trails the events it records
+///
+/// The file is replaced atomically, so a reader sees one complete journal or the previous one.
+/// What the journal deliberately does **not** try to be is a transcript of every event: it is
+/// written at checkpoints - the end of a reconciliation pass - while fills are reported the moment
+/// they are applied. A crash between the two therefore leaves a fill the engine has seen and a
+/// journal that does not hold it, and that ordering is the safe one: the recovery re-reads the
+/// fill from the venue's history and reports it again under the **same** trade id
+/// (`FillReport.trade_id` is the venue's fill id), which is what makes the replay one fill rather
+/// than two. The opposite order would have the journal claim a fill the engine never saw, and
+/// nothing downstream could tell that from a fill it had already applied.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LedgerJournal {
     schema_version: u32,
@@ -1431,33 +2160,54 @@ pub struct LedgerJournal {
     watermark_ns: Option<u64>,
     #[serde(default)]
     fills: Vec<String>,
+    #[serde(default)]
+    orders: Vec<JournalOrder>,
+    #[serde(default)]
+    unsettled: Vec<JournalUnsettled>,
+    checkpoint: JournalCheckpoint,
 }
 
 impl LedgerJournal {
     /// The journal schema this adapter writes and the only one it reads.
-    pub const SCHEMA_VERSION: u32 = 1;
+    ///
+    /// Version 2 added the order associations, the unsettled writes and the checkpoint to the fill
+    /// ledger version 1 held. A version 1 file is **refused**, not read with defaults: the fields
+    /// it does not carry are exactly the ones a restart needs, and a restore that silently
+    /// supplied them would claim an order index and an unsettled set it never had.
+    pub const SCHEMA_VERSION: u32 = 2;
 
-    /// Snapshots `ledger`'s entries for `account_id`.
+    /// Builds the journal one write records.
     #[must_use]
-    pub fn from_ledger(
-        ledger: &OndoFillLedger,
-        account_id: AccountId,
-        watermark: Option<UnixNanos>,
-    ) -> Self {
-        let mut fills: Vec<String> = ledger
+    pub fn from_snapshot(snapshot: JournalSnapshot<'_>) -> Self {
+        let mut fills: Vec<String> = snapshot
+            .ledger
             .entries()
             .into_iter()
-            .filter(|(entry_account_id, _fill_id)| *entry_account_id == account_id)
+            .filter(|(entry_account_id, _fill_id)| *entry_account_id == snapshot.account_id)
             .map(|(_account_id, fill_id)| fill_id)
             .collect();
 
         fills.sort();
 
+        let mut orders = snapshot.orders;
+        orders.sort_by(|left, right| left.client_order_id.cmp(&right.client_order_id));
+
+        let mut unsettled = snapshot.unsettled;
+        unsettled.sort_by(|left, right| left.client_order_id.cmp(&right.client_order_id));
+
         Self {
             schema_version: Self::SCHEMA_VERSION,
-            account_id: account_id.to_string(),
-            watermark_ns: watermark.map(|value| value.as_u64()),
+            account_id: snapshot.account_id.to_string(),
+            watermark_ns: snapshot.watermark.map(|value| value.as_u64()),
+            checkpoint: JournalCheckpoint {
+                written_ns: snapshot.written_at.as_u64(),
+                fills: fills.len(),
+                orders: orders.len(),
+                unsettled: unsettled.len(),
+            },
             fills,
+            orders,
+            unsettled,
         }
     }
 
@@ -1471,6 +2221,30 @@ impl LedgerJournal {
     #[must_use]
     pub fn watermark(&self) -> Option<UnixNanos> {
         self.watermark_ns.map(UnixNanos::from)
+    }
+
+    /// Returns the fill ids the journal holds, in id order.
+    #[must_use]
+    pub fn fills(&self) -> &[String] {
+        &self.fills
+    }
+
+    /// Returns the order associations the journal holds, in client order id order.
+    #[must_use]
+    pub fn orders(&self) -> &[JournalOrder] {
+        &self.orders
+    }
+
+    /// Returns the unsettled writes the journal holds, in client order id order.
+    #[must_use]
+    pub fn unsettled(&self) -> &[JournalUnsettled] {
+        &self.unsettled
+    }
+
+    /// Returns the checkpoint this journal was written with.
+    #[must_use]
+    pub const fn checkpoint(&self) -> &JournalCheckpoint {
+        &self.checkpoint
     }
 
     /// Returns how many fills the journal holds.
@@ -1503,31 +2277,45 @@ impl LedgerJournal {
     /// `schema_version` this adapter does not know, which is refused rather than read as if it were
     /// version 1.
     pub fn from_json(text: &str) -> anyhow::Result<Self> {
-        let journal: Self = serde_json::from_str(text)
+        // The version is read first, on its own, so a file this adapter does not read is refused
+        // **by its version** rather than by whichever member this version added and that file
+        // happens not to carry. The two are the same refusal, and only one of them tells an
+        // operator what to do about it.
+        let probe: SchemaProbe = serde_json::from_str(text)
             .map_err(|error| anyhow::anyhow!("the ledger journal could not be read: {error}"))?;
 
-        if journal.schema_version != Self::SCHEMA_VERSION {
+        if probe.schema_version != Self::SCHEMA_VERSION {
             anyhow::bail!(
                 "the ledger journal is schema version {}, and this adapter reads version {}",
-                journal.schema_version,
+                probe.schema_version,
                 Self::SCHEMA_VERSION,
             );
         }
 
-        Ok(journal)
+        serde_json::from_str(text)
+            .map_err(|error| anyhow::anyhow!("the ledger journal could not be read: {error}"))
     }
 
-    /// Restores this journal into `ledger`.
+    /// Checks this journal against itself, and restores it into `ledger`.
+    ///
+    /// The two refusals are deliberately one call: a journal that disagrees with its own
+    /// checkpoint, and a journal that belongs to another account, are both journals nothing may be
+    /// restored from, and a caller that could check the first without the second would be a caller
+    /// that can forget to.
     ///
     /// # Errors
     ///
-    /// Returns an error when the journal belongs to another account. Nothing is restored in that
-    /// case: a partially merged ledger is worse than an empty one.
+    /// Returns an error when the checkpoint does not describe the lists beside it, or when the
+    /// journal belongs to another account. **Nothing is restored in either case**: a partially
+    /// merged ledger is worse than an empty one, and the caller is expected to treat a refused
+    /// restore as a run that must not accept new risk ([`JournalStatus::Failed`]).
     pub fn restore(
         &self,
         ledger: &mut OndoFillLedger,
         account_id: AccountId,
-    ) -> anyhow::Result<usize> {
+    ) -> anyhow::Result<JournalRestore> {
+        self.verify()?;
+
         if self.account_id != account_id.to_string() {
             anyhow::bail!(
                 "the ledger journal belongs to account {} and this client reports for {account_id}",
@@ -1535,11 +2323,280 @@ impl LedgerJournal {
             );
         }
 
-        Ok(ledger.restore(
+        let fills = ledger.restore(
             self.fills
                 .iter()
                 .map(|fill_id| (account_id, fill_id.clone())),
-        ))
+        );
+
+        Ok(JournalRestore {
+            fills,
+            orders: self.orders.clone(),
+            unsettled: self.unsettled.clone(),
+        })
+    }
+
+    /// Checks this journal's checkpoint against the lists it was written with.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error naming the list whose count disagrees with the checkpoint.
+    pub fn verify(&self) -> anyhow::Result<()> {
+        let checks = [
+            ("fills", self.checkpoint.fills, self.fills.len()),
+            ("orders", self.checkpoint.orders, self.orders.len()),
+            ("unsettled", self.checkpoint.unsettled, self.unsettled.len()),
+        ];
+
+        for (name, recorded, actual) in checks {
+            if recorded != actual {
+                anyhow::bail!(
+                    "the ledger journal's checkpoint records {recorded} {name} and the file holds \
+                     {actual}; the write did not complete and nothing is restored from it"
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Writes this journal to `path`, replacing whatever was there in one step.
+    ///
+    /// The body is written to a sibling temporary file, flushed to the disk, and then renamed onto
+    /// the journal's own name. A rename replaces a file as one operation, so a reader - the next
+    /// process, or this one after a crash - sees either the previous journal or this one and never
+    /// a half-written body; the flush is what makes that true across a power loss rather than only
+    /// across a process death. The parent directory is created when it is missing, because a
+    /// configured journal path is an explicit request to keep the file there.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the directory cannot be created, the temporary file cannot be
+    /// written or flushed, or the rename fails. A failed write removes its own temporary file and
+    /// leaves the previous journal in place; a process that dies mid-write leaves a `.tmp-*` beside
+    /// the journal, which nothing reads and the next write does not reuse.
+    pub fn store_atomic(&self, path: &std::path::Path) -> anyhow::Result<()> {
+        use std::io::Write;
+
+        let text = self.to_json()?;
+
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            std::fs::create_dir_all(parent).map_err(|error| {
+                anyhow::anyhow!(
+                    "the journal directory {} could not be created: {error}",
+                    parent.display(),
+                )
+            })?;
+        }
+
+        let mut temporary = path.as_os_str().to_os_string();
+        temporary.push(format!(
+            ".tmp-{}",
+            JOURNAL_WRITES.fetch_add(1, std::sync::atomic::Ordering::SeqCst),
+        ));
+        let temporary = std::path::PathBuf::from(temporary);
+
+        let write = || -> std::io::Result<()> {
+            let mut file = std::fs::File::create(&temporary)?;
+            file.write_all(text.as_bytes())?;
+            file.sync_all()
+        };
+
+        if let Err(error) = write() {
+            let _ = std::fs::remove_file(&temporary);
+
+            anyhow::bail!(
+                "the journal could not be written to {}: {error}",
+                temporary.display(),
+            );
+        }
+
+        std::fs::rename(&temporary, path).map_err(|error| {
+            let _ = std::fs::remove_file(&temporary);
+
+            anyhow::anyhow!(
+                "the journal could not be moved onto {}: {error}",
+                path.display(),
+            )
+        })
+    }
+
+    /// Reads the journal at `path` for `account_id`.
+    ///
+    /// An absent file is an empty journal **for this account** rather than an error: the first run
+    /// of a configured journal has nothing to restore, and that is a statement about the file, not
+    /// a failure to read one. The account is a parameter for exactly this case - an empty journal
+    /// that named no account would be refused by [`Self::restore`], and a first run would then be
+    /// a run that cannot start.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the file exists and cannot be read, does not parse, is a schema this
+    /// adapter does not read, or disagrees with its own checkpoint.
+    pub fn load(path: &std::path::Path, account_id: AccountId) -> anyhow::Result<Self> {
+        let text = match std::fs::read_to_string(path) {
+            Ok(text) => text,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(Self::from_snapshot(JournalSnapshot {
+                    account_id,
+                    watermark: None,
+                    written_at: UnixNanos::default(),
+                    ledger: &OndoFillLedger::new(),
+                    orders: Vec::new(),
+                    unsettled: Vec::new(),
+                }));
+            }
+            Err(error) => {
+                anyhow::bail!("the journal {} could not be read: {error}", path.display());
+            }
+        };
+
+        let journal = Self::from_json(&text)?;
+        journal.verify()?;
+
+        Ok(journal)
+    }
+}
+
+/// What this run's durable journal did (plan §R3.2).
+///
+/// Four answers, and they are not degrees of one another. A run with no journal path has said, in
+/// its configuration, that its ledger lives for one process; a run whose journal was restored has
+/// its own memory back; a run whose journal could not be read is a run **missing** a memory it
+/// declared it would have - which is the one that must not accept new risk, because nothing about
+/// the account can tell it which fills it already counted; and a run whose journal stopped
+/// accepting writes holds that memory **up to an instant**, which is stated and refuses nothing.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum JournalStatus {
+    /// No journal path is configured.
+    ///
+    /// This is a supported mode - the offline phase runs in it - and it is **stated** rather than
+    /// passed over: the ledger, the order index and the unsettled writes are this process's alone,
+    /// and a restart begins with an empty one. A caller that needs durability configures a path.
+    NotConfigured {
+        /// Why there is no journal.
+        reason: String,
+    },
+    /// A journal was read and restored into this run.
+    Restored {
+        /// The path it was restored from.
+        path: String,
+        /// How many fills the dedup ledger took.
+        fills: usize,
+        /// How many order associations were put back.
+        orders: usize,
+        /// How many unsettled writes were re-registered.
+        unsettled: usize,
+        /// The watermark the journal was written with.
+        watermark: Option<UnixNanos>,
+    },
+    /// A journal was restored, and a checkpoint written since has failed.
+    ///
+    /// This is **not** [`Self::Failed`] and it refuses nothing. What it says is narrower and, to an
+    /// operator, more actionable: the memory this run restored is intact and complete **to the
+    /// instant named here**, and nothing after that instant has reached the disk. A run in this
+    /// state has lapsed back to the durability of [`Self::NotConfigured`] - with the one difference
+    /// that it declared durability and no longer has it, which is the thing that must never pass
+    /// unstated.
+    ///
+    /// A crash from here replays: fills this run has already reported are read back from the
+    /// venue's history and re-emitted under their own trade ids, which the engine dedupes. That is
+    /// a recoverable outcome rather than a reason to stop trading, so this state blocks nothing -
+    /// it is stated, counted and logged.
+    Degraded {
+        /// The path that stopped accepting writes.
+        path: String,
+        /// How many checkpoint writes have failed since this run started.
+        failures: u64,
+        /// The instant of the last write that succeeded, when one ever did.
+        last_written_at: Option<UnixNanos>,
+        /// The newest applied fill that write covered, when it covered one.
+        watermark: Option<UnixNanos>,
+    },
+    /// A journal path is configured and the journal could not be restored.
+    Failed {
+        /// The path that could not be restored.
+        path: String,
+        /// Why.
+        reason: String,
+    },
+}
+
+impl JournalStatus {
+    /// Returns the state's name, for a log line or a report.
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::NotConfigured { .. } => "not_configured",
+            Self::Restored { .. } => "restored",
+            Self::Degraded { .. } => "degraded",
+            Self::Failed { .. } => "failed",
+        }
+    }
+
+    /// Returns whether this status permits new risk.
+    ///
+    /// Only [`Self::Failed`] does not. [`Self::Degraded`] is deliberately among the ones that do: a
+    /// journal that stopped accepting writes loses durability, not memory, and a crash from there
+    /// replays under trade ids the engine dedupes - the same outcome as the supported
+    /// [`Self::NotConfigured`] mode, which no configuration refuses.
+    #[must_use]
+    pub const fn permits_new_orders(&self) -> bool {
+        !matches!(self, Self::Failed { .. })
+    }
+
+    /// Returns a human-readable statement of the status.
+    #[must_use]
+    pub fn reason(&self) -> String {
+        match self {
+            Self::NotConfigured { reason } => format!(
+                "no journal is configured, so the dedup ledger lives in memory for this process \
+                 only: {reason}"
+            ),
+            Self::Restored {
+                path,
+                fills,
+                orders,
+                unsettled,
+                ..
+            } => format!(
+                "the journal at {path} was restored: {fills} fill(s), {orders} order(s), \
+                 {unsettled} unsettled write(s)"
+            ),
+            Self::Degraded {
+                path,
+                failures,
+                last_written_at,
+                watermark,
+            } => {
+                let last = match last_written_at {
+                    Some(at) => {
+                        format!(
+                            "the last write that reached the disk was at {} ns",
+                            at.as_u64()
+                        )
+                    }
+                    None => "no checkpoint from this run has reached the disk".to_string(),
+                };
+                let covered = match watermark {
+                    Some(watermark) => format!(
+                        ", and it covered applied fills up to {} ns",
+                        watermark.as_u64(),
+                    ),
+                    None => String::new(),
+                };
+
+                format!(
+                    "the journal at {path} has stopped accepting writes: {failures} checkpoint \
+                     write(s) have failed, {last}{covered}"
+                )
+            }
+            Self::Failed { path, reason } => {
+                format!("the journal at {path} could not be restored: {reason}")
+            }
+        }
     }
 }
 
@@ -1587,6 +2644,11 @@ pub struct ReconciliationMachine {
     last_reading: Option<AccountReading>,
     last_judgment: Option<AccountJudgment>,
     last_balance: Option<MappedBalance>,
+    /// Whether the last balance this machine judged is one it may report as the account's.
+    balance_verified: bool,
+    liquidation: LiquidationState,
+    funding: FundingLedger,
+    journal: JournalStatus,
 }
 
 impl ReconciliationMachine {
@@ -1614,6 +2676,12 @@ impl ReconciliationMachine {
             last_reading: None,
             last_judgment: None,
             last_balance: None,
+            balance_verified: false,
+            liquidation: LiquidationState::unread(),
+            funding: FundingLedger::new(),
+            journal: JournalStatus::NotConfigured {
+                reason: "no journal path was configured for this machine".to_string(),
+            },
         }
     }
 
@@ -1736,6 +2804,15 @@ impl ReconciliationMachine {
             return Some(NewRiskRefusal::AccountIsReadOnly);
         }
 
+        // The journal comes before every condition about the account, because it is not one: it is
+        // this client's own memory of its own traffic. A run that cannot read it does not know
+        // which fills it already applied, and no reading of the venue can tell it.
+        if let JournalStatus::Failed { reason, .. } = &self.journal {
+            return Some(NewRiskRefusal::JournalUnavailable {
+                reason: reason.clone(),
+            });
+        }
+
         if !self.unknown.is_empty() {
             return Some(NewRiskRefusal::UnknownSubmissions {
                 client_order_ids: self.unknown.keys().copied().collect(),
@@ -1750,6 +2827,14 @@ impl ReconciliationMachine {
 
         if self.state != ReconciliationState::Ready {
             return Some(NewRiskRefusal::AccountState(self.state));
+        }
+
+        // An account the venue is closing is not one to open a position on, and a liquidation
+        // condition nobody read is not a clear one. It is checked here rather than left to the
+        // judgment because it is a **known** state: it makes no reading uncertain, it makes the
+        // account untradable, and a named refusal is what says so.
+        if !self.liquidation.permits_new_orders() {
+            return Some(NewRiskRefusal::Liquidation(self.liquidation.clone()));
         }
 
         if let MetadataValidity::Stale { reason } = &self.metadata {
@@ -1794,9 +2879,64 @@ impl ReconciliationMachine {
     }
 
     /// Returns the last pass's balance mapping.
+    ///
+    /// This is the mapping, not licence to report it: a balance this adapter mapped is not
+    /// necessarily the whole account ([`Self::verified_balance`]).
     #[must_use]
     pub const fn last_balance(&self) -> Option<&MappedBalance> {
         self.last_balance.as_ref()
+    }
+
+    /// Returns the balance this machine has **verified**, which is the only one it reports.
+    ///
+    /// Verified is stricter than mapped, and the difference is what a Nautilus `AccountState`
+    /// claims. A mapped balance is one whose numbers this adapter could read and whose own
+    /// arithmetic held; a verified one is also one that is the **whole** account, which means no
+    /// member outside the documented set. A balance carrying a second collateral asset or a loan
+    /// maps to USDC numbers that are not the account's, and reporting them would put a partial
+    /// account into the cache under the account's name - so nothing is reported at all until a
+    /// balance that is the whole account is read (plan §6.4, §R3.2).
+    ///
+    /// # A negative equity is verified
+    ///
+    /// Being underwater is a state the venue stated, not a reading this adapter could not make: the
+    /// numbers are reported exactly as they were read, negative signs included, because clamping
+    /// them to zero would report a healthy account and reporting nothing would leave the cache
+    /// holding whatever it last believed.
+    #[must_use]
+    pub fn verified_balance(&self) -> Option<&MappedBalance> {
+        self.last_balance.as_ref().filter(|_| self.balance_verified)
+    }
+
+    /// Returns the account's liquidation condition, as the last pass read it.
+    #[must_use]
+    pub const fn liquidation(&self) -> &LiquidationState {
+        &self.liquidation
+    }
+
+    /// Returns the account's funding ledger.
+    #[must_use]
+    pub const fn funding(&self) -> &FundingLedger {
+        &self.funding
+    }
+
+    /// Returns what this run's journal did.
+    #[must_use]
+    pub const fn journal(&self) -> &JournalStatus {
+        &self.journal
+    }
+
+    /// Records what this run's journal did (plan §R3.2).
+    ///
+    /// A journal that could not be restored revokes every permit issued before it: a submission
+    /// admitted under a decision taken without the ledger is a submission admitted under a
+    /// decision this client can no longer make.
+    pub fn set_journal(&mut self, status: JournalStatus) {
+        if !status.permits_new_orders() {
+            self.invalidate_admissions();
+        }
+
+        self.journal = status;
     }
 
     /// Returns the position baseline the first pass adopted, per instrument.
@@ -1982,6 +3122,82 @@ impl ReconciliationMachine {
             .or_else(|| self.unconfirmed_cancels.get(client_order_id))
     }
 
+    /// Re-registers the unsettled writes a restored journal holds (plan §R3.2).
+    ///
+    /// A submission whose answer was lost and a cancel no answer settled are facts about **this
+    /// client's own traffic**, and no read of the venue can re-derive them: the order may not exist,
+    /// may exist unfilled, or may have been filled and closed, and nothing about the account says
+    /// which. So they are read back from the journal, and they block new risk from the moment they
+    /// are registered exactly as they did before the restart.
+    ///
+    /// The probe window is inherited rather than restarted: `first_seen` is the instant the outcome
+    /// became unknown, and it does not move because the process did. A write whose window had
+    /// already passed is registered as abandoned - recorded, blocking, and no longer probed - which
+    /// is what a restart of a run that had stopped probing should mean.
+    ///
+    /// A write the machine already holds is left as it is: the live record is this run's own and is
+    /// newer than the file.
+    ///
+    /// Returns how many writes were registered.
+    pub fn restore_unsettled(&mut self, unsettled: &[JournalUnsettled], now: UnixNanos) -> usize {
+        let mut restored = 0;
+
+        for entry in unsettled {
+            let client_order_id = ClientOrderId::from(entry.client_order_id.as_str());
+
+            if self.unknown.contains_key(&client_order_id)
+                || self.unconfirmed_cancels.contains_key(&client_order_id)
+            {
+                continue;
+            }
+
+            let outcome = UncertainOutcome {
+                client_order_id,
+                venue_order_id: entry.venue_order_id.as_deref().map(VenueOrderId::from),
+                kind: entry.kind,
+                lookup: entry.lookup.clone(),
+                reason: entry.reason.clone(),
+                first_seen: UnixNanos::from(entry.first_seen_ns),
+                last_probe: None,
+                next_probe: now,
+                attempts: entry.attempts,
+                last_probe_reason: None,
+                abandoned: entry.abandoned,
+            };
+
+            match entry.kind {
+                UncertainKind::Submission => self.unknown.insert(client_order_id, outcome),
+                UncertainKind::Cancel => self.unconfirmed_cancels.insert(client_order_id, outcome),
+            };
+
+            restored += 1;
+        }
+
+        if restored > 0 {
+            self.invalidate_admissions();
+        }
+
+        restored
+    }
+
+    /// Returns the unsettled writes as journal entries, in client order id order.
+    ///
+    /// Both maps are one list here, which is what a restart needs: the maps say which probe a
+    /// record answers and the journal says what the record is.
+    #[must_use]
+    pub fn unsettled_journal_entries(&self) -> Vec<JournalUnsettled> {
+        let mut entries: Vec<JournalUnsettled> = self
+            .unknown
+            .values()
+            .chain(self.unconfirmed_cancels.values())
+            .map(JournalUnsettled::from_outcome)
+            .collect();
+
+        entries.sort_by(|left, right| left.client_order_id.cmp(&right.client_order_id));
+
+        entries
+    }
+
     /// Returns the writes a probe is due for at `now`: unsettled submissions and unsettled cancels.
     ///
     /// An abandoned outcome is never due: plan §6.3 stops the probe once the window passes, and a
@@ -2129,6 +3345,7 @@ impl ReconciliationMachine {
 
         findings.extend(self.judge_positions(reading));
         findings.extend(self.judge_balance(reading));
+        findings.extend(self.judge_funding(reading));
 
         for submission in self.unknown.values() {
             findings.push(Finding::UnknownSubmission {
@@ -2433,14 +3650,23 @@ impl ReconciliationMachine {
     }
 
     /// Maps the balance one reading carried, judging it as it goes.
+    ///
+    /// It also records the two things about the balance that are not Nautilus shapes: the venue's
+    /// liquidation condition ([`LiquidationState`]), which refuses new risk rather than making the
+    /// account uncertain, and the balance's right to be reported at all
+    /// ([`ReconciliationMachine::verified_balance`]).
     fn judge_balance(&mut self, reading: &AccountReading) -> Vec<Finding> {
         self.last_balance = None;
+        self.balance_verified = false;
+        self.liquidation = LiquidationState::unread();
 
         let Some(balance) = reading.balance.as_ref() else {
             return vec![Finding::BalanceUnreadable {
                 reason: "the pass carried no balance".to_string(),
             }];
         };
+
+        self.liquidation = LiquidationState::from_member(balance.under_liquidation);
 
         let mut findings = Vec::new();
 
@@ -2450,6 +3676,11 @@ impl ReconciliationMachine {
                 value: value.clone(),
             });
         }
+
+        // A balance with a member outside the documented set is not the whole account, so the
+        // USDC numbers it does carry are not the account's balance: they are mapped, and
+        // deliberately not verified (see `verified_balance`).
+        let whole_account = balance.unmapped.is_empty();
 
         let (Some(total), Some(free)) = (balance.margin_balance, balance.available_margin) else {
             findings.push(Finding::BalanceUnreadable {
@@ -2483,7 +3714,59 @@ impl ReconciliationMachine {
             total,
             locked,
             free,
+            maintenance: balance.maintenance_margin_requirement,
         });
+        self.balance_verified = whole_account;
+
+        findings
+    }
+
+    /// Accounts the funding one reading carried, judging it as it goes (plan §R3.2).
+    ///
+    /// Two findings and no booking are possible here: this method never derives a payment. What it
+    /// does is record the payments the venue stated, compare the venue's cumulative total against
+    /// them over one window, and say so when the two disagree. A rate the public feed carries is
+    /// not consulted, because there is nothing it could prove about this account's cash.
+    fn judge_funding(&mut self, reading: &AccountReading) -> Vec<Finding> {
+        let stated = reading
+            .balance
+            .as_ref()
+            .and_then(|balance| balance.total_funding_payments);
+
+        self.funding.observe_cumulative(stated, reading.read_at);
+
+        let mut findings = Vec::new();
+
+        // Three answers, and only one of them books anything. A pass that could not read the
+        // history, and a pass whose balance carried no readable cumulative total to check it
+        // against, are both passes that cannot say what the account's funding is - and a stale
+        // total from an earlier read is exactly the number that must not be used to say it.
+        if let Some(error) = &reading.funding_error {
+            self.funding.note_read_error(error.clone());
+        } else if stated.is_none() {
+            self.funding.note_read_error(
+                "the venue's balance carried no readable `totalFundingPayments`".to_string(),
+            );
+        } else {
+            self.funding.clear_read_error();
+            self.funding.account_all(reading.funding.iter().cloned());
+        }
+
+        match self.funding.reconciliation() {
+            FundingReconciliation::Reconciled { .. } => {}
+            FundingReconciliation::Unreadable { reason } => {
+                findings.push(Finding::FundingUnreadable { reason });
+            }
+            FundingReconciliation::Unreconciled(gap) => {
+                findings.push(Finding::FundingUnreconciled {
+                    stated_change: gap.stated_change,
+                    accounted_change: gap.accounted_change,
+                    difference: gap.difference,
+                    since: gap.since,
+                    payments: gap.payments,
+                });
+            }
+        }
 
         findings
     }

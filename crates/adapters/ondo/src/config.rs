@@ -246,6 +246,29 @@ pub struct OndoExecutionClientConfig {
     /// transport's run loop is the caller.
     #[builder(default = ONDO_RECONCILE_INTERVAL_SECS)]
     pub reconcile_interval_secs: u64,
+    /// Path of the durable ledger journal (plan §R3.2).
+    ///
+    /// The journal is what lets a restart know which fills it has already applied, which order a
+    /// venue order id belongs to, and which writes it left unsettled. It is written whole to a
+    /// sibling temporary file and renamed onto this path, so a reader sees one complete journal or
+    /// the previous one, and the parent directory is created when it is missing.
+    ///
+    /// **A [`None`] path is a supported mode and not a quiet one.** Nothing is written, the
+    /// ledger, the order index and the unsettled writes live for this process only, and the run
+    /// says so where it can be read ([`crate::execution::OndoAccountRuntime::journal_status`]
+    /// answers [`crate::reconciliation::JournalStatus::NotConfigured`]) and in the log. What it
+    /// must never be is a run that believed it was durable — and a configured path that stops
+    /// accepting writes is the other way to become one, so that run does not report itself as
+    /// restored either: once a checkpoint has failed, `journal_status` answers
+    /// [`crate::reconciliation::JournalStatus::Degraded`], naming the instant of the last write
+    /// that did reach the disk
+    /// ([`crate::execution::OndoAccountRuntime::journal_write_failures`] is the count alone). A
+    /// degraded journal states the lapse and refuses no order: losing durability is not losing
+    /// memory, and a crash from there replays under trade ids the engine dedupes.
+    ///
+    /// The path is a plain filesystem path and carries no credential; it is the one configuration
+    /// member besides the endpoints that names something outside this process.
+    pub journal_path: Option<String>,
     /// Whether production order entry was requested. Refused, always (see the type documentation).
     #[builder(default)]
     pub allow_production_orders: bool,
@@ -269,6 +292,7 @@ nautilus_core::impl_pyo3_config_getters!(OndoExecutionClientConfig {
     http_timeout_secs: u64,
     dms_timeout_secs: u64,
     reconcile_interval_secs: u64,
+    journal_path: Option<String>,
     allow_production_orders: bool,
 });
 
@@ -285,6 +309,7 @@ impl std::fmt::Debug for OndoExecutionClientConfig {
             .field("http_timeout_secs", &self.http_timeout_secs)
             .field("dms_timeout_secs", &self.dms_timeout_secs)
             .field("reconcile_interval_secs", &self.reconcile_interval_secs)
+            .field("journal_path", &self.journal_path)
             .field("allow_production_orders", &self.allow_production_orders)
             .finish()
     }
@@ -456,6 +481,10 @@ mod tests {
         assert!(config.api_secret.is_none());
         assert_eq!(config.dms_timeout_secs, 30);
         assert_eq!(config.reconcile_interval_secs, 30);
+        assert!(
+            config.journal_path.is_none(),
+            "no journal is configured by default, and the run says so rather than writing one              somewhere it was not asked to",
+        );
         assert!(!config.allow_production_orders);
         assert_eq!(
             config.http_base_url(),
@@ -594,6 +623,18 @@ mod tests {
 
         assert_eq!(config.environment, OndoEnvironment::Sandbox);
         assert_eq!(config.dms_timeout_secs, 30);
+        assert!(config.journal_path.is_none());
+
+        let with_journal: OndoExecutionClientConfig = serde_json::from_str(
+            r#"{"account_id": "ONDO-SANDBOX-001", "journal_path": "reports/ondo-journal.json"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            with_journal.journal_path.as_deref(),
+            Some("reports/ondo-journal.json"),
+            "the durable journal's path is part of the configuration surface",
+        );
         assert!(
             serde_json::from_str::<OndoExecutionClientConfig>(r#"{"account_idz": "x"}"#).is_err(),
             "an unknown configuration field is rejected",

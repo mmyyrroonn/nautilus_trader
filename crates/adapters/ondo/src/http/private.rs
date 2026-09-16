@@ -120,6 +120,19 @@ pub const START_TIME_PARAM: &str = "startTime";
 /// this end is inclusive too. Both are milliseconds of UTC.
 pub const END_TIME_PARAM: &str = "endTime";
 
+/// `GET /v1/perps/funding_fees` - the account's funding payments.
+///
+/// **DOCUMENTED, NOT YET VERIFIED.** The frozen REST spec declares this path (`summary: "Get
+/// Funding Fee Payments"`, `result` an array of `FundingFeeTransfer` with a `PageInfo` beside it)
+/// and documents **every** member of a record as required, `amount` among them: *"the actual
+/// amount of USDC transferred. Positive indicates a fee you earned, negative a fee you paid."* No
+/// authenticated request has been made, so no host has answered it.
+///
+/// It is read because it is the only thing that proves a funding payment: the public funding
+/// **rate** is an estimate for a market and the balance's `totalFundingPayments` is a running
+/// total, and neither of those is a payment this account made (plan §R3.2).
+pub const FUNDING_FEES_PATH: &str = "/v1/perps/funding_fees";
+
 /// The response members a cursor is read from, in the order they are tried.
 ///
 /// `nextCursor` is the documented one: the frozen REST spec's `PageInfo` is
@@ -450,6 +463,20 @@ impl OndoPrivateResponse {
             .map(|item| OndoApiFill::from_raw(item))
             .collect()
     }
+
+    /// Returns `result` as a list of funding payments, each keeping its exact decimal strings.
+    ///
+    /// # Errors
+    ///
+    /// Returns the [`Self::items`] error, or the funding record's own schema error
+    /// ([`OndoApiFundingFee::from_raw`]) for an item that is not one of the documented
+    /// `FundingFeeTransfer` shapes.
+    pub fn funding_fees(&self) -> OndoHttpResult<Vec<OndoApiFundingFee>> {
+        self.items()?
+            .iter()
+            .map(|item| OndoApiFundingFee::from_raw(item))
+            .collect()
+    }
 }
 
 /// Reads the envelope every private answer carries, refusing the two shapes that decide themselves.
@@ -738,6 +765,103 @@ impl OndoApiFill {
     #[must_use]
     pub const fn is_adl(&self) -> Option<bool> {
         self.is_adl
+    }
+}
+
+/// One `FundingFeeTransfer` from `GET /v1/perps/funding_fees`.
+///
+/// The frozen schema makes every member required. Three of them are read as required here -
+/// `market`, `time` and `amount` - because they are what identifies a payment and what it was
+/// worth, and a record missing one is a payload this adapter does not understand rather than a
+/// zero-valued payment. `rate` and `positionSize` are kept as sent when they are there: they are
+/// evidence about a payment, and **nothing** in this adapter multiplies them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OndoApiFundingFee {
+    market: String,
+    time: String,
+    amount: String,
+    rate: Option<String>,
+    position_size: Option<String>,
+}
+
+/// The documented `FundingFeeTransfer` members, as the venue spells them.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawFundingFee {
+    market: String,
+    time: String,
+    amount: String,
+    #[serde(default)]
+    rate: Option<String>,
+    #[serde(default)]
+    position_size: Option<String>,
+}
+
+impl OndoApiFundingFee {
+    /// Reads one funding payment from its raw JSON text.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`OndoHttpError::Decode`] when the item is not a `FundingFeeTransfer`; a missing
+    /// `market`, `time` or `amount` names itself in the error.
+    pub fn from_raw(raw: &RawValue) -> OndoHttpResult<Self> {
+        let fee: RawFundingFee = serde_json::from_str(raw.get())
+            .map_err(|error| OndoHttpError::Decode(format!("not a FundingFeeTransfer: {error}")))?;
+
+        Ok(Self {
+            market: fee.market,
+            time: fee.time,
+            amount: fee.amount,
+            rate: fee.rate,
+            position_size: fee.position_size,
+        })
+    }
+
+    /// Reads one funding payment from its raw JSON text.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`OndoHttpError::Decode`] when the text is not a `FundingFeeTransfer`.
+    pub fn from_text(text: &str) -> OndoHttpResult<Self> {
+        let raw: Box<serde_json::value::RawValue> = serde_json::from_str(text)
+            .map_err(|error| OndoHttpError::Decode(format!("not a FundingFeeTransfer: {error}")))?;
+
+        Self::from_raw(&raw)
+    }
+
+    /// Returns the venue's market string the payment was made on.
+    #[must_use]
+    pub fn market(&self) -> &str {
+        &self.market
+    }
+
+    /// Returns the payment's `time`, as the venue's timestamp string.
+    ///
+    /// Kept as the wire string: parse it with
+    /// [`crate::common::parse::parse_timestamp`], which preserves nine fractional digits.
+    #[must_use]
+    pub fn time(&self) -> &str {
+        &self.time
+    }
+
+    /// Returns the signed amount transferred, as the venue's decimal string.
+    ///
+    /// Positive is a fee earned, negative a fee paid - the venue's own convention, kept verbatim.
+    #[must_use]
+    pub fn amount(&self) -> &str {
+        &self.amount
+    }
+
+    /// Returns the funding rate that led to this payment, when the venue sent one.
+    #[must_use]
+    pub fn rate(&self) -> Option<&str> {
+        self.rate.as_deref()
+    }
+
+    /// Returns the position size at the time of the payment, when the venue sent one.
+    #[must_use]
+    pub fn position_size(&self) -> Option<&str> {
+        self.position_size.as_deref()
     }
 }
 

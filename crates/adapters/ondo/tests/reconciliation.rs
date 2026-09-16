@@ -74,7 +74,8 @@ use nautilus_ondo::{
     },
     reconciliation::{
         AccountReading, Admission, BalanceReading, DeadMansSwitch, DeadMansSwitchMessage,
-        DeadMansSwitchState, Finding, LedgerJournal, MetadataValidity, NewRiskRefusal,
+        DeadMansSwitchState, Finding, FundingPayment, JournalOrder, JournalSnapshot, JournalStatus,
+        JournalUnsettled, LedgerJournal, LiquidationState, MetadataValidity, NewRiskRefusal,
         ONDO_DMS_CHANNEL, ONDO_SUBMISSION_PROBE_INTERVAL, ONDO_SUBMISSION_UNKNOWN_SECS,
         OrderReading, PositionDirection, PositionReading, ProbeDisposition, ProbeOutcome,
         ReconciliationBuffer, ReconciliationMachine, ReconciliationState, StopStep, UncertainKind,
@@ -172,6 +173,7 @@ fn position(direction: PositionDirection, net_quantity: &str, signed: &str) -> P
         direction,
         net_quantity: rust_decimal::Decimal::from_str_exact(net_quantity).expect("decimal"),
         signed: rust_decimal::Decimal::from_str_exact(signed).expect("decimal"),
+        average_entry_price: None,
     }
 }
 
@@ -183,6 +185,18 @@ fn balance(
     available: &str,
     withdrawable: &str,
 ) -> BalanceReading {
+    balance_with_maintenance(wallet, margin, used, available, withdrawable, "0.00")
+}
+
+/// The same balance with an explicit maintenance margin requirement.
+fn balance_with_maintenance(
+    wallet: &str,
+    margin: &str,
+    used: &str,
+    available: &str,
+    withdrawable: &str,
+    maintenance: &str,
+) -> BalanceReading {
     let decimal =
         |value: &str| Some(rust_decimal::Decimal::from_str_exact(value).expect("decimal"));
 
@@ -192,6 +206,9 @@ fn balance(
         used_margin: decimal(used),
         available_margin: decimal(available),
         withdrawable_margin: decimal(withdrawable),
+        maintenance_margin_requirement: decimal(maintenance),
+        under_liquidation: Some(false),
+        total_funding_payments: Some(rust_decimal::Decimal::ZERO),
         unmapped: Vec::new(),
         raw: String::new(),
     }
@@ -205,6 +222,9 @@ fn clean_reading() -> AccountReading {
         balance: Some(balance("5000.00", "4950.00", "0.00", "4950.00", "4950.00")),
         applied_net: std::collections::BTreeMap::new(),
         fills: Vec::new(),
+        funding: Vec::new(),
+        funding_error: None,
+        read_at: secs(0),
     }
 }
 
@@ -1133,11 +1153,13 @@ fn test_a_row_that_cannot_be_read_is_not_a_statement_about_the_rows_that_are_mis
             direction: PositionDirection::Long,
             net_quantity: rust_decimal::Decimal::ONE,
             signed: rust_decimal::Decimal::ONE,
+            average_entry_price: None,
         },
         PositionReading::new(
             NVDA_MARKET,
             "sideways",
             rust_decimal::Decimal::from_str_exact("4.00").expect("decimal"),
+            None,
         ),
     ];
 
@@ -1476,6 +1498,9 @@ fn test_a_balance_with_no_member_the_mapping_can_use_is_not_a_zero_balance() {
         used_margin: None,
         available_margin: None,
         withdrawable_margin: None,
+        maintenance_margin_requirement: None,
+        under_liquidation: None,
+        total_funding_payments: None,
         unmapped: Vec::new(),
         raw: r#"{"somethingElse":"1.00"}"#.to_string(),
     });
@@ -1503,6 +1528,7 @@ fn test_a_position_on_a_market_that_does_not_map_is_uncertain() {
         direction: PositionDirection::Long,
         net_quantity: rust_decimal::Decimal::ONE,
         signed: rust_decimal::Decimal::ONE,
+        average_entry_price: None,
     }];
 
     let judgment = machine.evaluate(&reading);
@@ -1527,7 +1553,14 @@ fn test_a_restored_ledger_still_dedupes_the_fills_it_holds() {
     assert!(ledger.record(account_id(), "fill-1"));
     assert!(ledger.record(account_id(), "fill-2"));
 
-    let journal = LedgerJournal::from_ledger(&ledger, account_id(), Some(secs(120)));
+    let journal = LedgerJournal::from_snapshot(JournalSnapshot {
+        account_id: account_id(),
+        watermark: Some(secs(120)),
+        written_at: secs(120),
+        ledger: &ledger,
+        orders: Vec::new(),
+        unsettled: Vec::new(),
+    });
     let text = journal.to_json().expect("the journal serializes");
 
     // A restart: the process is new, the ledger is empty, and the journal is what survives.
@@ -1537,7 +1570,8 @@ fn test_a_restored_ledger_still_dedupes_the_fills_it_holds() {
     assert_eq!(
         restored
             .restore(&mut fresh, account_id())
-            .expect("the journal is this account's"),
+            .expect("the journal is this account's")
+            .fills,
         2
     );
     assert_eq!(fresh.len(), 2);
@@ -1555,7 +1589,14 @@ fn test_a_journal_from_another_account_is_refused_rather_than_merged() {
 
     ledger.record(account_id(), "fill-1");
 
-    let journal = LedgerJournal::from_ledger(&ledger, account_id(), None);
+    let journal = LedgerJournal::from_snapshot(JournalSnapshot {
+        account_id: account_id(),
+        watermark: None,
+        written_at: secs(1),
+        ledger: &ledger,
+        orders: Vec::new(),
+        unsettled: Vec::new(),
+    });
     let mut fresh = OndoFillLedger::new();
 
     let error = journal
@@ -2209,14 +2250,20 @@ fn two_clean_passes() -> Vec<Reply> {
     script
 }
 
-/// The four reads one reconciliation pass makes, in the order it makes them.
+/// The five reads one reconciliation pass makes, in the order it makes them.
 fn clean_pass_script() -> Vec<Reply> {
     vec![
         Reply::ok(orders_page(&[], None)),
         Reply::ok(fills_page(&[], None)),
         Reply::ok(envelope(&format!("[{}]", position_json("long", "1.5489")))),
         Reply::ok(envelope(&balance_json())),
+        Reply::ok(page_of_funding(&[])),
     ]
+}
+
+/// A page of funding payments in the `GenericResponse` envelope the walk reads.
+fn page_of_funding(payments: &[String]) -> String {
+    format!(r#"{{"success":true,"result":[{}]}}"#, payments.join(","))
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -2414,7 +2461,7 @@ async fn collect_until(
 }
 
 /// The reads the two reconciliation passes make before a test's own replies: four per pass.
-const RECOVERY_READS: usize = 8;
+const RECOVERY_READS: usize = 10;
 
 /// Waits until the mock server has received `count` requests.
 async fn wait_for_requests(mock: &MockServer, count: usize) {
@@ -2446,6 +2493,7 @@ fn empty_pass_script() -> Vec<Reply> {
         Reply::ok(fills_page(&[], None)),
         Reply::ok(envelope("[]")),
         Reply::ok(envelope(&balance_json())),
+        Reply::ok(page_of_funding(&[])),
     ]
 }
 
@@ -2465,7 +2513,7 @@ fn admitted_script(replies: Vec<Reply>) -> Vec<Reply> {
 /// A harness whose account is recovered: current metadata, two agreeing passes, nothing unknown.
 ///
 /// New risk is refused from construction (plan §6.4), so a test that submits has to establish this
-/// first - and the mock has to be started on [`admitted_script`], which answers the eight reads the
+/// first - and the mock has to be started on [`admitted_script`], which answers the ten reads the
 /// two passes make before the test's own replies.
 async fn recovered_harness(mock: &MockServer) -> Harness {
     let mut harness = build_harness(mock, sandbox_config());
@@ -2545,14 +2593,15 @@ async fn test_a_recovery_reads_the_account_and_needs_two_agreeing_passes_to_be_r
 
     assert!(harness.client.can_submit_new_orders());
 
-    // Four reads per pass, in the documented order: orders, fills, positions, balance.
+    // Five reads per pass, in the documented order: orders, fills, positions, balance, funding.
     let targets = mock.targets();
 
-    assert_eq!(targets.len(), 8, "two passes of four reads: {targets:?}");
+    assert_eq!(targets.len(), 10, "two passes of five reads: {targets:?}");
     assert!(targets[0].starts_with("/v1/perps/orders"));
     assert!(targets[1].starts_with("/v1/perps/fills"));
     assert!(targets[2].starts_with("/v1/perps/positions"));
     assert!(targets[3].starts_with("/v1/perps/balance"));
+    assert!(targets[4].starts_with("/v1/perps/funding_fees"));
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -3053,7 +3102,7 @@ async fn test_a_settled_submission_restores_the_account_without_a_permanent_lock
         .submit_order(submit_command(&second))
         .expect("the command is handled");
 
-    wait_for_requests(&mock, 11).await;
+    wait_for_requests(&mock, RECOVERY_READS + 3).await;
 
     assert_eq!(
         mock.with_method("POST").len(),
@@ -3105,7 +3154,7 @@ async fn test_a_cancel_that_carried_no_order_stays_unconfirmed_when_its_query_fa
         .expect("the command is handled");
 
     // The cancel and its confirming query.
-    wait_for_requests(&mock, 10).await;
+    wait_for_requests(&mock, RECOVERY_READS + 2).await;
 
     assert!(
         !harness.client.unconfirmed_cancels().is_empty(),
@@ -3132,6 +3181,8 @@ async fn test_a_pass_that_cannot_walk_the_fills_page_leaves_the_account_uncertai
         )),
         Reply::ok(envelope(&format!("[{}]", position_json("long", "1.5489")))),
         Reply::ok(envelope(&balance_json())),
+        // The funding read, which follows the balance in every pass.
+        Reply::ok(page_of_funding(&[])),
     ])
     .await;
     let mut harness = build_harness(&mock, sandbox_config());
@@ -3370,6 +3421,8 @@ async fn test_the_fill_history_is_walked_across_pages_and_every_fill_is_applied_
         )),
         Reply::ok(envelope(&format!("[{}]", position_json("long", "0.50")))),
         Reply::ok(envelope(&balance_json())),
+        // The funding read, which follows the balance in every pass.
+        Reply::ok(page_of_funding(&[])),
     ])
     .await;
     let harness = recovered_harness(&mock).await;
@@ -3444,6 +3497,7 @@ async fn test_a_fill_that_lands_while_a_cancel_is_in_flight_is_counted_and_the_p
         )),
         Reply::ok(envelope(&format!("[{}]", position_json("long", "0.20")))),
         Reply::ok(envelope(&balance_json())),
+        Reply::ok(page_of_funding(&[])),
         // The second, converging pass.
         Reply::ok(orders_page(
             &[api_order(
@@ -3457,6 +3511,8 @@ async fn test_a_fill_that_lands_while_a_cancel_is_in_flight_is_counted_and_the_p
         Reply::ok(fills_page(&[], None)),
         Reply::ok(envelope(&format!("[{}]", position_json("long", "0.20")))),
         Reply::ok(envelope(&balance_json())),
+        // The funding read, which follows the balance in every pass.
+        Reply::ok(page_of_funding(&[])),
     ])
     .await;
     let harness = recovered_harness(&mock).await;
@@ -3526,6 +3582,8 @@ async fn test_a_report_that_arrived_while_the_account_was_read_is_replayed_once(
         Reply::ok(fills_page(&fills, None)),
         Reply::ok(envelope(&format!("[{}]", position_json("long", "1.5489")))),
         Reply::ok(envelope(&balance_json())),
+        // The funding read, which follows the balance in every pass.
+        Reply::ok(page_of_funding(&[])),
     ])
     .await;
     let mut harness = recovered_harness(&mock).await;
@@ -3616,6 +3674,8 @@ async fn test_the_reports_of_one_order_are_replayed_in_arrival_order_and_the_las
         )),
         Reply::ok(envelope(&format!("[{}]", position_json("long", "0.50")))),
         Reply::ok(envelope(&balance_json())),
+        // The funding read, which follows the balance in every pass.
+        Reply::ok(page_of_funding(&[])),
     ])
     .await;
     let harness = recovered_harness(&mock).await;
@@ -3699,6 +3759,8 @@ async fn test_a_duplicated_frame_is_applied_once_and_leaves_the_state_where_it_w
         )),
         Reply::ok(envelope(&format!("[{}]", position_json("long", "0.20")))),
         Reply::ok(envelope(&balance_json())),
+        // The funding read, which follows the balance in every pass.
+        Reply::ok(page_of_funding(&[])),
     ])
     .await;
     let mut harness = recovered_harness(&mock).await;
@@ -3779,6 +3841,8 @@ async fn test_interleaved_fill_and_order_reports_are_each_applied_exactly_once()
         Reply::ok(fills_page(&[], None)),
         Reply::ok(envelope(&format!("[{}]", position_json("long", "0.50")))),
         Reply::ok(envelope(&balance_json())),
+        // The funding read, which follows the balance in every pass.
+        Reply::ok(page_of_funding(&[])),
     ])
     .await;
     let mut harness = recovered_harness(&mock).await;
@@ -3870,6 +3934,8 @@ async fn test_a_report_from_a_superseded_recovery_is_refused_and_named() {
         )),
         Reply::ok(envelope(&format!("[{}]", position_json("long", "0.50")))),
         Reply::ok(envelope(&balance_json())),
+        // The funding read, which follows the balance in every pass.
+        Reply::ok(page_of_funding(&[])),
     ])
     .await;
     let harness = recovered_harness(&mock).await;
@@ -4015,6 +4081,8 @@ async fn test_a_neutral_position_the_venue_reports_flat_is_read_as_flat_and_zero
         Reply::ok(fills_page(&[], None)),
         Reply::ok(envelope(&format!("[{}]", position_json("neutral", "0.00")))),
         Reply::ok(envelope(&balance_json())),
+        // The funding read, which follows the balance in every pass.
+        Reply::ok(page_of_funding(&[])),
     ])
     .await;
     let mut harness = build_harness(&mock, sandbox_config());
@@ -4064,6 +4132,8 @@ async fn test_an_order_this_run_did_not_place_is_reported_and_the_account_is_nev
         Reply::ok(fills_page(&[], None)),
         Reply::ok(envelope(&format!("[{}]", position_json("neutral", "0.00")))),
         Reply::ok(envelope(&balance_json())),
+        // The funding read, which follows the balance in every pass.
+        Reply::ok(page_of_funding(&[])),
     ])
     .await;
     let mut harness = build_harness(&mock, sandbox_config());
@@ -4113,6 +4183,8 @@ async fn test_a_cancel_whose_answer_was_lost_is_settled_by_a_query_not_by_the_ca
         Reply::ok(fills_page(&[], None)),
         Reply::ok(envelope(&format!("[{}]", position_json("neutral", "0.00")))),
         Reply::ok(envelope(&balance_json())),
+        // The funding read, which follows the balance in every pass.
+        Reply::ok(page_of_funding(&[])),
     ])
     .await;
     let harness = recovered_harness(&mock).await;
@@ -4311,4 +4383,829 @@ async fn test_the_cancel_path_still_works_while_the_account_is_not_ready() {
     }
 
     assert_eq!(mock.with_method("DELETE").len(), 1, "the cancel went out");
+}
+
+// ------------------------------------------------------------------------------------------------
+// The verified balance, the liquidation condition and the ledger journal (plan §R3.2)
+// ------------------------------------------------------------------------------------------------
+
+/// The balance a Nautilus `AccountState` may be built from is the **whole** account.
+///
+/// A balance carrying a member outside the documented set maps to USDC numbers that are not the
+/// account's, and reporting them would put a partial account into the engine's cache under the
+/// account's own name. The mapping still happens - the numbers were read - and what it does not do
+/// is become the account.
+#[rstest]
+fn test_a_balance_is_reported_only_when_it_is_the_whole_account() {
+    let mut machine = ReconciliationMachine::new(account_id(), 30);
+
+    machine.evaluate(&clean_reading());
+
+    assert!(
+        machine.verified_balance().is_some(),
+        "a documented balance with the venue's own arithmetic holding is the account",
+    );
+
+    let mut multi = clean_reading();
+    let mut reading = balance("5000.00", "4950.00", "1125.00", "3825.00", "3825.00");
+    reading.unmapped = vec![("USDT".to_string(), "250.00".to_string())];
+    multi.balance = Some(reading);
+
+    machine.evaluate(&multi);
+
+    assert!(
+        machine.verified_balance().is_none(),
+        "an account holding a second collateral asset is not an account this adapter can report",
+    );
+    assert!(
+        machine.last_balance().is_some(),
+        "the USDC members were read and are still the mapping",
+    );
+}
+
+/// A balance nobody could map is not a zero balance, and nothing is reported from it.
+#[rstest]
+fn test_a_balance_that_could_not_be_mapped_verifies_nothing() {
+    let mut machine = ReconciliationMachine::new(account_id(), 30);
+    let mut reading = clean_reading();
+
+    reading.balance = Some(BalanceReading {
+        wallet_balance: None,
+        margin_balance: None,
+        used_margin: None,
+        available_margin: None,
+        withdrawable_margin: None,
+        maintenance_margin_requirement: None,
+        under_liquidation: Some(false),
+        total_funding_payments: None,
+        unmapped: Vec::new(),
+        raw: r#"{"somethingElse":"1.00"}"#.to_string(),
+    });
+
+    machine.evaluate(&reading);
+
+    assert!(machine.verified_balance().is_none());
+}
+
+/// Being underwater is a state the venue stated, and it is reported as it was read.
+#[rstest]
+fn test_a_negative_balance_is_verified_and_carries_its_negative_signs() {
+    let mut machine = ReconciliationMachine::new(account_id(), 30);
+    let mut reading = clean_reading();
+
+    // -1250.00 = 100.00 locked + -1350.00 free.
+    reading.balance = Some(balance("100.00", "-1250.00", "100.00", "-1350.00", "0.00"));
+
+    let judgment = machine.evaluate(&reading);
+    let verified = machine
+        .verified_balance()
+        .expect("the numbers were read and add up, however bad they are");
+
+    assert_eq!(verified.total().to_string(), "-1250.00");
+    assert_eq!(verified.locked().to_string(), "100.00");
+    assert_eq!(verified.free().to_string(), "-1350.00");
+    assert!(judgment.is_uncertain(), "and new risk stops");
+}
+
+/// The venue's maintenance margin requirement travels with the mapping; it is what a Nautilus
+/// margin balance carries as its maintenance side, and it is not invented when it is missing.
+#[rstest]
+fn test_the_maintenance_requirement_travels_with_the_mapping_only_when_it_was_read() {
+    let mut machine = ReconciliationMachine::new(account_id(), 30);
+    let mut reading = clean_reading();
+
+    reading.balance = Some(balance_with_maintenance(
+        "5000.00", "4950.00", "1125.00", "3825.00", "3825.00", "112.50",
+    ));
+
+    machine.evaluate(&reading);
+
+    assert_eq!(
+        machine
+            .verified_balance()
+            .expect("mapped")
+            .maintenance()
+            .map(|value| value.to_string()),
+        Some("112.50".to_string()),
+    );
+
+    let mut machine = ReconciliationMachine::new(account_id(), 30);
+    let mut absent = clean_reading();
+    let mut balance = balance("5000.00", "4950.00", "1125.00", "3825.00", "3825.00");
+    balance.maintenance_margin_requirement = None;
+    absent.balance = Some(balance);
+
+    machine.evaluate(&absent);
+
+    assert!(
+        machine
+            .verified_balance()
+            .expect("mapped")
+            .maintenance()
+            .is_none(),
+        "an unreadable maintenance requirement is absent, not zero",
+    );
+}
+
+/// An account the venue is liquidating is refused by name, and the refusal is not a state the
+/// account's own reconciliation can clear by agreeing with itself.
+#[rstest]
+fn test_an_account_under_liquidation_refuses_new_risk_by_name() {
+    let mut machine = ReconciliationMachine::new(account_id(), 30);
+
+    machine.set_metadata(MetadataValidity::Current);
+    machine.begin_recovery(secs(1));
+
+    let mut liquidating = clean_reading();
+    let mut balance = balance("5000.00", "4950.00", "0.00", "4950.00", "4950.00");
+    balance.under_liquidation = Some(true);
+    liquidating.balance = Some(balance);
+
+    assert_eq!(
+        machine.conclude_pass(&liquidating, secs(1)),
+        ReconciliationState::Recovering
+    );
+
+    // The reading itself is fully explained: the venue said everything this adapter compares.
+    let judgment = machine.last_judgment().expect("judged").clone();
+
+    assert!(
+        !judgment.is_uncertain(),
+        "liquidation is a state the venue stated, not a reading this adapter could not make",
+    );
+
+    assert_eq!(
+        machine.conclude_pass(&liquidating, secs(2)),
+        ReconciliationState::Ready,
+        "the account's own reconciliation converges",
+    );
+    assert_eq!(
+        machine.new_risk_refusal(),
+        Some(NewRiskRefusal::Liquidation(
+            LiquidationState::UnderLiquidation
+        )),
+        "and new risk is refused by name while the venue is closing the account",
+    );
+    assert!(machine.refuses_new_risk());
+
+    // The venue stops liquidating, and the next passes say so.
+    machine.conclude_pass(&clean_reading(), secs(3));
+    machine.conclude_pass(&clean_reading(), secs(4));
+
+    assert_eq!(machine.liquidation(), &LiquidationState::Clear);
+    assert_eq!(machine.new_risk_refusal(), None);
+}
+
+/// The member is required by the frozen schema, so a balance that does not carry it is a payload
+/// this adapter does not understand - and a liquidation condition nobody read is not a clear one.
+#[rstest]
+fn test_a_liquidation_condition_nobody_read_is_not_a_clear_one() {
+    let mut machine = ReconciliationMachine::new(account_id(), 30);
+    let mut reading = clean_reading();
+
+    let mut balance = balance("5000.00", "4950.00", "0.00", "4950.00", "4950.00");
+    balance.under_liquidation = None;
+    reading.balance = Some(balance);
+
+    machine.set_metadata(MetadataValidity::Current);
+    machine.begin_recovery(secs(1));
+    machine.conclude_pass(&reading, secs(1));
+    machine.conclude_pass(&reading, secs(2));
+
+    assert_eq!(machine.state(), ReconciliationState::Ready);
+    assert_eq!(
+        machine.new_risk_refusal(),
+        Some(NewRiskRefusal::Liquidation(LiquidationState::Unknown {
+            reason: "the venue's balance carried no readable `underLiquidation`".to_string(),
+        })),
+        "the venue did not say, and that is not the venue saying no",
+    );
+}
+
+/// A run whose journal could not be restored does not know which fills it applied, so it does not
+/// trade - and no reading of the venue can tell it otherwise.
+#[rstest]
+fn test_a_run_whose_journal_failed_refuses_new_risk_whatever_the_account_reads() {
+    let mut machine = recovered_machine();
+
+    assert!(machine.can_submit_new_orders());
+
+    machine.set_journal(JournalStatus::Failed {
+        path: "C:/ondojournal.json".to_string(),
+        reason: "the checkpoint records 2 fills and the file holds 1".to_string(),
+    });
+
+    assert_eq!(
+        machine.new_risk_refusal(),
+        Some(NewRiskRefusal::JournalUnavailable {
+            reason: "the checkpoint records 2 fills and the file holds 1".to_string(),
+        }),
+    );
+
+    // Reading the account again does not clear it: the journal is this client's own memory.
+    machine.conclude_pass(&clean_reading(), secs(3));
+    machine.conclude_pass(&clean_reading(), secs(4));
+
+    assert_eq!(machine.state(), ReconciliationState::Ready);
+    assert!(machine.refuses_new_risk());
+}
+
+/// A run with no journal path said, in its configuration, that its ledger lives for one process.
+/// That is a supported mode and it is stated, not a failure.
+#[rstest]
+fn test_a_run_with_no_journal_path_still_trades_and_says_so() {
+    let machine = recovered_machine();
+
+    assert!(matches!(
+        machine.journal(),
+        JournalStatus::NotConfigured { .. }
+    ));
+    assert!(machine.journal().permits_new_orders());
+    assert!(
+        machine.can_submit_new_orders(),
+        "the offline phase runs without a journal and does not stop risk over it",
+    );
+    assert!(machine.journal().reason().contains("in memory"));
+}
+
+/// A journal that stopped accepting writes is stated as what it is, and it refuses nothing.
+///
+/// The lapse is real - nothing after the instant it names reached the disk - and it is a lapse of
+/// **durability**, not of memory: the ledger, the order index and the unsettled writes are still
+/// this run's, and a crash from here replays under trade ids the engine dedupes. That is the same
+/// outcome as the supported no-journal mode above, so this state is reported and no permit is
+/// revoked. [`JournalStatus::Failed`] keeps its refusal: that one is about a memory this run never
+/// got back.
+#[rstest]
+fn test_a_journal_that_stopped_accepting_writes_is_stated_and_refuses_no_order() {
+    let mut machine = recovered_machine();
+    let permit = machine.admission();
+
+    assert!(matches!(permit, Admission::Granted { .. }));
+
+    machine.set_journal(JournalStatus::Degraded {
+        path: "C:/ondo/ledger.json".to_string(),
+        failures: 3,
+        last_written_at: Some(secs(120)),
+        watermark: Some(secs(118)),
+    });
+
+    let status = machine.journal();
+
+    assert_ne!(status.as_str(), "restored");
+    assert_eq!(status.as_str(), "degraded");
+    assert!(status.permits_new_orders());
+    assert!(
+        machine.can_submit_new_orders(),
+        "a run whose disk filled up is not a run that cannot trade",
+    );
+    assert_eq!(machine.new_risk_refusal(), None);
+    assert!(
+        matches!(machine.revalidate(&permit), Admission::Granted { .. }),
+        "the permit taken before the journal degraded still stands",
+    );
+
+    let reason = status.reason();
+
+    assert!(reason.contains("C:/ondo/ledger.json"), "{reason}");
+    assert!(
+        reason.contains("3 checkpoint write(s) have failed"),
+        "{reason}",
+    );
+    assert!(
+        reason.contains(&secs(120).as_u64().to_string()),
+        "an operator has to be able to see when the journal stopped: {reason}",
+    );
+
+    // A run that restored a journal and has not landed a write since has no instant to name, and
+    // says that rather than inventing one - and it is the same non-refusal.
+    machine.set_journal(JournalStatus::Degraded {
+        path: "C:/ondo/ledger.json".to_string(),
+        failures: 1,
+        last_written_at: None,
+        watermark: Some(secs(118)),
+    });
+
+    let reason = machine.journal().reason();
+
+    assert!(
+        reason.contains("no checkpoint from this run has reached the disk"),
+        "{reason}",
+    );
+    assert!(machine.can_submit_new_orders());
+}
+
+/// The unsettled writes a journal holds are re-registered, and their window is **inherited**.
+#[rstest]
+fn test_a_restored_journal_puts_the_unsettled_writes_back_with_their_window() {
+    let mut machine = recovered_machine();
+    let journal = JournalUnsettled {
+        client_order_id: CLIENT_ORDER_ID.to_string(),
+        venue_order_id: None,
+        kind: UncertainKind::Submission,
+        lookup: format!("client:{CLIENT_ORDER_ID}"),
+        reason: "the create answer never arrived".to_string(),
+        first_seen_ns: secs(1).as_u64(),
+        attempts: 2,
+        abandoned: false,
+    };
+
+    assert_eq!(machine.restore_unsettled(&[journal], secs(2)), 1);
+    assert_eq!(machine.unknown_submissions().len(), 1);
+    assert_eq!(
+        machine.unknown_submissions()[0].first_seen,
+        secs(1),
+        "the window is measured from when the outcome became unknown, not from the restart",
+    );
+    assert!(machine.refuses_new_risk(), "and it blocks new risk again");
+
+    // The window had already passed by the time a later caller asks, so the restarted run resumes
+    // an expired probe rather than a fresh one: the write stays recorded and blocking, and
+    // nothing probes it.
+    let abandon = machine.expire_unknown_submissions(secs(1 + ONDO_SUBMISSION_UNKNOWN_SECS + 1));
+
+    assert_eq!(abandon.len(), 1);
+    assert_eq!(
+        abandon[0].attempts, 2,
+        "the probe count survives the restart"
+    );
+    assert!(machine.refuses_new_risk());
+}
+
+/// An unsettled write the machine already holds is not overwritten by the file.
+#[rstest]
+fn test_a_live_record_wins_over_the_journal_it_was_written_from() {
+    let mut machine = recovered_machine();
+
+    machine.note_unknown_submission(
+        client_order_id(CLIENT_ORDER_ID),
+        "live".to_string(),
+        secs(5),
+    );
+
+    let journal = JournalUnsettled {
+        client_order_id: CLIENT_ORDER_ID.to_string(),
+        venue_order_id: None,
+        kind: UncertainKind::Submission,
+        lookup: format!("client:{CLIENT_ORDER_ID}"),
+        reason: "from the file".to_string(),
+        first_seen_ns: secs(1).as_u64(),
+        attempts: 0,
+        abandoned: false,
+    };
+
+    assert_eq!(machine.restore_unsettled(&[journal], secs(6)), 0);
+    assert_eq!(machine.unknown_submissions()[0].reason, "live");
+    assert_eq!(machine.unknown_submissions()[0].first_seen, secs(5));
+}
+
+/// The journal holds what a restart cannot re-derive: the fill ledger, the order associations and
+/// the unsettled writes. The order's applied total is the one that would otherwise be lost in a
+/// way nothing could repair - every fill it holds would look already applied and the total would
+/// stay at zero.
+#[rstest]
+fn test_a_journal_round_trips_the_ledger_the_orders_and_the_unsettled_writes() {
+    use nautilus_ondo::execution::{OndoFillLedger, OndoOrderState};
+
+    let mut ledger = OndoFillLedger::new();
+
+    ledger.record(account_id(), "fill-1");
+
+    let order = OndoOrderState {
+        client_order_id: client_order_id(CLIENT_ORDER_ID),
+        venue_order_id: Some(VenueOrderId::from(VENUE_ORDER_ID)),
+        instrument_id: nvda(),
+        side: OrderSide::Buy,
+        order_type: OrderType::Limit,
+        time_in_force: TimeInForce::Gtc,
+        quantity: Quantity::from("1.00"),
+        price: Some(Price::from("227.50")),
+        reduce_only: false,
+        post_only: true,
+        status: OndoOrderStatus::Open,
+        accepted: true,
+        filled: Quantity::from("0.20"),
+        venue_fee: Some(rust_decimal::Decimal::ZERO),
+        last_fill_size: None,
+        venue_filled: Some(Quantity::from("0.20")),
+        last_raw: r#"{"orderId":"x"}"#.to_string(),
+        unappliable_fill: false,
+        resolved: false,
+        pending_fills: Vec::new(),
+    };
+
+    let journal = LedgerJournal::from_snapshot(JournalSnapshot {
+        account_id: account_id(),
+        watermark: Some(secs(120)),
+        written_at: secs(130),
+        ledger: &ledger,
+        orders: vec![JournalOrder::from_state(&order)],
+        unsettled: vec![JournalUnsettled {
+            client_order_id: "ondo_unsettled".to_string(),
+            venue_order_id: None,
+            kind: UncertainKind::Cancel,
+            lookup: "client:ondo_unsettled".to_string(),
+            reason: "the cancel answer was lost".to_string(),
+            first_seen_ns: secs(100).as_u64(),
+            attempts: 1,
+            abandoned: true,
+        }],
+    });
+
+    let text = journal.to_json().expect("the journal serializes");
+
+    assert_eq!(
+        journal.checkpoint().written_at(),
+        secs(130),
+        "the checkpoint records when the write was taken",
+    );
+
+    let restored = LedgerJournal::from_json(&text).expect("the journal parses");
+    let mut fresh = OndoFillLedger::new();
+    let put_back = restored
+        .restore(&mut fresh, account_id())
+        .expect("the journal is this account's");
+
+    assert_eq!(put_back.fills, 1);
+    assert_eq!(restored.watermark(), Some(secs(120)));
+    assert_eq!(restored.checkpoint().orders(), 1);
+    assert_eq!(restored.checkpoint().unsettled(), 1);
+
+    let read_back =
+        OndoOrderState::from_journal(&put_back.orders[0]).expect("the order reads back");
+
+    assert_eq!(read_back.client_order_id, client_order_id(CLIENT_ORDER_ID));
+    assert_eq!(
+        read_back.venue_order_id,
+        Some(VenueOrderId::from(VENUE_ORDER_ID))
+    );
+    assert_eq!(read_back.instrument_id, nvda());
+    assert_eq!(read_back.side, OrderSide::Buy);
+    assert_eq!(read_back.order_type, OrderType::Limit);
+    assert_eq!(read_back.time_in_force, TimeInForce::Gtc);
+    assert_eq!(read_back.quantity, Quantity::from("1.00"));
+    assert_eq!(read_back.price, Some(Price::from("227.50")));
+    assert!(read_back.post_only);
+    assert!(read_back.accepted);
+    assert_eq!(
+        read_back.filled,
+        Quantity::from("0.20"),
+        "the applied total survives, and it is what keeps a terminal order resolvable",
+    );
+    assert_eq!(read_back.venue_filled, Some(Quantity::from("0.20")));
+    assert_eq!(read_back.status, OndoOrderStatus::Open);
+    assert!(!read_back.resolved);
+
+    let unsettled = &restored.unsettled()[0];
+
+    assert_eq!(unsettled.kind(), UncertainKind::Cancel);
+    assert_eq!(unsettled.lookup(), "client:ondo_unsettled");
+    assert_eq!(unsettled.first_seen(), secs(100));
+    assert!(unsettled.abandoned());
+}
+
+/// A journal that disagrees with its own checkpoint is refused, and nothing is restored from it.
+#[rstest]
+fn test_a_journal_that_disagrees_with_its_checkpoint_is_refused() {
+    use nautilus_ondo::execution::OndoFillLedger;
+
+    let mut ledger = OndoFillLedger::new();
+
+    ledger.record(account_id(), "fill-1");
+    ledger.record(account_id(), "fill-2");
+
+    let journal = LedgerJournal::from_snapshot(JournalSnapshot {
+        account_id: account_id(),
+        watermark: None,
+        written_at: secs(1),
+        ledger: &ledger,
+        orders: Vec::new(),
+        unsettled: Vec::new(),
+    });
+
+    // A truncated body: the checkpoint still says two fills.
+    let text = journal
+        .to_json()
+        .expect("the journal serializes")
+        .replace(r#""fill-1","fill-2""#, r#""fill-1""#);
+    let damaged = LedgerJournal::from_json(&text).expect("the file still parses");
+    let mut fresh = OndoFillLedger::new();
+    let error = damaged
+        .restore(&mut fresh, account_id())
+        .expect_err("a journal that disagrees with itself restores nothing");
+
+    assert!(error.to_string().contains("checkpoint"), "{error}");
+    assert!(fresh.is_empty(), "nothing was restored");
+}
+
+/// A schema this adapter does not read is refused rather than read with defaults: the fields a
+/// version 1 file does not carry are exactly the ones a restart needs.
+#[rstest]
+fn test_a_journal_of_an_older_schema_is_refused_rather_than_read_with_defaults() {
+    let version_one = r#"{"schema_version":1,"account_id":"ONDO-SANDBOX-001","watermark_ns":null,"fills":["fill-1"]}"#;
+
+    let error = LedgerJournal::from_json(version_one)
+        .expect_err("a schema this adapter does not read is not a journal it restores");
+
+    assert!(error.to_string().contains("schema version 1"), "{error}");
+}
+
+/// The gate is a check on the **version**, not on the members a version happens to add: a complete
+/// journal from a newer schema is refused for what it says it is, exactly as an older one is - and
+/// the version this adapter writes is the version it reads.
+#[rstest]
+fn test_a_journal_of_a_newer_schema_is_refused_by_its_version() {
+    use nautilus_ondo::execution::OndoFillLedger;
+
+    let mut ledger = OndoFillLedger::new();
+
+    ledger.record(account_id(), "fill-1");
+
+    let version_two = LedgerJournal::from_snapshot(JournalSnapshot {
+        account_id: account_id(),
+        watermark: Some(secs(120)),
+        written_at: secs(121),
+        ledger: &ledger,
+        orders: Vec::new(),
+        unsettled: Vec::new(),
+    })
+    .to_json()
+    .expect("the journal serialises");
+
+    assert!(
+        LedgerJournal::from_json(&version_two).is_ok(),
+        "a version 2 file is read because of its version: {version_two}",
+    );
+
+    let version_three = version_two.replace("\"schema_version\":2", "\"schema_version\":3");
+
+    assert_ne!(
+        version_two, version_three,
+        "the version was rewritten for this test",
+    );
+
+    let error = LedgerJournal::from_json(&version_three)
+        .expect_err("a schema this adapter does not write is not one it reads");
+
+    assert!(error.to_string().contains("schema version 3"), "{error}");
+    assert!(
+        error.to_string().contains("reads version 2"),
+        "the refusal names both versions: {error}",
+    );
+}
+
+/// The journal is replaced in one step, so a reader sees one complete journal or the previous one.
+#[rstest]
+fn test_a_journal_is_written_atomically_and_reads_back_whole() {
+    use nautilus_ondo::execution::OndoFillLedger;
+
+    let directory = std::env::temp_dir().join(format!("ondo-journal-{}", UUID4::new()));
+    let path = directory.join("nested").join("ledger.json");
+    let mut ledger = OndoFillLedger::new();
+
+    ledger.record(account_id(), "fill-1");
+
+    let journal = LedgerJournal::from_snapshot(JournalSnapshot {
+        account_id: account_id(),
+        watermark: Some(secs(120)),
+        written_at: secs(121),
+        ledger: &ledger,
+        orders: Vec::new(),
+        unsettled: Vec::new(),
+    });
+
+    journal.store_atomic(&path).expect("the journal is written");
+
+    let mut temporary = path.as_os_str().to_os_string();
+    temporary.push(".tmp");
+
+    assert!(
+        !std::path::Path::new(&temporary).exists(),
+        "the temporary file is gone: the write ended in a rename",
+    );
+
+    let read_back = LedgerJournal::load(&path, account_id()).expect("the journal reads back");
+
+    assert_eq!(read_back, journal);
+
+    let _ = std::fs::remove_dir_all(&directory);
+}
+
+/// An absent journal is a first run, not a failure: the file is this account's, and it is empty.
+#[rstest]
+fn test_an_absent_journal_is_a_first_run_rather_than_a_failure() {
+    use nautilus_ondo::execution::OndoFillLedger;
+
+    let path = std::env::temp_dir().join(format!("ondo-absent-{}.json", UUID4::new()));
+    let journal = LedgerJournal::load(&path, account_id()).expect("an absent journal is empty");
+
+    let mut ledger = OndoFillLedger::new();
+    let restored = journal
+        .restore(&mut ledger, account_id())
+        .expect("and it is this account's");
+
+    assert!(restored.is_empty());
+    assert_eq!(journal.account_id(), ACCOUNT_ID);
+}
+
+// ------------------------------------------------------------------------------------------------
+// The funding ledger (plan §R3.2)
+// ------------------------------------------------------------------------------------------------
+
+/// One funding payment in the venue's documented shape.
+fn funding_payment(market: &str, time_secs: u64, amount: &str) -> FundingPayment {
+    FundingPayment {
+        market: market.to_string(),
+        time: secs(time_secs),
+        amount: rust_decimal::Decimal::from_str_exact(amount).expect("decimal"),
+        rate: Some(rust_decimal::Decimal::from_str_exact("0.0000125").expect("decimal")),
+        position_size: Some(rust_decimal::Decimal::ONE),
+    }
+}
+
+/// A payment the venue stated is accounted; a rate multiplied by a position is **not** a payment.
+#[rstest]
+fn test_only_a_stated_payment_is_accounted_and_a_rate_is_never_multiplied_into_one() {
+    let mut machine = ReconciliationMachine::new(account_id(), 30);
+    let mut reading = clean_reading();
+
+    let mut opening = balance("5000.00", "4950.00", "0.00", "4950.00", "4950.00");
+    opening.total_funding_payments = Some(rust_decimal::Decimal::ZERO);
+    reading.balance = Some(opening);
+    reading.read_at = secs(10);
+
+    machine.evaluate(&reading);
+
+    assert_eq!(machine.funding().len(), 0);
+    assert!(machine.funding().reconciliation().is_reconciled());
+    assert!(
+        machine.last_judgment().expect("judged").is_clean(),
+        "nothing has been paid and the venue's total says so",
+    );
+
+    // The venue's cumulative total moves by the payment it also published.
+    let mut next = reading.clone();
+    let mut balance = balance("5000.00", "4934.33", "0.00", "4934.33", "4934.33");
+    balance.total_funding_payments =
+        Some(rust_decimal::Decimal::from_str_exact("-15.67").expect("decimal"));
+    next.balance = Some(balance);
+    next.read_at = secs(20);
+    next.funding = vec![funding_payment(NVDA_MARKET, 15, "-15.67")];
+
+    machine.evaluate(&next);
+
+    assert_eq!(
+        machine.funding().len(),
+        1,
+        "the stated payment is accounted"
+    );
+    assert_eq!(
+        machine.funding().stated(),
+        Some(rust_decimal::Decimal::from_str_exact("-15.67").expect("decimal")),
+    );
+    assert!(machine.funding().reconciliation().is_reconciled());
+    assert!(machine.last_judgment().expect("judged").is_clean());
+
+    // The same record read again is the same payment, not a second one - and a rate of 0.0000125
+    // against a position of 1.00 is worth 0.0000125, which books nothing.
+    let mut repeated = next.clone();
+    repeated.read_at = secs(30);
+
+    machine.evaluate(&repeated);
+
+    assert_eq!(machine.funding().len(), 1);
+    assert!(machine.funding().reconciliation().is_reconciled());
+}
+
+/// A cumulative total that moved with no payment record to explain it stays unreconciled: the
+/// difference is stated, and nothing is booked from it.
+#[rstest]
+fn test_a_cumulative_total_that_moved_with_no_payment_record_is_reported_not_booked() {
+    let mut machine = ReconciliationMachine::new(account_id(), 30);
+    let mut reading = clean_reading();
+
+    let mut opening = balance("5000.00", "4950.00", "0.00", "4950.00", "4950.00");
+    opening.total_funding_payments = Some(rust_decimal::Decimal::ZERO);
+    reading.balance = Some(opening);
+    reading.read_at = secs(10);
+
+    machine.evaluate(&reading);
+
+    let mut next = reading.clone();
+    let mut balance = balance("5000.00", "4934.33", "0.00", "4934.33", "4934.33");
+    balance.total_funding_payments =
+        Some(rust_decimal::Decimal::from_str_exact("-15.67").expect("decimal"));
+    next.balance = Some(balance);
+    next.read_at = secs(20);
+
+    let judgment = machine.evaluate(&next);
+
+    assert_eq!(
+        machine.funding().len(),
+        0,
+        "a payment this client did not read is a payment it does not book",
+    );
+    assert!(judgment.findings.iter().any(|finding| matches!(
+        finding,
+        Finding::FundingUnreconciled { difference, .. }
+            if difference.to_string() == "-15.67"
+    )));
+    assert!(
+        !judgment.is_uncertain(),
+        "funding is a cashflow axis: it is reported and it does not make the account unknown",
+    );
+
+    // The record arrives on the next pass, and the gap closes rather than being carried forward.
+    let mut late = next.clone();
+    late.read_at = secs(30);
+    late.funding = vec![funding_payment(NVDA_MARKET, 15, "-15.67")];
+
+    let judgment = machine.evaluate(&late);
+
+    assert!(machine.funding().reconciliation().is_reconciled());
+    assert!(
+        judgment.is_clean(),
+        "a late record closes the gap rather than leaving a discrepancy of its own: {:?}",
+        judgment.reasons(),
+    );
+}
+
+/// A payment the venue published before this client's baseline is inside the baseline, so it is
+/// recorded and not counted a second time against it.
+#[rstest]
+fn test_a_payment_from_before_the_baseline_is_recorded_but_not_counted_against_it() {
+    let mut machine = ReconciliationMachine::new(account_id(), 30);
+    let mut reading = clean_reading();
+
+    let mut opening = balance("5000.00", "4950.00", "0.00", "4950.00", "4950.00");
+    opening.total_funding_payments =
+        Some(rust_decimal::Decimal::from_str_exact("-15.67").expect("decimal"));
+    reading.balance = Some(opening);
+    reading.read_at = secs(100);
+    reading.funding = vec![funding_payment(NVDA_MARKET, 15, "-15.67")];
+
+    let judgment = machine.evaluate(&reading);
+
+    assert_eq!(machine.funding().len(), 1, "the record is kept as evidence");
+    assert_eq!(machine.funding().payments_since_baseline(), 0);
+    assert!(
+        judgment.is_clean(),
+        "the venue's total already contains it: {:?}",
+        judgment.reasons(),
+    );
+}
+
+/// A funding history this client could not read is said out loud and books nothing.
+#[rstest]
+fn test_a_funding_history_that_could_not_be_read_is_reported_and_books_nothing() {
+    let mut machine = ReconciliationMachine::new(account_id(), 30);
+    let mut reading = clean_reading();
+
+    reading.read_at = secs(10);
+    reading.funding_error = Some("the funding history could not be read: 404".to_string());
+
+    let judgment = machine.evaluate(&reading);
+
+    assert!(judgment.findings.iter().any(|finding| matches!(
+        finding,
+        Finding::FundingUnreadable { reason } if reason.contains("404")
+    )));
+    assert!(!judgment.is_uncertain());
+    assert_eq!(machine.funding().len(), 0);
+    assert!(!machine.funding().reconciliation().is_reconciled());
+}
+
+/// A balance that no longer carries a readable cumulative funding total does not fall back on the
+/// one an earlier read carried: a stale total is not a total this pass read.
+#[rstest]
+fn test_a_balance_without_a_cumulative_total_does_not_reuse_the_earlier_one() {
+    let mut machine = ReconciliationMachine::new(account_id(), 30);
+    let mut reading = clean_reading();
+
+    reading.read_at = secs(10);
+    machine.evaluate(&reading);
+
+    assert!(machine.funding().reconciliation().is_reconciled());
+
+    let mut next = reading.clone();
+    let mut balance = balance("5000.00", "4950.00", "0.00", "4950.00", "4950.00");
+    balance.total_funding_payments = None;
+    next.balance = Some(balance);
+    next.read_at = secs(20);
+
+    let judgment = machine.evaluate(&next);
+
+    assert!(judgment.findings.iter().any(|finding| matches!(
+        finding,
+        Finding::FundingUnreadable { reason } if reason.contains("totalFundingPayments")
+    )));
+    assert!(
+        !machine.funding().reconciliation().is_reconciled(),
+        "the earlier total is kept as the last thing the venue said, not as this pass's reading",
+    );
+    assert_eq!(
+        machine.funding().stated(),
+        Some(rust_decimal::Decimal::ZERO),
+        "and the venue's own last statement is still readable from the ledger",
+    );
 }
