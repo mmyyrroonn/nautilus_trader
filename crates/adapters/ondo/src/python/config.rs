@@ -122,6 +122,13 @@ impl OndoExecutionClientConfig {
     /// the private transport arms and renews at half of - and the interval its run loop reconciles
     /// the account on.
     ///
+    /// `dms_max_failed_renewals` is how many switch renewals in a row may fail to be
+    /// written before the client stops trusting the switch and refuses new orders. The failures are
+    /// send failures - there is no acknowledgement to wait for - and they are counted
+    /// consecutively, so one frame that reaches the socket clears the run. A value above the
+    /// adapter's ceiling is capped rather than honoured: this setting can tighten the bound and
+    /// cannot loosen it.
+    ///
     /// `journal_path` is where the durable ledger journal is kept. **Omitting it is a supported
     /// mode and it is stated rather than silent**: nothing is written, the dedup ledger lives for
     /// this process only, and a restart begins with an empty one - which the client reports
@@ -142,6 +149,7 @@ impl OndoExecutionClientConfig {
         account_read_only = None,
         http_timeout_secs = None,
         dms_timeout_secs = None,
+        dms_max_failed_renewals = None,
         reconcile_interval_secs = None,
         journal_path = None,
         allow_production_orders = None,
@@ -157,6 +165,7 @@ impl OndoExecutionClientConfig {
         account_read_only: Option<bool>,
         http_timeout_secs: Option<u64>,
         dms_timeout_secs: Option<u64>,
+        dms_max_failed_renewals: Option<u32>,
         reconcile_interval_secs: Option<u64>,
         journal_path: Option<String>,
         allow_production_orders: Option<bool>,
@@ -173,6 +182,8 @@ impl OndoExecutionClientConfig {
             account_read_only: account_read_only.unwrap_or(defaults.account_read_only),
             http_timeout_secs: http_timeout_secs.unwrap_or(defaults.http_timeout_secs),
             dms_timeout_secs: dms_timeout_secs.unwrap_or(defaults.dms_timeout_secs),
+            dms_max_failed_renewals: dms_max_failed_renewals
+                .unwrap_or(defaults.dms_max_failed_renewals),
             reconcile_interval_secs: reconcile_interval_secs
                 .unwrap_or(defaults.reconcile_interval_secs),
             journal_path: journal_path.or(defaults.journal_path),

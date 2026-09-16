@@ -40,6 +40,22 @@ use crate::common::{
 /// Default dead man's switch timeout, in seconds (plan §6.4).
 pub const ONDO_DMS_TIMEOUT_SECS: u64 = 30;
 
+/// The default bound on consecutive failed switch renewals (plan §R3.3).
+///
+/// It lives in the crate that owns the switch
+/// ([`crate::reconciliation::ONDO_DMS_MAX_FAILED_RENEWALS`]) and is re-exported here so a caller
+/// configuring the client does not have to reach into the state machine for the number.
+pub const ONDO_DMS_MAX_FAILED_RENEWALS: u32 = crate::reconciliation::ONDO_DMS_MAX_FAILED_RENEWALS;
+
+/// The most a configuration may ask that bound to be: the ceiling this client caps it at
+/// (plan §R3.3).
+///
+/// A configuration may tighten the bound, never widen it past this
+/// ([`OndoExecutionClientConfig::capped_dms_max_failed_renewals`]), so no configuration file can
+/// loosen the one bound that decides when this client stops trusting an unrenewed switch.
+pub const ONDO_DMS_MAX_FAILED_RENEWALS_CEILING: u32 =
+    crate::reconciliation::ONDO_DMS_MAX_FAILED_RENEWALS_CEILING;
+
 /// Default interval between account reconciliations, in seconds (plan §6.4).
 pub const ONDO_RECONCILE_INTERVAL_SECS: u64 = 30;
 
@@ -242,6 +258,20 @@ pub struct OndoExecutionClientConfig {
     /// renews it at half this interval.
     #[builder(default = ONDO_DMS_TIMEOUT_SECS)]
     pub dms_timeout_secs: u64,
+    /// How many switch renewals in a row may fail to be written before this client stops trusting
+    /// the switch and refuses new orders (plan §R3.3).
+    ///
+    /// The failures counted are **send** failures - a frame this process could not put on the
+    /// socket - and they are counted consecutively: one frame that is written clears the run. There
+    /// is no acknowledgement to wait for, because the frozen material documents the subscribe frame
+    /// and the timeout and says nothing about which message renews an armed switch, so "written" is
+    /// the strongest statement this adapter can make about a renewal and it is not a confirmation.
+    ///
+    /// The default is [`ONDO_DMS_MAX_FAILED_RENEWALS`] and the **ceiling** is
+    /// [`ONDO_DMS_MAX_FAILED_RENEWALS_CEILING`]: a value above it is capped rather than honoured, so
+    /// a configuration can make the bound tighter and can never make it looser.
+    #[builder(default = ONDO_DMS_MAX_FAILED_RENEWALS)]
+    pub dms_max_failed_renewals: u32,
     /// The interval between account reconciliations, in seconds (plan §6.4). The private
     /// transport's run loop is the caller.
     #[builder(default = ONDO_RECONCILE_INTERVAL_SECS)]
@@ -291,6 +321,7 @@ nautilus_core::impl_pyo3_config_getters!(OndoExecutionClientConfig {
     account_read_only: bool,
     http_timeout_secs: u64,
     dms_timeout_secs: u64,
+    dms_max_failed_renewals: u32,
     reconcile_interval_secs: u64,
     journal_path: Option<String>,
     allow_production_orders: bool,
@@ -308,6 +339,7 @@ impl std::fmt::Debug for OndoExecutionClientConfig {
             .field("account_read_only", &self.account_read_only)
             .field("http_timeout_secs", &self.http_timeout_secs)
             .field("dms_timeout_secs", &self.dms_timeout_secs)
+            .field("dms_max_failed_renewals", &self.dms_max_failed_renewals)
             .field("reconcile_interval_secs", &self.reconcile_interval_secs)
             .field("journal_path", &self.journal_path)
             .field("allow_production_orders", &self.allow_production_orders)
@@ -336,6 +368,21 @@ impl OndoExecutionClientConfig {
         self.base_url_ws
             .as_deref()
             .unwrap_or_else(|| ws_url(self.environment))
+    }
+
+    /// Returns the switch's consecutive-renewal-failure bound, capped at the crate's ceiling.
+    ///
+    /// [`Self::dms_max_failed_renewals`] is what was configured; this is what the client will
+    /// actually arm. The two are the same number until a configuration asks for more than
+    /// [`ONDO_DMS_MAX_FAILED_RENEWALS_CEILING`], and the client reads this one - so a configuration
+    /// file that asked for a bound the crate does not allow cannot widen it by being believed.
+    #[must_use]
+    pub const fn capped_dms_max_failed_renewals(&self) -> u32 {
+        if self.dms_max_failed_renewals > ONDO_DMS_MAX_FAILED_RENEWALS_CEILING {
+            ONDO_DMS_MAX_FAILED_RENEWALS_CEILING
+        } else {
+            self.dms_max_failed_renewals
+        }
     }
 
     /// Returns the stream mode this configuration asks for.

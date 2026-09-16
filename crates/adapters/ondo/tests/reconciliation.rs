@@ -76,9 +76,10 @@ use nautilus_ondo::{
         AccountReading, Admission, BalanceReading, DeadMansSwitch, DeadMansSwitchMessage,
         DeadMansSwitchState, Finding, FundingPayment, JournalOrder, JournalSnapshot, JournalStatus,
         JournalUnsettled, LedgerJournal, LiquidationState, MetadataValidity, NewRiskRefusal,
-        ONDO_DMS_CHANNEL, ONDO_SUBMISSION_PROBE_INTERVAL, ONDO_SUBMISSION_UNKNOWN_SECS,
-        OrderReading, PositionDirection, PositionReading, ProbeDisposition, ProbeOutcome,
-        ReconciliationBuffer, ReconciliationMachine, ReconciliationState, StopStep, UncertainKind,
+        ONDO_DMS_CHANNEL, ONDO_DMS_MAX_FAILED_RENEWALS, ONDO_SUBMISSION_PROBE_INTERVAL,
+        ONDO_SUBMISSION_UNKNOWN_SECS, OrderReading, PositionDirection, PositionReading,
+        ProbeDisposition, ProbeOutcome, ReconciliationBuffer, ReconciliationMachine,
+        ReconciliationState, StopStep, UncertainKind,
     },
 };
 use rstest::rstest;
@@ -257,16 +258,16 @@ fn test_a_machine_that_has_never_held_a_session_refuses_new_risk() {
     assert_eq!(machine.state(), ReconciliationState::Disconnected);
     assert!(!machine.session_established());
 
-    assert!(!machine.can_submit_new_orders());
-    assert!(machine.refuses_new_risk());
+    assert!(!machine.can_submit_new_orders(secs(0)));
+    assert!(machine.refuses_new_risk(secs(0)));
 
     // And the decision says why, rather than leaving a caller to infer it from a state.
     let refusal = machine
-        .new_risk_refusal()
+        .new_risk_refusal(secs(0))
         .expect("a fresh machine refuses new risk");
 
     assert_eq!(
-        machine.admission(),
+        machine.admission(secs(0)),
         Admission::Refused {
             reason: refusal.clone()
         },
@@ -286,20 +287,20 @@ fn test_recovery_needs_two_agreeing_passes_before_it_is_ready() {
     machine.begin_recovery(secs(1));
 
     assert_eq!(machine.state(), ReconciliationState::Recovering);
-    assert!(!machine.can_submit_new_orders());
+    assert!(!machine.can_submit_new_orders(secs(0)));
 
     let first = machine.conclude_pass(&clean_reading(), secs(1));
 
     // One pass is a reading, not a boundary: plan §6.4 asks for a second converging confirmation.
     assert_eq!(first, ReconciliationState::Recovering);
     assert_eq!(machine.confirmations(), 1);
-    assert!(!machine.can_submit_new_orders());
+    assert!(!machine.can_submit_new_orders(secs(0)));
 
     let second = machine.conclude_pass(&clean_reading(), secs(2));
 
     assert_eq!(second, ReconciliationState::Ready);
     assert_eq!(machine.confirmations(), 2);
-    assert!(machine.can_submit_new_orders());
+    assert!(machine.can_submit_new_orders(secs(0)));
 }
 
 #[rstest]
@@ -359,15 +360,15 @@ fn test_an_uncertain_finding_never_becomes_ready_however_often_it_repeats() {
         machine.conclude_pass(&reading, secs(2)),
         ReconciliationState::Uncertain
     );
-    assert!(!machine.can_submit_new_orders());
-    assert!(machine.refuses_new_risk());
+    assert!(!machine.can_submit_new_orders(secs(0)));
+    assert!(machine.refuses_new_risk(secs(0)));
 }
 
 #[rstest]
 fn test_stale_metadata_or_a_disarmed_switch_keeps_a_ready_account_from_trading() {
     let mut machine = recovered_machine();
 
-    assert!(machine.can_submit_new_orders());
+    assert!(machine.can_submit_new_orders(secs(0)));
 
     machine.set_metadata(MetadataValidity::Stale {
         reason: "the last metadata refresh failed".to_string(),
@@ -376,20 +377,20 @@ fn test_stale_metadata_or_a_disarmed_switch_keeps_a_ready_account_from_trading()
     // Ready is a statement about the account, not a licence: the plan's predicate also requires
     // usable metadata and a switch that permits orders.
     assert_eq!(machine.state(), ReconciliationState::Ready);
-    assert!(!machine.can_submit_new_orders());
-    assert!(machine.refuses_new_risk());
+    assert!(!machine.can_submit_new_orders(secs(0)));
+    assert!(machine.refuses_new_risk(secs(0)));
 
     machine.set_metadata(MetadataValidity::Current);
 
     // A switch this client is required to keep armed, but has not armed, is not a licence either.
     machine.dead_mans_switch_mut().require();
 
-    assert!(!machine.can_submit_new_orders());
+    assert!(!machine.can_submit_new_orders(secs(0)));
 
     machine.dead_mans_switch_mut().arm(secs(4));
     machine.dead_mans_switch_mut().confirm_armed(secs(4));
 
-    assert!(machine.can_submit_new_orders());
+    assert!(machine.can_submit_new_orders(secs(0)));
 }
 
 #[rstest]
@@ -400,18 +401,18 @@ fn test_a_disconnect_after_a_session_refuses_new_risk_until_it_is_recovered_agai
 
     assert_eq!(machine.state(), ReconciliationState::Disconnected);
     assert!(machine.session_established());
-    assert!(machine.refuses_new_risk());
+    assert!(machine.refuses_new_risk(secs(0)));
 
     machine.begin_recovery(secs(4));
     machine.conclude_pass(&clean_reading(), secs(4));
 
     assert_eq!(machine.state(), ReconciliationState::Recovering);
-    assert!(machine.refuses_new_risk());
+    assert!(machine.refuses_new_risk(secs(0)));
 
     machine.conclude_pass(&clean_reading(), secs(5));
 
     assert_eq!(machine.state(), ReconciliationState::Ready);
-    assert!(!machine.refuses_new_risk());
+    assert!(!machine.refuses_new_risk(secs(0)));
 }
 
 #[rstest]
@@ -422,7 +423,7 @@ fn test_a_pass_that_could_not_read_the_account_leaves_it_uncertain() {
     let state = machine.note_pass_failed("the order history read failed".to_string(), secs(3));
 
     assert_eq!(state, ReconciliationState::Uncertain);
-    assert!(!machine.can_submit_new_orders());
+    assert!(!machine.can_submit_new_orders(secs(0)));
     assert!(
         machine
             .last_judgment()
@@ -576,7 +577,7 @@ fn test_an_outstanding_unknown_submission_keeps_a_recovered_account_uncertain() 
     let state = machine.conclude_pass(&clean_reading(), secs(3));
 
     assert_eq!(state, ReconciliationState::Uncertain);
-    assert!(!machine.can_submit_new_orders());
+    assert!(!machine.can_submit_new_orders(secs(0)));
     assert!(
         machine
             .last_judgment()
@@ -612,7 +613,7 @@ fn test_a_cancel_whose_answer_was_lost_is_confirmed_by_a_query_before_the_accoun
     let state = machine.conclude_pass(&clean_reading(), secs(3));
 
     assert_eq!(state, ReconciliationState::Uncertain);
-    assert!(!machine.can_submit_new_orders());
+    assert!(!machine.can_submit_new_orders(secs(0)));
 
     assert!(machine.confirm_cancel(&client_order_id(CLIENT_ORDER_ID)));
     assert!(machine.unconfirmed_cancels().is_empty());
@@ -639,7 +640,7 @@ fn test_an_unconfirmed_cancel_is_settled_by_a_probe_and_returns_the_account_to_t
         secs(3),
     );
 
-    assert!(!machine.can_submit_new_orders());
+    assert!(!machine.can_submit_new_orders(secs(0)));
     assert_eq!(
         machine.probe_due(secs(3)),
         vec![client_order_id(CLIENT_ORDER_ID)],
@@ -664,7 +665,7 @@ fn test_an_unconfirmed_cancel_is_settled_by_a_probe_and_returns_the_account_to_t
         ),
         ProbeDisposition::KeepProbing { .. }
     ));
-    assert!(!machine.can_submit_new_orders());
+    assert!(!machine.can_submit_new_orders(secs(0)));
     assert_eq!(machine.unconfirmed_cancels().len(), 1);
 
     // The venue's own answer settles it.
@@ -677,7 +678,7 @@ fn test_an_unconfirmed_cancel_is_settled_by_a_probe_and_returns_the_account_to_t
         ProbeDisposition::Resolved,
     );
     assert!(machine.unconfirmed_cancels().is_empty());
-    assert!(machine.can_submit_new_orders());
+    assert!(machine.can_submit_new_orders(secs(0)));
 }
 
 /// A permit is a decision about a moment, and the moment passes. The events that revoke permission
@@ -687,11 +688,11 @@ fn test_an_unconfirmed_cancel_is_settled_by_a_probe_and_returns_the_account_to_t
 #[rstest]
 fn test_a_permit_issued_before_a_revocation_is_not_valid_afterwards() {
     let mut machine = recovered_machine();
-    let permit = machine.admission();
+    let permit = machine.admission(secs(0));
 
     assert!(permit.is_granted());
     assert_eq!(
-        machine.revalidate(&permit),
+        machine.revalidate(&permit, secs(0)),
         permit,
         "a permit with nothing against it is still the current decision",
     );
@@ -703,7 +704,7 @@ fn test_a_permit_issued_before_a_revocation_is_not_valid_afterwards() {
     );
 
     assert_eq!(
-        machine.revalidate(&permit),
+        machine.revalidate(&permit, secs(0)),
         Admission::Refused {
             reason: NewRiskRefusal::UnknownSubmissions {
                 client_order_ids: vec![client_order_id(CLIENT_ORDER_ID)],
@@ -721,23 +722,23 @@ fn test_a_permit_issued_before_a_revocation_is_not_valid_afterwards() {
         ProbeDisposition::Resolved,
     );
     assert!(
-        machine.can_submit_new_orders(),
+        machine.can_submit_new_orders(secs(0)),
         "the venue's answer settles the account",
     );
 
     // The old permit is still refused: the decision it carries was taken before this client learned
     // something, and `Found` is not evidence that the earlier decision was safe to act on.
     assert_eq!(
-        machine.revalidate(&permit),
+        machine.revalidate(&permit, secs(0)),
         Admission::Refused {
             reason: NewRiskRefusal::Superseded,
         },
     );
 
-    let current = machine.admission();
+    let current = machine.admission(secs(0));
 
     assert_eq!(
-        machine.revalidate(&current),
+        machine.revalidate(&current, secs(0)),
         current,
         "a decision taken now is the current one",
     );
@@ -946,7 +947,7 @@ fn test_a_position_the_venue_stops_listing_is_reported_and_its_baseline_retired(
         ReconciliationState::Uncertain,
         "the account was Ready, and a position it expected is not one the venue carries",
     );
-    assert!(!machine.can_submit_new_orders());
+    assert!(!machine.can_submit_new_orders(secs(0)));
 
     let judgment = machine.last_judgment().expect("the pass is judged");
 
@@ -1038,7 +1039,7 @@ fn test_a_liquidation_leaves_ready_and_stops_new_risk() {
     let carried = long_position("1.5489");
     let mut machine = machine_holding(&carried);
 
-    assert!(machine.can_submit_new_orders());
+    assert!(machine.can_submit_new_orders(secs(0)));
 
     // The account was carried in long, and the venue's next read is flat with nothing filled:
     // the position was liquidated at the venue rather than closed by this client.
@@ -1049,8 +1050,8 @@ fn test_a_liquidation_leaves_ready_and_stops_new_risk() {
         machine.conclude_pass(&liquidated, secs(3)),
         ReconciliationState::Uncertain
     );
-    assert!(!machine.can_submit_new_orders());
-    assert!(machine.refuses_new_risk());
+    assert!(!machine.can_submit_new_orders(secs(0)));
+    assert!(machine.refuses_new_risk(secs(0)));
     assert_eq!(machine.state(), ReconciliationState::Uncertain);
 }
 
@@ -1637,19 +1638,19 @@ fn test_the_switch_permits_orders_only_once_the_venue_has_confirmed_it() {
 
     // A switch nobody asked for does not govern this client.
     assert!(!switch.is_required());
-    assert!(switch.permits_new_orders());
+    assert!(switch.permits_new_orders(secs(0)));
 
     switch.arm(secs(1));
 
     // Asked for, sent, and not yet acknowledged: the plan requires a confirmed arm before an order.
     assert!(switch.is_required());
     assert_eq!(switch.state(), DeadMansSwitchState::Arming);
-    assert!(!switch.permits_new_orders());
+    assert!(!switch.permits_new_orders(secs(0)));
 
     switch.confirm_armed(secs(2));
 
     assert_eq!(switch.state(), DeadMansSwitchState::Armed);
-    assert!(switch.permits_new_orders());
+    assert!(switch.permits_new_orders(secs(0)));
     assert_eq!(switch.expires_at(), Some(secs(2 + 30)));
 }
 
@@ -1667,31 +1668,88 @@ fn test_a_renewal_moves_the_deadline_and_repeats_the_arm_frame() {
     // The renewal is the subscribe frame re-sent. **Which message actually renews the venue's
     // switch is unverified**: the frozen material documents the channel and the timeout, not the
     // renewal, so this asserts only what this adapter would send.
-    let renewal = switch.renew(secs(20)).expect("an armed switch renews");
+    let renewal = switch
+        .renew_frame()
+        .expect("an armed switch has a renewal frame to send");
 
     assert_eq!(renewal, armed);
+
+    // Composing is not renewing: the deadline is still the one the confirmation set.
+    assert_eq!(switch.expires_at(), Some(secs(31)));
+    assert_eq!(switch.renewals(), 0);
+
+    // The write at 20 is what moves it - thirty seconds on from the instant of the write.
+    switch.note_renew_sent(secs(20));
+
     assert_eq!(switch.expires_at(), Some(secs(50)));
     assert_eq!(switch.renewals(), 1);
     assert!(!switch.has_expired(secs(49)));
     assert!(switch.has_expired(secs(50)));
 }
 
+/// A renewal that never went out extends nothing: the deadline is still the one the confirmation
+/// set, and it is what bounds the orders (plan §R3.3).
+#[rstest]
+fn test_a_renewal_that_never_went_out_extends_nothing() {
+    let mut switch = DeadMansSwitch::new(30);
+
+    switch.arm(secs(1));
+    switch.confirm_armed(secs(1));
+
+    switch.note_renew_failed("the socket refused the frame".to_string());
+
+    assert_eq!(
+        switch.expires_at(),
+        Some(secs(31)),
+        "the venue's timer did not restart, so neither did this one",
+    );
+    assert_eq!(switch.failed_renewals(), 1);
+    assert!(switch.permits_new_orders(secs(30)));
+    assert!(
+        !switch.permits_new_orders(secs(31)),
+        "and the deadline the confirmation set is the only thing covering the orders",
+    );
+}
+
+/// A renewal written after the switch already failed revives nothing: a late frame does not put the
+/// account back into permitting orders (plan §R3.3).
+#[rstest]
+fn test_a_late_renewal_does_not_revive_a_failed_switch() {
+    let mut switch = DeadMansSwitch::new(30);
+
+    switch.arm(secs(1));
+    switch.confirm_armed(secs(1));
+    switch.fail("a venue error".to_string());
+
+    assert!(switch.renew_frame().is_none(), "nothing is left to renew");
+
+    switch.note_renew_sent(secs(5));
+
+    assert!(
+        matches!(switch.state(), DeadMansSwitchState::Failed { .. }),
+        "the write does not resurrect it: {:?}",
+        switch.state(),
+    );
+    assert_eq!(switch.expires_at(), None, "and it sets no deadline");
+    assert_eq!(switch.renewals(), 0, "nor does it count as a renewal");
+}
+
 #[rstest]
 fn test_a_renewal_of_a_switch_that_was_never_armed_is_not_sent() {
     let mut switch = DeadMansSwitch::new(30);
 
-    assert!(switch.renew(secs(1)).is_none());
+    assert!(switch.renew_frame().is_none());
 
     switch.arm(secs(1));
     // Arming but unacknowledged: there is no deadline to move yet.
-    assert!(switch.renew(secs(2)).is_none());
+    assert!(switch.renew_frame().is_none());
 }
 
 #[rstest]
 fn test_a_failed_switch_stops_new_orders() {
     let mut machine = recovered_machine();
 
-    assert!(machine.can_submit_new_orders());
+    assert!(machine.can_submit_new_orders(secs(0)));
 
     machine.dead_mans_switch_mut().require();
     machine.dead_mans_switch_mut().arm(secs(4));
@@ -1705,8 +1763,8 @@ fn test_a_failed_switch_stops_new_orders() {
             reason: "the venue refused the subscribe frame".to_string()
         }
     );
-    assert!(!machine.can_submit_new_orders());
-    assert!(machine.refuses_new_risk());
+    assert!(!machine.can_submit_new_orders(secs(0)));
+    assert!(machine.refuses_new_risk(secs(0)));
 }
 
 #[rstest]
@@ -1724,14 +1782,14 @@ fn test_a_switch_that_fired_stops_new_risk_and_does_not_report_a_position_flat()
     machine.dead_mans_switch_mut().arm(secs(2));
     machine.dead_mans_switch_mut().confirm_armed(secs(2));
 
-    assert!(machine.can_submit_new_orders());
+    assert!(machine.can_submit_new_orders(secs(0)));
 
     // The switch fires: the venue cancels every resting order. It does **not** close a position,
     // so the position the last read saw is still there until a read says otherwise.
     machine.note_switch_fired(secs(40));
 
-    assert!(!machine.can_submit_new_orders());
-    assert!(machine.refuses_new_risk());
+    assert!(!machine.can_submit_new_orders(secs(0)));
+    assert!(machine.refuses_new_risk(secs(0)));
     assert_eq!(machine.state(), ReconciliationState::Uncertain);
 
     let position = machine
@@ -1759,7 +1817,309 @@ fn test_releasing_the_switch_sends_the_unsubscribe_frame_and_leaves_the_state_un
     assert_eq!(switch.state(), DeadMansSwitchState::NotRequired);
     // A released switch permits orders again, which is why the stop sequence cancels this run's
     // orders *before* it releases anything.
-    assert!(switch.permits_new_orders());
+    assert!(switch.permits_new_orders(secs(0)));
+}
+
+// ------------------------------------------------------------------------------------------------
+// The deadline in admission, and the switch's bounded renewal (plan §R3.3)
+// ------------------------------------------------------------------------------------------------
+
+/// The switch stops permitting orders when its own deadline passes, not only when the venue says it
+/// fired.
+///
+/// This is the defect the whole of §R3.3's first half is against: `permits_new_orders` used to read
+/// the stored state and never the clock, so a switch that was armed and then starved of renewals -
+/// a blocked task, a socket that stopped taking frames - still read `Armed` and kept admitting
+/// orders behind protection that had already lapsed.
+#[rstest]
+fn test_the_deadline_takes_the_switch_out_of_permitting_orders() {
+    let mut machine = recovered_machine();
+
+    machine.dead_mans_switch_mut().require();
+    machine.dead_mans_switch_mut().arm(secs(1));
+    machine.dead_mans_switch_mut().confirm_armed(secs(1));
+
+    assert_eq!(machine.dead_mans_switch().expires_at(), Some(secs(31)));
+    assert!(
+        machine.can_submit_new_orders(secs(30)),
+        "one second inside the deadline the switch still governs the account",
+    );
+    assert!(
+        !machine.can_submit_new_orders(secs(31)),
+        "at the deadline the protection has lapsed, whatever the stored state still says",
+    );
+    assert_eq!(
+        machine.dead_mans_switch().state(),
+        DeadMansSwitchState::Armed,
+        "and the stored state is untouched: the lapse is a projection, not a transition",
+    );
+}
+
+/// An armed switch past its deadline is refused **by name**, and the name is the instant it lapsed
+/// at.
+#[rstest]
+fn test_the_lapsed_switch_is_reported_as_lapsed_with_its_deadline() {
+    let mut machine = recovered_machine();
+
+    machine.dead_mans_switch_mut().require();
+    machine.dead_mans_switch_mut().arm(secs(1));
+    machine.dead_mans_switch_mut().confirm_armed(secs(1));
+
+    assert_eq!(machine.new_risk_refusal(secs(30)), None);
+
+    let refusal = machine
+        .new_risk_refusal(secs(31))
+        .expect("a lapsed switch is a refusal");
+
+    assert_eq!(
+        refusal,
+        NewRiskRefusal::DeadMansSwitch(DeadMansSwitchState::Lapsed {
+            expired_at: secs(31),
+        }),
+    );
+
+    let reason = refusal.reason();
+
+    assert!(
+        reason.contains(&secs(31).as_u64().to_string()),
+        "the refusal says when the switch lapsed: {reason}",
+    );
+    assert!(
+        reason.contains("without the venue confirming that it fired"),
+        "and it does not claim the venue fired it: {reason}",
+    );
+}
+
+/// The venue firing the switch and this client's own deadline passing are two different refusals.
+#[rstest]
+fn test_a_lapsed_switch_and_a_fired_switch_are_two_different_refusals() {
+    let mut lapsed = recovered_machine();
+
+    lapsed.dead_mans_switch_mut().require();
+    lapsed.dead_mans_switch_mut().arm(secs(1));
+    lapsed.dead_mans_switch_mut().confirm_armed(secs(1));
+
+    let lapsed_refusal = lapsed
+        .new_risk_refusal(secs(60))
+        .expect("the deadline passed");
+
+    let mut fired = DeadMansSwitch::new(30);
+
+    fired.arm(secs(1));
+    fired.confirm_armed(secs(1));
+    fired.note_fired(secs(60));
+
+    assert_eq!(
+        lapsed_refusal,
+        NewRiskRefusal::DeadMansSwitch(DeadMansSwitchState::Lapsed {
+            expired_at: secs(31),
+        }),
+        "this client's own deadline passing is reported as itself",
+    );
+    assert_eq!(
+        fired.state(),
+        DeadMansSwitchState::Expired,
+        "and the venue's own statement is kept as itself",
+    );
+    assert_ne!(
+        DeadMansSwitchState::Lapsed {
+            expired_at: secs(31)
+        },
+        fired.state(),
+        "one is something this client worked out and the other is something the venue said; a \
+         reader that cannot tell them apart cannot tell silence from an answer",
+    );
+    assert!(
+        !fired.permits_new_orders(secs(60)),
+        "and both refuse new orders, which is the one thing they agree on",
+    );
+}
+
+/// A renewal moves the deadline, and the same instant that was refused before it is admitted after.
+#[rstest]
+fn test_a_renewal_moves_the_deadline_the_admission_reads() {
+    let mut machine = recovered_machine();
+
+    machine.dead_mans_switch_mut().require();
+    machine.dead_mans_switch_mut().arm(secs(1));
+    machine.dead_mans_switch_mut().confirm_armed(secs(1));
+
+    assert!(!machine.can_submit_new_orders(secs(40)));
+
+    // The frame is composed and then written, and only the second step is a renewal. The assertion
+    // between them is the point of this test: at the admission layer, a frame that exists in this
+    // process and has not reached the venue has renewed nothing (plan §R3.3).
+    assert!(
+        machine.dead_mans_switch_mut().renew_frame().is_some(),
+        "the armed switch has a renewal frame to send",
+    );
+    assert!(
+        !machine.can_submit_new_orders(secs(40)),
+        "a frame that was composed but not written is not a renewal",
+    );
+
+    machine.dead_mans_switch_mut().note_renew_sent(secs(35));
+
+    assert_eq!(
+        machine.dead_mans_switch().expires_at(),
+        Some(secs(65)),
+        "confirmed at 1, renewed at 35, thirty seconds on",
+    );
+    assert!(
+        machine.can_submit_new_orders(secs(40)),
+        "the instant that was past the old deadline is inside the new one",
+    );
+    assert!(!machine.can_submit_new_orders(secs(65)));
+}
+
+/// A renewal that could not be written is counted, and a run of them fails the switch closed.
+#[rstest]
+fn test_a_run_of_failed_renewals_fails_the_switch_at_its_bound() {
+    let mut switch = DeadMansSwitch::new(30);
+
+    switch.arm(secs(1));
+    switch.confirm_armed(secs(1));
+
+    for attempt in 1..ONDO_DMS_MAX_FAILED_RENEWALS {
+        switch.note_renew_failed("the socket refused the frame".to_string());
+
+        assert_eq!(switch.failed_renewals(), attempt);
+        assert_eq!(
+            switch.state(),
+            DeadMansSwitchState::Armed,
+            "a run that has not reached the bound leaves the switch armed",
+        );
+        assert!(
+            switch.permits_new_orders(secs(2)),
+            "and still permitting orders",
+        );
+    }
+
+    switch.note_renew_failed("the socket refused the frame".to_string());
+
+    assert_eq!(switch.failed_renewals(), ONDO_DMS_MAX_FAILED_RENEWALS);
+    assert!(
+        matches!(switch.state(), DeadMansSwitchState::Failed { .. }),
+        "the bound fails the switch closed: {:?}",
+        switch.state(),
+    );
+    assert!(
+        !switch.permits_new_orders(secs(2)),
+        "a failed switch refuses new orders whatever the clock says",
+    );
+}
+
+/// One renewal that reaches the socket clears the run, which is what makes the bound a bound on
+/// *consecutive* failures rather than on every failure the run ever had.
+#[rstest]
+fn test_a_renewal_that_reaches_the_socket_clears_the_run_of_failures() {
+    let mut switch = DeadMansSwitch::new(30);
+
+    switch.arm(secs(1));
+    switch.confirm_armed(secs(1));
+
+    for _ in 0..ONDO_DMS_MAX_FAILED_RENEWALS - 1 {
+        switch.note_renew_failed("the socket refused the frame".to_string());
+    }
+
+    assert_eq!(switch.failed_renewals(), ONDO_DMS_MAX_FAILED_RENEWALS - 1);
+
+    switch.note_renew_sent(secs(2));
+
+    assert_eq!(switch.failed_renewals(), 0, "the run is over");
+    assert_eq!(switch.state(), DeadMansSwitchState::Armed);
+
+    // A fresh run of the bound is what it takes to fail it now: without the reset, the very next
+    // failure would have failed the switch.
+    for _ in 0..ONDO_DMS_MAX_FAILED_RENEWALS - 1 {
+        switch.note_renew_failed("the socket refused the frame".to_string());
+    }
+
+    assert!(
+        matches!(switch.state(), DeadMansSwitchState::Armed),
+        "one short of the bound is not the bound: {:?}",
+        switch.state(),
+    );
+
+    switch.note_renew_failed("the socket refused the frame".to_string());
+
+    assert!(matches!(switch.state(), DeadMansSwitchState::Failed { .. }));
+}
+
+/// The bound is the crate's, and a configuration may tighten it but not widen it.
+#[rstest]
+fn test_the_renewal_bound_is_capped_at_the_crates_own() {
+    let mut asked_for_more = DeadMansSwitch::new(30);
+
+    asked_for_more.set_max_failed_renewals(u32::MAX);
+
+    assert_eq!(
+        asked_for_more.max_failed_renewals(),
+        ONDO_DMS_MAX_FAILED_RENEWALS,
+        "a configuration cannot widen a safety bound, only tighten it",
+    );
+
+    let mut asked_for_less = DeadMansSwitch::new(30);
+
+    asked_for_less.set_max_failed_renewals(1);
+    asked_for_less.arm(secs(1));
+    asked_for_less.confirm_armed(secs(1));
+    asked_for_less.note_renew_failed("the socket refused the frame".to_string());
+
+    assert!(matches!(
+        asked_for_less.state(),
+        DeadMansSwitchState::Failed { .. }
+    ));
+}
+
+/// A converged account is not on its own a licence to trade: the switch is a second axis, and it
+/// refuses in its own name with its own state (plan §R3.3).
+///
+/// The account here is read clean twice, so `ReconciliationState` is `Ready` and every earlier step
+/// of the admission chain has nothing to refuse - which is what makes the refusals below the
+/// switch's own rather than a side effect of an unrecovered account. The two states pinned are the
+/// ones the deadline logic does not touch: an arm the venue has not acknowledged, and an arm that
+/// failed outright. `Arming` is also the whole of the lost-acknowledgement case - a subscribe frame
+/// the venue never answered leaves the switch there, and nothing is admitted from there.
+#[rstest]
+fn test_a_ready_account_is_refused_by_name_while_the_switch_is_unconfirmed_or_failed() {
+    let mut machine = recovered_machine();
+
+    assert_eq!(machine.state(), ReconciliationState::Ready);
+    assert_eq!(
+        machine.new_risk_refusal(secs(0)),
+        None,
+        "a ready account that asked for no switch trades",
+    );
+
+    // Sent, and not yet acknowledged by the venue: an unconfirmed arm is not an arm (§6.4).
+    machine.dead_mans_switch_mut().require();
+    machine.dead_mans_switch_mut().arm(secs(4));
+
+    assert_eq!(
+        machine.new_risk_refusal(secs(4)),
+        Some(NewRiskRefusal::DeadMansSwitch(DeadMansSwitchState::Arming)),
+    );
+    assert_eq!(
+        machine.state(),
+        ReconciliationState::Ready,
+        "the account axis is untouched by the switch's: it is still Ready",
+    );
+
+    // The venue refused the arm.
+    machine
+        .dead_mans_switch_mut()
+        .fail("the venue refused the subscribe frame".to_string());
+
+    assert_eq!(
+        machine.new_risk_refusal(secs(5)),
+        Some(NewRiskRefusal::DeadMansSwitch(
+            DeadMansSwitchState::Failed {
+                reason: "the venue refused the subscribe frame".to_string(),
+            }
+        )),
+    );
+    assert!(machine.refuses_new_risk(secs(5)));
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1948,14 +2308,17 @@ fn test_a_recovery_generation_changes_when_a_recovery_starts_or_a_session_ends()
 fn test_reports_the_recovery_could_not_apply_cost_a_bounded_re_read_rather_than_a_silent_drop() {
     let mut machine = recovered_machine();
 
-    assert!(machine.can_submit_new_orders());
+    assert!(machine.can_submit_new_orders(secs(0)));
 
     machine.note_lost_reports(3, "the recovery buffer refused 3 more".to_string());
 
     // The loss stops new risk at the instant it happens: a converged account with reports missing
     // from it is not an account that has been read.
     assert_eq!(machine.state(), ReconciliationState::Uncertain);
-    assert!(!machine.can_submit_new_orders(), "a loss is not tradable");
+    assert!(
+        !machine.can_submit_new_orders(secs(0)),
+        "a loss is not tradable"
+    );
 
     // The pass that reads the account judges the loss with everything else, and judging it is what
     // clears it: what keeps the account uncertain afterwards is that judgment, not the record.
@@ -1980,7 +2343,7 @@ fn test_reports_the_recovery_could_not_apply_cost_a_bounded_re_read_rather_than_
         "the loss is not judged twice",
     );
     assert!(
-        !machine.can_submit_new_orders(),
+        !machine.can_submit_new_orders(secs(0)),
         "one pass is not a recovery"
     );
 
@@ -1988,7 +2351,7 @@ fn test_reports_the_recovery_could_not_apply_cost_a_bounded_re_read_rather_than_
         machine.conclude_pass(&clean_reading(), secs(5)),
         ReconciliationState::Ready,
     );
-    assert!(machine.can_submit_new_orders());
+    assert!(machine.can_submit_new_orders(secs(0)));
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -4275,9 +4638,15 @@ async fn test_stopping_releases_the_switch_only_after_the_runs_own_orders_are_ca
     .await;
     let harness = recovered_harness(&mock).await;
 
-    // The switch is armed, so stopping has to release it as well as cancel this run's orders.
-    harness.client.arm_dead_mans_switch(secs(1));
-    harness.client.confirm_dead_mans_switch(secs(1));
+    // The switch is armed, so stopping has to release it as well as cancel this run's orders. It is
+    // armed from the wall clock and with room to spare, because the deadline now governs admission:
+    // a switch confirmed at an epoch-second instant would be past its deadline by the time the
+    // submission below is admitted, and the submission - not the stop sequence - would be the thing
+    // this test measured.
+    let now = nautilus_core::time::get_atomic_clock_realtime().get_time_ns();
+
+    harness.client.arm_dead_mans_switch(now);
+    harness.client.confirm_dead_mans_switch(now);
 
     let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
 
@@ -4540,20 +4909,20 @@ fn test_an_account_under_liquidation_refuses_new_risk_by_name() {
         "the account's own reconciliation converges",
     );
     assert_eq!(
-        machine.new_risk_refusal(),
+        machine.new_risk_refusal(secs(0)),
         Some(NewRiskRefusal::Liquidation(
             LiquidationState::UnderLiquidation
         )),
         "and new risk is refused by name while the venue is closing the account",
     );
-    assert!(machine.refuses_new_risk());
+    assert!(machine.refuses_new_risk(secs(0)));
 
     // The venue stops liquidating, and the next passes say so.
     machine.conclude_pass(&clean_reading(), secs(3));
     machine.conclude_pass(&clean_reading(), secs(4));
 
     assert_eq!(machine.liquidation(), &LiquidationState::Clear);
-    assert_eq!(machine.new_risk_refusal(), None);
+    assert_eq!(machine.new_risk_refusal(secs(0)), None);
 }
 
 /// The member is required by the frozen schema, so a balance that does not carry it is a payload
@@ -4574,7 +4943,7 @@ fn test_a_liquidation_condition_nobody_read_is_not_a_clear_one() {
 
     assert_eq!(machine.state(), ReconciliationState::Ready);
     assert_eq!(
-        machine.new_risk_refusal(),
+        machine.new_risk_refusal(secs(0)),
         Some(NewRiskRefusal::Liquidation(LiquidationState::Unknown {
             reason: "the venue's balance carried no readable `underLiquidation`".to_string(),
         })),
@@ -4588,7 +4957,7 @@ fn test_a_liquidation_condition_nobody_read_is_not_a_clear_one() {
 fn test_a_run_whose_journal_failed_refuses_new_risk_whatever_the_account_reads() {
     let mut machine = recovered_machine();
 
-    assert!(machine.can_submit_new_orders());
+    assert!(machine.can_submit_new_orders(secs(0)));
 
     machine.set_journal(JournalStatus::Failed {
         path: "C:/ondojournal.json".to_string(),
@@ -4596,7 +4965,7 @@ fn test_a_run_whose_journal_failed_refuses_new_risk_whatever_the_account_reads()
     });
 
     assert_eq!(
-        machine.new_risk_refusal(),
+        machine.new_risk_refusal(secs(0)),
         Some(NewRiskRefusal::JournalUnavailable {
             reason: "the checkpoint records 2 fills and the file holds 1".to_string(),
         }),
@@ -4607,7 +4976,7 @@ fn test_a_run_whose_journal_failed_refuses_new_risk_whatever_the_account_reads()
     machine.conclude_pass(&clean_reading(), secs(4));
 
     assert_eq!(machine.state(), ReconciliationState::Ready);
-    assert!(machine.refuses_new_risk());
+    assert!(machine.refuses_new_risk(secs(0)));
 }
 
 /// A run with no journal path said, in its configuration, that its ledger lives for one process.
@@ -4622,7 +4991,7 @@ fn test_a_run_with_no_journal_path_still_trades_and_says_so() {
     ));
     assert!(machine.journal().permits_new_orders());
     assert!(
-        machine.can_submit_new_orders(),
+        machine.can_submit_new_orders(secs(0)),
         "the offline phase runs without a journal and does not stop risk over it",
     );
     assert!(machine.journal().reason().contains("in memory"));
@@ -4639,7 +5008,7 @@ fn test_a_run_with_no_journal_path_still_trades_and_says_so() {
 #[rstest]
 fn test_a_journal_that_stopped_accepting_writes_is_stated_and_refuses_no_order() {
     let mut machine = recovered_machine();
-    let permit = machine.admission();
+    let permit = machine.admission(secs(0));
 
     assert!(matches!(permit, Admission::Granted { .. }));
 
@@ -4656,12 +5025,15 @@ fn test_a_journal_that_stopped_accepting_writes_is_stated_and_refuses_no_order()
     assert_eq!(status.as_str(), "degraded");
     assert!(status.permits_new_orders());
     assert!(
-        machine.can_submit_new_orders(),
+        machine.can_submit_new_orders(secs(0)),
         "a run whose disk filled up is not a run that cannot trade",
     );
-    assert_eq!(machine.new_risk_refusal(), None);
+    assert_eq!(machine.new_risk_refusal(secs(0)), None);
     assert!(
-        matches!(machine.revalidate(&permit), Admission::Granted { .. }),
+        matches!(
+            machine.revalidate(&permit, secs(0)),
+            Admission::Granted { .. }
+        ),
         "the permit taken before the journal degraded still stands",
     );
 
@@ -4692,7 +5064,7 @@ fn test_a_journal_that_stopped_accepting_writes_is_stated_and_refuses_no_order()
         reason.contains("no checkpoint from this run has reached the disk"),
         "{reason}",
     );
-    assert!(machine.can_submit_new_orders());
+    assert!(machine.can_submit_new_orders(secs(0)));
 }
 
 /// A journal status and the refusal it raises are one answer rather than two.
@@ -4781,7 +5153,10 @@ fn test_a_restored_journal_puts_the_unsettled_writes_back_with_their_window() {
         secs(1),
         "the window is measured from when the outcome became unknown, not from the restart",
     );
-    assert!(machine.refuses_new_risk(), "and it blocks new risk again");
+    assert!(
+        machine.refuses_new_risk(secs(0)),
+        "and it blocks new risk again"
+    );
 
     // The window had already passed by the time a later caller asks, so the restarted run resumes
     // an expired probe rather than a fresh one: the write stays recorded and blocking, and
@@ -4793,7 +5168,7 @@ fn test_a_restored_journal_puts_the_unsettled_writes_back_with_their_window() {
         abandon[0].attempts, 2,
         "the probe count survives the restart"
     );
-    assert!(machine.refuses_new_risk());
+    assert!(machine.refuses_new_risk(secs(0)));
 }
 
 /// An unsettled write the machine already holds is not overwritten by the file.

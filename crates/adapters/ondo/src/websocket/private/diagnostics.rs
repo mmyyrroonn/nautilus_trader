@@ -101,6 +101,15 @@ pub enum PrivateRecord {
         /// How many renewals this session has made.
         renewals: u64,
     },
+    /// One renewal frame could not be written (plan §R3.3).
+    ///
+    /// It is deliberately not [`Self::SwitchFailed`]: the switch counts these and fails itself once
+    /// the run reaches its bound, so a record that said "failed" for each one would read as though
+    /// the protection were already gone on the first unsendable frame.
+    SwitchRenewFailed {
+        /// Why, redacted.
+        reason: String,
+    },
     /// The switch could not be armed, renewed or read.
     SwitchFailed {
         /// Why, redacted.

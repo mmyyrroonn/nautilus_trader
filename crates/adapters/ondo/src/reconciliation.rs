@@ -88,6 +88,32 @@ pub const ONDO_SUBMISSION_PROBE_INTERVAL: u64 = 5;
 /// sequence boundary can be proven).
 pub const ONDO_RECONCILE_CONFIRMATIONS: usize = 2;
 
+/// How often a stop looks at whether the orders it cancelled have settled, in milliseconds.
+///
+/// The stop's waits are real ones on the process clock, because the reports it waits for arrive
+/// from a transport on the process's own runtime. The tick is a poll, not a deadline: the loop
+/// leaves the moment the last order settles.
+pub const ONDO_STOP_SETTLE_POLL_MS: u64 = 20;
+
+/// The **hard** bound on how many renewal sends may fail in a row before the switch fails closed.
+///
+/// It is the crate's own ceiling and the default, not a recommendation: a configuration may ask for
+/// fewer and is capped here when it asks for more
+/// ([`DeadMansSwitch::set_max_failed_renewals`]), so no configuration file can widen the bound the
+/// way `config/limits.toml` cannot widen a notional limit. An armed switch is the only thing
+/// covering this client's resting orders, and a renewal that cannot be written is a switch that is
+/// about to stop covering them: waiting longer buys nothing a retry has not already tried.
+pub const ONDO_DMS_MAX_FAILED_RENEWALS: u32 = 3;
+
+/// The most a configuration may ask for: the bound
+/// [`DeadMansSwitch::set_max_failed_renewals`] clamps every request to (plan §R3.3).
+///
+/// It is the same number as the default above, and the two are separate names on purpose. "A
+/// configuration may tighten this bound and never widen it" is then true by construction, and
+/// lowering the default later - because a run has been seen to stumble three times in a row and
+/// recover - cannot silently widen what a configuration is allowed to ask for.
+pub const ONDO_DMS_MAX_FAILED_RENEWALS_CEILING: u32 = ONDO_DMS_MAX_FAILED_RENEWALS;
+
 /// The dead man's switch channel (plan §6.4, `cancelAllOrdersAfterPerps`).
 pub const ONDO_DMS_CHANNEL: &str = "cancelAllOrdersAfterPerps";
 
@@ -222,6 +248,14 @@ impl NewRiskRefusal {
                     format!("the dead man's switch failed: {reason}")
                 }
                 DeadMansSwitchState::Expired => "the dead man's switch expired".to_string(),
+                // Deliberately not the `Expired` wording: the venue never confirmed this one. What
+                // this client knows is its own deadline, and the statement says only that.
+                DeadMansSwitchState::Lapsed { expired_at } => format!(
+                    "the dead man's switch this client armed reached its deadline at {} ns without \
+                     the venue confirming that it fired, so this client cannot say whether the \
+                     switch still covers its orders",
+                    expired_at.as_u64(),
+                ),
             },
             Self::AccountState(state) => format!("the account is {}", state.as_str()),
             Self::Liquidation(state) => state.reason(),
@@ -433,6 +467,24 @@ pub enum DeadMansSwitchState {
     /// The switch fired: the venue cancelled the account's resting orders. It does **not** close a
     /// position, and it is not evidence that one is gone (plan §6.4).
     Expired,
+    /// This client's own armed switch passed its deadline without the venue ever confirming that it
+    /// fired.
+    ///
+    /// It is **not** [`Self::Expired`], and the two must not be collapsed. [`Self::Expired`] is
+    /// something the venue told this client: it fired, and the account's resting orders are gone.
+    /// This is something this client worked out on its own: the deadline it computed from the
+    /// venue's own confirmation has passed, and no frame has arrived to say what happened. The
+    /// second is the weaker statement and the one that has to be reported as itself - a client that
+    /// read its own silence as the venue's confirmation would be claiming an outcome it never saw.
+    ///
+    /// Both refuse new orders, which is the whole point of the deadline entering admission: a task
+    /// that blocks cannot renew, and an unrenewed switch past its deadline is not protection. This
+    /// state is what the block becomes - without it the switch would still read `Armed` and permit
+    /// orders behind a protection that has already lapsed.
+    Lapsed {
+        /// The deadline this client computed and passed.
+        expired_at: UnixNanos,
+    },
 }
 
 /// The dead man's switch: a venue-side timer that cancels every resting order on the account.
@@ -451,6 +503,10 @@ pub struct DeadMansSwitch {
     timeout_seconds: u64,
     expires_at: Option<UnixNanos>,
     renewals: u64,
+    /// How many renewal sends in a row may fail before this client stops trusting the switch.
+    max_failed_renewals: u32,
+    /// How many renewal sends have failed since the last one succeeded.
+    failed_renewals: u32,
 }
 
 impl DeadMansSwitch {
@@ -463,7 +519,36 @@ impl DeadMansSwitch {
             timeout_seconds,
             expires_at: None,
             renewals: 0,
+            max_failed_renewals: ONDO_DMS_MAX_FAILED_RENEWALS,
+            failed_renewals: 0,
         }
+    }
+
+    /// Sets how many renewal sends in a row may fail before the switch fails closed.
+    ///
+    /// The request is **capped** at [`ONDO_DMS_MAX_FAILED_RENEWALS_CEILING`] rather than taken as
+    /// given: the bound is this crate's, and a configuration may tighten it but never widen it past
+    /// the ceiling. A caller asking for an unbounded run gets the cap instead of a compile error,
+    /// because the value travels from a configuration file and a configuration that cannot widen a
+    /// safety bound should be *inert*, not fatal.
+    pub const fn set_max_failed_renewals(&mut self, max_failed_renewals: u32) {
+        self.max_failed_renewals = if max_failed_renewals > ONDO_DMS_MAX_FAILED_RENEWALS_CEILING {
+            ONDO_DMS_MAX_FAILED_RENEWALS_CEILING
+        } else {
+            max_failed_renewals
+        };
+    }
+
+    /// Returns the bound this switch fails closed at.
+    #[must_use]
+    pub const fn max_failed_renewals(&self) -> u32 {
+        self.max_failed_renewals
+    }
+
+    /// Returns how many renewal sends have failed since the last one succeeded.
+    #[must_use]
+    pub const fn failed_renewals(&self) -> u32 {
+        self.failed_renewals
     }
 
     /// Returns the timeout this switch asks the venue for, in seconds.
@@ -473,9 +558,31 @@ impl DeadMansSwitch {
     }
 
     /// Returns the switch's state.
+    ///
+    /// It is the state as it was last *set*, and it does not know what time it is: an armed switch
+    /// whose deadline has passed still reads [`DeadMansSwitchState::Armed`] here. Ask
+    /// [`Self::state_at`] for the state at an instant - this is the stored one, not the current
+    /// one, and the difference is the whole of why the deadline can be forgotten.
     #[must_use]
     pub fn state(&self) -> DeadMansSwitchState {
         self.state.clone()
+    }
+
+    /// Returns the switch's state at `now`, as a projection.
+    ///
+    /// An armed switch whose deadline has passed projects [`DeadMansSwitchState::Lapsed`], and
+    /// everything else projects itself: the deadline is read here rather than written back, so a
+    /// read never moves the switch and a caller cannot make one lapse by looking at it. The one
+    /// place that decides what "the deadline has passed" means is [`Self::has_expired`], which is
+    /// asked rather than restated, so the projection and the predicate cannot disagree.
+    #[must_use]
+    pub fn state_at(&self, now: UnixNanos) -> DeadMansSwitchState {
+        match &self.state {
+            DeadMansSwitchState::Armed if self.has_expired(now) => DeadMansSwitchState::Lapsed {
+                expired_at: self.expires_at.unwrap_or(now),
+            },
+            state => state.clone(),
+        }
     }
 
     /// Returns whether this client must keep a switch armed.
@@ -484,13 +591,19 @@ impl DeadMansSwitch {
         self.required
     }
 
-    /// Returns whether new orders may be placed under this switch.
+    /// Returns whether new orders may be placed under this switch at `now`.
     ///
     /// A switch nobody required does not govern orders. A required switch permits them only while
-    /// the venue has confirmed it: an unconfirmed arm is not an arm (plan §6.4).
+    /// the venue has confirmed it **and the confirmation still stands**: an unconfirmed arm is not
+    /// an arm (plan §6.4), and neither is one whose deadline has passed. The second half is what
+    /// makes the deadline load-bearing - a task that blocks cannot renew, and a switch that is not
+    /// renewed stops covering the orders it was armed over.
+    ///
+    /// The projection is [`Self::state_at`], so this asks the same question an observer would and
+    /// the answer cannot come apart from what a caller reads.
     #[must_use]
-    pub const fn permits_new_orders(&self) -> bool {
-        !self.required || matches!(self.state, DeadMansSwitchState::Armed)
+    pub fn permits_new_orders(&self, now: UnixNanos) -> bool {
+        !self.required || matches!(self.state_at(now), DeadMansSwitchState::Armed)
     }
 
     /// Returns the instant the switch fires, once the venue has confirmed it.
@@ -525,6 +638,7 @@ impl DeadMansSwitch {
         self.required = true;
         self.state = DeadMansSwitchState::Arming;
         self.expires_at = None;
+        self.failed_renewals = 0;
 
         self.frame(WsOp::Subscribe)
     }
@@ -540,21 +654,75 @@ impl DeadMansSwitch {
         ));
     }
 
-    /// Renews an armed switch, returning the frame to send.
+    /// Builds the frame that renews an armed switch.
     ///
     /// [`None`] when there is nothing to renew: an unarmed or unconfirmed switch has no deadline to
     /// move, and a failed one must not be renewed behind the account's back.
-    pub fn renew(&mut self, now: UnixNanos) -> Option<DeadMansSwitchMessage> {
+    ///
+    /// **Composing is not renewing, which is why this takes `&self`.** The venue restarts its timer
+    /// when the frame arrives, so the only event entitled to move the local deadline is
+    /// [`Self::note_renew_sent`], called once the bytes have reached the transport. A frame that was
+    /// built here and then failed to send, blocked, or was simply dropped would otherwise have
+    /// already moved the deadline - reopening a window half a timeout wide in which this client
+    /// believed an armed switch covered it while the venue had already cancelled its orders.
+    #[must_use]
+    pub fn renew_frame(&self) -> Option<DeadMansSwitchMessage> {
         if !matches!(self.state, DeadMansSwitchState::Armed) {
             return None;
         }
 
-        self.expires_at = Some(UnixNanos::from(
-            now.as_u64() + self.timeout_seconds * 1_000_000_000,
-        ));
-        self.renewals += 1;
-
         Some(self.frame(WsOp::Subscribe))
+    }
+
+    /// Records that a renewal frame reached the transport, moving the deadline to `now`.
+    ///
+    /// **This is not a confirmation, and it must not be read as one.** Nothing acknowledges a
+    /// renewal: the frozen material documents the subscribe frame and the timeout and says nothing
+    /// about which message renews an armed switch, so [`Self::renew_frame`] re-sends the subscribe
+    /// frame and the venue answers it with nothing this adapter can wait for. What this records is
+    /// that the bytes were written - the strongest statement available - and the deadline is moved
+    /// on that strength alone, at the instant the caller observed the write.
+    ///
+    /// Moving it here rather than at compose time errs in the fail-closed direction. A renewal that
+    /// did reach the venue but was not recorded would have the switch lapse early and re-arm, which
+    /// is recoverable; a renewal that never reached the venue but moved the deadline would have this
+    /// client admitting new risk on a switch the venue had already fired, which is not.
+    ///
+    /// It also clears the run of failures, because the *consecutive* count is what
+    /// [`Self::note_renew_failed`] accumulates against. A frame that arrives after the switch has
+    /// already failed or lapsed moves neither deadline nor count: the gate is the same one
+    /// [`Self::renew_frame`] applies, so nothing is resurrected by a late write.
+    pub fn note_renew_sent(&mut self, now: UnixNanos) {
+        self.failed_renewals = 0;
+
+        if matches!(self.state, DeadMansSwitchState::Armed) {
+            self.expires_at = Some(UnixNanos::from(
+                now.as_u64() + self.timeout_seconds * 1_000_000_000,
+            ));
+            self.renewals += 1;
+        }
+    }
+
+    /// Records that a renewal frame could not be sent, failing the switch at the bound.
+    ///
+    /// A renewal that never left this process has certainly not renewed anything, so the failures
+    /// are counted *consecutively*: one success resets the run, and the switch fails closed once
+    /// [`Self::max_failed_renewals`] of them have gone unsent in a row. The alternative - counting
+    /// every failure for the life of the run - would fail a switch that had merely stumbled once an
+    /// hour ago and recovered since.
+    ///
+    /// It fails closed by calling [`Self::fail`], so the reason a caller reads is the same one any
+    /// other failure gives, and the account stops admitting new risk for the same single reason.
+    pub fn note_renew_failed(&mut self, reason: String) {
+        self.failed_renewals = self.failed_renewals.saturating_add(1);
+
+        if self.failed_renewals >= self.max_failed_renewals {
+            self.fail(format!(
+                "{reason} (this was renewal failure {} in a row, and this client stops trusting an \
+                 unrenewed switch at {})",
+                self.failed_renewals, self.max_failed_renewals,
+            ));
+        }
     }
 
     /// Records that the switch failed, which stops new orders.
@@ -1871,6 +2039,91 @@ pub enum StopStep {
     ClosePrivateStream,
 }
 
+/// How a stop ended (plan §R3.3).
+///
+/// Three endings, kept apart because they are three different things to do next. Collapsing them
+/// into one "stopped" would be the mistake this type exists to prevent: a stop that timed out has
+/// orders that may still be resting at the venue, and a caller told only "stopped" would not know
+/// to look.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StopOutcome {
+    /// Every step ran, every cancel reached a state the venue stated, and the transport ended.
+    Complete,
+    /// The wait for the cancels to settle ran out. What was left in flight is in the report.
+    TimedOut,
+    /// The steps ran, but the transport task outlived its own bounded stop.
+    ///
+    /// The socket has been asked to close and the task has been aborted; this says that it had not
+    /// finished by the time the stop returned, not that it is still connected.
+    StreamOutlivedStop,
+}
+
+/// What a stop did, and what it left behind (plan §R3.3).
+///
+/// It carries the **evidence** rather than a verdict: the steps that were taken, the orders whose
+/// end this client cannot state, and whether the switch is still covering them. A stop that leaves
+/// the switch armed says so here and says why, rather than reporting a clean exit over a protection
+/// it kept because it had to.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StopReport {
+    /// The steps this stop was asked to take, in order.
+    pub steps: Vec<StopStep>,
+    /// How it ended.
+    pub outcome: StopOutcome,
+    /// How many cancels became requests.
+    ///
+    /// It counts the requests, not the outcomes: an order that stayed unconfirmed had its cancel
+    /// issued and is still not settled, which is exactly the distinction the rest of this report
+    /// draws.
+    pub cancellations_issued: usize,
+    /// Orders the stop cancelled whose state this client still cannot account for.
+    pub unresolved_orders: Vec<ClientOrderId>,
+    /// Cancels this client sent whose outcome no venue answer settled.
+    pub unconfirmed_cancels: Vec<ClientOrderId>,
+    /// Submissions whose outcome was already unknown when the stop began.
+    pub unknown_submissions: Vec<ClientOrderId>,
+    /// Whether the switch was released, locally **and** onto the wire.
+    ///
+    /// `false` means the switch is still armed: either the release could not be written, or it was
+    /// deliberately not attempted because something is unconfirmed.
+    pub released_switch: bool,
+    /// Whether the transport's task had ended when the stop returned.
+    pub stream_ended: bool,
+}
+
+impl StopReport {
+    /// Returns whether the stop left nothing outstanding.
+    ///
+    /// It is not "the steps ran": it is that nothing is unconfirmed, nothing is unresolved and the
+    /// transport is gone. A timeout, an unconfirmed cancel or an abandoned task all make it `false`,
+    /// which is what a caller should branch on before treating the account as closed out.
+    #[must_use]
+    pub fn is_clean(&self) -> bool {
+        self.outcome == StopOutcome::Complete
+            && self.stream_ended
+            && self.unresolved_orders.is_empty()
+            && self.unconfirmed_cancels.is_empty()
+            && self.unknown_submissions.is_empty()
+    }
+
+    /// Returns the orders the stop could not account for, in one list.
+    #[must_use]
+    pub fn outstanding(&self) -> Vec<ClientOrderId> {
+        let mut outstanding: Vec<ClientOrderId> = self
+            .unresolved_orders
+            .iter()
+            .chain(self.unconfirmed_cancels.iter())
+            .chain(self.unknown_submissions.iter())
+            .copied()
+            .collect();
+
+        outstanding.sort();
+        outstanding.dedup();
+
+        outstanding
+    }
+}
+
 /// One order's association and applied state, in the form a restart reads back (plan §R3.2).
 ///
 /// The venue order id is what resolves a payload to a Nautilus order, and `filled` is the sum of
@@ -2754,9 +3007,14 @@ impl ReconciliationMachine {
     /// with metadata this client can trade on, a switch that permits orders, and nothing left
     /// unsettled - and [`Admission::Refused`] for every other, including the machine that has never
     /// held a session.
+    ///
+    /// It takes the instant it decides at. Several of the conditions it weighs are conditions *at a
+    /// time* - an armed switch's deadline is the one that matters today - and a decision taken
+    /// against an instant the caller did not name is a decision about a moment that may not be this
+    /// one.
     #[must_use]
-    pub fn admission(&self) -> Admission {
-        match self.new_risk_refusal() {
+    pub fn admission(&self, now: UnixNanos) -> Admission {
+        match self.new_risk_refusal(now) {
             None => Admission::Granted {
                 generation: self.generation,
             },
@@ -2774,8 +3032,8 @@ impl ReconciliationMachine {
     /// decision that is no longer the current one - even when the account is admissible again by
     /// the time the request would go out.
     #[must_use]
-    pub fn revalidate(&self, permit: &Admission) -> Admission {
-        let current = self.admission();
+    pub fn revalidate(&self, permit: &Admission, now: UnixNanos) -> Admission {
+        let current = self.admission(now);
 
         if let Admission::Granted { generation } = permit
             && current.generation() == Some(*generation)
@@ -2795,8 +3053,8 @@ impl ReconciliationMachine {
     ///
     /// [`Self::admission`]'s `Granted`, as a predicate.
     #[must_use]
-    pub fn can_submit_new_orders(&self) -> bool {
-        self.admission().is_granted()
+    pub fn can_submit_new_orders(&self, now: UnixNanos) -> bool {
+        self.admission(now).is_granted()
     }
 
     /// Returns whether this client must refuse a new order right now.
@@ -2805,8 +3063,8 @@ impl ReconciliationMachine {
     /// that has established nothing has verified nothing, so there is no state a new order could be
     /// placed against.
     #[must_use]
-    pub fn refuses_new_risk(&self) -> bool {
-        !self.can_submit_new_orders()
+    pub fn refuses_new_risk(&self, now: UnixNanos) -> bool {
+        !self.can_submit_new_orders(now)
     }
 
     /// Returns why a new order may not be submitted, or [`None`] when it may be.
@@ -2817,8 +3075,14 @@ impl ReconciliationMachine {
     /// a disconnected machine is disconnected whatever else is true of it - and the two conditions
     /// that qualify an otherwise tradable account - metadata that cannot price an order, a switch
     /// that does not permit one - come last.
+    ///
+    /// The instant is a parameter because the switch's condition is a condition *at a time*: an
+    /// armed switch whose deadline has passed stops permitting orders even though nothing about it
+    /// has changed since it was armed. It is reported through [`DeadMansSwitch::state_at`] rather
+    /// than [`DeadMansSwitch::state`], so a caller reading the refusal by name is told the switch
+    /// lapsed and the instant it lapsed at, and not that it is armed.
     #[must_use]
-    pub fn new_risk_refusal(&self) -> Option<NewRiskRefusal> {
+    pub fn new_risk_refusal(&self, now: UnixNanos) -> Option<NewRiskRefusal> {
         if self.account_read_only {
             return Some(NewRiskRefusal::AccountIsReadOnly);
         }
@@ -2861,8 +3125,8 @@ impl ReconciliationMachine {
             });
         }
 
-        if !self.dms.permits_new_orders() {
-            return Some(NewRiskRefusal::DeadMansSwitch(self.dms.state()));
+        if !self.dms.permits_new_orders(now) {
+            return Some(NewRiskRefusal::DeadMansSwitch(self.dms.state_at(now)));
         }
 
         None

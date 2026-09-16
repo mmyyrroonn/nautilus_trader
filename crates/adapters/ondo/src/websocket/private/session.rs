@@ -41,8 +41,8 @@
 //!
 //! - **The renewal message.** The frozen material documents the subscribe frame and the timeout and
 //!   says nothing about what renews an armed switch. This adapter renews by re-sending the subscribe
-//!   frame, which is what [`crate::reconciliation::DeadMansSwitch::renew`] builds; a sandbox session
-//!   is what settles it (plan §R3.3).
+//!   frame, which is what [`crate::reconciliation::DeadMansSwitch::renew_frame`] builds; a sandbox
+//!   session is what settles it (plan §R3.3).
 //! - **What an `update` on the switch channel means.** The channel's own page documents an
 //!   `update` frame for it, and the adapter cannot tell "armed" from "fired" in one. It is treated
 //!   as a state this adapter cannot read ([`PrivateEvent::SwitchChannelUpdate`]), which stops new

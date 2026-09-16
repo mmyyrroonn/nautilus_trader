@@ -67,7 +67,9 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     common::credential::OndoCredential,
     execution::{OndoAccountRuntime, OndoStreamIngestion},
-    reconciliation::{MetadataValidity, ReconciliationState},
+    reconciliation::{
+        DeadMansSwitchMessage, DeadMansSwitchState, MetadataValidity, ReconciliationState,
+    },
     signing::{now_millis, sign_ws},
     websocket::{
         client::{
@@ -198,6 +200,13 @@ pub struct OndoPrivateStream {
     url: String,
     run: Arc<Mutex<PrivateRunSnapshot>>,
     diagnostics: SharedPrivateDiagnostics,
+    /// The connection that is up right now, when one is.
+    ///
+    /// The run loop owns the connection and this is a second handle to the same client, so a frame
+    /// can be written from outside the loop - which is what the stop sequence's release step needs,
+    /// because a frame queued behind a task that is about to be cancelled is a frame never sent.
+    /// [`WebSocketClient::send_text`] takes `&self`, so the two writers cannot conflict.
+    active: Arc<Mutex<Option<Arc<WebSocketClient>>>>,
     cancellation: CancellationToken,
     task: Option<tokio::task::JoinHandle<()>>,
     /// Alive exactly while the task's frame is: a panic drops it too, which a flag would not.
@@ -240,6 +249,7 @@ impl OndoPrivateStream {
         let cancellation = CancellationToken::new();
         let liveness = Arc::new(());
         let (wake, wake_rx) = mpsc::unbounded_channel();
+        let active: Arc<Mutex<Option<Arc<WebSocketClient>>>> = Arc::new(Mutex::new(None));
 
         let state = PrivateTransportState {
             url: url.clone(),
@@ -250,6 +260,7 @@ impl OndoPrivateStream {
             diagnostics: Arc::clone(&diagnostics),
             run: Arc::clone(&run),
             cancellation: cancellation.clone(),
+            active: Arc::clone(&active),
             wake,
         };
 
@@ -265,6 +276,7 @@ impl OndoPrivateStream {
             url,
             run,
             diagnostics,
+            active,
             cancellation,
             task: Some(task),
             liveness: Arc::downgrade(&liveness),
@@ -296,6 +308,39 @@ impl OndoPrivateStream {
     #[must_use]
     pub fn is_running(&self) -> bool {
         self.liveness.strong_count() > 0
+    }
+
+    /// Writes one switch frame on the live socket, and says whether it reached it.
+    ///
+    /// It exists for the stop sequence's release step, which has to put its frame on the wire
+    /// *before* the transport is closed - [`Self::stop`] cancels the task, and a frame queued behind
+    /// a cancelled task is a frame that was never sent. The socket is shared with the run loop
+    /// through its own lock, so the write is the same write the loop would make.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when there is no connection to write to, when the frame cannot be
+    /// serialized, or when the socket refuses it. None of them is recoverable at this point - the
+    /// caller is stopping - so the error is reported rather than retried.
+    pub async fn send_switch_frame(&self, frame: &DeadMansSwitchMessage) -> anyhow::Result<()> {
+        let body = frame.to_json_text()?;
+        // Cloned out of the slot rather than held across the await: the guard is not `Send`, and
+        // the client is a handle whose writes are serialized by the socket itself.
+        let client = self
+            .active
+            .lock()
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("the private transport has no live connection"))?;
+
+        if !client.is_active() {
+            anyhow::bail!("the private transport's connection is no longer active");
+        }
+
+        send_body(&client, &body).await?;
+        self.diagnostics
+            .record_frame_sent(PrivateAction::ReleaseSwitch);
+
+        Ok(())
     }
 
     /// Stops the transport and waits, boundedly, for its task to end.
@@ -341,6 +386,12 @@ struct PrivateTransportState {
     /// about it. The sender lives here for the whole run, so the loop's `recv` never produces the
     /// [`None`] that would leave the branch ready and unmatched.
     wake: mpsc::UnboundedSender<()>,
+    /// The connection that is up right now, shared with [`OndoPrivateStream`].
+    ///
+    /// The run loop publishes each connection here for exactly as long as it serves it, so a frame
+    /// written from outside the loop reaches the same socket rather than waiting for a task that
+    /// may be cancelled underneath it.
+    active: Arc<Mutex<Option<Arc<WebSocketClient>>>>,
 }
 
 impl PrivateTransportState {
@@ -374,10 +425,14 @@ impl PrivateTransportState {
                 Ok((reader, client)) => {
                     backoff.reset();
                     self.diagnostics.record_connected();
+                    *self.active.lock() = Some(Arc::clone(&client));
 
                     self.serve_connection(&mut session, reader, &client, &mut passes, &mut wake_rx)
                         .await;
 
+                    // Cleared before the disconnect, so a release that arrives mid-teardown finds
+                    // no connection rather than a dead one.
+                    *self.active.lock() = None;
                     client.disconnect().await;
                 }
                 Err(error) => {
@@ -744,18 +799,30 @@ impl PrivateTransportState {
     /// **The renewal message is unverified.** The frozen material documents the subscribe frame and
     /// the timeout and says nothing about what renews an armed switch, so this re-sends the
     /// subscribe frame - the only renewal the documentation admits - which
-    /// [`crate::reconciliation::DeadMansSwitch::renew`] is the single place to change. A sandbox
-    /// session is what settles it (plan §R3.3).
+    /// [`crate::reconciliation::DeadMansSwitch::renew_frame`] is the single place to change. A
+    /// sandbox session is what settles it (plan §R3.3).
+    ///
+    /// **Composing the frame is not renewing**, so the deadline is moved only after the bytes were
+    /// written, and it is computed from an instant read *before* the write. The venue restarts its
+    /// timer at its own receipt, which cannot precede that instant, so the deadline derived from it
+    /// can only fall early - never late, which is the direction that would leave this client trading
+    /// on a switch the venue had already fired (plan §R3.3).
     async fn renew_switch(&self, client: &WebSocketClient) -> bool {
-        let Some(frame) = self.account.renew_dead_mans_switch(self.clock()) else {
+        let Some(frame) = self.account.dead_mans_switch_renewal_frame() else {
             return true;
         };
+
+        let now = self.clock();
 
         let body = match frame.to_json_text() {
             Ok(body) => body,
             Err(error) => {
                 log::error!("Ondo private stream could not build the switch renewal: {error}");
-                self.note_switch_failed(self.redact(&error.to_string()));
+                // A renewal that could not even be composed is a renewal that did not go out, so it
+                // counts against the bound rather than failing the switch outright: the arm still
+                // stands and the next tick may yet renew it (plan §R3.3). Nothing moved: composing
+                // never touches the deadline.
+                self.note_renew_failed(self.redact(&error.to_string()));
 
                 return true;
             }
@@ -763,10 +830,17 @@ impl PrivateTransportState {
 
         if let Err(error) = send_body(client, &body).await {
             log::warn!("Ondo private stream failed to renew the switch: {error}");
-            self.note_switch_failed(self.redact(&error.to_string()));
+            // The deadline is left where the confirmation put it, which is the honest state: this
+            // renewal did not reach the venue, so the venue's timer did not restart (plan §R3.3).
+            self.note_renew_failed(self.redact(&error.to_string()));
 
             return false;
         }
+
+        // Written, and nothing more than written: the venue does not acknowledge a renewal, so what
+        // the write buys is the deadline and nothing else - no confirmation is claimed, and a switch
+        // that already failed or lapsed is left alone (plan §R3.3).
+        self.account.note_dead_mans_switch_renewed(now);
 
         self.diagnostics.record(PrivateRecord::SwitchRenewed {
             renewals: self.account.dead_mans_switch_renewals(),
@@ -865,8 +939,13 @@ impl PrivateTransportState {
     }
 
     /// Opens one connection.
-    async fn connect_once(&self) -> Result<(MessageReader, WebSocketClient), TransportError> {
-        WebSocketClient::stream_builder()
+    ///
+    /// The client is handed back behind an [`Arc`] so the run loop can publish the live connection
+    /// to [`OndoPrivateStream`] without giving up its own handle to it. Nothing about the connection
+    /// changes: [`WebSocketClient::send_text`] takes `&self`, so the loop and a caller writing a
+    /// switch frame cannot conflict.
+    async fn connect_once(&self) -> Result<(MessageReader, Arc<WebSocketClient>), TransportError> {
+        let (reader, client) = WebSocketClient::stream_builder()
             .config(WebSocketConfig {
                 url: self.url.clone(),
                 headers: Vec::new(),
@@ -885,7 +964,9 @@ impl PrivateTransportState {
             })
             .default_quota(request_quota())
             .connect()
-            .await
+            .await?;
+
+        Ok((reader, Arc::new(client)))
     }
 
     /// Recomputes the run state from the session and the account.
@@ -930,10 +1011,40 @@ impl PrivateTransportState {
                         "the account was read and the switch is confirmed",
                     )
                 } else {
-                    PrivateRunSnapshot::new(
-                        PrivateRunState::Recovering,
-                        "the account was read but the switch is not confirmed",
-                    )
+                    // The account reads clean and the switch is the whole reason this session is not
+                    // trading ready, so the sentence says which way it is not ready: a switch still
+                    // waiting for the venue, one whose own deadline passed, one the venue fired and
+                    // one that failed are different things to go and look at, and a single "not
+                    // confirmed" would hide the difference between silence and an answer
+                    // (plan §R3.3).
+                    let detail = match self.account.dead_mans_switch_state() {
+                        DeadMansSwitchState::Disarmed => {
+                            "the account was read but the switch this session asked for has not \
+                             been armed"
+                        }
+                        DeadMansSwitchState::Arming => {
+                            "the account was read but the switch is still waiting for the venue to \
+                             acknowledge it"
+                        }
+                        DeadMansSwitchState::Lapsed { .. } => {
+                            "the account was read but this client's switch reached its deadline \
+                             without the venue confirming that it fired"
+                        }
+                        DeadMansSwitchState::Expired => {
+                            "the account was read but the venue has fired the switch"
+                        }
+                        DeadMansSwitchState::Failed { .. } => {
+                            "the account was read but the switch has failed"
+                        }
+                        // Neither can reach this branch - both permit orders, so the arm above was
+                        // taken - and they are spelled out rather than folded into a wildcard so
+                        // that a state added later has to be given a sentence of its own.
+                        DeadMansSwitchState::Armed | DeadMansSwitchState::NotRequired => {
+                            "the account was read but the switch is not confirmed"
+                        }
+                    };
+
+                    PrivateRunSnapshot::new(PrivateRunState::Recovering, detail)
                 }
             }
             ReconciliationState::Uncertain => PrivateRunSnapshot::new(
@@ -953,6 +1064,19 @@ impl PrivateTransportState {
         self.account.note_dead_mans_switch_failed(reason.clone());
         self.diagnostics
             .record(PrivateRecord::SwitchFailed { reason });
+    }
+
+    /// Records one renewal that could not be written, letting the switch count the run (plan §R3.3).
+    ///
+    /// It is deliberately **not** [`Self::note_switch_failed`]: a single unsendable renewal is not
+    /// the switch failing, it is one failure of a bounded run, and it is the switch that decides
+    /// when the run has gone on long enough to stop trusting itself. The record is written here so
+    /// the transport's own diagnostics show every one of them.
+    fn note_renew_failed(&self, reason: String) {
+        self.account
+            .note_dead_mans_switch_renew_failed(reason.clone());
+        self.diagnostics
+            .record(PrivateRecord::SwitchRenewFailed { reason });
     }
 
     /// Records that the connection ended.

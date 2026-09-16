@@ -123,6 +123,7 @@ use std::{
         Arc,
         atomic::{AtomicU64, Ordering},
     },
+    time::Duration,
 };
 
 use ahash::AHashMap;
@@ -185,9 +186,10 @@ use crate::{
         AccountJudgment, AccountReading, Admission, BalanceReading, DeadMansSwitchMessage,
         DeadMansSwitchState, DrainedReports, FundingPayment, FundingReconciliation, JournalOrder,
         JournalSnapshot, JournalStatus, LedgerJournal, LiquidationState, MappedBalance,
-        MetadataValidity, NewRiskRefusal, OrderReading, PositionDirection, PositionReading,
-        ProbeOutcome, ProbeReport, ReconciliationBuffer, ReconciliationMachine,
-        ReconciliationState, RecoveryPassRefusal, StopStep, UncertainOutcome, balance_member,
+        MetadataValidity, NewRiskRefusal, ONDO_STOP_SETTLE_POLL_MS, OrderReading,
+        PositionDirection, PositionReading, ProbeOutcome, ProbeReport, ReconciliationBuffer,
+        ReconciliationMachine, ReconciliationState, RecoveryPassRefusal, StopOutcome, StopReport,
+        StopStep, UncertainOutcome, balance_member,
     },
     websocket::private::{OndoPrivateStream, PrivateRunSnapshot, SharedPrivateDiagnostics},
 };
@@ -1615,6 +1617,14 @@ impl OndoExecutionClient {
             config.dms_timeout_secs,
         )));
 
+        // The renewal bound travels from the configuration into the switch itself, capped there:
+        // the switch is the thing that fails closed, so the bound it fails at is the switch's own
+        // and not a number the transport has to remember (plan §R3.3).
+        reconciliation
+            .write()
+            .dead_mans_switch_mut()
+            .set_max_failed_renewals(config.capped_dms_max_failed_renewals());
+
         // A read-only session is a property of the client rather than a promise its caller keeps:
         // it is marked before anything can be sent, and there is no way back from it (plan §0).
         if config.account_read_only {
@@ -1826,7 +1836,9 @@ impl OndoExecutionClient {
     /// priority class).
     #[must_use]
     pub fn can_submit_new_orders(&self) -> bool {
-        self.reconciliation.read().can_submit_new_orders()
+        let now = self.account.now();
+
+        self.reconciliation.read().can_submit_new_orders(now)
     }
 
     /// Returns whether this client must refuse a new order right now.
@@ -1835,18 +1847,28 @@ impl OndoExecutionClient {
     /// there is no account state a new order could be placed against.
     #[must_use]
     pub fn refuses_new_risk(&self) -> bool {
-        self.reconciliation.read().refuses_new_risk()
+        let now = self.account.now();
+
+        self.reconciliation.read().refuses_new_risk(now)
     }
 
     /// Returns why a new order would be refused, or [`None`] when one may be submitted.
+    ///
+    /// The instant is this runtime's own, read here rather than taken from the caller, so the
+    /// question "may I place an order" is answered *now* by construction. A deadline is a condition
+    /// at a time, and the one that governs is the time the question is asked at.
     #[must_use]
     pub fn new_risk_refusal(&self) -> Option<NewRiskRefusal> {
-        self.reconciliation.read().new_risk_refusal()
+        let now = self.account.now();
+
+        self.reconciliation.read().new_risk_refusal(now)
     }
 
     /// The one admission decision, taken under the lock that reads it.
     fn admission(&self) -> Admission {
-        self.reconciliation.read().admission()
+        let now = self.account.now();
+
+        self.reconciliation.read().admission(now)
     }
 
     /// Denies one command the account does not admit, by name and with its reason.
@@ -1926,11 +1948,31 @@ impl OndoExecutionClient {
         self.account.confirm_dead_mans_switch(now);
     }
 
-    /// Renews an armed switch, returning the frame to send, or [`None`] when there is nothing to
-    /// renew.
+    /// Builds the frame that renews an armed switch, or [`None`] when there is nothing to renew.
+    ///
+    /// Composing moves nothing: the deadline moves in
+    /// [`Self::note_dead_mans_switch_renewed`], after the bytes were written (plan §R3.3).
     #[must_use]
-    pub fn renew_dead_mans_switch(&self, now: UnixNanos) -> Option<DeadMansSwitchMessage> {
-        self.account.renew_dead_mans_switch(now)
+    pub fn dead_mans_switch_renewal_frame(&self) -> Option<DeadMansSwitchMessage> {
+        self.account.dead_mans_switch_renewal_frame()
+    }
+
+    /// Records that a renewal frame reached the socket at `now`, moving the switch's deadline.
+    ///
+    /// It also clears the run of consecutive renewal failures, and it says nothing more than that
+    /// the bytes were written: no acknowledgement exists for a renewal, so this is a statement about
+    /// this process and not about the venue (see [`DeadMansSwitch::note_renew_sent`]).
+    pub fn note_dead_mans_switch_renewed(&self, now: UnixNanos) {
+        self.account.note_dead_mans_switch_renewed(now);
+    }
+
+    /// Records that a renewal frame could not be written, failing the switch at the bound.
+    ///
+    /// The bound is this client's own - the configured limit, capped at the crate's ceiling - and
+    /// reaching it fails the switch closed rather than leaving an unrenewed switch reading `Armed`
+    /// (plan §R3.3).
+    pub fn note_dead_mans_switch_renew_failed(&self, reason: String) {
+        self.account.note_dead_mans_switch_renew_failed(reason);
     }
 
     /// Records that the switch failed, which stops new orders.
@@ -1950,6 +1992,10 @@ impl OndoExecutionClient {
     ///
     /// The switch is released only after this run's own orders are cancelled and confirmed: a
     /// released switch cancels nothing, and the orders it was covering would be left resting.
+    ///
+    /// This **describes** the sequence. [`Self::stop_and_wait`] is what carries it out, and the two
+    /// are deliberately not two implementations of one rule: the executor asks this for the steps
+    /// rather than restating them, so a step added here is a step taken there.
     #[must_use]
     pub fn stop_sequence(&self) -> Vec<StopStep> {
         let mut steps = vec![StopStep::CancelOwnOrders, StopStep::ConfirmOwnOrders];
@@ -1961,6 +2007,231 @@ impl OndoExecutionClient {
         steps.push(StopStep::ClosePrivateStream);
 
         steps
+    }
+
+    /// Returns the orders this run placed and is still holding.
+    ///
+    /// It is the **ownership** list the stop cancels against: every one of these was submitted under
+    /// this client's own order id by this process, so cancelling it cannot touch another session's
+    /// orders. Nothing here is derived from a market-wide read, which is what keeps the stop off
+    /// `DELETE /v1/perps/orders?market=...` - an account-wide cancellation that would take out work
+    /// this client never placed (plan §R3.3).
+    #[must_use]
+    pub fn tracked_orders(&self) -> Vec<ClientOrderId> {
+        self.reporter.state.read().orders.keys().copied().collect()
+    }
+
+    /// Executes the stop sequence and reports what it left behind (plan §6.4, §R3.3).
+    ///
+    /// # The order, and why it is the order
+    ///
+    /// 1. **New risk stops first.** The account's session is ended before anything is cancelled, so
+    ///    an order that arrives while the stop is running meets a refusal rather than a venue.
+    /// 2. **This run's own orders are cancelled, one by one, by client order id.** The path is the
+    ///    ordinary single-order cancel - the same code a strategy's `CancelOrder` travels - and
+    ///    [`StopStep::CancelOwnOrders`] is deliberately not a market-wide delete: this client's
+    ///    ownership is a list of its own order ids, not a market, and a market cancel would take out
+    ///    orders it never placed.
+    /// 3. **Their outcome is confirmed by a read**, not by the cancel call. A cancel API having been
+    ///    called is not an order having been cancelled (plan §6.3), and the single-order path does
+    ///    this itself: a venue answer that does not state the order is followed by a query.
+    /// 4. **The switch is released only when nothing is unconfirmed.** An order whose end this
+    ///    client cannot state is an order the switch is still covering; releasing it there would
+    ///    trade a protection that is doing something for the tidier exit.
+    /// 5. **The private stream is closed**, and the transport's own bounded stop is awaited.
+    ///
+    /// # What it refuses to pretend
+    ///
+    /// It does not report success it did not see. The three endings are kept apart in
+    /// [`StopOutcome`]: everything settled, the wait for the settles ran out, or the transport
+    /// outlived its own stop timeout. Whatever is left over - the orders still unconfirmed, the ones
+    /// a timeout left in flight - is listed in the report **and checkpointed into the journal**, so
+    /// a restart inherits the outstanding writes instead of beginning from an empty account. A run
+    /// that restored such a journal does not become [`crate::reconciliation::ReconciliationState::Ready`]
+    /// on a clean read: the restored entries are what the admission refuses on, exactly as they were
+    /// before the restart.
+    ///
+    /// # Errors
+    ///
+    /// Nothing here is fallible. A stop that cannot do something says so in its report rather than
+    /// returning an error: the caller is on its way out, and a stop that returned `Err` early would
+    /// leave the socket up and the switch armed without saying which.
+    pub async fn stop_and_wait(&mut self, now: UnixNanos, settle_timeout: Duration) -> StopReport {
+        let steps = self.stop_sequence();
+        let mut report = StopReport {
+            steps,
+            outcome: StopOutcome::Complete,
+            cancellations_issued: 0,
+            unresolved_orders: Vec::new(),
+            unconfirmed_cancels: Vec::new(),
+            unknown_submissions: Vec::new(),
+            released_switch: false,
+            stream_ended: false,
+        };
+
+        // Step 1: new risk stops. Ending the session is what makes the admission refuse, and it
+        // happens before a single cancel travels so nothing can slip in behind the stop.
+        self.account.note_session_ended(now);
+
+        // Step 2: this run's own orders, by id, on the ordinary cancel path.
+        for client_order_id in self.tracked_orders() {
+            let venue_order_id = self
+                .order_state(&client_order_id)
+                .and_then(|state| state.venue_order_id);
+
+            match self
+                .account
+                .cancel_order(client_order_id, venue_order_id, now)
+                .await
+            {
+                Ok(()) => report.cancellations_issued += 1,
+                Err(error) => {
+                    // The cancel never became a request. The order is still resting and still this
+                    // client's, so it is listed rather than dropped - and it is registered as an
+                    // unconfirmed cancel, which is what keeps the switch armed and what a restart
+                    // reads back.
+                    log::error!("Ondo could not cancel {client_order_id} while stopping: {error}");
+
+                    self.account.note_unconfirmed_cancel(
+                        client_order_id,
+                        venue_order_id,
+                        format!("the stop could not issue the cancel: {error}"),
+                        now,
+                    );
+                }
+            }
+        }
+
+        // Step 3: wait, within bounds, for the reports to settle what was just sent.
+        let settled = self
+            .await_orders_settled(settle_timeout, &report.steps)
+            .await;
+
+        let (unconfirmed_cancels, unknown_submissions) = self.unsettled_writes();
+
+        report.unconfirmed_cancels = unconfirmed_cancels;
+        report.unknown_submissions = unknown_submissions;
+        report.unresolved_orders = self.unresolved_orders();
+        report.outcome = if !settled {
+            StopOutcome::TimedOut
+        } else {
+            StopOutcome::Complete
+        };
+
+        // Step 4: release the switch only when nothing is unconfirmed. A lapsed switch needs no
+        // release - there is nothing covering the orders - and a switch nobody required has no
+        // frame to send, so both are passed over without a request.
+        let stream = self.private_stream.take();
+
+        if report.steps.contains(&StopStep::ReleaseDeadMansSwitch)
+            && report.unconfirmed_cancels.is_empty()
+            && report.unknown_submissions.is_empty()
+        {
+            let frame = self
+                .reconciliation
+                .write()
+                .dead_mans_switch_mut()
+                .release(self.account.now());
+
+            match stream.as_ref() {
+                Some(stream) => match stream.send_switch_frame(&frame).await {
+                    Ok(()) => report.released_switch = true,
+                    Err(error) => log::error!(
+                        "Ondo could not put the switch release on the wire while stopping: {error}; \
+                         the switch is released locally and the venue's own timeout is what will \
+                         fire it"
+                    ),
+                },
+                None => report.released_switch = true,
+            }
+        } else if report.steps.contains(&StopStep::ReleaseDeadMansSwitch) {
+            log::error!(
+                "Ondo is leaving the dead man's switch armed: {} cancel(s) and {} submission(s) \
+                 are unconfirmed, so the switch is still covering work this client cannot account \
+                 for",
+                report.unconfirmed_cancels.len(),
+                report.unknown_submissions.len(),
+            );
+        }
+
+        // Step 5: close the private stream and wait for the transport to end.
+        match stream {
+            Some(mut stream) => {
+                stream.stop().await;
+                report.stream_ended = !stream.is_running();
+
+                if !report.stream_ended {
+                    report.outcome = StopOutcome::StreamOutlivedStop;
+                }
+            }
+            None => report.stream_ended = true,
+        }
+
+        // The stop's own record: whatever is outstanding is written where a restart reads it, and
+        // it is written **after** the cancels so the checkpoint holds what the stop left, not what
+        // it started from.
+        self.account.persist_journal(self.account.now());
+
+        report
+    }
+
+    /// Returns the writes this account has sent whose answers it never saw.
+    fn unsettled_writes(&self) -> (Vec<ClientOrderId>, Vec<ClientOrderId>) {
+        let machine = self.reconciliation.read();
+
+        (
+            machine
+                .unconfirmed_cancels()
+                .into_iter()
+                .map(|outcome| outcome.client_order_id)
+                .collect(),
+            machine
+                .unknown_submissions()
+                .into_iter()
+                .map(|outcome| outcome.client_order_id)
+                .collect(),
+        )
+    }
+
+    /// Waits, within `timeout`, for every order the stop cancelled to stop being pending.
+    ///
+    /// It returns whether the wait finished rather than whether the orders did: an order still
+    /// working at the timeout is [`StopOutcome::TimedOut`]'s business and is reported as such.
+    async fn await_orders_settled(&self, timeout: Duration, steps: &[StopStep]) -> bool {
+        if !steps.contains(&StopStep::ConfirmOwnOrders) {
+            return true;
+        }
+
+        let start = std::time::Instant::now();
+        let mut pending = self.pending_orders();
+
+        while !pending.is_empty() {
+            if start.elapsed() >= timeout {
+                log::error!(
+                    "Ondo's stop timed out with {} order(s) still working: {pending:?}",
+                    pending.len(),
+                );
+
+                return false;
+            }
+
+            tokio::time::sleep(Duration::from_millis(ONDO_STOP_SETTLE_POLL_MS)).await;
+            pending = self.pending_orders();
+        }
+
+        true
+    }
+
+    /// Returns the tracked orders that have not reached a state the venue stated.
+    fn pending_orders(&self) -> Vec<ClientOrderId> {
+        self.reporter
+            .state
+            .read()
+            .orders
+            .values()
+            .filter(|state| !state.status.is_terminal())
+            .map(|state| state.client_order_id)
+            .collect()
     }
 
     /// Records a private report that arrived while the account was being read.
@@ -2526,13 +2797,31 @@ impl OndoAccountRuntime {
         self.reconciliation.read().is_account_read_only()
     }
 
-    /// Returns whether the switch permits new orders.
+    /// Returns whether the switch permits new orders at this instant.
+    ///
+    /// The deadline is part of the answer: an armed switch whose deadline has passed does not permit
+    /// them, and this reads the clock rather than the stored state so that it says so.
     #[must_use]
     pub fn dead_mans_switch_permits_orders(&self) -> bool {
+        let now = self.now();
+
         self.reconciliation
             .read()
             .dead_mans_switch()
-            .permits_new_orders()
+            .permits_new_orders(now)
+    }
+
+    /// Returns the switch's state at this instant, with its deadline applied.
+    ///
+    /// An armed switch whose deadline has passed reads [`DeadMansSwitchState::Lapsed`] here, which is
+    /// the state the admission and the run state both act on. The stored state still says `Armed`:
+    /// the lapse is a projection over the clock rather than a transition, so reading it changes
+    /// nothing (`DeadMansSwitch::state_at`).
+    #[must_use]
+    pub fn dead_mans_switch_state(&self) -> DeadMansSwitchState {
+        let now = self.now();
+
+        self.reconciliation.read().dead_mans_switch().state_at(now)
     }
 
     /// Returns whether the switch is waiting for the venue's acknowledgement.
@@ -2541,7 +2830,7 @@ impl OndoAccountRuntime {
     /// is why the transport fails the switch closed rather than assuming it did.
     #[must_use]
     pub fn dead_mans_switch_is_arming(&self) -> bool {
-        self.reconciliation.read().dead_mans_switch().state() == DeadMansSwitchState::Arming
+        self.dead_mans_switch_state() == DeadMansSwitchState::Arming
     }
 
     /// Returns how many times an armed switch has been renewed.
@@ -2675,14 +2964,55 @@ impl OndoAccountRuntime {
             .confirm_armed(now);
     }
 
-    /// Renews an armed switch, returning the frame to send, or [`None`] when there is nothing to
-    /// renew.
+    /// Builds the frame that renews an armed switch, or [`None`] when there is nothing to renew.
+    ///
+    /// Composing is not renewing: this takes `&self` and moves no deadline, because a frame that
+    /// never reached the venue has not restarted its timer (plan §R3.3).
     #[must_use]
-    pub fn renew_dead_mans_switch(&self, now: UnixNanos) -> Option<DeadMansSwitchMessage> {
+    pub fn dead_mans_switch_renewal_frame(&self) -> Option<DeadMansSwitchMessage> {
+        self.reconciliation.read().dead_mans_switch().renew_frame()
+    }
+
+    /// Re-arms the switch as though the venue had confirmed it at `confirmed_at`.
+    ///
+    /// It exists for one reason: the deadline is what admission now reads, and the only way to reach
+    /// a lapsed switch through this type is to place its confirmation in the past. Waiting for a
+    /// real thirty-second timeout is not a test anybody would keep, and moving the process clock is
+    /// not something this adapter offers - the transport reads the same clock, so a moved clock
+    /// would move the thing under test with it.
+    ///
+    /// It is **not** a second arm: no frame is built and nothing is sent. What it moves is the
+    /// deadline of a switch the venue has already confirmed, which is why it takes the instant of a
+    /// confirmation rather than a timeout - [`Self::confirm_dead_mans_switch`] remains the only
+    /// path that a confirmation actually travels.
+    pub fn dead_mans_switch_confirmed_at(&self, confirmed_at: UnixNanos) {
         self.reconciliation
             .write()
             .dead_mans_switch_mut()
-            .renew(now)
+            .confirm_armed(confirmed_at);
+    }
+
+    /// Records that a renewal frame was written at `now`, moving the switch's deadline.
+    ///
+    /// It also clears the run of consecutive renewal failures. It is **not** a confirmation: no
+    /// message acknowledges a renewal, so all this records is that the frame left this process.
+    pub fn note_dead_mans_switch_renewed(&self, now: UnixNanos) {
+        self.reconciliation
+            .write()
+            .dead_mans_switch_mut()
+            .note_renew_sent(now);
+    }
+
+    /// Records that a renewal frame could not be written, failing the switch at the bound.
+    ///
+    /// The bound is the configured limit capped at the crate's ceiling, so a run of unsendable
+    /// renewals ends in [`DeadMansSwitchState::Failed`] rather than in an unrenewed switch that
+    /// still reads `Armed` (plan §R3.3).
+    pub fn note_dead_mans_switch_renew_failed(&self, reason: String) {
+        self.reconciliation
+            .write()
+            .dead_mans_switch_mut()
+            .note_renew_failed(reason);
     }
 
     /// Records that the switch failed, which stops new orders.
@@ -2693,12 +3023,147 @@ impl OndoAccountRuntime {
             .fail(reason);
     }
 
+    /// Records a cancel whose outcome no venue answer settled (plan §6.3).
+    ///
+    /// The stop calls this directly, because it issues its cancels itself rather than through the
+    /// client's spawning path - and a cancel this client cannot account for is exactly what keeps
+    /// the switch armed and what a restart reads back out of the journal.
+    pub fn note_unconfirmed_cancel(
+        &self,
+        client_order_id: ClientOrderId,
+        venue_order_id: Option<VenueOrderId>,
+        reason: String,
+        now: UnixNanos,
+    ) {
+        self.reconciliation.write().note_unconfirmed_cancel(
+            client_order_id,
+            venue_order_id,
+            reason,
+            now,
+        );
+    }
+
     /// Records that the switch fired: the venue cancelled this account's resting orders.
     ///
     /// The account becomes uncertain, because what the cancellation left behind has to be read, and
     /// no position is closed by a switch (plan §6.4).
     pub fn note_dead_mans_switch_fired(&self, now: UnixNanos) {
         self.reconciliation.write().note_switch_fired(now);
+    }
+
+    /// Cancels one order by client order id, and confirms the outcome before returning.
+    ///
+    /// It is the single-order cancel and nothing else: `DELETE /v1/perps/orders/{orderID}`, resolved
+    /// from this client's own order index. The market-wide `DELETE /v1/perps/orders?market=...` is
+    /// deliberately unreachable from here - a stop cancels the orders **this run placed**, and a
+    /// market cancel would take out orders it never placed.
+    ///
+    /// It **awaits** rather than spawning, which is the whole reason it exists beside the client's
+    /// own `cancel_order`: a stop has to know that the cancels it issued have been answered before
+    /// it can say whether the switch may be released, and a spawned task cannot tell it.
+    ///
+    /// The outcome is confirmed by a read rather than assumed from the call (plan §6.3). A venue
+    /// answer that states the order confirms it; an answer that does not is registered as an
+    /// unconfirmed cancel *before* the confirming query, so a query that cannot be answered leaves
+    /// the cancel outstanding instead of leaving nothing behind at all.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the cancel never became a request - a transport failure, or a refusal
+    /// that carries no code this adapter reads as requiring a query. The error is the caller's to
+    /// record; this method registers the uncertain outcomes itself.
+    pub async fn cancel_order(
+        &self,
+        client_order_id: ClientOrderId,
+        venue_order_id: Option<VenueOrderId>,
+        now: UnixNanos,
+    ) -> anyhow::Result<()> {
+        let order_ref = match venue_order_id {
+            Some(venue_order_id) => venue_order_id.to_string(),
+            None => self.reporter.order_ref(&client_order_id),
+        };
+
+        match self
+            .http_client
+            .cancel_order(&order_ref, OndoRequestPriority::High)
+            .await
+        {
+            Ok(OndoCancelAnswer::Order(order)) => {
+                self.reporter.apply_order(&order, Acceptance::Report, None);
+
+                Ok(())
+            }
+            Ok(OndoCancelAnswer::Unconfirmed { raw }) => {
+                log::warn!(
+                    "Ondo accepted the cancel of {client_order_id} without reporting the order, so \
+                     its state is confirmed by a query ({raw})"
+                );
+                self.reconciliation.write().note_unconfirmed_cancel(
+                    client_order_id,
+                    venue_order_id,
+                    format!("the cancel was accepted without an order payload ({raw})"),
+                    now,
+                );
+                self.confirm_cancel(&client_order_id).await;
+
+                Ok(())
+            }
+            Err(error) if is_definitive_refusal(&error) => {
+                let rejection = cancel_rejection(&error);
+
+                if rejection.requires_query() {
+                    self.reconciliation.write().note_unconfirmed_cancel(
+                        client_order_id,
+                        venue_order_id,
+                        format!(
+                            "the cancel was refused with a code that requires a query: {error}"
+                        ),
+                        now,
+                    );
+                    self.confirm_cancel(&client_order_id).await;
+
+                    Ok(())
+                } else {
+                    Err(anyhow::anyhow!("{error}"))
+                }
+            }
+            Err(error) => {
+                // Ambiguous: the venue may still act on it, so it is registered before the query
+                // that would settle it (plan §6.3).
+                self.reconciliation.write().note_unconfirmed_cancel(
+                    client_order_id,
+                    venue_order_id,
+                    format!("the cancel request was not answered: {error}"),
+                    now,
+                );
+                self.confirm_cancel(&client_order_id).await;
+
+                Ok(())
+            }
+        }
+    }
+
+    /// Asks the venue what became of one order, and settles the cancel if it answers.
+    ///
+    /// The same query the client's cancel path makes, on the same reference: a cancel API having
+    /// been called is not an order having been cancelled (plan §6.3).
+    async fn confirm_cancel(&self, client_order_id: &ClientOrderId) {
+        let order_ref = self.reporter.order_ref(client_order_id);
+
+        match self
+            .http_client
+            .get_order(&order_ref, OndoRequestPriority::High)
+            .await
+        {
+            Ok(order) => {
+                self.reporter.apply_order(&order, Acceptance::Report, None);
+                self.reconciliation.write().confirm_cancel(client_order_id);
+            }
+            Err(error) => log::warn!(
+                "The confirming query after a cancel failed for {client_order_id} ({order_ref}): \
+                 {error}; the order's state stays unconfirmed"
+            ),
+        }
     }
 
     /// Records a private report that arrived while the account was being read.
@@ -3684,9 +4149,15 @@ impl ExecutionClient for OndoExecutionClient {
         let instrument_id = cmd.instrument_id;
 
         spawner.spawn(async move {
-            if let Admission::Refused { reason } =
-                revalidate(&reconciliation, &Admission::Granted { generation: permit })
-            {
+            // The instant this gate decides at is the instant it runs at, not the one the command
+            // was admitted at: the wait between the two is the wait this gate exists to cover.
+            let now = get_atomic_clock_realtime().get_time_ns();
+
+            if let Admission::Refused { reason } = revalidate(
+                &reconciliation,
+                &Admission::Granted { generation: permit },
+                now,
+            ) {
                 log::error!(
                     "Ondo refused to submit {client_order_id} at the request boundary: {}",
                     reason.reason(),
@@ -3868,9 +4339,13 @@ impl ExecutionClient for OndoExecutionClient {
             .collect();
 
         spawner.spawn(async move {
-            if let Admission::Refused { reason } =
-                revalidate(&reconciliation, &Admission::Granted { generation: permit })
-            {
+            let now = get_atomic_clock_realtime().get_time_ns();
+
+            if let Admission::Refused { reason } = revalidate(
+                &reconciliation,
+                &Admission::Granted { generation: permit },
+                now,
+            ) {
                 log::error!(
                     "Ondo refused a {}-order batch at the request boundary: {}",
                     orders.len(),
@@ -4773,8 +5248,9 @@ fn register_market_cancel(
 fn revalidate(
     reconciliation: &Arc<RwLock<ReconciliationMachine>>,
     permit: &Admission,
+    now: UnixNanos,
 ) -> Admission {
-    reconciliation.read().revalidate(permit)
+    reconciliation.read().revalidate(permit, now)
 }
 
 /// Renders a refusal as the reason an order was denied.
@@ -4806,8 +5282,12 @@ impl OndoNewRiskGuard for RunAdmission {
         let permit = Admission::Granted {
             generation: permit.generation(),
         };
+        // The send point decides at the send point: the question is whether the account admits new
+        // risk now, and a deadline that passed while the request waited for the shared budget is
+        // exactly what this gate is here to catch.
+        let now = get_atomic_clock_realtime().get_time_ns();
 
-        match self.reconciliation.read().revalidate(&permit) {
+        match self.reconciliation.read().revalidate(&permit, now) {
             Admission::Granted { .. } => Ok(()),
             Admission::Refused { reason } => Err(new_risk_refusal_reason(&reason)),
         }
