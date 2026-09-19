@@ -13,6 +13,8 @@ __all__ = [
     "OndoDataClientConfig",
     "OndoDataClientFactory",
     "OndoEnvironment",
+    "OndoExecutionClientConfig",
+    "OndoExecutionClientFactory",
 ]
 
 ONDO: str
@@ -66,11 +68,19 @@ class OndoExecutionClientConfig:
     @property
     def base_url_http(self) -> str | None: ...
     @property
+    def base_url_ws(self) -> str | None: ...
+    @property
+    def account_read_only(self) -> bool: ...
+    @property
     def http_timeout_secs(self) -> int: ...
     @property
     def dms_timeout_secs(self) -> int: ...
     @property
+    def dms_max_failed_renewals(self) -> int: ...
+    @property
     def reconcile_interval_secs(self) -> int: ...
+    @property
+    def journal_path(self) -> str | None: ...
     @property
     def allow_production_orders(self) -> bool: ...
     def __init__(
@@ -80,9 +90,13 @@ class OndoExecutionClientConfig:
         api_key: str | None = None,
         api_secret: str | None = None,
         base_url_http: str | None = None,
+        base_url_ws: str | None = None,
+        account_read_only: bool | None = None,
         http_timeout_secs: int | None = None,
         dms_timeout_secs: int | None = None,
+        dms_max_failed_renewals: int | None = None,
         reconcile_interval_secs: int | None = None,
+        journal_path: str | None = None,
         allow_production_orders: bool | None = None,
     ) -> None: ...
 

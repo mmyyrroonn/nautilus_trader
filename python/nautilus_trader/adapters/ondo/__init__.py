@@ -29,6 +29,8 @@ __all__ = [
     "OndoDataClientConfig",
     "OndoDataClientFactory",
     "OndoEnvironment",
+    "OndoExecutionClientConfig",
+    "OndoExecutionClientFactory",
 ]
 
 fixup_module_names(globals(), __name__)

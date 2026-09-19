@@ -315,6 +315,20 @@
       },
       "notes": "Observed excerpt, not synthetic and not hand-authored beyond the excerpt boundary. It carries NO `_fixture` block, because the envelope is the venue's own (the observed WS fixtures are bare payloads for the same reason); this manifest entry is the only statement of its provenance. This is the payload that resolved test_data/conflicts.md conflict 5, and it is exercised by crates/adapters/ondo/tests/http_contract.rs.",
       "schema": "GET /v1/markets 200 response (GenericResponse + MarketsResult)"
+    },
+    {
+      "path": "signing_rest_vectors.json",
+      "sha256": "a60d10f0c9e2ae85fb7227f2cce00e8b51af1a20e2ed1b3b283a329d4123de2f",
+      "bytes": 5906,
+      "kind": "synthetic",
+      "generated_at_utc": "2026-09-15T02:48:31Z (corrected 2026-09-15T05:48:10.855255+00:00; see the file's own _fixture block)",
+      "source": {
+        "generator": "reports/ondo-acceptance/20260915T-signed-fixture-correction/gen_signing_vectors.py (Python standard library hashlib + hmac only)",
+        "message_rules": "REST: timestamp_ms + UPPERCASE_METHOD + exact_path_and_query + exact_body. WS login: timestamp_ms + 'ondo_perps_ws_login' (conflicts.md conflict 2, reading A; reading B is computed too, only so a test can prove the two differ)",
+        "key_material": "fake and labelled in-file (ondoKeyId_UNIT_TEST_ONLY / ondoApiSecret_UNIT_TEST_ONLY); no venue credential or real signature appears"
+      },
+      "notes": "HMAC-SHA256 reference vectors computed independently of the Rust implementation, so tests/signing.rs compares against a foreign computation instead of restating its own expression. Kind is synthetic: every value is derived from the documented rules; no host has ever answered any of it.",
+      "exercised_by": "crates/adapters/ondo/tests/signing.rs"
     }
   ],
   "unresolved": [
