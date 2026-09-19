@@ -745,6 +745,17 @@ impl DeadMansSwitch {
         self.frame(WsOp::Unsubscribe)
     }
 
+    /// Builds the frame that releases the switch, **without** releasing it.
+    ///
+    /// The stop puts this frame on the wire first and calls [`Self::release`] only after the write
+    /// succeeded, so a release that never reached the venue is never recorded locally as one
+    /// (plan §R3.3). Composing is not releasing, the same way [`Self::renew_frame`] is not
+    /// renewing.
+    #[must_use]
+    pub fn release_frame(&self) -> DeadMansSwitchMessage {
+        self.frame(WsOp::Unsubscribe)
+    }
+
     /// Records that the switch fired.
     pub fn note_fired(&mut self, _now: UnixNanos) {
         self.state = DeadMansSwitchState::Expired;
@@ -1987,8 +1998,17 @@ pub struct AbandonedSubmission {
 /// What a probe of an unknown submission found.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ProbeOutcome {
-    /// The venue answered with the order, so the submission was applied.
-    Found,
+    /// The venue answered with the order, and what it stated is either a settled order or one
+    /// this client can account for.
+    ///
+    /// `settled` is the distinction that matters for a cancel: the order **existing** settles an
+    /// unknown submission (it was applied), but it does not settle an unconfirmed cancel unless it
+    /// is terminal, its fills agree with the venue's own total and it has no fills still waiting to
+    /// be reported ([`crate::execution::OndoOrderState::is_settled`]).
+    Found {
+        /// Whether the order the venue stated is settled.
+        settled: bool,
+    },
     /// The venue answered 404. **Not** proof the request was never applied: plan §6.3 gives a
     /// bounded window of retries for exactly this reason.
     NotFound,
@@ -2104,6 +2124,7 @@ impl StopReport {
             && self.unresolved_orders.is_empty()
             && self.unconfirmed_cancels.is_empty()
             && self.unknown_submissions.is_empty()
+            && (!self.steps.contains(&StopStep::ReleaseDeadMansSwitch) || self.released_switch)
     }
 
     /// Returns the orders the stop could not account for, in one list.
@@ -3498,10 +3519,12 @@ impl ReconciliationMachine {
 
     /// Applies one probe's outcome.
     ///
-    /// `Found` settles the outcome, whichever map holds it: the venue's answer is the answer to
-    /// both "was the submission applied" and "did the cancel take". `NotFound` and an inconclusive
-    /// probe settle nothing: the outcome stays unsettled until the window expires or a later probe
-    /// finds the order.
+    /// `Found` settles a **submission** outright: the venue answering with the order is the venue
+    /// stating the request was applied. It settles a **cancel** only when the order it answered
+    /// with is settled (`Found { settled: true }`) - an order the venue still reports as working is
+    /// not a cancelled order, which is the distinction that keeps a working order from releasing
+    /// its own protection. `NotFound` and an inconclusive probe settle nothing: the outcome stays
+    /// unsettled until the window expires or a later probe finds the order settled.
     pub fn note_probe(
         &mut self,
         client_order_id: &ClientOrderId,
@@ -3509,11 +3532,20 @@ impl ReconciliationMachine {
         now: UnixNanos,
     ) -> ProbeDisposition {
         let reason = match outcome {
-            ProbeOutcome::Found => {
+            ProbeOutcome::Found { settled } => {
                 self.unknown.remove(client_order_id);
-                self.unconfirmed_cancels.remove(client_order_id);
 
-                return ProbeDisposition::Resolved;
+                if settled {
+                    self.unconfirmed_cancels.remove(client_order_id);
+                }
+
+                if !self.unconfirmed_cancels.contains_key(client_order_id) {
+                    return ProbeDisposition::Resolved;
+                }
+
+                "the venue answered with the order, but it is still working and the cancel is not \
+                 confirmed"
+                    .to_string()
             }
             // A 404 is recorded as what it is - an answer that settles nothing - rather than as
             // the order not existing (plan §6.3).

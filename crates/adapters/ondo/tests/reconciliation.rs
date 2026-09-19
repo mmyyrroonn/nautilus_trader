@@ -460,13 +460,62 @@ fn test_a_lost_submission_answer_is_probed_under_its_own_client_id() {
     assert_eq!(
         machine.note_probe(
             &client_order_id(CLIENT_ORDER_ID),
-            ProbeOutcome::Found,
+            ProbeOutcome::Found { settled: false },
             secs(2)
         ),
         ProbeDisposition::Resolved
     );
     assert!(machine.unknown_submissions().is_empty());
     assert!(machine.probe_due(secs(3)).is_empty());
+}
+
+/// An unknown submission is settled by the venue answering with the order even when the order is
+/// still working - the order existing is the submission having been applied. An unconfirmed cancel
+/// is **not**: a working order is not a cancelled order.
+#[rstest]
+fn test_a_working_order_settles_the_submission_but_not_the_cancel() {
+    let mut machine = recovered_machine();
+
+    machine.note_unknown_submission(
+        client_order_id(CLIENT_ORDER_ID),
+        "the create request was not answered".to_string(),
+        secs(1),
+    );
+    machine.note_unconfirmed_cancel(
+        client_order_id(CLIENT_ORDER_ID),
+        Some(VenueOrderId::from(VENUE_ORDER_ID)),
+        "the cancel request was not answered".to_string(),
+        secs(1),
+    );
+
+    assert!(matches!(
+        machine.note_probe(
+            &client_order_id(CLIENT_ORDER_ID),
+            ProbeOutcome::Found { settled: false },
+            secs(2)
+        ),
+        ProbeDisposition::KeepProbing { .. }
+    ));
+    assert!(
+        machine.unknown_submissions().is_empty(),
+        "the submission is settled by the order existing"
+    );
+    assert_eq!(
+        machine.unconfirmed_cancels().len(),
+        1,
+        "but the cancel stays unconfirmed over a working order",
+    );
+    assert!(!machine.can_submit_new_orders(secs(0)));
+
+    assert_eq!(
+        machine.note_probe(
+            &client_order_id(CLIENT_ORDER_ID),
+            ProbeOutcome::Found { settled: true },
+            secs(3)
+        ),
+        ProbeDisposition::Resolved,
+    );
+    assert!(machine.unconfirmed_cancels().is_empty());
 }
 
 #[rstest]
@@ -672,7 +721,7 @@ fn test_an_unconfirmed_cancel_is_settled_by_a_probe_and_returns_the_account_to_t
     assert_eq!(
         machine.note_probe(
             &client_order_id(CLIENT_ORDER_ID),
-            ProbeOutcome::Found,
+            ProbeOutcome::Found { settled: true },
             secs(5)
         ),
         ProbeDisposition::Resolved,
@@ -716,7 +765,7 @@ fn test_a_permit_issued_before_a_revocation_is_not_valid_afterwards() {
     assert_eq!(
         machine.note_probe(
             &client_order_id(CLIENT_ORDER_ID),
-            ProbeOutcome::Found,
+            ProbeOutcome::Found { settled: false },
             secs(4)
         ),
         ProbeDisposition::Resolved,

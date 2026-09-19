@@ -69,4 +69,26 @@ impl OndoExecutionClientFactory {
     fn py_name(&self) -> &'static str {
         ONDO
     }
+
+    /// Returns whether this build's native execution client implements the ordered bounded
+    /// shutdown lifecycle.
+    ///
+    /// This is a read-only capability fact about the installed wheel, not a venue protocol
+    /// result and not a claim about any particular account. `true` means the native
+    /// `ExecutionClient` lifecycle implements the ordered stop - cancel this run's own
+    /// orders, confirm their terminal state, release the dead man's switch only when nothing
+    /// is unconfirmed, then close the private transport, with a fail-closed synchronous
+    /// fallback. It does **not** assert that a credentialled session has been exercised
+    /// against the venue, that the REST/WS protocol is verified, or that a run left the
+    /// account clean.
+    ///
+    /// The application reads this with `getattr(factory, "supports_ordered_shutdown", ...)`
+    /// and treats anything other than the exact boolean `true` as unimplemented, so an older
+    /// wheel that lacks the attribute fails closed.
+    #[getter]
+    #[pyo3(name = "supports_ordered_shutdown")]
+    #[must_use]
+    pub const fn py_supports_ordered_shutdown(&self) -> bool {
+        true
+    }
 }

@@ -352,12 +352,40 @@ impl OndoPrivateStream {
         self.set_run(PrivateRunState::Stopping, "the transport was asked to stop");
         self.cancellation.cancel();
 
-        if let Some(task) = self.task.take() {
-            let _ = tokio::time::timeout(
+        if let Some(task) = self.task.as_mut() {
+            if tokio::time::timeout(
                 Duration::from_secs(ONDO_PRIVATE_STREAM_STOP_TIMEOUT_SECS),
-                task,
+                &mut *task,
             )
-            .await;
+            .await
+            .is_err()
+            {
+                task.abort();
+
+                if tokio::time::timeout(Duration::from_secs(1), &mut *task)
+                    .await
+                    .is_err()
+                {
+                    log::error!("Ondo private transport has not finished forced cancellation");
+                    return;
+                }
+            }
+
+            self.task = None;
+        }
+    }
+
+    /// Forces the transport to stop while retaining its task for the async close to join.
+    pub(crate) fn abort(&mut self) {
+        self.set_run(
+            PrivateRunState::Stopping,
+            "the transport was forced to stop",
+        );
+        self.cancellation.cancel();
+        self.active.lock().take();
+
+        if let Some(task) = self.task.as_ref() {
+            task.abort();
         }
     }
 
@@ -1181,4 +1209,70 @@ async fn send_body(client: &WebSocketClient, body: &str) -> Result<(), Transport
             log::debug!("Ondo private WebSocket send failed: {error}");
             TransportError::Io(std::io::Error::other(error.to_string()))
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Only the external teardown is blocked; the production stream owns the real Tokio task.
+    async fn blocked_transport() -> OndoPrivateStream {
+        let liveness = Arc::new(());
+        let weak = Arc::downgrade(&liveness);
+        let (started, ready) = tokio::sync::oneshot::channel();
+        let task = tokio::spawn(async move {
+            let _liveness = liveness;
+            let _ = started.send(());
+            std::future::pending::<()>().await;
+        });
+        ready.await.expect("the teardown task started");
+
+        OndoPrivateStream {
+            url: "ws://127.0.0.1:1".to_string(),
+            run: Arc::new(Mutex::new(PrivateRunSnapshot::new(
+                PrivateRunState::Stopping,
+                "test",
+            ))),
+            diagnostics: Arc::new(PrivateDiagnostics::new()),
+            active: Arc::new(Mutex::new(None)),
+            cancellation: CancellationToken::new(),
+            task: Some(task),
+            liveness: weak,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_shutdown_ownership_survives_canceled_transport_stop() {
+        let mut stream = blocked_transport().await;
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), stream.stop())
+                .await
+                .is_err()
+        );
+
+        let alive = stream.liveness.clone();
+        drop(stream);
+        tokio::time::timeout(Duration::from_millis(500), async {
+            while alive.strong_count() != 0 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("dropping the retained owner aborts the original transport");
+    }
+
+    #[tokio::test]
+    async fn test_shutdown_ownership_aborts_and_joins_after_transport_timeout() {
+        let mut stream = blocked_transport().await;
+        stream.stop().await;
+        assert!(
+            !stream.is_running(),
+            "a timed-out teardown must be aborted and joined"
+        );
+        stream.stop().await;
+        assert!(
+            !stream.is_running(),
+            "repeating stop must preserve the completed result"
+        );
+    }
 }

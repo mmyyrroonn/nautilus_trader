@@ -57,15 +57,21 @@ use nautilus_common::{
     cache::Cache,
     clients::ExecutionClient,
     live::runner::{replace_data_event_sender, replace_exec_event_sender},
-    messages::{DataEvent, ExecutionEvent, execution::SubmitOrder},
+    messages::{
+        DataEvent, ExecutionEvent,
+        execution::{SubmitOrder, SubmitOrderList},
+    },
 };
 use nautilus_core::{UUID4, UnixNanos};
 use nautilus_live::ExecutionClientCore;
 use nautilus_model::{
     enums::{AccountType, OmsType, OrderSide, OrderType, PositionSide, TimeInForce},
     events::OrderEventAny,
-    identifiers::{AccountId, ClientId, ClientOrderId, InstrumentId, StrategyId, TraderId},
-    orders::{Order, OrderAny, builder::OrderTestBuilder},
+    identifiers::{
+        AccountId, ClientId, ClientOrderId, InstrumentId, OrderListId, StrategyId, TraderId,
+        VenueOrderId,
+    },
+    orders::{Order, OrderAny, OrderList, builder::OrderTestBuilder},
     types::{Currency, Money, Price, Quantity},
 };
 use nautilus_network::ratelimiter::quota::Quota;
@@ -80,7 +86,7 @@ use nautilus_ondo::{
     http::{private::OndoApiFill, rate_limit::OndoRateBudget},
     reconciliation::{
         DeadMansSwitchState, Finding, JournalStatus, MetadataValidity, NewRiskRefusal,
-        ReconciliationState, StopOutcome, StopStep, UncertainKind,
+        ProbeDisposition, ReconciliationState, StopOutcome, StopStep, UncertainKind,
     },
     recording::PublicFrame,
     websocket::{
@@ -129,6 +135,7 @@ fn now() -> UnixNanos {
 struct Captured {
     method: String,
     target: String,
+    body: String,
 }
 
 /// What the REST mock answers, and what it holds back.
@@ -165,6 +172,14 @@ struct RestState {
     held: Notify,
     /// Releases a held orders read.
     release: Notify,
+    /// Whether a create request waits for [`Self::release_create`] before answering.
+    hold_create: AtomicBool,
+    /// Releases a held create request.
+    release_create: Notify,
+    /// Whether a single-order DELETE waits for [`Self::release_cancels`] before answering.
+    hold_cancels: AtomicBool,
+    /// Releases a held DELETE.
+    release_cancels: Notify,
 }
 
 impl RestState {
@@ -180,6 +195,10 @@ impl RestState {
             hold_orders: AtomicBool::new(false),
             held: Notify::new(),
             release: Notify::new(),
+            hold_create: AtomicBool::new(false),
+            release_create: Notify::new(),
+            hold_cancels: AtomicBool::new(false),
+            release_cancels: Notify::new(),
         }
     }
 
@@ -317,6 +336,26 @@ impl MockRest {
         self.state.hold_orders.store(false, Ordering::SeqCst);
         self.state.release.notify_waiters();
     }
+
+    /// Holds every create request until [`Self::release_create`] is called.
+    fn hold_create(&self) {
+        self.state.hold_create.store(true, Ordering::SeqCst);
+    }
+
+    fn release_create(&self) {
+        self.state.hold_create.store(false, Ordering::SeqCst);
+        self.state.release_create.notify_waiters();
+    }
+
+    /// Holds every single-order DELETE until [`Self::release_cancels`] is called.
+    fn hold_cancels(&self) {
+        self.state.hold_cancels.store(true, Ordering::SeqCst);
+    }
+
+    fn release_cancels(&self) {
+        self.state.hold_cancels.store(false, Ordering::SeqCst);
+        self.state.release_cancels.notify_waiters();
+    }
 }
 
 async fn serve_rest(mut stream: TcpStream, state: Arc<RestState>, seen: Arc<Mutex<Vec<Captured>>>) {
@@ -381,22 +420,58 @@ async fn answer(stream: &mut TcpStream, state: &RestState, request: &Captured) {
             write_response(stream, 200, &page(&funding)).await;
         }
         ("POST", "/v1/perps/orders") => {
+            if state.hold_create.load(Ordering::SeqCst) {
+                state.release_create.notified().await;
+            }
+
             let answer = state
                 .create_answer
                 .lock()
                 .expect("the create answer")
                 .clone();
 
-            match answer {
-                Some(answer) => write_response(stream, 200, &envelope(&answer)).await,
+            match answer.as_deref() {
+                // The echo mode answers with an order whose client order id is the one the request
+                // carried, so a test can submit more than one order against one mock.
+                Some("<echo>") => {
+                    let client_order_id = serde_json::from_str::<serde_json::Value>(&request.body)
+                        .ok()
+                        .and_then(|value| {
+                            value
+                                .get("clientOrderId")
+                                .and_then(serde_json::Value::as_str)
+                                .map(str::to_string)
+                        })
+                        .unwrap_or_default();
+                    let venue_order_id = format!("venue-{client_order_id}");
+
+                    write_response(
+                        stream,
+                        200,
+                        &envelope(&api_order(&venue_order_id, &client_order_id, "open")),
+                    )
+                    .await;
+                }
+                Some(answer) => write_response(stream, 200, &envelope(answer)).await,
                 None => write_response(stream, 404, r#"{"success":false}"#).await,
             }
+        }
+        ("POST", "/v1/perps/orders/batch") => {
+            if state.hold_create.load(Ordering::SeqCst) {
+                state.release_create.notified().await;
+            }
+
+            write_response(stream, 200, &envelope(r#"{"added":[],"failed":[]}"#)).await;
         }
         // One order, by venue order id or by the `client:{id}` form, for a cancel and for the
         // confirming query after one. The market-wide `DELETE /v1/perps/orders` is deliberately not
         // answered here: a stop that sent one would be a defect, and this mock is what proves it
         // never does.
         ("DELETE", path) if path.starts_with("/v1/perps/orders/") => {
+            if state.hold_cancels.load(Ordering::SeqCst) {
+                state.release_cancels.notified().await;
+            }
+
             let answer = state
                 .cancel_answer
                 .lock()
@@ -491,7 +566,11 @@ fn parse_request(buffer: &[u8]) -> Option<Captured> {
         return None;
     }
 
-    Some(Captured { method, target })
+    Some(Captured {
+        method,
+        target,
+        body: rest[..content_length].to_string(),
+    })
 }
 
 fn is_websocket_upgrade(buffer: &[u8]) -> bool {
@@ -2120,6 +2199,1162 @@ async fn await_the_transport_to_end(harness: &Harness) {
 
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
+}
+
+// ------------------------------------------------------------------------------------------------
+// The real lifecycle hooks carry out the ordered stop (plan §R3.3)
+// ------------------------------------------------------------------------------------------------
+
+/// The frame the stop puts on the switch's channel when it releases it.
+fn is_a_switch_release(body: &str) -> bool {
+    body.contains("cancelAllOrdersAfterPerps") && body.contains(r#""op":"unsubscribe""#)
+}
+
+/// The graceful `disconnect` hook carries out the ordered stop: this run's own order is cancelled
+/// by id and confirmed, and only then is the switch released and the transport closed.
+///
+/// This is the R5.2 gap: before it, the lifecycle's `disconnect` stopped the transport and nothing
+/// else, so the real path never cancelled an owned order, never confirmed a cancel and never
+/// applied the ordered switch release. The hook used here is the one `LiveNode` drives, not the
+/// account runtime directly.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_disconnect_cancels_this_runs_order_and_releases_the_switch() {
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+
+    // The venue states the order as cancelled, so the stop has nothing left to be careful about.
+    rest.set_cancel_answer(&api_order(VENUE_ORDER_ID, CLIENT_ORDER_ID, "canceled"));
+
+    let mut harness = harness_with_one_order(&rest, &private, sandbox_config()).await;
+
+    harness.client.disconnect().await.expect("the disconnect");
+
+    let deletes = rest.with_method("DELETE");
+
+    assert_eq!(deletes.len(), 1, "{:?}", rest.sequence());
+    assert_eq!(
+        deletes[0].target,
+        format!("/v1/perps/orders/{VENUE_ORDER_ID}"),
+        "the cancel is this run's own order, named by the venue order id",
+    );
+    assert!(
+        !deletes[0].target.contains("market="),
+        "a market-wide cancel is not this client's to send: {}",
+        deletes[0].target,
+    );
+
+    // The release is only on the wire: the switch's own channel is where the step lands.
+    let releases: Vec<String> = private
+        .bodies()
+        .into_iter()
+        .filter(|body| is_a_switch_release(body))
+        .collect();
+
+    assert_eq!(releases.len(), 1, "{:?}", private.bodies());
+    assert!(
+        !harness.client.private_stream_is_running(),
+        "the transport task has ended by the time the disconnect returns",
+    );
+    assert!(!harness.client.is_connected());
+}
+
+/// A caller that bounds the disconnect and cuts it short does not lose the ledger.
+///
+/// The cancel is registered **before** its request exists, so when the node's own
+/// `timeout_disconnection` drops the stop future mid-wait the stop's checkpoint guard still writes
+/// it. The switch stays armed - the release step was never reached - and the transport is still
+/// alive for the acknowledgements the stop was waiting for.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_disconnect_the_caller_cuts_short_checkpoints_the_unconfirmed_cancel() {
+    let journal = JournalPath::new("disconnect-cut-short");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+
+    // Nothing answers the cancel or the confirming query, so the order stays working and the stop
+    // is still waiting when the caller's bound fires.
+    let mut harness = harness_with_one_order(&rest, &private, journal.config()).await;
+
+    let cut_short = tokio::time::timeout(Duration::from_secs(1), harness.client.disconnect()).await;
+
+    assert!(
+        cut_short.is_err(),
+        "the caller's bound is what ended the disconnect",
+    );
+
+    // The cancel really was attempted; the guard is what makes its outcome survive the cut.
+    assert!(
+        !rest.with_method("DELETE").is_empty(),
+        "{:?}",
+        rest.sequence(),
+    );
+
+    let written = journal_at(&journal).expect("the guard checkpointed the ledger on the way out");
+
+    assert!(
+        written.unsettled().iter().any(|entry| {
+            entry.client_order_id().to_string() == CLIENT_ORDER_ID
+                && entry.kind == UncertainKind::Cancel
+        }),
+        "the unconfirmed cancel is journaled: {:?}",
+        written.unsettled(),
+    );
+
+    let releases: Vec<String> = private
+        .bodies()
+        .into_iter()
+        .filter(|body| is_a_switch_release(body))
+        .collect();
+
+    assert!(
+        releases.is_empty(),
+        "the switch is not released over an unconfirmed cancel: {releases:?}",
+    );
+    assert!(
+        harness.client.account().dead_mans_switch_permits_orders(),
+        "the armed switch is still covering the order",
+    );
+    assert_eq!(
+        harness.client.new_risk_refusal(),
+        Some(NewRiskRefusal::UnconfirmedCancels {
+            client_order_ids: vec![ClientOrderId::from(CLIENT_ORDER_ID)],
+        }),
+        "and the account is refused by the cancel rather than reported clean",
+    );
+
+    // The transport was kept alive for the acknowledgement the stop was still waiting for.
+    assert!(
+        harness.client.private_stream_is_running(),
+        "the stop had not reached the close step, so the socket is still up",
+    );
+
+    harness
+        .client
+        .stop()
+        .expect("the synchronous stop closes what remains");
+}
+
+/// A submission whose answer is unknown keeps the switch armed and is journaled when the caller
+/// ends the session: an order that may be resting is never left uncovered.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_disconnect_over_an_unknown_submission_stays_armed_and_journaled() {
+    let journal = JournalPath::new("disconnect-unknown");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+
+    // The create is answered with a body this adapter cannot read, so the submission's outcome is
+    // unknown: it may have been applied, and the account must not be reported clean.
+    rest.set_create_answer("not-a-payload");
+
+    let mut harness = build_harness(&rest, &private, journal.config());
+
+    converge(&mut harness).await;
+
+    let order = limit_order(CLIENT_ORDER_ID);
+
+    seed_order(&harness, &order);
+    harness
+        .client
+        .submit_order(submit_command(&order))
+        .expect("the command is handled");
+
+    wait_until(&mut harness, "the unknown submission", |client, _events| {
+        matches!(
+            client.new_risk_refusal(),
+            Some(NewRiskRefusal::UnknownSubmissions { .. })
+        )
+    })
+    .await;
+
+    // The order never settles, so the stop is still waiting when the caller cuts it short.
+    let cut_short = tokio::time::timeout(Duration::from_secs(1), harness.client.disconnect()).await;
+
+    assert!(
+        cut_short.is_err(),
+        "the caller's bound is what ended the disconnect",
+    );
+
+    let written = journal_at(&journal).expect("the guard checkpointed the ledger on the way out");
+
+    assert!(
+        written.unsettled().iter().any(|entry| {
+            entry.client_order_id().to_string() == CLIENT_ORDER_ID
+                && entry.kind == UncertainKind::Submission
+        }),
+        "the unknown submission is journaled: {:?}",
+        written.unsettled(),
+    );
+
+    let releases: Vec<String> = private
+        .bodies()
+        .into_iter()
+        .filter(|body| is_a_switch_release(body))
+        .collect();
+
+    assert!(
+        releases.is_empty(),
+        "the switch is not released over a submission that may be resting: {releases:?}",
+    );
+    assert_eq!(
+        harness.client.new_risk_refusal(),
+        Some(NewRiskRefusal::UnknownSubmissions {
+            client_order_ids: vec![ClientOrderId::from(CLIENT_ORDER_ID)],
+        }),
+        "the account is refused by the unknown submission rather than reported clean",
+    );
+
+    harness.client.stop().expect("stop");
+}
+
+/// The stop cancels only the orders this run placed: an order the venue reports that this client
+/// does not own is read, identified and left alone.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_disconnect_never_cancels_an_order_this_run_does_not_own() {
+    const FOREIGN_ORDER_ID: &str = "foreign-venue-order-1";
+
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+
+    rest.set_cancel_answer(&api_order(VENUE_ORDER_ID, CLIENT_ORDER_ID, "canceled"));
+
+    let mut harness = harness_with_one_order(&rest, &private, sandbox_config()).await;
+
+    // The venue now reports a foreign order beside this run's own. A pass reads it and identifies
+    // it; it never enters the order index this client cancels from.
+    rest.set_orders(&[
+        api_order(FOREIGN_ORDER_ID, "ondo_foreign_1", "open"),
+        api_order(VENUE_ORDER_ID, CLIENT_ORDER_ID, "open"),
+    ]);
+
+    let _ = harness.client.account().reconcile_account(now()).await;
+
+    assert!(
+        !harness
+            .client
+            .tracks(&ClientOrderId::from("ondo_foreign_1")),
+        "a foreign order is identified, never adopted",
+    );
+
+    harness.client.disconnect().await.expect("the disconnect");
+
+    let deletes = rest.with_method("DELETE");
+
+    assert_eq!(
+        deletes.len(),
+        1,
+        "only this run's own order is cancelled: {:?}",
+        rest.sequence(),
+    );
+    assert_eq!(
+        deletes[0].target,
+        format!("/v1/perps/orders/{VENUE_ORDER_ID}"),
+    );
+    assert!(
+        !rest
+            .sequence()
+            .iter()
+            .any(|request| request.contains(FOREIGN_ORDER_ID)),
+        "the foreign order is never named by a cancel: {:?}",
+        rest.sequence(),
+    );
+}
+
+/// The client the factory builds is the one the live node drives, and its `disconnect` hook runs
+/// the ordered stop: with no orders there is nothing to cancel, and the switch it armed on connect
+/// is released.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_the_factory_built_client_runs_the_ordered_stop_on_disconnect() {
+    use nautilus_common::factories::ExecutionClientFactory;
+    use nautilus_ondo::factories::OndoExecutionClientFactory;
+
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+
+    let (exec_tx, _exec_rx) = mpsc::unbounded_channel::<ExecutionEvent>();
+    let (data_tx, _data_rx) = mpsc::unbounded_channel::<DataEvent>();
+    replace_exec_event_sender(exec_tx);
+    replace_data_event_sender(data_tx);
+
+    let config = OndoExecutionClientConfig {
+        base_url_http: Some(rest.http_url()),
+        base_url_ws: Some(private.url.clone()),
+        ..sandbox_config()
+    };
+    let cache = Rc::new(RefCell::new(Cache::default()));
+
+    let mut client = OndoExecutionClientFactory::new()
+        .create(
+            TraderId::from("TESTER-001"),
+            CLIENT_ID,
+            &config,
+            cache.into(),
+        )
+        .expect("the factory builds the native execution client");
+
+    client.start().expect("start");
+    client.connect().await.expect("connect");
+
+    // Wait for the switch to be armed on the wire, so the release step has one to carry out.
+    let start = Instant::now();
+
+    while !private.bodies().iter().any(|body| {
+        body.contains("cancelAllOrdersAfterPerps") && body.contains(r#""op":"subscribe""#)
+    }) {
+        assert!(
+            start.elapsed() <= WAIT,
+            "the private session never armed the switch",
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+
+    client.disconnect().await.expect("the disconnect");
+
+    let releases: Vec<String> = private.frames_with_op("unsubscribe");
+
+    assert!(
+        releases.iter().any(|body| is_a_switch_release(body)),
+        "the factory-built client's disconnect releases the switch: {releases:?}",
+    );
+    assert!(
+        rest.with_method("DELETE").is_empty(),
+        "no orders, so no cancel: {:?}",
+        rest.sequence(),
+    );
+    assert!(!client.is_connected());
+}
+
+// ------------------------------------------------------------------------------------------------
+// The correction round: a successful query is not a confirmed cancellation, and shutdown is one
+// bounded budget over every owned task (review findings 1-6)
+// ------------------------------------------------------------------------------------------------
+
+/// A batch submission carrying `orders` as one native list.
+fn order_list_command(orders: &[OrderAny]) -> SubmitOrderList {
+    let inits: Vec<_> = orders
+        .iter()
+        .map(|order| order.init_event().clone())
+        .collect();
+
+    let list = OrderList::new(
+        OrderListId::from("OL-1"),
+        InstrumentId::from(NVDA),
+        StrategyId::from("S-001"),
+        orders.iter().map(|order| order.client_order_id()).collect(),
+        UnixNanos::default(),
+    );
+
+    SubmitOrderList::new(
+        TraderId::from("TESTER-001"),
+        Some(ClientId::from(CLIENT_ID)),
+        StrategyId::from("S-001"),
+        list,
+        inits,
+        None, // exec_algorithm_id
+        None, // position_id
+        None, // params
+        UUID4::new(),
+        UnixNanos::default(),
+        None, // correlation_id
+    )
+}
+
+/// Submits `client_order_id` and waits until the venue has named its order.
+async fn submit_and_await_venue_id(harness: &mut Harness, client_order_id: &str) -> String {
+    let order = limit_order(client_order_id);
+
+    seed_order(harness, &order);
+    harness
+        .client
+        .submit_order(submit_command(&order))
+        .expect("the command is handled");
+
+    wait_until(harness, "the venue order id", |client, _events| {
+        client
+            .order_state(&ClientOrderId::from(client_order_id))
+            .is_some_and(|state| state.venue_order_id.is_some())
+    })
+    .await;
+
+    harness
+        .client
+        .order_state(&ClientOrderId::from(client_order_id))
+        .and_then(|state| state.venue_order_id)
+        .expect("the venue order id")
+        .to_string()
+}
+
+/// Waits until the mock has seen a request of `method`, or fails.
+async fn await_mock_method(rest: &MockRest, method: &str, what: &str) {
+    let start = Instant::now();
+
+    while rest.with_method(method).is_empty() {
+        assert!(start.elapsed() <= WAIT, "the mock never saw {what}");
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+}
+
+/// The switch frames a private session sent.
+fn switch_frames(private: &MockPrivate) -> Vec<String> {
+    private
+        .bodies()
+        .into_iter()
+        .filter(|body| body.contains("cancelAllOrdersAfterPerps"))
+        .collect()
+}
+
+/// A cancel accepted without an order and then confirmed by a query that says the order is still
+/// open is **not** a confirmed cancellation. The stop must not release the switch over it.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_working_confirming_get_keeps_the_switch_armed() {
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+
+    rest.set_cancel_answer("{}");
+    rest.set_order_answer(&api_order(VENUE_ORDER_ID, CLIENT_ORDER_ID, "open"));
+
+    let mut harness = harness_with_one_order(&rest, &private, sandbox_config()).await;
+
+    let error = harness
+        .client
+        .disconnect()
+        .await
+        .expect_err("a working order is not a cancelled one");
+
+    assert!(error.to_string().contains("outcome=TimedOut"), "{error}");
+    assert!(
+        switch_frames(&private)
+            .iter()
+            .all(|frame| !is_a_switch_release(frame)),
+        "the switch is not released over a working order: {:?}",
+        switch_frames(&private),
+    );
+    assert!(
+        harness.client.account().dead_mans_switch_permits_orders(),
+        "the armed switch is still the one covering the order",
+    );
+    assert_eq!(
+        harness.client.new_risk_refusal(),
+        Some(NewRiskRefusal::UnconfirmedCancels {
+            client_order_ids: vec![ClientOrderId::from(CLIENT_ORDER_ID)],
+        }),
+    );
+}
+
+/// The background probe that finds a working order keeps the cancel unconfirmed.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_background_probe_that_finds_a_working_order_keeps_the_cancel() {
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+
+    rest.set_order_answer(&api_order(VENUE_ORDER_ID, CLIENT_ORDER_ID, "open"));
+
+    let mut harness = harness_with_one_order(&rest, &private, sandbox_config()).await;
+
+    harness.client.account().note_unconfirmed_cancel(
+        ClientOrderId::from(CLIENT_ORDER_ID),
+        Some(VenueOrderId::from(VENUE_ORDER_ID)),
+        "the cancel request was not answered".to_string(),
+        now(),
+    );
+
+    let reports = harness
+        .client
+        .account()
+        .probe_unknown_submissions(now())
+        .await;
+
+    assert_eq!(reports.len(), 1, "{reports:?}");
+    assert!(
+        matches!(reports[0].disposition, ProbeDisposition::KeepProbing { .. }),
+        "a working order keeps the cancel outstanding: {reports:?}",
+    );
+    assert_eq!(
+        harness.client.unconfirmed_cancels().len(),
+        1,
+        "the probe did not confirm a cancel over a working order",
+    );
+    assert!(harness.client.refuses_new_risk());
+
+    harness.client.stop().expect("stop");
+}
+
+/// A terminal order whose fills do not agree with the venue's own total is not a settled order, and
+/// it keeps the switch armed.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_terminal_order_with_missing_fills_keeps_the_switch_armed() {
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+
+    // The venue states a canceled order it also says filled 1.00, but no fill is ever reported.
+    rest.set_create_answer(&api_order_filled(
+        VENUE_ORDER_ID,
+        CLIENT_ORDER_ID,
+        "canceled",
+        "1.00",
+    ));
+
+    let mut harness = build_harness(&rest, &private, sandbox_config());
+
+    converge(&mut harness).await;
+
+    let order = limit_order(CLIENT_ORDER_ID);
+
+    seed_order(&harness, &order);
+    harness
+        .client
+        .submit_order(submit_command(&order))
+        .expect("the command is handled");
+
+    wait_until(&mut harness, "the terminal order", |client, _events| {
+        client
+            .order_state(&ClientOrderId::from(CLIENT_ORDER_ID))
+            .is_some_and(|state| state.status.is_terminal())
+    })
+    .await;
+
+    assert!(
+        harness
+            .client
+            .unresolved_orders()
+            .contains(&ClientOrderId::from(CLIENT_ORDER_ID)),
+        "the terminal order is unresolved because its fills do not add up",
+    );
+
+    let error = harness
+        .client
+        .disconnect()
+        .await
+        .expect_err("an unreconciled terminal order is not settled");
+
+    assert!(error.to_string().contains("outcome=TimedOut"), "{error}");
+    assert!(
+        switch_frames(&private)
+            .iter()
+            .all(|frame| !is_a_switch_release(frame)),
+        "the switch is not released over an unreconciled fill: {:?}",
+        switch_frames(&private),
+    );
+}
+
+/// A read-only restart that restored an owned order and an unconfirmed cancel from its journal
+/// sends no DELETE and no switch frame, and keeps the inherited work reportable.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_read_only_restart_never_cancels_from_a_restored_journal() {
+    let journal = JournalPath::new("read-only-restored");
+
+    // First run: a trading session places one order and stops over a cancel nothing answers, so the
+    // journal it leaves holds an owned order and an unconfirmed cancel for it.
+    {
+        let rest = MockRest::start().await;
+        let private = MockPrivate::start(Venue::Ack).await;
+        let mut first = harness_with_one_order(&rest, &private, journal.config()).await;
+
+        let _ = first
+            .client
+            .stop_and_wait(now(), Duration::from_millis(300))
+            .await;
+    }
+
+    let written = journal_at(&journal).expect("the first run checkpointed");
+
+    assert!(
+        written
+            .unsettled()
+            .iter()
+            .any(|entry| entry.client_order_id().to_string() == CLIENT_ORDER_ID),
+        "the first run left an unconfirmed cancel: {:?}",
+        written.unsettled(),
+    );
+
+    // The restart is read-only against the same journal.
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut second = build_harness(
+        &rest,
+        &private,
+        OndoExecutionClientConfig {
+            account_read_only: true,
+            ..journal.config()
+        },
+    );
+
+    assert!(
+        matches!(
+            second.client.account().journal_status(),
+            JournalStatus::Restored { .. }
+        ),
+        "the read-only run restores the journal: {:?}",
+        second.client.account().journal_status(),
+    );
+
+    second.client.start().expect("start");
+    second.client.connect().await.expect("connect");
+
+    let error = second
+        .client
+        .disconnect()
+        .await
+        .expect_err("the inherited work is not a clean shutdown");
+
+    assert!(
+        error.to_string().contains("UnconfirmedCancels")
+            || error.to_string().contains("outstanding"),
+        "{error}"
+    );
+    assert!(
+        rest.with_method("DELETE").is_empty(),
+        "a read-only session never sends a cancel: {:?}",
+        rest.sequence(),
+    );
+    assert!(
+        switch_frames(&private).is_empty(),
+        "a read-only session never arms, renews or releases the switch: {:?}",
+        switch_frames(&private),
+    );
+    assert_eq!(
+        second.client.new_risk_refusal(),
+        Some(NewRiskRefusal::AccountIsReadOnly),
+    );
+
+    // The inherited work is still reportable: the read-only stop did not erase it.
+    let kept = journal_at(&journal).expect("the read-only run kept the journal");
+
+    assert!(
+        kept.unsettled().iter().any(
+            |entry| entry.client_order_id().to_string() == CLIENT_ORDER_ID
+                && entry.kind == UncertainKind::Cancel
+        ),
+        "the inherited cancel is still in the journal: {:?}",
+        kept.unsettled(),
+    );
+}
+
+/// A shutdown cut short while the first cancel is blocked still names **every** owned order: the
+/// pre-registration and the checkpoint happen before the first request.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_shutdown_cut_short_registers_every_owned_order() {
+    let journal = JournalPath::new("cut-short-two-orders");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+
+    rest.set_create_answer("<echo>");
+
+    let mut harness = build_harness(&rest, &private, journal.config());
+
+    converge(&mut harness).await;
+
+    let first = submit_and_await_venue_id(&mut harness, "ondo_two_1").await;
+    let second = submit_and_await_venue_id(&mut harness, "ondo_two_2").await;
+
+    assert_ne!(first, second);
+
+    // The first DELETE blocks in the mock, so the second order never gets its own request before
+    // the caller's bound drops the shutdown future.
+    rest.hold_cancels();
+
+    let cut_short = tokio::time::timeout(Duration::from_secs(1), harness.client.disconnect()).await;
+
+    assert!(
+        cut_short.is_err(),
+        "the caller's bound is what ended the shutdown",
+    );
+
+    let written = journal_at(&journal).expect("the guard checkpointed the ledger");
+    let mut unsettled: Vec<String> = written
+        .unsettled()
+        .iter()
+        .map(|entry| entry.client_order_id().to_string())
+        .collect();
+
+    unsettled.sort();
+    assert!(
+        unsettled == vec!["ondo_two_1".to_string(), "ondo_two_2".to_string()],
+        "both owned orders are registered before the first request: {unsettled:?}",
+    );
+    assert!(
+        switch_frames(&private)
+            .iter()
+            .all(|frame| !is_a_switch_release(frame)),
+        "the switch is not released by a shutdown that was cut short",
+    );
+
+    rest.release_cancels();
+    harness.client.stop().expect("stop");
+}
+
+/// A blocked in-flight submission is drained within the bound, its order survives in the journal,
+/// and the drained generation can be reset and reopened for genuine work.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_blocked_submission_drains_and_the_generation_can_reopen() {
+    let journal = JournalPath::new("blocked-submit");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+
+    rest.set_create_answer("<echo>");
+    rest.hold_create();
+
+    let mut harness = build_harness(&rest, &private, journal.config());
+
+    converge(&mut harness).await;
+
+    let order = limit_order("ondo_blocked");
+
+    seed_order(&harness, &order);
+    harness
+        .client
+        .submit_order(submit_command(&order))
+        .expect("the command is handled");
+
+    // The POST is in flight and held by the mock.
+    await_mock_method(&rest, "POST", "the held create request").await;
+
+    let error = harness
+        .client
+        .disconnect()
+        .await
+        .expect_err("an in-flight submission is not a settled one");
+
+    assert!(
+        error.to_string().contains("tasks_drained=true"),
+        "the request task generation drained within its bound: {error}",
+    );
+
+    let written = journal_at(&journal).expect("the stop checkpointed the in-flight order");
+
+    assert!(
+        written
+            .unsettled()
+            .iter()
+            .any(|entry| entry.client_order_id().to_string() == "ondo_blocked"),
+        "the in-flight order survives in the journal: {:?}",
+        written.unsettled(),
+    );
+
+    // The generation drained, so `reset` can open a fresh one; a recovered session can submit.
+    // Before that, the venue answers the in-flight order as terminal, which is what settles the
+    // pre-registered cancel and lets a genuine recovery reach trading again.
+    rest.release_create();
+    rest.set_order_answer(&api_order("venue-ondo_blocked", "ondo_blocked", "canceled"));
+
+    let _ = harness
+        .client
+        .account()
+        .probe_unknown_submissions(now())
+        .await;
+
+    assert!(
+        harness.client.unconfirmed_cancels().is_empty(),
+        "the venue's terminal answer settled the pre-registered cancel",
+    );
+
+    harness
+        .client
+        .reset()
+        .expect("reset after a drained shutdown");
+    harness.client.start().expect("start");
+    harness.client.connect().await.expect("connect");
+    converge(&mut harness).await;
+
+    let before = rest.with_method("POST").len();
+    let recovered = submit_and_await_venue_id(&mut harness, "ondo_recovered").await;
+
+    assert!(!recovered.is_empty());
+    assert!(
+        rest.with_method("POST").len() > before,
+        "the reopened generation placed a new order: {:?}",
+        rest.sequence(),
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_shutdown_ownership_is_scoped_to_the_current_generation() {
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut harness = build_harness(&rest, &private, sandbox_config());
+
+    converge(&mut harness).await;
+    harness
+        .client
+        .disconnect()
+        .await
+        .expect("the first shutdown");
+    harness.client.stop().expect("stop the first lifecycle");
+    harness.client.reset().expect("reopen the generation");
+    converge(&mut harness).await;
+
+    rest.set_create_answer("<echo>");
+    let id = "ondo_second_generation";
+    let venue_id = submit_and_await_venue_id(&mut harness, id).await;
+    rest.set_cancel_answer(&api_order(&venue_id, id, "canceled"));
+
+    harness.client.stop().expect("stop the second lifecycle");
+    let result = harness.client.disconnect().await;
+
+    assert!(
+        rest.with_method("DELETE")
+            .iter()
+            .any(|request| request.target.ends_with(&venue_id)),
+        "the second generation's order must be cleaned, even after a previous clean shutdown: \
+         result={result:?}, requests={:?}",
+        rest.sequence(),
+    );
+    harness
+        .client
+        .reset()
+        .expect("the second generation drained");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_shutdown_ownership_cancels_requests_when_the_caller_abandons_drain() {
+    let journal = JournalPath::new("abandoned-request-drain");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    rest.set_create_answer("<echo>");
+    rest.hold_create();
+
+    let mut harness = build_harness(&rest, &private, journal.config());
+    converge(&mut harness).await;
+    let id = ClientOrderId::from("ondo_abandoned_drain");
+    let order = limit_order(id.as_str());
+    seed_order(&harness, &order);
+    harness
+        .client
+        .submit_order(submit_command(&order))
+        .expect("submit");
+    await_mock_method(&rest, "POST", "the blocked submission").await;
+
+    assert!(
+        tokio::time::timeout(Duration::from_millis(100), harness.client.disconnect())
+            .await
+            .is_err(),
+    );
+    harness
+        .client
+        .stop()
+        .expect("the node's final synchronous stop");
+    let persisted = journal_at(&journal).expect("the in-flight work was checkpointed");
+    assert!(
+        persisted
+            .unsettled()
+            .iter()
+            .any(|entry| entry.client_order_id() == id.as_str())
+    );
+
+    // Allow the abandoned request to answer. A stopped generation must never apply that answer.
+    rest.release_create();
+    let late_acceptance = tokio::time::timeout(Duration::from_millis(500), async {
+        loop {
+            if harness
+                .client
+                .order_state(&id)
+                .is_some_and(|state| state.venue_order_id.is_some())
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await;
+    assert!(
+        late_acceptance.is_err(),
+        "the request applied its answer after final stop"
+    );
+
+    rest.set_order_answer(&api_order(
+        "venue-ondo_abandoned_drain",
+        id.as_str(),
+        "canceled",
+    ));
+    let _ = harness
+        .client
+        .account()
+        .probe_unknown_submissions(now())
+        .await;
+    let _ = harness.client.disconnect().await;
+    harness
+        .client
+        .reset()
+        .expect("the canceled generation is still drainable");
+}
+
+/// A blocked in-flight batch is drained within the bound and every item survives in the journal.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_blocked_batch_submission_drains_and_preserves_every_item() {
+    let journal = JournalPath::new("blocked-batch");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+
+    rest.hold_create();
+
+    let mut harness = build_harness(&rest, &private, journal.config());
+
+    converge(&mut harness).await;
+
+    let first = limit_order("ondo_batch_1");
+    let second = limit_order("ondo_batch_2");
+
+    seed_order(&harness, &first);
+    seed_order(&harness, &second);
+    harness
+        .client
+        .submit_order_list(order_list_command(&[first, second]))
+        .expect("the command is handled");
+
+    // The batch POST is in flight and held by the mock.
+    await_mock_method(&rest, "POST", "the held batch request").await;
+
+    let error = harness
+        .client
+        .disconnect()
+        .await
+        .expect_err("an in-flight batch is not a settled one");
+
+    assert!(
+        error.to_string().contains("tasks_drained=true"),
+        "the request task generation drained within its bound: {error}",
+    );
+
+    let written = journal_at(&journal).expect("the stop checkpointed the batch");
+    let mut unsettled: Vec<String> = written
+        .unsettled()
+        .iter()
+        .map(|entry| entry.client_order_id().to_string())
+        .collect();
+
+    unsettled.sort();
+    assert_eq!(
+        unsettled,
+        vec!["ondo_batch_1".to_string(), "ondo_batch_2".to_string()],
+        "every batch item is registered before the request is dropped",
+    );
+
+    rest.release_create();
+    harness.client.stop().expect("stop");
+}
+
+/// A submission a definitive refusal answers during the drain clears the cancel the shutdown
+/// pre-registered for it: an order that never rested must not leave a registration that would lock
+/// the account forever.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_definitive_refusal_during_shutdown_clears_its_registration() {
+    let journal = JournalPath::new("refused-during-shutdown");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+
+    // No create answer is scripted, so the create the submission makes is refused `404`.
+    rest.hold_create();
+
+    let mut harness = build_harness(&rest, &private, journal.config());
+
+    converge(&mut harness).await;
+
+    let order = limit_order("ondo_refused");
+
+    seed_order(&harness, &order);
+    harness
+        .client
+        .submit_order(submit_command(&order))
+        .expect("the command is handled");
+
+    await_mock_method(&rest, "POST", "the held create request").await;
+
+    // Release the create while the shutdown drains, so the task finishes and records the refusal.
+    let release = async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        rest.release_create();
+    };
+
+    let (result, ()) = tokio::join!(harness.client.disconnect(), release);
+
+    result.expect("a refused order leaves nothing outstanding");
+
+    let written = journal_at(&journal).expect("the stop checkpointed");
+
+    assert!(
+        !written
+            .unsettled()
+            .iter()
+            .any(|entry| entry.client_order_id().to_string() == "ondo_refused"),
+        "no stale cancel registration for a never-rested order: {:?}",
+        written.unsettled(),
+    );
+}
+
+/// A synchronous `stop` before `disconnect` does not cause the async hook to return success by
+/// early return: the REST cleanup still runs and the un-releasable switch keeps the result dirty,
+/// and a repeated hook preserves that result.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_a_synchronous_stop_before_disconnect_still_reports_dirty() {
+    let journal = JournalPath::new("stop-before-disconnect");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+
+    rest.set_cancel_answer(&api_order(VENUE_ORDER_ID, CLIENT_ORDER_ID, "canceled"));
+
+    let mut harness = harness_with_one_order(&rest, &private, journal.config()).await;
+
+    harness.client.stop().expect("the synchronous stop");
+
+    // The later async hook runs the bounded REST cleanup and names the un-releasable switch.
+    let error = harness
+        .client
+        .disconnect()
+        .await
+        .expect_err("a stop with no transport cannot release the switch");
+
+    assert!(
+        error.to_string().contains("switch_released=false"),
+        "{error}",
+    );
+    assert!(
+        !rest.with_method("DELETE").is_empty(),
+        "the REST cancel still ran after the synchronous stop: {:?}",
+        rest.sequence(),
+    );
+
+    // A repeated hook preserves the dirty result rather than relabelling it clean.
+    let again = harness
+        .client
+        .disconnect()
+        .await
+        .expect_err("the dirty result is preserved");
+
+    assert!(
+        again.to_string().contains("switch_released=false"),
+        "{again}"
+    );
+}
+
+/// An unknown submission survives real lifecycle shutdown and blocks a restarted client until
+/// terminal evidence settles the original identity, without submitting a replacement order.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_an_unknown_submission_survives_shutdown_and_restart() {
+    let journal = JournalPath::new("unknown-restart");
+
+    {
+        let rest = MockRest::start().await;
+        let private = MockPrivate::start(Venue::Ack).await;
+
+        // The create is answered with a body this adapter cannot read, so the submission is
+        // unknown. The lifecycle hook must drain tasks and checkpoint the unresolved identity.
+        rest.set_create_answer("not-a-payload");
+
+        let mut first = build_harness(&rest, &private, journal.config());
+
+        converge(&mut first).await;
+
+        let order = limit_order(CLIENT_ORDER_ID);
+
+        seed_order(&first, &order);
+        first
+            .client
+            .submit_order(submit_command(&order))
+            .expect("the command is handled");
+
+        wait_until(&mut first, "the unknown submission", |client, _events| {
+            matches!(
+                client.new_risk_refusal(),
+                Some(NewRiskRefusal::UnknownSubmissions { .. })
+            )
+        })
+        .await;
+
+        let error = first
+            .client
+            .disconnect()
+            .await
+            .expect_err("an unknown submission prevents clean shutdown");
+
+        assert!(error.to_string().contains(CLIENT_ORDER_ID), "{error}");
+        assert!(error.to_string().contains("tasks_drained=true"), "{error}");
+        assert!(!first.client.private_stream_is_running());
+        assert_eq!(rest.with_method("POST").len(), 1, "no replacement submit");
+    }
+
+    let written = journal_at(&journal).expect("the first run checkpointed");
+
+    assert!(
+        written.unsettled().iter().any(|entry| {
+            entry.client_order_id().to_string() == CLIENT_ORDER_ID
+                && entry.kind == UncertainKind::Submission
+        }),
+        "the unknown submission is in the journal: {:?}",
+        written.unsettled(),
+    );
+
+    // The restart restores the journal and refuses new risk on the unknown submission.
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut second = build_harness(&rest, &private, journal.config());
+
+    assert!(matches!(
+        second.client.account().journal_status(),
+        JournalStatus::Restored { .. }
+    ));
+
+    second.client.start().expect("start");
+    second.client.connect().await.expect("connect");
+
+    for _ in 0..8 {
+        let _ = second.client.account().reconcile_account(now()).await;
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+
+    assert_ne!(
+        second.client.reconciliation_state(),
+        ReconciliationState::Ready,
+        "a clean venue read is not enough over a restored unknown submission",
+    );
+    assert_eq!(
+        second.client.new_risk_refusal(),
+        Some(NewRiskRefusal::UnknownSubmissions {
+            client_order_ids: vec![ClientOrderId::from(CLIENT_ORDER_ID)],
+        }),
+    );
+
+    rest.set_order_answer(&api_order(VENUE_ORDER_ID, CLIENT_ORDER_ID, "canceled"));
+    let started = Instant::now();
+
+    while second.client.reconciliation_state() != ReconciliationState::Ready {
+        let _ = second
+            .client
+            .account()
+            .probe_unknown_submissions(now())
+            .await;
+        let _ = second.client.account().reconcile_account(now()).await;
+        assert!(
+            started.elapsed() <= WAIT,
+            "the original order never recovered: {:?}",
+            second.client.new_risk_refusal()
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+
+    let recovered = second
+        .client
+        .order_state(&ClientOrderId::from(CLIENT_ORDER_ID))
+        .expect("recovery keeps the original owned identity");
+    assert_eq!(
+        recovered.client_order_id,
+        ClientOrderId::from(CLIENT_ORDER_ID)
+    );
+    assert_eq!(
+        recovered.venue_order_id,
+        Some(VenueOrderId::from(VENUE_ORDER_ID))
+    );
+    assert!(recovered.is_settled());
+    assert!(second.client.unknown_submissions().is_empty());
+    assert!(second.client.unconfirmed_cancels().is_empty());
+    assert!(!second.client.refuses_new_risk());
+    assert!(
+        rest.with_method("POST").is_empty(),
+        "recovery must not replace the submission"
+    );
+
+    second
+        .client
+        .disconnect()
+        .await
+        .expect("the recovered client shuts down cleanly");
 }
 
 /// Releasing the switch is a step the stop sequence names, and the frame it needs exists.

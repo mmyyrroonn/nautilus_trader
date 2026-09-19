@@ -200,6 +200,23 @@ use crate::{
 /// fresh ones ([`CursorWalk`]).
 const REPORT_MAX_PAGES: usize = 100;
 
+/// How long one client-owned shutdown may take, from the first pre-registration to the point the
+/// transport is closed.
+///
+/// A stop is bounded rather than indefinite, and the bound is on the **whole** operation rather
+/// than on its polling tail: the live node wraps the client's `disconnect` in its own
+/// `timeout_disconnection` (default 10 s), so the cancel requests, the terminal confirmations, the
+/// request-task drain and the switch release all draw on this one budget. The transport's own stop
+/// is given its own small allowance after it, because a socket still being read is never left
+/// behind.
+pub const ONDO_DISCONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// The graceful slice of a shutdown budget given to in-flight request tasks before forced abort.
+const ONDO_SHUTDOWN_TASK_GRACEFUL: Duration = Duration::from_secs(1);
+
+/// The forced slice given to request tasks after the graceful slice expires.
+const ONDO_SHUTDOWN_TASK_ABORT: Duration = Duration::from_secs(1);
+
 /// The balance members the frozen REST spec documents.
 ///
 /// A member outside this set is not folded into the USDC numbers: it is a second collateral asset,
@@ -1532,6 +1549,99 @@ pub struct OndoExecutionClient {
     /// The private transport, once [`Self::connect`] has started it.
     private_stream: Option<OndoPrivateStream>,
     tasks: TaskGroup,
+    /// What the shutdown hooks left, preserved across repeated calls.
+    ///
+    /// A dirty record stops a later hook from reporting success over work it did not finish, and
+    /// the synchronous fallback records that the ordered cleanup is still owed so a later
+    /// `disconnect` runs it instead of early-returning on the absent transport.
+    last_shutdown: Option<ShutdownRecord>,
+}
+
+/// A single bounded budget shared by every phase of one shutdown.
+struct ShutdownBudget {
+    deadline: std::time::Instant,
+}
+
+impl ShutdownBudget {
+    fn new(timeout: Duration) -> Self {
+        Self {
+            deadline: std::time::Instant::now() + timeout,
+        }
+    }
+
+    /// The time left before the budget expires; zero once it has.
+    fn remaining(&self) -> Duration {
+        self.deadline
+            .saturating_duration_since(std::time::Instant::now())
+    }
+}
+
+/// What the shutdown hooks left, preserved across repeated lifecycle calls.
+#[derive(Clone, Debug)]
+struct ShutdownRecord {
+    /// The ordered stop's report, when the asynchronous hook ran one.
+    report: Option<StopReport>,
+    /// Whether the request task generation drained.
+    tasks_drained: bool,
+}
+
+impl ShutdownRecord {
+    /// Returns whether the shutdown finished with nothing outstanding.
+    fn is_complete(&self) -> bool {
+        self.tasks_drained && self.report.as_ref().is_some_and(StopReport::is_clean)
+    }
+
+    /// Renders the incomplete shutdown as an error naming what is left.
+    fn error(&self) -> anyhow::Error {
+        let outcome = self.report.as_ref().map_or_else(
+            || "no ordered stop ran".to_string(),
+            |report| format!("{:?}", report.outcome),
+        );
+        let outstanding = self
+            .report
+            .as_ref()
+            .map(StopReport::outstanding)
+            .unwrap_or_default();
+        let released = self
+            .report
+            .as_ref()
+            .is_some_and(|report| report.released_switch);
+
+        anyhow::anyhow!(
+            "the Ondo shutdown left work unresolved: outcome={outcome}, tasks_drained={}, \
+             switch_released={released}, outstanding={outstanding:?}",
+            self.tasks_drained,
+        )
+    }
+}
+
+/// Writes the ledger checkpoint when a stop leaves, however it leaves.
+///
+/// [`OndoExecutionClient::stop_and_wait`] writes the checkpoint at its end, but the caller may bound
+/// the stop and drop the future before it reaches there - the live node wraps `disconnect` in
+/// `timeout_disconnection`. Without this guard a stop cut short mid-wait would lose the unsettled
+/// writes it had already registered. The checkpoint is a whole-file replace, so writing it twice is
+/// harmless, and the write is synchronous, so dropping the future cannot cancel it.
+struct JournalCheckpoint(OndoAccountRuntime);
+
+impl Drop for JournalCheckpoint {
+    fn drop(&mut self) {
+        self.0.persist_journal(self.0.now());
+    }
+}
+
+/// Forces cancellation if the caller abandons the request-task drain.
+struct RequestDrainGuard<'a> {
+    tasks: &'a TaskGroup,
+    completed: bool,
+}
+
+impl Drop for RequestDrainGuard<'_> {
+    fn drop(&mut self) {
+        if !self.completed {
+            self.tasks.abort();
+        }
+    }
 }
 
 impl OndoExecutionClient {
@@ -1691,6 +1801,7 @@ impl OndoExecutionClient {
             credential,
             private_stream: None,
             tasks: TaskGroup::new(),
+            last_shutdown: None,
         })
     }
 
@@ -2057,7 +2168,37 @@ impl OndoExecutionClient {
     /// returning an error: the caller is on its way out, and a stop that returned `Err` early would
     /// leave the socket up and the switch armed without saying which.
     pub async fn stop_and_wait(&mut self, now: UnixNanos, settle_timeout: Duration) -> StopReport {
-        let steps = self.stop_sequence();
+        let budget = ShutdownBudget::new(settle_timeout);
+
+        self.stop_and_wait_within(now, &budget).await
+    }
+
+    /// Executes the ordered stop against one shared shutdown budget.
+    ///
+    /// The budget covers the cancel requests, the confirmations, the switch release and the
+    /// transport close, so no single slow request can spend the whole bound and leave later owned
+    /// orders unregistered. Every owned order is registered and checkpointed **before** the first
+    /// request, so a stop the caller cuts short still names everything it owes.
+    async fn stop_and_wait_within(
+        &mut self,
+        now: UnixNanos,
+        budget: &ShutdownBudget,
+    ) -> StopReport {
+        // Whatever happens from here - including the caller dropping this future mid-wait - the
+        // ledger is checkpointed on the way out.
+        let _checkpoint = JournalCheckpoint(self.account.clone());
+
+        let read_only = self.account.is_account_read_only();
+        let mut steps = self.stop_sequence();
+
+        // A read-only session never cancels, arms or releases anything. Its stop is to report the
+        // inherited state and close the socket, so the two cancel steps are not part of it.
+        if read_only {
+            steps.retain(|step| {
+                !matches!(step, StopStep::CancelOwnOrders | StopStep::ConfirmOwnOrders)
+            });
+        }
+
         let mut report = StopReport {
             steps,
             outcome: StopOutcome::Complete,
@@ -2073,90 +2214,141 @@ impl OndoExecutionClient {
         // happens before a single cancel travels so nothing can slip in behind the stop.
         self.account.note_session_ended(now);
 
-        // Step 2: this run's own orders, by id, on the ordinary cancel path.
-        for client_order_id in self.tracked_orders() {
-            let venue_order_id = self
-                .order_state(&client_order_id)
-                .and_then(|state| state.venue_order_id);
+        if !read_only {
+            // Step 2a: every owned working order is registered and checkpointed before any request
+            // exists, so blocking the first cancel cannot erase the second order from the record.
+            self.register_owned_cancels(now);
+            self.account.persist_journal(self.account.now());
 
-            match self
-                .account
-                .cancel_order(client_order_id, venue_order_id, now)
-                .await
-            {
-                Ok(()) => report.cancellations_issued += 1,
-                Err(error) => {
-                    // The cancel never became a request. The order is still resting and still this
-                    // client's, so it is listed rather than dropped - and it is registered as an
-                    // unconfirmed cancel, which is what keeps the switch armed and what a restart
-                    // reads back.
-                    log::error!("Ondo could not cancel {client_order_id} while stopping: {error}");
+            // Step 2b: this run's own working orders, by id, on the ordinary cancel path, each
+            // bounded by what is left of the shared budget.
+            for client_order_id in self.working_orders() {
+                let venue_order_id = self
+                    .order_state(&client_order_id)
+                    .and_then(|state| state.venue_order_id);
 
-                    self.account.note_unconfirmed_cancel(
-                        client_order_id,
-                        venue_order_id,
-                        format!("the stop could not issue the cancel: {error}"),
-                        now,
+                if budget.remaining().is_zero() {
+                    log::error!(
+                        "Ondo's stop budget expired before it could cancel {client_order_id}; it is \
+                         registered as unconfirmed"
                     );
+
+                    continue;
+                }
+
+                let attempt = self
+                    .account
+                    .cancel_order(client_order_id, venue_order_id, now);
+
+                match tokio::time::timeout(budget.remaining(), attempt).await {
+                    Ok(Ok(())) => report.cancellations_issued += 1,
+                    Ok(Err(error)) => {
+                        log::error!(
+                            "Ondo could not cancel {client_order_id} while stopping: {error}; it is \
+                             registered as unconfirmed"
+                        );
+                        self.account.note_unconfirmed_cancel(
+                            client_order_id,
+                            venue_order_id,
+                            format!("the stop could not issue the cancel: {error}"),
+                            now,
+                        );
+                    }
+                    Err(_) => {
+                        log::error!(
+                            "Ondo's stop budget expired while cancelling {client_order_id}; it is \
+                             registered as unconfirmed"
+                        );
+                        self.account.note_unconfirmed_cancel(
+                            client_order_id,
+                            venue_order_id,
+                            "the stop budget expired while the cancel was in flight".to_string(),
+                            now,
+                        );
+                    }
                 }
             }
         }
 
-        // Step 3: wait, within bounds, for the reports to settle what was just sent.
-        let settled = self
-            .await_orders_settled(settle_timeout, &report.steps)
-            .await;
+        // Step 3: wait, within the shared budget, for what was sent to settle. An order is settled
+        // only when it is terminal, its fills agree with the venue's own total and it has no fills
+        // still waiting to be reported.
+        let settled = self.await_orders_settled(budget, &report.steps).await;
 
         let (unconfirmed_cancels, unknown_submissions) = self.unsettled_writes();
 
         report.unconfirmed_cancels = unconfirmed_cancels;
         report.unknown_submissions = unknown_submissions;
         report.unresolved_orders = self.unresolved_orders();
-        report.outcome = if !settled {
-            StopOutcome::TimedOut
-        } else {
+        report.outcome = if settled {
             StopOutcome::Complete
+        } else {
+            StopOutcome::TimedOut
         };
 
-        // Step 4: release the switch only when nothing is unconfirmed. A lapsed switch needs no
-        // release - there is nothing covering the orders - and a switch nobody required has no
-        // frame to send, so both are passed over without a request.
-        let stream = self.private_stream.take();
-
-        if report.steps.contains(&StopStep::ReleaseDeadMansSwitch)
+        // Step 4: release the switch only when every piece of owned work is settled, every cancel
+        // and submission is confirmed, and the wait did not time out. A successful query is not a
+        // confirmed cancel, and a terminal order with missing fills is not a settled one.
+        let release_owed = report.steps.contains(&StopStep::ReleaseDeadMansSwitch);
+        let release_allowed = release_owed
+            && !read_only
+            && report.outcome == StopOutcome::Complete
             && report.unconfirmed_cancels.is_empty()
             && report.unknown_submissions.is_empty()
-        {
+            && report.unresolved_orders.is_empty();
+
+        if release_allowed {
+            // Composing is not releasing: the frame is built without moving the switch, and the
+            // switch is released locally only once the write succeeded.
             let frame = self
                 .reconciliation
-                .write()
-                .dead_mans_switch_mut()
-                .release(self.account.now());
+                .read()
+                .dead_mans_switch()
+                .release_frame();
 
-            match stream.as_ref() {
-                Some(stream) => match stream.send_switch_frame(&frame).await {
-                    Ok(()) => report.released_switch = true,
-                    Err(error) => log::error!(
-                        "Ondo could not put the switch release on the wire while stopping: {error}; \
-                         the switch is released locally and the venue's own timeout is what will \
-                         fire it"
-                    ),
-                },
-                None => report.released_switch = true,
+            match self.private_stream.as_ref() {
+                Some(stream) => {
+                    let allowance = budget.remaining().max(Duration::from_millis(500));
+
+                    match tokio::time::timeout(allowance, stream.send_switch_frame(&frame)).await {
+                        Ok(Ok(())) => {
+                            self.reconciliation
+                                .write()
+                                .dead_mans_switch_mut()
+                                .release(self.account.now());
+                            report.released_switch = true;
+                        }
+                        Ok(Err(error)) => log::error!(
+                            "Ondo could not put the switch release on the wire while stopping: \
+                             {error}; the switch stays armed and the venue's own timeout is what \
+                             will fire it"
+                        ),
+                        Err(_) => log::error!(
+                            "Ondo's switch release timed out; the switch stays armed and the \
+                             venue's own timeout is what will fire it"
+                        ),
+                    }
+                }
+                None => log::error!(
+                    "Ondo has no live transport to release the switch on, so the switch stays \
+                     armed rather than claiming a release this process cannot put on the wire"
+                ),
             }
-        } else if report.steps.contains(&StopStep::ReleaseDeadMansSwitch) {
+        } else if release_owed {
             log::error!(
-                "Ondo is leaving the dead man's switch armed: {} cancel(s) and {} submission(s) \
-                 are unconfirmed, so the switch is still covering work this client cannot account \
-                 for",
+                "Ondo is leaving the dead man's switch armed: outcome={:?}, {} cancel(s), {} \
+                 submission(s) and {} unresolved order(s) still stand",
+                report.outcome,
                 report.unconfirmed_cancels.len(),
                 report.unknown_submissions.len(),
+                report.unresolved_orders.len(),
             );
         }
 
-        // Step 5: close the private stream and wait for the transport to end.
-        match stream {
-            Some(mut stream) => {
+        // Step 5: close the private stream and wait for the transport to end. This always runs,
+        // even when the budget is spent: a socket still being read is never left behind.
+        match self.private_stream.as_mut() {
+            Some(stream) => {
                 stream.stop().await;
                 report.stream_ended = !stream.is_running();
 
@@ -2165,6 +2357,10 @@ impl OndoExecutionClient {
                 }
             }
             None => report.stream_ended = true,
+        }
+
+        if report.stream_ended {
+            self.private_stream = None;
         }
 
         // The stop's own record: whatever is outstanding is written where a restart reads it, and
@@ -2193,37 +2389,56 @@ impl OndoExecutionClient {
         )
     }
 
-    /// Waits, within `timeout`, for every order the stop cancelled to stop being pending.
+    /// Waits, within the shared budget, for every order the stop touched to settle.
     ///
     /// It returns whether the wait finished rather than whether the orders did: an order still
-    /// working at the timeout is [`StopOutcome::TimedOut`]'s business and is reported as such.
-    async fn await_orders_settled(&self, timeout: Duration, steps: &[StopStep]) -> bool {
+    /// unsettled at the deadline is [`StopOutcome::TimedOut`]'s business and is reported as such.
+    async fn await_orders_settled(&self, budget: &ShutdownBudget, steps: &[StopStep]) -> bool {
         if !steps.contains(&StopStep::ConfirmOwnOrders) {
             return true;
         }
 
-        let start = std::time::Instant::now();
         let mut pending = self.pending_orders();
 
         while !pending.is_empty() {
-            if start.elapsed() >= timeout {
+            let remaining = budget.remaining();
+
+            if remaining.is_zero() {
                 log::error!(
-                    "Ondo's stop timed out with {} order(s) still working: {pending:?}",
+                    "Ondo's stop timed out with {} order(s) not settled: {pending:?}",
                     pending.len(),
                 );
 
                 return false;
             }
 
-            tokio::time::sleep(Duration::from_millis(ONDO_STOP_SETTLE_POLL_MS)).await;
+            tokio::time::sleep(remaining.min(Duration::from_millis(ONDO_STOP_SETTLE_POLL_MS)))
+                .await;
             pending = self.pending_orders();
         }
 
         true
     }
 
-    /// Returns the tracked orders that have not reached a state the venue stated.
+    /// Returns the tracked orders this client cannot yet call settled.
+    ///
+    /// A terminal status is not enough: the venue's fill total has to agree with the fills this
+    /// client applied, and no accepted fill may still be waiting to be reported
+    /// ([`OndoOrderState::is_settled`]). That keeps a terminal order with missing fills from
+    /// reading as finished and releasing the protection over it.
     fn pending_orders(&self) -> Vec<ClientOrderId> {
+        self.reporter
+            .state
+            .read()
+            .orders
+            .values()
+            .filter(|state| !state.is_settled())
+            .map(|state| state.client_order_id)
+            .collect()
+    }
+
+    /// Returns the tracked orders whose end this run has not yet stated to the venue.
+    fn working_orders(&self) -> Vec<ClientOrderId> {
         self.reporter
             .state
             .read()
@@ -2232,6 +2447,24 @@ impl OndoExecutionClient {
             .filter(|state| !state.status.is_terminal())
             .map(|state| state.client_order_id)
             .collect()
+    }
+
+    /// Registers every non-terminal owned order as an unconfirmed cancel, without sending anything.
+    ///
+    /// It runs before the first cancel request so the stop's checkpoint already names every order
+    /// it owes, whatever the caller's timeout does to the requests that follow. It is idempotent
+    /// and it is never used by a read-only session.
+    fn register_owned_cancels(&self, now: UnixNanos) {
+        for state in self.reporter.state.read().orders.values() {
+            if !state.status.is_terminal() {
+                self.account.note_unconfirmed_cancel(
+                    state.client_order_id,
+                    state.venue_order_id,
+                    "the stop registered this order before issuing its cancel".to_string(),
+                    now,
+                );
+            }
+        }
     }
 
     /// Records a private report that arrived while the account was being read.
@@ -3067,11 +3300,15 @@ impl OndoAccountRuntime {
     /// unconfirmed cancel *before* the confirming query, so a query that cannot be answered leaves
     /// the cancel outstanding instead of leaving nothing behind at all.
     ///
+    /// The cancel is registered as unconfirmed **before** the request is issued, so a stop whose
+    /// future the caller drops mid-wait still finds it in the ledger; the request's own answer
+    /// clears it again. This is the awaiting cancel the stop uses, not the client's spawned one.
+    ///
     /// # Errors
     ///
     /// Returns an error when the cancel never became a request - a transport failure, or a refusal
     /// that carries no code this adapter reads as requiring a query. The error is the caller's to
-    /// record; this method registers the uncertain outcomes itself.
+    /// record; an ambiguous answer is registered rather than returned.
     pub async fn cancel_order(
         &self,
         client_order_id: ClientOrderId,
@@ -3083,6 +3320,17 @@ impl OndoAccountRuntime {
             None => self.reporter.order_ref(&client_order_id),
         };
 
+        // Registered **before** the request exists. A cancel that is on the wire is one whose
+        // outcome this client cannot state yet, and a stop the caller cuts short while it waits has
+        // to find it in the ledger rather than only in a task about to be dropped. The request's own
+        // answer clears it again; an answer that does not is what leaves it here.
+        self.reconciliation.write().note_unconfirmed_cancel(
+            client_order_id,
+            venue_order_id,
+            "the cancel request was issued and its answer has not settled it".to_string(),
+            now,
+        );
+
         match self
             .http_client
             .cancel_order(&order_ref, OndoRequestPriority::High)
@@ -3091,18 +3339,19 @@ impl OndoAccountRuntime {
             Ok(OndoCancelAnswer::Order(order)) => {
                 self.reporter.apply_order(&order, Acceptance::Report, None);
 
+                // The venue stated the order. That settles the cancel only when what it stated is
+                // terminal: an order the venue still calls working is one this client may still
+                // have to cancel.
+                if order.status().is_terminal() {
+                    self.reconciliation.write().confirm_cancel(&client_order_id);
+                }
+
                 Ok(())
             }
             Ok(OndoCancelAnswer::Unconfirmed { raw }) => {
                 log::warn!(
                     "Ondo accepted the cancel of {client_order_id} without reporting the order, so \
                      its state is confirmed by a query ({raw})"
-                );
-                self.reconciliation.write().note_unconfirmed_cancel(
-                    client_order_id,
-                    venue_order_id,
-                    format!("the cancel was accepted without an order payload ({raw})"),
-                    now,
                 );
                 self.confirm_cancel(&client_order_id).await;
 
@@ -3112,29 +3361,24 @@ impl OndoAccountRuntime {
                 let rejection = cancel_rejection(&error);
 
                 if rejection.requires_query() {
-                    self.reconciliation.write().note_unconfirmed_cancel(
-                        client_order_id,
-                        venue_order_id,
-                        format!(
-                            "the cancel was refused with a code that requires a query: {error}"
-                        ),
-                        now,
-                    );
                     self.confirm_cancel(&client_order_id).await;
 
                     Ok(())
                 } else {
+                    // The cancel did not take and needs no query. The registration made above is
+                    // cleared here and the caller is told, rather than left in the ledger as a
+                    // cancel that never was.
+                    self.reconciliation.write().confirm_cancel(&client_order_id);
+
                     Err(anyhow::anyhow!("{error}"))
                 }
             }
             Err(error) => {
-                // Ambiguous: the venue may still act on it, so it is registered before the query
-                // that would settle it (plan §6.3).
-                self.reconciliation.write().note_unconfirmed_cancel(
-                    client_order_id,
-                    venue_order_id,
-                    format!("the cancel request was not answered: {error}"),
-                    now,
+                // Ambiguous: the venue may still act on it, so the registration made above stands
+                // and the query that would settle it is run (plan §6.3).
+                log::warn!(
+                    "Ondo's cancel of {client_order_id} was not answered ({error}); its state is \
+                     confirmed by a query"
                 );
                 self.confirm_cancel(&client_order_id).await;
 
@@ -3157,7 +3401,23 @@ impl OndoAccountRuntime {
         {
             Ok(order) => {
                 self.reporter.apply_order(&order, Acceptance::Report, None);
-                self.reconciliation.write().confirm_cancel(client_order_id);
+
+                // A successful query is not a confirmed cancellation. The cancel is settled only
+                // when the order the venue stated is settled: terminal, its fills agreeing with the
+                // venue's own total and no accepted fill still waiting to be reported. An order
+                // the venue still reports as working is still an order this client may have to
+                // cancel.
+                let settled = self
+                    .reporter
+                    .state
+                    .read()
+                    .orders
+                    .get(client_order_id)
+                    .is_some_and(OndoOrderState::is_settled);
+
+                if settled {
+                    self.reconciliation.write().confirm_cancel(client_order_id);
+                }
             }
             Err(error) => log::warn!(
                 "The confirming query after a cancel failed for {client_order_id} ({order_ref}): \
@@ -3315,7 +3575,19 @@ impl OndoAccountRuntime {
             {
                 Ok(payload) => {
                     self.apply_order(&payload);
-                    ProbeOutcome::Found
+
+                    // A working order settles an unknown submission - the order existing means the
+                    // request was applied - but it does not settle an unconfirmed cancel. The
+                    // machine is told which one this is.
+                    let settled = self
+                        .reporter
+                        .state
+                        .read()
+                        .orders
+                        .get(&client_order_id)
+                        .is_some_and(OndoOrderState::is_settled);
+
+                    ProbeOutcome::Found { settled }
                 }
                 Err(OndoHttpError::RequestRejected { status: 404, .. }) => ProbeOutcome::NotFound,
                 Err(error) => ProbeOutcome::Inconclusive {
@@ -3966,24 +4238,53 @@ impl ExecutionClient for OndoExecutionClient {
         }
 
         log::info!("Stopping Ondo Perps execution client");
-        self.tasks.abort();
-        // The private transport is not in the task group: it owns its own task and its own socket,
-        // so it is stopped here. Dropping the handle cancels it; [`Self::disconnect`] is the path
-        // that waits for it, and this one is synchronous by contract.
-        self.private_stream = None;
+
+        let now = self.account.now();
+
+        self.account.note_session_ended(now);
+
+        // The ordered stop is asynchronous and this hook is not. When the transport is still here
+        // the ordered cleanup is still owed: register and checkpoint every owned order so the work
+        // survives, and leave the switch armed. The asynchronous [`Self::disconnect`] is what
+        // drains the request tasks and carries out the bounded REST cleanup; this hook records
+        // that it is owed rather than reporting it done.
+        if self.private_stream.is_some() {
+            if !self.account.is_account_read_only() {
+                self.register_owned_cancels(now);
+            }
+
+            self.account.persist_journal(now);
+        }
+
+        // Uncertainty is checkpointed before forcing requests to stop. The async hook retains
+        // responsibility for joining the closed generation, including after a caller timeout.
+        if self.tasks.is_open() || !self.tasks.all_finished() {
+            self.tasks.abort();
+        }
+
+        // Keep the transport owner so a later async hook can join the forced cancellation
+        if let Some(stream) = self.private_stream.as_mut() {
+            stream.abort();
+        }
         self.core.set_stopped();
         self.core.set_disconnected();
-        // A stopped client holds no verified account: were it to be reset and reused, new risk
-        // would wait for a recovery rather than resume on the state the last session read.
-        self.account.note_session_ended(self.reporter.now());
+
+        if self.last_shutdown.is_none() {
+            self.last_shutdown = Some(ShutdownRecord {
+                report: None,
+                tasks_drained: false,
+            });
+        }
 
         Ok(())
     }
 
-    /// Reopens the request path after a [`Self::stop`].
+    /// Reopens the request path after a [`Self::disconnect`] drained the generation.
     ///
-    /// The task generation `stop` closed is what the submission and cancel paths spawn on, so
-    /// resetting the client without reopening it would leave it connected but unable to send.
+    /// The task generation the shutdown closed is what the submission and cancel paths spawn on,
+    /// so resetting the client without reopening it would leave it connected but unable to send.
+    /// The generation must have reached `Drained` - the asynchronous drain is what does that - so a
+    /// synchronous `stop` that only closed admission does not by itself permit a reset.
     ///
     /// # Errors
     ///
@@ -3995,6 +4296,8 @@ impl ExecutionClient for OndoExecutionClient {
                 .start_generation()
                 .map_err(|error| anyhow::anyhow!("Ondo Perps task generation: {error}"))?;
         }
+
+        self.last_shutdown = None;
 
         Ok(())
     }
@@ -4045,40 +4348,120 @@ impl ExecutionClient for OndoExecutionClient {
 
     /// Marks the client disconnected, and the account unverified with it.
     ///
+    /// The graceful shutdown path carries out plan §R3.3 in one bounded budget:
+    ///
+    /// 1. new risk stops;
+    /// 2. every owned order is registered as an unconfirmed cancel and the ledger is checkpointed
+    ///    **before** any request exists, so a slow first request cannot erase a later order;
+    /// 3. request admission closes and the task generation is drained (graceful then forced), so an
+    ///    in-flight POST cannot mutate the account after shutdown and a later `reset` can reopen;
+    /// 4. this run's own working orders are cancelled by id and confirmed, the switch is released
+    ///    only when every piece of work is settled and confirmed, and the transport is closed and
+    ///    awaited.
+    ///
     /// A session that ends leaves the venue state the session established unread: new risk stops
     /// until a recovery converges again (plan §6.4). Cancels and queries still travel.
     ///
-    /// The private transport is stopped with it and awaited, boundedly, so a disconnected client is
-    /// not a client with a socket still reading. What is deliberately **not** done here is releasing
-    /// the dead man's switch: a released switch cancels nothing, and this run's orders have not been
-    /// confirmed cancelled - the order the stop sequence fixes is a requirement, and carrying it out
-    /// is plan §R3.3's ([`Self::release_dead_mans_switch`]).
+    /// A shutdown that leaves anything outstanding returns `Err` naming it, after the cleanup and
+    /// the checkpoint have run. A repeated call preserves the original dirty outcome rather than
+    /// relabelling it as success because the socket is gone.
     async fn disconnect(&mut self) -> anyhow::Result<()> {
-        if let Some(mut stream) = self.private_stream.take() {
-            stream.stop().await;
-
-            log::info!(
-                "Ondo Perps private transport stopped: {:?}",
-                stream.run_state(),
-            );
-
-            if stream.is_running() {
-                log::error!(
-                    "The Ondo Perps private transport task outlived its stop timeout; it has been \
-                     aborted and is still winding down",
-                );
-            }
-        }
-
-        if self.core.is_disconnected() {
+        // A completed shutdown is idempotent: nothing is left to do and the record is preserved.
+        if self
+            .last_shutdown
+            .as_ref()
+            .is_some_and(ShutdownRecord::is_complete)
+            && self.private_stream.is_none()
+            && self.tasks.all_finished()
+        {
             return Ok(());
         }
 
-        self.core.set_disconnected();
-        self.account.note_session_ended(self.reporter.now());
-        log::info!("Ondo Perps execution client disconnected");
+        // One budget for the whole shutdown: the request-task drain, the cancel requests, the
+        // confirmations, the switch release and the transport close.
+        let budget = ShutdownBudget::new(ONDO_DISCONNECT_TIMEOUT);
+        let now = self.account.now();
 
-        Ok(())
+        // Any exit from here - including the node's own disconnect bound dropping this future -
+        // still checkpoints the ledger.
+        let _checkpoint = JournalCheckpoint(self.account.clone());
+
+        // Step 1: new risk stops.
+        self.account.note_session_ended(now);
+
+        // Step 2: every owned working order is registered and checkpointed before any await.
+        if !self.account.is_account_read_only() {
+            self.register_owned_cancels(now);
+        }
+
+        self.account.persist_journal(self.account.now());
+
+        // Step 3: close request admission and drain the generation. The graceful slice lets an
+        // in-flight request finish and register its own outcome; the forced slice boundedly drops
+        // what is still running. Either way the generation reaches `Drained` so `reset` can reopen
+        // it.
+        self.tasks.begin_shutdown();
+
+        let graceful = budget.remaining().min(ONDO_SHUTDOWN_TASK_GRACEFUL);
+        let abort = budget
+            .remaining()
+            .saturating_sub(graceful)
+            .min(ONDO_SHUTDOWN_TASK_ABORT);
+        let tasks_drained = {
+            let mut guard = RequestDrainGuard {
+                tasks: &self.tasks,
+                completed: false,
+            };
+            let result = self.tasks.finish_shutdown(graceful, abort).await;
+            guard.completed = true;
+            result.is_ok()
+        };
+
+        if !tasks_drained {
+            log::error!(
+                "The Ondo request task generation did not drain within its bound; {} task(s) \
+                 remain owned",
+                self.tasks.len(),
+            );
+        }
+
+        // Step 4: the ordered stop on what is left of the budget.
+        let report = self.stop_and_wait_within(now, &budget).await;
+
+        self.account.persist_journal(self.account.now());
+
+        if !self.core.is_disconnected() {
+            self.core.set_disconnected();
+        }
+
+        let record = ShutdownRecord {
+            report: Some(report),
+            tasks_drained,
+        };
+        let complete = record.is_complete();
+        let error = (!complete).then(|| record.error());
+
+        self.last_shutdown = Some(record);
+
+        match error {
+            Some(error) => {
+                log::error!("{error}");
+
+                Err(error)
+            }
+            None => {
+                log::info!(
+                    "Ondo Perps execution client disconnected: {} cancel(s) settled, switch \
+                     released, tasks drained",
+                    self.last_shutdown
+                        .as_ref()
+                        .and_then(|record| record.report.as_ref())
+                        .map_or(0, |report| report.cancellations_issued),
+                );
+
+                Ok(())
+            }
+        }
     }
 
     fn dispose(&mut self) -> anyhow::Result<()> {
@@ -4193,6 +4576,8 @@ impl ExecutionClient for OndoExecutionClient {
                         .emitter
                         .emit_order_rejected(&order, &reason, reporter.now(), false);
                     reporter.forget(&client_order_id);
+                    // The order never rested, so any cancel registered for it beforehand is moot.
+                    reconciliation.write().confirm_cancel(&client_order_id);
                 }
                 Err(OndoNewRiskSendError::Local(error)) => {
                     // A single order has no batch-level validation to fail, so this arm is the
@@ -4205,6 +4590,7 @@ impl ExecutionClient for OndoExecutionClient {
                         false,
                     );
                     reporter.forget(&client_order_id);
+                    reconciliation.write().confirm_cancel(&client_order_id);
                 }
                 Err(OndoNewRiskSendError::Http(error)) if is_definitive_refusal(&error) => {
                     // The venue answered and refused, or the request never left this process.
@@ -4218,6 +4604,7 @@ impl ExecutionClient for OndoExecutionClient {
                         is_post_only_refusal(&error),
                     );
                     reporter.forget(&client_order_id);
+                    reconciliation.write().confirm_cancel(&client_order_id);
                 }
                 Err(OndoNewRiskSendError::Http(error)) => {
                     // Plan §6.3: the request may have been applied. The order is neither accepted
@@ -4392,6 +4779,9 @@ impl ExecutionClient for OndoExecutionClient {
                             .emitter
                             .emit_order_rejected(order, &reason, reporter.now(), false);
                         reporter.forget(&order.client_order_id());
+                        reconciliation
+                            .write()
+                            .confirm_cancel(&order.client_order_id());
                     }
 
                     return;
@@ -4409,6 +4799,9 @@ impl ExecutionClient for OndoExecutionClient {
                             false,
                         );
                         reporter.forget(&order.client_order_id());
+                        reconciliation
+                            .write()
+                            .confirm_cancel(&order.client_order_id());
                     }
 
                     return;
@@ -4462,7 +4855,7 @@ impl ExecutionClient for OndoExecutionClient {
             }
 
             for refused in response.failed() {
-                report_refused_item(&reporter, &orders, refused, &mut reported);
+                report_refused_item(&reporter, &reconciliation, &orders, refused, &mut reported);
             }
 
             for client_order_id in &client_order_ids {
@@ -5301,6 +5694,7 @@ impl OndoNewRiskGuard for RunAdmission {
 /// wrong order would put a real order into a state that never happened.
 fn report_refused_item(
     reporter: &OndoReporter,
+    reconciliation: &Arc<RwLock<ReconciliationMachine>>,
     orders: &[OrderAny],
     refused: &OndoRejectedOrder,
     reported: &mut Vec<ClientOrderId>,
@@ -5336,8 +5730,12 @@ fn report_refused_item(
     );
 
     // The venue refused this item, so it never rested: leaving it in the index would keep an order
-    // in flight that does not exist.
+    // in flight that does not exist. Any cancel registered for it beforehand is moot for the same
+    // reason.
     reporter.forget(&order.client_order_id());
+    reconciliation
+        .write()
+        .confirm_cancel(&order.client_order_id());
     reported.push(order.client_order_id());
 }
 
