@@ -5450,7 +5450,7 @@ async fn test_production_readonly_connect_returns_only_after_private_ack_and_acc
         account_read_only: true,
         expected_venue_account_id: Some("unit-account".into()),
         http_timeout_secs: 2,
-        reconcile_interval_secs: 1,
+        reconcile_interval_secs: 30,
         ..sandbox_config()
     };
     let mut harness = build_harness(&rest, &private, config);
@@ -5459,6 +5459,7 @@ async fn test_production_readonly_connect_returns_only_after_private_ack_and_acc
     let snapshot = harness.client.read_only_diagnostics().snapshot();
     assert!(snapshot.logged_in);
     assert_eq!(snapshot.subscriptions_acked.len(), 2);
+    assert!(snapshot.recoveries > 0);
     assert!(snapshot.account_state_events > 0);
     assert!(harness.client.is_connected());
     harness.client.disconnect().await.unwrap();

@@ -73,7 +73,7 @@ use crate::{
     reconciliation::{
         DeadMansSwitchMessage, DeadMansSwitchState, MetadataValidity, ReconciliationState,
     },
-    signing::{now_millis, sign_ws},
+    signing::sign_ws,
     websocket::{
         client::{
             ONDO_WS_IDLE_TIMEOUT_SECS, ONDO_WS_MAX_CLIENT_MESSAGE_BYTES, reconnect_backoff,
@@ -645,6 +645,7 @@ impl PrivateTransportState {
             tokio::time::Instant::now() + Duration::from_secs(ONDO_WS_LOGIN_TIMEOUT_SECS);
 
         let mut logged_in = false;
+        let mut initial_reconciliation_started = false;
 
         // A recovery is a decision to read the account rather than a socket coming up - but a
         // socket coming up is exactly when this process stops being able to vouch for what it
@@ -735,6 +736,14 @@ impl PrivateTransportState {
                         if !self.send_action(client, action).await {
                             return;
                         }
+                    }
+
+                    if self.mode == PrivateStreamMode::ReadOnly
+                        && session.is_established()
+                        && !initial_reconciliation_started
+                    {
+                        initial_reconciliation_started = true;
+                        self.spawn_reconciliation(passes);
                     }
 
                     self.refresh_run(session, "the session is running");
@@ -944,8 +953,11 @@ impl PrivateTransportState {
         }
         match action {
             PrivateAction::Login => {
-                let timestamp_ms = now_millis()
-                    .map_err(|error| anyhow::anyhow!("the login instant is unreadable: {error}"))?;
+                let timestamp_ms = self
+                    .account
+                    .http_client()
+                    .websocket_login_timestamp_ms()
+                    .map_err(|e| anyhow::anyhow!("the login instant is unreadable: {e}"))?;
                 let signature = sign_ws(&self.credential, timestamp_ms);
 
                 LoginRequest::new(

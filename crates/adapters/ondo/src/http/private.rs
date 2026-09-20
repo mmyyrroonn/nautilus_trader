@@ -564,19 +564,29 @@ fn read_cursor(text: &str) -> OndoHttpResult<(Option<String>, Option<&'static st
 
     let page_info = value.get("pageInfo").filter(|info| info.is_object());
     let nested = value.get("result").filter(|result| result.is_object());
-    let scopes: [Option<&serde_json::Value>; 3] = [Some(&value), page_info, nested];
+    let scopes: [(Option<&serde_json::Value>, bool); 3] =
+        [(Some(&value), false), (page_info, true), (nested, false)];
 
-    for scope in scopes.into_iter().flatten() {
+    for (scope, empty_is_end) in scopes {
+        let Some(scope) = scope else {
+            continue;
+        };
         for field in CURSOR_FIELDS {
             let Some(member) = scope.get(field) else {
                 continue;
             };
 
             return match member {
-                // An opaque token that is empty *or blank* is not a cursor: a venue that sent
-                // `"next":" "` has told this adapter nothing, and reading that as "no more pages"
-                // would silently truncate the history. The token itself is passed through
-                // verbatim, whitespace and all, when it carries anything at all.
+                // The live venue represents the end of an empty paginated result with
+                // `pageInfo.nextCursor: ""`. That observed page-info spelling is distinct from an
+                // empty root/nested cursor, which remains an unreadable token and fails closed.
+                serde_json::Value::String(cursor) if empty_is_end && cursor.is_empty() => {
+                    Ok((None, None))
+                }
+                // Outside that exact observed page-info spelling, an opaque token that is empty or
+                // blank is not a cursor: `"next":" "` has told this adapter nothing, and reading
+                // that as "no more pages" would silently truncate the history. A non-blank token is
+                // passed through verbatim, whitespace and all.
                 serde_json::Value::String(cursor) if !cursor.trim().is_empty() => {
                     Ok((Some(cursor.clone()), Some(field)))
                 }

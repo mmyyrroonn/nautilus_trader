@@ -215,6 +215,18 @@ const REPORT_MAX_PAGES: usize = 100;
 /// behind.
 pub const ONDO_DISCONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// Maximum time a production read-only connection waits for private account readiness.
+const ONDO_PRODUCTION_READONLY_READY_MAX_SECS: u64 = 30;
+
+/// Returns the bounded readiness window for a production read-only connection.
+///
+/// A complete account pass makes several signed reads through the shared one-request-per-second
+/// budget. Capping this at eight seconds made the documented fifteen-second HTTP configuration
+/// impossible to honor and raced normal startup traffic from the data client.
+fn production_readonly_readiness_timeout_secs(http_timeout_secs: u64) -> u64 {
+    http_timeout_secs.clamp(1, ONDO_PRODUCTION_READONLY_READY_MAX_SECS)
+}
+
 /// The graceful slice of a shutdown budget given to in-flight request tasks before forced abort.
 const ONDO_SHUTDOWN_TASK_GRACEFUL: Duration = Duration::from_secs(1);
 
@@ -4778,7 +4790,9 @@ impl ExecutionClient for OndoExecutionClient {
             && self.config.account_read_only
         {
             let ready = tokio::time::timeout(
-                Duration::from_secs(self.config.http_timeout_secs.clamp(1, 8)),
+                Duration::from_secs(production_readonly_readiness_timeout_secs(
+                    self.config.http_timeout_secs,
+                )),
                 async {
                     loop {
                         let snapshot = self.read_only_diagnostics.snapshot();
@@ -6612,6 +6626,20 @@ mod tests {
 
     /// The frozen REST spec's own create answer, as the request fixtures use it.
     const ORDER_BODY: &str = r#"{"orderId":"197ec08e001658690721be129e7fa595","clientOrderId":"ondo_probe_1","side":"buy","price":"227.50","size":"0.10","market":"NVDA-USD.P","filledSize":"0.00","lastFillSize":"0.00","filledCost":"0.00","fee":"0.00","status":"open","createdAt":"2025-03-05T14:30:00Z","type":"limit","timeInForce":"GTC","reduceOnly":false}"#;
+
+    #[rstest]
+    #[case::minimum(0, 1)]
+    #[case::configured_default(15, 15)]
+    #[case::bounded_maximum(60, 30)]
+    fn test_production_readonly_readiness_uses_the_configured_http_window(
+        #[case] http_timeout_secs: u64,
+        #[case] expected: u64,
+    ) {
+        assert_eq!(
+            production_readonly_readiness_timeout_secs(http_timeout_secs),
+            expected,
+        );
+    }
 
     /// One `ApiFill`, built from the documented members with the caller's overrides.
     ///

@@ -116,6 +116,17 @@ pub enum OndoSigningError {
     /// The system clock is before the Unix epoch, so it cannot produce a millisecond timestamp.
     #[error("refusing to sign: the system clock is before the Unix epoch")]
     ClockBeforeEpoch,
+    /// Applying the observed venue clock offset would leave the Unix millisecond range.
+    #[error(
+        "refusing to sign: applying the observed venue clock offset of {offset_secs} s to local \
+         timestamp {local_ms} ms leaves the Unix millisecond range"
+    )]
+    ClockAdjustmentOutOfRange {
+        /// The local Unix timestamp before adjustment.
+        local_ms: u64,
+        /// Venue time minus local time, in whole seconds.
+        offset_secs: i64,
+    },
 }
 
 /// Signs an authenticated REST request and returns the lowercase hex signature.

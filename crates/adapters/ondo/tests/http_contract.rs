@@ -1248,6 +1248,19 @@ fn test_an_unreadable_page_info_cursor_fails_closed(#[case] body: &str) {
 }
 
 #[rstest]
+fn test_an_observed_empty_page_info_cursor_is_the_end_of_the_history() {
+    let response = OndoPrivateResponse::decode(
+        200,
+        br#"{"success":true,"result":[],"pageInfo":{"prevCursor":"","nextCursor":""}}"#,
+    )
+    .expect("the venue's observed empty-page cursor shape is readable");
+
+    assert_eq!(response.cursor(), None);
+    assert_eq!(response.cursor_field(), None);
+    assert!(response.items().unwrap().is_empty());
+}
+
+#[rstest]
 fn test_an_empty_page_and_an_absent_result_are_different_answers() {
     // An empty list is a legitimate page: an account with no fills is not a failure, and no cursor
     // member means there is no next page.

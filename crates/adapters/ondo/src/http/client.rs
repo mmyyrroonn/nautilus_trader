@@ -181,7 +181,7 @@ const NO_SERVER_OFFSET: i64 = i64::MIN;
 #[derive(Debug)]
 struct OndoAuth {
     credential: Arc<OndoCredential>,
-    /// Local time minus venue time, in whole seconds, from the last `Date` header the venue sent.
+    /// Venue time minus local time, in whole seconds, from the last `Date` header the venue sent.
     server_offset_secs: AtomicI64,
 }
 
@@ -225,6 +225,27 @@ impl OndoAuth {
             NO_SERVER_OFFSET => Ok(()),
             offset => check_clock_skew(offset),
         }
+    }
+
+    /// Returns a signing timestamp adjusted to the last observed venue clock.
+    ///
+    /// The production connection performs signed REST reads before it starts the private stream,
+    /// so their `Date` header is the best available evidence for the login clock. A client that has
+    /// not observed one keeps the prior local-clock behavior.
+    fn signing_timestamp_ms(&self, local_ms: u64) -> Result<u64, crate::signing::OndoSigningError> {
+        let offset_secs = self.server_offset_secs.load(Ordering::Relaxed);
+        if offset_secs == NO_SERVER_OFFSET {
+            return Ok(local_ms);
+        }
+
+        self.check_clock()?;
+        let offset_ms = offset_secs.saturating_mul(1_000);
+        local_ms.checked_add_signed(offset_ms).ok_or(
+            crate::signing::OndoSigningError::ClockAdjustmentOutOfRange {
+                local_ms,
+                offset_secs,
+            },
+        )
     }
 }
 
@@ -653,6 +674,24 @@ impl OndoHttpClient {
     #[must_use]
     pub const fn endpoint_kind(&self) -> Option<OndoEndpoint> {
         self.endpoint
+    }
+
+    /// Returns the current millisecond timestamp for a private WebSocket login.
+    ///
+    /// The authenticated HTTP surface and private WebSocket share one credential and one observed
+    /// venue clock. This keeps the WS login inside the venue's actual time window when the local
+    /// clock is slightly ahead, while refusing an observed offset outside the documented bound.
+    pub(crate) fn websocket_login_timestamp_ms(&self) -> OndoHttpResult<u64> {
+        let auth = self
+            .auth
+            .as_ref()
+            .ok_or_else(|| OndoHttpError::NotAuthenticated {
+                target: "private WebSocket login".to_string(),
+            })?;
+        let local_ms = now_millis()?;
+
+        auth.signing_timestamp_ms(local_ms)
+            .map_err(OndoHttpError::from)
     }
 
     /// Calls `GET /v1/account` and returns the envelope it answered with.
@@ -1384,9 +1423,7 @@ fn signed_request_headers(
     target: &OndoRequestTarget,
     body: &[u8],
 ) -> OndoHttpResult<HashMap<String, String>> {
-    auth.check_clock()?;
-
-    let timestamp_ms = now_millis()?;
+    let timestamp_ms = auth.signing_timestamp_ms(now_millis()?)?;
     let signature = sign_rest(
         &auth.credential,
         timestamp_ms,
@@ -1515,6 +1552,7 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
+    use crate::common::enums::OndoEnvironment;
 
     #[rstest]
     fn test_retry_after_accepts_only_whole_seconds() {
@@ -1529,6 +1567,63 @@ mod tests {
         );
         assert_eq!(retry_after_secs(&header("soon")), None);
         assert_eq!(retry_after_secs(&HashMap::new()), None);
+    }
+
+    #[rstest]
+    #[case::no_server_evidence(NO_SERVER_OFFSET, 1_789_398_902_250)]
+    #[case::venue_three_seconds_behind(-3, 1_789_398_899_250)]
+    #[case::venue_two_seconds_ahead(2, 1_789_398_904_250)]
+    fn test_the_websocket_login_timestamp_uses_the_observed_server_offset(
+        #[case] offset_secs: i64,
+        #[case] expected: u64,
+    ) {
+        let credential = Arc::new(
+            OndoCredential::new(
+                OndoEnvironment::Production,
+                "ondoKeyId_UNIT_TEST_ONLY".to_string(),
+                "ondoApiSecret_UNIT_TEST_ONLY".to_string(),
+            )
+            .expect("the fake credential builds"),
+        );
+        let auth = OndoAuth::new(credential);
+        auth.server_offset_secs
+            .store(offset_secs, Ordering::Relaxed);
+
+        assert_eq!(
+            auth.signing_timestamp_ms(1_789_398_902_250)
+                .expect("the observed offset is in range"),
+            expected,
+        );
+    }
+
+    #[rstest]
+    fn test_the_rest_signature_uses_the_observed_server_offset() {
+        let credential = Arc::new(
+            OndoCredential::new(
+                OndoEnvironment::Production,
+                "ondoKeyId_UNIT_TEST_ONLY".to_string(),
+                "ondoApiSecret_UNIT_TEST_ONLY".to_string(),
+            )
+            .expect("the fake credential builds"),
+        );
+        let auth = OndoAuth::new(credential);
+        auth.server_offset_secs.store(-3, Ordering::Relaxed);
+        let target = OndoRequestTarget::new("/v1/perps/orders");
+        let local_before = now_millis().expect("the local clock is readable");
+
+        let headers = signed_request_headers(&auth, "GET", &target, &[])
+            .expect("the observed offset is in range");
+
+        let local_after = now_millis().expect("the local clock is readable");
+        let signed = headers[crate::signing::ONDO_TIMESTAMP_HEADER]
+            .parse::<u64>()
+            .expect("the timestamp header is a Unix millisecond integer");
+        let adjusted_local = signed + 3_000;
+        assert!(
+            (local_before..=local_after).contains(&adjusted_local),
+            "the signed timestamp {signed} did not apply the observed -3 s offset to the local \
+             interval {local_before}..={local_after}",
+        );
     }
 
     #[rstest]
