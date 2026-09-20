@@ -39,9 +39,9 @@
 //! than bypassing the limit. [`OndoRequestPriority`] is that hook: [`OndoRateBudget::acquire`]
 //! takes it, so every caller already names the class of traffic it is. Both classes await the same
 //! single bucket today, which is what makes "a priority request can never exceed the budget" true
-//! now. The reserved-slot part of the mechanism attaches inside `acquire` - a `High` request takes
-//! the next slot from a reservation the ordinary path must leave empty - and is not implemented
-//! here because no execution path can issue a cancel yet. That is Task 7's wire-up.
+//! now. A FIFO turnstile prevents a later periodic read from starving an older waiter; it is not
+//! the reserved-slot mechanism. That later mechanism still attaches inside `acquire`, where a
+//! `High` request can take the next reserved slot without bypassing the shared limit.
 
 use std::{
     num::NonZeroU32,
@@ -50,6 +50,7 @@ use std::{
 
 use ahash::AHashMap;
 use nautilus_network::ratelimiter::{RateLimiter, clock::MonotonicClock, quota::Quota};
+use tokio::sync::Mutex as AsyncMutex;
 use ustr::Ustr;
 
 use crate::common::enums::OndoEnvironment;
@@ -114,6 +115,12 @@ pub enum OndoRequestPriority {
 #[derive(Clone, Debug)]
 pub struct OndoRateBudget {
     limiter: Arc<RateLimiter<Ustr, MonotonicClock>>,
+    /// FIFO turnstile for waiters on the single shared bucket.
+    ///
+    /// The limiter preserves the rate but does not promise which awakened waiter wins the next
+    /// slot. Without one queue, a periodic reconciliation pass can repeatedly overtake an order
+    /// that was already waiting and starve it indefinitely.
+    waiters: Arc<AsyncMutex<()>>,
 }
 
 impl Default for OndoRateBudget {
@@ -141,6 +148,7 @@ impl OndoRateBudget {
                 None,
                 vec![(Ustr::from(ONDO_REST_BUCKET), quota)],
             )),
+            waiters: Arc::new(AsyncMutex::new(())),
         }
     }
 
@@ -161,6 +169,10 @@ impl OndoRateBudget {
     /// its own task and does not sleep mid-loop.
     pub async fn acquire(&self, priority: OndoRequestPriority) {
         log::trace!("Awaiting the shared Ondo REST budget for {priority:?} traffic");
+        // Tokio's async mutex grants locks in call order. Hold only the wait for a rate-limit
+        // slot, never the network request, so an older waiter cannot be overtaken while the
+        // request itself still releases the turn immediately after admission.
+        let _turn = self.waiters.lock().await;
         self.limiter
             .await_keys_ready(Some(&[Ustr::from(ONDO_REST_BUCKET)]))
             .await;
@@ -225,7 +237,36 @@ mod tests {
         let independent = OndoRateBudget::new();
 
         assert!(Arc::ptr_eq(budget.limiter(), clone.limiter()));
+        assert!(Arc::ptr_eq(&budget.waiters, &clone.waiters));
         assert!(!Arc::ptr_eq(budget.limiter(), independent.limiter()));
+        assert!(!Arc::ptr_eq(&budget.waiters, &independent.waiters));
+    }
+
+    /// A later periodic read must not repeatedly take the slot an older order already awaits.
+    #[tokio::test(start_paused = true)]
+    async fn test_waiters_take_replenished_slots_in_arrival_order() {
+        let budget = OndoRateBudget::new();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+
+        budget.acquire(OndoRequestPriority::Normal).await;
+
+        for label in ["order", "later-reconciliation"] {
+            let budget = budget.clone();
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                budget.acquire(OndoRequestPriority::Normal).await;
+                tx.send(label).expect("the receiver remains open");
+            });
+            tokio::task::yield_now().await;
+        }
+
+        tokio::time::advance(Duration::from_secs(1)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(rx.try_recv(), Ok("order"));
+
+        tokio::time::advance(Duration::from_secs(1)).await;
+        tokio::task::yield_now().await;
+        assert_eq!(rx.try_recv(), Ok("later-reconciliation"));
     }
 
     /// An explicit quota is the quota the limiter actually enforces, not a decoration on the
