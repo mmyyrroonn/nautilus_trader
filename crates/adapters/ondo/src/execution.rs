@@ -98,13 +98,14 @@
 //! # The environment is closed before anything else happens
 //!
 //! [`OndoExecutionClient::new`] validates the configuration, resolves the REST base URL, and runs
-//! [`validate_authenticated_environment`] on the pair. A production configuration is refused there,
-//! as is a base URL that is not the endpoint this session may sign for
-//! ([`crate::common::endpoint::OndoEndpointPolicy`]: the sandbox host, or a loopback test service),
-//! before a credential is read and before any socket exists - and
+//! [`validate_authenticated_environment`] on the pair. A production configuration is read-only, and
+//! a production configuration without `account_read_only` is refused at validation; a base URL that
+//! is not the endpoint this session's scope owns
+//! ([`crate::common::endpoint::OndoEndpointPolicy`]: the session's own official host, or a loopback
+//! test service) is refused before a credential is read and before any socket exists - and
 //! [`OndoExecutionConfigError::ProductionOrdersUnsupported`] refuses `allow_production_orders`
-//! whatever it is set to, production endpoint or not. There is no production write branch to
-//! configure open (plan §1, §4.1, §R0.3).
+//! whatever it is set to. There is no production write branch to configure open
+//! (plan §1, §4.1, §R0.3).
 //!
 //! # The unknown outcome
 //!
@@ -149,11 +150,12 @@ use nautilus_model::{
     accounts::AccountAny,
     enums::{LiquiditySide, OmsType, OrderSide, OrderStatus, OrderType, PositionSide, TimeInForce},
     identifiers::{AccountId, ClientId, ClientOrderId, InstrumentId, TradeId, Venue, VenueOrderId},
+    instruments::Instrument,
     orders::{Order, OrderAny},
     reports::{FillReport, OrderStatusReport, PositionStatusReport},
     types::{AccountBalance, Currency, MarginBalance, Money, Price, Quantity},
 };
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use rust_decimal::Decimal;
 
 use crate::{
@@ -163,9 +165,11 @@ use crate::{
             OndoCredential, validate_authenticated_environment,
             validate_authenticated_websocket_environment,
         },
+        enums::OndoAccountIdentity,
         parse::{instrument_id_to_market, market_to_instrument_id, parse_decimal, parse_timestamp},
     },
     config::OndoExecutionClientConfig,
+    diagnostics::{OndoReadOnlyDiagnostics, OwnedShutdownStatus},
     http::{
         client::{
             NewRiskPermit, OndoCancelAnswer, OndoHttpClient, OndoNewRiskGuard, OndoNewRiskSendError,
@@ -1541,6 +1545,12 @@ pub struct OndoExecutionClient {
     /// makes the report buffer, the recovery claim, the reconciliation machine and the event
     /// emitter one set of objects rather than two that agree.
     account: OndoAccountRuntime,
+    /// The sanitized, bounded diagnostics a read-only probe reads after the run.
+    ///
+    /// It shares the account and, once a transport is started, that transport's run-state and
+    /// diagnostic handles. It holds counters and fixed labels only - never a frame, a credential,
+    /// an account id or an amount.
+    read_only_diagnostics: OndoReadOnlyDiagnostics,
     /// The credential, shared with the private transport's login rather than copied into it.
     ///
     /// One [`Arc<OndoCredential>`] signs the REST requests and the WebSocket login alike: the
@@ -1652,8 +1662,8 @@ impl OndoExecutionClient {
     ///
     /// 1. [`OndoExecutionClientConfig::validate`], which refuses `allow_production_orders` and a
     ///    missing account;
-    /// 2. [`validate_authenticated_environment`] on the resolved base URL, which refuses production
-    ///    and every authority the endpoint allowlist does not carry - the sandbox host and a
+    /// 2. [`validate_authenticated_environment`] on the resolved base URL, which refuses every
+    ///    authority the endpoint allowlist does not carry - the session's own official host and a
     ///    loopback test service are the only two it admits;
     /// 3. the credential: the configuration's own pair when it carries one, otherwise
     ///    [`crate::common::credential::resolve_credential`] from the process environment, which
@@ -1689,17 +1699,22 @@ impl OndoExecutionClient {
     ) -> anyhow::Result<Self> {
         config.validate()?;
 
-        // The endpoint gate runs on the configuration's own environment and base URL, before the
+        // The authorization scope is the one input the endpoint gates, the credential resolver and
+        // the authenticated transport share. A production configuration without `account_read_only`
+        // was refused by `validate`, so this cannot name a production write scope.
+        let scope = config.authentication_scope()?;
+
+        // The endpoint gate runs on the configuration's own scope and base URL, before the
         // credential is resolved and before a client exists. The transport applies the same policy
         // again to the credential it is handed, so a refused endpoint is refused at both layers.
         let base_url = config.http_base_url().to_string();
-        validate_authenticated_environment(config.environment, &base_url)?;
+        validate_authenticated_environment(scope, &base_url)?;
 
         // The private WebSocket is judged by the same policy, for its own scheme family, and also
         // before the credential is read: a session that may not sign for its REST endpoint may not
         // sign a login frame for an arbitrary socket either (plan §R3.1, §R0.3).
         let ws_url = config.ws_url().to_string();
-        validate_authenticated_websocket_environment(config.environment, &ws_url)?;
+        validate_authenticated_websocket_environment(scope, &ws_url)?;
 
         let credential = match credential {
             Some(credential) => credential,
@@ -1709,11 +1724,21 @@ impl OndoExecutionClient {
                 config.api_secret.clone().unwrap_or_default(),
             )
             .map_err(|error| anyhow::anyhow!("the configured credential is unusable: {error}"))?,
-            None => crate::common::credential::resolve_credential(config.environment, &base_url)
+            None => crate::common::credential::resolve_credential(scope, &base_url)
                 .map_err(|error| anyhow::anyhow!("no Ondo Perps credential: {error}"))?,
         };
         // One handle, two surfaces: the REST transport signs with this, and so does the private
         // login. Neither takes a copy of the secret, and nothing outside this crate can reach one.
+        //
+        // The credential and the scope are one decision: a sandbox key is never sent under a
+        // production scope, or the other way round, whatever a caller passed in.
+        if credential.environment() != scope.environment() {
+            anyhow::bail!(
+                "the Ondo Perps credential's environment does not match the configured \
+                 authorization scope"
+            );
+        }
+
         let credential = Arc::new(credential);
 
         let account_id = core.account_id;
@@ -1741,11 +1766,30 @@ impl OndoExecutionClient {
             reconciliation.write().mark_account_read_only();
         }
 
+        let production = config
+            .execution_envelope
+            .clone()
+            .map(|envelope| {
+                crate::production::ProductionAuthority::new(
+                    envelope,
+                    config.diagnostics_run_id.clone().unwrap_or_default(),
+                    config
+                        .expected_venue_account_id
+                        .as_deref()
+                        .unwrap_or_default(),
+                    config.journal_path.as_deref().unwrap_or_default(),
+                    config.dms_timeout_secs,
+                )
+                .map_err(anyhow::Error::msg)
+            })
+            .transpose()?;
         let http_client = OndoHttpClient::builder()
             .base_url(base_url)
             .timeout_secs(config.http_timeout_secs)
             .maybe_budget(budget)
             .credential(Arc::clone(&credential))
+            .authentication_scope(scope)
+            .maybe_production_guard(production.clone())
             .new_risk_guard(Arc::new(RunAdmission::new(Arc::clone(&reconciliation)))
                 as Arc<dyn OndoNewRiskGuard>)
             .build()
@@ -1783,6 +1827,9 @@ impl OndoExecutionClient {
                 .as_deref()
                 .filter(|path| !path.trim().is_empty())
                 .map(|path| JournalHandle::new(std::path::PathBuf::from(path))),
+            account_state_published: Arc::new(AtomicU64::new(0)),
+            account_identity: Arc::new(RwLock::new(OndoAccountIdentity::Unknown)),
+            production: production.clone(),
         };
 
         // The journal is restored here - before the client exists, and therefore before anything
@@ -1790,6 +1837,60 @@ impl OndoExecutionClient {
         // the machine refuses new risk from that moment until a human has looked at the file
         // (plan §R3.2).
         account.restore_journal(clock.get_time_ns());
+        if let Some(guard) = &production {
+            let reporter = reporter.clone();
+            let machine = Arc::clone(&reconciliation);
+            let journal = account.journal.clone();
+            let identity = Arc::clone(&account.account_identity);
+            guard
+                .bind(Arc::new(move |checkpoint| {
+                    let state = reporter.state.read();
+                    let machine = machine.read();
+                    let now = reporter.now();
+                    let journal = journal.as_ref().ok_or("production journal missing")?;
+                    if checkpoint {
+                        journal.write(reporter.account_id, now, &state, &machine);
+                    }
+                    Ok(crate::production::ProductionEvidence {
+                        ready: matches!(machine.admission(now), Admission::Granted { .. })
+                            && machine.last_reading().is_some_and(|r| {
+                                now.as_u64().saturating_sub(r.read_at.as_u64()) <= 5_000_000_000
+                            }),
+                        identity_matched: *identity.read() == OndoAccountIdentity::Matched,
+                        journal_healthy: journal.write_failures() == 0
+                            && journal.last_written_at().is_some()
+                            && !matches!(machine.journal(), JournalStatus::Failed { .. }),
+                        dms_verified: matches!(
+                            machine.dead_mans_switch().state_at(now),
+                            DeadMansSwitchState::Armed
+                        ),
+                        available_margin_usdc: machine
+                            .verified_balance()
+                            .and_then(|b| b.reading().available_margin),
+                        orders: state
+                            .orders
+                            .iter()
+                            .map(|(id, o)| {
+                                (
+                                    id.to_string(),
+                                    (
+                                        o.filled.as_decimal(),
+                                        o.is_settled(),
+                                        o.venue_order_id.map(|v| v.to_string()),
+                                    ),
+                                )
+                            })
+                            .collect(),
+                        unknown: machine.unknown_submissions().len(),
+                    })
+                }))
+                .map_err(anyhow::Error::msg)?;
+        }
+
+        let read_only_diagnostics = OndoReadOnlyDiagnostics::new(
+            config.diagnostics_run_id.clone().unwrap_or_default(),
+            account.clone(),
+        );
 
         Ok(Self {
             core,
@@ -1798,6 +1899,7 @@ impl OndoExecutionClient {
             reporter,
             reconciliation,
             account,
+            read_only_diagnostics,
             credential,
             private_stream: None,
             tasks: TaskGroup::new(),
@@ -1824,6 +1926,30 @@ impl OndoExecutionClient {
     #[must_use]
     pub fn account(&self) -> OndoAccountRuntime {
         self.account.clone()
+    }
+
+    /// Returns a clone of the sanitized read-only diagnostics handle.
+    ///
+    /// The factory retains one of these so an application can read a bounded snapshot after a run
+    /// without reaching into the native client through the node. It carries no frame, credential,
+    /// account id or monetary field.
+    #[must_use]
+    pub fn read_only_diagnostics(&self) -> OndoReadOnlyDiagnostics {
+        self.read_only_diagnostics.clone()
+    }
+
+    pub(crate) fn production_authority(
+        &self,
+    ) -> Option<Arc<crate::production::ProductionAuthority>> {
+        self.account.production.clone()
+    }
+    /// Returns this client's completed native production reconciliation evidence.
+    #[must_use]
+    pub fn production_trade_snapshot(&self) -> Option<serde_json::Value> {
+        self.account
+            .production
+            .as_ref()
+            .and_then(|guard| guard.snapshot())
     }
 
     /// Returns whether this client is an account read-only session.
@@ -2298,6 +2424,13 @@ impl OndoExecutionClient {
             && report.unresolved_orders.is_empty();
 
         if release_allowed {
+            if self.account.production.is_some() {
+                let _ = tokio::time::timeout(
+                    budget.remaining(),
+                    self.account.reconcile_account(self.account.now()),
+                )
+                .await;
+            }
             // Composing is not releasing: the frame is built without moving the switch, and the
             // switch is released locally only once the write succeeded.
             let frame = self
@@ -2594,6 +2727,53 @@ impl OndoExecutionClient {
             None => self.reporter.order_ref(client_order_id),
         }
     }
+
+    /// Compares the authenticated account with the configured venue account id.
+    ///
+    /// With no expected id the identity is [`OndoAccountIdentity::Unknown`] and no account read is
+    /// made for it. With one, `GET /v1/account` is read once and its `accountID` compared. A read
+    /// that fails leaves the identity unknown: this adapter does not fabricate a match from an
+    /// absent answer, and it does not refuse a read-only session for the venue's silence.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error, naming no identifier, when the read answer identifies a different
+    /// account.
+    async fn verify_account_identity(&self) -> anyhow::Result<()> {
+        let Some(expected) = self.config.expected_venue_account_id.as_deref() else {
+            self.account
+                .set_account_identity(OndoAccountIdentity::Unknown);
+
+            return Ok(());
+        };
+
+        let identity = match self.http_client.get_account().await {
+            Ok(response) => match response.venue_account_id() {
+                Some(account_id) if account_id == expected => OndoAccountIdentity::Matched,
+                Some(_) => OndoAccountIdentity::Mismatch,
+                None => OndoAccountIdentity::Unknown,
+            },
+            Err(error) => {
+                log::warn!(
+                    "Ondo could not read the authenticated account for identity verification: \
+                     {error}; the identity stays unknown",
+                );
+
+                OndoAccountIdentity::Unknown
+            }
+        };
+
+        self.account.set_account_identity(identity);
+
+        if identity == OndoAccountIdentity::Mismatch {
+            anyhow::bail!(
+                "the authenticated Ondo Perps account does not match the configured venue account \
+                 id; refusing to connect"
+            );
+        }
+
+        Ok(())
+    }
 }
 
 /// The account half of the execution client, shared with the private transport.
@@ -2632,6 +2812,15 @@ pub struct OndoAccountRuntime {
     /// [`None`] is a supported mode and it is not a quiet one: nothing is written, the ledger
     /// lives for this process, and [`ReconciliationMachine::journal`] says so.
     journal: Option<JournalHandle>,
+    /// How many verified account states this runtime has published into the engine.
+    ///
+    /// A diagnostic counter only: it is incremented after a successful `AccountState` emission, so
+    /// a read-only probe can distinguish "the account was read and published" from "the socket was
+    /// up".
+    account_state_published: Arc<AtomicU64>,
+    /// The authenticated account identity, once it has been compared.
+    account_identity: Arc<RwLock<OndoAccountIdentity>>,
+    production: Option<Arc<crate::production::ProductionAuthority>>,
 }
 
 /// Where a journal checkpoint is written, and how many writes have failed.
@@ -2643,6 +2832,7 @@ pub struct OndoAccountRuntime {
 struct JournalHandle {
     path: Arc<std::path::Path>,
     write_failures: Arc<AtomicU64>,
+    write_lock: Arc<Mutex<()>>,
     /// The instant of the last write that succeeded, in nanoseconds; zero is "never".
     last_written_at: Arc<AtomicU64>,
     /// The newest applied fill that write covered, in nanoseconds; zero is "none".
@@ -2654,6 +2844,7 @@ impl JournalHandle {
         Self {
             path: Arc::from(path),
             write_failures: Arc::new(AtomicU64::new(0)),
+            write_lock: Arc::new(Mutex::new(())),
             last_written_at: Arc::new(AtomicU64::new(0)),
             watermark: Arc::new(AtomicU64::new(0)),
         }
@@ -2700,6 +2891,7 @@ impl JournalHandle {
         state: &OndoPrivateState,
         machine: &ReconciliationMachine,
     ) {
+        let _write = self.write_lock.lock();
         let journal = LedgerJournal::from_snapshot(JournalSnapshot {
             account_id,
             watermark: state.watermark,
@@ -2745,6 +2937,82 @@ impl JournalHandle {
 }
 
 impl OndoAccountRuntime {
+    pub(crate) fn production_authority(
+        &self,
+    ) -> Option<Arc<crate::production::ProductionAuthority>> {
+        self.production.clone()
+    }
+
+    pub(crate) async fn verify_production_dms_baseline(&self) -> anyhow::Result<()> {
+        let Some(guard) = &self.production else {
+            return Ok(());
+        };
+        if !guard.permits_dms() {
+            anyhow::bail!("production DMS cleanup deadline exhausted");
+        }
+        guard
+            .verify_identity(self.http_client.get_account().await?.venue_account_id())
+            .map_err(anyhow::Error::msg)?;
+        if self.account_identity() != OndoAccountIdentity::Matched || !guard.permits_dms() {
+            anyhow::bail!("production DMS identity or deadline is unverified");
+        }
+        self.reconcile_account(self.now()).await?;
+        let machine = self.reconciliation.read();
+        let reading = machine
+            .last_reading()
+            .ok_or_else(|| anyhow::anyhow!("production DMS account unread"))?;
+        if machine.last_judgment().is_none_or(|j| !j.is_clean())
+            || !machine.unknown_submissions().is_empty()
+        {
+            anyhow::bail!("production DMS requires reconciled owned exposure only");
+        }
+        let reading = reading.clone();
+        drop(machine);
+        guard
+            .verify_dms_reading(&reading)
+            .map_err(anyhow::Error::msg)
+    }
+
+    pub(crate) async fn refresh_production_metadata(
+        &self,
+        response: &crate::http::models::MarketsResponse,
+    ) -> anyhow::Result<()> {
+        let Some(guard) = &self.production else {
+            return Ok(());
+        };
+        guard.metadata(None, None, self.now().as_u64());
+        let fetched_at = self.now();
+        let infos = response.market_infos(fetched_at)?;
+        let info = infos
+            .into_iter()
+            .find(|i| i.instrument_id() == guard.envelope().instrument_id)
+            .ok_or_else(|| anyhow::anyhow!("approved production market is absent"))?;
+        let contracts = self.http_client.get_contracts().await?;
+        let mut closed = None;
+        let mut matches = 0;
+        for raw in contracts {
+            let value: serde_json::Value = serde_json::from_str(raw.get())?;
+            if value.get("market").and_then(serde_json::Value::as_str) == Some(info.market()) {
+                matches += 1;
+                if value.get("disabled").and_then(serde_json::Value::as_bool) != Some(false) {
+                    anyhow::bail!(
+                        "approved production contract is disabled or has unknown disabled state"
+                    );
+                }
+                closed = value.get("isClosed").and_then(serde_json::Value::as_bool);
+            }
+        }
+        if matches != 1 {
+            anyhow::bail!("approved production contract must have exactly one metadata record");
+        }
+        info.try_increments()?;
+        if !info.is_tradable() || closed != Some(false) {
+            anyhow::bail!("production market status or underlying-hours policy is not satisfied");
+        }
+        guard.metadata(Some(info), closed, fetched_at.as_u64());
+        Ok(())
+    }
+
     /// Returns the local wall clock this runtime stamps with.
     #[must_use]
     pub fn now(&self) -> UnixNanos {
@@ -3005,6 +3273,7 @@ impl OndoAccountRuntime {
                 self.reporter
                     .emitter
                     .emit_account_state(balances, margins, true, now, None);
+                self.account_state_published.fetch_add(1, Ordering::SeqCst);
             }
             Err(error) => log::error!(
                 "Ondo could not report the account's balance as a Nautilus account state: {error}"
@@ -3028,6 +3297,23 @@ impl OndoAccountRuntime {
     #[must_use]
     pub fn is_account_read_only(&self) -> bool {
         self.reconciliation.read().is_account_read_only()
+    }
+
+    /// Returns how many verified account states this runtime has published.
+    #[must_use]
+    pub fn account_state_published(&self) -> u64 {
+        self.account_state_published.load(Ordering::SeqCst)
+    }
+
+    /// Returns the authenticated account identity.
+    #[must_use]
+    pub fn account_identity(&self) -> OndoAccountIdentity {
+        *self.account_identity.read()
+    }
+
+    /// Records the authenticated account identity.
+    pub fn set_account_identity(&self, identity: OndoAccountIdentity) {
+        *self.account_identity.write() = identity;
     }
 
     /// Returns whether the switch permits new orders at this instant.
@@ -3077,6 +3363,9 @@ impl OndoAccountRuntime {
     /// The account is unverified from here: new risk stops until a recovery converges again, while
     /// cancels and queries still travel (plan §6.4).
     pub fn note_session_ended(&self, now: UnixNanos) {
+        if let Some(guard) = &self.production {
+            guard.invalidate();
+        }
         self.reconciliation.write().note_disconnected(now);
     }
 
@@ -3117,6 +3406,14 @@ impl OndoAccountRuntime {
     /// buffer exists for the *ordering* hazard of a pass in flight, not for a venue whose REST
     /// history lags its own stream - and the recovery's second agreeing pass is what catches that.
     pub fn ingest_stream_order(&self, payload: OndoApiOrder) -> OndoStreamIngestion {
+        if let Some(guard) = &self.production {
+            guard.activity();
+            if !payload.status().is_terminal()
+                && payload.client_order_id().is_none_or(|id| !guard.owns(id))
+            {
+                guard.stop_creates();
+            }
+        }
         let mut buffer = self.buffer.write();
 
         if self.pass.is_claimed() {
@@ -3141,6 +3438,9 @@ impl OndoAccountRuntime {
     /// The same decision as [`Self::ingest_stream_order`], under the same boundary, for the same
     /// reason.
     pub fn ingest_stream_fill(&self, fill: OndoApiFill) -> OndoStreamIngestion {
+        if let Some(guard) = &self.production {
+            guard.activity();
+        }
         let mut buffer = self.buffer.write();
 
         if self.pass.is_claimed() {
@@ -3186,15 +3486,39 @@ impl OndoAccountRuntime {
     ///
     /// New orders wait for the venue's confirmation: an unconfirmed arm is not an arm (§6.4).
     pub fn arm_dead_mans_switch(&self, now: UnixNanos) -> DeadMansSwitchMessage {
+        if self.is_account_read_only() {
+            return DeadMansSwitchMessage::new(
+                crate::websocket::messages::WsOp::Subscribe,
+                self.dms_timeout_secs,
+            );
+        }
         self.reconciliation.write().dead_mans_switch_mut().arm(now)
     }
 
     /// Applies the venue's confirmation of the switch.
     pub fn confirm_dead_mans_switch(&self, now: UnixNanos) {
+        if self.production.is_some() {
+            return;
+        }
+        self.confirm_dead_mans_switch_from_stream(now);
+    }
+
+    pub(crate) fn confirm_dead_mans_switch_from_stream(&self, now: UnixNanos) -> bool {
+        if self.is_account_read_only() {
+            return false;
+        }
+        if self
+            .production
+            .as_ref()
+            .is_some_and(|guard| !guard.confirm_dms(now.as_u64()))
+        {
+            return false;
+        }
         self.reconciliation
             .write()
             .dead_mans_switch_mut()
             .confirm_armed(now);
+        true
     }
 
     /// Builds the frame that renews an armed switch, or [`None`] when there is nothing to renew.
@@ -3203,6 +3527,9 @@ impl OndoAccountRuntime {
     /// never reached the venue has not restarted its timer (plan §R3.3).
     #[must_use]
     pub fn dead_mans_switch_renewal_frame(&self) -> Option<DeadMansSwitchMessage> {
+        if self.is_account_read_only() {
+            return None;
+        }
         self.reconciliation.read().dead_mans_switch().renew_frame()
     }
 
@@ -3219,10 +3546,7 @@ impl OndoAccountRuntime {
     /// confirmation rather than a timeout - [`Self::confirm_dead_mans_switch`] remains the only
     /// path that a confirmation actually travels.
     pub fn dead_mans_switch_confirmed_at(&self, confirmed_at: UnixNanos) {
-        self.reconciliation
-            .write()
-            .dead_mans_switch_mut()
-            .confirm_armed(confirmed_at);
+        self.confirm_dead_mans_switch(confirmed_at);
     }
 
     /// Records that a renewal frame was written at `now`, moving the switch's deadline.
@@ -3230,6 +3554,9 @@ impl OndoAccountRuntime {
     /// It also clears the run of consecutive renewal failures. It is **not** a confirmation: no
     /// message acknowledges a renewal, so all this records is that the frame left this process.
     pub fn note_dead_mans_switch_renewed(&self, now: UnixNanos) {
+        if self.is_account_read_only() {
+            return;
+        }
         self.reconciliation
             .write()
             .dead_mans_switch_mut()
@@ -3517,7 +3844,18 @@ impl OndoAccountRuntime {
             return Err(RecoveryPassRefusal::AlreadyRunning.into());
         };
 
-        match self.read_account(&pass, now).await {
+        let activity = self.production.as_ref().map(|g| g.activity_generation());
+        let reading = if let Some(guard) = &self.production {
+            match tokio::time::timeout(guard.remaining(), self.read_account(&pass, now)).await {
+                Ok(reading) => reading,
+                Err(_) => Err(anyhow::anyhow!(
+                    "production reconciliation cleanup deadline exhausted"
+                )),
+            }
+        } else {
+            self.read_account(&pass, now).await
+        };
+        match reading {
             Ok(reading) => {
                 self.reconciliation.write().conclude_pass(&reading, now);
 
@@ -3527,6 +3865,14 @@ impl OndoAccountRuntime {
                 // reading, so what is published is what the machine judged.
                 self.publish_account_state(now);
                 self.persist_journal(now);
+                if let Some(guard) = &self.production {
+                    let clean = self
+                        .reconciliation
+                        .read()
+                        .last_judgment()
+                        .is_some_and(AccountJudgment::is_clean);
+                    guard.reconcile(&reading, clean, activity.unwrap_or_default());
+                }
 
                 Ok(self
                     .reconciliation
@@ -3868,6 +4214,9 @@ impl OndoAccountRuntime {
             .await
             .map_err(|error| anyhow::anyhow!("the positions could not be read: {error}"))?;
 
+        if self.production.is_some() && response.cursor().is_some() {
+            anyhow::bail!("production positions coverage is incomplete");
+        }
         let mut readings = Vec::new();
 
         for item in response.items()? {
@@ -4120,7 +4469,13 @@ impl OndoAccountRuntime {
     /// reported twice. A payload that acknowledges the order flushes the fills that arrived before
     /// it, oldest first, so a fill that preceded the ACK is still reported after it.
     pub fn apply_order(&self, payload: &OndoApiOrder) -> OndoOrderApplication {
-        self.reporter.apply_order(payload, Acceptance::Report, None)
+        let result = self.reporter.apply_order(payload, Acceptance::Report, None);
+        if matches!(result, OndoOrderApplication::Applied) {
+            if let Some(guard) = &self.production {
+                guard.activity();
+            }
+        }
+        result
     }
 
     /// Applies one `ApiFill` payload: the one path a fill is ever counted from.
@@ -4129,7 +4484,13 @@ impl OndoAccountRuntime {
     ///
     /// See [`OndoReporter::apply_fill`].
     pub fn apply_fill(&self, fill: &OndoApiFill) -> anyhow::Result<OndoFillApplication> {
-        self.reporter.apply_fill(fill)
+        let result = self.reporter.apply_fill(fill);
+        if matches!(result, Ok(OndoFillApplication::Applied)) || result.is_err() {
+            if let Some(guard) = &self.production {
+                guard.activity();
+            }
+        }
+        result
     }
 
     /// Applies a whole page of fills, returning what each one did.
@@ -4167,6 +4528,11 @@ impl ExecutionClient for OndoExecutionClient {
     /// would cost a true statement about a still-usable transport.
     fn is_connected(&self) -> bool {
         self.core.is_connected()
+            && self
+                .account
+                .production
+                .as_ref()
+                .is_none_or(|guard| !guard.remaining().is_zero())
     }
 
     fn client_id(&self) -> ClientId {
@@ -4237,10 +4603,28 @@ impl ExecutionClient for OndoExecutionClient {
             return Ok(());
         }
 
+        if self
+            .last_shutdown
+            .as_ref()
+            .is_some_and(ShutdownRecord::is_complete)
+            && self.private_stream.is_none()
+            && self.tasks.all_finished()
+        {
+            self.core.set_stopped();
+            self.core.set_disconnected();
+            return Ok(());
+        }
+
         log::info!("Stopping Ondo Perps execution client");
+
+        self.read_only_diagnostics
+            .set_shutdown(OwnedShutdownStatus::Stopping);
 
         let now = self.account.now();
 
+        if let Some(guard) = &self.account.production {
+            guard.stop_creates();
+        }
         self.account.note_session_ended(now);
 
         // The ordered stop is asynchronous and this hook is not. When the transport is still here
@@ -4276,6 +4660,8 @@ impl ExecutionClient for OndoExecutionClient {
             });
         }
 
+        self.read_only_diagnostics
+            .set_shutdown(OwnedShutdownStatus::Dirty);
         Ok(())
     }
 
@@ -4291,6 +4677,9 @@ impl ExecutionClient for OndoExecutionClient {
     /// Returns an error when the previous generation has not finished, which is the task group's
     /// own refusal to run two generations at once.
     fn reset(&mut self) -> anyhow::Result<()> {
+        if self.account.production.is_some() {
+            anyhow::bail!("a production run cannot be reset or reused; create a new approved run");
+        }
         if !self.tasks.is_open() {
             self.tasks
                 .start_generation()
@@ -4310,14 +4699,48 @@ impl ExecutionClient for OndoExecutionClient {
     /// because a recovery is a decision to read the account and the transport is what makes that
     /// decision (plan §6.4).
     ///
+    /// Before any of that, the authenticated account's identity is verified when the configuration
+    /// sets [`OndoExecutionClientConfig::expected_venue_account_id`]. A mismatch refuses the
+    /// connection here, before [`ExecutionClientCore::set_connected`], so a client that named the
+    /// wrong account is never reported as connected. An answer that carries no comparable
+    /// identifier is recorded as `unknown`, not as a match.
+    ///
     /// # Errors
     ///
-    /// Returns an error if the transport cannot be started: no Tokio runtime to host it, or a
-    /// reconnect policy that cannot be built. A client whose transport will not start is a client
-    /// that cannot read its account, so the failure is reported rather than swallowed - it is
-    /// refused before the connection state moves, so a failed start does not leave a client that
-    /// looks connected.
+    /// Returns an error if the authenticated account does not match the configured venue account
+    /// id, or if the transport cannot be started: no Tokio runtime to host it, or a reconnect
+    /// policy that cannot be built. A client whose transport will not start is a client that cannot
+    /// read its account, so the failure is reported rather than swallowed - it is refused before
+    /// the connection state moves, so a failed start does not leave a client that looks connected.
     async fn connect(&mut self) -> anyhow::Result<()> {
+        let readiness_account_events = self.account.account_state_published();
+        self.verify_account_identity().await?;
+        if let Some(guard) = &self.account.production {
+            if self.account.account_identity() != OndoAccountIdentity::Matched {
+                anyhow::bail!("production identity is unverified");
+            }
+            let response = self.http_client.get_markets().await?;
+            self.account.refresh_production_metadata(&response).await?;
+            self.account.reconcile_account(self.account.now()).await?;
+            let machine = self.reconciliation.read();
+            let reading = machine
+                .last_reading()
+                .ok_or_else(|| anyhow::anyhow!("production start account unread"))?;
+            if reading
+                .balance
+                .as_ref()
+                .and_then(|b| b.available_margin)
+                .is_none_or(|v| v < guard.envelope().min_available_margin_usdc)
+                || reading.positions.iter().any(|p| p.signed != Decimal::ZERO)
+                || reading.orders.iter().any(|o| !o.status.is_terminal())
+                || !self.reporter.state.read().orders.is_empty()
+                || machine.last_judgment().is_none_or(|j| !j.is_clean())
+                || !guard.permits_dms()
+            {
+                anyhow::bail!("production requires a fresh, flat, unoccupied whole account");
+            }
+        }
+
         if self.private_stream.is_none() {
             let stream = OndoPrivateStream::start(
                 self.config.ws_url().to_string(),
@@ -4333,6 +4756,8 @@ impl ExecutionClient for OndoExecutionClient {
                 self.config.stream_mode(),
             );
 
+            self.read_only_diagnostics
+                .attach_stream(stream.run_handle(), stream.diagnostics());
             self.private_stream = Some(stream);
         }
 
@@ -4340,6 +4765,52 @@ impl ExecutionClient for OndoExecutionClient {
             return Ok(());
         }
 
+        if let Some(guard) = &self.account.production {
+            tokio::time::timeout(guard.entry_remaining(), async {
+                while guard.snapshot().is_none() {
+                    tokio::time::sleep(Duration::from_millis(25)).await;
+                }
+            })
+            .await
+            .map_err(|_| anyhow::anyhow!("production start readiness was not verified"))?;
+        }
+        if self.config.environment == crate::common::enums::OndoEnvironment::Production
+            && self.config.account_read_only
+        {
+            let ready = tokio::time::timeout(
+                Duration::from_secs(self.config.http_timeout_secs.clamp(1, 8)),
+                async {
+                    loop {
+                        let snapshot = self.read_only_diagnostics.snapshot();
+                        if snapshot.logged_in
+                            && snapshot.subscriptions_acked.contains(&"ordersPerps")
+                            && snapshot.subscriptions_acked.contains(&"fillsPerps")
+                            && snapshot.account_state_events > readiness_account_events
+                            && matches!(snapshot.run_state, "recovering" | "read_only_synced")
+                        {
+                            break;
+                        }
+                        tokio::time::sleep(Duration::from_millis(20)).await;
+                    }
+                },
+            )
+            .await;
+            if ready.is_err() {
+                let snapshot = self.read_only_diagnostics.snapshot();
+                let category = if !snapshot.logged_in {
+                    "private_login_not_acknowledged"
+                } else if snapshot.subscriptions_acked.len() != 2 {
+                    "private_subscriptions_not_acknowledged"
+                } else {
+                    "private_account_reconciliation_incomplete"
+                };
+                self.account.note_session_ended(self.account.now());
+                self.read_only_diagnostics
+                    .set_shutdown(OwnedShutdownStatus::Dirty);
+                let _ = self.disconnect().await;
+                anyhow::bail!("ondo_readonly_readiness:{category}");
+            }
+        }
         self.core.set_connected();
         log::info!("Ondo Perps execution client connected");
 
@@ -4387,6 +4858,9 @@ impl ExecutionClient for OndoExecutionClient {
         let _checkpoint = JournalCheckpoint(self.account.clone());
 
         // Step 1: new risk stops.
+        if let Some(guard) = &self.account.production {
+            guard.stop_creates();
+        }
         self.account.note_session_ended(now);
 
         // Step 2: every owned working order is registered and checkpointed before any await.
@@ -4441,6 +4915,15 @@ impl ExecutionClient for OndoExecutionClient {
         let complete = record.is_complete();
         let error = (!complete).then(|| record.error());
 
+        self.read_only_diagnostics.set_shutdown(if complete {
+            OwnedShutdownStatus::Clean
+        } else {
+            OwnedShutdownStatus::Dirty
+        });
+
+        if let Some(guard) = &self.account.production {
+            guard.finish(complete);
+        }
         self.last_shutdown = Some(record);
 
         match error {
@@ -4516,6 +4999,30 @@ impl ExecutionClient for OndoExecutionClient {
             }
         };
 
+        if let Some(guard) = &self.account.production {
+            let minimum = self
+                .core
+                .cache()
+                .instrument(&cmd.instrument_id)
+                .and_then(|i| i.min_notional());
+            if minimum.is_some_and(|m| m.currency.code.as_str() != "USD") {
+                self.reporter.emitter.emit_order_denied(
+                    &order,
+                    "venue minimum notional currency differs from the USD quote currency",
+                );
+                return Ok(());
+            }
+            if let Err(reason) = guard.prepare(
+                cmd.client_order_id.to_string(),
+                command.body(),
+                self.core.cache().quote(&cmd.instrument_id).copied(),
+                minimum.map(|m| m.as_decimal()),
+            ) {
+                self.reporter.emitter.emit_order_denied(&order, &reason);
+                return Ok(());
+            }
+        }
+
         let Some(spawner) = self.spawner() else {
             self.reporter
                 .emitter
@@ -4528,6 +5035,7 @@ impl ExecutionClient for OndoExecutionClient {
         let reporter = self.reporter.clone();
         let reconciliation = Arc::clone(&self.reconciliation);
         let journal = self.account.journal_handle();
+        let account = self.account.clone();
         let client_order_id = cmd.client_order_id;
         let instrument_id = cmd.instrument_id;
 
@@ -4575,6 +5083,9 @@ impl ExecutionClient for OndoExecutionClient {
                     reporter
                         .emitter
                         .emit_order_rejected(&order, &reason, reporter.now(), false);
+                    if let Some(guard) = &account.production {
+                        guard.definite_zero(client_order_id.as_str());
+                    }
                     reporter.forget(&client_order_id);
                     // The order never rested, so any cancel registered for it beforehand is moot.
                     reconciliation.write().confirm_cancel(&client_order_id);
@@ -4589,6 +5100,9 @@ impl ExecutionClient for OndoExecutionClient {
                         reporter.now(),
                         false,
                     );
+                    if let Some(guard) = &account.production {
+                        guard.definite_zero(client_order_id.as_str());
+                    }
                     reporter.forget(&client_order_id);
                     reconciliation.write().confirm_cancel(&client_order_id);
                 }
@@ -4603,6 +5117,9 @@ impl ExecutionClient for OndoExecutionClient {
                         reporter.now(),
                         is_post_only_refusal(&error),
                     );
+                    if let Some(guard) = &account.production {
+                        guard.definite_zero(client_order_id.as_str());
+                    }
                     reporter.forget(&client_order_id);
                     reconciliation.write().confirm_cancel(&client_order_id);
                 }
@@ -4622,6 +5139,11 @@ impl ExecutionClient for OndoExecutionClient {
                         reporter.now(),
                     );
                 }
+            }
+
+            if let Some(guard) = &account.production {
+                guard.activity();
+                let _ = account.reconcile_account(account.now()).await;
             }
 
             // The submission's outcome is decided, so the order's association is checkpointed

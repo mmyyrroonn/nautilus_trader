@@ -31,10 +31,13 @@ use std::{cell::RefCell, rc::Rc, sync::Arc, task::Poll, time::Duration};
 
 use futures_util::poll;
 use nautilus_common::{
-    cache::Cache, clock::TestClock, factories::DataClientFactory,
-    live::runner::replace_data_event_sender, messages::DataEvent,
+    cache::Cache,
+    clock::TestClock,
+    factories::{DataClientFactory, ExecutionClientFactory},
+    live::runner::replace_data_event_sender,
+    messages::DataEvent,
 };
-use nautilus_model::identifiers::{ClientId, InstrumentId, Venue};
+use nautilus_model::identifiers::{AccountId, ClientId, InstrumentId, TraderId, Venue};
 use nautilus_ondo::{
     common::{
         consts::{ONDO, ONDO_VENUE},
@@ -49,7 +52,7 @@ use nautilus_system::get_global_pyo3_registry;
 use pyo3::{
     Bound, Py, Python,
     exceptions::PyTypeError,
-    types::{PyAny, PyAnyMethods, PyDict, PyModule, PyModuleMethods},
+    types::{PyAny, PyAnyMethods, PyDict, PyDictMethods, PyModule, PyModuleMethods},
 };
 use rstest::rstest;
 
@@ -73,6 +76,9 @@ fn scratch_module(py: Python<'_>) -> Bound<'_, PyModule> {
     module
         .add_class::<OndoExecutionClientFactory>()
         .expect("the execution factory should register");
+    module
+        .add_class::<nautilus_ondo::production::OndoExecutionEnvelopeConfig>()
+        .unwrap();
     module
         .add_class::<OndoHttpClient>()
         .expect("the HTTP client should register");
@@ -659,5 +665,330 @@ fn test_the_private_session_is_configurable_from_python_and_carries_no_secret() 
                 "OndoExecutionClientConfig must not expose `{secret}` to Python",
             );
         }
+    });
+}
+
+/// The factory's snapshot accessor is the one native telemetry path the application reads. It is a
+/// plain dict of counters, fixed labels and enum names, and it cannot carry a credential or an
+/// identifier.
+#[rstest]
+fn test_the_execution_factory_snapshot_is_a_sanitized_dict() {
+    setup_data_event_sender();
+    Python::initialize();
+
+    Python::attach(|py| {
+        let module = scratch_module(py);
+        let factory = module
+            .getattr("OndoExecutionClientFactory")
+            .expect("the execution factory is exported")
+            .call0()
+            .expect("the execution factory constructs with no arguments")
+            .extract::<OndoExecutionClientFactory>()
+            .expect("the factory extracts back into Rust");
+
+        // Before any client exists there is no telemetry to read, and the accessor says so rather
+        // than raising.
+        assert!(factory.read_only_snapshot().is_none());
+
+        let config = OndoExecutionClientConfig {
+            environment: OndoEnvironment::Production,
+            account_id: Some(AccountId::from("ONDO-MAINNET-001")),
+            api_key: Some("ondoKeyId_UNIT_TEST_ONLY".to_string()),
+            api_secret: Some("ondoApiSecret_UNIT_TEST_ONLY".to_string()),
+            base_url_http: Some("http://127.0.0.1:9".to_string()),
+            base_url_ws: Some("ws://127.0.0.1:9/ws".to_string()),
+            account_read_only: true,
+            diagnostics_run_id: Some("python-run".to_string()),
+            ..Default::default()
+        };
+
+        factory
+            .create(
+                TraderId::from("TESTER-001"),
+                "ONDO-EXEC",
+                &config,
+                Rc::new(RefCell::new(Cache::default())).into(),
+            )
+            .expect("the factory builds the read-only client");
+
+        let instance = Py::new(py, factory).expect("the factory converts to a Python object");
+        let snapshot = instance
+            .bind(py)
+            .getattr("read_only_snapshot")
+            .expect("the accessor is exported")
+            .call0()
+            .expect("the accessor returns the snapshot");
+        let dict = snapshot.cast::<PyDict>().expect("the snapshot is a dict");
+
+        let string = |key: &str| {
+            dict.get_item(key)
+                .expect("the key is readable")
+                .expect("the key is present")
+                .extract::<String>()
+                .expect("the value is a string")
+        };
+
+        assert_eq!(string("run_id"), "python-run");
+        assert_eq!(string("run_state"), "disconnected");
+        assert_eq!(string("identity_match"), "unknown");
+        assert_eq!(string("shutdown_status"), "not_attempted");
+        assert!(
+            !dict
+                .get_item("logged_in")
+                .expect("the key is readable")
+                .expect("the key is present")
+                .extract::<bool>()
+                .expect("the value is a bool"),
+            "no login has been accepted",
+        );
+
+        for key in ["reconnects", "recoveries", "account_state_events"] {
+            assert_eq!(
+                dict.get_item(key)
+                    .expect("the key is readable")
+                    .expect("the key is present")
+                    .extract::<u64>()
+                    .expect("the value is a non-negative int"),
+                0,
+            );
+        }
+
+        let subscriptions_value = dict
+            .get_item("subscriptions_acked")
+            .expect("the key is readable")
+            .expect("the key is present");
+        let subscriptions = subscriptions_value
+            .cast::<PyDict>()
+            .expect("the subscriptions are a mapping");
+
+        for label in ["ordersPerps", "fillsPerps"] {
+            assert!(
+                !subscriptions
+                    .get_item(label)
+                    .expect("the label is readable")
+                    .expect("the label is present")
+                    .extract::<bool>()
+                    .expect("the value is a bool"),
+                "{label} is not acknowledged yet",
+            );
+        }
+
+        // Every key the contract fixes is present and no other key is.
+        let mut keys = dict
+            .iter()
+            .map(|(key, _value)| key.extract::<String>().expect("a string key"))
+            .collect::<Vec<_>>();
+        keys.sort();
+        assert_eq!(
+            keys,
+            vec![
+                "account_state_events",
+                "identity_match",
+                "logged_in",
+                "reconnects",
+                "recoveries",
+                "run_id",
+                "run_state",
+                "shutdown_status",
+                "subscriptions_acked",
+            ],
+        );
+
+        // The rendered snapshot carries neither half of the credential nor any account id.
+        let rendered = format!("{:?}", dict);
+
+        assert!(!rendered.contains("UNIT_TEST_ONLY"), "{rendered}");
+        assert!(!rendered.contains("ONDO-MAINNET-001"), "{rendered}");
+    });
+}
+
+/// Python extraction clones the factory while preserving the client's diagnostic handle.
+#[rstest]
+fn test_python_factory_clone_preserves_configured_run_and_replaces_previous_run() {
+    setup_data_event_sender();
+    Python::initialize();
+    Python::attach(|py| {
+        let module = scratch_module(py);
+        let instance = module
+            .getattr("OndoExecutionClientFactory")
+            .unwrap()
+            .call0()
+            .unwrap();
+        let node_factory = instance.extract::<OndoExecutionClientFactory>().unwrap();
+        let config_type = module.getattr("OndoExecutionClientConfig").unwrap();
+        let mut clients = Vec::new();
+        for run_id in ["python-first-run", "python-second-run"] {
+            let kwargs = PyDict::new(py);
+            kwargs
+                .set_item("account_id", AccountId::from("ONDO-TEST-001"))
+                .unwrap();
+            kwargs
+                .set_item("api_key", "ondoKeyId_UNIT_TEST_ONLY")
+                .unwrap();
+            kwargs
+                .set_item("api_secret", "ondoApiSecret_UNIT_TEST_ONLY")
+                .unwrap();
+            kwargs.set_item("account_read_only", true).unwrap();
+            kwargs.set_item("diagnostics_run_id", run_id).unwrap();
+            let config_object = config_type.call((), Some(&kwargs)).unwrap();
+            assert_eq!(
+                config_object
+                    .getattr("diagnostics_run_id")
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                run_id
+            );
+            let config = config_object
+                .extract::<OndoExecutionClientConfig>()
+                .unwrap();
+            clients.push(
+                node_factory
+                    .create(
+                        TraderId::from("TESTER-001"),
+                        "ONDO-EXEC",
+                        &config,
+                        Rc::new(RefCell::new(Cache::default())).into(),
+                    )
+                    .unwrap(),
+            );
+            let snapshot = instance.call_method0("read_only_snapshot").unwrap();
+            let snapshot = snapshot.cast::<PyDict>().unwrap();
+            assert_eq!(
+                snapshot
+                    .get_item("run_id")
+                    .unwrap()
+                    .unwrap()
+                    .extract::<String>()
+                    .unwrap(),
+                run_id
+            );
+            assert!(
+                !snapshot
+                    .get_item("logged_in")
+                    .unwrap()
+                    .unwrap()
+                    .extract::<bool>()
+                    .unwrap()
+            );
+            assert_eq!(
+                snapshot
+                    .get_item("account_state_events")
+                    .unwrap()
+                    .unwrap()
+                    .extract::<u64>()
+                    .unwrap(),
+                0
+            );
+        }
+    });
+}
+
+#[rstest]
+fn test_production_envelope_exact_python_constructor_and_capability() {
+    Python::initialize();
+    Python::attach(|py| {
+        let module = scratch_module(py);
+        let kwargs = PyDict::new(py);
+        kwargs
+            .set_item("instrument_id", InstrumentId::from("NVDA-USD-PERP.ONDO"))
+            .unwrap();
+        for (key, value) in [
+            ("entry_side", "buy"),
+            ("entry_max_quantity", "0.05"),
+            ("entry_worst_price", "230"),
+            ("entry_max_notional_usd", "15"),
+            ("close_side", "sell"),
+            ("close_max_quantity", "0.05"),
+            ("close_worst_price", "225"),
+            ("max_notional_per_order_usd", "50"),
+            ("max_gross_exposure_usd", "100"),
+            ("min_available_margin_usdc", "25"),
+        ] {
+            kwargs.set_item(key, value).unwrap();
+        }
+        for (key, value) in [
+            ("max_close_attempts", 2_u32),
+            ("max_orders", 3),
+            ("max_new_risk_requests", 1),
+            ("max_app_requests", 6),
+        ] {
+            kwargs.set_item(key, value).unwrap();
+        }
+        let now = nautilus_core::time::get_atomic_clock_realtime()
+            .get_time_ns()
+            .as_u64();
+        kwargs
+            .set_item("entry_deadline_unix_nanos", now + 60_000_000_000)
+            .unwrap();
+        kwargs
+            .set_item("cleanup_deadline_unix_nanos", now + 120_000_000_000)
+            .unwrap();
+        kwargs.set_item("require_flat_start", true).unwrap();
+        let class = module.getattr("OndoExecutionEnvelopeConfig").unwrap();
+        let envelope = class.call((), Some(&kwargs)).unwrap();
+        let config_args = PyDict::new(py);
+        config_args
+            .set_item("execution_envelope", &envelope)
+            .unwrap();
+        config_args
+            .set_item("allow_production_orders", true)
+            .unwrap();
+        let config = module
+            .getattr("OndoExecutionClientConfig")
+            .unwrap()
+            .call((), Some(&config_args))
+            .unwrap()
+            .extract::<OndoExecutionClientConfig>()
+            .unwrap();
+        assert_eq!(
+            config
+                .execution_envelope
+                .unwrap()
+                .entry_max_quantity
+                .to_string(),
+            "0.05"
+        );
+        for minimum in ["1", "24.999999999999999999"] {
+            kwargs
+                .set_item("min_available_margin_usdc", minimum)
+                .unwrap();
+            assert!(
+                class.call((), Some(&kwargs)).is_err(),
+                "native Python constructor accepted {minimum} USDC"
+            );
+        }
+        for minimum in ["25", "25.000000000000000001"] {
+            kwargs
+                .set_item("min_available_margin_usdc", minimum)
+                .unwrap();
+            assert!(class.call((), Some(&kwargs)).is_ok());
+        }
+        kwargs.set_item("min_available_margin_usdc", "25").unwrap();
+        kwargs
+            .set_item(
+                "entry_max_quantity",
+                "0.05000000000000000000000000000000001",
+            )
+            .unwrap();
+        assert!(class.call((), Some(&kwargs)).is_err());
+        let factory = module
+            .getattr("OndoExecutionClientFactory")
+            .unwrap()
+            .call0()
+            .unwrap();
+        assert!(
+            factory
+                .getattr("supports_production_trade_envelope")
+                .unwrap()
+                .extract::<bool>()
+                .unwrap()
+        );
+        assert!(
+            factory
+                .call_method0("production_trade_snapshot")
+                .unwrap()
+                .is_none()
+        );
     });
 }

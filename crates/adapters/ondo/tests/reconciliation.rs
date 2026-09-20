@@ -5697,3 +5697,12 @@ fn test_a_balance_without_a_cumulative_total_does_not_reuse_the_earlier_one() {
         "and the venue's own last statement is still readable from the ledger",
     );
 }
+
+#[rstest]
+fn test_unsolicited_confirmation_cannot_arm_an_unrequested_switch() {
+    let mut switch = DeadMansSwitch::new(30);
+    switch.confirm_armed(UnixNanos::from(1_000_000_000));
+    assert_eq!(switch.state(), DeadMansSwitchState::NotRequired);
+    assert!(switch.expires_at().is_none());
+    assert!(switch.renew_frame().is_none());
+}

@@ -95,8 +95,9 @@ impl OndoDataClientConfig {
 impl OndoExecutionClientConfig {
     /// Configuration for the Ondo Perps live execution client.
     ///
-    /// `environment` defaults to `SANDBOX`, and production is not reachable: the authenticated
-    /// surface is refused for it before a credential is read, whatever `base_url_http` carries.
+    /// `environment` defaults to `SANDBOX`. Production is read-only: a production configuration
+    /// must also set `account_read_only=True`, and production order entry is not implemented
+    /// whatever `allow_production_orders` says.
     ///
     /// `account_id` is required. `api_key` and `api_secret` are optional explicit overrides - the
     /// same pair the Aster execution configuration takes - and when either is absent the client
@@ -117,6 +118,16 @@ impl OndoExecutionClientConfig {
     /// `account_read_only` makes the client an account read-only session: it reads the account and
     /// places no order at all, and it never subscribes to the dead man's switch, whose arm cancels
     /// resting orders.
+    ///
+    /// `expected_venue_account_id` is the venue's own account identifier the authenticated account
+    /// must match. It is **not** the Nautilus `account_id`: when set, the client reads
+    /// `GET /v1/account` once while connecting and compares that endpoint's `accountID`; a mismatch
+    /// refuses the connection, and an answer with no comparable identifier is reported as unknown
+    /// rather than assumed to match. The value is never logged.
+    ///
+    /// `diagnostics_run_id` is the application's own run token. It is not a secret and is not sent
+    /// to the venue; the factory's `read_only_snapshot()` echoes it under `run_id`, so the
+    /// application can reject a snapshot that belongs to another run.
     ///
     /// `dms_timeout_secs` and `reconcile_interval_secs` are the dead man's switch's timeout - which
     /// the private transport arms and renews at half of - and the interval its run loop reconciles
@@ -147,12 +158,15 @@ impl OndoExecutionClientConfig {
         base_url_http = None,
         base_url_ws = None,
         account_read_only = None,
+        expected_venue_account_id = None,
+        diagnostics_run_id = None,
         http_timeout_secs = None,
         dms_timeout_secs = None,
         dms_max_failed_renewals = None,
         reconcile_interval_secs = None,
         journal_path = None,
         allow_production_orders = None,
+        execution_envelope = None,
     ))]
     #[expect(clippy::too_many_arguments)]
     fn py_new(
@@ -163,12 +177,15 @@ impl OndoExecutionClientConfig {
         base_url_http: Option<String>,
         base_url_ws: Option<String>,
         account_read_only: Option<bool>,
+        expected_venue_account_id: Option<String>,
+        diagnostics_run_id: Option<String>,
         http_timeout_secs: Option<u64>,
         dms_timeout_secs: Option<u64>,
         dms_max_failed_renewals: Option<u32>,
         reconcile_interval_secs: Option<u64>,
         journal_path: Option<String>,
         allow_production_orders: Option<bool>,
+        execution_envelope: Option<crate::production::OndoExecutionEnvelopeConfig>,
     ) -> Self {
         let defaults = Self::default();
 
@@ -180,6 +197,9 @@ impl OndoExecutionClientConfig {
             base_url_http: base_url_http.or(defaults.base_url_http),
             base_url_ws: base_url_ws.or(defaults.base_url_ws),
             account_read_only: account_read_only.unwrap_or(defaults.account_read_only),
+            expected_venue_account_id: expected_venue_account_id
+                .or(defaults.expected_venue_account_id),
+            diagnostics_run_id: diagnostics_run_id.or(defaults.diagnostics_run_id),
             http_timeout_secs: http_timeout_secs.unwrap_or(defaults.http_timeout_secs),
             dms_timeout_secs: dms_timeout_secs.unwrap_or(defaults.dms_timeout_secs),
             dms_max_failed_renewals: dms_max_failed_renewals
@@ -189,10 +209,74 @@ impl OndoExecutionClientConfig {
             journal_path: journal_path.or(defaults.journal_path),
             allow_production_orders: allow_production_orders
                 .unwrap_or(defaults.allow_production_orders),
+            execution_envelope,
         }
     }
 
     /// Never renders a credential: the key and the secret are both redacted by the Rust `Debug`.
+    fn __repr__(&self) -> String {
+        format!("{self:?}")
+    }
+}
+
+#[pymethods]
+#[pyo3_stub_gen::derive::gen_stub_pymethods]
+impl crate::production::OndoExecutionEnvelopeConfig {
+    #[new]
+    #[expect(clippy::too_many_arguments)]
+    fn py_new(
+        instrument_id: InstrumentId,
+        entry_side: String,
+        entry_max_quantity: String,
+        entry_worst_price: String,
+        entry_max_notional_usd: String,
+        close_side: String,
+        close_max_quantity: String,
+        close_worst_price: String,
+        max_close_attempts: u32,
+        max_notional_per_order_usd: String,
+        max_gross_exposure_usd: String,
+        min_available_margin_usdc: String,
+        max_orders: u32,
+        max_new_risk_requests: u32,
+        max_app_requests: u32,
+        entry_deadline_unix_nanos: u64,
+        cleanup_deadline_unix_nanos: u64,
+        require_flat_start: bool,
+    ) -> PyResult<Self> {
+        let decimal = |value: &str| {
+            rust_decimal::Decimal::from_str_exact(value)
+                .map_err(nautilus_core::python::to_pyvalue_err)
+        };
+        let config = Self {
+            instrument_id,
+            entry_side,
+            entry_max_quantity: decimal(&entry_max_quantity)?,
+            entry_worst_price: decimal(&entry_worst_price)?,
+            entry_max_notional_usd: decimal(&entry_max_notional_usd)?,
+            close_side,
+            close_max_quantity: decimal(&close_max_quantity)?,
+            close_worst_price: decimal(&close_worst_price)?,
+            max_close_attempts,
+            max_notional_per_order_usd: decimal(&max_notional_per_order_usd)?,
+            max_gross_exposure_usd: decimal(&max_gross_exposure_usd)?,
+            min_available_margin_usdc: decimal(&min_available_margin_usdc)?,
+            max_orders,
+            max_new_risk_requests,
+            max_app_requests,
+            entry_deadline_unix_nanos,
+            cleanup_deadline_unix_nanos,
+            require_flat_start,
+        };
+        config
+            .validate(
+                nautilus_core::time::get_atomic_clock_realtime()
+                    .get_time_ns()
+                    .as_u64(),
+            )
+            .map_err(nautilus_core::python::to_pyvalue_err)?;
+        Ok(config)
+    }
     fn __repr__(&self) -> String {
         format!("{self:?}")
     }

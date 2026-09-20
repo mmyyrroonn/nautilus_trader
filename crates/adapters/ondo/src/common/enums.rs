@@ -51,6 +51,90 @@ pub enum OndoEnvironment {
     Sandbox,
 }
 
+/// The authorization scope an authenticated Ondo Perps session is opened under.
+///
+/// The scope pairs the venue environment with whether the session may write, and it is the one
+/// input the endpoint policy, the credential resolver and the authenticated transport share. A
+/// read-only scope cannot send writes. The production trading variant additionally requires a
+/// privately constructed bounded authority at the native transport constructor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum OndoAuthenticationScope {
+    /// The sandbox environment, permitted to place and cancel orders.
+    SandboxTrading,
+    /// The sandbox environment, restricted to authenticated reads.
+    SandboxReadOnly,
+    /// The production environment, restricted to authenticated reads.
+    ProductionReadOnly,
+    /// Production writes restricted by a privately constructed native authority.
+    ProductionTrading,
+}
+
+impl OndoAuthenticationScope {
+    /// Returns the environment this scope authenticates against.
+    #[must_use]
+    pub const fn environment(self) -> OndoEnvironment {
+        match self {
+            Self::SandboxTrading | Self::SandboxReadOnly => OndoEnvironment::Sandbox,
+            Self::ProductionReadOnly | Self::ProductionTrading => OndoEnvironment::Production,
+        }
+    }
+
+    /// Returns whether this scope refuses every signed write.
+    #[must_use]
+    pub const fn is_read_only(self) -> bool {
+        !self.permits_writes()
+    }
+
+    /// Returns whether this scope may send a signed write (`POST` or `DELETE`).
+    ///
+    /// Trading scopes permit writes subject to their transport admission. Production additionally
+    /// requires its bounded run authority; both read-only scopes always refuse writes.
+    #[must_use]
+    pub const fn permits_writes(self) -> bool {
+        matches!(self, Self::SandboxTrading | Self::ProductionTrading)
+    }
+
+    /// Returns the scope's name, for a log line or a report.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::SandboxTrading => "sandbox_trading",
+            Self::SandboxReadOnly => "sandbox_read_only",
+            Self::ProductionReadOnly => "production_read_only",
+            Self::ProductionTrading => "production_trading",
+        }
+    }
+}
+
+/// The result of comparing the configured venue account id with the authenticated account.
+///
+/// This is deliberately three-valued: a missing configuration or an answer that carries no
+/// comparable identifier is [`Self::Unknown`] and never [`Self::Matched`]. "No evidence" is not
+/// evidence of a match.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum OndoAccountIdentity {
+    /// The authenticated account's identifier equals the configured one.
+    Matched,
+    /// The authenticated account's identifier differs from the configured one.
+    Mismatch,
+    /// No comparison was possible: no expected identifier is configured, or the account answer
+    /// carried none this adapter can read.
+    #[default]
+    Unknown,
+}
+
+impl OndoAccountIdentity {
+    /// Returns the identity's name, for a report.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Matched => "matched",
+            Self::Mismatch => "mismatch",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
 /// Classification of an Ondo Perps market's tradability.
 ///
 /// The official schema declares no status field on a perps trading pair, and the 2026-09-14

@@ -15,7 +15,7 @@
 
 //! Python bindings for the Ondo Perps client factories.
 
-use pyo3::prelude::*;
+use pyo3::{prelude::*, types::PyDict};
 
 use crate::{
     common::consts::ONDO,
@@ -90,5 +90,67 @@ impl OndoExecutionClientFactory {
     #[must_use]
     pub const fn py_supports_ordered_shutdown(&self) -> bool {
         true
+    }
+
+    /// Returns a sanitized snapshot of the most recent execution client's diagnostics, or `None`.
+    ///
+    /// This is a read-only, bounded view of the native run, keyed by the application's contract
+    /// (`native-readonly/interface.md`): the run token the configuration supplied, whether the
+    /// venue accepted a login, the acknowledged report channels, the private run state,
+    /// reconnect/recovery counts, the count of verified account states published, the account
+    /// identity (`matched` / `mismatch` / `unknown`) and the owned shutdown status. It is read from
+    /// the native execution client the factory created and never fabricated here.
+    ///
+    /// The mapping carries no frame, credential, account id, order id or monetary field. A `None`
+    /// means this factory has not created an execution client yet; an older wheel without this
+    /// attribute fails closed when the application uses `getattr(...)`.
+    #[pyo3(name = "read_only_snapshot")]
+    #[gen_stub(
+        override_return_type(
+            type_repr = "dict[str, typing.Any] | None",
+            imports = ("typing",),
+        )
+    )]
+    fn py_read_only_snapshot<'py>(&self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyDict>>> {
+        let Some(snapshot) = self.read_only_snapshot() else {
+            return Ok(None);
+        };
+
+        let subscriptions = PyDict::new(py);
+
+        for label in ["ordersPerps", "fillsPerps"] {
+            subscriptions.set_item(label, snapshot.subscriptions_acked.contains(&label))?;
+        }
+
+        let dict = PyDict::new(py);
+        dict.set_item("run_id", snapshot.run_id)?;
+        dict.set_item("logged_in", snapshot.logged_in)?;
+        dict.set_item("subscriptions_acked", subscriptions)?;
+        dict.set_item("run_state", snapshot.run_state)?;
+        dict.set_item("reconnects", snapshot.reconnects)?;
+        dict.set_item("recoveries", snapshot.recoveries)?;
+        dict.set_item("account_state_events", snapshot.account_state_events)?;
+        dict.set_item("identity_match", snapshot.identity_match)?;
+        dict.set_item("shutdown_status", snapshot.shutdown_status)?;
+
+        Ok(Some(dict))
+    }
+    #[getter]
+    #[pyo3(name = "supports_production_trade_envelope")]
+    pub const fn py_supports_production_trade_envelope(&self) -> bool {
+        true
+    }
+
+    #[pyo3(name = "production_trade_snapshot")]
+    #[gen_stub(override_return_type(type_repr="dict[str, typing.Any] | None", imports=("typing",)))]
+    fn py_production_trade_snapshot<'py>(
+        &self,
+        py: Python<'py>,
+    ) -> PyResult<Option<Bound<'py, PyDict>>> {
+        let Some(snapshot) = self.production_trade_snapshot() else {
+            return Ok(None);
+        };
+        let value = PyModule::import(py, "json")?.call_method1("loads", (snapshot.to_string(),))?;
+        Ok(Some(value.cast_into::<PyDict>()?))
     }
 }

@@ -20,11 +20,10 @@
 //! [`crate::common::consts`], so an environment choice and an explicit override cannot mix live
 //! and sandbox endpoints silently.
 //!
-//! The execution client's configuration ([`OndoExecutionClientConfig`]) defaults to
-//! [`OndoEnvironment::Sandbox`] and has no production write branch to open: production is refused
-//! by [`crate::common::credential::validate_authenticated_environment`] and
-//! [`OndoExecutionClientConfig::allow_production_orders`] is refused by
-//! [`OndoExecutionClientConfig::validate`], both before a socket is touched (plan §4.1, §1).
+//! Execution defaults to sandbox. Production reads require `account_read_only`; production writes
+//! additionally require explicit opt-in, a complete immutable execution envelope, raw account
+//! identity, a run token and a durable journal. The native transport independently enforces the
+//! bounded authority, and a read-only configuration never permits an order, cancel or DMS write.
 
 use nautilus_core::string::secret::REDACTED;
 use nautilus_model::identifiers::{AccountId, InstrumentId};
@@ -34,7 +33,7 @@ use crate::common::{
     consts::{
         ONDO_BOOK_LIMIT, ONDO_HTTP_TIMEOUT_SECS, ONDO_WS_HEARTBEAT_SECS, http_base_url, ws_url,
     },
-    enums::OndoEnvironment,
+    enums::{OndoAuthenticationScope, OndoEnvironment},
 };
 
 /// Default dead man's switch timeout, in seconds (plan §6.4).
@@ -174,24 +173,28 @@ pub enum OndoExecutionConfigError {
          a production write branch"
     )]
     ProductionOrdersUnsupported,
+    /// Production without `account_read_only` is not a supported combination.
+    #[error(
+        "the production environment is read-only in this phase: set `account_read_only = true`, \
+         or use the sandbox environment for order entry (plan §4.1); there is no production write \
+         branch"
+    )]
+    ProductionWritesUnsupported,
     /// No account was named.
     #[error("the Ondo Perps execution client requires an `account_id`")]
     MissingAccountId,
+    /// The approved production envelope or its required run binding is invalid.
+    #[error("invalid production execution configuration: {0}")]
+    InvalidProductionEnvelope(String),
 }
 
 /// Configuration for the Ondo Perps execution client.
 ///
-/// # The environment defaults to sandbox, and production is not reachable
+/// # Production authorization
 ///
-/// [`Self::environment`] defaults to [`OndoEnvironment::Sandbox`], unlike the data client's
-/// production default: the authenticated surface may only ever be sandbox
-/// ([`crate::common::credential::validate_authenticated_environment`]), and a production
-/// configuration is refused there before a credential is read. The same gate admits the endpoint
-/// the session signs for - see [`Self::base_url_http`] - so a configuration cannot aim a credential
-/// at an authority this adapter does not own.
-/// [`Self::allow_production_orders`] exists so that asking for production order entry can be
-/// *refused by name* ([`OndoExecutionConfigError::ProductionOrdersUnsupported`]) rather than
-/// silently ignored; setting it does not enable anything.
+/// Production writes are disabled by default. An explicit opt-in requires the complete immutable
+/// execution envelope and its identity, journal and run-token bindings. Read-only mode cannot be
+/// combined with that opt-in. Endpoint and credential environments must agree.
 ///
 /// # Credentials
 ///
@@ -217,6 +220,23 @@ pub struct OndoExecutionClientConfig {
     pub environment: OndoEnvironment,
     /// The Nautilus account id this client reports for. Required.
     pub account_id: Option<AccountId>,
+    /// The venue account identifier the authenticated account must match.
+    ///
+    /// This is the venue's own `accountID` (for example a numeric string), **not** the Nautilus
+    /// [`AccountId`] above: the two are different identifiers and are never compared to each
+    /// other. When set, the client reads `GET /v1/account` once while connecting and compares the
+    /// documented `accountID` member; a mismatch refuses the connection, and an answer that carries
+    /// no comparable identifier is recorded as `unknown` rather than assumed to match. When unset,
+    /// the identity is `unknown` and no account read is made for it. The value is never logged.
+    pub expected_venue_account_id: Option<String>,
+    /// The application's run token, echoed by the read-only diagnostics snapshot.
+    ///
+    /// It is the application's own per-run identifier (`run_id`), not a secret and not a venue
+    /// value. [`crate::diagnostics::OndoReadOnlySnapshot::run_id`] carries it verbatim, so an
+    /// application can reject a snapshot that belongs to another run rather than merge cross-run
+    /// state. The execution factory retains the latest client's diagnostics handle, so a later run
+    /// reports its own token and counts.
+    pub diagnostics_run_id: Option<String>,
     /// The API key id, `ondoKeyId_` prefix included. Falls back to the environment variable.
     pub api_key: Option<String>,
     /// The API secret, `ondoApiSecret_` prefix included. Falls back to the environment variable.
@@ -299,9 +319,11 @@ pub struct OndoExecutionClientConfig {
     /// The path is a plain filesystem path and carries no credential; it is the one configuration
     /// member besides the endpoints that names something outside this process.
     pub journal_path: Option<String>,
-    /// Whether production order entry was requested. Refused, always (see the type documentation).
+    /// Whether the separately bounded production execution capability was explicitly requested.
     #[builder(default)]
     pub allow_production_orders: bool,
+    /// The separately approved immutable production execution limits.
+    pub execution_envelope: Option<crate::production::OndoExecutionEnvelopeConfig>,
 }
 
 impl Default for OndoExecutionClientConfig {
@@ -311,11 +333,14 @@ impl Default for OndoExecutionClientConfig {
 }
 
 // The secret is deliberately absent: `api_secret` is the one member that must not cross into
-// Python, and a getter is the only way it could.
+// Python, and a getter is the only way it could. `expected_venue_account_id` is present so an
+// application can confirm the identity it configured without re-reading its own environment.
 #[cfg(feature = "python")]
 nautilus_core::impl_pyo3_config_getters!(OndoExecutionClientConfig {
     environment: OndoEnvironment,
     account_id: Option<AccountId>,
+    expected_venue_account_id: Option<String>,
+    diagnostics_run_id: Option<String>,
     base_url_http: Option<String>,
     base_url_ws: Option<String>,
     account_read_only: bool,
@@ -332,6 +357,8 @@ impl std::fmt::Debug for OndoExecutionClientConfig {
         f.debug_struct(stringify!(OndoExecutionClientConfig))
             .field("environment", &self.environment)
             .field("account_id", &self.account_id)
+            .field("expected_venue_account_id", &self.expected_venue_account_id)
+            .field("diagnostics_run_id", &self.diagnostics_run_id)
             .field("api_key", &self.api_key.as_ref().map(|_| REDACTED))
             .field("api_secret", &self.api_secret.as_ref().map(|_| REDACTED))
             .field("base_url_http", &self.base_url_http)
@@ -413,23 +440,102 @@ impl OndoExecutionClientConfig {
         present(&self.api_key) && present(&self.api_secret)
     }
 
+    /// Returns the authorization scope this configuration asks for.
+    ///
+    /// The scope pairs [`Self::environment`] with [`Self::account_read_only`]. Production with
+    /// `account_read_only = false` has no scope: it is refused with
+    /// [`OndoExecutionConfigError::ProductionWritesUnsupported`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`OndoExecutionConfigError::ProductionWritesUnsupported`] for a production
+    /// configuration that does not set `account_read_only`.
+    pub fn authentication_scope(
+        &self,
+    ) -> Result<OndoAuthenticationScope, OndoExecutionConfigError> {
+        match (self.environment, self.account_read_only) {
+            (OndoEnvironment::Sandbox, false) => Ok(OndoAuthenticationScope::SandboxTrading),
+            (OndoEnvironment::Sandbox, true) => Ok(OndoAuthenticationScope::SandboxReadOnly),
+            (OndoEnvironment::Production, true) => Ok(OndoAuthenticationScope::ProductionReadOnly),
+            (OndoEnvironment::Production, false) => {
+                if self.allow_production_orders && self.execution_envelope.is_some() {
+                    self.validate_production_envelope()?;
+                    Ok(OndoAuthenticationScope::ProductionTrading)
+                } else {
+                    Err(OndoExecutionConfigError::ProductionWritesUnsupported)
+                }
+            }
+        }
+    }
+
+    fn validate_production_envelope(&self) -> Result<(), OndoExecutionConfigError> {
+        let fail =
+            |reason: &str| OndoExecutionConfigError::InvalidProductionEnvelope(reason.to_string());
+        if self.environment != OndoEnvironment::Production
+            || self.account_read_only
+            || !self.allow_production_orders
+        {
+            return Err(fail(
+                "production envelope requires explicit production write opt-in",
+            ));
+        }
+        if self
+            .expected_venue_account_id
+            .as_ref()
+            .is_none_or(|v| v.trim().is_empty())
+            || self
+                .diagnostics_run_id
+                .as_ref()
+                .is_none_or(|v| v.is_empty() || v.len() > 128)
+            || self
+                .journal_path
+                .as_ref()
+                .is_none_or(|v| v.trim().is_empty())
+            || !(1..=30).contains(&self.dms_timeout_secs)
+            || self.reconcile_interval_secs != 1
+        {
+            return Err(fail(
+                "production requires identity, run token, journal, bounded 1-30-second DMS and one-second reconciliation",
+            ));
+        }
+        self.execution_envelope
+            .as_ref()
+            .ok_or_else(|| fail("missing envelope"))?
+            .validate(
+                nautilus_core::time::get_atomic_clock_realtime()
+                    .get_time_ns()
+                    .as_u64(),
+            )
+            .map_err(OndoExecutionConfigError::InvalidProductionEnvelope)
+    }
+
     /// Validates the configuration, before any client or socket exists.
     ///
     /// # Errors
     ///
     /// Returns [`OndoExecutionConfigError::ProductionOrdersUnsupported`] when
     /// [`Self::allow_production_orders`] is set - there is no production write branch to open -
-    /// and [`OndoExecutionConfigError::MissingAccountId`] when no account was named. The
-    /// environment and base URL are judged separately, by
+    /// [`OndoExecutionConfigError::MissingAccountId`] when no account was named, and
+    /// [`OndoExecutionConfigError::ProductionWritesUnsupported`] when production is configured
+    /// without `account_read_only`. The environment and base URL are judged separately, by
     /// [`crate::common::credential::validate_authenticated_environment`].
     pub fn validate(&self) -> Result<(), OndoExecutionConfigError> {
-        if self.allow_production_orders {
+        if self.allow_production_orders
+            && (self.environment != OndoEnvironment::Production
+                || self.account_read_only
+                || self.execution_envelope.is_none())
+        {
             return Err(OndoExecutionConfigError::ProductionOrdersUnsupported);
+        }
+        if self.execution_envelope.is_some() {
+            self.validate_production_envelope()?;
         }
 
         if self.account_id.is_none() {
             return Err(OndoExecutionConfigError::MissingAccountId);
         }
+
+        self.authentication_scope()?;
 
         Ok(())
     }
@@ -533,11 +639,78 @@ mod tests {
             "no journal is configured by default, and the run says so rather than writing one              somewhere it was not asked to",
         );
         assert!(!config.allow_production_orders);
+        assert!(
+            config.expected_venue_account_id.is_none(),
+            "no venue account id is configured by default, so identity is unknown until one is",
+        );
+        assert_eq!(
+            config.authentication_scope(),
+            Ok(OndoAuthenticationScope::SandboxTrading),
+            "a default execution configuration is a sandbox trading session",
+        );
         assert_eq!(
             config.http_base_url(),
             "https://api.ondoperps-sandbox.xyz",
             "a default execution configuration resolves to the sandbox host",
         );
+    }
+
+    /// The scope is the one pair of members that decides the capability, and production has no
+    /// trading variant: a production configuration without `account_read_only` is refused before a
+    /// credential is read.
+    #[rstest]
+    fn test_the_authentication_scope_is_derived_from_the_environment_and_the_read_only_flag() {
+        let sandbox_trading = OndoExecutionClientConfig {
+            environment: OndoEnvironment::Sandbox,
+            account_read_only: false,
+            ..Default::default()
+        };
+        assert_eq!(
+            sandbox_trading.authentication_scope(),
+            Ok(OndoAuthenticationScope::SandboxTrading),
+        );
+
+        let sandbox_read_only = OndoExecutionClientConfig {
+            environment: OndoEnvironment::Sandbox,
+            account_read_only: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            sandbox_read_only.authentication_scope(),
+            Ok(OndoAuthenticationScope::SandboxReadOnly),
+        );
+
+        let production_read_only = OndoExecutionClientConfig {
+            environment: OndoEnvironment::Production,
+            account_read_only: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            production_read_only.authentication_scope(),
+            Ok(OndoAuthenticationScope::ProductionReadOnly),
+        );
+
+        let production_writes = OndoExecutionClientConfig {
+            environment: OndoEnvironment::Production,
+            account_read_only: false,
+            account_id: Some(AccountId::from("ONDO-MAINNET-001")),
+            ..Default::default()
+        };
+        assert_eq!(
+            production_writes
+                .validate()
+                .expect_err("production has no write scope"),
+            OndoExecutionConfigError::ProductionWritesUnsupported,
+        );
+        assert_eq!(
+            production_writes.authentication_scope(),
+            Err(OndoExecutionConfigError::ProductionWritesUnsupported),
+        );
+
+        // A production read-only configuration with an account validates.
+        let mut named = production_read_only;
+        named.account_id = Some(AccountId::from("ONDO-MAINNET-001"));
+        assert_eq!(named.validate(), Ok(()));
     }
 
     #[rstest]
@@ -612,6 +785,27 @@ mod tests {
         assert_eq!(named.validate(), Ok(()));
     }
 
+    /// The expected venue account id is a plain optional member: it is carried so the client can
+    /// verify identity, and never derived from the Nautilus account id by string splitting.
+    #[rstest]
+    fn test_the_execution_config_carries_the_expected_venue_account_id_verbatim() {
+        let config: OndoExecutionClientConfig = serde_json::from_str(
+            r#"{"account_id": "ONDO-MAINNET-001", "expected_venue_account_id": "10458932786832481"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            config.expected_venue_account_id.as_deref(),
+            Some("10458932786832481"),
+            "the venue id is carried verbatim, with no prefix guessing",
+        );
+        assert_eq!(
+            config.account_id,
+            Some(AccountId::from("ONDO-MAINNET-001")),
+            "the Nautilus account id is a different identifier and stays as it was",
+        );
+    }
+
     #[rstest]
     fn test_the_execution_config_takes_an_explicit_local_base_url_override() {
         let config = OndoExecutionClientConfig {
@@ -632,7 +826,10 @@ mod tests {
 
         assert_eq!(default.http_base_url(), "https://api.ondoperps-sandbox.xyz");
         assert_eq!(
-            validate_authenticated_environment(OndoEnvironment::Sandbox, default.http_base_url()),
+            validate_authenticated_environment(
+                OndoAuthenticationScope::SandboxTrading,
+                default.http_base_url()
+            ),
             Ok(OndoEndpoint::Official),
             "the default resolves to the official sandbox host, never a test service",
         );
@@ -642,7 +839,10 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(
-            validate_authenticated_environment(OndoEnvironment::Sandbox, local.http_base_url()),
+            validate_authenticated_environment(
+                OndoAuthenticationScope::SandboxTrading,
+                local.http_base_url()
+            ),
             Ok(OndoEndpoint::LoopbackTestService),
             "a loopback mock is the explicit test service, classified as itself",
         );
@@ -654,13 +854,37 @@ mod tests {
             };
             assert!(
                 validate_authenticated_environment(
-                    OndoEnvironment::Sandbox,
+                    OndoAuthenticationScope::SandboxTrading,
                     remote.http_base_url()
                 )
                 .is_err(),
                 "`{url}` is not an endpoint this configuration may sign for",
             );
         }
+    }
+
+    /// The production read-only configuration resolves to the production host and is admitted by
+    /// its own scope; the sandbox host is refused for it, and a sandbox session refuses the
+    /// production host. Cross-environment mixing is never admitted.
+    #[rstest]
+    fn test_a_production_read_only_configuration_cannot_resolve_to_the_sandbox_authority() {
+        let production = OndoExecutionClientConfig {
+            environment: OndoEnvironment::Production,
+            account_read_only: true,
+            account_id: Some(AccountId::from("ONDO-MAINNET-001")),
+            ..Default::default()
+        };
+        let scope = production.authentication_scope().unwrap();
+
+        assert_eq!(production.http_base_url(), "https://api.ondoperps.xyz");
+        assert_eq!(
+            validate_authenticated_environment(scope, production.http_base_url()),
+            Ok(OndoEndpoint::Official),
+        );
+        assert!(
+            validate_authenticated_environment(scope, "https://api.ondoperps-sandbox.xyz").is_err(),
+            "a production session never signs for the sandbox authority",
+        );
     }
 
     #[rstest]

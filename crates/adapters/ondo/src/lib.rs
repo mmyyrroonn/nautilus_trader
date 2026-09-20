@@ -102,9 +102,11 @@
 pub mod common;
 pub mod config;
 pub mod data;
+pub mod diagnostics;
 pub mod execution;
 pub mod factories;
 pub mod http;
+pub mod production;
 pub mod reconciliation;
 pub mod recording;
 pub mod signing;

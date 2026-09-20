@@ -648,6 +648,9 @@ impl DeadMansSwitch {
     /// The deadline starts here rather than when the frame was written: what the venue timed is
     /// its own receipt, and a deadline computed locally would fire early.
     pub fn confirm_armed(&mut self, now: UnixNanos) {
+        if !self.required {
+            return;
+        }
         self.state = DeadMansSwitchState::Armed;
         self.expires_at = Some(UnixNanos::from(
             now.as_u64() + self.timeout_seconds * 1_000_000_000,

@@ -44,7 +44,7 @@ use nautilus_ondo::{
     common::{
         credential::{OndoCredential, OndoEnvironmentError},
         endpoint::OndoEndpoint,
-        enums::OndoEnvironment,
+        enums::{OndoAuthenticationScope, OndoEnvironment},
     },
     http::{
         client::{
@@ -1006,6 +1006,17 @@ fn fake_credential() -> OndoCredential {
     .expect("the fake unit-test credential builds")
 }
 
+/// A production credential, for the read-only dispatch tests. It authenticates against the
+/// production environment, and the loopback mock is an admitted test service for it too.
+fn fake_production_credential() -> OndoCredential {
+    OndoCredential::new(
+        OndoEnvironment::Production,
+        FAKE_KEY_ID.to_string(),
+        FAKE_API_SECRET.to_string(),
+    )
+    .expect("the fake unit-test credential builds")
+}
+
 /// The authenticated mock client, with a new-risk guard that admits every write.
 ///
 /// A signed `POST` is an order creation, so the transport consults a guard before it sends one, and
@@ -1879,5 +1890,221 @@ async fn test_a_refusing_new_risk_guard_does_not_stop_a_cancel() {
         guard.asked(),
         1,
         "the cancel path does not consult the new-risk guard",
+    );
+}
+
+// ------------------------------------------------------------------------------------------------
+// The read-only dispatch guard
+// ------------------------------------------------------------------------------------------------
+
+/// A read-only scope refuses a signed write at the dispatch, before the shared budget is acquired
+/// and before the new-risk guard is consulted, so no request exists and no admission decision is
+/// wasted. This is the write refusal the account's own read-only flag does not by itself provide:
+/// `DELETE` is deliberately not new-risk guarded, and this guard is what stops a cancel too.
+#[tokio::test]
+async fn test_a_read_only_client_refuses_a_signed_post_and_delete_before_any_request() {
+    let server = MockServer::start(vec![Reply::ok(ORDERS_BODY)]).await;
+    let guard = Arc::new(TestGuard::admitting());
+    let client = OndoHttpClient::builder()
+        .base_url(server.url())
+        .budget(test_budget())
+        .retry_config(retry_policy(2, 1, 2, Some(5_000)))
+        .credential(Arc::new(fake_credential()))
+        .authentication_scope(OndoAuthenticationScope::SandboxReadOnly)
+        .new_risk_guard(guard.clone() as Arc<dyn OndoNewRiskGuard>)
+        .build()
+        .expect("the read-only mock client builds");
+
+    assert_eq!(
+        client.authentication_scope(),
+        Some(OndoAuthenticationScope::SandboxReadOnly),
+    );
+
+    let posted = client
+        .post_signed_raw(
+            &OndoRequestTarget::new(ORDERS_PATH),
+            ORDER_REQUEST_BODY.as_bytes().to_vec(),
+            OndoRequestPriority::Normal,
+            NewRiskPermit::new(1),
+        )
+        .await;
+    assert!(
+        matches!(
+            posted,
+            Err(OndoNewRiskSendError::Http(
+                OndoHttpError::WriteNotPermitted {
+                    scope: OndoAuthenticationScope::SandboxReadOnly,
+                    method: "POST",
+                }
+            ))
+        ),
+        "a read-only session refuses a submission at the dispatch: {posted:?}",
+    );
+
+    let deleted = client
+        .cancel_order("order-1", OndoRequestPriority::High)
+        .await;
+    assert!(
+        matches!(
+            deleted,
+            Err(OndoHttpError::WriteNotPermitted {
+                scope: OndoAuthenticationScope::SandboxReadOnly,
+                method: "DELETE",
+            })
+        ),
+        "a read-only session refuses a cancel at the dispatch: {deleted:?}",
+    );
+
+    assert!(
+        server.captured().is_empty(),
+        "neither refusal became a request",
+    );
+    assert_eq!(
+        guard.asked(),
+        0,
+        "the dispatch refuses before the new-risk guard is consulted",
+    );
+}
+
+/// The production read-only scope is refused the same way, and a production credential built
+/// without an explicit scope defaults to read-only rather than to a write-capable transport.
+#[tokio::test]
+async fn test_a_production_read_only_client_refuses_writes_and_defaults_to_read_only() {
+    let server = MockServer::start(vec![Reply::ok(ORDERS_BODY)]).await;
+
+    let defaulted = OndoHttpClient::builder()
+        .base_url(server.url())
+        .budget(test_budget())
+        .credential(Arc::new(fake_production_credential()))
+        .new_risk_guard(Arc::new(TestGuard::admitting()) as Arc<dyn OndoNewRiskGuard>)
+        .build()
+        .expect("the production mock client builds");
+
+    assert_eq!(
+        defaulted.authentication_scope(),
+        Some(OndoAuthenticationScope::ProductionReadOnly),
+        "a production credential without a scope is never write-capable by omission",
+    );
+
+    let posted = defaulted
+        .post_signed_raw(
+            &OndoRequestTarget::new(ORDERS_PATH),
+            ORDER_REQUEST_BODY.as_bytes().to_vec(),
+            OndoRequestPriority::Normal,
+            NewRiskPermit::new(1),
+        )
+        .await;
+    assert!(
+        matches!(
+            posted,
+            Err(OndoNewRiskSendError::Http(
+                OndoHttpError::WriteNotPermitted {
+                    scope: OndoAuthenticationScope::ProductionReadOnly,
+                    ..
+                }
+            ))
+        ),
+        "a production read-only session refuses a submission: {posted:?}",
+    );
+
+    assert!(
+        server.captured().is_empty(),
+        "the production refusal became no request",
+    );
+}
+
+/// A sandbox credential built without an explicit scope keeps the sandbox's normal trading
+/// capability, so the read-only dispatch guard does not weaken ordinary sandbox behaviour.
+#[tokio::test]
+async fn test_a_sandbox_credential_without_a_scope_still_trades() {
+    let server = MockServer::start(vec![Reply::ok(ORDERS_BODY)]).await;
+    let client = signed_client_for(&server, retry_policy(2, 1, 2, Some(5_000)));
+
+    assert_eq!(
+        client.authentication_scope(),
+        Some(OndoAuthenticationScope::SandboxTrading),
+    );
+
+    client
+        .post_signed_raw(
+            &OndoRequestTarget::new(ORDERS_PATH),
+            ORDER_REQUEST_BODY.as_bytes().to_vec(),
+            OndoRequestPriority::Normal,
+            NewRiskPermit::new(1),
+        )
+        .await
+        .expect("a sandbox trading session still sends an admitted write");
+
+    assert_eq!(server.captured().len(), 1);
+}
+
+/// A public client carries no scope and no credential, so it cannot sign at all - and that is still
+/// the answer, not a write refusal, for a client that never had a write surface.
+#[tokio::test]
+async fn test_a_public_client_never_permits_a_write() {
+    let server = MockServer::start(vec![Reply::ok(ORDERS_BODY)]).await;
+    let client = test_client(&server);
+
+    assert_eq!(client.authentication_scope(), None);
+    assert!(
+        !client.is_authenticated(),
+        "a public client holds no credential",
+    );
+    assert!(server.captured().is_empty());
+}
+
+/// A credential is never sent under another environment's scope. The pair is refused at
+/// construction, before a socket exists, in both directions - including the finding's exact shape,
+/// a production credential with a sandbox-trading scope pointed at the official sandbox URL.
+#[tokio::test]
+async fn test_a_credential_from_another_environment_is_refused_for_the_scope() {
+    let server = MockServer::start(Vec::new()).await;
+
+    for (credential, scope, base_url) in [
+        (
+            fake_credential(),
+            OndoAuthenticationScope::ProductionReadOnly,
+            server.url(),
+        ),
+        (
+            fake_production_credential(),
+            OndoAuthenticationScope::SandboxTrading,
+            server.url(),
+        ),
+        // The exact shape the review named: a production key scoped as sandbox trading against
+        // the official sandbox authority. The refusal is the credential/scope pair, not the URL.
+        (
+            fake_production_credential(),
+            OndoAuthenticationScope::SandboxTrading,
+            "https://api.ondoperps-sandbox.xyz".to_string(),
+        ),
+        (
+            fake_credential(),
+            OndoAuthenticationScope::ProductionReadOnly,
+            "https://api.ondoperps.xyz".to_string(),
+        ),
+    ] {
+        let built = OndoHttpClient::builder()
+            .base_url(base_url)
+            .budget(test_budget())
+            .credential(Arc::new(credential))
+            .authentication_scope(scope)
+            .build();
+
+        let error = built.expect_err("a cross-environment credential is refused");
+        assert!(
+            matches!(
+                error,
+                OndoHttpError::Environment(
+                    OndoEnvironmentError::CredentialEnvironmentMismatch { .. }
+                )
+            ),
+            "was {error:?}",
+        );
+    }
+
+    assert!(
+        server.captured().is_empty(),
+        "the refusal happens before a socket is opened",
     );
 }

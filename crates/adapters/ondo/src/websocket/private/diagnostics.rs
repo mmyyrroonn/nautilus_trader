@@ -164,6 +164,12 @@ pub struct PrivateDiagnosticsCounters {
     ///
     /// A count, never a body: this is the whole of what this record keeps about a login.
     pub login_frames: u64,
+    /// Login acknowledgements the venue sent.
+    ///
+    /// A count, so an accepted login survives the bounded record ring dropping its
+    /// [`PrivateRecord::LoggedIn`] entry. It is the difference between "this session asked to log
+    /// in" and "the venue accepted the login".
+    pub logins_acknowledged: u64,
     /// Connections established.
     pub connections: u64,
     /// Reconnect attempts.
@@ -180,6 +186,11 @@ pub struct PrivateDiagnosticsCounters {
     pub failed_passes: u64,
     /// Venue error frames.
     pub venue_errors: u64,
+    /// Subscription acknowledgements the venue sent.
+    ///
+    /// A count, never a frame: the channel names are recoverable from the bounded records, and
+    /// this is what a report reads when the ring has since dropped the acknowledgement.
+    pub subscriptions_acknowledged: u64,
 }
 
 /// The bounded record of what a private session did.
@@ -187,6 +198,11 @@ pub struct PrivateDiagnosticsCounters {
 pub struct PrivateDiagnostics {
     counters: Mutex<PrivateDiagnosticsCounters>,
     records: Mutex<VecDeque<PrivateRecord>>,
+    /// The channels the venue has acknowledged, held beside the ring.
+    ///
+    /// It is bounded by this adapter's fixed private channel set, so an acknowledgement is never
+    /// lost because its [`PrivateRecord::Subscribed`] entry aged out of the 512-record ring.
+    subscribed: Mutex<Vec<PrivateChannel>>,
     capacity: usize,
 }
 
@@ -209,6 +225,7 @@ impl PrivateDiagnostics {
         Self {
             counters: Mutex::new(PrivateDiagnosticsCounters::default()),
             records: Mutex::new(VecDeque::with_capacity(capacity)),
+            subscribed: Mutex::new(Vec::new()),
             capacity,
         }
     }
@@ -224,15 +241,37 @@ impl PrivateDiagnostics {
             let mut counters = self.counters.lock();
 
             match &record {
-                PrivateRecord::Connecting { .. } => counters.reconnect_attempts += 1,
+                PrivateRecord::Connecting { attempt } if *attempt > 1 => {
+                    counters.reconnect_attempts += 1;
+                }
                 PrivateRecord::ReportsLost { count, .. } => {
                     counters.reports_lost += u64::try_from(*count).unwrap_or(u64::MAX);
                 }
                 PrivateRecord::VenueError { .. } => counters.venue_errors += 1,
+                PrivateRecord::LoggedIn => counters.logins_acknowledged += 1,
+                PrivateRecord::Subscribed { .. } => counters.subscriptions_acknowledged += 1,
                 PrivateRecord::Reconciled { .. } => counters.passes += 1,
                 PrivateRecord::ReconciliationFailed { .. } => counters.failed_passes += 1,
                 _ => {}
             }
+        }
+
+        // The channel set is kept apart from the ring so an acknowledgement outlives the bounded
+        // record that carried it. It is bounded by the fixed private channel set.
+        match &record {
+            PrivateRecord::Subscribed { channel } => {
+                let mut subscribed = self.subscribed.lock();
+
+                if !subscribed.contains(channel) {
+                    subscribed.push(*channel);
+                }
+            }
+            PrivateRecord::Unsubscribed { channel } => {
+                self.subscribed
+                    .lock()
+                    .retain(|existing| existing != channel);
+            }
+            _ => {}
         }
 
         self.push(record);
@@ -293,6 +332,15 @@ impl PrivateDiagnostics {
     #[must_use]
     pub fn counters(&self) -> PrivateDiagnosticsCounters {
         *self.counters.lock()
+    }
+
+    /// Returns the channels the venue has acknowledged.
+    ///
+    /// The set is held beside the bounded record ring, so it survives the ring dropping the
+    /// acknowledgement record that added a channel.
+    #[must_use]
+    pub fn acknowledged_channels(&self) -> Vec<PrivateChannel> {
+        self.subscribed.lock().clone()
     }
 
     /// Returns the records, oldest first.
@@ -418,5 +466,45 @@ mod tests {
         });
 
         assert_eq!(diagnostics.counters().reports_lost, 4);
+    }
+
+    /// An accepted login is counted, so it survives the bounded ring dropping its record: sending
+    /// a login frame is not the venue accepting one.
+    #[rstest]
+    fn test_an_accepted_login_survives_the_ring() {
+        let diagnostics = PrivateDiagnostics::with_capacity(1);
+
+        diagnostics.record(PrivateRecord::LoggedIn);
+        diagnostics.record(PrivateRecord::Stopped);
+
+        assert_eq!(diagnostics.counters().logins_acknowledged, 1);
+        assert_eq!(
+            diagnostics.records(),
+            vec![PrivateRecord::Stopped],
+            "the login record aged out, and the count did not",
+        );
+    }
+
+    /// An acknowledged channel is held beside the ring, so it does not disappear when its record
+    /// ages out; an unsubscription removes it.
+    #[rstest]
+    fn test_an_acknowledged_channel_survives_the_ring_and_an_unsubscription_removes_it() {
+        let diagnostics = PrivateDiagnostics::with_capacity(1);
+        diagnostics.record(PrivateRecord::Subscribed {
+            channel: PrivateChannel::OrdersPerps,
+        });
+        diagnostics.record(PrivateRecord::Stopped);
+
+        assert_eq!(
+            diagnostics.acknowledged_channels(),
+            vec![PrivateChannel::OrdersPerps],
+        );
+
+        diagnostics.record(PrivateRecord::Unsubscribed {
+            channel: PrivateChannel::OrdersPerps,
+        });
+
+        assert!(diagnostics.acknowledged_channels().is_empty());
+        assert_eq!(diagnostics.counters().subscriptions_acknowledged, 1);
     }
 }

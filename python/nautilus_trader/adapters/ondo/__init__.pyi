@@ -15,6 +15,7 @@ __all__ = [
     "OndoEnvironment",
     "OndoExecutionClientConfig",
     "OndoExecutionClientFactory",
+    "OndoExecutionEnvelopeConfig",
 ]
 
 ONDO: str
@@ -66,6 +67,10 @@ class OndoExecutionClientConfig:
     @property
     def account_id(self) -> model.AccountId | None: ...
     @property
+    def expected_venue_account_id(self) -> str | None: ...
+    @property
+    def diagnostics_run_id(self) -> str | None: ...
+    @property
     def base_url_http(self) -> str | None: ...
     @property
     def base_url_ws(self) -> str | None: ...
@@ -92,12 +97,15 @@ class OndoExecutionClientConfig:
         base_url_http: str | None = None,
         base_url_ws: str | None = None,
         account_read_only: bool | None = None,
+        expected_venue_account_id: str | None = None,
+        diagnostics_run_id: str | None = None,
         http_timeout_secs: int | None = None,
         dms_timeout_secs: int | None = None,
         dms_max_failed_renewals: int | None = None,
         reconcile_interval_secs: int | None = None,
         journal_path: str | None = None,
         allow_production_orders: bool | None = None,
+        execution_envelope: OndoExecutionEnvelopeConfig | None = None,
     ) -> None: ...
 
 @typing.final
@@ -106,6 +114,34 @@ class OndoExecutionClientFactory:
     def name(self) -> str: ...
     @property
     def supports_ordered_shutdown(self) -> bool: ...
+    def read_only_snapshot(self) -> dict[str, typing.Any] | None: ...
+    @property
+    def supports_production_trade_envelope(self) -> bool: ...
+    def production_trade_snapshot(self) -> dict[str, typing.Any] | None: ...
+
+@typing.final
+class OndoExecutionEnvelopeConfig:
+    def __init__(
+        self,
+        instrument_id: model.InstrumentId,
+        entry_side: str,
+        entry_max_quantity: str,
+        entry_worst_price: str,
+        entry_max_notional_usd: str,
+        close_side: str,
+        close_max_quantity: str,
+        close_worst_price: str,
+        max_close_attempts: int,
+        max_notional_per_order_usd: str,
+        max_gross_exposure_usd: str,
+        min_available_margin_usdc: str,
+        max_orders: int,
+        max_new_risk_requests: int,
+        max_app_requests: int,
+        entry_deadline_unix_nanos: int,
+        cleanup_deadline_unix_nanos: int,
+        require_flat_start: bool,
+    ) -> None: ...
 
 @typing.final
 class OndoHttpClient:
