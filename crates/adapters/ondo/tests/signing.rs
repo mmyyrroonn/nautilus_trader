@@ -31,11 +31,11 @@ use nautilus_core::{hex, string::secret::REDACTED};
 use nautilus_ondo::{
     common::{
         credential::{
-            CredentialError, ONDO_SANDBOX_API_KEY_VAR, ONDO_SANDBOX_API_SECRET_VAR, OndoCredential,
-            OndoEndpoint, OndoEnvironmentError, resolve_credential,
-            validate_authenticated_environment,
+            CredentialError, ONDO_MAINNET_API_KEY_VAR, ONDO_SANDBOX_API_KEY_VAR,
+            ONDO_SANDBOX_API_SECRET_VAR, OndoCredential, OndoEndpoint, OndoEnvironmentError,
+            resolve_credential, validate_authenticated_environment,
         },
-        enums::OndoEnvironment,
+        enums::{OndoAuthenticationScope, OndoEnvironment},
     },
     http::{
         client::OndoHttpClient,
@@ -566,26 +566,36 @@ fn test_an_expired_timestamp_is_not_a_401_and_not_a_forbidden() {
 fn test_the_sandbox_gate_refuses_production_in_every_form() {
     assert_eq!(
         validate_authenticated_environment(
-            OndoEnvironment::Sandbox,
+            OndoAuthenticationScope::SandboxTrading,
             "https://api.ondoperps-sandbox.xyz",
         ),
         Ok(OndoEndpoint::Official),
     );
     assert_eq!(
-        validate_authenticated_environment(OndoEnvironment::Sandbox, "http://127.0.0.1:8080"),
+        validate_authenticated_environment(
+            OndoAuthenticationScope::SandboxTrading,
+            "http://127.0.0.1:8080"
+        ),
         Ok(OndoEndpoint::LoopbackTestService),
     );
 
     // The config type's own override slot is what makes this reachable: `base_url_http` may be set
-    // to anything, so the gate, not the configuration, is what keeps production unreachable.
+    // to anything, so the gate, not the configuration, is what keeps production unreachable to a
+    // sandbox session.
     assert_eq!(
-        validate_authenticated_environment(OndoEnvironment::Sandbox, "https://api.ondoperps.xyz"),
+        validate_authenticated_environment(
+            OndoAuthenticationScope::SandboxTrading,
+            "https://api.ondoperps.xyz"
+        ),
         Err(OndoEnvironmentError::ProductionHostForbidden {
             host: "api.ondoperps.xyz".to_string(),
         }),
     );
     assert_eq!(
-        validate_authenticated_environment(OndoEnvironment::Sandbox, "https://ondoperps.xyz"),
+        validate_authenticated_environment(
+            OndoAuthenticationScope::SandboxTrading,
+            "https://ondoperps.xyz"
+        ),
         Err(OndoEnvironmentError::ProductionHostForbidden {
             host: "ondoperps.xyz".to_string(),
         }),
@@ -597,7 +607,7 @@ fn test_the_sandbox_gate_refuses_production_in_every_form() {
     // refused production and admitted every other host.
     assert_eq!(
         validate_authenticated_environment(
-            OndoEnvironment::Sandbox,
+            OndoAuthenticationScope::SandboxTrading,
             "https://api.ondoperps.xyz.evil.example",
         ),
         Err(OndoEnvironmentError::HostNotAllowed {
@@ -605,14 +615,23 @@ fn test_the_sandbox_gate_refuses_production_in_every_form() {
         }),
     );
 
-    // Production is refused whatever the URL says, so a production configuration can never be
-    // authenticated even if it points at the sandbox host.
+    // A production read-only session is admitted on the production authority, and it refuses the
+    // sandbox authority: neither environment's credential can be aimed at the other's host.
     assert_eq!(
         validate_authenticated_environment(
-            OndoEnvironment::Production,
+            OndoAuthenticationScope::ProductionReadOnly,
+            "https://api.ondoperps.xyz",
+        ),
+        Ok(OndoEndpoint::Official),
+    );
+    assert_eq!(
+        validate_authenticated_environment(
+            OndoAuthenticationScope::ProductionReadOnly,
             "https://api.ondoperps-sandbox.xyz",
         ),
-        Err(OndoEnvironmentError::ProductionForbidden),
+        Err(OndoEnvironmentError::HostNotAllowed {
+            host: "api.ondoperps-sandbox.xyz".to_string(),
+        }),
     );
 }
 
@@ -621,8 +640,11 @@ fn test_a_production_base_url_cannot_bypass_the_sandbox_gate() {
     // No `ONDO_SANDBOX_*` variable is set in this test process, so a missing-variable error would be
     // the answer if the credential were read first. The answer is the *environment* error, which is
     // what makes the ordering observable from outside.
-    let error = resolve_credential(OndoEnvironment::Sandbox, "https://api.ondoperps.xyz")
-        .expect_err("the production host is refused before anything is read");
+    let error = resolve_credential(
+        OndoAuthenticationScope::SandboxTrading,
+        "https://api.ondoperps.xyz",
+    )
+    .expect_err("the production host is refused before anything is read");
 
     assert_eq!(
         error,
@@ -631,15 +653,28 @@ fn test_a_production_base_url_cannot_bypass_the_sandbox_gate() {
         }),
     );
 
-    let error = resolve_credential(OndoEnvironment::Production, "https://api.ondoperps.xyz")
-        .expect_err("production is refused");
-    assert_eq!(
-        error,
-        CredentialError::Environment(OndoEnvironmentError::ProductionForbidden),
+    // The production read-only scope passes the gate on its own authority, so resolution proceeds
+    // to the mainnet variable - and names it, because this process does not set it. That is what
+    // makes "the gate ran before the read" observable: a cross-environment fallback would have
+    // found nothing either, but would have named the wrong variable.
+    let error = resolve_credential(
+        OndoAuthenticationScope::ProductionReadOnly,
+        "https://api.ondoperps.xyz",
+    )
+    .expect_err("the mainnet variable is not set in this process");
+    assert!(
+        matches!(
+            error,
+            CredentialError::MissingVariable {
+                name: ONDO_MAINNET_API_KEY_VAR
+            }
+        ),
+        "the production scope reads the mainnet pair, was {error:?}",
     );
 
     // ... and the client refuses to be built at all, which is the last line of defence: an
-    // authenticated client with a production base URL does not exist, so nothing can send from it.
+    // authenticated client with a cross-environment base URL does not exist, so nothing can send
+    // from it.
     let error = OndoHttpClient::builder()
         .base_url("https://api.ondoperps.xyz".to_string())
         .credential(Arc::new(credential()))
@@ -738,7 +773,7 @@ fn test_the_endpoint_gate_refuses_every_authority_outside_the_allowlist(
     #[case] url: &str,
     #[case] expected: OndoEnvironmentError,
 ) {
-    let error = validate_authenticated_environment(OndoEnvironment::Sandbox, url)
+    let error = validate_authenticated_environment(OndoAuthenticationScope::SandboxTrading, url)
         .expect_err("the allowlist admits two authorities and this URL is neither");
 
     assert_eq!(error, expected, "{url}");
@@ -778,7 +813,7 @@ fn test_the_endpoint_gate_admits_the_sandbox_authority_and_a_loopback_test_servi
     #[case] expected: OndoEndpoint,
 ) {
     assert_eq!(
-        validate_authenticated_environment(OndoEnvironment::Sandbox, url),
+        validate_authenticated_environment(OndoAuthenticationScope::SandboxTrading, url),
         Ok(expected),
         "`{url}` is an endpoint this adapter may sign for",
     );
@@ -800,7 +835,7 @@ fn test_the_endpoint_gate_is_not_weaker_than_the_production_blacklist_it_replace
     #[case] url: &str,
 ) {
     assert!(
-        validate_authenticated_environment(OndoEnvironment::Sandbox, url).is_err(),
+        validate_authenticated_environment(OndoAuthenticationScope::SandboxTrading, url).is_err(),
         "`{url}` was refused before and must still be refused",
     );
 }
@@ -923,7 +958,9 @@ fn test_the_secret_wrapper_never_renders_the_secret() {
     );
     let errors = [
         OndoHttpError::Signing(check_clock_skew(45).unwrap_err()),
-        OndoHttpError::Environment(OndoEnvironmentError::ProductionForbidden),
+        OndoHttpError::Environment(OndoEnvironmentError::HostNotAllowed {
+            host: "api.ondoperps.xyz".to_string(),
+        }),
         OndoHttpError::Environment(OndoEnvironmentError::ProductionHostForbidden {
             host: "api.ondoperps.xyz".to_string(),
         }),

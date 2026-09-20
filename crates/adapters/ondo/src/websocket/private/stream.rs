@@ -65,7 +65,10 @@ use tokio::{sync::mpsc, task::JoinSet};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    common::credential::OndoCredential,
+    common::{
+        credential::{OndoCredential, validate_authenticated_websocket_environment},
+        enums::{OndoAuthenticationScope, OndoEnvironment},
+    },
     execution::{OndoAccountRuntime, OndoStreamIngestion},
     reconciliation::{
         DeadMansSwitchMessage, DeadMansSwitchState, MetadataValidity, ReconciliationState,
@@ -198,6 +201,8 @@ impl PrivateRunSnapshot {
 #[derive(Debug)]
 pub struct OndoPrivateStream {
     url: String,
+    mode: PrivateStreamMode,
+    production: Option<Arc<crate::production::ProductionAuthority>>,
     run: Arc<Mutex<PrivateRunSnapshot>>,
     diagnostics: SharedPrivateDiagnostics,
     /// The connection that is up right now, when one is.
@@ -240,6 +245,46 @@ impl OndoPrivateStream {
         mode: PrivateStreamMode,
         heartbeat_secs: u64,
     ) -> anyhow::Result<Self> {
+        if mode.arms_the_switch() && account.is_account_read_only() {
+            anyhow::bail!("a read-only account cannot start a trading private transport");
+        }
+        if account
+            .http_client()
+            .authentication_scope()
+            .is_none_or(|scope| scope.environment() != credential.environment())
+        {
+            anyhow::bail!("private stream credential environment differs from its account runtime");
+        }
+        // The credential, the mode and the URL are one decision. Derive the scope this pair
+        // represents and apply the same WebSocket endpoint policy the execution client applies, so
+        // a direct caller cannot point a production credential at the sandbox socket or the other
+        // way round. Production trading additionally requires the account's bounded native authority.
+        let scope = match (credential.environment(), mode) {
+            (OndoEnvironment::Sandbox, PrivateStreamMode::Trading) => {
+                OndoAuthenticationScope::SandboxTrading
+            }
+            (OndoEnvironment::Sandbox, PrivateStreamMode::ReadOnly) => {
+                OndoAuthenticationScope::SandboxReadOnly
+            }
+            (OndoEnvironment::Production, PrivateStreamMode::ReadOnly) => {
+                OndoAuthenticationScope::ProductionReadOnly
+            }
+            (OndoEnvironment::Production, PrivateStreamMode::Trading) => {
+                if !account.http_client().shares_credential(&credential) {
+                    anyhow::bail!(
+                        "production private transport must share the native account credential"
+                    );
+                }
+                if account.production_authority().is_none() {
+                    anyhow::bail!(
+                        "production trading private transport requires a bounded native authority"
+                    );
+                }
+                OndoAuthenticationScope::ProductionTrading
+            }
+        };
+        validate_authenticated_websocket_environment(scope, &url)?;
+
         let backoff = reconnect_backoff()?;
         let run = Arc::new(Mutex::new(PrivateRunSnapshot::new(
             PrivateRunState::Disconnected,
@@ -251,6 +296,7 @@ impl OndoPrivateStream {
         let (wake, wake_rx) = mpsc::unbounded_channel();
         let active: Arc<Mutex<Option<Arc<WebSocketClient>>>> = Arc::new(Mutex::new(None));
 
+        let production = account.production_authority();
         let state = PrivateTransportState {
             url: url.clone(),
             heartbeat_secs: heartbeat_secs.max(1),
@@ -270,10 +316,32 @@ impl OndoPrivateStream {
                  connection task: {error}"
             )
         })?;
-        let task = runtime.spawn(state.run(backoff, Arc::clone(&liveness), wake_rx));
+        let deadline_guard = production.clone();
+        let deadline_account = state.account.clone();
+        let deadline_active = Arc::clone(&active);
+        let deadline_run = Arc::clone(&run);
+        let deadline_diagnostics = Arc::clone(&diagnostics);
+        let deadline_cancel = cancellation.clone();
+        let task_liveness = Arc::clone(&liveness);
+        let task=runtime.spawn(async move {
+            let task=state.run(backoff,task_liveness,wake_rx);
+            if let Some(guard)=deadline_guard {
+                tokio::select! {
+                    ()=task=>{},
+                    ()=tokio::time::sleep(guard.remaining())=>{
+                        guard.expire();deadline_account.note_session_ended(get_atomic_clock_realtime().get_time_ns());
+                        deadline_cancel.cancel();deadline_active.lock().take();
+                        *deadline_run.lock()=PrivateRunSnapshot::new(PrivateRunState::Stopped,"production_cleanup_deadline_elapsed");
+                        deadline_diagnostics.record(PrivateRecord::Stopped);
+                    }
+                }
+            } else { task.await; }
+        });
 
         Ok(Self {
             url,
+            mode,
+            production,
             run,
             diagnostics,
             active,
@@ -293,6 +361,16 @@ impl OndoPrivateStream {
     #[must_use]
     pub fn run_state(&self) -> PrivateRunSnapshot {
         self.run.lock().clone()
+    }
+
+    /// Returns a shared handle to the run state's cell.
+    ///
+    /// It exists for the read-only diagnostics snapshot, which reads the live state after the run
+    /// rather than a copy taken at some earlier instant. The caller gets the state's `Arc`, not the
+    /// transport's task or socket.
+    #[must_use]
+    pub fn run_handle(&self) -> Arc<Mutex<PrivateRunSnapshot>> {
+        Arc::clone(&self.run)
     }
 
     /// Returns the session's diagnostic record.
@@ -319,10 +397,19 @@ impl OndoPrivateStream {
     ///
     /// # Errors
     ///
-    /// Returns an error when there is no connection to write to, when the frame cannot be
+    /// Returns an error for a read-only transport before serialization or socket access,
+    /// when there is no connection to write to, when the frame cannot be
     /// serialized, or when the socket refuses it. None of them is recoverable at this point - the
     /// caller is stopping - so the error is reported rather than retried.
     pub async fn send_switch_frame(&self, frame: &DeadMansSwitchMessage) -> anyhow::Result<()> {
+        if !self.mode.arms_the_switch() {
+            anyhow::bail!("a read-only private transport refuses dead man's switch writes");
+        }
+        if let Some(guard) = &self.production {
+            guard
+                .validate_direct_switch(frame)
+                .map_err(anyhow::Error::msg)?;
+        }
         let body = frame.to_json_text()?;
         // Cloned out of the slot rather than held across the await: the guard is not `Send`, and
         // the client is a handle whose writes are serialized by the socket itself.
@@ -336,7 +423,26 @@ impl OndoPrivateStream {
             anyhow::bail!("the private transport's connection is no longer active");
         }
 
+        if let Some(guard) = &self.production {
+            guard
+                .validate_direct_switch(frame)
+                .map_err(anyhow::Error::msg)?;
+        }
+        if let Some(guard) = &self.production {
+            guard.begin_release().map_err(anyhow::Error::msg)?;
+        }
         send_body(&client, &body).await?;
+        if let Some(guard) = &self.production {
+            tokio::time::timeout(guard.remaining(), async {
+                while !guard.release_acked() {
+                    tokio::time::sleep(Duration::from_millis(5)).await;
+                }
+            })
+            .await
+            .map_err(|_| {
+                anyhow::anyhow!("production DMS release acknowledgement deadline exhausted")
+            })?;
+        }
         self.diagnostics
             .record_frame_sent(PrivateAction::ReleaseSwitch);
 
@@ -653,8 +759,15 @@ impl PrivateTransportState {
                 self.diagnostics
                     .record(PrivateRecord::Subscribed { channel });
 
-                if channel == PrivateChannel::CancelAllOrdersAfterPerps {
-                    self.account.confirm_dead_mans_switch(self.clock());
+                if channel == PrivateChannel::CancelAllOrdersAfterPerps
+                    && self.mode.arms_the_switch()
+                {
+                    if !self
+                        .account
+                        .confirm_dead_mans_switch_from_stream(self.clock())
+                    {
+                        return false;
+                    }
                     self.diagnostics.record(PrivateRecord::SwitchConfirmed {
                         timeout_seconds: self.account.dms_timeout_secs(),
                     });
@@ -663,6 +776,11 @@ impl PrivateTransportState {
                 false
             }
             PrivateEvent::Unsubscribed(channel) => {
+                if channel == PrivateChannel::CancelAllOrdersAfterPerps {
+                    if let Some(guard) = self.account.production_authority() {
+                        guard.confirm_release();
+                    }
+                }
                 self.diagnostics
                     .record(PrivateRecord::Unsubscribed { channel });
 
@@ -682,8 +800,8 @@ impl PrivateTransportState {
 
                 false
             }
-            PrivateEvent::Unsupported { reason } => {
-                log::warn!("Ondo private stream did not handle a frame: {reason}");
+            PrivateEvent::Unsupported { .. } => {
+                log::warn!("Ondo private stream received an unsupported frame");
 
                 false
             }
@@ -692,7 +810,7 @@ impl PrivateTransportState {
             // legally send one - so the connection stays and the account is told, which is what
             // stops it reading Ready over a hole (plan §R3.1).
             PrivateEvent::ProtocolError { reason } => {
-                log::error!("Ondo private stream could not decode a frame: {reason}");
+                log::error!("Ondo private stream could not decode a frame");
                 let redacted = self.redact(&reason);
 
                 self.diagnostics.record(PrivateRecord::ReportsLost {
@@ -704,7 +822,7 @@ impl PrivateTransportState {
                 false
             }
             PrivateEvent::VenueError { reason, permanent } => {
-                log::error!("Ondo private WebSocket error: {reason}");
+                log::error!("Ondo private WebSocket received a venue error");
                 let redacted = self.redact(&reason);
 
                 self.diagnostics.record(PrivateRecord::VenueError {
@@ -722,7 +840,7 @@ impl PrivateTransportState {
                 permanent
             }
             PrivateEvent::SwitchChannelUpdate { reason } => {
-                log::error!("Ondo private switch channel: {reason}");
+                log::error!("Ondo private switch channel reported an update");
                 self.note_switch_failed(self.redact(&reason));
 
                 false
@@ -734,6 +852,12 @@ impl PrivateTransportState {
     ///
     /// Returns `false` when the connection must end.
     async fn send_action(&self, client: &WebSocketClient, action: PrivateAction) -> bool {
+        if action == PrivateAction::ArmSwitch && self.account.production_authority().is_some() {
+            if let Err(e) = self.account.verify_production_dms_baseline().await {
+                self.note_switch_failed(e.to_string());
+                return false;
+            }
+        }
         let body = match self.build_body(action) {
             Ok(body) => body,
             Err(error) => {
@@ -761,6 +885,14 @@ impl PrivateTransportState {
             }
         };
 
+        if action == PrivateAction::ArmSwitch
+            && self
+                .account
+                .production_authority()
+                .is_some_and(|guard| !guard.begin_dms_send(self.clock().as_u64(), false))
+        {
+            return false;
+        }
         if let Err(error) = send_body(client, &body).await {
             log::warn!(
                 "Ondo private stream failed to send a {} frame: {error}",
@@ -791,6 +923,25 @@ impl PrivateTransportState {
 
     /// Builds the body of one action.
     fn build_body(&self, action: PrivateAction) -> anyhow::Result<String> {
+        if matches!(action, PrivateAction::ArmSwitch)
+            && self
+                .account
+                .production_authority()
+                .is_some_and(|guard| !guard.permits_dms())
+        {
+            anyhow::bail!("production DMS deadline exhausted");
+        }
+        if !self.mode.arms_the_switch()
+            && matches!(
+                action,
+                PrivateAction::ArmSwitch
+                    | PrivateAction::ReleaseSwitch
+                    | PrivateAction::Subscribe(PrivateChannel::CancelAllOrdersAfterPerps)
+                    | PrivateAction::Unsubscribe(PrivateChannel::CancelAllOrdersAfterPerps)
+            )
+        {
+            anyhow::bail!("a read-only private transport refuses dead man's switch writes");
+        }
         match action {
             PrivateAction::Login => {
                 let timestamp_ms = now_millis()
@@ -836,6 +987,16 @@ impl PrivateTransportState {
     /// can only fall early - never late, which is the direction that would leave this client trading
     /// on a switch the venue had already fired (plan §R3.3).
     async fn renew_switch(&self, client: &WebSocketClient) -> bool {
+        if self
+            .account
+            .production_authority()
+            .is_some_and(|guard| !guard.permits_dms())
+        {
+            return false;
+        }
+        if !self.mode.arms_the_switch() {
+            return true;
+        }
         let Some(frame) = self.account.dead_mans_switch_renewal_frame() else {
             return true;
         };
@@ -856,6 +1017,13 @@ impl PrivateTransportState {
             }
         };
 
+        if self
+            .account
+            .production_authority()
+            .is_some_and(|guard| !guard.begin_dms_send(now.as_u64(), true))
+        {
+            return true;
+        }
         if let Err(error) = send_body(client, &body).await {
             log::warn!("Ondo private stream failed to renew the switch: {error}");
             // The deadline is left where the confirmation put it, which is the honest state: this
@@ -947,6 +1115,12 @@ impl PrivateTransportState {
             match account.http_client().get_markets().await {
                 Ok(response) => {
                     let markets = response.trading_pairs().len();
+                    if let Err(e) = account.refresh_production_metadata(&response).await {
+                        account.set_metadata(MetadataValidity::Stale {
+                            reason: e.to_string(),
+                        });
+                        return;
+                    }
 
                     account.set_metadata(MetadataValidity::Current);
                     log::debug!("Ondo account metadata refreshed: {markets} market(s)");
@@ -1229,6 +1403,8 @@ mod tests {
 
         OndoPrivateStream {
             url: "ws://127.0.0.1:1".to_string(),
+            mode: PrivateStreamMode::ReadOnly,
+            production: None,
             run: Arc::new(Mutex::new(PrivateRunSnapshot::new(
                 PrivateRunState::Stopping,
                 "test",

@@ -344,6 +344,17 @@ struct PrivateEnvelope<'a> {
     result: Option<&'a RawValue>,
 }
 
+/// The one `AccountInfo` member identity is read from.
+///
+/// `accountID` is the documented stable venue account identifier. The other `AccountInfo` members
+/// (`identifier`, balances, terms, and so on) are deliberately not read here: identity comparison
+/// needs one stable identifier, and an email, a wallet address or a monetary field is not one.
+#[derive(Deserialize)]
+struct AccountInfoId {
+    #[serde(default, rename = "accountID")]
+    account_id: Option<String>,
+}
+
 impl OndoPrivateResponse {
     /// Decodes one answer to an authenticated read.
     ///
@@ -435,6 +446,21 @@ impl OndoPrivateResponse {
     #[must_use]
     pub fn raw_result(&self) -> &str {
         self.result.get()
+    }
+
+    /// Returns the authenticated account's venue identifier, when the answer carries one.
+    ///
+    /// This reads the documented `AccountInfo.accountID`. It is **not** the Nautilus `AccountId`,
+    /// and the two are never compared to each other by string splitting or by prefix guessing.
+    /// [`None`] means the answer carried no comparable identifier, which the caller reports as
+    /// [`crate::common::enums::OndoAccountIdentity::Unknown`] rather than as a match. The value is
+    /// for comparison only and is never logged.
+    #[must_use]
+    pub fn venue_account_id(&self) -> Option<String> {
+        let info: AccountInfoId = serde_json::from_str(self.result.get()).ok()?;
+
+        info.account_id
+            .filter(|account_id| !account_id.trim().is_empty())
     }
 
     /// Returns `result` as a list of items, each keeping its exact JSON text.
@@ -1144,5 +1170,37 @@ mod tests {
             OndoPrivateResponse::decode(200, b"not json"),
             Err(OndoHttpError::Decode(_)),
         ));
+    }
+
+    /// Identity reads exactly the documented `accountID` and nothing else. The email/wallet
+    /// `identifier` and every monetary member are deliberately invisible here: an answer that
+    /// carries only those is an unknown identity, not a match.
+    #[rstest]
+    fn test_venue_account_id_reads_only_the_documented_account_member() {
+        let full = OndoPrivateResponse::decode(
+            200,
+            br#"{"success":true,"result":{"accountID":"10458932786832481","identifier":"someone@example.com","withdrawalFeeUSD":"0"}}"#,
+        )
+        .expect("the account envelope decodes");
+
+        assert_eq!(
+            full.venue_account_id().as_deref(),
+            Some("10458932786832481"),
+        );
+
+        for body in [
+            r#"{"success":true,"result":{"identifier":"someone@example.com"}}"#,
+            r#"{"success":true,"result":{"accountID":"   "}}"#,
+            r#"{"success":true,"result":{"accountId":"10458932786832481"}}"#,
+        ] {
+            let response =
+                OndoPrivateResponse::decode(200, body.as_bytes()).expect("the envelope decodes");
+
+            assert_eq!(
+                response.venue_account_id(),
+                None,
+                "`{body}` carries no comparable `accountID`",
+            );
+        }
     }
 }

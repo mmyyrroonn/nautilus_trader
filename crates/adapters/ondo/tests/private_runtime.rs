@@ -154,6 +154,11 @@ struct RestState {
     /// Unset by default: an unscripted create is answered `404`, which is what every test that
     /// asserts a submission never becomes a request relies on.
     create_answer: Mutex<Option<String>>,
+    production_close_fill_limit: Mutex<Option<String>>,
+    production_residual_override: Mutex<Option<String>>,
+    contracts: Mutex<String>,
+    reject_next_close: AtomicBool,
+    available_margin_override: Mutex<Option<String>>,
     /// The answer a single-order cancel (`DELETE /v1/perps/orders/{id}`) gets, when a test scripts
     /// one.
     ///
@@ -190,6 +195,13 @@ impl RestState {
             positions: Mutex::new(Vec::new()),
             funding: Mutex::new(Vec::new()),
             create_answer: Mutex::new(None),
+            production_close_fill_limit: Mutex::new(None),
+            production_residual_override: Mutex::new(None),
+            contracts: Mutex::new(
+                r#"[{"market":"NVDA-USD.P","isClosed":false,"disabled":false}]"#.into(),
+            ),
+            reject_next_close: AtomicBool::new(false),
+            available_margin_override: Mutex::new(None),
             cancel_answer: Mutex::new(None),
             order_answer: Mutex::new(None),
             hold_orders: AtomicBool::new(false),
@@ -401,6 +413,13 @@ async fn answer(stream: &mut TcpStream, state: &RestState, request: &Captured) {
 
             write_response(stream, 200, &page(&orders)).await;
         }
+        ("GET", "/v1/account") => {
+            write_response(stream, 200, &envelope(r#"{"accountID":"unit-account"}"#)).await;
+        }
+        ("GET", "/v1/perps/contracts") => {
+            let contracts = state.contracts.lock().unwrap().clone();
+            write_response(stream, 200, &envelope(&contracts)).await;
+        }
         ("GET", "/v1/perps/fills") => {
             let fills = state.fills.lock().expect("the fill script").clone();
 
@@ -412,7 +431,29 @@ async fn answer(stream: &mut TcpStream, state: &RestState, request: &Captured) {
             write_response(stream, 200, &page(&positions)).await;
         }
         ("GET", "/v1/perps/balance") => {
-            write_response(stream, 200, &envelope(&balance_json())).await;
+            let mut balance: serde_json::Value = serde_json::from_str(&balance_json()).unwrap();
+            if let Some(amount) = state.available_margin_override.lock().unwrap().as_ref() {
+                for key in [
+                    "walletBalance",
+                    "marginBalance",
+                    "availableMargin",
+                    "withdrawableMargin",
+                ] {
+                    balance[key] = serde_json::json!(amount);
+                }
+                for key in [
+                    "realizedPnl",
+                    "unrealizedPnl",
+                    "usedMargin",
+                    "maintenanceMarginRequirement",
+                    "totalMaintenanceMargin",
+                    "marginRatio",
+                    "leverage",
+                ] {
+                    balance[key] = serde_json::json!("0.00");
+                }
+            }
+            write_response(stream, 200, &envelope(&balance.to_string())).await;
         }
         ("GET", "/v1/perps/funding_fees") => {
             let funding = state.funding.lock().expect("the funding script").clone();
@@ -420,6 +461,19 @@ async fn answer(stream: &mut TcpStream, state: &RestState, request: &Captured) {
             write_response(stream, 200, &page(&funding)).await;
         }
         ("POST", "/v1/perps/orders") => {
+            let request_value: serde_json::Value = serde_json::from_str(&request.body).unwrap();
+            if request_value["reduceOnly"] == true
+                && state.reject_next_close.swap(false, Ordering::SeqCst)
+            {
+                write_response(
+                    stream,
+                    400,
+                    r#"{"success":false,"code":"insufficient_margin"}"#,
+                )
+                .await;
+                return;
+            }
+
             if state.hold_create.load(Ordering::SeqCst) {
                 state.release_create.notified().await;
             }
@@ -451,6 +505,65 @@ async fn answer(stream: &mut TcpStream, state: &RestState, request: &Captured) {
                         &envelope(&api_order(&venue_order_id, &client_order_id, "open")),
                     )
                     .await;
+                }
+                Some("<production-ioc>") => {
+                    let body: serde_json::Value = serde_json::from_str(&request.body).unwrap();
+                    let id = body["clientOrderId"].as_str().unwrap();
+                    let venue = format!("venue-{id}");
+                    let requested = body["size"].as_str().unwrap();
+                    let limited = if body["reduceOnly"] == true {
+                        state.production_close_fill_limit.lock().unwrap().take()
+                    } else {
+                        None
+                    };
+                    let qty = limited.as_deref().unwrap_or(requested);
+                    let side = body["side"].as_str().unwrap();
+                    let price = body["price"].as_str().unwrap();
+                    let mut order: serde_json::Value =
+                        serde_json::from_str(&api_order(&venue, id, "fullyfilled")).unwrap();
+                    for key in ["side", "price", "size", "timeInForce", "reduceOnly"] {
+                        order[key] = body[key].clone();
+                    }
+                    order["filledSize"] = serde_json::json!(qty);
+                    if limited.is_some() {
+                        order["status"] = serde_json::json!("canceled");
+                    }
+                    let mut fill: serde_json::Value =
+                        serde_json::from_str(&api_fill(&format!("fill-{id}"), &venue, id, qty))
+                            .unwrap();
+                    fill["side"] = serde_json::json!(side);
+                    fill["price"] = serde_json::json!(price);
+                    fill["direction"] = serde_json::json!(if side == "buy" {
+                        "openLong"
+                    } else {
+                        "closeLong"
+                    });
+                    state.orders.lock().unwrap().push(order.to_string());
+                    let fills = {
+                        let mut fills = state.fills.lock().unwrap();
+                        fills.push(fill.to_string());
+                        fills.clone()
+                    };
+                    let mut net = rust_decimal::Decimal::ZERO;
+                    for fill in fills {
+                        let f: serde_json::Value = serde_json::from_str(&fill).unwrap();
+                        let q = rust_decimal::Decimal::from_str_exact(f["size"].as_str().unwrap())
+                            .unwrap();
+                        net += if f["side"] == "buy" { q } else { -q };
+                    }
+                    if body["reduceOnly"] == true {
+                        if let Some(residual) =
+                            state.production_residual_override.lock().unwrap().as_ref()
+                        {
+                            net = rust_decimal::Decimal::from_str_exact(residual).unwrap();
+                        }
+                    }
+                    *state.positions.lock().unwrap() = if net == rust_decimal::Decimal::ZERO {
+                        Vec::new()
+                    } else {
+                        vec![api_position(&net.to_string())]
+                    };
+                    write_response(stream, 200, &envelope(&order.to_string())).await;
                 }
                 Some(answer) => write_response(stream, 200, &envelope(answer)).await,
                 None => write_response(stream, 404, r#"{"success":false}"#).await,
@@ -614,6 +727,13 @@ enum Venue {
     RefuseLogin,
     /// Acknowledge the login and refuse every subscription.
     RefuseSubscribe,
+    NoDmsAck,
+    InitialDmsAckOnly,
+    NoLoginAck,
+    NoReportAck,
+    NoReleaseAck,
+    WrongReleaseAck,
+    DelayedReleaseAck,
 }
 
 /// The endpoint's record of what the client sent, and its way of pushing back.
@@ -734,7 +854,10 @@ impl MockPrivate {
                                     let text = text.to_string();
                                     recorded.lock().expect("the frame log").push(text.clone());
 
-                                    for reply in responses(venue, &text) {
+                                    let dms_count=recorded.lock().unwrap().iter().filter(|body|body.contains("cancelAllOrdersAfterPerps") && body.contains("subscribe")).count();
+                                    let effective=if venue==Venue::InitialDmsAckOnly && dms_count>1 {Venue::NoDmsAck}else{venue};
+                                    if venue==Venue::DelayedReleaseAck && text.contains("unsubscribe") {tokio::time::sleep(Duration::from_millis(80)).await;}
+                                    for reply in responses(effective, &text) {
                                         let sinks = sinks.lock().expect("the sink log");
                                         if let Some(sender) = sinks.last() {
                                             let _ = sender.send(Message::Text(reply.into()));
@@ -771,11 +894,22 @@ fn responses(venue: Venue, text: &str) -> Vec<String> {
             r#"{"type":"error","code":"signature_mismatch","msg":"the signature does not match"}"#
                 .to_string(),
         ],
+        (Venue::NoLoginAck, Some("login")) => Vec::new(),
         (_, Some("login")) => vec![r#"{"type":"loggedIn","msg":"Login successful"}"#.to_string()],
         (Venue::RefuseSubscribe, Some("subscribe")) => vec![format!(
             r#"{{"type":"error","channel":"{channel}","msg":"subscription refused"}}"#,
         )],
+        (Venue::NoDmsAck, Some("subscribe")) if channel == "cancelAllOrdersAfterPerps" => {
+            Vec::new()
+        }
+        (Venue::NoReportAck, Some("subscribe")) if channel != "cancelAllOrdersAfterPerps" => {
+            Vec::new()
+        }
         (_, Some("subscribe")) => vec![format!(r#"{{"type":"subscribed","channel":"{channel}"}}"#)],
+        (Venue::NoReleaseAck, Some("unsubscribe")) => Vec::new(),
+        (Venue::WrongReleaseAck, Some("unsubscribe")) => {
+            vec![r#"{"type":"unsubscribed","channel":"ordersPerps"}"#.into()]
+        }
         (_, Some("unsubscribe")) => {
             vec![format!(
                 r#"{{"type":"unsubscribed","channel":"{channel}"}}"#
@@ -817,6 +951,20 @@ fn build_harness(
     private: &MockPrivate,
     config: OndoExecutionClientConfig,
 ) -> Harness {
+    build_harness_on_budget(
+        rest,
+        private,
+        config,
+        OndoRateBudget::with_quota(Quota::per_second(NonZeroU32::new(1_000).unwrap()).unwrap()),
+    )
+}
+
+fn build_harness_on_budget(
+    rest: &MockRest,
+    private: &MockPrivate,
+    config: OndoExecutionClientConfig,
+    budget: OndoRateBudget,
+) -> Harness {
     let account_id = AccountId::from(ACCOUNT_ID);
     let cache = Rc::new(RefCell::new(Cache::default()));
 
@@ -839,16 +987,11 @@ fn build_harness(
     };
 
     let credential = OndoCredential::new(
-        OndoEnvironment::Sandbox,
+        config.environment,
         TEST_KEY_ID.to_string(),
         TEST_API_SECRET.to_string(),
     )
     .expect("the plan's fake credential is well formed");
-
-    let budget = OndoRateBudget::with_quota(
-        Quota::per_second(NonZeroU32::new(1_000).expect("a nonzero quota"))
-            .expect("a burst this size replenishes"),
-    );
 
     let (exec_tx, exec_rx) = mpsc::unbounded_channel();
     let (data_tx, _data_rx) = mpsc::unbounded_channel::<DataEvent>();
@@ -954,7 +1097,10 @@ async fn connect(harness: &mut Harness) {
     harness.client.connect().await.expect("connect");
 
     wait_until(harness, "an established session", |client, _events| {
-        client.private_run_state().state == PrivateRunState::Recovering
+        matches!(
+            client.private_run_state().state,
+            PrivateRunState::Recovering | PrivateRunState::ReadOnlySynced
+        )
     })
     .await;
 }
@@ -1419,6 +1565,17 @@ async fn test_a_read_only_session_never_arms_the_switch_and_never_trades() {
         "a read-only session is synced, never trading-ready",
     );
 
+    // The native snapshot is the application's read-only view of exactly this: an accepted login
+    // and the acknowledged report channels, with the switch absent, and the run state that says so.
+    let snapshot = harness.client.read_only_diagnostics().snapshot();
+
+    assert!(snapshot.logged_in, "the venue accepted the login");
+    assert_eq!(snapshot.run_state, "read_only_synced");
+    assert!(snapshot.subscriptions_acked.contains(&"ordersPerps"));
+    assert!(snapshot.subscriptions_acked.contains(&"fillsPerps"));
+    assert_eq!(snapshot.identity_match, "unknown");
+    assert_eq!(snapshot.shutdown_status, "running");
+
     // And a submission is refused by name, with nothing sent.
     let order = limit_order(CLIENT_ORDER_ID);
     seed_order(&harness, &order);
@@ -1481,6 +1638,16 @@ async fn test_a_read_only_session_triggers_no_switch_side_effect_and_no_cancel()
     );
 
     harness.client.disconnect().await.expect("the stop");
+
+    assert_eq!(
+        harness
+            .client
+            .read_only_diagnostics()
+            .snapshot()
+            .shutdown_status,
+        "complete",
+        "a read-only stop has nothing to cancel and finishes clean",
+    );
 
     let switch_frames: Vec<String> = private
         .bodies()
@@ -4169,4 +4336,1351 @@ async fn test_the_account_state_travels_from_the_emitter_into_the_cache() {
     );
 
     harness.client.stop().expect("stop");
+}
+
+/// The factory clone used by a node updates the original factory's run-local snapshot.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_readonly_factory_clones_share_live_telemetry_and_isolate_runs() {
+    use nautilus_common::factories::ExecutionClientFactory;
+    use nautilus_ondo::factories::OndoExecutionClientFactory;
+
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    let (exec_tx, _exec_rx) = mpsc::unbounded_channel::<ExecutionEvent>();
+    let (data_tx, _data_rx) = mpsc::unbounded_channel::<DataEvent>();
+    replace_exec_event_sender(exec_tx);
+    replace_data_event_sender(data_tx);
+    let factory = OndoExecutionClientFactory::with_budget(OndoRateBudget::with_quota(
+        Quota::per_second(NonZeroU32::new(1_000).unwrap()).unwrap(),
+    ));
+    let node_factory = factory.clone();
+    let independent = OndoExecutionClientFactory::new();
+    let config = OndoExecutionClientConfig {
+        environment: OndoEnvironment::Production,
+        base_url_http: Some(rest.http_url()),
+        base_url_ws: Some(private.url.clone()),
+        account_read_only: true,
+        diagnostics_run_id: Some("readonly-first-run".to_string()),
+        reconcile_interval_secs: 1,
+        ..sandbox_config()
+    };
+    let mut first = node_factory
+        .create(
+            TraderId::from("TESTER-001"),
+            CLIENT_ID,
+            &config,
+            Rc::new(RefCell::new(Cache::default())).into(),
+        )
+        .expect("the cloned factory creates the first client");
+    assert_eq!(
+        factory.read_only_snapshot().unwrap().run_id,
+        "readonly-first-run"
+    );
+    assert!(!factory.read_only_snapshot().unwrap().logged_in);
+    first.start().unwrap();
+    first.connect().await.unwrap();
+    let start = Instant::now();
+    loop {
+        let snapshot = factory.read_only_snapshot().unwrap();
+        if snapshot.logged_in
+            && snapshot.subscriptions_acked.len() == 2
+            && snapshot.account_state_events > 0
+            && snapshot.run_state == "read_only_synced"
+        {
+            break;
+        }
+        assert!(
+            start.elapsed() <= WAIT,
+            "native telemetry did not converge: {snapshot:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let connected = factory.read_only_snapshot().unwrap();
+    assert_eq!(
+        connected.reconnects, 0,
+        "the initial connection is not a reconnect"
+    );
+    assert!(connected.recoveries > 0);
+    assert_eq!(connected.identity_match, "unknown");
+    assert!(independent.read_only_snapshot().is_none());
+    first.disconnect().await.unwrap();
+    let stopped = factory.read_only_snapshot().unwrap();
+    assert_eq!(stopped.shutdown_status, "complete");
+    assert!(stopped.logged_in, "accepted login evidence survives stop");
+    assert_eq!(
+        stopped.subscriptions_acked,
+        vec!["ordersPerps", "fillsPerps"]
+    );
+    assert!(switch_frames(&private).is_empty());
+    assert!(rest.with_method("POST").is_empty());
+    assert!(rest.with_method("DELETE").is_empty());
+
+    let second_config = OndoExecutionClientConfig {
+        diagnostics_run_id: Some("readonly-second-run".to_string()),
+        ..config
+    };
+    let _second = node_factory
+        .create(
+            TraderId::from("TESTER-001"),
+            CLIENT_ID,
+            &second_config,
+            Rc::new(RefCell::new(Cache::default())).into(),
+        )
+        .expect("the cloned factory creates the second client");
+    drop(first);
+    let second = factory.read_only_snapshot().unwrap();
+    assert_eq!(second.run_id, "readonly-second-run");
+    assert!(!second.logged_in);
+    assert!(second.subscriptions_acked.is_empty());
+    assert_eq!(second.account_state_events, 0);
+    assert_eq!(second.recoveries, 0);
+    assert_eq!(second.reconnects, 0);
+    assert_eq!(second.shutdown_status, "not_attempted");
+    assert_eq!(second.run_state, "disconnected");
+    assert!(independent.read_only_snapshot().is_none());
+}
+
+#[rstest]
+#[case(OndoEnvironment::Sandbox)]
+#[case(OndoEnvironment::Production)]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_readonly_direct_switch_arm_renew_release_never_write(
+    #[case] environment: OndoEnvironment,
+) {
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    let harness = build_harness(
+        &rest,
+        &private,
+        OndoExecutionClientConfig {
+            environment,
+            account_read_only: true,
+            ..sandbox_config()
+        },
+    );
+    let credential = Arc::new(
+        OndoCredential::new(
+            environment,
+            TEST_KEY_ID.to_string(),
+            TEST_API_SECRET.to_string(),
+        )
+        .unwrap(),
+    );
+    let mut stream = nautilus_ondo::websocket::private::OndoPrivateStream::start(
+        private.url.clone(),
+        harness.client.account(),
+        credential,
+        PrivateStreamMode::ReadOnly,
+        20,
+    )
+    .unwrap();
+    tokio::time::timeout(WAIT, async {
+        while private.frames_with_op("subscribe").len() < 2 {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    let mut results = Vec::new();
+    for frame in [
+        nautilus_ondo::reconciliation::DeadMansSwitchMessage::new(WsOp::Subscribe, 30),
+        nautilus_ondo::reconciliation::DeadMansSwitchMessage::new(WsOp::Subscribe, 15),
+        nautilus_ondo::reconciliation::DeadMansSwitchMessage::new(WsOp::Unsubscribe, 30),
+    ] {
+        results.push(stream.send_switch_frame(&frame).await);
+    }
+    stream.stop().await;
+    assert!(
+        results.iter().all(|result| result
+            .as_ref()
+            .is_err_and(|e| e.to_string().contains("read-only"))),
+        "every direct DMS operation must be a named readonly refusal: {results:?}"
+    );
+    assert!(
+        switch_frames(&private).is_empty(),
+        "readonly direct frames reached the wire"
+    );
+    assert_eq!(rest.writes(), 0);
+}
+
+#[rstest]
+#[case(OndoEnvironment::Sandbox)]
+#[case(OndoEnvironment::Production)]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_readonly_unsolicited_switch_ack_cannot_start_renewal(
+    #[case] environment: OndoEnvironment,
+) {
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut harness = build_harness(
+        &rest,
+        &private,
+        OndoExecutionClientConfig {
+            environment,
+            account_read_only: true,
+            dms_timeout_secs: 2,
+            reconcile_interval_secs: 1,
+            expected_venue_account_id: Some("unit-account".into()),
+            ..sandbox_config()
+        },
+    );
+    connect(&mut harness).await;
+    private.push(r#"{"type":"subscribed","channel":"cancelAllOrdersAfterPerps"}"#);
+    // This crosses the real one-second renewal interval without changing the process clock
+    tokio::time::sleep(Duration::from_millis(1_250)).await;
+    let switch_state = harness.client.account().dead_mans_switch_state();
+    let renewals = harness.client.account().dead_mans_switch_renewals();
+    harness.client.disconnect().await.unwrap();
+    assert!(
+        switch_frames(&private).is_empty(),
+        "unsolicited ACK caused a readonly DMS write"
+    );
+    assert_eq!(switch_state, DeadMansSwitchState::NotRequired);
+    assert_eq!(renewals, 0);
+    assert_eq!(rest.writes(), 0);
+}
+
+#[rstest]
+#[case(OndoEnvironment::Sandbox)]
+#[case(OndoEnvironment::Production)]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_readonly_runtime_cannot_be_armed_or_upgraded(#[case] environment: OndoEnvironment) {
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    let harness = build_harness(
+        &rest,
+        &private,
+        OndoExecutionClientConfig {
+            environment,
+            account_read_only: true,
+            ..sandbox_config()
+        },
+    );
+    let account = harness.client.account();
+    let _ = account.arm_dead_mans_switch(now());
+    account.confirm_dead_mans_switch(now());
+    account.dead_mans_switch_confirmed_at(now());
+    account.note_dead_mans_switch_renewed(now());
+    let attempted = nautilus_ondo::websocket::private::OndoPrivateStream::start(
+        private.url.clone(),
+        account.clone(),
+        Arc::new(
+            OndoCredential::new(
+                environment,
+                TEST_KEY_ID.to_string(),
+                TEST_API_SECRET.to_string(),
+            )
+            .unwrap(),
+        ),
+        PrivateStreamMode::Trading,
+        20,
+    );
+    assert_eq!(
+        account.dead_mans_switch_state(),
+        DeadMansSwitchState::NotRequired
+    );
+    assert!(account.dead_mans_switch_renewal_frame().is_none());
+    assert_eq!(account.dead_mans_switch_renewals(), 0);
+    assert!(attempted.is_err_and(|e| e.to_string().contains("read-only")));
+    assert_eq!(private.connection_count(), 0);
+    assert!(private.bodies().is_empty());
+}
+
+fn production_config(journal: &JournalPath) -> OndoExecutionClientConfig {
+    let now = now().as_u64();
+    let envelope = serde_json::from_value(serde_json::json!({
+        "instrument_id":NVDA,"entry_side":"buy","entry_max_quantity":"0.05",
+        "entry_worst_price":"230","entry_max_notional_usd":"15","close_side":"sell",
+        "close_max_quantity":"0.05","close_worst_price":"225","max_close_attempts":2,
+        "max_notional_per_order_usd":"50","max_gross_exposure_usd":"100","min_available_margin_usdc":"25","max_orders":3,
+        "max_new_risk_requests":1,"max_app_requests":6,
+        "entry_deadline_unix_nanos":now+60_000_000_000_u64,
+        "cleanup_deadline_unix_nanos":now+120_000_000_000_u64,"require_flat_start":true
+    }))
+    .unwrap();
+    OndoExecutionClientConfig {
+        environment: OndoEnvironment::Production,
+        allow_production_orders: true,
+        expected_venue_account_id: Some("unit-account".into()),
+        diagnostics_run_id: Some("bounded-test-run".into()),
+        execution_envelope: Some(envelope),
+        reconcile_interval_secs: 1,
+        ..journal.config()
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_start_publishes_real_complete_snapshot_after_dms_ack() {
+    let journal = JournalPath::new("production-start");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut harness = build_harness(&rest, &private, production_config(&journal));
+    assert!(harness.client.production_trade_snapshot().is_none());
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    let snapshot = harness.client.production_trade_snapshot().unwrap();
+    assert_eq!(snapshot["run_id"], "bounded-test-run");
+    assert_eq!(snapshot["phase"], "start");
+    for key in [
+        "account_flat",
+        "coverage_complete",
+        "native_ready",
+        "metadata_fresh",
+        "trading_enabled",
+        "dms_verified",
+    ] {
+        assert_eq!(snapshot[key], true, "{key}");
+    }
+    assert_eq!(snapshot["underlying_market_closed"], false);
+    assert!(snapshot["minimum_notional_usd"].is_null());
+    assert!(!switch_frames(&private).is_empty());
+    assert_eq!(rest.writes(), 0);
+    harness.client.disconnect().await.unwrap();
+}
+
+#[rstest]
+#[case(true)]
+#[case(false)]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_occupied_account_never_connects_or_arms_dms(#[case] position: bool) {
+    let journal = JournalPath::new("production-occupied");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    if position {
+        rest.state
+            .positions
+            .lock()
+            .unwrap()
+            .push(api_position("0.5"));
+    } else {
+        rest.state
+            .orders
+            .lock()
+            .unwrap()
+            .push(api_order("foreign", "foreign", "open"));
+    }
+    let mut harness = build_harness(&rest, &private, production_config(&journal));
+    harness.client.start().unwrap();
+    assert!(harness.client.connect().await.is_err());
+    assert_eq!(private.connection_count(), 0);
+    assert!(switch_frames(&private).is_empty());
+    assert_eq!(rest.writes(), 0);
+}
+
+fn production_order(id: &str, close: bool, quantity: &str, price: &str) -> OrderAny {
+    OrderTestBuilder::new(OrderType::Limit)
+        .trader_id(TraderId::from("TESTER-001"))
+        .strategy_id(StrategyId::from("S-001"))
+        .instrument_id(InstrumentId::from(NVDA))
+        .client_order_id(ClientOrderId::from(id))
+        .side(if close {
+            OrderSide::Sell
+        } else {
+            OrderSide::Buy
+        })
+        .quantity(Quantity::from(quantity))
+        .price(Price::from(price))
+        .time_in_force(TimeInForce::Ioc)
+        .reduce_only(close)
+        .build()
+}
+
+fn production_quote(harness: &Harness, at: UnixNanos) {
+    harness
+        .cache
+        .borrow_mut()
+        .add_quote(nautilus_model::data::QuoteTick::new(
+            InstrumentId::from(NVDA),
+            Price::from("227.49"),
+            Price::from("227.50"),
+            Quantity::from("10.00"),
+            Quantity::from("10.00"),
+            at,
+            at,
+        ))
+        .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_native_ioc_round_trip_reconciles_before_stop_and_retains_final() {
+    let journal = JournalPath::new("production-cycle");
+    let rest = MockRest::start().await;
+    rest.set_create_answer("<production-ioc>");
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut harness = build_harness(&rest, &private, production_config(&journal));
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    let start = harness.client.production_trade_snapshot().unwrap();
+    production_quote(&harness, now());
+    let entry = production_order("prod-entry", false, "0.05", "230.00");
+    seed_order(&harness, &entry);
+    harness.client.submit_order(submit_command(&entry)).unwrap();
+    wait_until(&mut harness, "confirmed entry fill", |client, _| {
+        client
+            .order_state(&ClientOrderId::from("prod-entry"))
+            .is_some_and(|o| o.is_settled() && o.filled == Quantity::from("0.05"))
+    })
+    .await;
+    assert!(harness.client.production_trade_snapshot().is_none());
+    production_quote(&harness, now());
+    let close = production_order("prod-close", true, "0.05", "225.00");
+    seed_order(&harness, &close);
+    harness.client.submit_order(submit_command(&close)).unwrap();
+    wait_until(&mut harness, "fresh REST flat proof", |client, _| {
+        client
+            .production_trade_snapshot()
+            .is_some_and(|s| s["phase"] == "reconciled")
+    })
+    .await;
+    let proof = harness.client.production_trade_snapshot().unwrap();
+    assert!(proof["generation"].as_u64().unwrap() > start["generation"].as_u64().unwrap());
+    assert_eq!(proof["position_qty"], "0");
+    assert_eq!(
+        proof["latest_activity_generation"],
+        proof["reconciled_activity_generation"]
+    );
+    assert_eq!(rest.writes(), 2);
+    harness.client.disconnect().await.unwrap();
+    let final_proof = harness.client.production_trade_snapshot().unwrap();
+    assert_eq!(final_proof["phase"], "final");
+    assert_eq!(final_proof["shutdown_status"], "clean");
+    assert_eq!(rest.writes(), 2);
+}
+
+#[rstest]
+#[case("quantity", "0.06", "230.00", false)]
+#[case("price", "0.05", "230.01", false)]
+#[case("quantity_grid", "0.051", "230.00", false)]
+#[case("price_grid", "0.05", "229.999", false)]
+#[case("close_without_fill", "0.05", "225.00", true)]
+#[case("stale_quote", "0.05", "230.00", false)]
+#[case("missing_quote", "0.05", "230.00", false)]
+#[case("stale_metadata", "0.05", "230.00", false)]
+#[case("gtc", "0.05", "230.00", false)]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_invalid_native_command_never_posts(
+    #[case] case: &str,
+    #[case] quantity: &str,
+    #[case] price: &str,
+    #[case] close: bool,
+) {
+    let journal = JournalPath::new(case);
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut harness = build_harness(&rest, &private, production_config(&journal));
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    if case != "missing_quote" {
+        production_quote(
+            &harness,
+            if case == "stale_quote" {
+                UnixNanos::from(now().as_u64() - 3_000_000_000)
+            } else {
+                now()
+            },
+        );
+    }
+    if case == "stale_metadata" {
+        harness
+            .client
+            .account()
+            .set_metadata(MetadataValidity::Stale {
+                reason: "synthetic failed metadata read".into(),
+            });
+    }
+    let order = if case == "gtc" {
+        limit_order("bad-prod")
+    } else {
+        production_order("bad-prod", close, quantity, price)
+    };
+    seed_order(&harness, &order);
+    harness.client.submit_order(submit_command(&order)).unwrap();
+    wait_until(&mut harness, "a refused production command", |_, events| {
+        events.iter().any(|e| {
+            matches!(
+                e,
+                ExecutionEvent::Order(OrderEventAny::Denied(_) | OrderEventAny::Rejected(_))
+            )
+        })
+    })
+    .await;
+    assert_eq!(rest.writes(), 0, "{case}");
+    let _ = harness.client.disconnect().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_two_openings_reserve_only_one_native_send() {
+    let journal = JournalPath::new("race-open");
+    let rest = MockRest::start().await;
+    rest.set_create_answer("<production-ioc>");
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut harness = build_harness(&rest, &private, production_config(&journal));
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    production_quote(&harness, now());
+    for id in ["race-open-a", "race-open-b"] {
+        let order = production_order(id, false, "0.05", "230.00");
+        seed_order(&harness, &order);
+        harness.client.submit_order(submit_command(&order)).unwrap();
+    }
+    wait_until(
+        &mut harness,
+        "one fill and one refusal",
+        |client, events| {
+            client.applied_fill_count() == 1
+                && events
+                    .iter()
+                    .any(|e| matches!(e, ExecutionEvent::Order(OrderEventAny::Rejected(_))))
+        },
+    )
+    .await;
+    assert_eq!(rest.writes(), 1);
+    let _ = harness.client.disconnect().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_foreign_and_cancel_all_targets_never_leave_http() {
+    let journal = JournalPath::new("foreign-cancel");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut harness = build_harness(&rest, &private, production_config(&journal));
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    let http = harness.client.http_client();
+    for path in [
+        "/v1/perps/orders/foreign",
+        "/v1/perps/orders?market=NVDA-USD.P",
+        "/v1/perps/orders/batch",
+    ] {
+        assert!(
+            http.delete_signed_raw(
+                &nautilus_ondo::http::query::OndoRequestTarget::new(path),
+                nautilus_ondo::http::rate_limit::OndoRequestPriority::High
+            )
+            .await
+            .is_err()
+        );
+    }
+    assert_eq!(rest.writes(), 0);
+    harness.client.disconnect().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_unknown_post_retains_original_id_and_blocks_second_order() {
+    let journal = JournalPath::new("unknown-post");
+    let rest = MockRest::start().await;
+    rest.state.hold_create.store(true, Ordering::SeqCst);
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut config = production_config(&journal);
+    config.http_timeout_secs = 1;
+    let mut harness = build_harness(&rest, &private, config);
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    production_quote(&harness, now());
+    let order = production_order("unknown-original", false, "0.05", "230.00");
+    seed_order(&harness, &order);
+    harness.client.submit_order(submit_command(&order)).unwrap();
+    wait_until(&mut harness, "unknown outcome", |client, _| {
+        client.unknown_submissions().len() == 1
+    })
+    .await;
+    production_quote(&harness, now());
+    let second = production_order("forbidden-retry", false, "0.05", "230.00");
+    seed_order(&harness, &second);
+    harness
+        .client
+        .submit_order(submit_command(&second))
+        .unwrap();
+    assert_eq!(rest.writes(), 1);
+    assert!(
+        harness
+            .client
+            .tracks(&ClientOrderId::from("unknown-original"))
+    );
+    assert!(harness.client.production_trade_snapshot().is_none());
+    rest.state.release_create.notify_waiters();
+    let _ = harness.client.disconnect().await;
+}
+
+async fn production_entry(harness: &mut Harness) {
+    production_quote(harness, now());
+    let entry = production_order("prod-entry", false, "0.05", "230.00");
+    seed_order(harness, &entry);
+    harness.client.submit_order(submit_command(&entry)).unwrap();
+    wait_until(harness, "settled own entry", |client, _| {
+        client
+            .order_state(&ClientOrderId::from("prod-entry"))
+            .is_some_and(|o| o.is_settled() && o.filled == Quantity::from("0.05"))
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_terminal_partial_close_releases_only_unfilled_reservation() {
+    let journal = JournalPath::new("partial-close");
+    let rest = MockRest::start().await;
+    rest.set_create_answer("<production-ioc>");
+    *rest.state.production_close_fill_limit.lock().unwrap() = Some("0.03".into());
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut harness = build_harness(&rest, &private, production_config(&journal));
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    production_entry(&mut harness).await;
+    production_quote(&harness, now());
+    let first = production_order("close-first", true, "0.05", "225.00");
+    seed_order(&harness, &first);
+    harness.client.submit_order(submit_command(&first)).unwrap();
+    wait_until(&mut harness, "terminal partial close", |client, _| {
+        client
+            .order_state(&ClientOrderId::from("close-first"))
+            .is_some_and(|o| o.is_settled() && o.filled == Quantity::from("0.03"))
+    })
+    .await;
+    production_quote(&harness, now());
+    let second = production_order("close-residual", true, "0.02", "225.00");
+    seed_order(&harness, &second);
+    harness
+        .client
+        .submit_order(submit_command(&second))
+        .unwrap();
+    wait_until(&mut harness, "reconciled remaining close", |client, _| {
+        client
+            .production_trade_snapshot()
+            .is_some_and(|s| s["phase"] == "reconciled")
+    })
+    .await;
+    assert_eq!(rest.writes(), 3);
+    harness.client.disconnect().await.unwrap();
+    assert_eq!(
+        harness.client.production_trade_snapshot().unwrap()["phase"],
+        "final"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_racing_closes_never_exceed_confirmed_entry() {
+    let journal = JournalPath::new("race-close");
+    let rest = MockRest::start().await;
+    rest.set_create_answer("<production-ioc>");
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut harness = build_harness(&rest, &private, production_config(&journal));
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    production_entry(&mut harness).await;
+    production_quote(&harness, now());
+    for id in ["close-race-a", "close-race-b"] {
+        let close = production_order(id, true, "0.05", "225.00");
+        seed_order(&harness, &close);
+        harness.client.submit_order(submit_command(&close)).unwrap();
+    }
+    wait_until(&mut harness, "race close flat proof", |client, _| {
+        client
+            .production_trade_snapshot()
+            .is_some_and(|s| s["phase"] == "reconciled")
+    })
+    .await;
+    assert_eq!(rest.writes(), 2);
+    harness.client.disconnect().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_close_still_works_after_entry_deadline() {
+    let journal = JournalPath::new("close-after-entry-deadline");
+    let rest = MockRest::start().await;
+    rest.set_create_answer("<production-ioc>");
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut config = production_config(&journal);
+    let deadline = now().as_u64() + 3_000_000_000;
+    config
+        .execution_envelope
+        .as_mut()
+        .unwrap()
+        .entry_deadline_unix_nanos = deadline;
+    let mut harness = build_harness(&rest, &private, config);
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    production_entry(&mut harness).await;
+    tokio::time::sleep(Duration::from_nanos(
+        deadline.saturating_sub(now().as_u64()) + 20_000_000,
+    ))
+    .await;
+    production_quote(&harness, now());
+    let close = production_order("cleanup-close", true, "0.05", "225.00");
+    seed_order(&harness, &close);
+    harness.client.submit_order(submit_command(&close)).unwrap();
+    wait_until(&mut harness, "bounded cleanup proof", |client, _| {
+        client
+            .production_trade_snapshot()
+            .is_some_and(|s| s["phase"] == "reconciled")
+    })
+    .await;
+    assert_eq!(rest.writes(), 2);
+    harness.client.disconnect().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_reconnect_rearms_only_owned_residual_then_closes() {
+    let journal = JournalPath::new("owned-reconnect");
+    let rest = MockRest::start().await;
+    rest.set_create_answer("<production-ioc>");
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut harness = build_harness(&rest, &private, production_config(&journal));
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    production_entry(&mut harness).await;
+    private.disconnect();
+    wait_until(&mut harness, "reconnected own residual", |client, _| {
+        private.connection_count() >= 2
+            && client.private_run_state().state == PrivateRunState::TradingReady
+    })
+    .await;
+    assert!(switch_frames(&private).len() >= 2);
+    production_quote(&harness, now());
+    let close = production_order("reconnect-close", true, "0.05", "225.00");
+    seed_order(&harness, &close);
+    harness.client.submit_order(submit_command(&close)).unwrap();
+    wait_until(&mut harness, "post reconnect flat proof", |client, _| {
+        client
+            .production_trade_snapshot()
+            .is_some_and(|s| s["phase"] == "reconciled")
+    })
+    .await;
+    assert_eq!(rest.writes(), 2);
+    harness.client.disconnect().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_journal_write_failure_blocks_before_post() {
+    let journal = JournalPath::new("production-journal-fail");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut harness = build_harness(&rest, &private, production_config(&journal));
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    std::fs::remove_file(&journal.path).unwrap();
+    std::fs::create_dir(&journal.path).unwrap();
+    production_quote(&harness, now());
+    let order = production_order("journal-refused", false, "0.05", "230.00");
+    seed_order(&harness, &order);
+    harness.client.submit_order(submit_command(&order)).unwrap();
+    wait_until(&mut harness, "journal refusal", |_, events| {
+        events
+            .iter()
+            .any(|e| matches!(e, ExecutionEvent::Order(OrderEventAny::Rejected(_))))
+    })
+    .await;
+    assert_eq!(rest.writes(), 0);
+    assert!(harness.client.account().journal_write_failures() > 0);
+    let _ = harness.client.disconnect().await;
+}
+
+#[rstest]
+#[case("deadline")]
+#[case("disconnect")]
+#[case("quote")]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_rechecks_after_budget_wait(#[case] condition: &str) {
+    let journal = JournalPath::new(condition);
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    let budget = OndoRateBudget::with_quota(
+        Quota::with_period(Duration::from_millis(if condition == "quote" {
+            4_000
+        } else {
+            2_100
+        }))
+        .unwrap()
+        .allow_burst(NonZeroU32::new(64).unwrap()),
+    );
+    let mut config = production_config(&journal);
+    let deadline = now().as_u64() + 2_000_000_000;
+    if condition == "deadline" {
+        config
+            .execution_envelope
+            .as_mut()
+            .unwrap()
+            .entry_deadline_unix_nanos = deadline;
+    }
+    let mut harness = build_harness_on_budget(&rest, &private, config, budget.clone());
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    while budget
+        .limiter()
+        .check_key(&ustr::Ustr::from(
+            nautilus_ondo::http::rate_limit::ONDO_REST_BUCKET,
+        ))
+        .is_ok()
+    {}
+    production_quote(
+        &harness,
+        if condition == "quote" {
+            UnixNanos::from(now().as_u64() - 500_000_000)
+        } else {
+            now()
+        },
+    );
+    let order = production_order("after-queue", false, "0.05", "230.00");
+    seed_order(&harness, &order);
+    harness.client.submit_order(submit_command(&order)).unwrap();
+    wait_until(&mut harness, "submitted before budget wait", |_, events| {
+        events
+            .iter()
+            .any(|e| matches!(e, ExecutionEvent::Order(OrderEventAny::Submitted(_))))
+    })
+    .await;
+    assert_eq!(rest.writes(), 0);
+    if condition == "disconnect" {
+        harness.client.account().note_session_ended(now());
+    }
+    wait_until(&mut harness, "refused after budget wait", |_, events| {
+        events
+            .iter()
+            .any(|e| matches!(e, ExecutionEvent::Order(OrderEventAny::Rejected(_))))
+    })
+    .await;
+    assert_eq!(rest.writes(), 0);
+    if condition == "deadline" {
+        assert!(now().as_u64() >= deadline);
+    }
+    let _ = harness.client.disconnect().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_missing_host_dms_ack_cannot_be_forged_by_runtime_hook() {
+    let journal = JournalPath::new("dms-noack");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::NoDmsAck).await;
+    let mut config = production_config(&journal);
+    config
+        .execution_envelope
+        .as_mut()
+        .unwrap()
+        .entry_deadline_unix_nanos = now().as_u64() + 4_000_000_000;
+    let mut harness = build_harness(&rest, &private, config);
+    harness.client.start().unwrap();
+    let account = harness.client.account();
+    let (result, ()) = tokio::join!(harness.client.connect(), async {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        account.confirm_dead_mans_switch(now());
+        account.dead_mans_switch_confirmed_at(now());
+    });
+    assert!(result.is_err());
+    assert!(harness.client.production_trade_snapshot().is_none());
+    assert_eq!(rest.writes(), 0);
+    assert_eq!(
+        switch_frames(&private).len(),
+        1,
+        "only the unconfirmed initial arm was sent"
+    );
+    let _ = harness.client.disconnect().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_rest_residual_contradiction_never_publishes_flat_proof() {
+    let journal = JournalPath::new("rest-residual");
+    let rest = MockRest::start().await;
+    rest.set_create_answer("<production-ioc>");
+    *rest.state.production_residual_override.lock().unwrap() = Some("0.01".into());
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut harness = build_harness(&rest, &private, production_config(&journal));
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    production_entry(&mut harness).await;
+    production_quote(&harness, now());
+    let close = production_order("contradicted-close", true, "0.05", "225.00");
+    seed_order(&harness, &close);
+    harness.client.submit_order(submit_command(&close)).unwrap();
+    wait_until(&mut harness, "REST position contradiction", |client, _| {
+        client.applied_fill_count() == 2 && client.last_judgment().is_some_and(|j| !j.is_clean())
+    })
+    .await;
+    assert!(harness.client.production_trade_snapshot().is_none());
+    let _ = harness.client.disconnect().await;
+    assert!(harness.client.production_trade_snapshot().is_none());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_reconnect_foreign_position_refuses_any_new_dms_arm() {
+    let journal = JournalPath::new("foreign-reconnect");
+    let rest = MockRest::start().await;
+    rest.set_create_answer("<production-ioc>");
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut harness = build_harness(&rest, &private, production_config(&journal));
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    production_entry(&mut harness).await;
+    rest.state
+        .positions
+        .lock()
+        .unwrap()
+        .push(api_position("0.01").replace(NVDA_MARKET, "TSLA-USD.P"));
+    private.disconnect();
+    wait_until(&mut harness, "foreign reconnect finding", |client, _| {
+        private.connection_count() >= 2 && client.last_judgment().is_some_and(|j| !j.is_clean())
+    })
+    .await;
+    assert_eq!(switch_frames(&private).len(), 1);
+    assert!(harness.client.production_trade_snapshot().is_none());
+    let _ = harness.client.disconnect().await;
+}
+
+#[rstest]
+#[case("USD", "12", false)]
+#[case("EUR", "1", false)]
+#[case("USDC", "1", false)]
+#[case("USD", "10", true)]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_real_money_minimum_is_enforced(
+    #[case] currency: &str,
+    #[case] amount: &str,
+    #[case] admitted: bool,
+) {
+    let journal = JournalPath::new("money-minimum");
+    let rest = MockRest::start().await;
+    rest.set_create_answer("<production-ioc>");
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut harness = build_harness(&rest, &private, production_config(&journal));
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    let mut instrument = nautilus_ondo::http::models::parse_instruments(
+        MARKETS_BODY,
+        &[InstrumentId::from(NVDA)],
+        now(),
+    )
+    .unwrap()
+    .remove(0);
+    let nautilus_model::instruments::InstrumentAny::CryptoPerpetual(ref mut perpetual) = instrument
+    else {
+        panic!("fixture instrument");
+    };
+    perpetual.min_notional = Some(
+        Money::from_decimal(
+            rust_decimal::Decimal::from_str_exact(amount).unwrap(),
+            Currency::from(currency),
+        )
+        .unwrap(),
+    );
+    harness
+        .cache
+        .borrow_mut()
+        .add_instrument(instrument)
+        .unwrap();
+    production_quote(&harness, now());
+    let order = production_order("minimum-entry", false, "0.05", "230.00");
+    seed_order(&harness, &order);
+    harness.client.submit_order(submit_command(&order)).unwrap();
+    if admitted {
+        wait_until(&mut harness, "minimum admitted", |client, _| {
+            client.applied_fill_count() == 1
+        })
+        .await;
+        assert_eq!(rest.writes(), 1);
+    } else {
+        wait_until(&mut harness, "minimum refused", |_, events| {
+            events.iter().any(|e| {
+                matches!(
+                    e,
+                    ExecutionEvent::Order(OrderEventAny::Denied(_) | OrderEventAny::Rejected(_))
+                )
+            })
+        })
+        .await;
+        assert_eq!(rest.writes(), 0);
+    }
+    let _ = harness.client.disconnect().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_short_dms_successful_renewal_send_without_ack_stays_expired() {
+    let journal = JournalPath::new("short-dms");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::InitialDmsAckOnly).await;
+    let mut config = production_config(&journal);
+    config.dms_timeout_secs = 4;
+    let mut harness = build_harness(&rest, &private, config);
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    tokio::time::sleep(Duration::from_millis(3_200)).await;
+    assert_eq!(
+        harness.client.account().dead_mans_switch_state(),
+        DeadMansSwitchState::Armed,
+        "legacy socket-send timer still appears armed"
+    );
+    production_quote(&harness, now());
+    let order = production_order("expired-confirmed-dms", false, "0.05", "230.00");
+    seed_order(&harness, &order);
+    harness.client.submit_order(submit_command(&order)).unwrap();
+    wait_until(
+        &mut harness,
+        "expired confirmed DMS refusal",
+        |_, events| {
+            events
+                .iter()
+                .any(|e| matches!(e, ExecutionEvent::Order(OrderEventAny::Rejected(_))))
+        },
+    )
+    .await;
+    assert_eq!(rest.writes(), 0);
+    assert_eq!(
+        switch_frames(&private).len(),
+        2,
+        "unconfirmed renewal cannot be replaced by newer sends"
+    );
+    let _ = harness.client.disconnect().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_factory_binds_run_snapshot_and_rejects_journal_reuse() {
+    use nautilus_common::factories::ExecutionClientFactory;
+    use nautilus_ondo::factories::OndoExecutionClientFactory;
+    let journal = JournalPath::new("production-factory");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    let config = OndoExecutionClientConfig {
+        base_url_http: Some(rest.http_url()),
+        base_url_ws: Some(private.url.clone()),
+        ..production_config(&journal)
+    };
+    let (exec_tx, _rx) = mpsc::unbounded_channel::<ExecutionEvent>();
+    replace_exec_event_sender(exec_tx);
+    let factory = OndoExecutionClientFactory::with_budget(OndoRateBudget::with_quota(
+        Quota::per_second(NonZeroU32::new(1_000).unwrap()).unwrap(),
+    ));
+    let node_factory = factory.clone();
+    let mut client = node_factory
+        .create(
+            TraderId::from("TESTER-001"),
+            CLIENT_ID,
+            &config,
+            Rc::new(RefCell::new(Cache::default())).into(),
+        )
+        .unwrap();
+    assert!(factory.production_trade_snapshot().is_none());
+    client.start().unwrap();
+    client.connect().await.unwrap();
+    let mut detached = factory.production_trade_snapshot().unwrap();
+    detached["run_id"] = serde_json::json!("tampered");
+    assert_eq!(
+        factory.production_trade_snapshot().unwrap()["run_id"],
+        "bounded-test-run"
+    );
+    assert!(
+        OndoExecutionClientFactory::new()
+            .production_trade_snapshot()
+            .is_none()
+    );
+    client.disconnect().await.unwrap();
+    assert!(
+        factory
+            .create(
+                TraderId::from("TESTER-001"),
+                CLIENT_ID,
+                &config,
+                Rc::new(RefCell::new(Cache::default())).into()
+            )
+            .is_err()
+    );
+}
+
+#[rstest]
+#[case(Venue::NoLoginAck, false, "private_login_not_acknowledged")]
+#[case(Venue::RefuseLogin, false, "private_login_not_acknowledged")]
+#[case(Venue::NoReportAck, false, "private_subscriptions_not_acknowledged")]
+#[case(
+    Venue::RefuseSubscribe,
+    false,
+    "private_subscriptions_not_acknowledged"
+)]
+#[case(Venue::Ack, true, "private_account_reconciliation_incomplete")]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_readonly_connect_requires_verified_private_readiness(
+    #[case] venue: Venue,
+    #[case] bad_account: bool,
+    #[case] category: &str,
+) {
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(venue).await;
+    if bad_account {
+        rest.state.positions.lock().unwrap().push("{}".into());
+    }
+    let config = OndoExecutionClientConfig {
+        environment: OndoEnvironment::Production,
+        account_read_only: true,
+        expected_venue_account_id: Some("unit-account".into()),
+        http_timeout_secs: 2,
+        reconcile_interval_secs: 1,
+        ..sandbox_config()
+    };
+    let mut harness = build_harness(&rest, &private, config);
+    harness.client.start().unwrap();
+    let error = harness.client.connect().await.unwrap_err();
+    assert_eq!(
+        error.to_string(),
+        format!("ondo_readonly_readiness:{category}")
+    );
+    assert!(!harness.client.is_connected());
+    assert!(!harness.client.private_stream_is_running());
+    assert_eq!(
+        harness
+            .client
+            .read_only_diagnostics()
+            .snapshot()
+            .shutdown_status,
+        "complete"
+    );
+    harness.client.stop().unwrap();
+    assert_eq!(
+        harness
+            .client
+            .read_only_diagnostics()
+            .snapshot()
+            .shutdown_status,
+        "complete"
+    );
+    assert!(switch_frames(&private).is_empty());
+    assert_eq!(rest.writes(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_readonly_connect_returns_only_after_private_ack_and_account_state() {
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    let config = OndoExecutionClientConfig {
+        environment: OndoEnvironment::Production,
+        account_read_only: true,
+        expected_venue_account_id: Some("unit-account".into()),
+        http_timeout_secs: 2,
+        reconcile_interval_secs: 1,
+        ..sandbox_config()
+    };
+    let mut harness = build_harness(&rest, &private, config);
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    let snapshot = harness.client.read_only_diagnostics().snapshot();
+    assert!(snapshot.logged_in);
+    assert_eq!(snapshot.subscriptions_acked.len(), 2);
+    assert!(snapshot.account_state_events > 0);
+    assert!(harness.client.is_connected());
+    harness.client.disconnect().await.unwrap();
+    harness.client.stop().unwrap();
+    assert_eq!(
+        harness
+            .client
+            .read_only_diagnostics()
+            .snapshot()
+            .shutdown_status,
+        "complete"
+    );
+    assert!(switch_frames(&private).is_empty());
+    assert_eq!(rest.writes(), 0);
+}
+
+#[rstest]
+#[case(r#"[{"market":"NVDA-USD.P","disabled":true,"isClosed":false}]"#)]
+#[case(r#"[{"market":"NVDA-USD.P","isClosed":false}]"#)]
+#[case(r#"[{"market":"NVDA-USD.P","disabled":"false","isClosed":false}]"#)]
+#[case(r#"[{"market":"NVDA-USD.P","disabled":false,"isClosed":false},{"market":"NVDA-USD.P","disabled":true,"isClosed":false}]"#)]
+#[case(r#"[{"market":"TSLA-USD.P","disabled":false,"isClosed":false}]"#)]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_contract_metadata_conflicts_refuse_before_private_transport(
+    #[case] contracts: &str,
+) {
+    let journal = JournalPath::new("contract-conflict");
+    let rest = MockRest::start().await;
+    *rest.state.contracts.lock().unwrap() = contracts.into();
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut harness = build_harness(&rest, &private, production_config(&journal));
+    harness.client.start().unwrap();
+    assert!(harness.client.connect().await.is_err());
+    assert_eq!(private.connection_count(), 0);
+    assert_eq!(rest.writes(), 0);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_definitive_zero_close_releases_capacity_for_second_close() {
+    let journal = JournalPath::new("known-zero-close");
+    let rest = MockRest::start().await;
+    rest.set_create_answer("<production-ioc>");
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut harness = build_harness(&rest, &private, production_config(&journal));
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    production_entry(&mut harness).await;
+    rest.state.reject_next_close.store(true, Ordering::SeqCst);
+    production_quote(&harness, now());
+    let first = production_order("definite-zero-close", true, "0.05", "225.00");
+    seed_order(&harness, &first);
+    harness.client.submit_order(submit_command(&first)).unwrap();
+    wait_until(&mut harness, "definite close rejection", |_, events| {
+        events
+            .iter()
+            .any(|e| matches!(e, ExecutionEvent::Order(OrderEventAny::Rejected(_))))
+    })
+    .await;
+    production_quote(&harness, now());
+    let second = production_order("second-close", true, "0.05", "225.00");
+    seed_order(&harness, &second);
+    harness
+        .client
+        .submit_order(submit_command(&second))
+        .unwrap();
+    wait_until(&mut harness, "second close flat proof", |client, _| {
+        client
+            .production_trade_snapshot()
+            .is_some_and(|s| s["phase"] == "reconciled")
+    })
+    .await;
+    assert_eq!(rest.writes(), 3);
+    harness.client.disconnect().await.unwrap();
+    assert_eq!(
+        harness.client.production_trade_snapshot().unwrap()["phase"],
+        "final"
+    );
+}
+
+#[rstest]
+#[case(Venue::NoReleaseAck, false)]
+#[case(Venue::WrongReleaseAck, false)]
+#[case(Venue::DelayedReleaseAck, true)]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_final_clean_requires_matching_release_ack(
+    #[case] venue: Venue,
+    #[case] clean: bool,
+) {
+    let journal = JournalPath::new("release-ack");
+    let rest = MockRest::start().await;
+    rest.set_create_answer("<production-ioc>");
+    let private = MockPrivate::start(venue).await;
+    let mut harness = build_harness(&rest, &private, production_config(&journal));
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    production_entry(&mut harness).await;
+    production_quote(&harness, now());
+    let close = production_order("ack-close", true, "0.05", "225.00");
+    seed_order(&harness, &close);
+    harness.client.submit_order(submit_command(&close)).unwrap();
+    wait_until(&mut harness, "pre-stop proof", |client, _| {
+        client
+            .production_trade_snapshot()
+            .is_some_and(|s| s["phase"] == "reconciled")
+    })
+    .await;
+    let result = harness.client.disconnect().await;
+    assert_eq!(result.is_ok(), clean);
+    let proof = harness.client.production_trade_snapshot().unwrap();
+    assert_eq!(proof["phase"] == "final", clean);
+    assert_eq!(proof["shutdown_status"] == "clean", clean);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_cleanup_deadline_ends_private_task_without_app_stop() {
+    let journal = JournalPath::new("automatic-deadline");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut config = production_config(&journal);
+    let time = now().as_u64();
+    let envelope = config.execution_envelope.as_mut().unwrap();
+    envelope.entry_deadline_unix_nanos = time + 3_000_000_000;
+    envelope.cleanup_deadline_unix_nanos = time + 4_000_000_000;
+    let mut harness = build_harness(&rest, &private, config);
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    wait_until(&mut harness, "native deadline task exit", |client, _| {
+        !client.private_stream_is_running()
+    })
+    .await;
+    assert!(!harness.client.is_connected());
+    let frames = private.bodies().len();
+    let writes = rest.writes();
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    assert_eq!(private.bodies().len(), frames);
+    assert_eq!(rest.writes(), writes);
+    assert!(
+        harness
+            .client
+            .production_trade_snapshot()
+            .is_none_or(|s| s["phase"] != "final")
+    );
+    let _ = harness.client.disconnect().await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_usdc_margin_threshold_is_independent_of_usd_order_notional() {
+    let journal = JournalPath::new("usdc-threshold");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut config = production_config(&journal);
+    config
+        .execution_envelope
+        .as_mut()
+        .unwrap()
+        .min_available_margin_usdc = rust_decimal::Decimal::from(5000);
+    let mut harness = build_harness(&rest, &private, config);
+    harness.client.start().unwrap();
+    assert!(harness.client.connect().await.is_err());
+    assert_eq!(private.connection_count(), 0);
+    assert_eq!(rest.writes(), 0);
+}
+
+#[rstest]
+#[case("24.99", false)]
+#[case("25.00", true)]
+#[case("25.01", true)]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_usdc_send_margin_below_equal_above_threshold(
+    #[case] amount: &str,
+    #[case] admitted: bool,
+) {
+    let journal = JournalPath::new("usdc-send-boundary");
+    let rest = MockRest::start().await;
+    rest.set_create_answer("<production-ioc>");
+    *rest.state.available_margin_override.lock().unwrap() = Some("25.00".into());
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut harness = build_harness(&rest, &private, production_config(&journal));
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    assert_eq!(
+        harness.client.production_trade_snapshot().unwrap()["available_margin_usdc"],
+        "25.00"
+    );
+    *rest.state.available_margin_override.lock().unwrap() = Some(amount.into());
+    let desired = rust_decimal::Decimal::from_str_exact(amount).unwrap();
+    let started = Instant::now();
+    loop {
+        let _ = harness.client.account().reconcile_account(now()).await;
+        if harness
+            .client
+            .last_reading()
+            .and_then(|r| r.balance)
+            .and_then(|b| b.available_margin)
+            == Some(desired)
+        {
+            break;
+        }
+        assert!(started.elapsed() < WAIT);
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    production_quote(&harness, now());
+    let order = production_order("usdc-send", false, "0.05", "230.00");
+    seed_order(&harness, &order);
+    harness.client.submit_order(submit_command(&order)).unwrap();
+    if admitted {
+        wait_until(&mut harness, "same-unit margin admitted", |client, _| {
+            client.applied_fill_count() == 1
+        })
+        .await;
+        assert_eq!(rest.writes(), 1);
+    } else {
+        wait_until(&mut harness, "same-unit margin refused", |_, events| {
+            events.iter().any(|e| {
+                matches!(
+                    e,
+                    ExecutionEvent::Order(OrderEventAny::Rejected(_) | OrderEventAny::Denied(_))
+                )
+            })
+        })
+        .await;
+        assert_eq!(rest.writes(), 0);
+    }
+    let _ = harness.client.disconnect().await;
 }

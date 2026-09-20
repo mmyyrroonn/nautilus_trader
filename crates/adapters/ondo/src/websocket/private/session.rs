@@ -574,6 +574,17 @@ impl OndoPrivateSession {
             });
         };
 
+        if !self.wanted.contains(&channel)
+            || !matches!(
+                self.phase,
+                PrivateSessionPhase::Subscribing | PrivateSessionPhase::Subscribed
+            )
+        {
+            return event(PrivateEvent::Unsupported {
+                reason: "an unrequested private subscription was acknowledged".to_string(),
+            });
+        }
+
         if !self.confirmed.contains(&channel) {
             self.confirmed.push(channel);
         }
@@ -1212,5 +1223,36 @@ mod tests {
         .collect();
 
         assert_eq!(credential_actions, vec![PrivateAction::Login]);
+    }
+    #[rstest]
+    fn test_readonly_rejects_unrequested_switch_subscription_ack() {
+        let mut session = session(PrivateStreamMode::ReadOnly);
+        logged_in(&mut session);
+        let outcome = session.handle_frame(
+            &frame("subscribed", Some("cancelAllOrdersAfterPerps"), ""),
+            now(),
+        );
+        assert!(matches!(
+            outcome.events.as_slice(),
+            [PrivateEvent::Unsupported { .. }]
+        ));
+        assert!(session.confirmed().is_empty());
+        assert!(outcome.actions.is_empty());
+    }
+
+    #[rstest]
+    fn test_subscription_ack_before_login_confirms_nothing() {
+        let mut session = session(PrivateStreamMode::Trading);
+        session.on_connected();
+        let outcome = session.handle_frame(
+            &frame("subscribed", Some("cancelAllOrdersAfterPerps"), ""),
+            now(),
+        );
+        assert!(matches!(
+            outcome.events.as_slice(),
+            [PrivateEvent::Unsupported { .. }]
+        ));
+        assert!(session.confirmed().is_empty());
+        assert!(outcome.actions.is_empty());
     }
 }

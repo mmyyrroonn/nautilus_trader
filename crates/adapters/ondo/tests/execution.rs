@@ -70,15 +70,16 @@ use nautilus_ondo::{
     common::{
         consts::{ONDO_SETTLEMENT_CURRENCY, ONDO_VENUE},
         credential::{OndoCredential, OndoEnvironmentError},
-        enums::OndoEnvironment,
+        enums::{OndoAccountIdentity, OndoAuthenticationScope, OndoEnvironment},
         parse::parse_timestamp,
     },
     config::{OndoExecutionClientConfig, OndoExecutionConfigError},
     execution::{OndoExecutionClient, OndoFillApplication, OndoOrderApplication},
     http::{
+        error::OndoHttpError,
         orders::{OndoApiOrder, OndoOrderStatus},
         private::{FUNDING_FEES_PATH, OndoApiFill},
-        rate_limit::{ONDO_REST_BUCKET, OndoRateBudget},
+        rate_limit::{ONDO_REST_BUCKET, OndoRateBudget, OndoRequestPriority},
     },
     reconciliation::{
         Finding, LiquidationState, MetadataValidity, NewRiskRefusal, ReconciliationState,
@@ -514,7 +515,7 @@ fn build_harness_on_budget(
     };
 
     let credential = OndoCredential::new(
-        OndoEnvironment::Sandbox,
+        config.environment,
         TEST_KEY_ID.to_string(),
         TEST_API_SECRET.to_string(),
     )
@@ -4024,6 +4025,241 @@ async fn test_production_order_entry_is_refused_before_any_request_exists() {
     );
 }
 
+/// A production read-only configuration builds the real execution client, and every write path
+/// through it refuses before a request exists: the submission is denied by the account's read-only
+/// admission, and a low-level cancel on the same HTTP object is refused by the scope dispatch.
+#[tokio::test]
+async fn test_a_read_only_execution_client_refuses_every_write_and_sends_nothing() {
+    let mock = MockServer::start(vec![Reply::ok(envelope("{}"))]).await;
+    let config = OndoExecutionClientConfig {
+        environment: OndoEnvironment::Production,
+        account_id: Some(AccountId::from(ACCOUNT_ID)),
+        api_key: Some(TEST_KEY_ID.to_string()),
+        api_secret: Some(TEST_API_SECRET.to_string()),
+        account_read_only: true,
+        ..Default::default()
+    };
+
+    let mut harness = build_harness(&mock, config);
+
+    harness.client.start().expect("start");
+
+    assert!(harness.client.is_account_read_only());
+    assert_eq!(
+        harness.client.http_client().authentication_scope(),
+        Some(OndoAuthenticationScope::ProductionReadOnly),
+    );
+
+    let order = limit_order(CLIENT_ORDER_ID, OrderSide::Buy);
+    seed_order(&harness, &order);
+    assert_eq!(
+        harness.client.new_risk_refusal(),
+        Some(NewRiskRefusal::AccountIsReadOnly),
+        "a read-only client refuses new risk",
+    );
+    harness
+        .client
+        .submit_order(submit_command(&order))
+        .expect("the client accepts the command and decides locally");
+
+    let events = drain(&mut harness);
+    let denied: Vec<&OrderEventAny> = order_events(&events)
+        .into_iter()
+        .filter(|event| matches!(event, OrderEventAny::Denied(_)))
+        .collect();
+    assert_eq!(
+        denied.len(),
+        1,
+        "the submission is denied locally (events: {events:?})"
+    );
+    assert!(
+        mock.with_method("POST").is_empty(),
+        "no submission became a request",
+    );
+
+    let cancelled = harness
+        .client
+        .http_client()
+        .cancel_order("order-1", OndoRequestPriority::High)
+        .await;
+    assert!(
+        matches!(
+            cancelled,
+            Err(OndoHttpError::WriteNotPermitted {
+                scope: OndoAuthenticationScope::ProductionReadOnly,
+                method: "DELETE",
+            })
+        ),
+        "the scope dispatch refuses the cancel: {cancelled:?}",
+    );
+    assert!(
+        mock.captured().is_empty(),
+        "no write ever became a request: {:?}",
+        mock.targets(),
+    );
+}
+
+/// The configured venue account id is compared with the authenticated account's own `accountID`.
+/// A match is the only way the identity reads `matched`, and it is what lets the connection
+/// proceed.
+#[tokio::test]
+async fn test_a_matching_account_identity_still_requires_private_readiness() {
+    let mock = MockServer::start(vec![Reply::ok(envelope(
+        r#"{"accountID":"10458932786832481"}"#,
+    ))])
+    .await;
+    let config = OndoExecutionClientConfig {
+        environment: OndoEnvironment::Production,
+        account_id: Some(AccountId::from(ACCOUNT_ID)),
+        api_key: Some(TEST_KEY_ID.to_string()),
+        api_secret: Some(TEST_API_SECRET.to_string()),
+        account_read_only: true,
+        expected_venue_account_id: Some("10458932786832481".to_string()),
+        ..Default::default()
+    };
+
+    let mut harness = build_harness(&mock, config);
+    harness.client.start().expect("start");
+
+    let error = harness
+        .client
+        .connect()
+        .await
+        .expect_err("identity match alone is not private readiness");
+    assert_eq!(
+        error.to_string(),
+        "ondo_readonly_readiness:private_login_not_acknowledged"
+    );
+    assert!(!harness.client.is_connected());
+    assert_eq!(
+        harness.client.account().account_identity(),
+        OndoAccountIdentity::Matched,
+    );
+    assert!(
+        mock.targets().iter().any(|target| target == "/v1/account"),
+        "the identity read is the documented account read",
+    );
+}
+
+/// A mismatch refuses the connection before it is marked connected, and the error never echoes
+/// either identifier.
+#[tokio::test]
+async fn test_a_mismatched_account_identity_refuses_the_connection() {
+    let mock = MockServer::start(vec![Reply::ok(envelope(
+        r#"{"accountID":"99999999999999999"}"#,
+    ))])
+    .await;
+    let config = OndoExecutionClientConfig {
+        environment: OndoEnvironment::Production,
+        account_id: Some(AccountId::from(ACCOUNT_ID)),
+        api_key: Some(TEST_KEY_ID.to_string()),
+        api_secret: Some(TEST_API_SECRET.to_string()),
+        account_read_only: true,
+        expected_venue_account_id: Some("10458932786832481".to_string()),
+        ..Default::default()
+    };
+
+    let mut harness = build_harness(&mock, config);
+    harness.client.start().expect("start");
+
+    let error = harness
+        .client
+        .connect()
+        .await
+        .expect_err("a different account is refused");
+
+    assert!(
+        error.to_string().contains("does not match"),
+        "was `{error}`",
+    );
+    assert!(
+        !error.to_string().contains("10458932786832481")
+            && !error.to_string().contains("99999999999999999"),
+        "the refusal never echoes an identifier: `{error}`",
+    );
+    assert!(
+        !harness.client.is_connected(),
+        "a mismatched session is never marked connected",
+    );
+    assert_eq!(
+        harness.client.account().account_identity(),
+        OndoAccountIdentity::Mismatch,
+    );
+}
+
+/// An answer that carries no comparable identifier is `unknown`, never `matched`: absence of
+/// evidence is not evidence of a match.
+#[tokio::test]
+async fn test_an_account_answer_without_an_identifier_is_unknown() {
+    let mock = MockServer::start(vec![Reply::ok(envelope(
+        r#"{"identifier":"someone@example.com"}"#,
+    ))])
+    .await;
+    let config = OndoExecutionClientConfig {
+        environment: OndoEnvironment::Production,
+        account_id: Some(AccountId::from(ACCOUNT_ID)),
+        api_key: Some(TEST_KEY_ID.to_string()),
+        api_secret: Some(TEST_API_SECRET.to_string()),
+        account_read_only: true,
+        expected_venue_account_id: Some("10458932786832481".to_string()),
+        ..Default::default()
+    };
+
+    let mut harness = build_harness(&mock, config);
+    harness.client.start().expect("start");
+
+    let error = harness
+        .client
+        .connect()
+        .await
+        .expect_err("the HTTP-only mock cannot acknowledge private login");
+    assert_eq!(
+        error.to_string(),
+        "ondo_readonly_readiness:private_login_not_acknowledged"
+    );
+
+    assert_eq!(
+        harness.client.account().account_identity(),
+        OndoAccountIdentity::Unknown,
+    );
+}
+
+/// No expected id means no comparison and no identity read at all, and the identity stays
+/// `unknown` rather than defaulting to a match.
+#[tokio::test]
+async fn test_no_expected_identity_makes_no_account_read() {
+    let mock = MockServer::start(Vec::new()).await;
+    let config = OndoExecutionClientConfig {
+        environment: OndoEnvironment::Production,
+        account_id: Some(AccountId::from(ACCOUNT_ID)),
+        api_key: Some(TEST_KEY_ID.to_string()),
+        api_secret: Some(TEST_API_SECRET.to_string()),
+        account_read_only: true,
+        ..Default::default()
+    };
+
+    let mut harness = build_harness(&mock, config);
+    harness.client.start().expect("start");
+    let error = harness
+        .client
+        .connect()
+        .await
+        .expect_err("the HTTP-only mock cannot acknowledge private login");
+    assert_eq!(
+        error.to_string(),
+        "ondo_readonly_readiness:private_login_not_acknowledged"
+    );
+
+    assert!(
+        !mock.targets().iter().any(|target| target == "/v1/account"),
+        "no expected id means no identity read",
+    );
+    assert_eq!(
+        harness.client.account().account_identity(),
+        OndoAccountIdentity::Unknown,
+    );
+}
+
 /// A configuration carrying no credential pair takes the environment's, and a machine that has
 /// none is refused rather than falling back to another account.
 ///
@@ -5194,4 +5430,47 @@ async fn test_a_position_row_this_adapter_cannot_read_is_never_guessed_into_a_re
         reports.is_empty(),
         "an unmappable market and an unreadable direction are both unreportable: {reports:?}",
     );
+}
+
+/// An explicitly injected credential must belong to the configured environment.
+#[tokio::test]
+async fn test_execution_refuses_cross_environment_credentials_before_transport() {
+    let mock = MockServer::start(Vec::new()).await;
+    for (environment, credential_environment) in [
+        (OndoEnvironment::Production, OndoEnvironment::Sandbox),
+        (OndoEnvironment::Sandbox, OndoEnvironment::Production),
+    ] {
+        let config = OndoExecutionClientConfig {
+            environment,
+            account_id: Some(AccountId::from(ACCOUNT_ID)),
+            account_read_only: true,
+            base_url_http: Some(mock.url()),
+            ..Default::default()
+        };
+        let core = ExecutionClientCore::new(
+            TraderId::from("TESTER-001"),
+            ClientId::from(CLIENT_ID),
+            *ONDO_VENUE,
+            OmsType::Netting,
+            AccountId::from(ACCOUNT_ID),
+            AccountType::Margin,
+            None,
+            Rc::new(RefCell::new(Cache::default())),
+        );
+        let credential = OndoCredential::new(
+            credential_environment,
+            TEST_KEY_ID.to_string(),
+            TEST_API_SECRET.to_string(),
+        )
+        .unwrap();
+        let result = OndoExecutionClient::with_credential(core, config, Some(credential), None);
+        let error = match result {
+            Ok(_) => panic!("cross-environment credential must fail"),
+            Err(e) => e,
+        };
+        assert!(error.to_string().contains("does not match"));
+        assert!(!error.to_string().contains(TEST_KEY_ID));
+        assert!(!error.to_string().contains(TEST_API_SECRET));
+    }
+    assert!(mock.captured().is_empty());
 }

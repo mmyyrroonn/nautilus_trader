@@ -29,15 +29,19 @@
 //! production; §6.1: no automatic protocol or environment switching; §R0.3: the endpoint is an
 //! allowlist):
 //!
-//! 1. an authenticated session may only be opened for [`OndoEnvironment::Sandbox`]; a production
-//!    configuration is refused with [`OndoEnvironmentError::ProductionForbidden`], whatever URL it
-//!    carries;
+//! 1. an authenticated session is opened under a
+//!    [`crate::common::enums::OndoAuthenticationScope`], which pairs the environment with whether
+//!    the session may write. Only [`OndoAuthenticationScope::SandboxTrading`] may write; the two
+//!    read-only scopes refuse every signed write at the transport's dispatch. There is deliberately
+//!    no production trading scope, so a production configuration is refused at the configuration
+//!    before a credential is read;
 //! 2. the base URL must be an endpoint this session may sign for, which is
 //!    [`crate::common::endpoint::OndoEndpointPolicy`]'s decision: the official host of the session's
 //!    own environment ([`OndoEndpoint::Official`]) or a loopback test service
 //!    ([`OndoEndpoint::LoopbackTestService`]). Anything else - another remote host, a lookalike of
-//!    the official host, userinfo, a non-TLS remote service, an unreadable URL - is refused, and a
-//!    host inside the production domain is refused *as production*
+//!    the official host, the *other* environment's official host, userinfo, a non-TLS remote
+//!    service, an unreadable URL - is refused, and a host inside the production domain that is not
+//!    this session's own official host is refused *as production*
 //!    ([`OndoEnvironmentError::ProductionHostForbidden`]) before any other rule is consulted.
 //!
 //! Neither refusal reads a credential, opens a socket, or has a fallback: there is one gate and one
@@ -73,7 +77,7 @@ use zeroize::ZeroizeOnDrop;
 pub use crate::common::endpoint::{OndoEndpoint, OndoEnvironmentError};
 use crate::common::{
     endpoint::{OndoEndpointPolicy, OndoSchemeFamily},
-    enums::OndoEnvironment,
+    enums::{OndoAuthenticationScope, OndoEnvironment},
 };
 
 /// The environment variable holding the sandbox API key id (plan §7 Task 9).
@@ -81,6 +85,19 @@ pub const ONDO_SANDBOX_API_KEY_VAR: &str = "ONDO_SANDBOX_API_KEY";
 
 /// The environment variable holding the sandbox API secret (plan §7 Task 9).
 pub const ONDO_SANDBOX_API_SECRET_VAR: &str = "ONDO_SANDBOX_API_SECRET";
+
+/// The environment variable holding the mainnet API key id.
+///
+/// Read only for [`OndoAuthenticationScope::ProductionReadOnly`]. There is no fallback between
+/// the mainnet and sandbox variable sets: a sandbox session never reads these, and a production
+/// read-only session never reads the sandbox pair.
+pub const ONDO_MAINNET_API_KEY_VAR: &str = "ONDO_MAINNET_API_KEY";
+
+/// The environment variable holding the mainnet API secret.
+///
+/// Read only for [`OndoAuthenticationScope::ProductionReadOnly`], with the same no-fallback rule
+/// as [`ONDO_MAINNET_API_KEY_VAR`].
+pub const ONDO_MAINNET_API_SECRET_VAR: &str = "ONDO_MAINNET_API_SECRET";
 
 /// Why a credential could not be resolved.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
@@ -90,7 +107,7 @@ pub enum CredentialError {
     Environment(#[from] OndoEnvironmentError),
     /// The environment variable is not set.
     #[error(
-        "`{name}` is not set: the Ondo Perps sandbox adapter reads its credentials from the environment (plan §1)"
+        "`{name}` is not set: the Ondo Perps adapter reads its credentials from the environment (plan §1)"
     )]
     MissingVariable {
         /// The variable's name. Never its value.
@@ -106,27 +123,26 @@ pub enum CredentialError {
 
 /// Enforces the gate an authenticated REST session must pass.
 ///
-/// This is the one place an environment and a base URL are judged for the REST surface, and it
-/// reads nothing: it takes no credential, opens no socket, and has no fallback path. Call it - or
-/// let [`resolve_credential`] call it - before reading a key. It is the REST policy
+/// This is the one place a scope and a base URL are judged for the REST surface, and it reads
+/// nothing: it takes no credential, opens no socket, and has no fallback path. Call it - or let
+/// [`resolve_credential`] call it - before reading a key. It is the REST policy
 /// ([`OndoSchemeFamily::Http`]) of [`crate::common::endpoint::OndoEndpointPolicy`], which the
 /// private WebSocket applies for its own schemes.
 ///
 /// # Errors
 ///
-/// Returns the policy's refusal: [`OndoEnvironmentError::ProductionForbidden`] for any environment
-/// other than [`OndoEnvironment::Sandbox`], and otherwise
+/// Returns the policy's refusal:
 /// [`OndoEnvironmentError::ProductionHostForbidden`],
 /// [`OndoEnvironmentError::UserInfoForbidden`], [`OndoEnvironmentError::HostNotAllowed`],
 /// [`OndoEnvironmentError::UnsupportedScheme`], [`OndoEnvironmentError::PortNotAllowed`] or
 /// [`OndoEnvironmentError::MalformedUrl`]. A URL the gate cannot place is refused, not passed
-/// through: the allowlist admits the environment's official host and a loopback test service, and
+/// through: the allowlist admits the session's own official host and a loopback test service, and
 /// nothing else.
 pub fn validate_authenticated_environment(
-    environment: OndoEnvironment,
+    scope: OndoAuthenticationScope,
     base_url: &str,
 ) -> Result<OndoEndpoint, OndoEnvironmentError> {
-    OndoEndpointPolicy::authenticated(environment, OndoSchemeFamily::Http).classify(base_url)
+    OndoEndpointPolicy::authenticated(scope, OndoSchemeFamily::Http).classify(base_url)
 }
 
 /// Enforces the gate an authenticated private WebSocket session must pass.
@@ -142,19 +158,20 @@ pub fn validate_authenticated_environment(
 ///
 /// Returns the policy's refusal; see [`validate_authenticated_environment`].
 pub fn validate_authenticated_websocket_environment(
-    environment: OndoEnvironment,
+    scope: OndoAuthenticationScope,
     base_url: &str,
 ) -> Result<OndoEndpoint, OndoEnvironmentError> {
-    OndoEndpointPolicy::authenticated(environment, OndoSchemeFamily::WebSocket).classify(base_url)
+    OndoEndpointPolicy::authenticated(scope, OndoSchemeFamily::WebSocket).classify(base_url)
 }
 
-/// Resolves the sandbox credential from the process environment.
+/// Resolves the credential for `scope` from the process environment.
 ///
-/// The environment gate ([`validate_authenticated_environment`]) runs first, so a production
-/// configuration or a production base URL is refused before `ONDO_SANDBOX_API_KEY` or
-/// `ONDO_SANDBOX_API_SECRET` is looked at. Surrounding whitespace is removed from each variable's
-/// value: an assignment is not part of a credential. Nothing else about the value changes, so the
-/// documented prefixes survive.
+/// The environment gate ([`validate_authenticated_environment`]) runs first, so a base URL the
+/// policy refuses is refused before a variable is looked at. A sandbox scope reads
+/// `ONDO_SANDBOX_API_KEY` and `ONDO_SANDBOX_API_SECRET`; the production read-only scope reads
+/// `ONDO_MAINNET_API_KEY` and `ONDO_MAINNET_API_SECRET`. Surrounding whitespace is removed from
+/// each variable's value: an assignment is not part of a credential. Nothing else about the value
+/// changes, so the documented prefixes survive. There is no fallback between the two variable sets.
 ///
 /// # Errors
 ///
@@ -162,10 +179,10 @@ pub fn validate_authenticated_websocket_environment(
 /// [`CredentialError::MissingVariable`] / [`CredentialError::EmptyValue`] naming the variable that
 /// had no usable value.
 pub fn resolve_credential(
-    environment: OndoEnvironment,
+    scope: OndoAuthenticationScope,
     base_url: &str,
 ) -> Result<OndoCredential, CredentialError> {
-    resolve_credential_with(environment, base_url, |name| std::env::var(name).ok())
+    resolve_credential_with(scope, base_url, |name| std::env::var(name).ok())
 }
 
 /// [`resolve_credential`] against an injected variable lookup.
@@ -174,35 +191,35 @@ pub fn resolve_credential(
 /// proves the gate ran before any variable was read), not a public API for reading credentials from
 /// somewhere other than the process environment.
 pub(crate) fn resolve_credential_with<F>(
-    environment: OndoEnvironment,
+    scope: OndoAuthenticationScope,
     base_url: &str,
     lookup: F,
 ) -> Result<OndoCredential, CredentialError>
 where
     F: Fn(&str) -> Option<String>,
 {
-    validate_authenticated_environment(environment, base_url)?;
+    validate_authenticated_environment(scope, base_url)?;
 
-    // Production names no variable at all: the gate above already refused it, and returning early
-    // keeps that true if the gate is ever reordered.
-    let Some((key_var, secret_var)) = credential_variables(environment) else {
-        return Err(CredentialError::Environment(
-            OndoEnvironmentError::ProductionForbidden,
-        ));
-    };
-
+    let (key_var, secret_var) = credential_variables(scope);
     let key_id = required(&lookup, key_var)?;
     let api_secret = required(&lookup, secret_var)?;
 
-    OndoCredential::new(environment, key_id, api_secret)
+    OndoCredential::new(scope.environment(), key_id, api_secret)
 }
 
-/// The environment variables a credential is read from, or [`None`] for an environment this adapter
-/// does not authenticate against.
-fn credential_variables(environment: OndoEnvironment) -> Option<(&'static str, &'static str)> {
-    match environment {
-        OndoEnvironment::Sandbox => Some((ONDO_SANDBOX_API_KEY_VAR, ONDO_SANDBOX_API_SECRET_VAR)),
-        OndoEnvironment::Production => None,
+/// The environment variables a scope's credential is read from.
+///
+/// Every scope names a pair, and the two sets are disjoint: a sandbox scope reads the sandbox
+/// variables and the production read-only scope reads the mainnet ones. There is no fallback.
+const fn credential_variables(scope: OndoAuthenticationScope) -> (&'static str, &'static str) {
+    match scope {
+        OndoAuthenticationScope::SandboxTrading | OndoAuthenticationScope::SandboxReadOnly => {
+            (ONDO_SANDBOX_API_KEY_VAR, ONDO_SANDBOX_API_SECRET_VAR)
+        }
+        OndoAuthenticationScope::ProductionReadOnly
+        | OndoAuthenticationScope::ProductionTrading => {
+            (ONDO_MAINNET_API_KEY_VAR, ONDO_MAINNET_API_SECRET_VAR)
+        }
     }
 }
 
@@ -337,18 +354,21 @@ mod tests {
     fn test_the_gate_is_the_rest_endpoint_policy() {
         assert_eq!(
             validate_authenticated_environment(
-                OndoEnvironment::Sandbox,
+                OndoAuthenticationScope::SandboxTrading,
                 ONDO_HTTP_BASE_URL_SANDBOX
             ),
             Ok(OndoEndpoint::Official),
         );
         assert_eq!(
-            validate_authenticated_environment(OndoEnvironment::Sandbox, "http://127.0.0.1:8080"),
+            validate_authenticated_environment(
+                OndoAuthenticationScope::SandboxTrading,
+                "http://127.0.0.1:8080"
+            ),
             Ok(OndoEndpoint::LoopbackTestService),
         );
         assert_eq!(
             validate_authenticated_environment(
-                OndoEnvironment::Sandbox,
+                OndoAuthenticationScope::SandboxTrading,
                 "wss://api.ondoperps-sandbox.xyz/ws"
             ),
             Err(OndoEnvironmentError::UnsupportedScheme {
@@ -356,6 +376,14 @@ mod tests {
                 expected: "https",
             }),
             "a WebSocket URL is not a REST endpoint: the families are separate",
+        );
+        assert_eq!(
+            validate_authenticated_environment(
+                OndoAuthenticationScope::ProductionReadOnly,
+                crate::common::consts::ONDO_HTTP_BASE_URL_PRODUCTION
+            ),
+            Ok(OndoEndpoint::Official),
+            "the production read-only scope admits its own authority",
         );
     }
 
@@ -366,11 +394,11 @@ mod tests {
         let never_called = |name: &str| panic!("the gate must refuse `{name}` before it is read");
 
         let error = resolve_credential_with(
-            OndoEnvironment::Sandbox,
+            OndoAuthenticationScope::SandboxTrading,
             "https://api.ondoperps.xyz",
             never_called,
         )
-        .expect_err("the production host is refused");
+        .expect_err("the production host is refused for a sandbox session");
 
         assert_eq!(
             error,
@@ -379,20 +407,29 @@ mod tests {
             }),
         );
 
-        let error = resolve_credential_with(OndoEnvironment::Production, SANDBOX_URL, never_called)
-            .expect_err("production is refused");
+        // A production read-only session may not be pointed at the sandbox authority, and the
+        // refusal is a host refusal rather than a production one.
+        let error = resolve_credential_with(
+            OndoAuthenticationScope::ProductionReadOnly,
+            SANDBOX_URL,
+            never_called,
+        )
+        .expect_err("the sandbox host is refused for a production session");
 
         assert_eq!(
             error,
-            CredentialError::Environment(OndoEnvironmentError::ProductionForbidden),
+            CredentialError::Environment(OndoEnvironmentError::HostNotAllowed {
+                host: "api.ondoperps-sandbox.xyz".to_string(),
+            }),
         );
     }
 
     #[rstest]
     fn test_resolution_names_a_variable_that_is_absent_or_empty() {
         let absent = |_name: &str| None;
-        let error = resolve_credential_with(OndoEnvironment::Sandbox, SANDBOX_URL, absent)
-            .expect_err("nothing to read");
+        let error =
+            resolve_credential_with(OndoAuthenticationScope::SandboxTrading, SANDBOX_URL, absent)
+                .expect_err("nothing to read");
 
         assert_eq!(
             error,
@@ -406,8 +443,9 @@ mod tests {
         );
 
         let empty = |_name: &str| Some("   ".to_string());
-        let error = resolve_credential_with(OndoEnvironment::Sandbox, SANDBOX_URL, empty)
-            .expect_err("nothing usable to read");
+        let error =
+            resolve_credential_with(OndoAuthenticationScope::SandboxTrading, SANDBOX_URL, empty)
+                .expect_err("nothing usable to read");
 
         assert_eq!(
             error,
@@ -421,9 +459,11 @@ mod tests {
             ONDO_SANDBOX_API_KEY_VAR,
             "ondoKeyId_UNIT_TEST_ONLY".to_string(),
         )]);
-        let error = resolve_credential_with(OndoEnvironment::Sandbox, SANDBOX_URL, |name| {
-            values.get(name).cloned()
-        })
+        let error = resolve_credential_with(
+            OndoAuthenticationScope::SandboxTrading,
+            SANDBOX_URL,
+            |name| values.get(name).cloned(),
+        )
         .expect_err("the secret is missing");
 
         assert_eq!(
@@ -447,9 +487,11 @@ mod tests {
             ),
         ]);
 
-        let credential = resolve_credential_with(OndoEnvironment::Sandbox, SANDBOX_URL, |name| {
-            values.get(name).cloned()
-        })
+        let credential = resolve_credential_with(
+            OndoAuthenticationScope::SandboxTrading,
+            SANDBOX_URL,
+            |name| values.get(name).cloned(),
+        )
         .expect("the sandbox credential resolves");
 
         assert_eq!(credential.environment(), OndoEnvironment::Sandbox);
@@ -525,12 +567,63 @@ mod tests {
         );
     }
 
+    /// The two variable sets are disjoint and there is no fallback: a session reads only the pair
+    /// its scope names, whatever the other pair is set to.
     #[rstest]
-    fn test_production_names_no_credential_variable() {
-        assert!(credential_variables(OndoEnvironment::Production).is_none());
+    fn test_the_two_scopes_read_disjoint_variables() {
         assert_eq!(
-            credential_variables(OndoEnvironment::Sandbox),
-            Some((ONDO_SANDBOX_API_KEY_VAR, ONDO_SANDBOX_API_SECRET_VAR)),
+            credential_variables(OndoAuthenticationScope::SandboxTrading),
+            (ONDO_SANDBOX_API_KEY_VAR, ONDO_SANDBOX_API_SECRET_VAR),
+        );
+        assert_eq!(
+            credential_variables(OndoAuthenticationScope::SandboxReadOnly),
+            (ONDO_SANDBOX_API_KEY_VAR, ONDO_SANDBOX_API_SECRET_VAR),
+        );
+        assert_eq!(
+            credential_variables(OndoAuthenticationScope::ProductionReadOnly),
+            (ONDO_MAINNET_API_KEY_VAR, ONDO_MAINNET_API_SECRET_VAR),
+        );
+    }
+
+    /// The mainnet credential resolves only for the production read-only scope, and a present
+    /// mainnet pair is invisible to a sandbox session.
+    #[rstest]
+    fn test_the_production_read_only_scope_resolves_the_mainnet_credential() {
+        let values = HashMap::from([
+            (
+                ONDO_MAINNET_API_KEY_VAR,
+                "ondoKeyId_UNIT_TEST_ONLY".to_string(),
+            ),
+            (
+                ONDO_MAINNET_API_SECRET_VAR,
+                "ondoApiSecret_UNIT_TEST_ONLY".to_string(),
+            ),
+        ]);
+
+        let credential = resolve_credential_with(
+            OndoAuthenticationScope::ProductionReadOnly,
+            crate::common::consts::ONDO_HTTP_BASE_URL_PRODUCTION,
+            |name| values.get(name).cloned(),
+        )
+        .expect("the production read-only credential resolves");
+
+        assert_eq!(credential.environment(), OndoEnvironment::Production);
+        assert_eq!(credential.key_id(), "ondoKeyId_UNIT_TEST_ONLY");
+
+        // A sandbox session with only the mainnet pair present names the sandbox variable it
+        // wanted, so a cross-environment credential can never be substituted.
+        let error = resolve_credential_with(
+            OndoAuthenticationScope::SandboxTrading,
+            SANDBOX_URL,
+            |name| values.get(name).cloned(),
+        )
+        .expect_err("the sandbox pair is absent");
+
+        assert_eq!(
+            error,
+            CredentialError::MissingVariable {
+                name: ONDO_SANDBOX_API_KEY_VAR
+            },
         );
     }
 }

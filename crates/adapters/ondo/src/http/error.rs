@@ -22,7 +22,10 @@
 use nautilus_model::identifiers::InstrumentId;
 use thiserror::Error;
 
-use crate::{common::credential::OndoEnvironmentError, signing::OndoSigningError};
+use crate::{
+    common::{credential::OndoEnvironmentError, enums::OndoAuthenticationScope},
+    signing::OndoSigningError,
+};
 
 /// Result alias for Ondo Perps HTTP operations.
 pub type OndoHttpResult<T> = Result<T, OndoHttpError>;
@@ -274,6 +277,22 @@ pub enum OndoHttpError {
         /// The request target whose signature was required.
         target: String,
     },
+    /// A signed write was attempted on a session whose authorization scope refuses every write.
+    ///
+    /// This is the dispatch guard the read-only scopes require: it runs at the top of the signed
+    /// `POST` and `DELETE` paths, before the rate budget is acquired and before the new-risk guard
+    /// is consulted, so a read-only session sends neither a submission nor a cancel whatever the
+    /// account's own admission says. It is a local refusal: no request was built.
+    #[error(
+        "this Ondo Perps session is {scope:?} and refuses every signed {method}: read-only sessions \
+         never place or cancel orders (plan §6.1)"
+    )]
+    WriteNotPermitted {
+        /// The scope that refused the write.
+        scope: OndoAuthenticationScope,
+        /// The HTTP method the write carried, as the dispatch names it.
+        method: &'static str,
+    },
 }
 
 /// Returns `true` when a request producing this error is safe to retry.
@@ -304,7 +323,8 @@ pub fn should_retry_ondo_http_error(error: &OndoHttpError) -> bool {
         | OndoHttpError::Environment(_)
         | OndoHttpError::Signing(_)
         | OndoHttpError::AuthRejected { .. }
-        | OndoHttpError::NotAuthenticated { .. } => false,
+        | OndoHttpError::NotAuthenticated { .. }
+        | OndoHttpError::WriteNotPermitted { .. } => false,
     }
 }
 

@@ -45,7 +45,7 @@
 //! [`OndoExecutionClient::new`], from the configuration's own pair or from the process environment
 //! through the environment gate, and never travels through a factory.
 
-use std::{any::Any, cell::RefCell, rc::Rc};
+use std::{any::Any, cell::RefCell, rc::Rc, sync::Arc};
 
 use nautilus_common::{
     cache::CacheView,
@@ -58,6 +58,7 @@ use nautilus_model::{
     enums::{AccountType, OmsType},
     identifiers::{ClientId, TraderId},
 };
+use parking_lot::RwLock;
 
 use crate::{
     common::{
@@ -66,6 +67,7 @@ use crate::{
     },
     config::{OndoDataClientConfig, OndoExecutionClientConfig},
     data::OndoDataClient,
+    diagnostics::OndoReadOnlyDiagnostics,
     execution::OndoExecutionClient,
     http::rate_limit::{OndoRateBudget, shared_rest_budget},
 };
@@ -215,6 +217,13 @@ impl DataClientFactory for OndoDataClientFactory {
 pub struct OndoExecutionClientFactory {
     budget: OndoRateBudget,
     environment: Option<OndoEnvironment>,
+    /// The most recent execution client's read-only diagnostics, when one has been created.
+    ///
+    /// One factory is built per node and one execution client per node, so this is the current
+    /// run's handle rather than a cross-run accumulator. The Python surface reads a snapshot from
+    /// it and has no way to write it.
+    read_only_diagnostics: Arc<RwLock<Option<OndoReadOnlyDiagnostics>>>,
+    production: Arc<RwLock<Option<Arc<crate::production::ProductionAuthority>>>>,
 }
 
 impl Default for OndoExecutionClientFactory {
@@ -245,6 +254,8 @@ impl OndoExecutionClientFactory {
         Self {
             budget,
             environment: None,
+            read_only_diagnostics: Arc::new(RwLock::new(None)),
+            production: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -258,10 +269,34 @@ impl OndoExecutionClientFactory {
         &self.budget
     }
 
+    /// Returns a sanitized snapshot of the most recent execution client's diagnostics.
+    ///
+    /// [`None`] when this factory has not created an execution client yet. The snapshot carries
+    /// counters, fixed channel labels, the run state, the account identity and the owned shutdown
+    /// status only; it cannot carry a frame, a credential, an account or order id, or an amount.
+    #[must_use]
+    pub fn read_only_snapshot(&self) -> Option<crate::diagnostics::OndoReadOnlySnapshot> {
+        self.read_only_diagnostics
+            .read()
+            .as_ref()
+            .map(OndoReadOnlyDiagnostics::snapshot)
+    }
+
+    /// Returns the current run's native production evidence, or no completed snapshot.
+    #[must_use]
+    pub fn production_trade_snapshot(&self) -> Option<serde_json::Value> {
+        self.production
+            .read()
+            .as_ref()
+            .and_then(|guard| guard.snapshot())
+    }
+
     fn bound_to(environment: OndoEnvironment) -> Self {
         Self {
             budget: shared_rest_budget(environment),
             environment: Some(environment),
+            read_only_diagnostics: Arc::new(RwLock::new(None)),
+            production: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -329,6 +364,11 @@ impl ExecutionClientFactory for OndoExecutionClientFactory {
             None, // credential: resolved by the client, behind the environment gate
             Some(budget),
         )?;
+
+        self.read_only_diagnostics
+            .write()
+            .replace(client.read_only_diagnostics());
+        *self.production.write() = client.production_authority();
 
         Ok(Box::new(client))
     }
@@ -522,6 +562,125 @@ mod tests {
         assert!(
             !client.provides_bulk_position_coverage(InstrumentId::from("NVDA-USD-PERP.ONDO")),
             "an absent position report is not evidence of a flat account before Task 8",
+        );
+    }
+
+    /// The factory retains a sanitized snapshot of the client it created. It starts from the safe
+    /// defaults: the configured run token, no accepted login, `disconnected`, `unknown` identity
+    /// and `not_attempted` shutdown.
+    #[rstest]
+    fn test_the_execution_factory_retains_a_sanitized_snapshot_of_the_client_it_created() {
+        let factory = OndoExecutionClientFactory::new();
+
+        assert!(
+            factory.read_only_snapshot().is_none(),
+            "a factory that has created no client has no snapshot",
+        );
+
+        let config = OndoExecutionClientConfig {
+            account_read_only: true,
+            diagnostics_run_id: Some("run-alpha".to_string()),
+            ..exec_config()
+        };
+        let _client = factory
+            .create(
+                TraderId::from("TESTER-001"),
+                "ONDO-EXEC",
+                &config,
+                Rc::new(RefCell::new(Cache::default())).into(),
+            )
+            .expect("the factory builds the native client");
+
+        let snapshot = factory
+            .read_only_snapshot()
+            .expect("the factory retained the client's diagnostics handle");
+
+        assert_eq!(snapshot.run_id, "run-alpha");
+        assert!(!snapshot.logged_in, "no login has been accepted");
+        assert!(snapshot.subscriptions_acked.is_empty());
+        assert_eq!(snapshot.run_state, "disconnected");
+        assert_eq!(snapshot.reconnects, 0);
+        assert_eq!(snapshot.recoveries, 0);
+        assert_eq!(snapshot.account_state_events, 0);
+        assert_eq!(snapshot.identity_match, "unknown");
+        assert_eq!(snapshot.shutdown_status, "not_attempted");
+    }
+
+    /// A factory clone shares the diagnostics store with the original, so the handle the registry's
+    /// copy retains is the handle the node's client reports through.
+    #[rstest]
+    fn test_a_cloned_execution_factory_reads_the_same_diagnostics_store() {
+        let factory = OndoExecutionClientFactory::new();
+        let clone = factory.clone();
+
+        let config = OndoExecutionClientConfig {
+            account_read_only: true,
+            diagnostics_run_id: Some("run-clone".to_string()),
+            ..exec_config()
+        };
+        let _client = clone
+            .create(
+                TraderId::from("TESTER-001"),
+                "ONDO-EXEC",
+                &config,
+                Rc::new(RefCell::new(Cache::default())).into(),
+            )
+            .expect("the clone builds the native client");
+
+        let snapshot = factory
+            .read_only_snapshot()
+            .expect("the original sees the clone's client");
+
+        assert_eq!(snapshot.run_id, "run-clone");
+    }
+
+    /// Two runs through one factory are isolated: the second client replaces the first run's store,
+    /// so a snapshot is the current run's and its counters do not accumulate.
+    #[rstest]
+    fn test_two_runs_through_one_factory_are_isolated() {
+        let factory = OndoExecutionClientFactory::new();
+
+        let first_config = OndoExecutionClientConfig {
+            account_read_only: true,
+            diagnostics_run_id: Some("run-first".to_string()),
+            ..exec_config()
+        };
+        let first = factory
+            .create(
+                TraderId::from("TESTER-001"),
+                "ONDO-EXEC",
+                &first_config,
+                Rc::new(RefCell::new(Cache::default())).into(),
+            )
+            .expect("the first run builds");
+        drop(first);
+
+        assert_eq!(
+            factory.read_only_snapshot().unwrap().run_id,
+            "run-first",
+            "the snapshot survives the client object",
+        );
+
+        let second_config = OndoExecutionClientConfig {
+            account_read_only: true,
+            diagnostics_run_id: Some("run-second".to_string()),
+            ..exec_config()
+        };
+        let _second = factory
+            .create(
+                TraderId::from("TESTER-001"),
+                "ONDO-EXEC",
+                &second_config,
+                Rc::new(RefCell::new(Cache::default())).into(),
+            )
+            .expect("the second run builds");
+
+        let snapshot = factory.read_only_snapshot().unwrap();
+
+        assert_eq!(snapshot.run_id, "run-second");
+        assert!(
+            !snapshot.logged_in && snapshot.reconnects == 0 && snapshot.recoveries == 0,
+            "the second run does not inherit the first run's counters",
         );
     }
 

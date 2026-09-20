@@ -26,10 +26,16 @@
 //! else, so any other remote host - and any URL the hand-rolled host extraction could not read -
 //! could be signed for. The policy here admits exactly two authorities:
 //!
-//! 1. [`OndoEndpoint::Official`]: the official host of the session's own environment
-//!    ([`OndoEnvironment::Sandbox`]), on the scheme that environment's endpoints use, on the
-//!    scheme's default port, carrying no userinfo;
+//! 1. [`OndoEndpoint::Official`]: the official host of the session's own environment, which is the
+//!    environment of its [`crate::common::enums::OndoAuthenticationScope`], on the scheme that
+//!    environment's endpoints use, on the scheme's default port, carrying no userinfo;
 //! 2. [`OndoEndpoint::LoopbackTestService`]: a loopback *address*, described below.
+//!
+//! The session's scope decides the environment the official host must belong to. A sandbox scope
+//! (trading or read-only) admits `api.ondoperps-sandbox.xyz` and refuses every host inside the
+//! production domain by name; a production read-only scope admits `api.ondoperps.xyz` and refuses
+//! every other host, including the sandbox authority. Neither scope can be pointed at the other
+//! environment's authority, so a credential can never be sent cross-environment.
 //!
 //! Everything else is refused, and the refusal is a decision about the parsed URL:
 //! [`nautilus_network::http::Url`] is the same parser the HTTP transport itself uses (reqwest's
@@ -50,16 +56,17 @@
 //! returned to the caller, and is logged by the authenticated transport, so a session pointed at a
 //! local test service is never silent.
 //!
-//! The production rules are kept alongside it rather than replaced by it: a host inside the
-//! production domain is refused by name ([`OndoEnvironmentError::ProductionHostForbidden`]) before
-//! the allowlist is consulted, so the policy is never weaker than the production blacklist it
-//! supersedes.
+//! The production rules are kept alongside it rather than replaced by it: for a sandbox scope a
+//! host inside the production domain is refused by name
+//! ([`OndoEnvironmentError::ProductionHostForbidden`]) before the allowlist is consulted, so the
+//! policy is never weaker than the production blacklist it supersedes, and for a production scope a
+//! production-domain host that is not the official one is refused by the same name.
 
 use std::net::IpAddr;
 
 use nautilus_network::http::Url;
 
-use crate::common::enums::OndoEnvironment;
+use crate::common::enums::{OndoAuthenticationScope, OndoEnvironment};
 
 /// The registrable domain every production host belongs to.
 ///
@@ -136,16 +143,10 @@ pub enum OndoEndpoint {
 /// it, and an error is the last place it should reach.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum OndoEnvironmentError {
-    /// Production is not an environment this adapter may authenticate against.
-    #[error(
-        "an authenticated Ondo Perps session may not be opened against production: this adapter \
-         authenticates the sandbox environment only (plan §1, §6.1)"
-    )]
-    ProductionForbidden,
     /// The base URL points at the production venue.
     #[error(
-        "the base URL host `{host}` belongs to the production Ondo Perps domain, so a sandbox \
-         credential may not be sent to it"
+        "the base URL host `{host}` belongs to the production Ondo Perps domain, and is not the \
+         official host this session may sign for"
     )]
     ProductionHostForbidden {
         /// The host the rule matched.
@@ -176,6 +177,20 @@ pub enum OndoEnvironmentError {
          URL an authenticated request is built from"
     )]
     UserInfoForbidden,
+    /// The credential's environment does not match the session's authorization scope.
+    ///
+    /// The two are one decision: a sandbox key is never sent under a production scope, or the
+    /// other way round. Neither value is a secret.
+    #[error(
+        "the credential's environment (`{credential:?}`) does not match the session's authorization \
+         scope (`{scope:?}`)"
+    )]
+    CredentialEnvironmentMismatch {
+        /// The credential's environment.
+        credential: OndoEnvironment,
+        /// The scope the session asked for.
+        scope: OndoAuthenticationScope,
+    },
     /// The official host was given on a port other than the one its scheme uses.
     #[error(
         "the base URL host `{host}` carries port {port}, which is not the port this endpoint uses"
@@ -200,35 +215,33 @@ pub enum OndoEnvironmentError {
 /// can be - and is - applied before a credential is resolved and before a client exists.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct OndoEndpointPolicy {
-    environment: OndoEnvironment,
+    scope: OndoAuthenticationScope,
     family: OndoSchemeFamily,
 }
 
 impl OndoEndpointPolicy {
-    /// The policy an authenticated session of `environment` and `family` is held to.
+    /// The policy an authenticated session of `scope` and `family` is held to.
     #[must_use]
-    pub const fn authenticated(environment: OndoEnvironment, family: OndoSchemeFamily) -> Self {
-        Self {
-            environment,
-            family,
-        }
+    pub const fn authenticated(scope: OndoAuthenticationScope, family: OndoSchemeFamily) -> Self {
+        Self { scope, family }
+    }
+
+    /// Returns the authorization scope this policy was built for.
+    #[must_use]
+    pub const fn scope(&self) -> OndoAuthenticationScope {
+        self.scope
     }
 
     /// Returns which authority `base_url` names, or why it names none this session may sign for.
     ///
     /// # Errors
     ///
-    /// Returns [`OndoEnvironmentError::ProductionForbidden`] for any environment other than
-    /// [`OndoEnvironment::Sandbox`], and otherwise the reason the URL is not an endpoint this
-    /// session may use: [`OndoEnvironmentError::MalformedUrl`],
+    /// Returns the reason the URL is not an endpoint this session may use:
+    /// [`OndoEnvironmentError::MalformedUrl`],
     /// [`OndoEnvironmentError::ProductionHostForbidden`],
     /// [`OndoEnvironmentError::UserInfoForbidden`], [`OndoEnvironmentError::HostNotAllowed`],
     /// [`OndoEnvironmentError::UnsupportedScheme`] or [`OndoEnvironmentError::PortNotAllowed`].
     pub fn classify(&self, base_url: &str) -> Result<OndoEndpoint, OndoEnvironmentError> {
-        if self.environment != OndoEnvironment::Sandbox {
-            return Err(OndoEnvironmentError::ProductionForbidden);
-        }
-
         let url = Url::parse(base_url).map_err(|_error| OndoEnvironmentError::MalformedUrl)?;
 
         // A URL the parser accepts without an authority (`mailto:`, `data:`) names no host to sign
@@ -237,11 +250,20 @@ impl OndoEndpointPolicy {
             return Err(OndoEnvironmentError::MalformedUrl);
         };
         let host = normalised_host(host);
+        let official = official_host(self.scope.environment());
 
-        // Production is refused by name before the allowlist is consulted, so the allowlist can only
-        // ever be stricter than the blacklist it replaces.
-        if is_production_host(&host) {
+        // A production-domain host that is not this session's own official host is refused by name:
+        // for a sandbox scope that is every production host, and for a production scope it is every
+        // production host but `api.ondoperps.xyz`. This runs before the cross-environment rule so
+        // the production authority is still named as production for a sandbox session.
+        if is_production_host(&host) && host != official {
             return Err(OndoEnvironmentError::ProductionHostForbidden { host });
+        }
+
+        // The other environment's official host is never signed for, whichever environment this
+        // session belongs to: the two authorities are separate credentials, not two routes.
+        if host == official_host(other_environment(self.scope.environment())) {
+            return Err(OndoEnvironmentError::HostNotAllowed { host });
         }
 
         if !url.username().is_empty() || url.password().is_some() {
@@ -259,7 +281,7 @@ impl OndoEndpointPolicy {
             return Ok(OndoEndpoint::LoopbackTestService);
         }
 
-        if host != official_host(self.environment) {
+        if host != official {
             return Err(OndoEnvironmentError::HostNotAllowed { host });
         }
 
@@ -284,7 +306,21 @@ impl OndoEndpointPolicy {
 const fn official_host(environment: OndoEnvironment) -> &'static str {
     match environment {
         OndoEnvironment::Sandbox => ONDO_SANDBOX_HOST,
-        OndoEnvironment::Production => "api.ondoperps.xyz",
+        OndoEnvironment::Production => ONDO_PRODUCTION_HOST,
+    }
+}
+
+/// The official production host, for both the REST and the WebSocket endpoints.
+///
+/// [`crate::common::consts::ONDO_HTTP_BASE_URL_PRODUCTION`] and
+/// [`crate::common::consts::ONDO_WS_URL_PRODUCTION`] are bound to it by this module's tests.
+const ONDO_PRODUCTION_HOST: &str = "api.ondoperps.xyz";
+
+/// The environment that is not `environment`.
+const fn other_environment(environment: OndoEnvironment) -> OndoEnvironment {
+    match environment {
+        OndoEnvironment::Sandbox => OndoEnvironment::Production,
+        OndoEnvironment::Production => OndoEnvironment::Sandbox,
     }
 }
 
@@ -332,11 +368,31 @@ mod tests {
     const SANDBOX_URL: &str = "https://api.ondoperps-sandbox.xyz";
 
     fn policy() -> OndoEndpointPolicy {
-        OndoEndpointPolicy::authenticated(OndoEnvironment::Sandbox, OndoSchemeFamily::Http)
+        OndoEndpointPolicy::authenticated(
+            OndoAuthenticationScope::SandboxTrading,
+            OndoSchemeFamily::Http,
+        )
     }
 
     fn ws_policy() -> OndoEndpointPolicy {
-        OndoEndpointPolicy::authenticated(OndoEnvironment::Sandbox, OndoSchemeFamily::WebSocket)
+        OndoEndpointPolicy::authenticated(
+            OndoAuthenticationScope::SandboxTrading,
+            OndoSchemeFamily::WebSocket,
+        )
+    }
+
+    fn production_policy() -> OndoEndpointPolicy {
+        OndoEndpointPolicy::authenticated(
+            OndoAuthenticationScope::ProductionReadOnly,
+            OndoSchemeFamily::Http,
+        )
+    }
+
+    fn production_ws_policy() -> OndoEndpointPolicy {
+        OndoEndpointPolicy::authenticated(
+            OndoAuthenticationScope::ProductionReadOnly,
+            OndoSchemeFamily::WebSocket,
+        )
     }
 
     /// The rule's host and the endpoint constants are one fact, not two: the published endpoint must
@@ -597,24 +653,64 @@ mod tests {
         );
     }
 
-    /// Only the sandbox environment has an endpoint this adapter authenticates against; production
-    /// is refused before the URL is read at all.
+    /// The production read-only scope is the mirror of the sandbox one: it admits the production
+    /// host on its own scheme and refuses the sandbox authority, and its loopback override is the
+    /// same explicit test service. The cross-environment refusal is what keeps the two credentials
+    /// from being aimed at each other.
     #[rstest]
-    fn test_production_is_refused_whatever_the_url_says() {
-        let production =
-            OndoEndpointPolicy::authenticated(OndoEnvironment::Production, OndoSchemeFamily::Http);
+    #[case::the_official_production_host("https://api.ondoperps.xyz", OndoEndpoint::Official)]
+    #[case::the_official_production_host_in_another_case(
+        "HTTPS://API.ONDOPERPS.XYZ",
+        OndoEndpoint::Official
+    )]
+    #[case::a_loopback_test_service("http://127.0.0.1:8080", OndoEndpoint::LoopbackTestService)]
+    fn test_the_production_read_only_rest_policy_admits_its_own_authority(
+        #[case] url: &str,
+        #[case] expected: OndoEndpoint,
+    ) {
+        assert_eq!(production_policy().classify(url), Ok(expected), "{url}");
+    }
 
-        for url in [
-            SANDBOX_URL,
-            "https://api.ondoperps.xyz",
-            "http://127.0.0.1:8080",
-        ] {
-            assert_eq!(
-                production.classify(url),
-                Err(OndoEnvironmentError::ProductionForbidden),
-                "{url}",
-            );
-        }
+    #[rstest]
+    #[case::the_official_production_websocket(ONDO_WS_URL_PRODUCTION)]
+    #[case::a_loopback_test_service("ws://127.0.0.1:8080/ws")]
+    fn test_the_production_read_only_websocket_policy_admits_its_own_authority(#[case] url: &str) {
+        assert!(
+            production_ws_policy().classify(url).is_ok(),
+            "`{url}` is an endpoint a production read-only session may sign for",
+        );
+    }
+
+    /// A production read-only session never signs for the sandbox authority, and it refuses every
+    /// production-domain host that is not the official one. The sandbox authority is an ordinary
+    /// host-not-allowed refusal: it is not a production host, so it does not borrow the production
+    /// name.
+    #[rstest]
+    #[case::the_sandbox_host(
+        "https://api.ondoperps-sandbox.xyz",
+        OndoEnvironmentError::HostNotAllowed { host: "api.ondoperps-sandbox.xyz".to_string() }
+    )]
+    #[case::the_sandbox_websocket(
+        "wss://api.ondoperps-sandbox.xyz/ws",
+        OndoEnvironmentError::HostNotAllowed { host: "api.ondoperps-sandbox.xyz".to_string() }
+    )]
+    #[case::the_production_apex(
+        "https://ondoperps.xyz",
+        OndoEnvironmentError::ProductionHostForbidden { host: "ondoperps.xyz".to_string() }
+    )]
+    #[case::another_production_subdomain(
+        "https://ws.ondoperps.xyz",
+        OndoEnvironmentError::ProductionHostForbidden { host: "ws.ondoperps.xyz".to_string() }
+    )]
+    #[case::an_unrelated_host(
+        "https://evil.example",
+        OndoEnvironmentError::HostNotAllowed { host: "evil.example".to_string() }
+    )]
+    fn test_the_production_read_only_policy_refuses_every_other_authority(
+        #[case] url: &str,
+        #[case] expected: OndoEnvironmentError,
+    ) {
+        assert_eq!(production_policy().classify(url), Err(expected), "{url}");
     }
 
     /// The loopback address rule is narrow on purpose, and these are the neighbours it must not
@@ -641,6 +737,14 @@ mod tests {
         );
         assert_eq!(
             ws_policy().classify(ONDO_WS_URL_SANDBOX),
+            Ok(OndoEndpoint::Official),
+        );
+        assert_eq!(
+            production_policy().classify(ONDO_HTTP_BASE_URL_PRODUCTION),
+            Ok(OndoEndpoint::Official),
+        );
+        assert_eq!(
+            production_ws_policy().classify(ONDO_WS_URL_PRODUCTION),
             Ok(OndoEndpoint::Official),
         );
     }

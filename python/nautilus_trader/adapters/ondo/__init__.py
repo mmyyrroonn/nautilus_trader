@@ -31,6 +31,7 @@ __all__ = [
     "OndoEnvironment",
     "OndoExecutionClientConfig",
     "OndoExecutionClientFactory",
+    "OndoExecutionEnvelopeConfig",
 ]
 
 fixup_module_names(globals(), __name__)

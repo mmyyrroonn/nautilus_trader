@@ -117,8 +117,9 @@ use serde_json::value::RawValue;
 use crate::{
     common::{
         consts::ONDO_HTTP_TIMEOUT_SECS,
-        credential::{OndoCredential, validate_authenticated_environment},
+        credential::{OndoCredential, OndoEnvironmentError, validate_authenticated_environment},
         endpoint::OndoEndpoint,
+        enums::OndoAuthenticationScope,
     },
     http::{
         error::{
@@ -315,6 +316,14 @@ pub struct OndoHttpClient {
     retry_manager: RetryManager<OndoHttpError>,
     budget: OndoRateBudget,
     auth: Option<Arc<OndoAuth>>,
+    /// The authorization scope this client's signed requests run under, or [`None`] for the public
+    /// transport.
+    ///
+    /// The scope is the dispatch guard the read-only scopes need: [`Self::post_signed_raw`] and
+    /// [`Self::delete_signed_raw`] refuse before a request exists when it does not permit writes,
+    /// independently of the account's own new-risk admission.
+    scope: Option<OndoAuthenticationScope>,
+    production_guard: Option<Arc<crate::production::ProductionAuthority>>,
     /// The authority class this client's signed requests go to, or [`None`] for a public client.
     endpoint: Option<OndoEndpoint>,
     /// The account's say on new-risk writes, or [`None`] for a client that has none.
@@ -339,6 +348,11 @@ impl OndoHttpClient {
     /// it reads anything; this constructor applies the same gate again, so an authenticated client
     /// cannot exist for an environment or a host the gate refuses, whatever the caller passed.
     ///
+    /// `authentication_scope` is the authorization the client runs under. An authenticated client
+    /// built without one defaults to the safe scope for its credential's environment: a sandbox
+    /// credential is a trading session, and a production credential is read-only. A read-only scope
+    /// makes [`Self::post_signed_raw`] and [`Self::delete_signed_raw`] refuse at the dispatch.
+    ///
     /// The rate limiter is deliberately *not* installed inside the HTTP transport: every request
     /// goes through [`OndoRateBudget::acquire`] in this client, which is the one place a priority
     /// request will reserve its slot.
@@ -362,6 +376,8 @@ impl OndoHttpClient {
         budget: Option<OndoRateBudget>,
         retry_config: Option<RetryConfig>,
         credential: Option<Arc<OndoCredential>>,
+        authentication_scope: Option<OndoAuthenticationScope>,
+        production_guard: Option<Arc<crate::production::ProductionAuthority>>,
         new_risk_guard: Option<Arc<dyn OndoNewRiskGuard>>,
     ) -> OndoHttpResult<Self> {
         let base_url = base_url.trim_end_matches('/').to_string();
@@ -369,10 +385,31 @@ impl OndoHttpClient {
         // The gate runs before the client holds the credential at all, so a refused session has no
         // object to send from. It also decides the redirect policy below, which is why the
         // transport is built after it rather than before.
-        let (auth, endpoint) = match credential {
+        let (auth, scope, endpoint) = match credential {
             Some(credential) => {
-                let endpoint =
-                    validate_authenticated_environment(credential.environment(), &base_url)?;
+                // An authenticated client without an explicit scope takes the safe default for its
+                // environment: sandbox trades, production does not. A production credential can
+                // therefore never produce a write-capable transport by omission.
+                let scope = authentication_scope.unwrap_or(match credential.environment() {
+                    crate::common::enums::OndoEnvironment::Sandbox => {
+                        OndoAuthenticationScope::SandboxTrading
+                    }
+                    crate::common::enums::OndoEnvironment::Production => {
+                        OndoAuthenticationScope::ProductionReadOnly
+                    }
+                });
+                let endpoint = validate_authenticated_environment(scope, &base_url)?;
+
+                // The credential and the scope are one decision: a sandbox key is never sent under
+                // a production scope, or the other way round, whatever the caller passed in.
+                if credential.environment() != scope.environment() {
+                    return Err(OndoHttpError::Environment(
+                        OndoEnvironmentError::CredentialEnvironmentMismatch {
+                            credential: credential.environment(),
+                            scope,
+                        },
+                    ));
+                }
 
                 if endpoint == OndoEndpoint::LoopbackTestService {
                     log::warn!(
@@ -381,11 +418,20 @@ impl OndoHttpClient {
                     );
                 }
 
-                (Some(Arc::new(OndoAuth::new(credential))), Some(endpoint))
+                (
+                    Some(Arc::new(OndoAuth::new(credential))),
+                    Some(scope),
+                    Some(endpoint),
+                )
             }
-            None => (None, None),
+            None => (None, None, None),
         };
 
+        if scope == Some(OndoAuthenticationScope::ProductionTrading) && production_guard.is_none() {
+            return Err(OndoHttpError::Decode(
+                "production trading requires a bounded native authority".into(),
+            ));
+        }
         let client = HttpClient::builder()
             .header_keys(
                 RAW_MD_HEADER_WHITELIST
@@ -422,6 +468,8 @@ impl OndoHttpClient {
             retry_manager,
             budget: budget.unwrap_or_default(),
             auth,
+            scope,
+            production_guard,
             endpoint,
             new_risk_guard,
         })
@@ -429,6 +477,12 @@ impl OndoHttpClient {
 }
 
 impl OndoHttpClient {
+    pub(crate) fn shares_credential(&self, credential: &Arc<OndoCredential>) -> bool {
+        self.auth
+            .as_ref()
+            .is_some_and(|auth| Arc::ptr_eq(&auth.credential, credential))
+    }
+
     /// Returns the configured REST base URL, without a trailing slash.
     #[must_use]
     pub fn base_url(&self) -> &str {
@@ -577,6 +631,16 @@ impl OndoHttpClient {
     #[must_use]
     pub const fn is_authenticated(&self) -> bool {
         self.auth.is_some()
+    }
+
+    /// Returns the authorization scope this client signs under, or [`None`] when it is the public
+    /// transport, which carries no credential and is not gated.
+    ///
+    /// [`OndoAuthenticationScope::permits_writes`] is the dispatch decision: a client whose scope
+    /// does not permit writes refuses every signed `POST` and `DELETE` before a request exists.
+    #[must_use]
+    pub const fn authentication_scope(&self) -> Option<OndoAuthenticationScope> {
+        self.scope
     }
 
     /// Returns the authority class this client signs for, or [`None`] when it is the public
@@ -777,14 +841,22 @@ impl OndoHttpClient {
         priority: OndoRequestPriority,
         permit: NewRiskPermit,
     ) -> Result<OndoPrivateResponse, OndoNewRiskSendError> {
+        self.require_write_scope("POST")?;
+
         let auth = self.auth(target)?;
         let url = self.url(target);
 
         self.budget.acquire(priority).await;
 
         self.admit_new_risk(permit)?;
-
         let headers = signed_request_headers(auth, "POST", target, &body)?;
+        if let Some(guard) = &self.production_guard {
+            guard
+                .authorize_post(target.as_str(), &body)
+                .map_err(|reason| OndoNewRiskSendError::Refused { reason })?;
+            self.admit_new_risk(permit)?;
+        }
+
         let response = self
             .client
             .request(
@@ -854,12 +926,19 @@ impl OndoHttpClient {
         priority: OndoRequestPriority,
         decode: fn(u16, &[u8]) -> OndoHttpResult<T>,
     ) -> OndoHttpResult<T> {
+        self.require_write_scope("DELETE")?;
+
         let auth = self.auth(target)?;
         let url = self.url(target);
 
         self.budget.acquire(priority).await;
 
         let headers = signed_request_headers(auth, "DELETE", target, &[])?;
+        if let Some(guard) = &self.production_guard {
+            guard
+                .authorize_delete(target.as_str())
+                .map_err(OndoHttpError::Decode)?;
+        }
         let response = self
             .client
             .request(Method::DELETE, url, None, Some(headers), None, None, None)
@@ -1074,6 +1153,26 @@ impl OndoHttpClient {
             .ok_or_else(|| OndoHttpError::NotAuthenticated {
                 target: target.as_str().to_string(),
             })
+    }
+
+    /// Refuses a signed write when the client's scope does not permit one.
+    ///
+    /// This is the first thing both write paths do, before the rate budget is acquired and before
+    /// the new-risk guard is consulted. A public client (no scope) refuses here too: only
+    /// [`OndoAuthenticationScope::SandboxTrading`] may write.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`OndoHttpError::WriteNotPermitted`] when no scope permits the write.
+    fn require_write_scope(&self, method: &'static str) -> OndoHttpResult<()> {
+        match self.scope {
+            Some(scope) if scope.permits_writes() => Ok(()),
+            Some(scope) => Err(OndoHttpError::WriteNotPermitted { scope, method }),
+            None => Err(OndoHttpError::WriteNotPermitted {
+                scope: OndoAuthenticationScope::ProductionReadOnly,
+                method,
+            }),
+        }
     }
 
     /// Builds the full URL for a target.
