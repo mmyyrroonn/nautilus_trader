@@ -734,6 +734,8 @@ enum Venue {
     NoReleaseAck,
     WrongReleaseAck,
     DelayedReleaseAck,
+    AmbiguousReleaseUpdate,
+    MissingReleaseUpdateData,
 }
 
 /// The endpoint's record of what the client sent, and its way of pushing back.
@@ -910,6 +912,12 @@ fn responses(venue: Venue, text: &str) -> Vec<String> {
         (Venue::WrongReleaseAck, Some("unsubscribe")) => {
             vec![r#"{"type":"unsubscribed","channel":"ordersPerps"}"#.into()]
         }
+        (Venue::AmbiguousReleaseUpdate, Some("unsubscribe")) => vec![
+            r#"{"type":"update","channel":"cancelAllOrdersAfterPerps","data":{"status":"disabled","enabled":false,"timeout_seconds":0,"op":"unsubscribe","private":"SYNTHETIC_PRIVATE"}}"#.into(),
+        ],
+        (Venue::MissingReleaseUpdateData, Some("unsubscribe")) => vec![
+            r#"{"type":"update","channel":"cancelAllOrdersAfterPerps"}"#.into(),
+        ],
         (_, Some("unsubscribe")) => {
             vec![format!(
                 r#"{{"type":"unsubscribed","channel":"{channel}"}}"#
@@ -5543,6 +5551,8 @@ async fn test_production_definitive_zero_close_releases_capacity_for_second_clos
 #[case(Venue::NoReleaseAck, false)]
 #[case(Venue::WrongReleaseAck, false)]
 #[case(Venue::DelayedReleaseAck, true)]
+#[case(Venue::AmbiguousReleaseUpdate, false)]
+#[case(Venue::MissingReleaseUpdateData, false)]
 #[tokio::test(flavor = "multi_thread")]
 async fn test_production_final_clean_requires_matching_release_ack(
     #[case] venue: Venue,
@@ -5571,6 +5581,111 @@ async fn test_production_final_clean_requires_matching_release_ack(
     let proof = harness.client.production_trade_snapshot().unwrap();
     assert_eq!(proof["phase"] == "final", clean);
     assert_eq!(proof["shutdown_status"] == "clean", clean);
+    assert_eq!(proof["dms_release"]["attempted"], true);
+    assert_eq!(proof["dms_release"]["frame_sent"], true);
+    assert_eq!(proof["dms_release"]["acknowledged"], clean);
+    assert!(!proof.to_string().contains("SYNTHETIC_PRIVATE"));
+    if matches!(
+        venue,
+        Venue::AmbiguousReleaseUpdate | Venue::MissingReleaseUpdateData
+    ) {
+        assert_eq!(proof["dms_release"]["updates_after_release"], 1);
+        assert_eq!(
+            proof["dms_release"]["last_update_data_kind"],
+            if venue == Venue::AmbiguousReleaseUpdate {
+                "object"
+            } else {
+                "missing"
+            }
+        );
+    }
+}
+
+#[rstest]
+#[case(false)]
+#[case(true)]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_release_never_rearms_across_renewal_or_connection_loss(
+    #[case] lose_connection: bool,
+) {
+    let journal = JournalPath::new("release-never-rearms");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::NoReleaseAck).await;
+    let mut config = production_config(&journal);
+    config.dms_timeout_secs = 2;
+    let mut harness = build_harness(&rest, &private, config);
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+
+    let respond = async {
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while !switch_frames(&private)
+                .iter()
+                .any(|body| is_a_switch_release(body))
+            {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("the release request reached the loopback venue");
+        if lose_connection {
+            private.disconnect();
+        }
+        // Cross the one-second renewal tick while release is awaiting its acknowledgement.
+        tokio::time::sleep(Duration::from_millis(1_250)).await;
+        if !lose_connection {
+            private.push(r#"{"type":"unsubscribed","channel":"cancelAllOrdersAfterPerps"}"#);
+        }
+    };
+    let (result, ()) = tokio::join!(harness.client.disconnect(), respond);
+    assert_eq!(result.is_ok(), !lose_connection);
+    assert_eq!(
+        private.connection_count(),
+        1,
+        "release must not reconnect and rearm"
+    );
+    let frames = switch_frames(&private);
+    let release = frames
+        .iter()
+        .position(|body| is_a_switch_release(body))
+        .unwrap();
+    assert_eq!(
+        release + 1,
+        frames.len(),
+        "release must be the final DMS request"
+    );
+    let proof = harness.client.production_trade_snapshot().unwrap();
+    assert_eq!(proof["dms_release"]["acknowledged"], !lose_connection);
+    assert_eq!(proof["shutdown_status"] == "clean", !lose_connection);
+    if lose_connection {
+        assert_eq!(proof["dms_release"]["outcome"], "no_connection");
+    }
+    assert_eq!(rest.writes(), 0);
+}
+
+/// Production shutdown must leave enough of the approved absolute cleanup window for the same
+/// multi-read reconciliation that startup requires. Five seconds is shorter than the observed
+/// signed-read sequence and used to prevent the release frame from becoming eligible at all.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_shutdown_waits_for_a_slow_final_reconciliation_before_release() {
+    let journal = JournalPath::new("slow-final-reconciliation");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut harness = build_harness(&rest, &private, production_config(&journal));
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+
+    rest.hold_orders();
+    let release = async {
+        tokio::time::sleep(Duration::from_secs(6)).await;
+        rest.release_orders();
+    };
+
+    let (result, ()) = tokio::join!(harness.client.disconnect(), release);
+    result.expect("the production stop budget covers final reconciliation and DMS release");
+    let proof = harness.client.production_trade_snapshot().unwrap();
+    assert_eq!(proof["phase"], "final");
+    assert_eq!(proof["shutdown_status"], "clean");
 }
 
 #[tokio::test(flavor = "multi_thread")]

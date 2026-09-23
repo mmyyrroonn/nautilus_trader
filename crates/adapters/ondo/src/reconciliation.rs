@@ -88,6 +88,15 @@ pub const ONDO_SUBMISSION_PROBE_INTERVAL: u64 = 5;
 /// sequence boundary can be proven).
 pub const ONDO_RECONCILE_CONFIRMATIONS: usize = 2;
 
+/// How old the last concluded reconciliation pass may be for production admission to rely on it.
+///
+/// Measured from the instant a pass **concluded**, not from [`AccountReading::read_at`]: a pass
+/// makes several rate-limited reads, so a window measured from the pass's start is shorter than
+/// one reconciliation cycle and refuses a submission that merely waited for its own quote. Fifteen
+/// seconds covers more than one cycle of the observed cadence, while a reconciliation that stalls
+/// or stops still closes new risk within seconds rather than never.
+pub const ONDO_PRODUCTION_READING_FRESHNESS_NANOS: u64 = 15_000_000_000;
+
 /// How often a stop looks at whether the orders it cancelled have settled, in milliseconds.
 ///
 /// The stop's waits are real ones on the process clock, because the reports it waits for arrive
@@ -2938,6 +2947,12 @@ pub struct ReconciliationMachine {
     confirmations: usize,
     last_fingerprint: Option<u64>,
     last_reading: Option<AccountReading>,
+    /// The instant the last pass concluded at, when one ever has.
+    ///
+    /// This is deliberately **not** [`AccountReading::read_at`]: that is stamped when a pass
+    /// begins, and the pass's several rate-limited reads make it seconds old by the time the pass
+    /// concludes. Admission asks how long ago this client last *learned* the account's state.
+    last_concluded_at: Option<UnixNanos>,
     last_judgment: Option<AccountJudgment>,
     last_balance: Option<MappedBalance>,
     /// Whether the last balance this machine judged is one it may report as the account's.
@@ -2970,6 +2985,7 @@ impl ReconciliationMachine {
             confirmations: 0,
             last_fingerprint: None,
             last_reading: None,
+            last_concluded_at: None,
             last_judgment: None,
             last_balance: None,
             balance_verified: false,
@@ -3176,6 +3192,25 @@ impl ReconciliationMachine {
     #[must_use]
     pub const fn last_reading(&self) -> Option<&AccountReading> {
         self.last_reading.as_ref()
+    }
+
+    /// Returns the instant the last concluded pass finished at, when one ever has.
+    #[must_use]
+    pub const fn last_concluded_at(&self) -> Option<UnixNanos> {
+        self.last_concluded_at
+    }
+
+    /// Returns whether the account was read recently enough to admit production new risk.
+    ///
+    /// The window is [`ONDO_PRODUCTION_READING_FRESHNESS_NANOS`], measured from the conclusion of
+    /// the last pass: an account this client has not read for longer than that is an account whose
+    /// state may have moved, whatever the last reading said. A pass that failed never moves the
+    /// instant, so a reconciliation that stops concluding closes this within one window.
+    #[must_use]
+    pub fn reading_is_fresh(&self, now: UnixNanos) -> bool {
+        self.last_concluded_at.is_some_and(|at| {
+            now.as_u64().saturating_sub(at.as_u64()) <= ONDO_PRODUCTION_READING_FRESHNESS_NANOS
+        })
     }
 
     /// Returns the last pass's judgment.
@@ -3708,10 +3743,14 @@ impl ReconciliationMachine {
     pub fn conclude_pass(
         &mut self,
         reading: &AccountReading,
-        _now: UnixNanos,
+        now: UnixNanos,
     ) -> ReconciliationState {
         let was_ready = self.state == ReconciliationState::Ready;
         let judgment = self.evaluate(reading);
+
+        // The pass concluded, whatever it judged: an uncertain conclusion is still this client
+        // having read the account, and the refusal it raises is a separate decision.
+        self.last_concluded_at = Some(now);
 
         // The loss has been judged. What keeps the account uncertain from here is that judgment -
         // the pass that carried it is the one that has to be repeated - so the record of it is

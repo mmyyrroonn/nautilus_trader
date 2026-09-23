@@ -55,8 +55,7 @@ use nautilus_model::{
         AccountType, LiquiditySide, OmsType, OrderSide, OrderStatus, OrderType, PositionSide,
         TimeInForce,
     },
-    events::AccountState,
-    events::OrderEventAny,
+    events::{AccountState, OrderEventAny},
     identifiers::{
         AccountId, ClientId, ClientOrderId, InstrumentId, OrderListId, StrategyId, TradeId,
         TraderId, VenueOrderId,
@@ -123,8 +122,12 @@ struct CapturedRequest {
 /// connection the same way.
 #[derive(Debug, Clone)]
 enum Reply {
-    /// Answer with this status and body.
-    Answer { status: u16, body: String },
+    /// Answer with this status, these headers and this body.
+    Answer {
+        status: u16,
+        headers: Vec<(&'static str, String)>,
+        body: String,
+    },
     /// Wait until the gate is released, then answer `200 OK` with this body.
     ///
     /// Drives an exact race: the test can act while the request is provably in flight, instead of
@@ -136,6 +139,7 @@ impl Reply {
     fn ok(body: impl Into<String>) -> Self {
         Self::Answer {
             status: 200,
+            headers: Vec::new(),
             body: body.into(),
         }
     }
@@ -143,6 +147,17 @@ impl Reply {
     fn answer(status: u16, body: impl Into<String>) -> Self {
         Self::Answer {
             status,
+            headers: Vec::new(),
+            body: body.into(),
+        }
+    }
+
+    /// One reply carrying a response header - the shape a `Date` header needs, because the clock
+    /// offset is only learned from a real one.
+    fn with_header(status: u16, name: &'static str, value: &str, body: impl Into<String>) -> Self {
+        Self::Answer {
+            status,
+            headers: vec![(name, value.to_string())],
             body: body.into(),
         }
     }
@@ -251,7 +266,7 @@ async fn serve_connection(
             // is refused here and consumes nothing, which is what "this harness serves REST only"
             // means - and it is why the private session stays unauthenticated in these tests.
             if is_websocket_upgrade(&buffer) {
-                write_response(&mut stream, 400, r#"{"success":false}"#).await;
+                write_response(&mut stream, 400, &[], r#"{"success":false}"#).await;
 
                 return;
             }
@@ -271,10 +286,14 @@ async fn serve_connection(
     };
 
     match reply {
-        Some(Reply::Answer { status, body }) => write_response(&mut stream, status, &body).await,
+        Some(Reply::Answer {
+            status,
+            headers,
+            body,
+        }) => write_response(&mut stream, status, &headers, &body).await,
         Some(Reply::Gated { gate, body }) => {
             gate.notified().await;
-            write_response(&mut stream, 200, &body).await;
+            write_response(&mut stream, 200, &[], &body).await;
         }
         None => drop(stream),
     }
@@ -322,7 +341,12 @@ fn parse_request(buffer: &[u8]) -> Option<CapturedRequest> {
     })
 }
 
-async fn write_response(stream: &mut TcpStream, status: u16, body: &str) {
+async fn write_response(
+    stream: &mut TcpStream,
+    status: u16,
+    headers: &[(&'static str, String)],
+    body: &str,
+) {
     let status_text = match status {
         200 => "OK",
         400 => "Bad Request",
@@ -333,12 +357,18 @@ async fn write_response(stream: &mut TcpStream, status: u16, body: &str) {
         _ => "Status",
     };
 
-    let response = format!(
-        "HTTP/1.1 {status} {status_text}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+    let mut head = format!(
+        "HTTP/1.1 {status} {status_text}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n",
         body.len(),
     );
 
-    let _ = stream.write_all(response.as_bytes()).await;
+    for (name, value) in headers {
+        head.push_str(&format!("{name}: {value}\r\n"));
+    }
+    head.push_str("\r\n");
+
+    let _ = stream.write_all(head.as_bytes()).await;
+    let _ = stream.write_all(body.as_bytes()).await;
     let _ = stream.flush().await;
 }
 
@@ -4222,6 +4252,85 @@ async fn test_an_account_answer_without_an_identifier_is_unknown() {
         harness.client.account().account_identity(),
         OndoAccountIdentity::Unknown,
     );
+}
+
+/// The **first** signed request is the one that teaches this client the venue's clock, so a venue
+/// whose forward tolerance is tighter than the host's skew rejects it. The identity read spends
+/// exactly one retry - signing with the offset the rejection's own `Date` header taught - instead
+/// of leaving the identity unknown and the connection refused.
+#[tokio::test]
+async fn test_a_clock_rejected_identity_read_is_retried_once_with_the_learned_offset() {
+    let local_secs = jiff::Timestamp::now().as_second();
+    let venue_date = jiff::Timestamp::from_second(local_secs - 4)
+        .expect("a readable second")
+        .strftime("%a, %d %b %Y %H:%M:%S GMT")
+        .to_string();
+    let mock = MockServer::start(vec![
+        Reply::with_header(
+            401,
+            "date",
+            &venue_date,
+            r#"{"success":false,"error":"timestamp too far in the future","error_code":"timestamp_too_far"}"#,
+        ),
+        Reply::ok(envelope(r#"{"accountID":"10458932786832481"}"#)),
+    ])
+    .await;
+    let config = OndoExecutionClientConfig {
+        environment: OndoEnvironment::Production,
+        account_id: Some(AccountId::from(ACCOUNT_ID)),
+        api_key: Some(TEST_KEY_ID.to_string()),
+        api_secret: Some(TEST_API_SECRET.to_string()),
+        account_read_only: true,
+        expected_venue_account_id: Some("10458932786832481".to_string()),
+        ..Default::default()
+    };
+
+    let mut harness = build_harness(&mock, config);
+    harness.client.start().expect("start");
+
+    let error = harness
+        .client
+        .connect()
+        .await
+        .expect_err("the HTTP-only mock cannot acknowledge private login");
+    assert_eq!(
+        error.to_string(),
+        "ondo_readonly_readiness:private_login_not_acknowledged"
+    );
+    assert_eq!(
+        harness.client.account().account_identity(),
+        OndoAccountIdentity::Matched,
+        "the retry resolved the identity the rejection first refused",
+    );
+
+    let accounts: Vec<CapturedRequest> = mock
+        .captured()
+        .into_iter()
+        .filter(|request| request.target == "/v1/account")
+        .collect();
+    assert_eq!(
+        accounts.len(),
+        2,
+        "exactly one retry, never a loop: {:?}",
+        mock.targets(),
+    );
+    let first = captured_timestamp_ms(&accounts[0]);
+    let second = captured_timestamp_ms(&accounts[1]);
+    assert!(
+        (2_500..=7_000).contains(&first.saturating_sub(second)),
+        "the retry signs with the venue's clock, not the host's: {first} then {second}",
+    );
+}
+
+/// One signed request's timestamp header, as the wire carried it.
+fn captured_timestamp_ms(request: &CapturedRequest) -> u64 {
+    request
+        .head
+        .lines()
+        .filter_map(|line| line.split_once(':'))
+        .find(|(name, _value)| name.eq_ignore_ascii_case("ondo-timestamp"))
+        .map(|(_name, value)| value.trim().parse().expect("a millisecond count"))
+        .expect("every signed request carries the timestamp header")
 }
 
 /// No expected id means no comparison and no identity read at all, and the identity stays

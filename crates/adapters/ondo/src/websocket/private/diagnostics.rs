@@ -45,8 +45,7 @@
 //! capped at all: a session that runs for a month must not be an unbounded allocation, and the
 //! counters are what a report reads for the shape of the run.
 
-use std::collections::VecDeque;
-use std::sync::Arc;
+use std::{collections::VecDeque, sync::Arc};
 
 use parking_lot::Mutex;
 

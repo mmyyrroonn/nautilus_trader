@@ -38,7 +38,7 @@
 
 use anyhow::Context;
 use nautilus_core::UnixNanos;
-use serde_json::value::RawValue;
+use serde_json::{Value, value::RawValue};
 
 use crate::{
     http::{orders::OndoApiOrder, private::OndoApiFill},
@@ -68,6 +68,142 @@ pub struct PrivateEnvelope {
     pub message: Option<String>,
     /// An error code, when the venue sent one.
     pub code: Option<String>,
+}
+
+/// A bounded summary of one DMS-channel `update`.
+///
+/// The venue's DMS update contract is not sufficiently specific to use as an acknowledgement.
+/// This summary therefore keeps only the fixed classifications the production report exposes;
+/// it never retains the update's text, unknown keys or free-form values.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct DmsUpdateSummary {
+    /// The top-level JSON kind of `data`.
+    pub data_kind: &'static str,
+    /// The allowlisted `op` classification.
+    pub op: &'static str,
+    /// The allowlisted `timeout_seconds` classification.
+    pub timeout: &'static str,
+    /// The allowlisted `status` classification.
+    pub status: &'static str,
+    /// The allowlisted `enabled` classification.
+    pub enabled: &'static str,
+}
+
+impl Default for DmsUpdateSummary {
+    fn default() -> Self {
+        Self {
+            data_kind: "missing",
+            op: "missing",
+            timeout: "missing",
+            status: "missing",
+            enabled: "missing",
+        }
+    }
+}
+
+/// Summarizes one DMS-channel update without retaining any payload text.
+#[must_use]
+pub fn summarize_dms_update(data: Option<&RawValue>) -> DmsUpdateSummary {
+    let Some(data) = data else {
+        return DmsUpdateSummary::default();
+    };
+
+    let data_kind = classify_json_kind(data.get());
+    let mut summary = DmsUpdateSummary {
+        data_kind,
+        ..DmsUpdateSummary::default()
+    };
+
+    if data_kind != "object" {
+        return summary;
+    }
+
+    // `RawValue` is already validated by the envelope parser. This temporary value is discarded
+    // before the summary leaves this function, and only the four fixed keys below are projected.
+    let Ok(Value::Object(object)) = serde_json::from_str::<Value>(data.get()) else {
+        return summary;
+    };
+
+    summary.op = object.get("op").map_or("missing", classify_update_op);
+    summary.timeout = object
+        .get("timeout_seconds")
+        .map_or("missing", classify_update_timeout);
+    summary.status = object
+        .get("status")
+        .map_or("missing", classify_update_status);
+    summary.enabled = object
+        .get("enabled")
+        .map_or("missing", classify_update_enabled);
+
+    summary
+}
+
+fn classify_json_kind(raw: &str) -> &'static str {
+    match raw.trim_start().as_bytes().first().copied() {
+        None => "missing",
+        Some(b'n') => "null",
+        Some(b'{') => "object",
+        Some(b'[') => "array",
+        Some(b'"') => "string",
+        Some(b'-' | b'0'..=b'9') => "number",
+        Some(b't' | b'f') => "boolean",
+        Some(_) => "missing",
+    }
+}
+
+fn classify_update_op(value: &Value) -> &'static str {
+    match value.as_str() {
+        Some("subscribe") => "subscribe",
+        Some("unsubscribe") => "unsubscribe",
+        Some(_) | None => "unrecognized",
+    }
+}
+
+fn classify_update_timeout(value: &Value) -> &'static str {
+    let Value::Number(number) = value else {
+        return "invalid";
+    };
+
+    if let Some(value) = number.as_i64() {
+        if value == 0 {
+            "zero"
+        } else if value < 0 {
+            "negative"
+        } else {
+            "positive"
+        }
+    } else if let Some(value) = number.as_u64() {
+        if value == 0 { "zero" } else { "positive" }
+    } else {
+        // The venue contract calls this an integer number of seconds. Decimal and exponent forms
+        // are therefore retained only as the fixed `invalid` classification.
+        "invalid"
+    }
+}
+
+fn classify_update_status(value: &Value) -> &'static str {
+    match value.as_str() {
+        Some("armed") => "armed",
+        Some("disarmed") => "disarmed",
+        Some("enabled") => "enabled",
+        Some("disabled") => "disabled",
+        Some("active") => "active",
+        Some("inactive") => "inactive",
+        Some("released") => "released",
+        Some("cancelled") => "cancelled",
+        Some("canceled") => "canceled",
+        Some("success") => "success",
+        Some("ok") => "ok",
+        Some(_) | None => "unrecognized",
+    }
+}
+
+fn classify_update_enabled(value: &Value) -> &'static str {
+    match value {
+        Value::Bool(true) => "true",
+        Value::Bool(false) => "false",
+        _ => "invalid",
+    }
 }
 
 /// Parses a private frame into its classified envelope.
@@ -367,5 +503,34 @@ mod tests {
 
         assert_eq!(envelope.kind, WsMessageType::LoggedIn);
         assert_eq!(envelope.message.as_deref(), Some("Login successful"));
+    }
+
+    #[rstest]
+    #[case("0", "zero")]
+    #[case("30", "positive")]
+    #[case("-1", "negative")]
+    #[case("0.0", "invalid")]
+    #[case("1.5", "invalid")]
+    #[case("true", "invalid")]
+    #[case("null", "invalid")]
+    #[case(r#""30""#, "invalid")]
+    fn test_dms_timeout_summary_requires_integer(#[case] value: &str, #[case] expected: &str) {
+        let raw = RawValue::from_string(format!(r#"{{"timeout_seconds":{value}}}"#)).unwrap();
+        assert_eq!(summarize_dms_update(Some(&raw)).timeout, expected);
+    }
+
+    #[rstest]
+    fn test_dms_summary_drops_all_unknown_private_fields_and_values() {
+        let raw = RawValue::from_string(
+            r#"{"op":"PRIVATE_SECRET","status":"PRIVATE_SECRET","timeout_seconds":"PRIVATE_SECRET","enabled":"PRIVATE_SECRET","account":"PRIVATE_SECRET"}"#.into(),
+        ).unwrap();
+        let summary = summarize_dms_update(Some(&raw));
+        assert_eq!(summary.data_kind, "object");
+        assert_eq!(summary.op, "unrecognized");
+        assert_eq!(summary.status, "unrecognized");
+        assert_eq!(summary.timeout, "invalid");
+        assert_eq!(summary.enabled, "invalid");
+        assert!(!format!("{summary:?}").contains("PRIVATE_SECRET"));
+        assert_eq!(summarize_dms_update(None).data_kind, "missing");
     }
 }

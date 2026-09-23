@@ -15,10 +15,6 @@
 
 //! Exact, immutable limits for a separately authorized production probe.
 
-use crate::http::{models::MarketInfo, orders::client_order_lookup_target};
-use nautilus_core::time::get_atomic_clock_realtime;
-use nautilus_model::{data::QuoteTick, identifiers::InstrumentId};
-use parking_lot::Mutex;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
@@ -27,8 +23,16 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
+use nautilus_core::time::get_atomic_clock_realtime;
+use nautilus_model::{data::QuoteTick, identifiers::InstrumentId};
+use parking_lot::Mutex;
 use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
+
+use crate::{
+    http::{models::MarketInfo, orders::client_order_lookup_target},
+    websocket::private::parse::DmsUpdateSummary,
+};
 
 /// The complete approved entry and cleanup envelope for one production run.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -104,7 +108,10 @@ impl OndoExecutionEnvelopeConfig {
     pub fn validate(&self, now: u64) -> Result<(), String> {
         let fail = || Err("invalid or excessive production execution envelope".to_string());
         if !self.require_flat_start
-            || self.instrument_id.to_string() != "NVDA-USD-PERP.ONDO"
+            || !matches!(
+                self.instrument_id.to_string().as_str(),
+                "NVDA-USD-PERP.ONDO" | "BTC-USD-PERP.ONDO"
+            )
             || crate::common::parse::instrument_id_to_market(&self.instrument_id).is_err()
             || !matches!(
                 (self.entry_side.as_str(), self.close_side.as_str()),
@@ -159,6 +166,45 @@ pub(crate) struct ProductionEvidence {
 
 type EvidenceReader = dyn Fn(bool) -> Result<ProductionEvidence, String> + Send + Sync;
 
+/// Names every fail-closed condition production admission is currently missing.
+///
+/// The refusal stays one decision; this only says *which* of its conditions failed, so an
+/// operator can tell a stale account read from a lapsed switch or an unreadable journal. The
+/// labels are a fixed vocabulary and carry no value, so nothing account-shaped can travel in them.
+#[must_use]
+fn unverified_production_conditions(
+    state: &ProductionState,
+    evidence: &ProductionEvidence,
+    now: u64,
+) -> Vec<&'static str> {
+    let mut unverified = Vec::new();
+    if !state.identity_verified {
+        unverified.push("identity");
+    }
+    if !evidence.ready {
+        unverified.push("ready");
+    }
+    if !evidence.identity_matched {
+        unverified.push("identity_matched");
+    }
+    if !evidence.journal_healthy {
+        unverified.push("journal");
+    }
+    if !evidence.dms_verified {
+        unverified.push("dms");
+    }
+    if evidence.unknown != 0 {
+        unverified.push("unknown");
+    }
+    if state
+        .dms_confirmed_deadline
+        .is_none_or(|deadline| now >= deadline)
+    {
+        unverified.push("deadline");
+    }
+    unverified
+}
+
 /// A native run authority whose constructor and mutation paths are crate-private.
 ///
 /// Public HTTP constructors can receive this type, but cannot manufacture an authority.
@@ -198,10 +244,46 @@ struct ProductionState {
     snapshot: Option<serde_json::Value>,
     dms_confirmed_deadline: Option<u64>,
     dms_pending_sent: Option<u64>,
+    release_started: bool,
     release_pending: bool,
+    release_ack_observed: bool,
     release_acked: bool,
+    dms_release: DmsReleaseDiagnostics,
     known_zero: BTreeSet<String>,
     identity_verified: bool,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct DmsReleaseDiagnostics {
+    attempted: bool,
+    frame_sent: bool,
+    acknowledged: bool,
+    outcome: &'static str,
+    updates_before_release: u64,
+    updates_after_release: u64,
+    last_update_data_kind: &'static str,
+    last_update_op: &'static str,
+    last_update_timeout: &'static str,
+    last_update_status: &'static str,
+    last_update_enabled: &'static str,
+}
+
+impl Default for DmsReleaseDiagnostics {
+    fn default() -> Self {
+        Self {
+            attempted: false,
+            frame_sent: false,
+            acknowledged: false,
+            outcome: "not_attempted",
+            updates_before_release: 0,
+            updates_after_release: 0,
+            last_update_data_kind: "missing",
+            last_update_op: "missing",
+            last_update_timeout: "missing",
+            last_update_status: "missing",
+            last_update_enabled: "missing",
+        }
+    }
 }
 
 #[derive(Deserialize)]
@@ -311,7 +393,8 @@ impl ProductionAuthority {
 
     pub(crate) fn begin_dms_send(&self, sent_at: u64, renewal: bool) -> bool {
         let mut state = self.state.lock();
-        if state.dms_pending_sent.is_some()
+        if state.release_started
+            || state.dms_pending_sent.is_some()
             || (renewal
                 && state
                     .dms_confirmed_deadline
@@ -344,6 +427,11 @@ impl ProductionAuthority {
         if !state.stopped {
             state.dms_confirmed_deadline = None;
             state.dms_pending_sent = None;
+        }
+        if state.release_pending && !state.release_acked {
+            state.release_pending = false;
+            state.release_ack_observed = false;
+            state.dms_release.outcome = "no_connection";
         }
         if !state.frozen {
             state.snapshot = None;
@@ -470,19 +558,12 @@ impl ProductionAuthority {
             return Err("production hard notional ceiling exceeded".into());
         }
         let evidence = self.evidence(false)?;
-        if !state.identity_verified
-            || !evidence.ready
-            || !evidence.identity_matched
-            || !evidence.journal_healthy
-            || !evidence.dms_verified
-            || evidence.unknown != 0
-            || state
-                .dms_confirmed_deadline
-                .is_none_or(|deadline| now >= deadline)
-        {
-            return Err(
-                "production native readiness, identity, journal or protection is unverified".into(),
-            );
+        let unverified = unverified_production_conditions(&state, &evidence, now);
+        if !unverified.is_empty() {
+            return Err(format!(
+                "production native readiness, identity, journal or protection is unverified: {}",
+                unverified.join(",")
+            ));
         }
         let (side, worst) = if order.reduce_only {
             (&e.close_side, e.close_worst_price)
@@ -744,7 +825,28 @@ impl ProductionAuthority {
     }
 
     pub(crate) fn snapshot(&self) -> Option<serde_json::Value> {
-        self.state.lock().snapshot.clone()
+        let state = self.state.lock();
+        let mut snapshot = state.snapshot.clone()?;
+        if let Some(object) = snapshot.as_object_mut() {
+            let release = state.dms_release;
+            object.insert(
+                "dms_release".to_string(),
+                serde_json::json!({
+                    "attempted": release.attempted,
+                    "frame_sent": release.frame_sent,
+                    "acknowledged": release.acknowledged,
+                    "outcome": release.outcome,
+                    "updates_before_release": release.updates_before_release,
+                    "updates_after_release": release.updates_after_release,
+                    "last_update_data_kind": release.last_update_data_kind,
+                    "last_update_op": release.last_update_op,
+                    "last_update_timeout": release.last_update_timeout,
+                    "last_update_status": release.last_update_status,
+                    "last_update_enabled": release.last_update_enabled,
+                }),
+            );
+        }
+        Some(snapshot)
     }
     pub(crate) fn stop_creates(&self) {
         let mut state = self.state.lock();
@@ -761,6 +863,13 @@ impl ProductionAuthority {
         state.stopped = true;
         state.dms_confirmed_deadline = None;
         state.dms_pending_sent = None;
+        state.release_pending = false;
+        state.release_ack_observed = false;
+        if state.dms_release.attempted && !state.dms_release.acknowledged {
+            if matches!(state.dms_release.outcome, "checking" | "awaiting_ack") {
+                state.dms_release.outcome = "shutdown_timeout";
+            }
+        }
         if let Some(snapshot) = state.snapshot.as_mut() {
             if snapshot["phase"] == "start" {
                 state.snapshot = None;
@@ -786,23 +895,145 @@ impl ProductionAuthority {
     }
     pub(crate) fn begin_release(&self) -> Result<(), String> {
         let mut state = self.state.lock();
-        if state.release_pending || state.release_acked {
-            return Err("production DMS release already sent or confirmed".into());
+        if state.release_started || state.dms_pending_sent.is_some() {
+            return Err("production DMS operation is pending or release already started".into());
         }
+        state.release_started = true;
+        state.dms_release.attempted = true;
+        state.dms_release.outcome = "checking";
+        state.release_ack_observed = false;
         state.release_pending = true;
         Ok(())
+    }
+
+    pub(crate) fn note_release_attempted(&self) {
+        let mut state = self.state.lock();
+        state.dms_release.attempted = true;
+        if !state.dms_release.acknowledged {
+            state.dms_release.outcome = "checking";
+        }
+    }
+
+    pub(crate) fn note_release_validation_refused(&self) {
+        let mut state = self.state.lock();
+        state.dms_release.attempted = true;
+        if !state.dms_release.acknowledged {
+            state.dms_release.outcome = "validation_refused";
+        }
+    }
+
+    pub(crate) fn note_release_blocked_unsettled(&self) {
+        let mut state = self.state.lock();
+        state.dms_release.attempted = true;
+        if !state.dms_release.acknowledged {
+            state.dms_release.outcome = "blocked_unsettled";
+        }
+    }
+
+    pub(crate) fn note_release_no_connection(&self) {
+        let mut state = self.state.lock();
+        state.dms_release.attempted = true;
+        if !state.dms_release.acknowledged {
+            state.dms_release.outcome = "no_connection";
+        }
+    }
+
+    pub(crate) fn note_release_inactive_connection(&self) {
+        let mut state = self.state.lock();
+        state.dms_release.attempted = true;
+        if !state.dms_release.acknowledged {
+            state.dms_release.outcome = "inactive_connection";
+        }
+    }
+
+    pub(crate) fn note_release_send_failed(&self) {
+        let mut state = self.state.lock();
+        state.dms_release.attempted = true;
+        if !state.dms_release.acknowledged {
+            state.dms_release.outcome = "send_failed";
+        }
+        state.release_pending = false;
+        state.release_ack_observed = false;
+    }
+
+    pub(crate) fn note_release_frame_sent(&self) {
+        let mut state = self.state.lock();
+        state.dms_release.attempted = true;
+        state.dms_release.frame_sent = true;
+        if !state.release_pending {
+            return;
+        }
+        if !state.dms_release.acknowledged {
+            state.dms_release.outcome = "awaiting_ack";
+        }
+        if state.release_ack_observed && !self.remaining().is_zero() {
+            state.release_pending = false;
+            state.release_acked = true;
+            state.dms_release.acknowledged = true;
+            state.dms_release.outcome = "acknowledged";
+        }
+    }
+
+    pub(crate) fn note_release_ack_timeout(&self) {
+        let mut state = self.state.lock();
+        if state.dms_release.attempted && !state.dms_release.acknowledged {
+            state.dms_release.outcome = "ack_timeout";
+            state.release_pending = false;
+            state.release_ack_observed = false;
+        }
+    }
+
+    pub(crate) fn note_release_shutdown_timeout(&self) {
+        let mut state = self.state.lock();
+        if state.dms_release.attempted
+            && !state.dms_release.acknowledged
+            && matches!(state.dms_release.outcome, "checking" | "awaiting_ack")
+        {
+            state.dms_release.outcome = "shutdown_timeout";
+            state.release_pending = false;
+            state.release_ack_observed = false;
+        }
+    }
+
+    pub(crate) fn note_dms_update(&self, summary: DmsUpdateSummary) {
+        let mut state = self.state.lock();
+        if state.release_started {
+            state.dms_release.updates_after_release =
+                state.dms_release.updates_after_release.saturating_add(1);
+        } else {
+            state.dms_release.updates_before_release =
+                state.dms_release.updates_before_release.saturating_add(1);
+        }
+        state.dms_release.last_update_data_kind = summary.data_kind;
+        state.dms_release.last_update_op = summary.op;
+        state.dms_release.last_update_timeout = summary.timeout;
+        state.dms_release.last_update_status = summary.status;
+        state.dms_release.last_update_enabled = summary.enabled;
     }
 
     pub(crate) fn confirm_release(&self) {
         let mut state = self.state.lock();
         if state.release_pending && !self.remaining().is_zero() {
-            state.release_pending = false;
-            state.release_acked = true;
+            state.release_ack_observed = true;
+            if state.dms_release.frame_sent {
+                state.release_pending = false;
+                state.release_acked = true;
+                state.dms_release.acknowledged = true;
+                state.dms_release.outcome = "acknowledged";
+            }
         }
     }
 
     pub(crate) fn release_acked(&self) -> bool {
         self.state.lock().release_acked
+    }
+
+    pub(crate) fn release_pending(&self) -> bool {
+        self.state.lock().release_pending
+    }
+
+    pub(crate) fn release_started(&self) -> bool {
+        self.state.lock().release_started
     }
 
     pub(crate) fn validate_direct_switch(
@@ -820,6 +1051,7 @@ impl ProductionAuthority {
             || !state.frozen
             || !state.identity_verified
             || !evidence.identity_matched
+            || state.dms_pending_sent.is_some()
             || state
                 .dms_confirmed_deadline
                 .is_none_or(|deadline| now >= deadline)
@@ -877,8 +1109,9 @@ impl ProductionAuthority {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use rstest::rstest;
+
+    use super::*;
 
     fn authority(timeout: u64) -> (Arc<ProductionAuthority>, PathBuf) {
         let now = get_atomic_clock_realtime().get_time_ns().as_u64();
@@ -901,6 +1134,234 @@ mod tests {
         .unwrap();
         let binding = guard.journal_binding.clone();
         (guard, binding)
+    }
+
+    /// The refusal stays one decision but names the condition that failed, and names it without a
+    /// value: an operator reading a rejected order can tell a stale read from a lapsed switch or an
+    /// unreadable journal.
+    #[rstest]
+    fn test_unverified_conditions_name_every_failed_condition() {
+        let mut state = ProductionState::default();
+        let mut evidence = ProductionEvidence::default();
+        let now = 1_000_000_000;
+
+        // Nothing is satisfied, and the switch deadline has never been confirmed either.
+        assert_eq!(
+            unverified_production_conditions(&state, &evidence, now),
+            vec![
+                "identity",
+                "ready",
+                "identity_matched",
+                "journal",
+                "dms",
+                "deadline"
+            ],
+        );
+
+        state.identity_verified = true;
+        evidence.ready = true;
+        evidence.identity_matched = true;
+        evidence.journal_healthy = true;
+        evidence.dms_verified = true;
+        state.dms_confirmed_deadline = Some(now + 1);
+        assert!(unverified_production_conditions(&state, &evidence, now).is_empty());
+
+        evidence.unknown = 1;
+        state.dms_confirmed_deadline = Some(now);
+        assert_eq!(
+            unverified_production_conditions(&state, &evidence, now),
+            vec!["unknown", "deadline"],
+        );
+    }
+
+    /// The gate's own refusal carries the failing label, through the same entry point a real
+    /// submission uses.
+    #[tokio::test]
+    async fn test_refused_production_post_names_the_failed_condition() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        use nautilus_model::types::{Price, Quantity};
+
+        use crate::http::models::parse_markets;
+
+        let (guard, path) = authority(30);
+        let unready = Arc::new(AtomicBool::new(false));
+        let flag = Arc::clone(&unready);
+        guard
+            .bind(Arc::new(move |_checkpoint| {
+                Ok(ProductionEvidence {
+                    ready: !flag.load(Ordering::SeqCst),
+                    identity_matched: true,
+                    journal_healthy: true,
+                    dms_verified: true,
+                    available_margin_usdc: Some(Decimal::from(25)),
+                    orders: BTreeMap::new(),
+                    unknown: 0,
+                })
+            }))
+            .unwrap();
+        guard.verify_identity(Some("unit-account".into())).unwrap();
+        let now = get_atomic_clock_realtime().get_time_ns();
+        let info = parse_markets(include_str!("../test_data/rest/markets_synthetic.json"))
+            .unwrap()
+            .market_infos(now)
+            .unwrap()
+            .into_iter()
+            .find(|i| i.instrument_id() == guard.envelope.instrument_id)
+            .unwrap();
+        guard.metadata(Some(info), Some(false), now.as_u64());
+        let body = serde_json::to_vec(&serde_json::json!({
+            "market": "NVDA-USD.P",
+            "side": "buy",
+            "type": "limit",
+            "size": "0.05",
+            "price": "230.00",
+            "timeInForce": "IOC",
+            "postOnly": false,
+            "reduceOnly": false,
+            "clientOrderId": "unverified-conditions"
+        }))
+        .unwrap();
+        let quote = QuoteTick::new(
+            guard.envelope.instrument_id,
+            Price::from("229.99"),
+            Price::from("230.00"),
+            Quantity::from("1.00"),
+            Quantity::from("1.00"),
+            now,
+            now,
+        );
+        guard
+            .prepare(
+                "unverified-conditions".into(),
+                body.clone(),
+                Some(quote),
+                None,
+            )
+            .unwrap();
+        let sent = get_atomic_clock_realtime().get_time_ns().as_u64();
+        assert!(guard.begin_dms_send(sent, false));
+        assert!(guard.confirm_dms(sent));
+        guard.reconcile(&crate::reconciliation::AccountReading::default(), true, 0);
+        assert!(
+            guard.snapshot().is_some(),
+            "the start snapshot needs a ready reading",
+        );
+
+        unready.store(true, Ordering::SeqCst);
+
+        assert_eq!(
+            guard.authorize_post("/v1/perps/orders", &body).unwrap_err(),
+            "production native readiness, identity, journal or protection is unverified: ready",
+        );
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[rstest]
+    #[case(false)]
+    #[case(true)]
+    fn test_release_requires_successful_send_and_ack_in_either_order(#[case] ack_first: bool) {
+        let (guard, path) = authority(30);
+        guard.begin_release().unwrap();
+        if ack_first {
+            guard.confirm_release();
+            assert!(!guard.release_acked());
+            guard.note_release_frame_sent();
+        } else {
+            guard.note_release_frame_sent();
+            assert!(!guard.release_acked());
+            guard.confirm_release();
+        }
+        assert!(guard.release_acked());
+        assert_eq!(guard.state.lock().dms_release.outcome, "acknowledged");
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[rstest]
+    fn test_release_send_failure_cannot_commit_an_early_ack_or_restart_dms() {
+        let (guard, path) = authority(30);
+        guard.begin_release().unwrap();
+        guard.confirm_release();
+        guard.note_release_send_failed();
+        guard.note_release_shutdown_timeout();
+        guard.confirm_release();
+        assert!(!guard.release_acked());
+        assert!(!guard.begin_dms_send(1, false));
+        assert!(!guard.begin_dms_send(1, true));
+        assert!(guard.begin_release().is_err());
+        assert_eq!(guard.state.lock().dms_release.outcome, "send_failed");
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[rstest]
+    fn test_release_connection_loss_invalidates_an_early_ack() {
+        let (guard, path) = authority(30);
+        guard.begin_release().unwrap();
+        guard.confirm_release();
+        guard.invalidate();
+        guard.note_release_frame_sent();
+        guard.confirm_release();
+        assert!(!guard.release_pending());
+        assert!(!guard.release_acked());
+        assert!(!guard.begin_dms_send(1, false));
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[rstest]
+    fn test_release_waits_for_pending_renewal_ack_and_then_blocks_new_renewals() {
+        let (guard, path) = authority(30);
+        let sent = get_atomic_clock_realtime().get_time_ns().as_u64();
+        assert!(guard.begin_dms_send(sent, false));
+        assert!(guard.confirm_dms(sent + 1));
+        assert!(guard.begin_dms_send(sent + 2, true));
+        assert!(guard.begin_release().is_err());
+        assert!(guard.confirm_dms(sent + 3));
+        guard.begin_release().unwrap();
+        assert!(!guard.begin_dms_send(sent + 4, true));
+        guard.note_release_ack_timeout();
+        assert!(!guard.begin_dms_send(sent + 5, true));
+        guard.confirm_release();
+        assert!(!guard.release_acked());
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[rstest]
+    fn test_release_checkpoint_preserves_terminal_diagnostic_reason() {
+        let (guard, path) = authority(30);
+        guard.note_release_attempted();
+        guard.note_release_validation_refused();
+        guard.note_release_shutdown_timeout();
+        assert_eq!(guard.state.lock().dms_release.outcome, "validation_refused");
+        guard.begin_release().unwrap();
+        guard.note_release_frame_sent();
+        guard.note_release_shutdown_timeout();
+        assert_eq!(guard.state.lock().dms_release.outcome, "shutdown_timeout");
+        guard.confirm_release();
+        assert!(!guard.release_acked());
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[rstest]
+    fn test_release_update_diagnostics_do_not_create_account_proof() {
+        let (guard, path) = authority(30);
+        let data = serde_json::value::RawValue::from_string(
+            r#"{"op":"unsubscribe","status":"disabled","timeout_seconds":0,"enabled":false,"secret":"SYNTHETIC_PRIVATE"}"#.into(),
+        ).unwrap();
+        let summary = crate::websocket::private::parse::summarize_dms_update(Some(&data));
+        guard.note_dms_update(summary);
+        assert!(guard.snapshot().is_none());
+        guard.state.lock().snapshot = Some(serde_json::json!({"phase":"reconciled"}));
+        guard.begin_release().unwrap();
+        guard.note_release_frame_sent();
+        guard.note_dms_update(summary);
+        let snapshot = guard.snapshot().unwrap();
+        assert_eq!(snapshot["phase"], "reconciled");
+        assert_eq!(snapshot["dms_release"]["updates_before_release"], 1);
+        assert_eq!(snapshot["dms_release"]["updates_after_release"], 1);
+        assert_eq!(snapshot["dms_release"]["last_update_status"], "disabled");
+        assert_eq!(snapshot["dms_release"]["acknowledged"], false);
+        assert!(!snapshot.to_string().contains("SYNTHETIC_PRIVATE"));
+        std::fs::remove_file(path).unwrap();
     }
 
     #[rstest]
@@ -944,6 +1405,10 @@ mod tests {
 
     #[tokio::test]
     async fn test_slow_checkpoint_crossing_genuine_dms_deadline_sends_no_http_bytes() {
+        use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+
+        use nautilus_model::types::{Price, Quantity};
+
         use crate::{
             common::{
                 credential::OndoCredential,
@@ -955,8 +1420,6 @@ mod tests {
                 rate_limit::OndoRequestPriority,
             },
         };
-        use nautilus_model::types::{Price, Quantity};
-        use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();
         let (guard, path) = authority(1);

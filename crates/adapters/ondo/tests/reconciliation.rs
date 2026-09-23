@@ -244,6 +244,50 @@ fn recovered_machine() -> ReconciliationMachine {
 }
 
 // ------------------------------------------------------------------------------------------------
+// The production reading freshness (plan §6.4)
+// ------------------------------------------------------------------------------------------------
+
+/// Only a concluded pass dates the reading production admission relies on, and the window is
+/// measured from that conclusion rather than from the reading's own `read_at` - which is stamped
+/// when a pass begins and is therefore already seconds old when the pass concludes.
+#[rstest]
+fn test_only_a_concluded_pass_dates_the_reading_and_the_window_is_its_own() {
+    let mut machine = ReconciliationMachine::new(account_id(), 30);
+
+    assert!(machine.last_concluded_at().is_none());
+    assert!(
+        !machine.reading_is_fresh(secs(1)),
+        "a machine that has never concluded a pass has nothing fresh to admit risk against",
+    );
+
+    machine.conclude_pass(&clean_reading(), secs(100));
+
+    assert_eq!(machine.last_concluded_at(), Some(secs(100)));
+    assert!(machine.reading_is_fresh(secs(100)));
+    assert!(
+        machine.reading_is_fresh(secs(115)),
+        "exactly one window after the conclusion is still fresh",
+    );
+    assert!(
+        !machine.reading_is_fresh(UnixNanos::from(secs(115).as_u64() + 1)),
+        "one nanosecond past the window is not",
+    );
+}
+
+/// A pass that could not read the account does not move the instant: an account this client failed
+/// to read is not an account whose state it has just learned.
+#[rstest]
+fn test_a_failed_pass_does_not_date_the_reading() {
+    let mut machine = ReconciliationMachine::new(account_id(), 30);
+
+    machine.conclude_pass(&clean_reading(), secs(100));
+    machine.note_pass_failed("the venue did not answer".to_string(), secs(140));
+
+    assert_eq!(machine.last_concluded_at(), Some(secs(100)));
+    assert!(!machine.reading_is_fresh(secs(116)));
+}
+
+// ------------------------------------------------------------------------------------------------
 // The state machine and the fail-closed predicate (plan §6.4)
 // ------------------------------------------------------------------------------------------------
 

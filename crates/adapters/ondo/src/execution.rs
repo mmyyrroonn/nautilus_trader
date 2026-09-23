@@ -174,14 +174,14 @@ use crate::{
         client::{
             NewRiskPermit, OndoCancelAnswer, OndoHttpClient, OndoNewRiskGuard, OndoNewRiskSendError,
         },
-        error::OndoHttpError,
+        error::{OndoAuthFailure, OndoHttpError, OndoHttpResult},
         orders::{
             ONDO_POST_ONLY_HAS_MATCH, OndoApiOrder, OndoCancelRejection, OndoOrderCommand,
             OndoOrderError, OndoOrderStatus, OndoRejectedOrder, OndoSide, client_lookup_value,
         },
         private::{
             OndoApiFill, OndoApiFundingFee, OndoFillDirection, OndoOrderHistoryStatus,
-            OndoPrivateReadQuery,
+            OndoPrivateReadQuery, OndoPrivateResponse,
         },
         query::{CursorWalk, FILLS_PATH, ORDERS_PATH},
         rate_limit::OndoRequestPriority,
@@ -214,6 +214,15 @@ const REPORT_MAX_PAGES: usize = 100;
 /// is given its own small allowance after it, because a socket still being read is never left
 /// behind.
 pub const ONDO_DISCONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Maximum production shutdown budget before the private stream's own final close allowance.
+///
+/// Production stop invalidates the pre-stop snapshot when it freezes new risk, then performs the
+/// same multi-read signed reconciliation used at startup before a DMS release becomes eligible.
+/// That sequence can legitimately exceed the generic five-second client budget. The production
+/// envelope's absolute cleanup deadline still wins: [`ProductionAuthority::remaining`] can only
+/// tighten this cap, never extend the approved run.
+pub const ONDO_PRODUCTION_DISCONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Maximum time a production read-only connection waits for private account readiness.
 const ONDO_PRODUCTION_READONLY_READY_MAX_SECS: u64 = 30;
@@ -1648,6 +1657,9 @@ struct JournalCheckpoint(OndoAccountRuntime);
 
 impl Drop for JournalCheckpoint {
     fn drop(&mut self) {
+        if let Some(guard) = &self.0.production {
+            guard.note_release_shutdown_timeout();
+        }
         self.0.persist_journal(self.0.now());
     }
 }
@@ -1865,9 +1877,7 @@ impl OndoExecutionClient {
                     }
                     Ok(crate::production::ProductionEvidence {
                         ready: matches!(machine.admission(now), Admission::Granted { .. })
-                            && machine.last_reading().is_some_and(|r| {
-                                now.as_u64().saturating_sub(r.read_at.as_u64()) <= 5_000_000_000
-                            }),
+                            && machine.reading_is_fresh(now),
                         identity_matched: *identity.read() == OndoAccountIdentity::Matched,
                         journal_healthy: journal.write_failures() == 0
                             && journal.last_written_at().is_some()
@@ -2468,18 +2478,31 @@ impl OndoExecutionClient {
                              {error}; the switch stays armed and the venue's own timeout is what \
                              will fire it"
                         ),
-                        Err(_) => log::error!(
-                            "Ondo's switch release timed out; the switch stays armed and the \
-                             venue's own timeout is what will fire it"
-                        ),
+                        Err(_) => {
+                            if let Some(guard) = &self.account.production {
+                                guard.note_release_shutdown_timeout();
+                            }
+                            log::error!(
+                                "Ondo's switch release timed out; the switch stays armed and the \
+                                 venue's own timeout is what will fire it"
+                            );
+                        }
                     }
                 }
-                None => log::error!(
-                    "Ondo has no live transport to release the switch on, so the switch stays \
-                     armed rather than claiming a release this process cannot put on the wire"
-                ),
+                None => {
+                    if let Some(guard) = &self.account.production {
+                        guard.note_release_no_connection();
+                    }
+                    log::error!(
+                        "Ondo has no live transport to release the switch on, so the switch stays \
+                         armed rather than claiming a release this process cannot put on the wire"
+                    );
+                }
             }
         } else if release_owed {
+            if let Some(guard) = &self.account.production {
+                guard.note_release_blocked_unsettled();
+            }
             log::error!(
                 "Ondo is leaving the dead man's switch armed: outcome={:?}, {} cancel(s), {} \
                  submission(s) and {} unresolved order(s) still stand",
@@ -2759,7 +2782,7 @@ impl OndoExecutionClient {
             return Ok(());
         };
 
-        let identity = match self.http_client.get_account().await {
+        let identity = match self.read_authenticated_account().await {
             Ok(response) => match response.venue_account_id() {
                 Some(account_id) if account_id == expected => OndoAccountIdentity::Matched,
                 Some(_) => OndoAccountIdentity::Mismatch,
@@ -2785,6 +2808,27 @@ impl OndoExecutionClient {
         }
 
         Ok(())
+    }
+
+    /// Reads the authenticated account, retrying once when the venue rejects the signature for a
+    /// clock this client has not learned yet.
+    ///
+    /// The **first** signed request is the one that teaches this client the venue's clock: the
+    /// answer carries the `Date` header the offset is read from, and that is true of the rejection
+    /// itself. A host whose clock runs ahead of the venue's forward tolerance therefore has its
+    /// first signed request rejected - and every later *first* request would be rejected the same
+    /// way, because nothing else observes a `Date` before the first signature.
+    ///
+    /// The retry signs with the offset the rejection just taught. A read is idempotent, so exactly
+    /// one retry is allowed, and only for the venue's own
+    /// [`OndoAuthFailure::TimestampTooFar`] answer. Every other answer - including a second clock
+    /// rejection - is returned as it is: this is not a retry loop, and a rejection the clock cannot
+    /// explain is terminal like any other.
+    async fn read_authenticated_account(&self) -> OndoHttpResult<OndoPrivateResponse> {
+        match self.http_client.get_account().await {
+            Err(error) if is_clock_skew_rejection(&error) => self.http_client.get_account().await,
+            result => result,
+        }
     }
 }
 
@@ -4864,7 +4908,14 @@ impl ExecutionClient for OndoExecutionClient {
 
         // One budget for the whole shutdown: the request-task drain, the cancel requests, the
         // confirmations, the switch release and the transport close.
-        let budget = ShutdownBudget::new(ONDO_DISCONNECT_TIMEOUT);
+        let disconnect_timeout = self
+            .account
+            .production
+            .as_ref()
+            .map_or(ONDO_DISCONNECT_TIMEOUT, |guard| {
+                guard.remaining().min(ONDO_PRODUCTION_DISCONNECT_TIMEOUT)
+            });
+        let budget = ShutdownBudget::new(disconnect_timeout);
         let now = self.account.now();
 
         // Any exit from here - including the node's own disconnect bound dropping this future -
@@ -6306,6 +6357,18 @@ fn is_post_only_refusal(error: &OndoHttpError) -> bool {
     matches!(
         error,
         OndoHttpError::RequestRejected { code: Some(code), .. } if code == ONDO_POST_ONLY_HAS_MATCH
+    )
+}
+
+/// Returns whether the venue refused the request because the signature's clock was outside its
+/// tolerance.
+fn is_clock_skew_rejection(error: &OndoHttpError) -> bool {
+    matches!(
+        error,
+        OndoHttpError::AuthRejected {
+            failure: OndoAuthFailure::TimestampTooFar,
+            ..
+        }
     )
 }
 

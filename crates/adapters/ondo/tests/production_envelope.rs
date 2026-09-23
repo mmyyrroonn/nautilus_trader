@@ -33,6 +33,57 @@ fn exact_approved_envelope_validates() {
     assert!(envelope().validate(100000000000).is_ok());
 }
 
+fn btc_envelope(side: &str) -> OndoExecutionEnvelopeConfig {
+    let mut raw = serde_json::to_value(envelope()).unwrap();
+    raw["instrument_id"] = serde_json::json!("BTC-USD-PERP.ONDO");
+    raw["entry_side"] = serde_json::json!(side);
+    raw["close_side"] = serde_json::json!(if side == "buy" { "sell" } else { "buy" });
+    raw["entry_max_quantity"] = serde_json::json!("0.0002");
+    raw["close_max_quantity"] = serde_json::json!("0.0002");
+    raw["entry_worst_price"] = serde_json::json!(if side == "buy" { "50100" } else { "49900" });
+    raw["close_worst_price"] = serde_json::json!(if side == "buy" { "49900" } else { "50100" });
+    raw["max_notional_per_order_usd"] = serde_json::json!("20");
+    raw["max_gross_exposure_usd"] = serde_json::json!("20");
+    serde_json::from_value(raw).unwrap()
+}
+
+#[rstest]
+#[case("buy")]
+#[case("sell")]
+fn bounded_btc_envelope_validates(#[case] side: &str) {
+    assert!(btc_envelope(side).validate(100000000000).is_ok());
+}
+
+#[rstest]
+#[case("ETH-USD-PERP.ONDO")]
+#[case("BTC-USD-PERP.ASTER")]
+#[case("BTC-USDC-PERP.ONDO")]
+#[case("BTC-USD.P.ONDO")]
+fn btc_permission_does_not_allow_other_instruments(#[case] instrument: &str) {
+    let mut raw = serde_json::to_value(btc_envelope("buy")).unwrap();
+    raw["instrument_id"] = serde_json::json!(instrument);
+    let config: OndoExecutionEnvelopeConfig = serde_json::from_value(raw).unwrap();
+    assert!(config.validate(100000000000).is_err());
+}
+
+#[rstest]
+#[case("entry_max_notional_usd", serde_json::json!("21"))]
+#[case("max_notional_per_order_usd", serde_json::json!("51"))]
+#[case("max_gross_exposure_usd", serde_json::json!("101"))]
+#[case("min_available_margin_usdc", serde_json::json!("24"))]
+#[case("close_max_quantity", serde_json::json!("0.0003"))]
+#[case("max_new_risk_requests", serde_json::json!(2))]
+#[case("max_app_requests", serde_json::json!(7))]
+#[case("require_flat_start", serde_json::json!(false))]
+#[case("entry_deadline_unix_nanos", serde_json::json!(100000000000_u64))]
+#[case("cleanup_deadline_unix_nanos", serde_json::json!(800000000000_u64))]
+fn btc_envelope_retains_hard_limits(#[case] field: &str, #[case] value: serde_json::Value) {
+    let mut raw = serde_json::to_value(btc_envelope("buy")).unwrap();
+    raw[field] = value;
+    let config: OndoExecutionEnvelopeConfig = serde_json::from_value(raw).unwrap();
+    assert!(config.validate(100000000000).is_err());
+}
+
 #[rstest]
 #[case("entry_max_notional_usd", "21")]
 #[case("max_notional_per_order_usd", "50.000000000000000001")]
@@ -59,6 +110,8 @@ fn expired_or_unbounded_envelope_is_refused() {
 
 #[rstest]
 fn raw_production_transport_cannot_manufacture_a_run_authority() {
+    use std::sync::Arc;
+
     use nautilus_ondo::{
         common::{
             credential::OndoCredential,
@@ -66,7 +119,6 @@ fn raw_production_transport_cannot_manufacture_a_run_authority() {
         },
         http::client::OndoHttpClient,
     };
-    use std::sync::Arc;
     let credential = OndoCredential::new(
         OndoEnvironment::Production,
         "ondoKeyId_UNIT_TEST_ONLY".into(),

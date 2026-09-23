@@ -406,45 +406,77 @@ impl OndoPrivateStream {
             anyhow::bail!("a read-only private transport refuses dead man's switch writes");
         }
         if let Some(guard) = &self.production {
-            guard
-                .validate_direct_switch(frame)
-                .map_err(anyhow::Error::msg)?;
+            guard.note_release_attempted();
+            if guard.validate_direct_switch(frame).is_err() {
+                guard.note_release_validation_refused();
+                anyhow::bail!("production DMS release validation refused");
+            }
         }
-        let body = frame.to_json_text()?;
+        let body = match frame.to_json_text() {
+            Ok(body) => body,
+            Err(error) => {
+                if let Some(guard) = &self.production {
+                    guard.note_release_send_failed();
+                }
+                return Err(error);
+            }
+        };
         // Cloned out of the slot rather than held across the await: the guard is not `Send`, and
         // the client is a handle whose writes are serialized by the socket itself.
-        let client = self
-            .active
-            .lock()
-            .clone()
-            .ok_or_else(|| anyhow::anyhow!("the private transport has no live connection"))?;
+        let Some(client) = self.active.lock().clone() else {
+            if let Some(guard) = &self.production {
+                guard.note_release_no_connection();
+            }
+            anyhow::bail!("the private transport has no live connection");
+        };
 
         if !client.is_active() {
+            if let Some(guard) = &self.production {
+                guard.note_release_inactive_connection();
+            }
             anyhow::bail!("the private transport's connection is no longer active");
         }
 
         if let Some(guard) = &self.production {
-            guard
-                .validate_direct_switch(frame)
-                .map_err(anyhow::Error::msg)?;
+            if guard.validate_direct_switch(frame).is_err() {
+                guard.note_release_validation_refused();
+                anyhow::bail!("production DMS release validation refused");
+            }
         }
         if let Some(guard) = &self.production {
-            guard.begin_release().map_err(anyhow::Error::msg)?;
+            if guard.begin_release().is_err() {
+                guard.note_release_validation_refused();
+                anyhow::bail!("production DMS release validation refused");
+            }
         }
-        send_body(&client, &body).await?;
+        if let Err(error) = send_body(&client, &body).await {
+            if let Some(guard) = &self.production {
+                guard.note_release_send_failed();
+            }
+            return Err(error.into());
+        }
         if let Some(guard) = &self.production {
-            tokio::time::timeout(guard.remaining(), async {
-                while !guard.release_acked() {
+            guard.note_release_frame_sent();
+        }
+        self.diagnostics
+            .record_frame_sent(PrivateAction::ReleaseSwitch);
+
+        if let Some(guard) = &self.production {
+            if tokio::time::timeout(guard.remaining(), async {
+                while !guard.release_acked() && guard.release_pending() {
                     tokio::time::sleep(Duration::from_millis(5)).await;
                 }
             })
             .await
-            .map_err(|_| {
-                anyhow::anyhow!("production DMS release acknowledgement deadline exhausted")
-            })?;
+            .is_err()
+            {
+                guard.note_release_ack_timeout();
+                anyhow::bail!("production DMS release acknowledgement deadline exhausted");
+            }
+            if !guard.release_acked() {
+                anyhow::bail!("production DMS release connection ended before acknowledgement");
+            }
         }
-        self.diagnostics
-            .record_frame_sent(PrivateAction::ReleaseSwitch);
 
         Ok(())
     }
@@ -579,7 +611,13 @@ impl PrivateTransportState {
             self.account.note_session_ended(self.clock());
             self.refresh_run(&session, "the connection ended");
 
-            if session.is_failed() || self.cancellation.is_cancelled() {
+            if session.is_failed()
+                || self.cancellation.is_cancelled()
+                || self
+                    .account
+                    .production_authority()
+                    .is_some_and(|guard| guard.release_started())
+            {
                 break;
             }
 
@@ -848,8 +886,11 @@ impl PrivateTransportState {
 
                 permanent
             }
-            PrivateEvent::SwitchChannelUpdate { reason } => {
+            PrivateEvent::SwitchChannelUpdate { summary, reason } => {
                 log::error!("Ondo private switch channel reported an update");
+                if let Some(guard) = self.account.production_authority() {
+                    guard.note_dms_update(summary);
+                }
                 self.note_switch_failed(self.redact(&reason));
 
                 false

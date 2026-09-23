@@ -60,7 +60,8 @@ use crate::{
         private::{
             messages::PrivateChannel,
             parse::{
-                PrivateEnvelope, PrivatePayload, decode_private_updates, parse_private_message,
+                DmsUpdateSummary, PrivateEnvelope, PrivatePayload, decode_private_updates,
+                parse_private_message, summarize_dms_update,
             },
         },
     },
@@ -260,6 +261,8 @@ pub enum PrivateEvent {
     },
     /// An `update` on the switch channel, whose meaning this adapter has not verified.
     SwitchChannelUpdate {
+        /// The bounded, fixed-field summary of the update's `data` member.
+        summary: DmsUpdateSummary,
         /// Why the frame stopped new orders.
         reason: String,
     },
@@ -631,6 +634,23 @@ impl OndoPrivateSession {
             });
         };
 
+        if channel == PrivateChannel::CancelAllOrdersAfterPerps {
+            // The frozen page documents an `update` on this channel and does not say what it
+            // means. Reading it as a confirmation would arm the account on a frame that may be
+            // the switch firing; reading it as the switch firing would stop trading on a frame
+            // that may be a confirmation. Neither is knowledge this adapter has, so the frame is
+            // reported as a state it cannot read and new orders stop (plan §0).
+            self.counters.decode_failures += 1;
+
+            return event(PrivateEvent::SwitchChannelUpdate {
+                summary: summarize_dms_update(envelope.data.as_deref()),
+                reason: "the venue sent an `update` on the switch channel, whose meaning this \
+                         adapter has not verified: the frozen material documents the frame and \
+                         not what it says"
+                    .to_string(),
+            });
+        }
+
         let Some(data) = envelope.data.as_ref() else {
             self.counters.decode_failures += 1;
 
@@ -641,22 +661,6 @@ impl OndoPrivateSession {
                 ),
             });
         };
-
-        if channel == PrivateChannel::CancelAllOrdersAfterPerps {
-            // The frozen page documents an `update` on this channel and does not say what it
-            // means. Reading it as a confirmation would arm the account on a frame that may be
-            // the switch firing; reading it as the switch firing would stop trading on a frame
-            // that may be a confirmation. Neither is knowledge this adapter has, so the frame is
-            // reported as a state it cannot read and new orders stop (plan §0).
-            self.counters.decode_failures += 1;
-
-            return event(PrivateEvent::SwitchChannelUpdate {
-                reason: "the venue sent an `update` on the switch channel, whose meaning this \
-                         adapter has not verified: the frozen material documents the frame and \
-                         not what it says"
-                    .to_string(),
-            });
-        }
 
         match decode_private_updates(channel, data) {
             Ok(payloads) => {
@@ -977,7 +981,7 @@ mod tests {
             now(),
         );
 
-        let [PrivateEvent::SwitchChannelUpdate { reason }] = outcome.events.as_slice() else {
+        let [PrivateEvent::SwitchChannelUpdate { reason, .. }] = outcome.events.as_slice() else {
             panic!(
                 "an update on the switch channel is its own event: {:?}",
                 outcome.events
