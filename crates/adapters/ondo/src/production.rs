@@ -149,6 +149,34 @@ impl OndoExecutionEnvelopeConfig {
         if entry > self.entry_max_notional_usd {
             return fail();
         }
+        // An opening quantity the approved closing attempts cannot cover in full leaves a
+        // position outside this envelope's cleanup plan, so the approval is refused before
+        // any order instead of being discovered during an unwind. One order is reserved for
+        // the entry, and every create shares the same request budget.
+        let available_closes = self
+            .max_close_attempts
+            .min(self.max_orders.saturating_sub(1))
+            .min(self.max_app_requests.saturating_sub(1));
+        let Some(close_capacity) = self
+            .close_max_quantity
+            .checked_mul(Decimal::from(available_closes))
+        else {
+            return fail();
+        };
+        if self.entry_max_quantity > close_capacity {
+            return fail();
+        }
+        // A closing order that cannot be sent at its own directional bound under the same
+        // per-order and gross ceilings the send path enforces is not a cleanup plan either.
+        let Some(close_notional) = self.close_max_quantity.checked_mul(self.close_worst_price)
+        else {
+            return fail();
+        };
+        if close_notional > self.max_notional_per_order_usd
+            || close_notional > self.max_gross_exposure_usd
+        {
+            return fail();
+        }
         Ok(())
     }
 }
