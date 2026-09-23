@@ -19,8 +19,10 @@ python scripts/adapter-evidence/native_checks.py --output adapter-native-evidenc
 The script runs the same commands CI runs, records each exit code, and writes every
 check's stdout and stderr to separate files under `adapter-native-evidence-logs/` (or
 `--logs`). The manifest carries each log's path, byte count, sha256 and a bounded tail,
-so a failure assertion on stdout is not lost because stderr happened to be longer. It
-never reads credentials and never touches an account.
+measured from the bytes on disk, so a text-mode newline translation cannot make the
+manifest disagree with the file a consumer downloads. A failure assertion on stdout is
+not lost because stderr happened to be longer. It never reads credentials and never
+touches an account.
 
 The test entry is `cargo nextest`, the repository's standard runner, so the retry policy
 applies to the execution-client suites that starve under heavy parallelism. The
@@ -35,8 +37,11 @@ own `make cargo-test` does. Install the pinned tool with
 
 The identity recorded is a *content* identity, not a file-status one: `dirty` lists the
 paths, `tracked_diff_sha256` hashes the binary diff against `HEAD`, and
-`untracked_sha256` hashes untracked paths and contents. Two checkouts with the same
-`M source.rs` status and different contents therefore get different fingerprints. The
+`untracked_sha256` enumerates untracked paths with `git ls-files -z` - raw NUL-separated
+names, so a path `git status` would quote is still the file it names - and hashes their
+contents; a listed path that cannot be read fails the capture rather than degrading to a
+name-only hash. Two checkouts with the same `M source.rs` status and different contents
+therefore get different fingerprints. The
 identity is captured before and after the checks; `identity_changed_during_checks` is
 `true` when a check changed the source or the lock file, and such a manifest must not be
 used as a candidate record.

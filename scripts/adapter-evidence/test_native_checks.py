@@ -35,6 +35,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import _identity
+import native_checks
+
 HERE = Path(__file__).resolve().parent
 
 
@@ -80,24 +83,89 @@ class NativeChecksLogTest(unittest.TestCase):
             manifest = json.loads(output.read_text(encoding="utf-8"))
             test_check = next(check for check in manifest["checks"] if check["name"] == "test")
 
-            stdout_text = Path(test_check["stdout"]["path"]).read_text(encoding="utf-8")
-            stderr_text = Path(test_check["stderr"]["path"]).read_text(encoding="utf-8")
+            stdout_bytes = Path(test_check["stdout"]["path"]).read_bytes()
+            stderr_bytes = Path(test_check["stderr"]["path"]).read_bytes()
 
-            self.assertIn("assertion failed: the stdout diagnosis", stdout_text)
-            self.assertGreater(len(stderr_text), 4_000)
+            self.assertIn(b"assertion failed: the stdout diagnosis", stdout_bytes)
+            self.assertGreater(len(stderr_bytes), 4_000)
+            # The manifest must describe the bytes on disk, not a re-encoding of them.
             self.assertEqual(
                 test_check["stdout"]["sha256"],
-                hashlib.sha256(stdout_text.encode()).hexdigest(),
+                hashlib.sha256(stdout_bytes).hexdigest(),
             )
+            self.assertEqual(test_check["stdout"]["bytes"], len(stdout_bytes))
             self.assertEqual(
                 test_check["stderr"]["sha256"],
-                hashlib.sha256(stderr_text.encode()).hexdigest(),
+                hashlib.sha256(stderr_bytes).hexdigest(),
             )
+            self.assertEqual(test_check["stderr"]["bytes"], len(stderr_bytes))
             self.assertNotIn(
                 "assertion failed",
                 test_check["stderr"]["tail"],
                 "the failure belongs to stdout and must not be claimed by the other stream",
             )
+
+
+class LogBytesTest(unittest.TestCase):
+    """The log hash and length describe the file as written, on every platform."""
+
+    def test_a_crlf_payload_is_hashed_as_written(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            entry = native_checks._write_log(
+                Path(tmp), "check", "stderr", "assertion failed\r\nsecond line\r\n"
+            )
+            payload = Path(entry["path"]).read_bytes()
+
+            self.assertEqual(payload, b"assertion failed\r\nsecond line\r\n")
+            self.assertEqual(entry["bytes"], len(payload))
+            self.assertEqual(entry["sha256"], hashlib.sha256(payload).hexdigest())
+
+
+class UntrackedIdentityTest(unittest.TestCase):
+    """Untracked names git would quote still contribute their contents to the digest."""
+
+    def test_special_filenames_change_the_digest_with_their_contents(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+
+            names = ["ordinary.rs", "new module.rs", "策略.rs"]
+            if os.name != "nt":
+                # NTFS refuses control characters and double quotes in a filename.
+                names.extend(['quote"name.rs', "line\nbreak.rs"])
+
+            for name in names:
+                (root / name).write_text("VALUE=1", encoding="utf-8")
+            first = _identity._untracked_digest(root)
+
+            for name in names:
+                (root / name).write_text("VALUE=2", encoding="utf-8")
+            second = _identity._untracked_digest(root)
+            self.assertNotEqual(first, second)
+
+            # Each name contributes on its own: a change behind a quoted path is still seen.
+            current = second
+            for name in names:
+                (root / name).write_text("VALUE=3", encoding="utf-8")
+                changed = _identity._untracked_digest(root)
+                self.assertNotEqual(
+                    current, changed, f"a content change in {name!r} must move the digest"
+                )
+                current = changed
+
+    def test_a_listed_path_that_cannot_be_read_is_an_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+            broken = root / "broken.rs"
+            broken.write_text("VALUE=1", encoding="utf-8")
+            if os.name == "nt":
+                self.skipTest("a dangling symlink needs developer mode on Windows")
+            broken.unlink()
+            broken.symlink_to(root / "missing.rs")
+
+            with self.assertRaises(OSError):
+                _identity._untracked_digest(root)
 
 
 if __name__ == "__main__":

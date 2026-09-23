@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 from pathlib import Path
 from typing import Any
@@ -52,21 +53,21 @@ def _untracked_digest(root: Path) -> str:
     """Hashes the paths and contents of every untracked file.
 
     `git status` alone cannot tell two different untracked sources apart, and an untracked
-    source file is exactly the local experiment this tool exists to name.
+    source file is exactly the local experiment this tool exists to name. Paths are read from
+    `git ls-files -z`, which emits raw NUL-separated names: the porcelain status format quotes
+    and escapes special names, so a parser of it would hash the quoted spelling of a path like
+    `new module.rs` and never read the file at all. A listed path that cannot be read is an
+    error, not a name to hash.
     """
     digest = hashlib.sha256()
-    status = _git(root, "status", "--porcelain=v1", "--untracked-files=all")
-    for line in sorted(status.splitlines()):
-        if not line.startswith("?? "):
-            continue
-        relative = line[3:].strip()
-        digest.update(relative.encode())
+    listing = _git_bytes(root, "ls-files", "--others", "--exclude-standard", "-z")
+    for raw in sorted(entry for entry in listing.split(b"\0") if entry):
+        digest.update(raw)
         digest.update(b"\0")
-        path = root / relative
-        if path.is_file():
-            with path.open("rb") as handle:
-                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-                    digest.update(chunk)
+        path = root / os.fsdecode(raw)
+        if not path.is_file():
+            raise OSError(f"untracked path {os.fsdecode(raw)!r} is not a readable file")
+        digest.update(sha256_file(path).encode())
         digest.update(b"\0")
     return digest.hexdigest()
 

@@ -68,17 +68,16 @@ def _tail(text: str) -> str:
     return f"...[{len(text) - TAIL_CHARS} chars omitted]...\n" + text[-TAIL_CHARS:]
 
 
-def _sha256(text: str) -> str:
-    return hashlib.sha256(text.encode(errors="replace")).hexdigest()
-
-
 def _write_log(logs_dir: Path, name: str, stream: str, text: str) -> dict[str, Any]:
     path = logs_dir / f"{name}.{stream}.log"
-    path.write_text(text, encoding="utf-8", errors="replace")
+    # One payload, written and hashed: a text write translates LF to CRLF on Windows, so a hash
+    # of the pre-translation text would not match the file a consumer downloads and verifies.
+    payload = text.encode("utf-8", errors="replace")
+    path.write_bytes(payload)
     return {
         "path": str(path),
-        "sha256": _sha256(text),
-        "bytes": len(text.encode(errors="replace")),
+        "sha256": hashlib.sha256(payload).hexdigest(),
+        "bytes": len(payload),
         "tail": _tail(text),
     }
 
