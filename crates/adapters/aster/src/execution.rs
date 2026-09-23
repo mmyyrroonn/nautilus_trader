@@ -4548,6 +4548,43 @@ mod tests {
         );
     }
 
+    /// A snapshot that no bound-changing update overtook is the new bound, including when it
+    /// raises an amount a stream row had tightened: only a response that may predate an update
+    /// is restricted to tightening.
+    #[rstest]
+    fn test_a_clean_snapshot_can_raise_a_tightened_bound() {
+        let mut state = StreamState::default();
+        let tight: Vec<AsterBalance> = serde_json::from_str(
+            r#"[{"asset":"USDT","balance":"100.0","availableBalance":"5.0"}]"#,
+        )
+        .unwrap();
+        state.replace_balance_bounds(&parse_account_balances(&tight).balances);
+        state.note_balance_refresh_owed();
+
+        let raised: Vec<AsterBalance> = serde_json::from_str(
+            r#"[{"asset":"USDT","balance":"100.0","availableBalance":"20.0"}]"#,
+        )
+        .unwrap();
+        let parsed = parse_account_balances(&raised);
+        let epoch = state.balance_epoch;
+        let published = state.commit_balance_snapshot(&parsed, epoch, 1_000);
+
+        assert_eq!(published[0].free.as_decimal(), dec("20"));
+        assert_eq!(
+            state
+                .balance_bounds
+                .get(&Ustr::from("USDT"))
+                .unwrap()
+                .free
+                .as_decimal(),
+            dec("20"),
+        );
+        assert!(
+            !state.owed_balance_refresh,
+            "a full snapshot clears the debt"
+        );
+    }
+
     /// A full REST snapshot is the new conservative bound: assets it does not carry are no
     /// longer bounded, and it may raise an amount a stream row had tightened.
     #[rstest]
