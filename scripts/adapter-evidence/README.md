@@ -22,6 +22,17 @@ check's stdout and stderr to separate files under `adapter-native-evidence-logs/
 so a failure assertion on stdout is not lost because stderr happened to be longer. It
 never reads credentials and never touches an account.
 
+The test entry is `cargo nextest`, the repository's standard runner, so the retry policy
+applies to the execution-client suites that starve under heavy parallelism. The
+repository's `.config/nextest.toml` scopes its `retries = 3` override as
+`test(exec_client)`, which matches test *names*; this repository's test binary is *named*
+`exec_client`, so the entry applies `--retries 3 --no-fail-fast` explicitly instead of
+silently getting no retries. `--profile ci` limits parallelism the same way CI does.
+Doctests run under the libtest harness and are recorded separately, as the repository's
+own `make cargo-test` does. Install the pinned tool with
+`cargo install cargo-nextest --version "$(bash scripts/cargo-tool-version.sh cargo-nextest)" --locked`
+(the repository's `make install-tools` does it too).
+
 The identity recorded is a *content* identity, not a file-status one: `dirty` lists the
 paths, `tracked_diff_sha256` hashes the binary diff against `HEAD`, and
 `untracked_sha256` hashes untracked paths and contents. Two checkouts with the same
@@ -36,7 +47,8 @@ the pre-existing lint debt below is open.
 | Check | Blocking | Command |
 |---|---|---|
 | `fmt` | yes | `cargo fmt -p nautilus-aster -p nautilus-ondo -- --check` |
-| `test` | yes | `cargo test -p nautilus-aster -p nautilus-ondo` |
+| `test` | yes | `cargo nextest run -p nautilus-aster -p nautilus-ondo --profile ci --retries 3 --no-fail-fast` |
+| `doctest` | yes | `cargo test --doc -p nautilus-aster -p nautilus-ondo` |
 | `clippy` | no | `cargo clippy -p nautilus-aster -p nautilus-ondo --all-targets -- -D warnings` |
 
 Options: `--crates` to override the package list, `--skip-clippy`, `--output`, `--logs`.
@@ -71,10 +83,10 @@ checked against what the wheel actually carries instead of being trusted by name
 
 [`.github/workflows/nautilus-adapter-checks.yml`](../../.github/workflows/nautilus-adapter-checks.yml)
 runs the blocking checks on every pull request and `main` push that touches the Aster or
-Ondo adapters, installs `rustfmt` and `clippy` explicitly (the toolchain file names no
-components), and uploads the manifest and the per-check logs as an artifact. The upstream
-`test.yml` workflow is not usable here: it is pinned to upstream's self-hosted runners and
-does not attach results to fork pull requests.
+Ondo adapters, installs `rustfmt`, `clippy` and the pinned `cargo-nextest` explicitly (the
+toolchain file names no components), and uploads the manifest and the per-check logs as an
+artifact. The upstream `test.yml` workflow is not usable here: it is pinned to upstream's
+self-hosted runners and does not attach results to fork pull requests.
 
 To reproduce the CI result locally, run `native_checks.py` - it is the same entry point.
 

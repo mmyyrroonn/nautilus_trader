@@ -157,7 +157,27 @@ def main(argv: list[str] | None = None) -> int:
             root,
             logs_dir,
             "test",
-            ["cargo", "test", *package_args],
+            [
+                "cargo",
+                "nextest",
+                "run",
+                *package_args,
+                "--profile",
+                "ci",
+                # The repository's retry override is scoped as `test(exec_client)`, which does
+                # not match this repository's binary-named `exec_client` test binaries; the
+                # intent (retry the starvation-prone execution-client suites) is applied here.
+                "--retries",
+                "3",
+                "--no-fail-fast",
+            ],
+            blocking=True,
+        ),
+        _run_check(
+            root,
+            logs_dir,
+            "doctest",
+            ["cargo", "test", "--doc", *package_args],
             blocking=True,
         ),
     ]

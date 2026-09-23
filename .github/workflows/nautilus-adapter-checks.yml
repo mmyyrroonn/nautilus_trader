@@ -69,6 +69,15 @@ jobs:
           restore-keys: |
             adapter-checks-${{ runner.os }}-
 
+      - name: Get cargo-nextest version
+        run: echo "CARGO_NEXTEST_VERSION=$(bash scripts/cargo-tool-version.sh cargo-nextest)" >> "$GITHUB_ENV"
+
+      - name: Install cargo-nextest
+        # https://github.com/taiki-e/install-action
+        uses: taiki-e/install-action@37f7c5781271959fb65b6b35224e28652ff2b63d # v2.87.0
+        with:
+          tool: nextest@${{ env.CARGO_NEXTEST_VERSION }}
+
       - name: Run evidence tooling regression
         run: python3 scripts/adapter-evidence/test_native_checks.py
 
