@@ -48,12 +48,14 @@ jobs:
           persist-credentials: false
 
       - name: Set up Rust toolchain
-        # Reads rust-toolchain.toml, so CI and a local build share the pinned toolchain.
+        # Reads rust-toolchain.toml, so CI and a local build share the pinned toolchain. The
+        # toolchain file names no components, so fmt and clippy are requested here.
         # https://github.com/actions-rust-lang/setup-rust-toolchain
         uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
           cache: false
           override: true
+          components: rustfmt, clippy
 
       - name: Cache cargo registry and target
         # https://github.com/actions/cache
@@ -67,6 +69,9 @@ jobs:
           restore-keys: |
             adapter-checks-${{ runner.os }}-
 
+      - name: Run evidence tooling regression
+        run: python3 scripts/adapter-evidence/test_native_checks.py
+
       - name: Run native checks and write evidence
         run: python3 scripts/adapter-evidence/native_checks.py --output adapter-native-evidence.json
 
@@ -76,5 +81,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: adapter-native-evidence
-          path: adapter-native-evidence.json
+          path: |
+            adapter-native-evidence.json
+            adapter-native-evidence-logs
           if-no-files-found: error

@@ -6,8 +6,8 @@ layer of issue
 [mmyyrroonn/nautilus_trader#11](https://github.com/mmyyrroonn/nautilus_trader/issues/11).
 
 A version number is not a binary. `nautilus_trader-2.0.0rc4` can be built from any commit,
-so acceptance evidence binds results to a named commit, tree, dirty manifest, lock file,
-toolchain, platform, features and artifact hash instead of to a version string.
+so acceptance evidence binds results to a named commit, tree, content fingerprint, lock
+file, toolchain, platform, features and artifact hash instead of to a version string.
 
 ## Run the native checks
 
@@ -16,11 +16,22 @@ toolchain, platform, features and artifact hash instead of to a version string.
 python scripts/adapter-evidence/native_checks.py --output adapter-native-evidence.json
 ```
 
-The script runs the same commands CI runs, records each exit code and a bounded output
-tail, captures the checkout identity and the toolchain, and writes one JSON manifest. It
-exits non-zero when a blocking check fails; `clippy` is recorded but not blocking while
-the pre-existing lint debt below is open. It never reads credentials and never touches an
-account.
+The script runs the same commands CI runs, records each exit code, and writes every
+check's stdout and stderr to separate files under `adapter-native-evidence-logs/` (or
+`--logs`). The manifest carries each log's path, byte count, sha256 and a bounded tail,
+so a failure assertion on stdout is not lost because stderr happened to be longer. It
+never reads credentials and never touches an account.
+
+The identity recorded is a *content* identity, not a file-status one: `dirty` lists the
+paths, `tracked_diff_sha256` hashes the binary diff against `HEAD`, and
+`untracked_sha256` hashes untracked paths and contents. Two checkouts with the same
+`M source.rs` status and different contents therefore get different fingerprints. The
+identity is captured before and after the checks; `identity_changed_during_checks` is
+`true` when a check changed the source or the lock file, and such a manifest must not be
+used as a candidate record.
+
+It exits non-zero when a blocking check fails; `clippy` is recorded but not blocking while
+the pre-existing lint debt below is open.
 
 | Check | Blocking | Command |
 |---|---|---|
@@ -28,9 +39,7 @@ account.
 | `test` | yes | `cargo test -p nautilus-aster -p nautilus-ondo` |
 | `clippy` | no | `cargo clippy -p nautilus-aster -p nautilus-ondo --all-targets -- -D warnings` |
 
-Options: `--crates` to override the package list, `--skip-clippy`, `--output`. The
-manifest a run leaves behind is the record; it is not copied into the repository, where it
-would only go stale.
+Options: `--crates` to override the package list, `--skip-clippy`, `--output`, `--logs`.
 
 ## Record a built wheel
 
@@ -44,19 +53,28 @@ python scripts/adapter-evidence/wheel_provenance.py \
   --output adapter-wheel-provenance.json
 ```
 
-The script hashes the wheel, hashes every native object (`.pyd`/`.so`/`.dylib`/`.dll`)
-inside it, and hashes the stub files it is pointed at. Passing `--native-evidence` copies
-the already-recorded checkout identity verbatim, so the checks and the wheel cannot name
-different trees without the manifest saying so. Omitting it captures the identity of the
-current checkout instead.
+This is an **inventory, not a proof of origin**. It hashes the wheel, the native objects
+inside it, and the adapter stubs it carries; it reads the wheel's own name, version and
+tags from its metadata; and it records the host that ran the recorder as `collector`,
+which is not the build platform. The identity passed with `--native-evidence` is recorded
+as `declared_native` with `declared_by: evidence_file` (or the current checkout with
+`declared_by: collector_checkout`), and `source_binding` stays `unknown`: nothing here can
+show that the wheel was built from that tree. Only a controlled build record that names
+both a source fingerprint and the artifact digest can set a verified binding. The evidence
+file itself is hashed so the declaration is traceable.
+
+`--stubs` are recorded as `reference_stubs` and compared against the matching
+`embedded_adapter_stubs` entry (path mapping strips a leading `python/`), so a stub can be
+checked against what the wheel actually carries instead of being trusted by name.
 
 ## CI
 
 [`.github/workflows/nautilus-adapter-checks.yml`](../../.github/workflows/nautilus-adapter-checks.yml)
 runs the blocking checks on every pull request and `main` push that touches the Aster or
-Ondo adapters, uploads the evidence manifest as an artifact, and records clippy without
-blocking. The upstream `test.yml` workflow is not usable here: it is pinned to upstream's
-self-hosted runners and does not attach results to fork pull requests.
+Ondo adapters, installs `rustfmt` and `clippy` explicitly (the toolchain file names no
+components), and uploads the manifest and the per-check logs as an artifact. The upstream
+`test.yml` workflow is not usable here: it is pinned to upstream's self-hosted runners and
+does not attach results to fork pull requests.
 
 To reproduce the CI result locally, run `native_checks.py` - it is the same entry point.
 
