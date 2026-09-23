@@ -1511,7 +1511,13 @@ impl PassOwnership {
     }
 }
 
-/// A pass's claim on the account, released when it ends or when the pass leaves.
+/// A pass's claim on the account, released only when the pass leaves.
+///
+/// There is deliberately no early release: the claim has to live through the replay, the
+/// conclusion, the account-state publication and the checkpoint of the pass that took it,
+/// and a release the drain could reach would let the next pass - or a direct stream
+/// application - advance the account while this pass's tail was still publishing. The
+/// [`Drop`] below is the one release.
 #[derive(Debug)]
 struct PassGuard<'a> {
     owner: &'a PassOwnership,
@@ -1519,18 +1525,8 @@ struct PassGuard<'a> {
     id: u64,
 }
 
-impl PassGuard<'_> {
-    /// Ends the pass, so the next one may claim the account.
-    ///
-    /// It is idempotent on purpose: a pass ends twice, once at the drain - under the same boundary
-    /// that takes the reports the stream buffered - and once when this guard drops, and the second
-    /// one must not be able to re-open a claim or to close one the drain has already closed.
-    ///
-    /// The claim is released only while it is still **this** claim's. A pass that ended at its drain
-    /// and then let another pass claim the account leaves that other pass's claim alone when its own
-    /// guard drops: releasing it would let a third pass run beside the second, and the account would
-    /// be advanced by two passes with nothing refused and nothing reported.
-    fn end(&self) {
+impl Drop for PassGuard<'_> {
+    fn drop(&mut self) {
         let _ =
             self.owner
                 .claimed_by
@@ -1538,10 +1534,38 @@ impl PassGuard<'_> {
     }
 }
 
-impl Drop for PassGuard<'_> {
-    fn drop(&mut self) {
-        self.end();
-    }
+/// Takes the reports the stream buffered, without ending the pass that owns the account.
+///
+/// The drain and the generation read happen under the same write lock the private stream
+/// records under, and they happen after the last await the pass makes. A report arriving at
+/// that instant therefore either lands in the set this drain took or in the buffer the next
+/// pass will drain - never in neither, which would strand it, and never in both, which would
+/// apply it twice.
+///
+/// What the drain takes is what belongs to the recovery the machine is on **now**, read here
+/// rather than taken from the pass: a recovery that began while this pass was reading supersedes
+/// the reports recorded before it, and a pass that replayed those would be applying the state of
+/// a session the machine has left as the state of the one it is reconciling.
+///
+/// The generation is read under the buffer's own write lock, not before it, so that no report
+/// can be recorded between the read and the drain: the stream records under that lock, so while
+/// it is held the buffer holds exactly the reports stamped at or before the generation drained
+/// and none stamped after it. Read first, a recovery beginning in the gap would have the reports
+/// it recorded counted as superseded by the older drain, which costs a pass and an uncertain
+/// account over a report that is in fact current.
+///
+/// The pass is deliberately not ended here. The conclusion, the publication and the checkpoint
+/// are still ahead, and the claim is what keeps a second pass, or a direct stream application,
+/// out of the account until they are done: this function takes no [`PassGuard`] at all, so it
+/// cannot release a claim. The pass releases the account when its guard leaves, in
+/// [`OndoAccountRuntime::reconcile_account`].
+fn drain_for_commit(
+    buffer: &RwLock<ReconciliationBuffer>,
+    reconciliation: &RwLock<ReconciliationMachine>,
+) -> DrainedReports {
+    let mut buffer = buffer.write();
+    let generation = reconciliation.read().recovery_generation();
+    buffer.drain_generation(generation)
 }
 
 /// The live execution client for the Ondo Perps API.
@@ -2663,8 +2687,9 @@ impl OndoExecutionClient {
     /// history read uses, and every payload is applied through [`Self::apply_order`] and
     /// [`Self::apply_fill`] - the one state machine, so the stream and this pass can never disagree
     /// about what a payload means. The reports the stream buffered while the pass read are replayed
-    /// into it, after the last read and under the boundary that ends the pass, where the ledger and
-    /// the order index dedupe them.
+    /// into it, after the last read and at the drain, where the ledger and the order index dedupe
+    /// them. The claim the pass took then stays held until it has concluded, published and
+    /// checkpointed, so the tail of one pass cannot run beside a new one.
     ///
     /// One pass owns the account at a time: two would both drain the buffer - the second finding it
     /// empty - and each would conclude a reading the other half-wrote.
@@ -3453,9 +3478,10 @@ impl OndoAccountRuntime {
     /// order index make it safe (plan §6.4, §R3.1).
     ///
     /// The check and the hold happen under the buffer's own write lock, which is the lock
-    /// [`Self::close_pass`] takes to drain and end the pass. So a report that reads "a pass is
+    /// [`drain_for_commit`] takes to drain the pass. So a report that reads "a pass is
     /// running" is a report the running pass has not drained yet - not one stranded behind a drain
-    /// that has already happened.
+    /// that has already happened; and a report arriving after the drain, while the pass is still
+    /// committing, is buffered for the next pass rather than applied beside the conclusion.
     ///
     /// What this cannot close, and does not pretend to: a report applied directly in the instant
     /// before a pass claims the account is already applied when that pass reads the REST pages. The
@@ -3880,11 +3906,13 @@ impl OndoAccountRuntime {
     /// history read uses, and every payload is applied through [`Self::apply_order`] and
     /// [`Self::apply_fill`] - the one state machine, so the stream and this pass can never disagree
     /// about what a payload means. The reports the stream buffered while the pass read are replayed
-    /// into it, after the last read and under the boundary that ends the pass, where the ledger and
-    /// the order index dedupe them.
+    /// into it, after the last read and at the drain, where the ledger and the order index dedupe
+    /// them.
     ///
     /// One pass owns the account at a time: two would both drain the buffer - the second finding it
-    /// empty - and each would conclude a reading the other half-wrote.
+    /// empty - and each would conclude a reading the other half-wrote. The claim is taken before the
+    /// first read and released only when this function returns, so it also covers the replay, the
+    /// conclusion, the publication and the checkpoint that follow the drain.
     ///
     /// # Errors
     ///
@@ -3894,7 +3922,9 @@ impl OndoAccountRuntime {
     /// machine is left [`ReconciliationState::Uncertain`] in that case, because a pass that stopped
     /// early must not look like an account that was read.
     pub async fn reconcile_account(&self, now: UnixNanos) -> anyhow::Result<AccountJudgment> {
-        let Some(pass) = self.pass.claim() else {
+        // The claim is held until this function returns, including every early return and
+        // unwind: `_claim` has no release other than `Drop`.
+        let Some(_claim) = self.pass.claim() else {
             log::error!("Ondo refused a recovery pass: another pass already owns the account");
 
             return Err(RecoveryPassRefusal::AlreadyRunning.into());
@@ -3902,18 +3932,26 @@ impl OndoAccountRuntime {
 
         let activity = self.production.as_ref().map(|g| g.activity_generation());
         let reading = if let Some(guard) = &self.production {
-            match tokio::time::timeout(guard.remaining(), self.read_account(&pass, now)).await {
+            match tokio::time::timeout(guard.remaining(), self.read_account(now)).await {
                 Ok(reading) => reading,
                 Err(_) => Err(anyhow::anyhow!(
                     "production reconciliation cleanup deadline exhausted"
                 )),
             }
         } else {
-            self.read_account(&pass, now).await
+            self.read_account(now).await
         };
         match reading {
             Ok(reading) => {
-                self.reconciliation.write().conclude_pass(&reading, now);
+                // This round's judgment is taken once, immediately after the conclusion and
+                // while the claim still holds, so the publication, the production guard and
+                // the return all speak from the same immutable round result instead of
+                // re-reading a judgment a later round could have replaced.
+                let judgment = {
+                    let mut machine = self.reconciliation.write();
+                    machine.conclude_pass(&reading, now);
+                    machine.last_judgment().cloned()
+                };
 
                 // The two things a concluded pass produces outside the state machine: the
                 // account's state, for the engine, and the checkpoint, for the next process.
@@ -3922,20 +3960,11 @@ impl OndoAccountRuntime {
                 self.publish_account_state(now);
                 self.persist_journal(now);
                 if let Some(guard) = &self.production {
-                    let clean = self
-                        .reconciliation
-                        .read()
-                        .last_judgment()
-                        .is_some_and(AccountJudgment::is_clean);
+                    let clean = judgment.as_ref().is_some_and(AccountJudgment::is_clean);
                     guard.reconcile(&reading, clean, activity.unwrap_or_default());
                 }
 
-                Ok(self
-                    .reconciliation
-                    .read()
-                    .last_judgment()
-                    .cloned()
-                    .unwrap_or_default())
+                Ok(judgment.unwrap_or_default())
             }
             Err(error) => {
                 log::error!("Ondo account reconciliation failed: {error}");
@@ -4051,15 +4080,13 @@ impl OndoAccountRuntime {
     /// pass had not applied yet, and a reconciled account would look like a disagreement.
     ///
     /// The buffered reports are taken last of all, once the positions and the balance have been
-    /// read, and under the boundary that ends the pass: a report arriving while this pass reads is
-    /// either in what the drain took or in the buffer the next pass will drain, never in neither
-    /// place and never in both. After the drain nothing here can fail, so a pass that took reports
-    /// out of the buffer is a pass that applied them.
-    async fn read_account(
-        &self,
-        pass: &PassGuard<'_>,
-        now: UnixNanos,
-    ) -> anyhow::Result<AccountReading> {
+    /// read, and at the drain: a report arriving while this pass reads is either in what the drain
+    /// took or in the buffer the next pass will drain, never in neither place and never in both.
+    /// The drain does not end the pass - the claim is held until the caller has concluded,
+    /// published and checkpointed - so a report arriving after it is buffered rather than applied
+    /// beside this pass's conclusion. After the drain nothing in this function can fail, so a pass
+    /// that took reports out of the buffer is a pass that applied them.
+    async fn read_account(&self, now: UnixNanos) -> anyhow::Result<AccountReading> {
         let mut reading = AccountReading::default();
         let mut observed = ObservedOrders::default();
 
@@ -4084,7 +4111,7 @@ impl OndoAccountRuntime {
             }
         }
 
-        let drained = self.close_pass(pass);
+        let drained = drain_for_commit(&self.buffer, &self.reconciliation);
 
         self.replay(&drained, &mut observed, &mut reading);
 
@@ -4096,35 +4123,6 @@ impl OndoAccountRuntime {
         reading.applied_net = self.reporter.state.read().applied_net();
 
         Ok(reading)
-    }
-
-    /// Takes the reports the stream buffered, and ends the pass, under one boundary (plan §6.4).
-    ///
-    /// The drain and the switch from "this pass owns the account" to "it does not" happen under the
-    /// same write lock the private stream records under, and they happen after the last await the
-    /// pass makes. A report arriving at that instant therefore either lands in the set this drain
-    /// took or in the buffer the next pass will drain - never in neither, which would strand it, and
-    /// never in both, which would apply it twice.
-    ///
-    /// What the drain takes is what belongs to the recovery the machine is on **now**, read here
-    /// rather than taken from the pass: a recovery that began while this pass was reading supersedes
-    /// the reports recorded before it, and a pass that replayed those would be applying the state of
-    /// a session the machine has left as the state of the one it is reconciling.
-    ///
-    /// The generation is read under the buffer's own write lock, not before it, so that no report
-    /// can be recorded between the read and the drain: the stream records under that lock, so while
-    /// it is held the buffer holds exactly the reports stamped at or before the generation drained
-    /// and none stamped after it. Read first, a recovery beginning in the gap would have the reports
-    /// it recorded counted as superseded by the older drain, which costs a pass and an uncertain
-    /// account over a report that is in fact current.
-    fn close_pass(&self, pass: &PassGuard<'_>) -> DrainedReports {
-        let mut buffer = self.buffer.write();
-        let generation = self.reconciliation.read().recovery_generation();
-        let drained = buffer.drain_generation(generation);
-
-        pass.end();
-
-        drained
     }
 
     /// Walks the venue's order list, applying every payload it carries.
@@ -7204,8 +7202,34 @@ mod tests {
         assert!(state.is_unresolved());
     }
 
+    /// The drain is not the end of the pass. The conclusion, the publication and the
+    /// checkpoint are still ahead, and the claim is what keeps a second pass - or a
+    /// direct stream application - out of the account for that whole window.
     #[rstest]
-    fn test_a_pass_ends_only_the_claim_it_still_holds() {
+    fn test_a_drain_does_not_release_the_pass_that_still_has_to_commit() {
+        let ownership = PassOwnership::default();
+        let claim = ownership.claim().expect("the account is free");
+        let buffer = RwLock::new(ReconciliationBuffer::new());
+        let machine = RwLock::new(ReconciliationMachine::new(AccountId::from("ONDO-001"), 30));
+
+        let _drained = drain_for_commit(&buffer, &machine);
+
+        assert!(
+            ownership.claim().is_none(),
+            "a second pass may not enter while the first one has not committed",
+        );
+
+        drop(claim);
+        assert!(
+            ownership.claim().is_some(),
+            "the pass releases the account when it leaves",
+        );
+    }
+
+    /// A pass holds the account until it leaves: there is no early release, so the
+    /// commit tail cannot run beside a new pass by construction.
+    #[rstest]
+    fn test_a_pass_holds_the_account_until_it_leaves() {
         let ownership = PassOwnership::default();
         let first = ownership.claim().expect("the account is free");
 
@@ -7214,23 +7238,49 @@ mod tests {
             "a second pass may not claim an account the first one owns",
         );
 
-        // The drain ends the pass while its guard is still alive, so the next pass legitimately
-        // claims the account before the first one has finished concluding.
-        first.end();
-        let second = ownership.claim().expect("the drain released the account");
-
         drop(first);
-
-        assert!(
-            ownership.claim().is_none(),
-            "the first pass's guard must not release the claim the second pass holds now: two \
-             passes would advance the account and neither would refuse the other",
-        );
-
+        let second = ownership
+            .claim()
+            .expect("the account is free once the pass left");
         drop(second);
+
         assert!(
             ownership.claim().is_some(),
             "the pass that owns the account releases it when it leaves",
+        );
+    }
+
+    /// Barrier across threads: a pass that is still committing refuses a second pass
+    /// from another thread, and frees the account only after it returns.
+    #[rstest]
+    fn test_a_commit_in_progress_refuses_a_second_pass_from_another_thread() {
+        use std::sync::mpsc;
+
+        let ownership = Arc::new(PassOwnership::default());
+        let holder = Arc::clone(&ownership);
+        let (claimed_tx, claimed_rx) = mpsc::channel();
+        let (commit_tx, commit_rx) = mpsc::channel();
+
+        let first = std::thread::spawn(move || {
+            let claim = holder.claim().expect("the account is free");
+            claimed_tx.send(()).expect("the test is listening");
+            commit_rx.recv().expect("the commit completes");
+            drop(claim);
+        });
+
+        claimed_rx
+            .recv()
+            .expect("the first pass claims the account");
+        assert!(
+            ownership.claim().is_none(),
+            "the committing pass still owns the account",
+        );
+
+        commit_tx.send(()).expect("the commit is asked to complete");
+        first.join().expect("the committing pass leaves cleanly");
+        assert!(
+            ownership.claim().is_some(),
+            "the account is free after the commit",
         );
     }
 }
