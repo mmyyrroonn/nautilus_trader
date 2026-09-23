@@ -1538,9 +1538,10 @@ impl Drop for PassGuard<'_> {
 ///
 /// The drain and the generation read happen under the same write lock the private stream
 /// records under, and they happen after the last await the pass makes. A report arriving at
-/// that instant therefore either lands in the set this drain took or in the buffer the next
-/// pass will drain - never in neither, which would strand it, and never in both, which would
-/// apply it twice.
+/// that instant therefore either lands in the set this drain took or stays in the buffer for a
+/// later drain - never in neither, and never in both. A later drain replays it while it still
+/// belongs to the machine's recovery generation, and counts it as superseded once a recovery
+/// has moved on, where re-reading the account is what recovers it.
 ///
 /// What the drain takes is what belongs to the recovery the machine is on **now**, read here
 /// rather than taken from the pass: a recovery that began while this pass was reading supersedes
