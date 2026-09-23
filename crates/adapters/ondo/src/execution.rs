@@ -5088,6 +5088,15 @@ impl ExecutionClient for OndoExecutionClient {
             }
         }
 
+        // The command is now local work. This obligation settles it if the submission task
+        // never gets to decide the outcome - cancelled before its first poll, or dropped
+        // while it waits for the shared budget - and leaves it alone once the guard has
+        // recorded a create that may already have reached the venue.
+        let prepared = crate::production::PreparedCommand::new(
+            self.account.production.clone(),
+            cmd.client_order_id.to_string(),
+        );
+
         let Some(spawner) = self.spawner() else {
             self.reporter
                 .emitter
@@ -5110,6 +5119,8 @@ impl ExecutionClient for OndoExecutionClient {
         let instrument_id = cmd.instrument_id;
 
         let spawned = spawner.spawn(async move {
+            let _prepared = prepared;
+
             // The instant this gate decides at is the instant it runs at, not the one the command
             // was admitted at: the wait between the two is the wait this gate exists to cover.
             let now = get_atomic_clock_realtime().get_time_ns();

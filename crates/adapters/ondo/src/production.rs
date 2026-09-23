@@ -235,6 +235,37 @@ impl fmt::Debug for ProductionAuthority {
     }
 }
 
+/// The obligation one prepared command owes until its send outcome is decided.
+///
+/// The submission task moves this into its async block, so a task that is cancelled
+/// before its first poll - or at any point before the send is authorized - still settles
+/// the command instead of leaving a prepared context the completion judgment can never
+/// satisfy. Once the guard has recorded the command as a create, the outcome is no longer
+/// knowable from here and the obligation leaves it to the unknown/reconciliation path
+/// rather than inventing a "not sent".
+pub(crate) struct PreparedCommand {
+    guard: Option<Arc<ProductionAuthority>>,
+    client_order_id: String,
+}
+
+impl PreparedCommand {
+    /// Creates the obligation for a command whose context `prepare` has already recorded.
+    pub(crate) fn new(guard: Option<Arc<ProductionAuthority>>, client_order_id: String) -> Self {
+        Self {
+            guard,
+            client_order_id,
+        }
+    }
+}
+
+impl Drop for PreparedCommand {
+    fn drop(&mut self) {
+        if let Some(guard) = &self.guard {
+            guard.settle_cancelled_prepared(&self.client_order_id);
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 struct ProductionState {
     creates: BTreeMap<String, (Decimal, bool)>,
@@ -457,6 +488,22 @@ impl ProductionAuthority {
 
     pub(crate) fn definite_zero(&self, id: &str) {
         self.state.lock().known_zero.insert(id.to_string());
+    }
+
+    /// Settles a prepared command whose submission task was cancelled or dropped before it
+    /// could be sent.
+    ///
+    /// Called only from the command's own [`PreparedCommand`] drop, and only while the guard
+    /// has no create and no prior settlement for it: a command the guard already recorded
+    /// may have reached the venue, so it is left to the unknown path rather than declared
+    /// not sent. A cancellation during the shared budget wait is covered because
+    /// `authorize_post` has not run yet; a cancellation after it is not, because the signed
+    /// request may already be on its way.
+    pub(crate) fn settle_cancelled_prepared(&self, id: &str) {
+        let mut state = self.state.lock();
+        if !state.creates.contains_key(id) && !state.known_zero.contains(id) {
+            state.known_zero.insert(id.to_string());
+        }
     }
     pub(crate) fn owns(&self, id: &str) -> bool {
         self.state.lock().creates.contains_key(id)
@@ -1283,6 +1330,82 @@ mod tests {
             guard.activity_generation(),
         );
         assert_eq!(guard.snapshot().unwrap()["phase"], "reconciled");
+        std::fs::remove_file(path).unwrap();
+    }
+
+    /// A prepared command whose submission task is cancelled before it could be sent
+    /// settles as definitively not sent, so the run can still complete.
+    #[rstest]
+    fn test_a_cancelled_prepared_command_settles_as_definitively_not_sent() {
+        let (guard, path) = started_authority(30);
+        guard
+            .prepare(
+                "cancelled-before-send".into(),
+                vec![],
+                Some(prepared_quote(&guard)),
+                None,
+            )
+            .unwrap();
+
+        {
+            let _obligation =
+                PreparedCommand::new(Some(Arc::clone(&guard)), "cancelled-before-send".into());
+            // Dropped without any send, as a cancelled task's future would be.
+        }
+
+        guard.reconcile(
+            &crate::reconciliation::AccountReading::default(),
+            true,
+            guard.activity_generation(),
+        );
+        assert_eq!(guard.snapshot().unwrap()["phase"], "reconciled");
+        std::fs::remove_file(path).unwrap();
+    }
+
+    /// A command the guard has already recorded as a create may have reached the venue, so
+    /// cancelling its task must not declare it not sent: the run stays incomplete instead.
+    #[rstest]
+    fn test_a_cancelled_command_that_may_have_been_sent_is_not_declared_not_sent() {
+        let (guard, path) = started_authority(30);
+        let body = serde_json::to_vec(&serde_json::json!({
+            "market": "NVDA-USD.P",
+            "side": "buy",
+            "type": "limit",
+            "size": "0.05",
+            "price": "230.00",
+            "timeInForce": "IOC",
+            "postOnly": false,
+            "reduceOnly": false,
+            "clientOrderId": "cancelled-after-authorize"
+        }))
+        .unwrap();
+        guard
+            .prepare(
+                "cancelled-after-authorize".into(),
+                body.clone(),
+                Some(prepared_quote(&guard)),
+                None,
+            )
+            .unwrap();
+        guard
+            .authorize_post("/v1/perps/orders", &body)
+            .expect("the command is authorized and may have been sent");
+
+        {
+            let _obligation =
+                PreparedCommand::new(Some(Arc::clone(&guard)), "cancelled-after-authorize".into());
+        }
+
+        guard.reconcile(
+            &crate::reconciliation::AccountReading::default(),
+            true,
+            guard.activity_generation(),
+        );
+        assert!(
+            !guard.state.lock().frozen,
+            "a command the guard recorded may have reached the venue; cancellation must not \
+             declare it not sent",
+        );
         std::fs::remove_file(path).unwrap();
     }
 
