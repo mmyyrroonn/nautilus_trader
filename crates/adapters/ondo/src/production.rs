@@ -205,6 +205,15 @@ fn unverified_production_conditions(
     unverified
 }
 
+/// Records work that invalidates an in-flight completion judgment.
+fn note_activity(state: &mut ProductionState) {
+    state.activity += 1;
+    state.activity_at = get_atomic_clock_realtime().get_time_ns().as_u64();
+    if state.started {
+        state.snapshot = None;
+    }
+}
+
 /// A native run authority whose constructor and mutation paths are crate-private.
 ///
 /// Public HTTP constructors can receive this type, but cannot manufacture an authority.
@@ -378,6 +387,9 @@ impl ProductionAuthority {
             return Err("duplicate or excessive production command".into());
         }
         state.contexts.insert(id, (body, quote, minimum));
+        // The command is now local work this run owes the account: it invalidates any
+        // completion judgment that began before it existed.
+        note_activity(&mut state);
         Ok(())
     }
 
@@ -440,11 +452,7 @@ impl ProductionAuthority {
 
     pub(crate) fn activity(&self) {
         let mut state = self.state.lock();
-        state.activity += 1;
-        state.activity_at = get_atomic_clock_realtime().get_time_ns().as_u64();
-        if state.started {
-            state.snapshot = None;
-        }
+        note_activity(&mut state);
     }
 
     pub(crate) fn definite_zero(&self, id: &str) {
@@ -761,12 +769,13 @@ impl ProductionAuthority {
             && foreign == 0
             && own == 0
             && evidence.unknown == 0
-            && state.creates.keys().all(|id| {
+            && state.contexts.keys().all(|id| {
                 state.known_zero.contains(id)
-                    || evidence
-                        .orders
-                        .get(id)
-                        .is_some_and(|(_, settled, _)| *settled)
+                    || (state.creates.contains_key(id)
+                        && evidence
+                            .orders
+                            .get(id)
+                            .is_some_and(|(_, settled, _)| *settled))
             })
         {
             state.frozen = true;
@@ -1134,6 +1143,147 @@ mod tests {
         .unwrap();
         let binding = guard.journal_binding.clone();
         (guard, binding)
+    }
+
+    /// A started guard with ready evidence, a matched identity and fresh metadata.
+    fn started_authority(timeout: u64) -> (Arc<ProductionAuthority>, PathBuf) {
+        let (guard, path) = authority(timeout);
+        guard
+            .bind(Arc::new(|_checkpoint| {
+                Ok(ProductionEvidence {
+                    ready: true,
+                    identity_matched: true,
+                    journal_healthy: true,
+                    dms_verified: true,
+                    available_margin_usdc: Some(Decimal::from(25)),
+                    orders: BTreeMap::new(),
+                    unknown: 0,
+                })
+            }))
+            .unwrap();
+        guard.verify_identity(Some("unit-account".into())).unwrap();
+        let now = get_atomic_clock_realtime().get_time_ns();
+        let info = crate::http::models::parse_markets(include_str!(
+            "../test_data/rest/markets_synthetic.json"
+        ))
+        .unwrap()
+        .market_infos(now)
+        .unwrap()
+        .into_iter()
+        .find(|i| i.instrument_id() == guard.envelope.instrument_id)
+        .unwrap();
+        guard.metadata(Some(info), Some(false), now.as_u64());
+        let sent = get_atomic_clock_realtime().get_time_ns().as_u64();
+        assert!(guard.begin_dms_send(sent, false));
+        assert!(guard.confirm_dms(sent));
+        guard.reconcile(&crate::reconciliation::AccountReading::default(), true, 0);
+        assert_eq!(guard.snapshot().unwrap()["phase"], "start");
+        (guard, path)
+    }
+
+    fn prepared_quote(guard: &ProductionAuthority) -> QuoteTick {
+        use nautilus_model::types::{Price, Quantity};
+
+        let now = get_atomic_clock_realtime().get_time_ns();
+        QuoteTick::new(
+            guard.envelope.instrument_id,
+            Price::from("229.99"),
+            Price::from("230.00"),
+            Quantity::from("1.00"),
+            Quantity::from("1.00"),
+            now,
+            now,
+        )
+    }
+
+    /// A prepared command has not been sent, so a clean flat reading cannot end the run
+    /// until that command is either definitively not sent or sent and settled.
+    #[rstest]
+    fn test_a_prepared_command_never_lets_a_flat_reconcile_complete() {
+        let (guard, path) = started_authority(30);
+        guard
+            .prepare(
+                "prepared-not-sent".into(),
+                vec![],
+                Some(prepared_quote(&guard)),
+                None,
+            )
+            .unwrap();
+
+        for _ in 0..2 {
+            guard.reconcile(
+                &crate::reconciliation::AccountReading::default(),
+                true,
+                guard.activity_generation(),
+            );
+            assert!(
+                !guard.state.lock().frozen,
+                "a prepared command is still local work",
+            );
+        }
+
+        guard.definite_zero("prepared-not-sent");
+        guard.reconcile(
+            &crate::reconciliation::AccountReading::default(),
+            true,
+            guard.activity_generation(),
+        );
+        assert_eq!(guard.snapshot().unwrap()["phase"], "reconciled");
+        std::fs::remove_file(path).unwrap();
+    }
+
+    /// Preparing a command is itself activity: a pass that captured the generation before
+    /// the command existed cannot conclude over it.
+    #[rstest]
+    fn test_preparing_a_command_invalidates_an_in_flight_reconcile() {
+        let (guard, path) = started_authority(30);
+        let captured = guard.activity_generation();
+        guard
+            .prepare(
+                "prepared-mid-pass".into(),
+                vec![],
+                Some(prepared_quote(&guard)),
+                None,
+            )
+            .unwrap();
+        assert!(guard.activity_generation() > captured);
+        guard.reconcile(
+            &crate::reconciliation::AccountReading::default(),
+            true,
+            captured,
+        );
+        assert!(!guard.state.lock().frozen);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    /// Stopping with a command still prepared does not settle it: the run stays incomplete
+    /// until the command is definitively not sent.
+    #[rstest]
+    fn test_a_stopped_run_still_waits_for_a_prepared_command() {
+        let (guard, path) = started_authority(30);
+        guard
+            .prepare(
+                "prepared-at-stop".into(),
+                vec![],
+                Some(prepared_quote(&guard)),
+                None,
+            )
+            .unwrap();
+        guard.stop_creates();
+        guard.reconcile(
+            &crate::reconciliation::AccountReading::default(),
+            true,
+            guard.activity_generation(),
+        );
+        assert!(!guard.state.lock().frozen);
+        guard.definite_zero("prepared-at-stop");
+        guard.reconcile(
+            &crate::reconciliation::AccountReading::default(),
+            true,
+            guard.activity_generation(),
+        );
+        assert_eq!(guard.snapshot().unwrap()["phase"], "reconciled");
+        std::fs::remove_file(path).unwrap();
     }
 
     /// The refusal stays one decision but names the condition that failed, and names it without a

@@ -5092,6 +5092,11 @@ impl ExecutionClient for OndoExecutionClient {
             self.reporter
                 .emitter
                 .emit_order_denied(&order, "the Ondo Perps execution client is shutting down");
+            // The command was prepared but will never be sent; it must not read as
+            // outstanding local work that could keep the run from ever completing.
+            if let Some(guard) = &self.account.production {
+                guard.definite_zero(cmd.client_order_id.as_str());
+            }
 
             return Ok(());
         };
@@ -5104,7 +5109,7 @@ impl ExecutionClient for OndoExecutionClient {
         let client_order_id = cmd.client_order_id;
         let instrument_id = cmd.instrument_id;
 
-        spawner.spawn(async move {
+        let spawned = spawner.spawn(async move {
             // The instant this gate decides at is the instant it runs at, not the one the command
             // was admitted at: the wait between the two is the wait this gate exists to cover.
             let now = get_atomic_clock_realtime().get_time_ns();
@@ -5121,6 +5126,10 @@ impl ExecutionClient for OndoExecutionClient {
                 reporter
                     .emitter
                     .emit_order_denied(&order, &new_risk_refusal_reason(&reason));
+                // The gate refused before any signed byte existed: definitively not sent.
+                if let Some(guard) = &account.production {
+                    guard.definite_zero(client_order_id.as_str());
+                }
 
                 return;
             }
@@ -5223,7 +5232,17 @@ impl ExecutionClient for OndoExecutionClient {
 
                 journal.write(reporter.account_id, reporter.now(), &state, &machine);
             }
-        })?;
+        });
+
+        if let Err(error) = spawned {
+            // The command was prepared but no task exists to send it, so it is
+            // definitively not sent rather than an obligation left outstanding.
+            if let Some(guard) = &self.account.production {
+                guard.definite_zero(client_order_id.as_str());
+            }
+
+            return Err(error.into());
+        }
 
         Ok(())
     }
