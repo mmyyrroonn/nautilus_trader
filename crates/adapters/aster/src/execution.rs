@@ -148,6 +148,11 @@ const MAX_TRACKED_TRADE_IDS: usize = 4_096;
 /// Anything older belongs to the engine's startup reconciliation, not to an outage this session
 /// observed.
 const COMPENSATION_FILL_LOOKBACK_MS: i64 = 60 * 60 * 1_000;
+/// The shortest interval between two account snapshots a missing available amount may command.
+///
+/// A burst of account updates without a verified available amount then costs one account read,
+/// not one per update.
+const OWED_BALANCE_REFRESH_INTERVAL_MS: i64 = 5_000;
 
 /// Window used by the report paths when the command names no start time.
 ///
@@ -504,6 +509,23 @@ struct StreamState {
     /// engine's own startup reconciliation, and re-delivering them as live session events is
     /// what makes the engine reject an `OrderFilled` for an order it already holds as filled.
     session_start_ms: i64,
+    /// The balances a full account snapshot last verified, keyed by asset.
+    ///
+    /// The REST snapshot is the only surface on which the venue states how much of an asset is
+    /// available to open new positions. A user-data `ACCOUNT_UPDATE` carries the wallet balance
+    /// (`wb`) and the cross wallet balance (`cw`), and `cw` is not spendable cash, so a stream
+    /// row is merged against this map instead of being allowed to rewrite `free`.
+    verified_balances: AHashMap<Ustr, AccountBalance>,
+    /// The venue event time of the last account update applied, in milliseconds.
+    ///
+    /// An update older than this one describes a moment the account has already passed, so it
+    /// is dropped rather than allowed to move balances backwards.
+    last_balance_event_ms: i64,
+    /// Local millisecond time before which an owed balance snapshot must not be retried.
+    ///
+    /// A burst of account updates without a verified available amount then costs one account
+    /// read, not one per update.
+    next_balance_refresh_ms: i64,
 }
 
 impl StreamState {
@@ -513,6 +535,18 @@ impl StreamState {
 
     fn forget_working_order(&mut self, client_order_id: &Ustr) {
         self.working_orders.remove(client_order_id);
+    }
+
+    /// Replaces the verified reference with one full account snapshot.
+    ///
+    /// A snapshot is the complete account, so an asset it does not carry is no longer verified:
+    /// merging a later stream row against a stale entry would carry an available amount the
+    /// venue may have withdrawn since.
+    fn replace_verified_balances(&mut self, balances: &[AccountBalance]) {
+        self.verified_balances = balances
+            .iter()
+            .map(|balance| (Ustr::from(balance.currency.code.as_str()), balance.clone()))
+            .collect();
     }
 
     /// Records a fill, returning whether it had not been applied before.
@@ -1330,8 +1364,13 @@ impl SessionContext {
             .await
             .map_err(|e| anyhow::anyhow!("Aster balance request failed: {e}"))?;
 
+        let account_balances = parse_account_balances(&balances);
+        // This snapshot is the verified reference every later stream update is merged against.
+        self.state
+            .write()
+            .replace_verified_balances(&account_balances);
         self.emitter.emit_account_state(
-            parse_account_balances(&balances),
+            account_balances,
             Vec::new(),
             true, // reported
             self.clock.get_time_ns(),
@@ -1924,7 +1963,12 @@ impl AsterExecutionClient {
 
         // Aster's `/fapi/v3/balance` reports wallet balances only; per-asset initial and
         // maintenance margin are not part of the payload, so no margin balances are emitted.
-        Ok((parse_account_balances(&balances), Vec::new()))
+        let account_balances = parse_account_balances(&balances);
+        // This snapshot is the verified reference every later stream update is merged against.
+        self.stream_state
+            .write()
+            .replace_verified_balances(&account_balances);
+        Ok((account_balances, Vec::new()))
     }
 
     async fn emit_account_state(&self) -> anyhow::Result<()> {
@@ -2330,20 +2374,29 @@ static FREE_ABOVE_TOTAL_WARNED: std::sync::Once = std::sync::Once::new();
 /// instead of panicking (Aster's testnet lists `ASTER` and `AFEE`, neither of which the Nautilus
 /// currency map knows).
 ///
-/// Aster reports `availableBalance` above `walletBalance` on cross-margin accounts, because
-/// availability there includes headroom from other assets. Nautilus requires
-/// `total == locked + free`, so [`AccountBalance::from_total_and_free`] clamps `free` into
-/// `[0, total]`, which yields `locked = 0` and `free = total` for those rows. The venue value
-/// is deliberately *not* used as the total: doing so would inflate reported equity by margin
-/// that is not this asset's. The first such row per process is logged at warning level.
+/// This is the mapping contract for a full snapshot: `total` is the wallet balance and `free` is
+/// the venue's `availableBalance`, which is the only amount this adapter may publish as spendable.
+/// A row whose `availableBalance` is missing is unknown and skipped rather than published as
+/// `free = total`; the next complete snapshot is what states it. Aster reports `availableBalance`
+/// above `walletBalance` on cross-margin accounts, because availability there includes headroom
+/// from other assets; [`AccountBalance::from_total_and_free`] clamps `free` into `[0, total]` so
+/// `total == locked + free` holds, and the first such row per process is logged at warning level.
 fn parse_account_balances(balances: &[AsterBalance]) -> Vec<AccountBalance> {
     let mut account_balances = Vec::with_capacity(balances.len());
 
     for balance in balances {
         let currency = resolve_currency(balance.asset.as_str());
 
-        let (Ok(total), Ok(free)) = (balance.total(), balance.free()) else {
+        let (Ok(total), Ok(available)) = (balance.total(), balance.available()) else {
             log::warn!("Skipping Aster balance for {currency}: unparsable amounts");
+            continue;
+        };
+
+        let Some(free) = available else {
+            log::warn!(
+                "Skipping Aster balance for {currency}: availableBalance is missing, so the \
+                 spendable amount is unknown"
+            );
             continue;
         };
 
@@ -2369,65 +2422,164 @@ fn parse_account_balances(balances: &[AsterBalance]) -> Vec<AccountBalance> {
 // User data stream dispatch
 // ------------------------------------------------------------------------------------------------
 
-/// Converts an Aster `ACCOUNT_UPDATE` payload into a Nautilus account state.
+/// What one user-data `ACCOUNT_UPDATE` leaves behind.
+struct AsterAccountUpdateMerge {
+    /// The account state to publish, when the update applied and at least one row could be
+    /// stated whole.
+    state: Option<AccountState>,
+    /// True when at least one row had no freshly verified available amount, so only a full
+    /// REST snapshot can restore a fully verified account.
+    refresh_owed: bool,
+    /// The venue event time to remember, or `None` when the update was stale, changed nothing
+    /// and must not move the mark.
+    applied_event_ms: Option<i64>,
+}
+
+/// Merges one Aster `ACCOUNT_UPDATE` into the balances a full snapshot verified.
+///
+/// The payload's `wb` is the wallet balance and `cw` is the **cross wallet balance** - not the
+/// amount available to open new positions. This function never maps `cw` to `free`:
+///
+/// - `wb == 0` is a verified zero (a withdrawal), the one amount that is whole on its own;
+/// - a non-zero `wb` keeps the verified `free`, never raising it (the locked amount absorbs the
+///   change), and owes a full snapshot: the payload never states the available amount, and an
+///   order can move funds between locked and free without changing `wb` at all;
+/// - with no verified `free` at all the row is withheld and a snapshot is owed, instead of
+///   publishing the wallet balance as available margin.
 ///
 /// The shared Binance parser drops balance rows whose wallet balance is zero. On Aster that
 /// silently defeats the only mechanism the venue has for reporting a drained asset: account
 /// updates are applied per currency, so the dropped zero leaves the previous amount cached.
-/// The `B` array is therefore parsed here instead of changing the Binance parser, which other
+/// The `B` array is therefore merged here instead of changing the Binance parser, which other
 /// venues depend on.
-///
-/// Returns `None` when the payload carries no balance rows at all, which is nothing to report.
-#[must_use]
-fn parse_aster_account_update(
+fn merge_aster_account_update(
     msg: &BinanceFuturesAccountUpdateMsg,
     account_id: AccountId,
     ts_init: UnixNanos,
-) -> Option<AccountState> {
-    let balances: Vec<AccountBalance> = msg
-        .account
-        .balances
-        .iter()
-        .filter_map(|balance| {
-            let currency = resolve_currency(balance.asset.as_str());
-            match AccountBalance::from_total_and_free(
-                balance.wallet_balance,
-                balance.cross_wallet_balance,
-                currency,
-            ) {
-                Ok(account_balance) => Some(account_balance),
-                Err(e) => {
-                    log::warn!("Skipping Aster stream balance for {currency}: {e}");
-                    None
-                }
-            }
-        })
-        .collect();
+    verified: &AHashMap<Ustr, AccountBalance>,
+    last_event_ms: i64,
+) -> AsterAccountUpdateMerge {
+    if msg.event_time > 0 && msg.event_time < last_event_ms {
+        log::warn!(
+            "Dropping a stale Aster account update dated {} ms: balances through {} ms were \
+             already applied",
+            msg.event_time,
+            last_event_ms,
+        );
 
-    if balances.is_empty() {
-        return None;
+        return AsterAccountUpdateMerge {
+            state: None,
+            refresh_owed: false,
+            applied_event_ms: None,
+        };
     }
 
-    let ts_event = if msg.event_time > 0 {
-        millis_to_nanos(msg.event_time)
+    let mut balances = Vec::with_capacity(msg.account.balances.len());
+    let mut refresh_owed = false;
+
+    for update in &msg.account.balances {
+        let currency = resolve_currency(update.asset.as_str());
+        let total = update.wallet_balance;
+
+        if total.is_zero() {
+            // An explicit zero is the one amount that is whole without a snapshot: nothing can
+            // be available while the wallet is empty, and this is how a withdrawal is stated.
+            match AccountBalance::from_total_and_free(total, Decimal::ZERO, currency) {
+                Ok(balance) => balances.push(balance),
+                Err(e) => log::warn!("Skipping Aster stream balance for {currency}: {e}"),
+            }
+            continue;
+        }
+
+        let Some(previous) = verified.get(&update.asset) else {
+            log::warn!(
+                "Withholding Aster stream balance for {currency}: the payload states no \
+                 available amount and no snapshot verified one; a full account read is owed"
+            );
+            refresh_owed = true;
+            continue;
+        };
+
+        // The payload states the wallet balance but never the available amount: an order can
+        // move funds between locked and free without changing `wb` at all, so even an unchanged
+        // total leaves the split unverified. Publish the last verified available amount (never
+        // raised; a total below it clamps it down) and owe a full snapshot.
+        let free = previous.free.as_decimal().min(total);
+        match AccountBalance::from_total_and_free(total, free, currency) {
+            Ok(balance) => balances.push(balance),
+            Err(e) => log::warn!("Skipping Aster stream balance for {currency}: {e}"),
+        }
+        refresh_owed = true;
+    }
+
+    let state = if balances.is_empty() {
+        None
     } else {
-        ts_init
+        let ts_event = if msg.event_time > 0 {
+            millis_to_nanos(msg.event_time)
+        } else {
+            ts_init
+        };
+
+        Some(AccountState::new(
+            account_id,
+            AccountType::Margin,
+            balances,
+            Vec::new(), // margins: reported separately
+            true,       // is_reported
+            UUID4::new(),
+            ts_event,
+            ts_init,
+            None, // base_currency: multi-asset margin account
+        ))
     };
 
-    Some(AccountState::new(
-        account_id,
-        AccountType::Margin,
-        balances,
-        Vec::new(), // margins: reported separately
-        true,       // is_reported
-        UUID4::new(),
-        ts_event,
-        ts_init,
-        None, // base_currency: multi-asset margin account
-    ))
+    AsterAccountUpdateMerge {
+        state,
+        refresh_owed,
+        applied_event_ms: Some(msg.event_time.max(last_event_ms)),
+    }
 }
 
 impl SessionContext {
+    /// Reads one full account snapshot because a stream row had no verified available amount.
+    ///
+    /// The user-data payload is not an account snapshot: REST is the only surface that states how
+    /// much of an asset is spendable. The read replaces the verified reference, so the next stream
+    /// update can be merged against it, and publishes the snapshot itself. A failed read changes
+    /// nothing about the balances the account already holds - withheld values stay withheld and
+    /// carried ones stay carried - and the next owed update retries it after the interval.
+    async fn refresh_owed_balances(&self) {
+        let now_ms = self.now_ms();
+        {
+            let mut state = self.state.write();
+            if now_ms < state.next_balance_refresh_ms {
+                return;
+            }
+            state.next_balance_refresh_ms = now_ms.saturating_add(OWED_BALANCE_REFRESH_INTERVAL_MS);
+        }
+
+        let balances = match self.http_client.query_balances().await {
+            Ok(balances) => balances,
+            Err(e) => {
+                log::warn!("Aster owed balance snapshot failed: {e}");
+                return;
+            }
+        };
+
+        let account_balances = parse_account_balances(&balances);
+        self.state
+            .write()
+            .replace_verified_balances(&account_balances);
+        self.emitter.emit_account_state(
+            account_balances,
+            Vec::new(),
+            true,
+            self.clock.get_time_ns(),
+            None,
+        );
+    }
+
     /// Turns one decoded user data stream message into Nautilus reports and emits them.
     ///
     /// Unknown or irrelevant message types are logged at debug level and dropped; Aster
@@ -2514,8 +2666,30 @@ impl SessionContext {
                 }
             }
             BinanceFuturesWsStreamsMessage::AccountUpdate(msg) => {
-                if let Some(state) = parse_aster_account_update(msg, account_id, ts_init) {
+                let merge = {
+                    let state = self.state.read();
+                    merge_aster_account_update(
+                        msg,
+                        account_id,
+                        ts_init,
+                        &state.verified_balances,
+                        state.last_balance_event_ms,
+                    )
+                };
+
+                if let Some(event_ms) = merge.applied_event_ms {
+                    let mut state = self.state.write();
+                    if event_ms > state.last_balance_event_ms {
+                        state.last_balance_event_ms = event_ms;
+                    }
+                }
+
+                if let Some(state) = merge.state {
                     self.emitter.send_account_state(state);
+                }
+
+                if merge.refresh_owed {
+                    self.refresh_owed_balances().await;
                 }
             }
             BinanceFuturesWsStreamsMessage::MarginCall(msg) => {
@@ -3002,6 +3176,7 @@ impl ExecutionClient for AsterExecutionClient {
     fn query_account(&self, _cmd: QueryAccount) -> anyhow::Result<()> {
         let http_client = self.http_client.clone();
         let emitter = self.emitter.clone();
+        let stream_state = self.stream_state.clone();
         let clock = self.clock;
 
         self.spawn_task("query_account", async move {
@@ -3011,6 +3186,10 @@ impl ExecutionClient for AsterExecutionClient {
                 .map_err(|e| anyhow::anyhow!("Aster balance request failed: {e}"))?;
 
             let account_balances = parse_account_balances(&balances);
+            // A full snapshot is the verified reference later stream updates merge against.
+            stream_state
+                .write()
+                .replace_verified_balances(&account_balances);
 
             emitter.emit_account_state(
                 account_balances,
@@ -3788,27 +3967,235 @@ mod tests {
         );
     }
 
+    /// Builds the verified-balance reference a full REST snapshot leaves behind.
+    fn verified_balances(rows: &str) -> AHashMap<Ustr, AccountBalance> {
+        let balances: Vec<AsterBalance> = serde_json::from_str(rows).expect("balance fixture");
+        parse_account_balances(&balances)
+            .into_iter()
+            .map(|balance| (Ustr::from(balance.currency.code.as_str()), balance))
+            .collect()
+    }
+
+    fn dec(value: &str) -> Decimal {
+        Decimal::from_str_exact(value).unwrap()
+    }
+
+    /// A `cw` equal to the wallet balance is the **cross wallet balance**, not spendable
+    /// cash: a stream update never raises the available amount a snapshot verified.
+    #[rstest]
+    fn test_stream_update_never_raises_available_with_cross_wallet_balance() {
+        let verified =
+            verified_balances(r#"[{"asset":"USDT","balance":"100.0","availableBalance":"20.0"}]"#);
+        let update = account_update(r#"[{"a":"USDT","wb":"100.0","cw":"100.0"}]"#);
+
+        let merged =
+            merge_aster_account_update(&update, account_id(), UnixNanos::default(), &verified, 0);
+        let usdt = &merged.state.expect("the row is fully stated").balances[0];
+
+        assert_eq!(usdt.total.as_decimal(), dec("100"));
+        assert_eq!(usdt.free.as_decimal(), dec("20"));
+        assert_eq!(usdt.locked.as_decimal(), dec("80"));
+        assert!(
+            merged.refresh_owed,
+            "the payload never states the available amount, so a snapshot is owed",
+        );
+        assert_eq!(merged.applied_event_ms, Some(1788571663397));
+    }
+
+    /// A wallet balance change without an available amount keeps the last verified
+    /// available amount, never raises it, and owes a full snapshot.
+    #[rstest]
+    fn test_stream_update_carries_verified_available_through_a_wallet_change() {
+        let verified =
+            verified_balances(r#"[{"asset":"USDT","balance":"100.0","availableBalance":"20.0"}]"#);
+        let update = account_update(r#"[{"a":"USDT","wb":"150.0","cw":"150.0"}]"#);
+
+        let merged =
+            merge_aster_account_update(&update, account_id(), UnixNanos::default(), &verified, 0);
+        let usdt = &merged.state.expect("the total is still stated").balances[0];
+
+        assert_eq!(usdt.total.as_decimal(), dec("150"));
+        assert_eq!(
+            usdt.free.as_decimal(),
+            dec("20"),
+            "available must never rise with the wallet balance",
+        );
+        assert_eq!(usdt.locked.as_decimal(), dec("130"));
+        assert!(merged.refresh_owed);
+    }
+
+    /// Without a verified available amount the row is withheld: the wallet balance is not
+    /// the spendable balance, and a full snapshot is owed.
+    #[rstest]
+    fn test_stream_update_without_verified_available_withholds_the_row() {
+        let update = account_update(r#"[{"a":"USDT","wb":"100.0","cw":"100.0"}]"#);
+
+        let merged = merge_aster_account_update(
+            &update,
+            account_id(),
+            UnixNanos::default(),
+            &AHashMap::new(),
+            0,
+        );
+
+        assert!(
+            merged.state.is_none(),
+            "cw is not a publishable available amount",
+        );
+        assert!(merged.refresh_owed);
+    }
+
+    /// An explicit zero wallet balance is a verified zero, however the asset looked before.
+    #[rstest]
+    fn test_stream_update_zero_is_a_verified_zero() {
+        let verified =
+            verified_balances(r#"[{"asset":"USDT","balance":"100.0","availableBalance":"20.0"}]"#);
+        let update = account_update(r#"[{"a":"USDT","wb":"0.0","cw":"0.0"}]"#);
+
+        let merged =
+            merge_aster_account_update(&update, account_id(), UnixNanos::default(), &verified, 0);
+        let usdt = &merged.state.expect("the zero row survives").balances[0];
+
+        assert_eq!(usdt.total.as_decimal(), dec("0"));
+        assert_eq!(usdt.free.as_decimal(), dec("0"));
+        assert_eq!(usdt.locked.as_decimal(), dec("0"));
+        assert!(
+            !merged.refresh_owed,
+            "zero is a verified amount, not a missing one"
+        );
+    }
+
+    /// An update older than one already applied changes nothing; the account never moves
+    /// backwards.
+    #[rstest]
+    fn test_stream_update_stale_event_is_dropped() {
+        let verified =
+            verified_balances(r#"[{"asset":"USDT","balance":"100.0","availableBalance":"20.0"}]"#);
+        let update = account_update(r#"[{"a":"USDT","wb":"150.0","cw":"150.0"}]"#);
+
+        let merged = merge_aster_account_update(
+            &update,
+            account_id(),
+            UnixNanos::default(),
+            &verified,
+            1788571663398,
+        );
+
+        assert!(merged.state.is_none());
+        assert!(!merged.refresh_owed);
+        assert_eq!(
+            merged.applied_event_ms, None,
+            "a stale event must not move the mark",
+        );
+    }
+
+    /// Each row of a multi-asset update is merged on its own: one verified asset keeps its
+    /// split while an unverified one is withheld, and a single snapshot is owed for all.
+    #[rstest]
+    fn test_stream_update_merges_each_asset_row_independently() {
+        let verified =
+            verified_balances(r#"[{"asset":"USDT","balance":"100.0","availableBalance":"20.0"}]"#);
+        let update = account_update(
+            r#"[{"a":"USDT","wb":"100.0","cw":"100.0"},
+                {"a":"BTC","wb":"1.0","cw":"1.0"}]"#,
+        );
+
+        let merged =
+            merge_aster_account_update(&update, account_id(), UnixNanos::default(), &verified, 0);
+        let balances = merged.state.expect("the verified row is stated").balances;
+
+        assert_eq!(balances.len(), 1);
+        assert_eq!(balances[0].currency, Currency::USDT());
+        assert!(
+            merged.refresh_owed,
+            "the withheld BTC row still owes a snapshot"
+        );
+    }
+
+    /// The changed-amount path never lets the available amount rise, even when the wallet
+    /// balance goes negative.
+    #[rstest]
+    fn test_stream_update_negative_wallet_never_raises_available() {
+        let verified =
+            verified_balances(r#"[{"asset":"USDT","balance":"100.0","availableBalance":"20.0"}]"#);
+        let update = account_update(r#"[{"a":"USDT","wb":"-5.0","cw":"-5.0"}]"#);
+
+        let merged =
+            merge_aster_account_update(&update, account_id(), UnixNanos::default(), &verified, 0);
+        let usdt = &merged.state.expect("the total is still stated").balances[0];
+
+        assert_eq!(usdt.total.as_decimal(), dec("-5"));
+        assert!(usdt.free.as_decimal() <= Decimal::ZERO);
+        assert!(merged.refresh_owed);
+    }
+
+    /// A snapshot the venue sends without the available amount is unknown, not
+    /// `free == total`: the row is skipped rather than inflating the account.
+    #[rstest]
+    fn test_rest_balance_without_available_is_unknown_not_total() {
+        let balances: Vec<AsterBalance> = serde_json::from_str(
+            r#"[{"asset":"USDT","balance":"100.0"},
+                {"asset":"BTC","balance":"0.0","availableBalance":"0.0"}]"#,
+        )
+        .unwrap();
+
+        let parsed = parse_account_balances(&balances);
+
+        assert_eq!(
+            parsed.len(),
+            1,
+            "the row with no available amount is unknown"
+        );
+        assert_eq!(parsed[0].currency, Currency::BTC());
+    }
+
+    /// A full REST snapshot is the new verified reference: assets it does not carry are no
+    /// longer treated as verified.
+    #[rstest]
+    fn test_rest_snapshot_replaces_the_verified_reference() {
+        let funded = verified_balances(
+            r#"[{"asset":"USDT","balance":"100.0","availableBalance":"20.0"},
+                {"asset":"BTC","balance":"0.5","availableBalance":"0.5"}]"#,
+        );
+        let mut state = StreamState {
+            verified_balances: funded,
+            ..StreamState::default()
+        };
+
+        let drained: Vec<AsterBalance> =
+            serde_json::from_str(r#"[{"asset":"USDT","balance":"0.0","availableBalance":"0.0"}]"#)
+                .unwrap();
+        state.replace_verified_balances(&parse_account_balances(&drained));
+
+        assert_eq!(state.verified_balances.len(), 1);
+        assert!(
+            state
+                .verified_balances
+                .get(&Ustr::from("USDT"))
+                .is_some_and(|b| b.total.as_decimal().is_zero()),
+        );
+    }
+
     #[rstest]
     fn test_stream_balance_transition_to_zero_clears_the_cached_amount() {
         // The shared Binance parser drops `wb == 0` rows, which would leave the stale amount
-        // cached; the Aster crate parses the `B` array itself for exactly this case.
-        let funded = account_update(
-            r#"[{"a":"USDT","wb":"100.0","cw":"100.0"},
-                                        {"a":"BTC","wb":"0.5","cw":"0.5"}]"#,
+        // cached; the Aster crate parses the `B` array itself so a withdrawal is stated, and
+        // the zero row is the one stream statement that is complete on its own.
+        let verified = verified_balances(
+            r#"[{"asset":"USDT","balance":"100.0","availableBalance":"100.0"},
+                {"asset":"BTC","balance":"0.5","availableBalance":"0.5"}]"#,
         );
         let drained = account_update(
             r#"[{"a":"USDT","wb":"0.0","cw":"0.0"},
-                                         {"a":"BTC","wb":"0.5","cw":"0.5"}]"#,
+                {"a":"BTC","wb":"0.5","cw":"0.5"}]"#,
         );
 
-        let first = parse_aster_account_update(&funded, account_id(), UnixNanos::default())
-            .expect("balances present");
-        let mut account = MarginAccount::new(first, true);
+        let merged =
+            merge_aster_account_update(&drained, account_id(), UnixNanos::default(), &verified, 0);
+        let balances = merged.state.expect("the zero row must survive").balances;
+        assert_eq!(balances.len(), 2);
 
-        let second = parse_aster_account_update(&drained, account_id(), UnixNanos::default())
-            .expect("the zero row must survive");
-        assert_eq!(second.balances.len(), 2);
-        account.base.update_balances(&second.balances);
+        let account = margin_account(balances);
 
         assert_eq!(
             account.balance_total(Some(Currency::USDT())).unwrap(),
@@ -3822,10 +4209,22 @@ mod tests {
 
     #[rstest]
     fn test_stream_account_update_registers_unknown_assets() {
+        let verified = [(
+            Ustr::from("AFEE"),
+            AccountBalance::from_total_and_free(
+                Decimal::from(1),
+                Decimal::from(1),
+                Currency::from("AFEE"),
+            )
+            .unwrap(),
+        )]
+        .into_iter()
+        .collect();
         let update = account_update(r#"[{"a":"AFEE","wb":"1.5","cw":"1.5"}]"#);
 
-        let state = parse_aster_account_update(&update, account_id(), UnixNanos::default())
-            .expect("balances present");
+        let merged =
+            merge_aster_account_update(&update, account_id(), UnixNanos::default(), &verified, 0);
+        let state = merged.state.expect("balances present");
 
         assert_eq!(state.balances.len(), 1);
         assert_eq!(state.balances[0].currency.code.as_str(), "AFEE");
@@ -3835,7 +4234,15 @@ mod tests {
     fn test_stream_account_update_without_balances_is_dropped() {
         let update = account_update("[]");
 
-        assert!(parse_aster_account_update(&update, account_id(), UnixNanos::default()).is_none());
+        let merged = merge_aster_account_update(
+            &update,
+            account_id(),
+            UnixNanos::default(),
+            &AHashMap::new(),
+            0,
+        );
+
+        assert!(merged.state.is_none());
     }
 
     #[rstest]

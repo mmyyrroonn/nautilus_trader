@@ -260,15 +260,20 @@ impl AsterBalance {
         parse_decimal(&self.balance, "balance")
     }
 
-    /// Returns the free (available) balance, falling back to the wallet balance.
+    /// Returns the balance available to open new positions, or `None` when the venue's
+    /// response omitted the field.
+    ///
+    /// A missing field is unknown, not the wallet balance: falling back to the total would
+    /// report margin the venue never granted. The caller decides whether an explicit zero
+    /// wallet balance states the row anyway.
     ///
     /// # Errors
     ///
-    /// Returns an error if the value is not a decimal number.
-    pub fn free(&self) -> anyhow::Result<Decimal> {
+    /// Returns an error if the value is present but not a decimal number.
+    pub fn available(&self) -> anyhow::Result<Option<Decimal>> {
         match self.available_balance.as_deref() {
-            Some(raw) => parse_decimal(raw, "availableBalance"),
-            None => self.total(),
+            Some(raw) => parse_decimal(raw, "availableBalance").map(Some),
+            None => Ok(None),
         }
     }
 
@@ -276,7 +281,8 @@ impl AsterBalance {
     ///
     /// True only when the wallet balance *and* the available balance parse as zero. Aster's
     /// testnet reports assets whose wallet balance is zero while `availableBalance` is not (fee
-    /// credits and airdropped assets usable as cross margin), so both fields are consulted.
+    /// credits and airdropped assets usable as cross margin), so both fields are consulted, and
+    /// a missing available amount is unknown rather than zero.
     ///
     /// An explicit zero row is *not* a reason to drop the asset from the account state: account
     /// updates overwrite balances per currency, so dropping a zero row would leave the previous
@@ -288,8 +294,8 @@ impl AsterBalance {
     #[must_use]
     pub fn is_zero(&self) -> bool {
         matches!(
-            (self.total(), self.free()),
-            (Ok(total), Ok(free)) if total.is_zero() && free.is_zero()
+            (self.total(), self.available()),
+            (Ok(total), Ok(Some(free))) if total.is_zero() && free.is_zero()
         )
     }
 }
@@ -854,7 +860,7 @@ mod tests {
             .expect("USDT balance in fixture");
 
         assert_eq!(usdt.total().unwrap().to_string(), "1.11341089");
-        assert_eq!(usdt.free().unwrap().to_string(), "0.81341089");
+        assert_eq!(usdt.available().unwrap().unwrap().to_string(), "0.81341089");
         assert_eq!(usdt.update_time, Some(1_776_802_344_230));
         assert!(!usdt.is_zero());
         assert!(balances.iter().any(AsterBalance::is_zero));
@@ -869,9 +875,12 @@ mod tests {
 
         let usdt = &balances[0];
         assert_eq!(usdt.total().unwrap().to_string(), "1000.00000000");
-        assert_eq!(usdt.free().unwrap().to_string(), "1590.98089862");
+        assert_eq!(
+            usdt.available().unwrap().unwrap().to_string(),
+            "1590.98089862"
+        );
         // Aster reports availableBalance above walletBalance on cross-margin accounts.
-        assert!(usdt.free().unwrap() > usdt.total().unwrap());
+        assert!(usdt.available().unwrap().unwrap() > usdt.total().unwrap());
         assert_eq!(usdt.update_time, Some(1_788_571_663_397));
     }
 
@@ -956,11 +965,15 @@ mod tests {
     }
 
     #[rstest]
-    fn test_balance_free_falls_back_to_total() {
+    fn test_balance_without_available_reports_unknown() {
         let balance: AsterBalance =
             serde_json::from_str(r#"{"asset":"USDT","balance":"5.5"}"#).unwrap();
 
-        assert_eq!(balance.free().unwrap(), balance.total().unwrap());
+        assert_eq!(balance.available().unwrap(), None);
+        assert!(
+            !balance.is_zero(),
+            "a missing available amount is unknown, not zero"
+        );
         assert_eq!(balance.update_time, None);
     }
 

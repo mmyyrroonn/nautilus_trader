@@ -1573,8 +1573,30 @@ async fn test_rest_zero_balance_clears_the_cached_amount() {
 #[tokio::test]
 async fn test_stream_zero_balance_clears_the_cached_amount() {
     let venue = MockVenue::start().await;
-    let mut harness = connected_harness(&venue).await;
+    script_connect(&venue);
+    // The stream row for BTC is merged against a verified snapshot, so the connect has to
+    // leave one that names BTC as well as USDT.
+    venue.script(|script| {
+        script.balances = json!([
+            {"asset": "USDT", "balance": "1000.0", "availableBalance": "1000.0"},
+            {"asset": "BTC", "balance": "0.5", "availableBalance": "0.5"},
+        ]);
+    });
+    let mut harness = build_harness(&venue, Some(30));
+    seed_account(&harness.cache);
+    harness.client.start().expect("start");
+    harness.client.connect().await.expect("connect");
+    venue.clear_requests();
     drain_exec(&mut harness.exec_rx);
+
+    // The stream update carries no available amount, so an owed snapshot follows it; the
+    // account it then reads has already seen the withdrawal the frame states.
+    venue.script(|script| {
+        script.balances = json!([
+            {"asset": "USDT", "balance": "0.0", "availableBalance": "0.0"},
+            {"asset": "BTC", "balance": "0.5", "availableBalance": "0.5"},
+        ]);
+    });
 
     venue.push_ws(&json!({
         "e": "ACCOUNT_UPDATE",
