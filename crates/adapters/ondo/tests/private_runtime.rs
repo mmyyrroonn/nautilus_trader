@@ -5153,6 +5153,116 @@ async fn test_production_rechecks_after_budget_wait(#[case] condition: &str) {
     let _ = harness.client.disconnect().await;
 }
 
+/// A submission cancelled while it waits for the shared budget never becomes a request, and the
+/// order it would have become is settled locally: the engine sees a terminal event, the reporter
+/// stops tracking it, and the cancel a stop registered for it beforehand is cleared, so the
+/// shutdown does not wait out its budget for an order that never existed.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_budget_wait_cancellation_settles_the_ghost_order() {
+    let journal = JournalPath::new("production-budget-cancel");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    // A budget whose cells the test can spend itself: the submission below queues for the next
+    // replenishment instead of being sent, and the reads the stop needs afterwards are bounded by
+    // the same quota rather than blocked forever behind it.
+    let budget = OndoRateBudget::with_quota(
+        Quota::with_period(Duration::from_millis(500))
+            .unwrap()
+            .allow_burst(NonZeroU32::new(64).unwrap()),
+    );
+    let mut harness =
+        build_harness_on_budget(&rest, &private, production_config(&journal), budget.clone());
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    production_quote(&harness, now());
+    while budget
+        .limiter()
+        .check_key(&ustr::Ustr::from(
+            nautilus_ondo::http::rate_limit::ONDO_REST_BUCKET,
+        ))
+        .is_ok()
+    {}
+
+    let order = production_order("prod-queued", false, "0.05", "230.00");
+    seed_order(&harness, &order);
+    harness.client.submit_order(submit_command(&order)).unwrap();
+    wait_until(
+        &mut harness,
+        "submitted before the budget wait",
+        |_, events| {
+            events
+                .iter()
+                .any(|e| matches!(e, ExecutionEvent::Order(OrderEventAny::Submitted(_))))
+        },
+    )
+    .await;
+    assert_eq!(
+        rest.writes(),
+        0,
+        "the submission is queued for the budget, not sent: {:?}",
+        rest.sequence(),
+    );
+
+    // The stop registers every owned working order as an unconfirmed cancel before it closes
+    // admission; this is that registration, made by the same call the stop makes. The task is
+    // then forced down at the cancellation point the stop reaches after its graceful window, so
+    // the settlement has to undo both - there is no request behind the order for a cancel to name.
+    harness.client.account().note_unconfirmed_cancel(
+        ClientOrderId::from("prod-queued"),
+        None,
+        "the stop registered this order before issuing its cancel".to_string(),
+        now(),
+    );
+    let started = Instant::now();
+    harness.client.abort_request_tasks();
+    wait_until(&mut harness, "the cancelled order settled", |client, _| {
+        client
+            .order_state(&ClientOrderId::from("prod-queued"))
+            .is_none()
+    })
+    .await;
+
+    assert_eq!(
+        rest.writes(),
+        0,
+        "a request that never existed is never sent: {:?}",
+        rest.sequence(),
+    );
+    assert!(
+        harness.client.unconfirmed_cancels().is_empty(),
+        "the cancel registered for a never-sent order is cleared: {:?}",
+        harness.client.unconfirmed_cancels(),
+    );
+    assert_eq!(harness.client.tracked_order_count(), 0);
+
+    // With nothing left to wait for, the stop is clean and finishes well inside its budget.
+    harness.client.disconnect().await.unwrap();
+    assert!(
+        started.elapsed() < Duration::from_secs(10),
+        "the stop did not wait out its budget for a ghost order: {:?}",
+        started.elapsed(),
+    );
+
+    let events = drain_events(&mut harness);
+    let terminal: Vec<&OrderEventAny> = events
+        .iter()
+        .filter_map(|event| match event {
+            ExecutionEvent::Order(event) => Some(event),
+            _ => None,
+        })
+        .filter(|event| matches!(event, OrderEventAny::Rejected(_) | OrderEventAny::Denied(_)))
+        .collect();
+    assert_eq!(
+        terminal.len(),
+        1,
+        "the engine sees exactly one terminal event for the cancelled order: {terminal:?}",
+    );
+    assert!(
+        matches!(terminal[0], OrderEventAny::Rejected(_)),
+        "the order had already been reported submitted: {terminal:?}",
+    );
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn test_production_missing_host_dms_ack_cannot_be_forged_by_runtime_hook() {
     let journal = JournalPath::new("dms-noack");

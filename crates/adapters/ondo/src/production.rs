@@ -235,6 +235,17 @@ impl fmt::Debug for ProductionAuthority {
     }
 }
 
+/// The work a cancelled prepared command still has to settle besides the production obligation.
+///
+/// The guard is the only authority on whether a signed request could exist, so the sink runs
+/// only after [`ProductionAuthority::claim_cancelled_prepared`] has confirmed the send point was
+/// never reached. A command that may have reached the venue keeps its association and its
+/// uncertainty instead.
+pub(crate) trait CancelledPreparedSink: Send + Sync {
+    /// Reports the order terminal locally and drops the state a send would have needed.
+    fn settle_cancelled(&self, client_order_id: &str);
+}
+
 /// The obligation one prepared command owes until its send outcome is decided.
 ///
 /// The submission task moves this into its async block, so a task that is cancelled
@@ -246,22 +257,36 @@ impl fmt::Debug for ProductionAuthority {
 pub(crate) struct PreparedCommand {
     guard: Option<Arc<ProductionAuthority>>,
     client_order_id: String,
+    sink: Option<Arc<dyn CancelledPreparedSink>>,
 }
 
 impl PreparedCommand {
     /// Creates the obligation for a command whose context `prepare` has already recorded.
-    pub(crate) fn new(guard: Option<Arc<ProductionAuthority>>, client_order_id: String) -> Self {
+    pub(crate) fn new(
+        guard: Option<Arc<ProductionAuthority>>,
+        client_order_id: String,
+        sink: Option<Arc<dyn CancelledPreparedSink>>,
+    ) -> Self {
         Self {
             guard,
             client_order_id,
+            sink,
         }
     }
 }
 
 impl Drop for PreparedCommand {
     fn drop(&mut self) {
-        if let Some(guard) = &self.guard {
-            guard.settle_cancelled_prepared(&self.client_order_id);
+        let Some(guard) = &self.guard else {
+            // Without a guard there is no authority that can prove the send point was never
+            // reached, so the outcome stays with reconciliation.
+            return;
+        };
+        if !guard.claim_cancelled_prepared(&self.client_order_id) {
+            return;
+        }
+        if let Some(sink) = &self.sink {
+            sink.settle_cancelled(&self.client_order_id);
         }
     }
 }
@@ -490,20 +515,21 @@ impl ProductionAuthority {
         self.state.lock().known_zero.insert(id.to_string());
     }
 
-    /// Settles a prepared command whose submission task was cancelled or dropped before it
-    /// could be sent.
+    /// Claims the settlement of a prepared command whose submission task was cancelled or
+    /// dropped before it could be sent.
     ///
-    /// Called only from the command's own [`PreparedCommand`] drop, and only while the guard
-    /// has no create and no prior settlement for it: a command the guard already recorded
-    /// may have reached the venue, so it is left to the unknown path rather than declared
-    /// not sent. A cancellation during the shared budget wait is covered because
-    /// `authorize_post` has not run yet; a cancellation after it is not, because the signed
-    /// request may already be on its way.
-    pub(crate) fn settle_cancelled_prepared(&self, id: &str) {
+    /// Returns `true` exactly once per command, and only while the guard has no create and no
+    /// prior settlement for it: a command the guard already recorded may have reached the
+    /// venue, so it is left to the unknown path rather than declared not sent. A cancellation
+    /// during the shared budget wait is covered because `authorize_post` has not run yet; a
+    /// cancellation after it is not, because the signed request may already be on its way.
+    pub(crate) fn claim_cancelled_prepared(&self, id: &str) -> bool {
         let mut state = self.state.lock();
-        if !state.creates.contains_key(id) && !state.known_zero.contains(id) {
-            state.known_zero.insert(id.to_string());
+        if state.creates.contains_key(id) || state.known_zero.contains(id) {
+            return false;
         }
+        state.known_zero.insert(id.to_string());
+        true
     }
     pub(crate) fn owns(&self, id: &str) -> bool {
         self.state.lock().creates.contains_key(id)
@@ -1348,8 +1374,11 @@ mod tests {
             .unwrap();
 
         {
-            let _obligation =
-                PreparedCommand::new(Some(Arc::clone(&guard)), "cancelled-before-send".into());
+            let _obligation = PreparedCommand::new(
+                Some(Arc::clone(&guard)),
+                "cancelled-before-send".into(),
+                None,
+            );
             // Dropped without any send, as a cancelled task's future would be.
         }
 
@@ -1392,8 +1421,11 @@ mod tests {
             .expect("the command is authorized and may have been sent");
 
         {
-            let _obligation =
-                PreparedCommand::new(Some(Arc::clone(&guard)), "cancelled-after-authorize".into());
+            let _obligation = PreparedCommand::new(
+                Some(Arc::clone(&guard)),
+                "cancelled-after-authorize".into(),
+                None,
+            );
         }
 
         guard.reconcile(
