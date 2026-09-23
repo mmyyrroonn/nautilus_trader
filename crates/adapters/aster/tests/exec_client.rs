@@ -1635,6 +1635,87 @@ async fn test_stream_zero_balance_clears_the_cached_amount() {
     assert_eq!(btc.total, Money::from("0.5 BTC"));
 }
 
+/// A burst of stream updates inside the success window costs one balance read, and the session
+/// timer takes it when the window expires even though no further message arrives.
+#[rstest]
+#[tokio::test]
+async fn test_stream_updates_within_the_window_cost_one_snapshot_read() {
+    let venue = MockVenue::start().await;
+    script_connect(&venue);
+    venue.script(|script| {
+        script.balances = json!([
+            {"asset": "USDT", "balance": "1000.0", "availableBalance": "1000.0"},
+            {"asset": "BTC", "balance": "0.5", "availableBalance": "0.5"},
+        ]);
+    });
+    let mut harness = build_harness(&venue, Some(30));
+    seed_account(&harness.cache);
+    harness.client.start().expect("start");
+    harness.client.connect().await.expect("connect");
+    venue.clear_requests();
+    drain_exec(&mut harness.exec_rx);
+
+    // The snapshot a later read would get states a different available amount than the connect
+    // did, so a read that happened can be told from one that did not.
+    venue.script(|script| {
+        script.balances = json!([
+            {"asset": "USDT", "balance": "1000.0", "availableBalance": "900.0"},
+            {"asset": "BTC", "balance": "0.5", "availableBalance": "0.5"},
+        ]);
+    });
+
+    for nonce in 0..3 {
+        venue.push_ws(&json!({
+            "e": "ACCOUNT_UPDATE",
+            "E": 1_788_571_667_000i64 + nonce,
+            "T": 1_788_571_667_000i64 + nonce,
+            "a": {
+                "m": "ORDER",
+                "B": [{"a": "USDT", "wb": "1000.00000000", "cw": "1000.00000000", "bc": "0"}],
+                "P": []
+            }
+        }));
+    }
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert_eq!(
+        venue.requests_for("GET", "balance").len(),
+        0,
+        "the success window keeps a burst of updates from turning into a read each",
+    );
+
+    // No further message arrives: the session timer is what has to take the owed snapshot once
+    // the window expires.
+    let mut reads = 0;
+    for _ in 0..80 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        reads = venue.requests_for("GET", "balance").len();
+        if reads > 0 {
+            break;
+        }
+    }
+    assert!(
+        reads >= 1,
+        "the timer compensates for the owed snapshot without another stream message",
+    );
+
+    let events = drain_exec(&mut harness.exec_rx);
+    let state = account_states(&events)
+        .last()
+        .copied()
+        .expect("the owed snapshot is published");
+    let usdt = state
+        .balances
+        .iter()
+        .find(|balance| balance.currency == Currency::USDT())
+        .expect("the snapshot carries USDT");
+    assert_eq!(
+        usdt.free,
+        Money::from("900.0 USDT"),
+        "the snapshot is what corrected the carried bound",
+    );
+}
+
 // ------------------------------------------------------------------------------------------------
 // Fees
 // ------------------------------------------------------------------------------------------------
