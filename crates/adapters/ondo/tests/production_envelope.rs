@@ -204,6 +204,49 @@ fn close_notional_at_the_directional_bound_must_fit_the_order_ceiling() {
     assert!(oversized.validate(100000000000).is_err());
 }
 
+/// The gross ceiling is its own refusal: a close that fits the per-order ceiling but not
+/// the gross one is still structurally unsendable.
+#[rstest]
+fn close_notional_must_fit_the_gross_ceiling_too() {
+    let mut config = envelope();
+    config.entry_worst_price = rust_decimal::Decimal::from_str_exact("100").unwrap();
+    config.entry_max_notional_usd = rust_decimal::Decimal::from_str_exact("10").unwrap();
+    config.max_gross_exposure_usd = rust_decimal::Decimal::from_str_exact("10").unwrap();
+    config.close_worst_price = rust_decimal::Decimal::from_str_exact("110").unwrap();
+
+    // close 0.1 x 110 = 11, which is above the gross ceiling and below the per-order one.
+    assert!(
+        config
+            .close_max_quantity
+            .checked_mul(config.close_worst_price)
+            .unwrap()
+            > config.max_gross_exposure_usd
+    );
+    assert!(
+        config
+            .close_max_quantity
+            .checked_mul(config.close_worst_price)
+            .unwrap()
+            <= config.max_notional_per_order_usd
+    );
+    assert!(config.validate(100000000000).is_err());
+}
+
+/// The capacity and ceiling checks hold for a short entry that closes by buying.
+#[rstest]
+fn short_entry_envelopes_are_checked_in_the_close_direction_too() {
+    let mut config = envelope();
+    config.entry_side = "sell".into();
+    config.close_side = "buy".into();
+    config.entry_worst_price = rust_decimal::Decimal::from_str_exact("149").unwrap();
+    config.close_worst_price = rust_decimal::Decimal::from_str_exact("150").unwrap();
+    assert_eq!(config.validate(100000000000), Ok(()));
+
+    let mut shortfall = config.clone();
+    shortfall.close_max_quantity = rust_decimal::Decimal::from_str_exact("0.01").unwrap();
+    assert!(shortfall.validate(100000000000).is_err());
+}
+
 /// Coverage that overflows exact decimal arithmetic is refused, not clamped into a
 /// quantity the envelope never approved.
 #[rstest]
