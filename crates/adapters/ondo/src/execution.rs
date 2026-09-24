@@ -2747,6 +2747,16 @@ impl OndoExecutionClient {
         }
     }
 
+    /// Aborts every request task in the current generation.
+    ///
+    /// This is the forced half of the stop's task drain, exposed so a test can reach the
+    /// cancellation point without waiting out the stop's graceful window: the drop of a cancelled
+    /// submission task is what settles a command that never reached the send point.
+    #[doc(hidden)]
+    pub fn abort_request_tasks(&self) {
+        self.tasks.abort();
+    }
+
     /// Returns the order reference to use for a cancel or a query.
     ///
     /// A venue order id the caller already holds wins; otherwise the index is asked, and the
@@ -5088,10 +5098,37 @@ impl ExecutionClient for OndoExecutionClient {
             }
         }
 
+        // The command is now local work. This obligation settles it if the submission task
+        // never gets to decide the outcome - cancelled before its first poll, or dropped
+        // while it waits for the shared budget - and leaves it alone once the guard has
+        // recorded a create that may already have reached the venue. The sink is the local
+        // cleanup that must accompany that settlement: a definitely-unsent command still owes
+        // the engine a terminal event and the reporter its association.
+        let sink = self.account.production.as_ref().map(|_| {
+            Arc::new(CancelledPreparedSink {
+                reporter: self.reporter.clone(),
+                reconciliation: Arc::clone(&self.reconciliation),
+                order: order.clone(),
+            }) as Arc<dyn crate::production::CancelledPreparedSink>
+        });
+        let prepared = crate::production::PreparedCommand::new(
+            self.account.production.clone(),
+            cmd.client_order_id.to_string(),
+            sink,
+        );
+
         let Some(spawner) = self.spawner() else {
-            self.reporter
-                .emitter
-                .emit_order_denied(&order, "the Ondo Perps execution client is shutting down");
+            // The command was prepared but will never be sent; it must not read as
+            // outstanding local work that could keep the run from ever completing.
+            settle_never_sent(
+                &self.reporter,
+                &self.reconciliation,
+                self.account.production.as_ref(),
+                &order,
+                &cmd.client_order_id,
+                "the Ondo Perps execution client is shutting down",
+                false,
+            );
 
             return Ok(());
         };
@@ -5104,7 +5141,9 @@ impl ExecutionClient for OndoExecutionClient {
         let client_order_id = cmd.client_order_id;
         let instrument_id = cmd.instrument_id;
 
-        spawner.spawn(async move {
+        let spawned = spawner.spawn(async move {
+            let _prepared = prepared;
+
             // The instant this gate decides at is the instant it runs at, not the one the command
             // was admitted at: the wait between the two is the wait this gate exists to cover.
             let now = get_atomic_clock_realtime().get_time_ns();
@@ -5118,9 +5157,16 @@ impl ExecutionClient for OndoExecutionClient {
                     "Ondo refused to submit {client_order_id} at the request boundary: {}",
                     reason.reason(),
                 );
-                reporter
-                    .emitter
-                    .emit_order_denied(&order, &new_risk_refusal_reason(&reason));
+                // The gate refused before any signed byte existed: definitively not sent.
+                settle_never_sent(
+                    &reporter,
+                    &reconciliation,
+                    account.production.as_ref(),
+                    &order,
+                    &client_order_id,
+                    &new_risk_refusal_reason(&reason),
+                    false,
+                );
 
                 return;
             }
@@ -5145,48 +5191,44 @@ impl ExecutionClient for OndoExecutionClient {
                     // order is not in flight and is not unknown: it is terminalised with the
                     // account's own reason, and no probe is owed for a request that never existed.
                     log::error!("Ondo refused order {client_order_id} at the send point: {reason}");
-                    reporter
-                        .emitter
-                        .emit_order_rejected(&order, &reason, reporter.now(), false);
-                    if let Some(guard) = &account.production {
-                        guard.definite_zero(client_order_id.as_str());
-                    }
-                    reporter.forget(&client_order_id);
-                    // The order never rested, so any cancel registered for it beforehand is moot.
-                    reconciliation.write().confirm_cancel(&client_order_id);
+                    settle_never_sent(
+                        &reporter,
+                        &reconciliation,
+                        account.production.as_ref(),
+                        &order,
+                        &client_order_id,
+                        &reason,
+                        false,
+                    );
                 }
                 Err(OndoNewRiskSendError::Local(error)) => {
                     // A single order has no batch-level validation to fail, so this arm is the
                     // batch's own refusal class reported the same way: nothing was sent.
                     log::error!("Ondo refused order {client_order_id} locally: {error}");
-                    reporter.emitter.emit_order_rejected(
+                    settle_never_sent(
+                        &reporter,
+                        &reconciliation,
+                        account.production.as_ref(),
                         &order,
+                        &client_order_id,
                         &format!("batch-order-error: {error}"),
-                        reporter.now(),
                         false,
                     );
-                    if let Some(guard) = &account.production {
-                        guard.definite_zero(client_order_id.as_str());
-                    }
-                    reporter.forget(&client_order_id);
-                    reconciliation.write().confirm_cancel(&client_order_id);
                 }
                 Err(OndoNewRiskSendError::Http(error)) if is_definitive_refusal(&error) => {
                     // The venue answered and refused, or the request never left this process.
                     // Either way the order is not resting, so it is rejected rather than left in
                     // flight.
                     log::warn!("Ondo refused order {client_order_id}: {error}");
-                    reporter.emitter.emit_order_rejected(
+                    settle_never_sent(
+                        &reporter,
+                        &reconciliation,
+                        account.production.as_ref(),
                         &order,
+                        &client_order_id,
                         &refusal_reason(&error),
-                        reporter.now(),
                         is_post_only_refusal(&error),
                     );
-                    if let Some(guard) = &account.production {
-                        guard.definite_zero(client_order_id.as_str());
-                    }
-                    reporter.forget(&client_order_id);
-                    reconciliation.write().confirm_cancel(&client_order_id);
                 }
                 Err(OndoNewRiskSendError::Http(error)) => {
                     // Plan §6.3: the request may have been applied. The order is neither accepted
@@ -5223,7 +5265,17 @@ impl ExecutionClient for OndoExecutionClient {
 
                 journal.write(reporter.account_id, reporter.now(), &state, &machine);
             }
-        })?;
+        });
+
+        if let Err(error) = spawned {
+            // The command was prepared but no task exists to send it, so it is
+            // definitively not sent rather than an obligation left outstanding.
+            if let Some(guard) = &self.account.production {
+                guard.definite_zero(client_order_id.as_str());
+            }
+
+            return Err(error.into());
+        }
 
         Ok(())
     }
@@ -6108,6 +6160,62 @@ impl ExecutionClient for OndoExecutionClient {
         }
 
         Ok(reports)
+    }
+}
+
+/// Terminalises a submission this client has proved never reached the wire.
+///
+/// The engine sees a terminal event either way: a rejected order when it already saw a submitted
+/// event for this order, and a denied one when it did not. The guard records the command as
+/// definitively not sent, the reporter drops the association a cancel would be registered
+/// against, and any cancel a stop registered for the order before it was settled is cleared, so a
+/// shutdown does not wait out its budget for an order that never existed.
+fn settle_never_sent(
+    reporter: &OndoReporter,
+    reconciliation: &RwLock<ReconciliationMachine>,
+    guard: Option<&Arc<crate::production::ProductionAuthority>>,
+    order: &OrderAny,
+    client_order_id: &ClientOrderId,
+    reason: &str,
+    due_post_only: bool,
+) {
+    if reporter.state.read().orders.contains_key(client_order_id) {
+        reporter
+            .emitter
+            .emit_order_rejected(order, reason, reporter.now(), due_post_only);
+    } else {
+        reporter.emitter.emit_order_denied(order, reason);
+    }
+    if let Some(guard) = guard {
+        guard.definite_zero(client_order_id.as_str());
+    }
+    reporter.forget(client_order_id);
+    reconciliation.write().confirm_cancel(client_order_id);
+}
+
+/// The local cleanup a definitely-unsent submission still owes.
+///
+/// It runs only after the production guard has confirmed the send point was never reached, and
+/// it completes what a send would have needed: the engine sees the order terminal, the reporter
+/// stops tracking it, and the cancel a stop may have registered for it is cleared.
+struct CancelledPreparedSink {
+    reporter: OndoReporter,
+    reconciliation: Arc<RwLock<ReconciliationMachine>>,
+    order: OrderAny,
+}
+
+impl crate::production::CancelledPreparedSink for CancelledPreparedSink {
+    fn settle_cancelled(&self, client_order_id: &str) {
+        let client_order_id = ClientOrderId::from(client_order_id);
+        settle_never_sent(
+            &self.reporter,
+            &self.reconciliation,
+            None,
+            &self.order,
+            &client_order_id,
+            "the submission task was cancelled before the request was sent",
+            false,
+        );
     }
 }
 
