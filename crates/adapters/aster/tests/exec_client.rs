@@ -1599,8 +1599,30 @@ async fn test_rest_zero_balance_clears_the_cached_amount() {
 #[tokio::test]
 async fn test_stream_zero_balance_clears_the_cached_amount() {
     let venue = MockVenue::start().await;
-    let mut harness = connected_harness(&venue).await;
+    script_connect(&venue);
+    // The stream row for BTC is merged against a verified snapshot, so the connect has to
+    // leave one that names BTC as well as USDT.
+    venue.script(|script| {
+        script.balances = json!([
+            {"asset": "USDT", "balance": "1000.0", "availableBalance": "1000.0"},
+            {"asset": "BTC", "balance": "0.5", "availableBalance": "0.5"},
+        ]);
+    });
+    let mut harness = build_harness(&venue, Some(30));
+    seed_account(&harness.cache);
+    harness.client.start().expect("start");
+    harness.client.connect().await.expect("connect");
+    venue.clear_requests();
     drain_exec(&mut harness.exec_rx);
+
+    // The stream update carries no available amount, so an owed snapshot follows it; the
+    // account it then reads has already seen the withdrawal the frame states.
+    venue.script(|script| {
+        script.balances = json!([
+            {"asset": "USDT", "balance": "0.0", "availableBalance": "0.0"},
+            {"asset": "BTC", "balance": "0.5", "availableBalance": "0.5"},
+        ]);
+    });
 
     venue.push_ws(&json!({
         "e": "ACCOUNT_UPDATE",
@@ -1637,6 +1659,188 @@ async fn test_stream_zero_balance_clears_the_cached_amount() {
         .find(|balance| balance.currency == Currency::BTC())
         .expect("other assets must be untouched");
     assert_eq!(btc.total, Money::from("0.5 BTC"));
+}
+
+/// A burst of stream updates inside the success window costs one balance read, and the session
+/// timer takes it when the window expires even though no further message arrives.
+#[rstest]
+#[tokio::test]
+async fn test_stream_updates_within_the_window_cost_one_snapshot_read() {
+    let venue = MockVenue::start().await;
+    script_connect(&venue);
+    venue.script(|script| {
+        script.balances = json!([
+            {"asset": "USDT", "balance": "1000.0", "availableBalance": "1000.0"},
+            {"asset": "BTC", "balance": "0.5", "availableBalance": "0.5"},
+        ]);
+    });
+    let mut harness = build_harness(&venue, Some(30));
+    seed_account(&harness.cache);
+    harness.client.start().expect("start");
+    harness.client.connect().await.expect("connect");
+    venue.clear_requests();
+    drain_exec(&mut harness.exec_rx);
+
+    // The snapshot a later read would get states a different available amount than the connect
+    // did, so a read that happened can be told from one that did not.
+    venue.script(|script| {
+        script.balances = json!([
+            {"asset": "USDT", "balance": "1000.0", "availableBalance": "900.0"},
+            {"asset": "BTC", "balance": "0.5", "availableBalance": "0.5"},
+        ]);
+    });
+
+    for nonce in 0..3 {
+        venue.push_ws(&json!({
+            "e": "ACCOUNT_UPDATE",
+            "E": 1_788_571_667_000i64 + nonce,
+            "T": 1_788_571_667_000i64 + nonce,
+            "a": {
+                "m": "ORDER",
+                "B": [{"a": "USDT", "wb": "1000.00000000", "cw": "1000.00000000", "bc": "0"}],
+                "P": []
+            }
+        }));
+    }
+
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert_eq!(
+        venue.requests_for("GET", "balance").len(),
+        0,
+        "the success window keeps a burst of updates from turning into a read each",
+    );
+
+    // No further message arrives: the session timer is what has to take the owed snapshot once
+    // the window expires.
+    let mut reads = 0;
+    for _ in 0..80 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        reads = venue.requests_for("GET", "balance").len();
+        if reads > 0 {
+            break;
+        }
+    }
+    assert!(
+        reads >= 1,
+        "the timer compensates for the owed snapshot without another stream message",
+    );
+
+    let events = drain_exec(&mut harness.exec_rx);
+    let state = account_states(&events)
+        .last()
+        .copied()
+        .expect("the owed snapshot is published");
+    let usdt = state
+        .balances
+        .iter()
+        .find(|balance| balance.currency == Currency::USDT())
+        .expect("the snapshot carries USDT");
+    assert_eq!(
+        usdt.free,
+        Money::from("900.0 USDT"),
+        "the snapshot is what corrected the carried bound",
+    );
+}
+
+/// A stream row that restates the same wallet balance still leaves the available split
+/// unverified, so a balance response read before it cannot clear the debt: the timer has to
+/// read again even though no further message arrives.
+#[rstest]
+#[tokio::test]
+async fn test_a_delayed_snapshot_cannot_clear_the_debt_a_newer_stream_row_raised() {
+    let venue = MockVenue::start().await;
+    script_connect(&venue);
+    venue.script(|script| {
+        script.balances = json!([
+            {"asset": "USDT", "balance": "1000.0", "availableBalance": "1000.0"},
+            {"asset": "BTC", "balance": "0.5", "availableBalance": "0.5"},
+        ]);
+    });
+    let mut harness = build_harness(&venue, Some(30));
+    seed_account(&harness.cache);
+    harness.client.start().expect("start");
+    harness.client.connect().await.expect("connect");
+    venue.clear_requests();
+    drain_exec(&mut harness.exec_rx);
+
+    // The next balance read is answered late, with the account as it was when the read began.
+    venue.script(|script| {
+        script.balance_stalls = 1;
+        script.balance_stall = Duration::from_millis(1500);
+    });
+
+    // The explicit query is the read that is in flight while the stream row lands.
+    harness
+        .client
+        .query_account(nautilus_common::messages::execution::QueryAccount::new(
+            TraderId::from("TESTER-001"),
+            Some(*ASTER_CLIENT_ID),
+            AccountId::from(ACCOUNT_ID),
+            UUID4::new(),
+            UnixNanos::default(),
+            None, // params
+            None, // correlation_id
+        ))
+        .expect("accepted");
+
+    wait_until_async(
+        || async { venue.requests_for("GET", "balance").len() == 1 },
+        Duration::from_secs(10),
+    )
+    .await;
+
+    // A newer row restates the same wallet balance: the bound does not move, but the split is
+    // no longer verified, and the read in flight cannot answer for it.
+    venue.push_ws(&json!({
+        "e": "ACCOUNT_UPDATE",
+        "E": 1_788_571_667_000i64,
+        "T": 1_788_571_667_000i64,
+        "a": {
+            "m": "ORDER",
+            "B": [{"a": "USDT", "wb": "1000.00000000", "cw": "1000.00000000", "bc": "0"}],
+            "P": []
+        }
+    }));
+
+    // The venue has moved on since the read began; only a read that starts after the row can
+    // see it.
+    venue.script(|script| {
+        script.balances = json!([
+            {"asset": "USDT", "balance": "1000.0", "availableBalance": "900.0"},
+            {"asset": "BTC", "balance": "0.5", "availableBalance": "0.5"},
+        ]);
+    });
+
+    // The delayed response lands and must not clear the debt. No further stream message
+    // arrives, so the session timer is what has to take the owed snapshot.
+    let mut reads = 0;
+    for _ in 0..150 {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        reads = venue.requests_for("GET", "balance").len();
+        if reads >= 2 {
+            break;
+        }
+    }
+    assert!(
+        reads >= 2,
+        "the row that arrived during the read keeps the debt the timer has to settle",
+    );
+
+    let events = drain_exec(&mut harness.exec_rx);
+    let state = account_states(&events)
+        .last()
+        .copied()
+        .expect("the owed snapshot is published");
+    let usdt = state
+        .balances
+        .iter()
+        .find(|balance| balance.currency == Currency::USDT())
+        .expect("the snapshot carries USDT");
+    assert_eq!(
+        usdt.free,
+        Money::from("900.0 USDT"),
+        "the snapshot taken after the row is what corrects the carried bound",
+    );
 }
 
 // ------------------------------------------------------------------------------------------------
