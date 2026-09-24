@@ -203,6 +203,11 @@ async fn connected_harness(venue: &MockVenue) -> Harness {
     harness.client.start().expect("start");
     harness.client.connect().await.expect("connect");
     venue.clear_requests();
+    // Compensation never reaches behind the instant the client connected, and these tests
+    // timestamp trades at `now_ms()` minus a few milliseconds. Let the session age past that
+    // margin before handing the harness over, so a script that runs a millisecond later still
+    // places every trade inside the session.
+    tokio::time::sleep(Duration::from_millis(50)).await;
     harness
 }
 
@@ -243,6 +248,27 @@ fn drain_exec(rx: &mut UnboundedReceiver<ExecutionEvent>) -> Vec<ExecutionEvent>
         events.push(event);
     }
     events
+}
+
+/// Drains events until `done` holds or `timeout` passes, returning everything drained.
+///
+/// Recovery passes publish when they finish, and under load that can be later than any fixed
+/// delay; a test that sleeps and then drains asserts on how fast the machine is, not on what
+/// the client did. Waiting for the expected event keeps the assertion about the behaviour.
+async fn wait_for_events(
+    harness: &mut Harness,
+    timeout: Duration,
+    mut done: impl FnMut(&[ExecutionEvent]) -> bool,
+) -> Vec<ExecutionEvent> {
+    let deadline = tokio::time::Instant::now() + timeout;
+    let mut events = Vec::new();
+    loop {
+        events.extend(drain_exec(&mut harness.exec_rx));
+        if done(&events) || tokio::time::Instant::now() >= deadline {
+            return events;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
 }
 
 fn order_events(events: &[ExecutionEvent]) -> Vec<&OrderEventAny> {
@@ -3234,9 +3260,20 @@ async fn review_round4_uncovered_fills_are_withheld_until_their_order_answers() 
         Duration::from_secs(20),
     )
     .await;
-    tokio::time::sleep(Duration::from_millis(600)).await;
 
-    let second = drain_exec(&mut harness.exec_rx);
+    // The bundle is published when the compensation pass completes, which under load can be
+    // later than any fixed delay: wait for the event itself, not for a stopwatch.
+    let second = wait_for_events(&mut harness, Duration::from_secs(20), |events| {
+        events.iter().any(|event| {
+            matches!(
+                event,
+                ExecutionEvent::Report(ExecutionReport::OrderWithFills(report, fills))
+                    if report.client_order_id == Some(external) && fills.len() == 3
+            )
+        })
+    })
+    .await;
+
     let bundled = second.iter().any(|event| {
         matches!(
             event,
@@ -3352,9 +3389,18 @@ async fn review_round4_open_order_status_is_withheld_while_its_fills_are() {
         Duration::from_secs(20),
     )
     .await;
-    tokio::time::sleep(Duration::from_millis(600)).await;
 
-    let second = drain_exec(&mut harness.exec_rx);
+    let second = wait_for_events(&mut harness, Duration::from_secs(20), |events| {
+        events.iter().any(|event| {
+            matches!(
+                event,
+                ExecutionEvent::Report(ExecutionReport::OrderWithFills(report, fills))
+                    if report.client_order_id == Some(external)
+                        && fills.iter().any(|fill| fill.trade_id.as_str() == "970201")
+            )
+        })
+    })
+    .await;
     let bundled = second.iter().any(|event| {
         matches!(
             event,
