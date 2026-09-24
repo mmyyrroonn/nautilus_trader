@@ -62,6 +62,13 @@ pub(crate) enum SubmitOutcome {
     AsterError { code: i64, msg: String },
     /// Answer with a raw HTTP status and body (no Aster envelope).
     Status { status: u16, body: String },
+    /// Answer with a raw HTTP status and body plus a `Retry-After` header, which the client
+    /// turns into a bounded cooldown before the next signed request.
+    StatusWithRetryAfter {
+        status: u16,
+        body: String,
+        retry_after: String,
+    },
     /// Stall for `delay` and then answer as accepted, to drive a client-side timeout.
     Stall { delay: Duration },
 }
@@ -141,6 +148,11 @@ pub(crate) struct VenueScript {
     /// Takes precedence over [`VenueScript::cancel_error`], and drives the paths where the
     /// venue never produced an Aster error body at all.
     pub(crate) cancel_status: Option<(u16, String)>,
+    /// Whether new user data stream sockets are refused before the upgrade.
+    ///
+    /// Drives the window where the socket is gone but the shared client keeps retrying, so the
+    /// session loop never sees the stream end.
+    pub(crate) ws_refuse: bool,
 }
 
 impl Default for VenueScript {
@@ -168,6 +180,7 @@ impl Default for VenueScript {
             position_mode_status: None,
             cancel_error: None,
             cancel_status: None,
+            ws_refuse: false,
         }
     }
 }
@@ -578,6 +591,19 @@ async fn handle_order_submit(State(venue): State<MockVenue>, body: String) -> Re
             body,
         )
             .into_response(),
+        SubmitOutcome::StatusWithRetryAfter {
+            status,
+            body,
+            retry_after,
+        } => (
+            StatusCode::from_u16(status).expect("valid status"),
+            [
+                ("content-type", "text/plain"),
+                ("retry-after", retry_after.as_str()),
+            ],
+            body,
+        )
+            .into_response(),
         SubmitOutcome::Stall { delay } => {
             tokio::time::sleep(delay).await;
             json_ok(&accepted_order(&params))
@@ -712,6 +738,10 @@ async fn handle_listen_key_close(State(venue): State<MockVenue>) -> Response {
 }
 
 async fn handle_ws(State(venue): State<MockVenue>, ws: WebSocketUpgrade) -> Response {
+    if venue.script.lock().ws_refuse {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    }
+
     ws.on_upgrade(move |socket| serve_ws(socket, venue))
 }
 

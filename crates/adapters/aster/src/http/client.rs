@@ -141,6 +141,26 @@ impl AsterHttpClient {
         timeout_secs: Option<u64>,
         proxy_url: Option<String>,
     ) -> AsterHttpResult<Self> {
+        Self::with_rate_limit_quotas(
+            base_url,
+            credential,
+            timeout_secs,
+            proxy_url,
+            Self::rate_limit_quotas(),
+        )
+    }
+
+    /// Builds a client with explicit keyed quotas.
+    ///
+    /// Production always uses the published Aster budgets through [`Self::new`]; tests use this
+    /// to make the venue budget small enough to exhaust without waiting a real minute.
+    fn with_rate_limit_quotas(
+        base_url: &str,
+        credential: Option<AsterCredential>,
+        timeout_secs: Option<u64>,
+        proxy_url: Option<String>,
+        quotas: Vec<(String, Quota)>,
+    ) -> AsterHttpResult<Self> {
         let mut headers = HashMap::new();
         headers.insert(USER_AGENT.to_string(), NAUTILUS_USER_AGENT.to_string());
 
@@ -148,7 +168,7 @@ impl AsterHttpClient {
             .headers(headers)
             // Retained from every response so a `429` or `418` can honour the venue's own wait.
             .header_keys(vec![RETRY_AFTER_HEADER.to_string()])
-            .keyed_quotas(Self::rate_limit_quotas())
+            .keyed_quotas(quotas)
             .maybe_timeout_secs(timeout_secs)
             .maybe_proxy_url(proxy_url)
             .build()?;
@@ -446,7 +466,7 @@ impl AsterHttpClient {
     ) -> AsterHttpResult<T> {
         if method != Method::GET {
             return self
-                .send_signed(method, path, params, counts_against_order_quota)
+                .send_signed(method, path, params, counts_against_order_quota, None)
                 .await;
         }
 
@@ -454,7 +474,10 @@ impl AsterHttpClient {
         // rejects a replayed nonce for a signer address.
         let operation = || {
             let params = params.clone();
-            async move { self.send_signed(Method::GET, path, params, false).await }
+            async move {
+                self.send_signed(Method::GET, path, params, false, None)
+                    .await
+            }
         };
 
         Self::get_retry_manager()
@@ -493,10 +516,18 @@ impl AsterHttpClient {
         path: &str,
         params: AsterParams,
         counts_against_order_quota: bool,
+        admission: Option<&(dyn Fn() -> Result<(), String> + Send + Sync)>,
     ) -> AsterHttpResult<T> {
         // Waited out before signing: a nonce drawn now and sent minutes later would be stale,
         // and Aster rejects a stale nonce.
         self.await_cooldown().await;
+
+        // Refused before signing when the session is already unready; the authoritative check
+        // runs again after the shared rate-limit wait, at the network dispatch boundary, so a
+        // request queued behind a quota cannot reach the venue after readiness was lost.
+        if let Some(admission) = admission {
+            admission().map_err(AsterHttpError::ValidationError)?;
+        }
 
         let payload = self.build_signed_payload(&params)?;
         let is_get = method == Method::GET;
@@ -522,7 +553,16 @@ impl AsterHttpClient {
         let response = self
             .inner
             .client
-            .request_with_url_redacted(method, url, None, Some(headers), body, None, Some(keys))
+            .request_with_url_redacted_admitted(
+                method,
+                url,
+                None,
+                Some(headers),
+                body,
+                None,
+                Some(keys),
+                admission,
+            )
             .await?;
 
         self.arm_cooldown(&response);
@@ -581,6 +621,35 @@ impl AsterHttpClient {
     /// Returns an error if the venue rejects the order or the request fails.
     pub async fn submit_order(&self, params: AsterParams) -> AsterHttpResult<AsterOrder> {
         self.signed_post(ASTER_ORDER_PATH, params, true).await
+    }
+
+    /// Submits an order, re-checking `admission` at the send boundary.
+    ///
+    /// The check runs after any venue cooldown has been waited out and before the request is
+    /// signed, so a session that lost its execution readiness while the request was queued
+    /// cannot reach the venue. A refusal is a local [`AsterHttpError::ValidationError`]: the
+    /// order provably never left this process and must not be reconciled as a venue outcome.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the admission check refuses the request, signing fails, or the
+    /// request fails.
+    pub async fn submit_order_admitted<F>(
+        &self,
+        params: AsterParams,
+        admission: F,
+    ) -> AsterHttpResult<AsterOrder>
+    where
+        F: Fn() -> Result<(), String> + Send + Sync,
+    {
+        self.send_signed(
+            Method::POST,
+            ASTER_ORDER_PATH,
+            params,
+            true,
+            Some(&admission),
+        )
+        .await
     }
 
     /// Cancels a single order (`DELETE /fapi/v3/order`).
@@ -838,7 +907,7 @@ fn truncate_body(body: &[u8]) -> String {
 mod tests {
     use std::{
         net::SocketAddr,
-        sync::atomic::{AtomicUsize, Ordering},
+        sync::atomic::{AtomicBool, AtomicUsize, Ordering},
     };
 
     use axum::{
@@ -1331,6 +1400,73 @@ mod tests {
 
         assert!(outcome.is_err(), "a request was sent during the cooldown");
         assert_eq!(venue.hits(), 1);
+    }
+
+    /// R5: the admission check runs again after the shared rate-limit wait, so an order that
+    /// queued behind the venue budget cannot be dispatched after readiness was lost. No `429`
+    /// is involved: the exhausted quota is the only thing holding the request.
+    #[tokio::test]
+    async fn test_submit_admission_runs_after_the_order_quota_wait() {
+        let venue = MockVenue::start(Vec::new()).await;
+        let quota = Quota::with_period(Duration::from_millis(500)).expect("period");
+        let quotas = vec![
+            (ASTER_GLOBAL_RATE_KEY.to_string(), quota),
+            (ASTER_ORDER_RATE_KEY.to_string(), quota),
+        ];
+        let client = AsterHttpClient::with_rate_limit_quotas(
+            &venue.url(),
+            Some(credential()),
+            Some(5),
+            None,
+            quotas,
+        )
+        .expect("client");
+
+        let params = AsterParams::new().with("symbol", "BTCUSDT");
+
+        // The first order consumes the whole budget; the empty mock body is not an order.
+        let first = client
+            .submit_order_admitted(params.clone(), || Ok(()))
+            .await;
+        assert!(first.is_err(), "the empty mock body is not an order");
+        assert_eq!(venue.hits(), 1);
+
+        // The second order queues behind the exhausted quota.
+        let admitted = Arc::new(AtomicBool::new(true));
+        let admitted_for_request = Arc::clone(&admitted);
+        let request = tokio::spawn({
+            let client = client.clone();
+            async move {
+                let admission = move || {
+                    if admitted_for_request.load(Ordering::Acquire) {
+                        Ok(())
+                    } else {
+                        Err("not ready".to_string())
+                    }
+                };
+
+                client.submit_order_admitted(params, admission).await
+            }
+        });
+
+        // Let the request reach the quota wait, then revoke admission.
+        tokio::task::yield_now().await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        admitted.store(false, Ordering::Release);
+
+        let result = request.await.expect("task");
+        assert!(
+            matches!(
+                result,
+                Err(AsterHttpError::ValidationError(ref reason)) if reason == "not ready"
+            ),
+            "the queued order must be refused after the quota wait: {result:?}",
+        );
+        assert_eq!(
+            venue.hits(),
+            1,
+            "the refused order must not reach the venue"
+        );
     }
 
     #[tokio::test]

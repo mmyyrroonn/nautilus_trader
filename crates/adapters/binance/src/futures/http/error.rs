@@ -87,6 +87,8 @@ impl From<HttpClientError> for BinanceFuturesHttpError {
     fn from(err: HttpClientError) -> Self {
         match err {
             HttpClientError::TimeoutError(msg) => Self::Timeout(msg),
+            // A refused admission never reached the network, so it is a local fault.
+            HttpClientError::AdmissionDenied(msg) => Self::ValidationError(msg),
             HttpClientError::InvalidProxy(msg) | HttpClientError::ClientBuildError(msg) => {
                 Self::NetworkError(msg)
             }

@@ -40,6 +40,7 @@ use nautilus_live::{
 };
 use nautilus_model::instruments::{Instrument, InstrumentAny};
 use nautilus_network::{
+    SocketState,
     mode::ConnectionMode,
     websocket::{
         PingHandler, SubscriptionState, TransportBackend, WebSocketClient, WebSocketConfig,
@@ -110,6 +111,7 @@ pub struct BinanceFuturesWebSocketClient {
     connect_timeout_ms: u64,
     socket_factory: Option<SocketControlFactory>,
     socket_endpoint: Option<String>,
+    socket_state_callback: Option<Arc<dyn Fn(SocketState) + Send + Sync>>,
 }
 
 /// Default per-attempt WebSocket connect timeout for the stream pool, in milliseconds.
@@ -177,6 +179,7 @@ impl BinanceFuturesWebSocketClient {
             connect_timeout_ms: BINANCE_WS_CONNECT_TIMEOUT_MS,
             socket_factory: None,
             socket_endpoint: None,
+            socket_state_callback: None,
         })
     }
 
@@ -213,6 +216,20 @@ impl BinanceFuturesWebSocketClient {
     ) -> Self {
         self.socket_factory = Some(factory);
         self.socket_endpoint = Some(endpoint.into());
+        self
+    }
+
+    /// Adds a callback invoked on every socket state change, alongside system-event publication.
+    ///
+    /// The callback runs before the state is published and must not synchronously trigger
+    /// another state change for the same endpoint. It is only called when a socket control is
+    /// configured with [`Self::with_socket_control`].
+    #[must_use]
+    pub fn with_socket_state_callback<F>(mut self, callback: F) -> Self
+    where
+        F: Fn(SocketState) + Send + Sync + 'static,
+    {
+        self.socket_state_callback = Some(Arc::new(callback));
         self
     }
 
@@ -647,13 +664,25 @@ impl BinanceFuturesWebSocketClient {
                 };
                 factory.control(endpoint)
             });
+        // The state sink is created before `register` below, so the generation it owns is the
+        // one the reconnect registration attaches to. A callback composes with the publisher
+        // instead of replacing it.
+        let state_sink = socket_control.as_ref().map(|control| {
+            self.socket_state_callback.as_ref().map_or_else(
+                || control.sink(),
+                |callback| {
+                    let callback = Arc::clone(callback);
+                    control.sink_with(move |state| callback(state))
+                },
+            )
+        });
         let client = WebSocketClient::builder()
             .config(config)
             .message_handler(raw_handler)
             .ping_handler(ping_handler)
             .keyed_quotas(keyed_quotas)
             .default_quota(*BINANCE_WS_CONNECTION_QUOTA)
-            .maybe_state_sink(socket_control.as_ref().map(SocketControl::sink))
+            .maybe_state_sink(state_sink)
             .connect()
             .await
             .map_err(|e| BinanceWsError::NetworkError(e.to_string()))?;
