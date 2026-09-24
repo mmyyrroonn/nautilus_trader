@@ -160,3 +160,104 @@ fn usdc_margin_floor_is_exact_and_cannot_be_lowered(#[case] minimum: &str, #[cas
     config.min_available_margin_usdc = rust_decimal::Decimal::from_str_exact(minimum).unwrap();
     assert_eq!(config.validate(100000000000).is_ok(), valid);
 }
+
+/// An opening quantity the approved closing attempts cannot cover in full leaves a
+/// position this envelope cannot legally clean up, so it is refused before any order.
+#[rstest]
+fn close_capacity_shortfall_is_refused_before_entry() {
+    let mut config = envelope();
+    config.close_max_quantity = rust_decimal::Decimal::from_str_exact("0.01").unwrap();
+    assert_eq!(config.max_close_attempts, 2);
+    assert_eq!(config.max_orders, 3);
+    assert!(config.validate(100000000000).is_err());
+}
+
+/// The closing quantity is only sufficient across the attempts one opening order
+/// actually leaves: three orders with two attempts leave two, and two orders leave one.
+#[rstest]
+fn close_capacity_counts_only_attempts_the_envelope_can_send() {
+    let mut two = envelope();
+    two.close_max_quantity = rust_decimal::Decimal::from_str_exact("0.05").unwrap();
+    assert_eq!(two.validate(100000000000), Ok(()));
+
+    let mut one = two.clone();
+    one.max_orders = 2;
+    assert!(one.validate(100000000000).is_err());
+
+    let mut single_attempt = envelope();
+    single_attempt.close_max_quantity = rust_decimal::Decimal::from_str_exact("0.1").unwrap();
+    single_attempt.max_close_attempts = 1;
+    single_attempt.max_orders = 2;
+    assert_eq!(single_attempt.validate(100000000000), Ok(()));
+}
+
+/// A closing order that cannot even be sent at the approved directional bound fits no
+/// ceiling, whatever the venue price does later.
+#[rstest]
+fn close_notional_at_the_directional_bound_must_fit_the_order_ceiling() {
+    let mut fitting = envelope();
+    fitting.close_worst_price = rust_decimal::Decimal::from_str_exact("149").unwrap();
+    assert_eq!(fitting.validate(100000000000), Ok(()));
+
+    let mut oversized = envelope();
+    oversized.close_worst_price = rust_decimal::Decimal::from_str_exact("600").unwrap();
+    assert!(oversized.validate(100000000000).is_err());
+}
+
+/// The gross ceiling is its own refusal: a close that fits the per-order ceiling but not
+/// the gross one is still structurally unsendable.
+#[rstest]
+fn close_notional_must_fit_the_gross_ceiling_too() {
+    let mut config = envelope();
+    config.entry_worst_price = rust_decimal::Decimal::from_str_exact("100").unwrap();
+    config.entry_max_notional_usd = rust_decimal::Decimal::from_str_exact("10").unwrap();
+    config.max_gross_exposure_usd = rust_decimal::Decimal::from_str_exact("10").unwrap();
+    config.close_worst_price = rust_decimal::Decimal::from_str_exact("110").unwrap();
+
+    // close 0.1 x 110 = 11, which is above the gross ceiling and below the per-order one.
+    assert!(
+        config
+            .close_max_quantity
+            .checked_mul(config.close_worst_price)
+            .unwrap()
+            > config.max_gross_exposure_usd
+    );
+    assert!(
+        config
+            .close_max_quantity
+            .checked_mul(config.close_worst_price)
+            .unwrap()
+            <= config.max_notional_per_order_usd
+    );
+    assert!(config.validate(100000000000).is_err());
+}
+
+/// The capacity and ceiling checks hold for a short entry that closes by buying.
+#[rstest]
+fn short_entry_envelopes_are_checked_in_the_close_direction_too() {
+    let mut config = envelope();
+    config.entry_side = "sell".into();
+    config.close_side = "buy".into();
+    config.entry_worst_price = rust_decimal::Decimal::from_str_exact("149").unwrap();
+    config.close_worst_price = rust_decimal::Decimal::from_str_exact("150").unwrap();
+    assert_eq!(config.validate(100000000000), Ok(()));
+
+    let mut shortfall = config.clone();
+    shortfall.close_max_quantity = rust_decimal::Decimal::from_str_exact("0.01").unwrap();
+    assert!(shortfall.validate(100000000000).is_err());
+}
+
+/// Coverage that overflows exact decimal arithmetic is refused, not clamped into a
+/// quantity the envelope never approved.
+#[rstest]
+fn close_capacity_overflow_is_refused_rather_than_clamped() {
+    let mut config = envelope();
+    config.entry_max_quantity =
+        rust_decimal::Decimal::from_str_exact("40000000000000000000000000000").unwrap();
+    config.entry_worst_price =
+        rust_decimal::Decimal::from_str_exact("0.0000000000000000000000000003").unwrap();
+    config.close_max_quantity = config.entry_max_quantity;
+    config.close_worst_price =
+        rust_decimal::Decimal::from_str_exact("0.0000000000000000000000000001").unwrap();
+    assert!(config.validate(100000000000).is_err());
+}
