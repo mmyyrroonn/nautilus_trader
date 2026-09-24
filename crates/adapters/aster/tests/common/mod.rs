@@ -62,6 +62,13 @@ pub(crate) enum SubmitOutcome {
     AsterError { code: i64, msg: String },
     /// Answer with a raw HTTP status and body (no Aster envelope).
     Status { status: u16, body: String },
+    /// Answer with a raw HTTP status and body plus a `Retry-After` header, which the client
+    /// turns into a bounded cooldown before the next signed request.
+    StatusWithRetryAfter {
+        status: u16,
+        body: String,
+        retry_after: String,
+    },
     /// Stall for `delay` and then answer as accepted, to drive a client-side timeout.
     Stall { delay: Duration },
 }
@@ -575,6 +582,19 @@ async fn handle_order_submit(State(venue): State<MockVenue>, body: String) -> Re
         SubmitOutcome::Status { status, body } => (
             StatusCode::from_u16(status).expect("valid status"),
             [("content-type", "text/plain")],
+            body,
+        )
+            .into_response(),
+        SubmitOutcome::StatusWithRetryAfter {
+            status,
+            body,
+            retry_after,
+        } => (
+            StatusCode::from_u16(status).expect("valid status"),
+            [
+                ("content-type", "text/plain"),
+                ("retry-after", retry_after.as_str()),
+            ],
             body,
         )
             .into_response(),

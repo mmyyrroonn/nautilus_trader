@@ -26,7 +26,7 @@
 //! rejected at submission. Order modification is not supported by this adapter: cancel and
 //! resubmit instead.
 
-use std::{collections::BTreeSet, str::FromStr, sync::Arc, time::Duration};
+use std::{collections::BTreeSet, fmt, str::FromStr, sync::Arc, time::Duration};
 
 use ahash::{AHashMap, AHashSet};
 use anyhow::Context;
@@ -760,6 +760,154 @@ impl StreamState {
     }
 }
 
+/// How far a session has come from connecting to being trusted for new risk.
+///
+/// "Connected" is deliberately not a phase: a socket that is up says nothing about whether the
+/// account view behind it is complete, and every path that adds risk depends on that view.
+/// `Connecting` and `Stopping` admit nothing; `Reconciling` and `Degraded` admit only actions
+/// that provably reduce risk or leave it unchanged; only `Ready` admits new risk.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReadinessPhase {
+    /// The session is still being established.
+    Connecting,
+    /// A recovery pass is running; the account view is not yet verified.
+    Reconciling,
+    /// The account view is verified and new risk may be sent.
+    Ready,
+    /// The account view was invalidated; only risk-reducing actions may be sent.
+    Degraded,
+    /// The client is shutting down.
+    Stopping,
+}
+
+impl ReadinessPhase {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Connecting => "connecting",
+            Self::Reconciling => "reconciling",
+            Self::Ready => "ready",
+            Self::Degraded => "degraded",
+            Self::Stopping => "stopping",
+        }
+    }
+}
+
+impl fmt::Display for ReadinessPhase {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// The shared execution readiness of the account.
+///
+/// The phase is what admission decisions read; the generation is what keeps a recovery pass
+/// from publishing a readiness it no longer owns. `mark_ready` takes the generation that was
+/// current when the pass began, so a pass that finishes after a later one superseded it cannot
+/// report the account as verified.
+#[derive(Debug)]
+struct Readiness {
+    phase: ReadinessPhase,
+    generation: u64,
+    reason: Option<String>,
+}
+
+impl Default for Readiness {
+    fn default() -> Self {
+        Self {
+            phase: ReadinessPhase::Connecting,
+            generation: 0,
+            reason: Some("the session has not connected".to_string()),
+        }
+    }
+}
+
+impl Readiness {
+    fn allows_new_risk(&self) -> bool {
+        self.phase == ReadinessPhase::Ready
+    }
+
+    fn allows_reduce_only(&self) -> bool {
+        matches!(
+            self.phase,
+            ReadinessPhase::Ready | ReadinessPhase::Reconciling | ReadinessPhase::Degraded
+        )
+    }
+
+    /// Returns why a submission is refused at the current readiness, if it is.
+    fn refusal(&self, reduce_only: bool) -> Option<String> {
+        let allowed = if reduce_only {
+            self.allows_reduce_only()
+        } else {
+            self.allows_new_risk()
+        };
+        if allowed {
+            return None;
+        }
+
+        let reason = self.reason.as_deref().unwrap_or("no reason recorded");
+        Some(format!(
+            "Aster execution readiness is {}: {reason}",
+            self.phase
+        ))
+    }
+
+    /// Enters `Connecting` for a new session and returns its generation.
+    fn begin_connect(&mut self) -> u64 {
+        self.generation = self.generation.wrapping_add(1);
+        self.phase = ReadinessPhase::Connecting;
+        self.reason = None;
+        self.generation
+    }
+
+    /// Enters `Reconciling` for a recovery pass and returns its generation.
+    ///
+    /// A client that is stopping is not brought back to reconciling: the pass may still run,
+    /// but it cannot move the readiness out of `Stopping`.
+    fn begin_reconcile(&mut self) -> u64 {
+        self.generation = self.generation.wrapping_add(1);
+        if self.phase != ReadinessPhase::Stopping {
+            self.phase = ReadinessPhase::Reconciling;
+            self.reason = None;
+        }
+        self.generation
+    }
+
+    /// Marks the account ready when `generation` still owns the readiness.
+    ///
+    /// A phase that was degraded while the pass ran, or a generation a later pass has already
+    /// superseded, is not promoted: the verification belongs to a pass that no longer
+    /// represents the account.
+    fn mark_ready(&mut self, generation: u64) -> bool {
+        if self.generation != generation
+            || !matches!(
+                self.phase,
+                ReadinessPhase::Connecting | ReadinessPhase::Reconciling
+            )
+        {
+            return false;
+        }
+
+        self.phase = ReadinessPhase::Ready;
+        self.reason = None;
+        true
+    }
+
+    /// Invalidates the account view, unless the client is already stopping.
+    fn degrade(&mut self, reason: impl Into<String>) {
+        if self.phase == ReadinessPhase::Stopping {
+            return;
+        }
+
+        self.phase = ReadinessPhase::Degraded;
+        self.reason = Some(reason.into());
+    }
+
+    fn stop(&mut self) {
+        self.phase = ReadinessPhase::Stopping;
+        self.reason = Some("the client is stopping".to_string());
+    }
+}
+
 /// The `Send`-safe half of the execution client, shared with the private stream tasks.
 ///
 /// Everything the background session needs — the signed client, the event emitter, the
@@ -772,6 +920,7 @@ struct SessionContext {
     account_id: AccountId,
     instruments: Arc<RwLock<InstrumentIndex>>,
     state: Arc<RwLock<StreamState>>,
+    readiness: Arc<RwLock<Readiness>>,
     clock: &'static AtomicTime,
     treat_expired_as_canceled: bool,
 }
@@ -784,6 +933,31 @@ impl SessionContext {
 
     fn now_ms(&self) -> i64 {
         (self.clock.get_time_ns().as_u64() / 1_000_000) as i64
+    }
+
+    /// Invalidates the account view and records why.
+    fn degrade(&self, reason: impl Into<String>) {
+        let reason = reason.into();
+        log::warn!("Aster execution readiness degraded: {reason}");
+        self.readiness.write().degrade(reason);
+    }
+
+    /// Runs a recovery pass and publishes readiness from what it could verify.
+    ///
+    /// The pass owns the readiness it began with: if it cannot verify every part of the
+    /// account, the session stays degraded rather than reporting a completeness it did not
+    /// reach. A pass superseded by a later one cannot mark the account ready at all.
+    async fn recover(&self, reason: &str) {
+        let generation = self.readiness.write().begin_reconcile();
+
+        match self.compensate(reason).await {
+            Ok(()) => {
+                if self.readiness.write().mark_ready(generation) {
+                    log::info!("Aster execution readiness restored after {reason}");
+                }
+            }
+            Err(e) => self.degrade(format!("recovery after {reason} failed: {e}")),
+        }
     }
 
     /// Converts a venue order into a report, or `Ok(None)` when its symbol is not loaded.
@@ -1160,7 +1334,12 @@ impl SessionContext {
     /// are still working, which fills happened, the balances, and the positions. Each step is
     /// reported independently, so one failing endpoint does not suppress the others; failures
     /// are logged at error level because the local state stays stale until the next pass.
-    async fn compensate(&self, reason: &str) {
+    ///
+    /// Returns what the pass could not verify. Every step still runs after an earlier one
+    /// failed — a missing trade history must not also cost the account snapshot — but any
+    /// failure leaves the pass incomplete, and an incomplete pass is not allowed to report the
+    /// account as ready.
+    async fn compensate(&self, reason: &str) -> Result<(), String> {
         log::info!("Compensating Aster session state after {reason}");
 
         // Fills go first, and each one is delivered *with* its order status as a single
@@ -1188,23 +1367,31 @@ impl SessionContext {
             }
         }
 
+        let mut failure = None;
+
         if coverage == FillCoverage::Unreliable {
             log::error!(
                 "Aster trade history is unavailable after {reason}; order states carrying a \
                  filled quantity are held back until it can be read, so the engine is not \
                  invited to invent the trades behind them"
             );
+            failure = Some("trade history is unavailable".to_string());
         }
 
         if let Err(e) = self.compensate_orders(&fills, coverage).await {
             log::error!("Aster order compensation after {reason} failed: {e}");
+            failure.get_or_insert_with(|| format!("order compensation failed: {e}"));
         }
         if let Err(e) = self.refresh_account_state().await {
             log::error!("Aster balance refresh after {reason} failed: {e}");
+            failure.get_or_insert_with(|| format!("balance refresh failed: {e}"));
         }
         if let Err(e) = self.refresh_positions().await {
             log::error!("Aster position refresh after {reason} failed: {e}");
+            failure.get_or_insert_with(|| format!("position refresh failed: {e}"));
         }
+
+        failure.map_or(Ok(()), Err)
     }
 
     /// Reports the venue's open orders, then resolves every order this client still believes is
@@ -1222,6 +1409,9 @@ impl SessionContext {
 
         let ts_init = self.clock.get_time_ns();
         let mut still_open: AHashSet<Ustr> = AHashSet::new();
+        // An order the venue holds but this pass cannot interpret leaves the account view
+        // incomplete, so it is remembered as a failure rather than only logged.
+        let mut failure: Option<String> = None;
 
         for order in &open_orders {
             if !order.client_order_id.is_empty() {
@@ -1249,7 +1439,12 @@ impl SessionContext {
                     "Ignoring Aster open order on unloaded symbol {}",
                     order.symbol
                 ),
-                Err(e) => log::error!("Failed to parse Aster open order {}: {e}", order.order_id),
+                Err(e) => {
+                    log::error!("Failed to parse Aster open order {}: {e}", order.order_id);
+                    failure.get_or_insert_with(|| {
+                        format!("failed to parse open order {}: {e}", order.order_id)
+                    });
+                }
             }
         }
 
@@ -1286,17 +1481,25 @@ impl SessionContext {
                     Ok(None) => log::debug!("Ignoring Aster order on unloaded symbol {symbol}"),
                     Err(e) => {
                         log::error!("Failed to parse Aster order {client_order_id}: {e}");
+                        failure.get_or_insert_with(|| {
+                            format!("failed to parse order {client_order_id}: {e}")
+                        });
                     }
                 },
                 Err(e) if e.is_unknown_order() => {
                     log::warn!("Aster no longer knows order {client_order_id}; dropping it");
                     self.state.write().forget_working_order(&client_order_id);
                 }
-                Err(e) => log::error!("Aster order query failed for {client_order_id}: {e}"),
+                Err(e) => {
+                    log::error!("Aster order query failed for {client_order_id}: {e}");
+                    failure.get_or_insert_with(|| {
+                        format!("order query failed for {client_order_id}: {e}")
+                    });
+                }
             }
         }
 
-        Ok(())
+        failure.map_or(Ok(()), |e| Err(anyhow::anyhow!(e)))
     }
 
     /// Applies fills the stream missed, skipping any trade ID it already delivered.
@@ -1600,6 +1803,14 @@ impl SessionContext {
     }
 }
 
+/// What the venue proved about the account's position mode at connect.
+enum PositionMode {
+    /// The venue confirmed the account trades one-way.
+    OneWay,
+    /// The venue definitively does not expose the mode, so trading it as one-way is unproven.
+    Unconfirmed(String),
+}
+
 /// Live execution client for the Aster DEX.
 #[derive(Debug)]
 pub struct AsterExecutionClient {
@@ -1612,6 +1823,7 @@ pub struct AsterExecutionClient {
     fee_scope: FeeScope,
     instruments: Arc<RwLock<InstrumentIndex>>,
     stream_state: Arc<RwLock<StreamState>>,
+    readiness: Arc<RwLock<Readiness>>,
     session_tasks: TaskGroup,
     pending_tasks: TaskGroup,
     venue: Venue,
@@ -1689,6 +1901,7 @@ impl AsterExecutionClient {
             fee_scope: FeeScope::new(&http_base_for_scope, config_account_id.as_str()),
             instruments: Arc::new(RwLock::new(InstrumentIndex::default())),
             stream_state: Arc::new(RwLock::new(StreamState::default())),
+            readiness: Arc::new(RwLock::new(Readiness::default())),
             session_tasks: TaskGroup::new(),
             pending_tasks: TaskGroup::new(),
             venue,
@@ -1706,6 +1919,7 @@ impl AsterExecutionClient {
             account_id: self.core.account_id,
             instruments: self.instruments.clone(),
             state: self.stream_state.clone(),
+            readiness: self.readiness.clone(),
             clock: self.clock,
             treat_expired_as_canceled: self.config.treat_expired_as_canceled,
         }
@@ -1727,6 +1941,27 @@ impl AsterExecutionClient {
     #[must_use]
     pub fn instrument_count(&self) -> usize {
         self.instruments.read().len()
+    }
+
+    /// Returns whether the account view is verified and the client admits new risk.
+    ///
+    /// A connected client is not necessarily ready: an unconfirmed position mode, a lost
+    /// private stream, or a recovery pass that could not verify the account all leave new risk
+    /// refused while cancellations, queries, and provably reduce-only orders stay available.
+    #[must_use]
+    pub fn is_ready(&self) -> bool {
+        self.readiness.read().allows_new_risk()
+    }
+
+    /// Returns the current readiness phase name for diagnostics.
+    #[must_use]
+    pub fn readiness_phase(&self) -> &'static str {
+        self.readiness.read().phase.as_str()
+    }
+
+    /// Returns why a submission is refused at the current readiness, if it is.
+    fn submission_refusal(&self, reduce_only: bool) -> Option<String> {
+        self.readiness.read().refusal(reduce_only)
     }
 
     /// Returns the settlement currency used for commissions and balances.
@@ -2075,17 +2310,18 @@ impl AsterExecutionClient {
         }
     }
 
-    /// Fails loudly when the account runs in hedge (dual-side) mode.
+    /// Resolves the account's position mode, refusing to guess when it cannot be proven.
     ///
     /// Every position and order path in this adapter assumes one-way mode; silently trading a
     /// hedge-mode account would mis-attribute positions.
     ///
-    /// The check fails closed. Only a definitive venue answer that the endpoint is unavailable
-    /// lets the session continue on the one-way assumption, because that answer is the same on
-    /// every attempt and says nothing about the account. A transport fault, a `5xx`, or a rate
-    /// limit leaves the mode *unknown*, and an unknown mode is not a one-way mode: assuming it
-    /// is would connect a hedge-mode account to an adapter that mis-attributes every position.
-    async fn assert_one_way_mode(&self) -> anyhow::Result<()> {
+    /// The check fails closed. A transport fault, a `5xx`, a rate limit, or an authentication
+    /// failure does not prove anything about the mode, and the next connect attempt can ask
+    /// again, so it aborts this one. A definitive venue answer that the endpoint is unavailable
+    /// — an unknown endpoint, an invalid parameter — is the same on every attempt and says
+    /// nothing about the account either, so it leaves the mode *unconfirmed*: the session may
+    /// come up for account management, but it is not treated as a one-way account.
+    async fn resolve_position_mode(&self) -> anyhow::Result<PositionMode> {
         match self.http_client.query_position_mode().await {
             Ok(mode) => {
                 anyhow::ensure!(
@@ -2093,18 +2329,16 @@ impl AsterExecutionClient {
                     "Aster account is in hedge (dual-side) position mode, which this adapter does \
                      not support; switch the account to one-way mode"
                 );
-                Ok(())
+                Ok(PositionMode::OneWay)
             }
             Err(e) if e.is_auth_failure() => Err(anyhow::anyhow!(
                 "Aster rejected the first signed request: {e}"
             )),
-            // A venue that answers with a decision of its own — an unknown endpoint, an
-            // invalid parameter — does not expose the mode and never will, so it must not
-            // block the session. A rate limit is a structured answer too, but it is a
-            // "try again", not a decision, so it is excluded here.
+            // A venue that answers with a decision of its own does not expose the mode and never
+            // will. A rate limit is a structured answer too, but it is a "try again", not a
+            // decision, so it is excluded here.
             Err(e) if e.is_venue_rejection() && !e.is_rate_limited() => {
-                log::warn!("Aster position mode query failed, assuming one-way mode: {e}");
-                Ok(())
+                Ok(PositionMode::Unconfirmed(e.to_string()))
             }
             Err(e) => Err(anyhow::anyhow!(
                 "Aster position mode could not be confirmed, so one-way mode cannot be \
@@ -2158,15 +2392,18 @@ impl AsterExecutionClient {
     }
 
     /// Reconciles open orders at connect so externally placed orders are known to the engine.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the venue cannot list its open orders; the caller degrades readiness
+    /// rather than reporting the account as verified with an incomplete order view.
     async fn reconcile_open_orders(&self) -> anyhow::Result<()> {
         let session = self.session();
-        let orders = match self.http_client.query_open_orders(None).await {
-            Ok(orders) => orders,
-            Err(e) => {
-                log::warn!("Aster open order reconciliation failed: {e}");
-                return Ok(());
-            }
-        };
+        let orders = self
+            .http_client
+            .query_open_orders(None)
+            .await
+            .map_err(|e| anyhow::anyhow!("Aster open order reconciliation failed: {e}"))?;
 
         let ts_init = self.clock.get_time_ns();
         let mut reported = 0usize;
@@ -2304,17 +2541,19 @@ impl AsterExecutionClient {
                 if !is_first_session {
                     if let Err(e) = stream_client.connect().await {
                         log::error!("Aster user stream connect failed: {e}");
+                        session.degrade(format!("user data stream reconnect failed: {e}"));
                         tokio::time::sleep(USER_STREAM_RETRY_DELAY).await;
                         continue;
                     }
 
                     log::info!("Aster user data stream reconnected with a new listen key");
-                    session.compensate("a user data stream reconnect").await;
+                    session.recover("a user data stream reconnect").await;
                 }
                 is_first_session = false;
 
                 let Some(stream) = stream_client.stream() else {
                     log::error!("Aster user stream produced no message stream");
+                    session.degrade("user data stream produced no message stream");
                     stream_client.close().await;
                     tokio::time::sleep(USER_STREAM_RETRY_DELAY).await;
                     continue;
@@ -2343,11 +2582,13 @@ impl AsterExecutionClient {
                         message = stream.next() => {
                             let Some(message) = message else {
                                 log::warn!("Aster user data stream ended; reconnecting");
+                                session.degrade("user data stream ended");
                                 break;
                             };
 
                             if matches!(message, BinanceFuturesWsStreamsMessage::ListenKeyExpired) {
                                 log::warn!("Aster listen key expired; reconnecting with a new key");
+                                session.degrade("listen key expired");
                                 break;
                             }
 
@@ -2831,6 +3072,7 @@ impl SessionContext {
                     Ok(report) => Some(report),
                     Err(e) => {
                         log::error!("Failed to parse Aster order status report: {e}");
+                        self.degrade(format!("failed to parse an order status report: {e}"));
                         None
                     }
                 };
@@ -2859,6 +3101,7 @@ impl SessionContext {
                         Ok(report) => Some(report),
                         Err(e) => {
                             log::error!("Failed to parse Aster fill report: {e}");
+                            self.degrade(format!("failed to parse a fill report: {e}"));
                             None
                         }
                     }
@@ -2940,10 +3183,11 @@ impl SessionContext {
                 // The shared streams client re-established the socket underneath this session,
                 // so the listen key is unchanged but the gap carries no events.
                 log::warn!("Aster user data stream reconnected; compensating for the gap");
-                self.compensate("a socket-level reconnect").await;
+                self.recover("a socket-level reconnect").await;
             }
             BinanceFuturesWsStreamsMessage::Error(msg) => {
                 log::error!("Aster user data stream error: {msg:?}");
+                self.degrade(format!("user data stream error: {msg:?}"));
             }
             other => {
                 log::debug!("Ignoring Aster user stream message: {other:?}");
@@ -3021,6 +3265,7 @@ impl ExecutionClient for AsterExecutionClient {
 
         log::info!("Stopping Aster execution client");
 
+        self.readiness.write().stop();
         self.session_tasks.abort();
         self.pending_tasks.abort();
         // The endpoint's fee registrations belong to this client; releasing them lets a later
@@ -3040,6 +3285,8 @@ impl ExecutionClient for AsterExecutionClient {
             return Ok(());
         }
 
+        let generation = self.readiness.write().begin_connect();
+
         // A previous `disconnect` or `stop` closed both task generations permanently. They are
         // drained and reopened before anything spawns a task or opens a listen key, otherwise
         // the stream task is silently refused and the client reports as connected with no
@@ -3056,7 +3303,27 @@ impl ExecutionClient for AsterExecutionClient {
         }
 
         self.load_instruments().await?;
-        self.assert_one_way_mode().await?;
+
+        match self.resolve_position_mode().await? {
+            PositionMode::OneWay => {}
+            PositionMode::Unconfirmed(reason) => {
+                if self.config.assume_one_way_mode_when_unconfirmed {
+                    log::warn!(
+                        "Aster position mode is unconfirmed ({reason}); assuming one-way mode \
+                         because `assume_one_way_mode_when_unconfirmed` is set"
+                    );
+                } else {
+                    log::warn!(
+                        "Aster position mode is unconfirmed ({reason}); new risk stays denied \
+                         until the mode can be confirmed"
+                    );
+                    self.readiness
+                        .write()
+                        .degrade(format!("position mode unconfirmed: {reason}"));
+                }
+            }
+        }
+
         self.refresh_commission_rates().await;
         self.emit_account_state().await?;
 
@@ -3071,7 +3338,15 @@ impl ExecutionClient for AsterExecutionClient {
         // order submitted in the gap produces no events at all.
         let stream_client = self.open_user_stream().await?;
         self.start_user_stream(stream_client)?;
-        self.reconcile_open_orders().await?;
+
+        if let Err(e) = self.reconcile_open_orders().await {
+            log::warn!("Aster open order reconciliation failed: {e}");
+            self.readiness
+                .write()
+                .degrade(format!("open order reconciliation failed: {e}"));
+        }
+
+        self.readiness.write().mark_ready(generation);
 
         self.core.set_connected();
         log::info!("Aster execution client connected");
@@ -3084,6 +3359,9 @@ impl ExecutionClient for AsterExecutionClient {
         }
 
         log::info!("Disconnecting Aster execution client");
+        self.readiness
+            .write()
+            .degrade("the execution client disconnected");
         self.await_task_groups().await;
 
         // The stream session owns its listen key and releases it when its own loop ends, but a
@@ -3125,6 +3403,14 @@ impl ExecutionClient for AsterExecutionClient {
             }
         };
 
+        // Admission is checked before the order is reported as submitted, and again at the
+        // actual send boundary inside the HTTP client: the first check keeps a doomed order out
+        // of the engine's lifecycle, the second covers the wait between the two.
+        if let Some(reason) = self.submission_refusal(request.reduce_only) {
+            self.emitter.emit_order_denied(&order, &reason);
+            return Ok(());
+        }
+
         let Some(spawner) = self.spawner() else {
             self.emitter
                 .emit_order_denied(&order, "Aster execution client is shutting down");
@@ -3133,8 +3419,10 @@ impl ExecutionClient for AsterExecutionClient {
 
         let session = self.session();
         let http_client = self.http_client.clone();
+        let readiness = self.readiness.clone();
         let clock = self.clock;
         let client_order_id = order.client_order_id();
+        let reduce_only = request.reduce_only;
 
         self.stream_state
             .write()
@@ -3143,7 +3431,15 @@ impl ExecutionClient for AsterExecutionClient {
         self.emitter.emit_order_submitted(&order);
 
         spawner.spawn(async move {
-            match http_client.submit_order(request.to_params()).await {
+            let admission = move || match readiness.read().refusal(reduce_only) {
+                Some(reason) => Err(reason),
+                None => Ok(()),
+            };
+
+            match http_client
+                .submit_order_admitted(request.to_params(), admission)
+                .await
+            {
                 Ok(response) => {
                     log::debug!(
                         "Aster order accepted: client_order_id={client_order_id}, venue_order_id={}",
@@ -5332,14 +5628,69 @@ mod tests {
     }
 
     #[rstest]
-    fn test_working_orders_are_tracked_and_forgotten() {
-        let mut state = StreamState::default();
-        let client_order_id = Ustr::from("O-1");
+    fn test_readiness_admits_only_risk_reducing_actions_when_degraded() {
+        let mut readiness = Readiness::default();
 
-        state.track_working_order(client_order_id, Ustr::from("BTCUSDT"));
-        assert_eq!(state.working_orders.len(), 1);
+        assert!(!readiness.allows_new_risk());
+        assert!(!readiness.allows_reduce_only());
+        assert!(readiness.refusal(false).is_some());
 
-        state.forget_working_order(&client_order_id);
-        assert!(state.working_orders.is_empty());
+        let generation = readiness.begin_connect();
+        assert!(readiness.mark_ready(generation));
+        assert!(readiness.allows_new_risk());
+        assert!(readiness.refusal(false).is_none());
+
+        readiness.degrade("the private stream ended");
+        assert!(!readiness.allows_new_risk());
+        assert!(readiness.allows_reduce_only());
+        assert!(
+            readiness
+                .refusal(false)
+                .is_some_and(|reason| reason.contains("private stream")),
+        );
+        assert!(readiness.refusal(true).is_none());
+    }
+
+    #[rstest]
+    fn test_a_superseded_recovery_pass_cannot_publish_ready() {
+        let mut readiness = Readiness::default();
+        let first = readiness.begin_reconcile();
+        let second = readiness.begin_reconcile();
+
+        assert!(
+            !readiness.mark_ready(first),
+            "a pass a later one superseded must not publish readiness",
+        );
+        assert!(readiness.mark_ready(second));
+        assert!(readiness.allows_new_risk());
+
+        readiness.degrade("the private stream ended");
+        assert!(
+            !readiness.mark_ready(second),
+            "a degraded phase must not be promoted by the pass that was running",
+        );
+    }
+
+    #[rstest]
+    fn test_stopping_readiness_admits_nothing_and_cannot_be_restored() {
+        let mut readiness = Readiness::default();
+        let generation = readiness.begin_connect();
+        assert!(readiness.mark_ready(generation));
+
+        readiness.stop();
+        assert!(!readiness.allows_new_risk());
+        assert!(!readiness.allows_reduce_only());
+        assert!(readiness.refusal(false).is_some());
+
+        readiness.degrade("a late failure");
+        assert!(!readiness.mark_ready(generation));
+        assert!(!readiness.allows_reduce_only());
+
+        let late = readiness.begin_reconcile();
+        assert!(
+            !readiness.mark_ready(late),
+            "a pass begun while stopping must not restore readiness",
+        );
+        assert!(!readiness.allows_reduce_only());
     }
 }

@@ -446,7 +446,7 @@ impl AsterHttpClient {
     ) -> AsterHttpResult<T> {
         if method != Method::GET {
             return self
-                .send_signed(method, path, params, counts_against_order_quota)
+                .send_signed(method, path, params, counts_against_order_quota, None)
                 .await;
         }
 
@@ -454,7 +454,10 @@ impl AsterHttpClient {
         // rejects a replayed nonce for a signer address.
         let operation = || {
             let params = params.clone();
-            async move { self.send_signed(Method::GET, path, params, false).await }
+            async move {
+                self.send_signed(Method::GET, path, params, false, None)
+                    .await
+            }
         };
 
         Self::get_retry_manager()
@@ -493,10 +496,18 @@ impl AsterHttpClient {
         path: &str,
         params: AsterParams,
         counts_against_order_quota: bool,
+        admission: Option<&(dyn Fn() -> Result<(), String> + Send + Sync)>,
     ) -> AsterHttpResult<T> {
         // Waited out before signing: a nonce drawn now and sent minutes later would be stale,
         // and Aster rejects a stale nonce.
         self.await_cooldown().await;
+
+        // The send boundary: a request that queued behind a cooldown is re-checked here, after
+        // the wait and before anything is signed, so a session that lost its execution
+        // readiness while it waited does not reach the venue.
+        if let Some(admission) = admission {
+            admission().map_err(AsterHttpError::ValidationError)?;
+        }
 
         let payload = self.build_signed_payload(&params)?;
         let is_get = method == Method::GET;
@@ -581,6 +592,35 @@ impl AsterHttpClient {
     /// Returns an error if the venue rejects the order or the request fails.
     pub async fn submit_order(&self, params: AsterParams) -> AsterHttpResult<AsterOrder> {
         self.signed_post(ASTER_ORDER_PATH, params, true).await
+    }
+
+    /// Submits an order, re-checking `admission` at the send boundary.
+    ///
+    /// The check runs after any venue cooldown has been waited out and before the request is
+    /// signed, so a session that lost its execution readiness while the request was queued
+    /// cannot reach the venue. A refusal is a local [`AsterHttpError::ValidationError`]: the
+    /// order provably never left this process and must not be reconciled as a venue outcome.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the admission check refuses the request, signing fails, or the
+    /// request fails.
+    pub async fn submit_order_admitted<F>(
+        &self,
+        params: AsterParams,
+        admission: F,
+    ) -> AsterHttpResult<AsterOrder>
+    where
+        F: Fn() -> Result<(), String> + Send + Sync,
+    {
+        self.send_signed(
+            Method::POST,
+            ASTER_ORDER_PATH,
+            params,
+            true,
+            Some(&admission),
+        )
+        .await
     }
 
     /// Cancels a single order (`DELETE /fapi/v3/order`).
