@@ -4755,14 +4755,13 @@ mod tests {
 
     #[rstest]
     fn test_stream_account_update_registers_unknown_assets() {
+        // The bound is stated through the same resolver the merge uses: `Currency::from` panics
+        // on a code nothing has registered yet when the test runs in its own process.
+        let currency = resolve_currency("AFEE");
         let verified = [(
             Ustr::from("AFEE"),
-            AccountBalance::from_total_and_free(
-                Decimal::from(1),
-                Decimal::from(1),
-                Currency::from("AFEE"),
-            )
-            .unwrap(),
+            AccountBalance::from_total_and_free(Decimal::from(1), Decimal::from(1), currency)
+                .unwrap(),
         )]
         .into_iter()
         .collect();
