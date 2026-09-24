@@ -30,7 +30,7 @@
 //!
 //! - <https://asterdex.github.io/aster-api-website/futures-v3/user-data-streams/>
 
-use std::fmt::Debug;
+use std::{fmt::Debug, sync::Arc};
 
 use futures_util::Stream;
 use nautilus_binance::{
@@ -40,9 +40,13 @@ use nautilus_binance::{
     },
 };
 use nautilus_core::string::secret::REDACTED;
-use nautilus_network::websocket::TransportBackend;
+use nautilus_live::SocketControlFactory;
+use nautilus_network::{SocketState, websocket::TransportBackend};
 
 use crate::http::{AsterHttpClient, error::AsterHttpResult};
+
+/// Logical socket endpoint reported to the live socket registry for the private stream.
+pub(crate) const ASTER_USER_STREAM_ENDPOINT: &str = "aster-user-streams";
 
 /// Builds the Aster user data stream URL.
 ///
@@ -75,6 +79,8 @@ pub struct AsterUserStreamClient {
     connect_timeout_secs: Option<u64>,
     listen_key: Option<String>,
     ws_client: Option<BinanceFuturesWebSocketClient>,
+    socket_factory: Option<SocketControlFactory>,
+    socket_state_callback: Option<Arc<dyn Fn(SocketState) + Send + Sync>>,
 }
 
 impl Debug for AsterUserStreamClient {
@@ -111,7 +117,24 @@ impl AsterUserStreamClient {
             connect_timeout_secs: None,
             listen_key: None,
             ws_client: None,
+            socket_factory: None,
+            socket_state_callback: None,
         }
+    }
+
+    /// Reports socket state changes to `callback`, alongside the live socket registry.
+    ///
+    /// The callback runs on every transport state change before the state is published, so it
+    /// must not synchronously trigger another state change for the same endpoint.
+    #[must_use]
+    pub fn with_socket_state(
+        mut self,
+        factory: SocketControlFactory,
+        callback: impl Fn(SocketState) + Send + Sync + 'static,
+    ) -> Self {
+        self.socket_factory = Some(factory);
+        self.socket_state_callback = Some(Arc::new(callback));
+        self
     }
 
     /// Overrides the per-attempt WebSocket connect timeout.
@@ -189,6 +212,13 @@ impl AsterUserStreamClient {
             self.connect_timeout_secs
                 .map(|secs| secs.saturating_mul(1_000)),
         );
+
+        if let Some(factory) = self.socket_factory.clone() {
+            ws_client = ws_client.with_socket_control(factory, ASTER_USER_STREAM_ENDPOINT);
+        }
+        if let Some(callback) = self.socket_state_callback.clone() {
+            ws_client = ws_client.with_socket_state_callback(move |state| callback(state));
+        }
 
         ws_client.connect().await.map_err(|e| {
             crate::http::AsterHttpError::NetworkError(format!(

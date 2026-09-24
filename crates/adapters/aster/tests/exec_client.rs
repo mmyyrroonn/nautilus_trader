@@ -256,6 +256,38 @@ fn reduce_only_limit_order(client_order_id: &str, side: OrderSide) -> OrderAny {
         .build()
 }
 
+/// Submits a new-risk order and asserts it is denied locally without reaching the venue.
+async fn assert_new_risk_denied(harness: &mut Harness, venue: &MockVenue, client_order_id: &str) {
+    let order = limit_order(client_order_id, OrderSide::Buy, false);
+    harness
+        .cache
+        .borrow_mut()
+        .add_order(order.clone(), None, None, false)
+        .expect("cached");
+    drain_exec(&mut harness.exec_rx);
+    harness
+        .client
+        .submit_order(submit_command(&order))
+        .expect("submit accepted");
+
+    let events = wait_for_events(harness, Duration::from_secs(5), |events| {
+        !order_events(events).is_empty()
+    })
+    .await;
+
+    assert!(
+        order_events(&events)
+            .iter()
+            .any(|event| matches!(event, OrderEventAny::Denied(_))),
+        "new risk must be denied: {events:?}",
+    );
+    assert!(
+        venue.requests_for("POST", "order").is_empty(),
+        "the denied order must never reach the venue: {:?}",
+        venue.requests(),
+    );
+}
+
 fn submit_command(order: &OrderAny) -> SubmitOrder {
     SubmitOrder::new(
         order.trader_id(),
@@ -3489,6 +3521,13 @@ async fn review_round4_uncovered_fills_are_withheld_until_their_order_answers() 
         "the order status must be withheld with its fills, not published on its own: {events:?}",
     );
 
+    // The held-back fills are unresolved recovery debt: the account is not verified yet.
+    assert!(
+        !harness.client.is_ready(),
+        "a pass that held back uncovered fills must not report the account verified",
+    );
+    assert_new_risk_denied(&mut harness, &venue, "O-UNCOVERED-NEW-RISK").await;
+
     venue.clear_requests();
     venue.drop_ws();
     wait_until_async(
@@ -3532,6 +3571,13 @@ async fn review_round4_uncovered_fills_are_withheld_until_their_order_answers() 
         "the recovered order must arrive with all three of its trades: {second:?}",
     );
     events.extend(second);
+
+    // Once the uncovered fills are recovered, the account is verified again.
+    wait_until_async(
+        || async { harness.client.is_ready() },
+        Duration::from_secs(10),
+    )
+    .await;
 
     let cache = Rc::new(RefCell::new(Cache::default()));
     seed_account(&cache);
@@ -3623,6 +3669,13 @@ async fn review_round4_open_order_status_is_withheld_while_its_fills_are() {
         "a status reporting 0.010 filled with no trade behind it must be withheld: {first:?}",
     );
 
+    // The withheld status and its held-back fill are unresolved recovery debt.
+    assert!(
+        !harness.client.is_ready(),
+        "a pass that withheld a filled status must not report the account verified",
+    );
+    assert_new_risk_denied(&mut harness, &venue, "O-OPEN-STATUS-NEW-RISK").await;
+
     venue.clear_requests();
     venue.drop_ws();
     wait_until_async(
@@ -3659,6 +3712,13 @@ async fn review_round4_open_order_status_is_withheld_while_its_fills_are() {
         bundled,
         "once the order answers, its status and trade arrive together: {second:?}",
     );
+
+    // Once the withheld status and fill are recovered, the account is verified again.
+    wait_until_async(
+        || async { harness.client.is_ready() },
+        Duration::from_secs(10),
+    )
+    .await;
 }
 
 /// R4-02: a cancel the venue definitively refuses leaves the order working, and the engine
@@ -4504,4 +4564,180 @@ async fn review_round4_malformed_order_update_denies_new_risk() {
         "the denied order must never reach the venue: {:?}",
         venue.requests(),
     );
+}
+
+/// #4 / R1: a recovery pass cannot clear an unconfirmed position mode. Socket reconnects and
+/// listen-key rebuilds restore the account view; they do not prove the mode.
+#[rstest]
+#[tokio::test]
+async fn review_round4_unconfirmed_mode_survives_recovery() {
+    let venue = MockVenue::start().await;
+    venue.script(|s| {
+        s.position_mode_error = Some(json!({"code": -1121, "msg": "Invalid symbol."}));
+    });
+    let mut harness = started_harness(&venue);
+    harness.client.connect().await.expect("degraded session");
+    assert!(!harness.client.is_ready());
+
+    // A socket reconnect runs a full recovery pass.
+    venue.drop_ws();
+    wait_until_async(
+        || async { venue.ws_connection_count() >= 2 },
+        Duration::from_secs(20),
+    )
+    .await;
+    wait_until_async(
+        || async { !venue.requests_for("GET", "positionRisk").is_empty() },
+        Duration::from_secs(20),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    assert!(
+        !harness.client.is_ready(),
+        "a recovery pass must not clear an unconfirmed position mode",
+    );
+    assert_new_risk_denied(&mut harness, &venue, "O-UNCONFIRMED-RECONNECT").await;
+
+    // A listen-key rebuild starts a fresh session loop with its own recovery pass.
+    venue.clear_requests();
+    venue.push_ws(&json!({"e": "listenKeyExpired", "E": 1_788_571_666_000i64}));
+    wait_until_async(
+        || async { !venue.requests_for("POST", "listenKey").is_empty() },
+        Duration::from_secs(30),
+    )
+    .await;
+    wait_until_async(
+        || async { !venue.requests_for("GET", "positionRisk").is_empty() },
+        Duration::from_secs(30),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    assert!(
+        !harness.client.is_ready(),
+        "a new session that never re-proved the mode must not admit new risk",
+    );
+    assert_new_risk_denied(&mut harness, &venue, "O-UNCONFIRMED-KEY").await;
+}
+
+/// #4 / R3: a successfully answered open-order list with an unparsable row for a loaded symbol
+/// must leave the connection degraded, not verified.
+#[rstest]
+#[tokio::test]
+async fn review_round4_unparsable_open_order_row_denies_new_risk() {
+    let venue = MockVenue::start().await;
+    venue.script(|s| {
+        let mut row = venue_order(910_001, "O-BAD-OPEN", "BTCUSDT", "NEW", "BUY");
+        row["origQty"] = json!("not-a-number");
+        s.open_orders = json!([row]);
+    });
+    let mut harness = started_harness(&venue);
+
+    harness.client.connect().await.expect("connect");
+
+    assert_eq!(harness.client.readiness_phase(), "degraded");
+    assert_new_risk_denied(&mut harness, &venue, "O-BAD-OPEN-NEW-RISK").await;
+}
+
+/// #4 / R3: a position-risk snapshot with an unparsable row for a loaded symbol must leave the
+/// recovery incomplete; a later valid snapshot may restore readiness.
+#[rstest]
+#[tokio::test]
+async fn review_round4_unparsable_position_row_keeps_recovery_degraded() {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    drain_exec(&mut harness.exec_rx);
+
+    venue.script(|s| {
+        s.position_risk = json!([{
+            "symbol": "BTCUSDT",
+            "positionAmt": "not-a-number",
+            "entryPrice": "50000.0",
+            "positionSide": "BOTH",
+            "updateTime": now_ms(),
+        }]);
+    });
+
+    venue.drop_ws();
+    wait_until_async(
+        || async { venue.ws_connection_count() >= 2 },
+        Duration::from_secs(20),
+    )
+    .await;
+    wait_until_async(
+        || async { !venue.requests_for("GET", "positionRisk").is_empty() },
+        Duration::from_secs(20),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    assert!(
+        !harness.client.is_ready(),
+        "an unparsable position row must leave the recovery incomplete",
+    );
+    assert_new_risk_denied(&mut harness, &venue, "O-BAD-POSITION-NEW-RISK").await;
+
+    // A valid snapshot on the next recovery restores readiness.
+    venue.script(|s| s.position_risk = json!([]));
+    venue.drop_ws();
+    wait_until_async(
+        || async { venue.ws_connection_count() >= 3 },
+        Duration::from_secs(20),
+    )
+    .await;
+    wait_until_async(
+        || async { harness.client.is_ready() },
+        Duration::from_secs(20),
+    )
+    .await;
+}
+
+/// #4 / R4: the transport state must invalidate readiness as soon as the socket drops, not when
+/// a reconnect happens to succeed. The venue refuses every reconnect attempt for the whole
+/// window, and new risk must stay off the wire throughout.
+#[rstest]
+#[tokio::test]
+async fn review_round4_socket_loss_invalidates_before_reconnect() {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    drain_exec(&mut harness.exec_rx);
+
+    // Refuse every reconnect so the window does not depend on a stopwatch.
+    venue.script(|s| s.ws_refuse = true);
+    venue.drop_ws();
+
+    // The transport-level state change must invalidate readiness without waiting for the
+    // session loop, which is blocked on a reconnect that never succeeds.
+    wait_until_async(
+        || async { !harness.client.is_ready() },
+        Duration::from_secs(3),
+    )
+    .await;
+    assert_eq!(harness.client.readiness_phase(), "degraded");
+
+    // Keep submitting while reconnects are still refused; REST stays healthy, and no new-risk
+    // order may reach the venue.
+    for index in 0..5 {
+        assert_new_risk_denied(&mut harness, &venue, &format!("O-SOCKET-LOSS-{index}")).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+
+    // A provably reduce-only order is still admitted while the stream is down.
+    let reduce_only = reduce_only_limit_order("O-SOCKET-LOSS-REDUCE", OrderSide::Sell);
+    submit_and_settle(&harness, &reduce_only, &venue).await;
+    assert_eq!(venue.requests_for("POST", "order").len(), 1);
+
+    // Let the socket come back; the session recovers and new risk is admitted again.
+    venue.script(|s| s.ws_refuse = false);
+    wait_until_async(
+        || async { harness.client.is_ready() },
+        Duration::from_secs(30),
+    )
+    .await;
+
+    venue.clear_requests();
+    let order = limit_order("O-SOCKET-RESTORED", OrderSide::Buy, false);
+    submit_and_settle(&harness, &order, &venue).await;
+    assert_eq!(venue.requests_for("POST", "order").len(), 1);
 }

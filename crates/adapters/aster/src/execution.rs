@@ -67,7 +67,7 @@ use nautilus_core::{
     time::{AtomicTime, get_atomic_clock_realtime},
 };
 use nautilus_live::{
-    ExecutionClientCore, ExecutionEventEmitter,
+    ExecutionClientCore, ExecutionEventEmitter, SocketControlFactory,
     task::{TaskGroup, TaskSpawner},
 };
 use nautilus_model::{
@@ -80,7 +80,10 @@ use nautilus_model::{
     reports::{ExecutionMassStatus, FillReport, OrderStatusReport, PositionStatusReport},
     types::{AccountBalance, Currency, MarginBalance, Quantity},
 };
-use nautilus_network::retry::{RetryConfig, RetryManager};
+use nautilus_network::{
+    SocketState,
+    retry::{RetryConfig, RetryManager},
+};
 use parking_lot::RwLock;
 use rust_decimal::Decimal;
 use ustr::Ustr;
@@ -804,10 +807,16 @@ impl fmt::Display for ReadinessPhase {
 /// from publishing a readiness it no longer owns. `mark_ready` takes the generation that was
 /// current when the pass began, so a pass that finishes after a later one superseded it cannot
 /// report the account as verified.
+///
+/// `mode_verified` is deliberately independent of the phase: the position mode is proven once
+/// per session by the venue (or by an explicit exemption), and a recovery pass restores the
+/// account view — it does not re-prove the mode. A pass must never promote an account whose
+/// mode was never proven, so `mark_ready` requires both conditions.
 #[derive(Debug)]
 struct Readiness {
     phase: ReadinessPhase,
     generation: u64,
+    mode_verified: bool,
     reason: Option<String>,
 }
 
@@ -816,6 +825,7 @@ impl Default for Readiness {
         Self {
             phase: ReadinessPhase::Connecting,
             generation: 0,
+            mode_verified: false,
             reason: Some("the session has not connected".to_string()),
         }
     }
@@ -852,9 +862,13 @@ impl Readiness {
     }
 
     /// Enters `Connecting` for a new session and returns its generation.
+    ///
+    /// A new session must prove the position mode again: the venue may have changed it, and the
+    /// previous session's proof does not carry over.
     fn begin_connect(&mut self) -> u64 {
         self.generation = self.generation.wrapping_add(1);
         self.phase = ReadinessPhase::Connecting;
+        self.mode_verified = false;
         self.reason = None;
         self.generation
     }
@@ -872,13 +886,22 @@ impl Readiness {
         self.generation
     }
 
-    /// Marks the account ready when `generation` still owns the readiness.
+    /// Records that the venue confirmed one-way mode, or that the explicit exemption applies.
     ///
-    /// A phase that was degraded while the pass ran, or a generation a later pass has already
-    /// superseded, is not promoted: the verification belongs to a pass that no longer
-    /// represents the account.
+    /// This is the one proof a recovery pass cannot restore; only a connect can establish it.
+    fn verify_position_mode(&mut self) {
+        self.mode_verified = true;
+    }
+
+    /// Marks the account ready when `generation` still owns the readiness and the position mode
+    /// was proven for this session.
+    ///
+    /// A phase that was degraded while the pass ran, a generation a later pass has already
+    /// superseded, or a session whose position mode was never proven is not promoted: the
+    /// verification belongs to a pass that no longer represents the account.
     fn mark_ready(&mut self, generation: u64) -> bool {
-        if self.generation != generation
+        if !self.mode_verified
+            || self.generation != generation
             || !matches!(
                 self.phase,
                 ReadinessPhase::Connecting | ReadinessPhase::Reconciling
@@ -900,6 +923,21 @@ impl Readiness {
 
         self.phase = ReadinessPhase::Degraded;
         self.reason = Some(reason.into());
+    }
+
+    /// Invalidates the account view because the private transport was lost.
+    ///
+    /// The generation moves with the invalidation, so a recovery pass that began before the
+    /// drop cannot publish readiness afterwards: the socket must come back and a new pass must
+    /// verify the account before new risk is admitted.
+    fn socket_disconnected(&mut self) {
+        if self.phase == ReadinessPhase::Stopping {
+            return;
+        }
+
+        self.generation = self.generation.wrapping_add(1);
+        self.phase = ReadinessPhase::Degraded;
+        self.reason = Some("the user data stream socket disconnected".to_string());
     }
 
     fn stop(&mut self) {
@@ -1376,6 +1414,22 @@ impl SessionContext {
                  invited to invent the trades behind them"
             );
             failure = Some("trade history is unavailable".to_string());
+        } else {
+            // A complete trade history is not a complete recovery: an order whose own query or
+            // parse failed is held back, and its trades stay pending until a later pass reaches
+            // them. Neither is allowed to look like a verified account.
+            let pending = self.state.read().pending_trades.len();
+            if !fills.uncovered.is_empty() || pending > 0 {
+                log::error!(
+                    "Aster compensation after {reason} left {} order(s) uncovered and {pending} \
+                     trade(s) pending; the account stays unverified until they are recovered",
+                    fills.uncovered.len(),
+                );
+                failure = Some(format!(
+                    "{} uncovered order(s) and {pending} pending trade(s)",
+                    fills.uncovered.len(),
+                ));
+            }
         }
 
         if let Err(e) = self.compensate_orders(&fills, coverage).await {
@@ -1430,6 +1484,12 @@ impl SessionContext {
                 Ok(Some(report)) => {
                     let order_coverage = fills.coverage_for(order.order_id, coverage);
                     if defer_uncovered_status(&report, order_coverage) {
+                        failure.get_or_insert_with(|| {
+                            format!(
+                                "order {} status withheld: its fills are uncovered",
+                                report.venue_order_id
+                            )
+                        });
                         continue;
                     }
                     self.track_order_state(&report, order.symbol);
@@ -1473,6 +1533,12 @@ impl SessionContext {
                     Ok(Some(report)) => {
                         let order_coverage = fills.coverage_for(order.order_id, coverage);
                         if defer_uncovered_status(&report, order_coverage) {
+                            failure.get_or_insert_with(|| {
+                                format!(
+                                    "order {} status withheld: its fills are uncovered",
+                                    report.venue_order_id
+                                )
+                            });
                             continue;
                         }
                         self.track_order_state(&report, order.symbol);
@@ -1755,6 +1821,10 @@ impl SessionContext {
             .map_err(|e| anyhow::anyhow!("Aster position risk query failed: {e}"))?;
 
         let ts_now = self.clock.get_time_ns();
+        // A position row on a loaded symbol that cannot be parsed leaves the local position
+        // view incomplete. Valid rows are still published, but the caller must not treat the
+        // account as verified.
+        let mut failure: Option<String> = None;
 
         for position in &positions {
             let Some(context) = self.context_for(&position.symbol) else {
@@ -1765,6 +1835,9 @@ impl SessionContext {
                 Ok(value) => value,
                 Err(e) => {
                     log::error!("Failed to parse Aster position {}: {e}", position.symbol);
+                    failure.get_or_insert_with(|| {
+                        format!("failed to parse position {}: {e}", position.symbol)
+                    });
                     continue;
                 }
             };
@@ -1782,6 +1855,9 @@ impl SessionContext {
                     Ok(quantity) => quantity,
                     Err(e) => {
                         log::error!("Failed to parse Aster position {}: {e}", position.symbol);
+                        failure.get_or_insert_with(|| {
+                            format!("failed to parse position {}: {e}", position.symbol)
+                        });
                         continue;
                     }
                 };
@@ -1799,7 +1875,7 @@ impl SessionContext {
             ));
         }
 
-        Ok(())
+        failure.map_or(Ok(()), |e| Err(anyhow::anyhow!(e)))
     }
 }
 
@@ -2407,6 +2483,10 @@ impl AsterExecutionClient {
 
         let ts_init = self.clock.get_time_ns();
         let mut reported = 0usize;
+        // An open order on a loaded symbol that cannot be parsed leaves the local order view
+        // incomplete. Valid rows are still published, but the caller must not treat the account
+        // as verified.
+        let mut failure: Option<String> = None;
 
         for order in &orders {
             match session.order_to_report(order, ts_init) {
@@ -2419,12 +2499,17 @@ impl AsterExecutionClient {
                     "Ignoring Aster open order on unloaded symbol {}",
                     order.symbol
                 ),
-                Err(e) => log::warn!("Skipping Aster open order {}: {e}", order.order_id),
+                Err(e) => {
+                    log::warn!("Skipping Aster open order {}: {e}", order.order_id);
+                    failure.get_or_insert_with(|| {
+                        format!("failed to parse open order {}: {e}", order.order_id)
+                    });
+                }
             }
         }
 
         log::info!("Reconciled {reported} open Aster orders");
-        Ok(())
+        failure.map_or(Ok(()), |e| Err(anyhow::anyhow!(e)))
     }
 
     fn spawn_task<F>(&self, description: &'static str, fut: F)
@@ -2483,7 +2568,21 @@ impl AsterExecutionClient {
             self.config.proxy_url.clone(),
             self.config.ws_heartbeat_secs,
         )
-        .with_connect_timeout_secs(Some(timeout_secs));
+        .with_connect_timeout_secs(Some(timeout_secs))
+        .with_socket_state(
+            SocketControlFactory::new(self.core.client_id, Some(self.venue)),
+            {
+                let readiness = self.readiness.clone();
+                move |state| {
+                    // The transport tells us the socket is gone as soon as it knows, which is
+                    // earlier than any business message: a reconnect attempt that never
+                    // succeeds must not leave the account marked ready.
+                    if state == SocketState::Disconnected {
+                        readiness.write().socket_disconnected();
+                    }
+                }
+            },
+        );
 
         let mut attempt = 0usize;
 
@@ -3305,13 +3404,16 @@ impl ExecutionClient for AsterExecutionClient {
         self.load_instruments().await?;
 
         match self.resolve_position_mode().await? {
-            PositionMode::OneWay => {}
+            PositionMode::OneWay => {
+                self.readiness.write().verify_position_mode();
+            }
             PositionMode::Unconfirmed(reason) => {
                 if self.config.assume_one_way_mode_when_unconfirmed {
                     log::warn!(
                         "Aster position mode is unconfirmed ({reason}); assuming one-way mode \
                          because `assume_one_way_mode_when_unconfirmed` is set"
                     );
+                    self.readiness.write().verify_position_mode();
                 } else {
                     log::warn!(
                         "Aster position mode is unconfirmed ({reason}); new risk stays denied \
@@ -5636,6 +5738,11 @@ mod tests {
         assert!(readiness.refusal(false).is_some());
 
         let generation = readiness.begin_connect();
+        assert!(
+            !readiness.mark_ready(generation),
+            "an unproven position mode must not admit new risk"
+        );
+        readiness.verify_position_mode();
         assert!(readiness.mark_ready(generation));
         assert!(readiness.allows_new_risk());
         assert!(readiness.refusal(false).is_none());
@@ -5654,6 +5761,7 @@ mod tests {
     #[rstest]
     fn test_a_superseded_recovery_pass_cannot_publish_ready() {
         let mut readiness = Readiness::default();
+        readiness.verify_position_mode();
         let first = readiness.begin_reconcile();
         let second = readiness.begin_reconcile();
 
@@ -5672,9 +5780,31 @@ mod tests {
     }
 
     #[rstest]
+    fn test_a_session_without_a_verified_mode_is_never_ready() {
+        let mut readiness = Readiness::default();
+        let generation = readiness.begin_connect();
+
+        assert!(
+            !readiness.mark_ready(generation),
+            "a recovery pass must not promote a session whose mode was never proven",
+        );
+        assert!(!readiness.allows_new_risk());
+
+        readiness.verify_position_mode();
+        assert!(readiness.mark_ready(generation));
+        assert!(readiness.allows_new_risk());
+
+        // A new session must prove the mode again.
+        let next = readiness.begin_connect();
+        assert!(!readiness.mark_ready(next));
+        assert!(!readiness.allows_new_risk());
+    }
+
+    #[rstest]
     fn test_stopping_readiness_admits_nothing_and_cannot_be_restored() {
         let mut readiness = Readiness::default();
         let generation = readiness.begin_connect();
+        readiness.verify_position_mode();
         assert!(readiness.mark_ready(generation));
 
         readiness.stop();

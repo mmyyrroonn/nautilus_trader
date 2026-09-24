@@ -148,6 +148,11 @@ pub(crate) struct VenueScript {
     /// Takes precedence over [`VenueScript::cancel_error`], and drives the paths where the
     /// venue never produced an Aster error body at all.
     pub(crate) cancel_status: Option<(u16, String)>,
+    /// Whether new user data stream sockets are refused before the upgrade.
+    ///
+    /// Drives the window where the socket is gone but the shared client keeps retrying, so the
+    /// session loop never sees the stream end.
+    pub(crate) ws_refuse: bool,
 }
 
 impl Default for VenueScript {
@@ -175,6 +180,7 @@ impl Default for VenueScript {
             position_mode_status: None,
             cancel_error: None,
             cancel_status: None,
+            ws_refuse: false,
         }
     }
 }
@@ -732,6 +738,10 @@ async fn handle_listen_key_close(State(venue): State<MockVenue>) -> Response {
 }
 
 async fn handle_ws(State(venue): State<MockVenue>, ws: WebSocketUpgrade) -> Response {
+    if venue.script.lock().ws_refuse {
+        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+    }
+
     ws.on_upgrade(move |socket| serve_ws(socket, venue))
 }
 
