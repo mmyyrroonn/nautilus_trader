@@ -99,6 +99,13 @@ pub(crate) struct VenueScript {
     pub(crate) commission_error: Value,
     /// `GET /fapi/v3/balance` body.
     pub(crate) balances: Value,
+    /// Number of `GET /fapi/v3/balance` calls that stall before answering.
+    ///
+    /// Drives the path where a read was already in flight when a newer stream row landed: the
+    /// response carries the account as it was when the read began.
+    pub(crate) balance_stalls: usize,
+    /// How long a stalled `GET /fapi/v3/balance` waits before answering.
+    pub(crate) balance_stall: Duration,
     /// `GET /fapi/v3/openOrders` body.
     pub(crate) open_orders: Value,
     /// Orders addressable by `origClientOrderId` and by `orderId`.
@@ -145,6 +152,8 @@ impl Default for VenueScript {
             commission_rates: HashMap::new(),
             commission_error: json!({"code": -1121, "msg": "Invalid symbol."}),
             balances: json!([]),
+            balance_stalls: 0,
+            balance_stall: Duration::from_secs(1),
             open_orders: json!([]),
             orders: HashMap::new(),
             submit: SubmitOutcome::Accepted,
@@ -382,7 +391,24 @@ async fn handle_commission_rate(
 
 async fn handle_balance(State(venue): State<MockVenue>) -> Response {
     venue.record("GET", "balance", HashMap::new());
-    let body = venue.script.lock().balances.clone();
+
+    let (stall, body) = {
+        let mut script = venue.script.lock();
+        let stall = if script.balance_stalls > 0 {
+            script.balance_stalls -= 1;
+            Some(script.balance_stall)
+        } else {
+            None
+        };
+        // The body is read when the request arrives, not when the response leaves: a stalled
+        // response must carry the account as it was when the read began.
+        (stall, script.balances.clone())
+    };
+
+    if let Some(delay) = stall {
+        tokio::time::sleep(delay).await;
+    }
+
     json_ok(&body)
 }
 

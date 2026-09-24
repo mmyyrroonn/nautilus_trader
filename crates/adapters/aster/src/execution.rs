@@ -547,6 +547,14 @@ struct StreamState {
     /// response that completes later is not a newer reading, and a bound that moved while it was
     /// in flight may be newer than the response.
     balance_epoch: u64,
+    /// Bumped whenever an accepted stream row leaves the available amount unverified.
+    ///
+    /// The balance epoch moves only when the bound's numbers move, which is not the question a
+    /// response about to clear the debt has to answer: a row can restate the same wallet balance
+    /// and still leave the split unverified, and a response read before that row cannot verify
+    /// it. A snapshot request captures this generation, and a response may only clear the debt
+    /// while the generation is unchanged.
+    balance_refresh_generation: u64,
 }
 
 impl StreamState {
@@ -595,8 +603,12 @@ impl StreamState {
     }
 
     /// Notes that a stream row had no verified available amount to stand on.
+    ///
+    /// Every such row moves the refresh generation, including one whose merged numbers match the
+    /// current bound: a snapshot read before the row cannot clear the debt the row raises.
     fn note_balance_refresh_owed(&mut self) {
         self.owed_balance_refresh = true;
+        self.balance_refresh_generation = self.balance_refresh_generation.wrapping_add(1);
     }
 
     /// Returns whether the owed snapshot is due at `now_ms`.
@@ -627,30 +639,37 @@ impl StreamState {
         self.next_balance_refresh_ms = now_ms.saturating_add(delay);
     }
 
-    /// Keeps the debt for another base window without counting a failure.
+    /// Establishes the debt for another base window without counting a failure.
     ///
     /// A snapshot that was partial, or possibly older than a bound-changing update, did not fail
     /// to arrive: it simply cannot verify the account, so it retries at the base interval rather
-    /// than backing off as a transport error would.
+    /// than backing off as a transport error would. The debt is established here instead of
+    /// assumed: a partial snapshot can be the first thing a fresh state sees, and the timer only
+    /// retries a debt that is set.
     fn note_balance_refresh_pending(&mut self, now_ms: i64) {
+        self.owed_balance_refresh = true;
         self.next_balance_refresh_ms = now_ms.saturating_add(OWED_BALANCE_REFRESH_INTERVAL_MS);
     }
 
     /// Commits one REST snapshot and returns the rows to publish.
     ///
-    /// `epoch_at_start` is the balance epoch captured before the request was sent. A response
-    /// that completes later is not a newer reading: if the bounds moved while it was in flight,
-    /// the response may predate that move, so only a tightening is applied, the debt stays, and
-    /// an asset with no bound is left withheld rather than bounded by a possibly older row. When
-    /// the bounds did not move, the snapshot is the new bound; a snapshot that left an asset
-    /// unknown publishes what it did state and keeps the debt for what it did not.
+    /// `epoch_at_start` and `generation_at_start` are captured before the request was sent. A
+    /// response that completes later is not a newer reading: if a bound moved while it was in
+    /// flight, or a stream row raised a verification debt it cannot answer for, the response may
+    /// predate that update, so only a tightening is applied, the debt stays, and an asset with
+    /// no bound is left withheld rather than bounded by a possibly older row. When neither
+    /// moved, the snapshot is the new bound; a snapshot that left an asset unknown publishes
+    /// what it did state and keeps the debt for what it did not.
     fn commit_balance_snapshot(
         &mut self,
         parsed: &ParsedAccountBalances,
         epoch_at_start: u64,
+        generation_at_start: u64,
         now_ms: i64,
     ) -> Vec<AccountBalance> {
-        if epoch_at_start != self.balance_epoch {
+        if epoch_at_start != self.balance_epoch
+            || generation_at_start != self.balance_refresh_generation
+        {
             let mut tightened = Vec::new();
             for row in &parsed.balances {
                 let key = Ustr::from(row.currency.code.as_str());
@@ -1488,7 +1507,10 @@ impl SessionContext {
     }
 
     async fn refresh_account_state(&self) -> anyhow::Result<()> {
-        let epoch_at_start = self.state.read().balance_epoch;
+        let (epoch_at_start, generation_at_start) = {
+            let state = self.state.read();
+            (state.balance_epoch, state.balance_refresh_generation)
+        };
         let balances = self
             .http_client
             .query_balances()
@@ -1501,7 +1523,12 @@ impl SessionContext {
         // flight, in which case only a tightening is applied and the debt stays.
         let published = {
             let mut state = self.state.write();
-            state.commit_balance_snapshot(&parsed, epoch_at_start, self.now_ms())
+            state.commit_balance_snapshot(
+                &parsed,
+                epoch_at_start,
+                generation_at_start,
+                self.now_ms(),
+            )
         };
         self.emitter.emit_account_state(
             published,
@@ -2089,7 +2116,10 @@ impl AsterExecutionClient {
     async fn fetch_account_state(
         &self,
     ) -> anyhow::Result<(Vec<AccountBalance>, Vec<MarginBalance>)> {
-        let epoch_at_start = self.stream_state.read().balance_epoch;
+        let (epoch_at_start, generation_at_start) = {
+            let state = self.stream_state.read();
+            (state.balance_epoch, state.balance_refresh_generation)
+        };
         let balances = self
             .http_client
             .query_balances()
@@ -2107,6 +2137,7 @@ impl AsterExecutionClient {
             state.commit_balance_snapshot(
                 &parsed,
                 epoch_at_start,
+                generation_at_start,
                 (self.clock.get_time_ns().as_u64() / 1_000_000) as i64,
             )
         };
@@ -2730,13 +2761,13 @@ impl SessionContext {
     /// arrives while one runs only leaves the debt set for the next window.
     async fn refresh_owed_balances(&self) {
         let now_ms = self.now_ms();
-        let epoch_at_start = {
+        let (epoch_at_start, generation_at_start) = {
             let mut state = self.state.write();
             if state.balance_refresh_in_flight || !state.balance_refresh_due(now_ms) {
                 return;
             }
             state.balance_refresh_in_flight = true;
-            state.balance_epoch
+            (state.balance_epoch, state.balance_refresh_generation)
         };
 
         let balances = match self.http_client.query_balances().await {
@@ -2756,7 +2787,12 @@ impl SessionContext {
         let published = {
             let mut state = self.state.write();
             state.balance_refresh_in_flight = false;
-            state.commit_balance_snapshot(&parsed, epoch_at_start, self.now_ms())
+            state.commit_balance_snapshot(
+                &parsed,
+                epoch_at_start,
+                generation_at_start,
+                self.now_ms(),
+            )
         };
         self.emitter.emit_account_state(
             published,
@@ -2853,33 +2889,43 @@ impl SessionContext {
                 }
             }
             BinanceFuturesWsStreamsMessage::AccountUpdate(msg) => {
+                // The merge reads the bounds it tightens, so it commits under one write lock:
+                // writing the rows back and raising the debt apart would let a snapshot that
+                // captured the state land between them and treat the row as verified.
                 let merge = {
-                    let state = self.state.read();
-                    merge_aster_account_update(
+                    let mut state = self.state.write();
+                    let merge = merge_aster_account_update(
                         msg,
                         account_id,
                         ts_init,
                         &state.balance_bounds,
                         state.last_balance_event_ms,
-                    )
-                };
+                    );
 
-                if let Some(event_ms) = merge.applied_event_ms {
-                    let mut state = self.state.write();
-                    if event_ms > state.last_balance_event_ms {
+                    if let Some(event_ms) = merge.applied_event_ms
+                        && event_ms > state.last_balance_event_ms
+                    {
                         state.last_balance_event_ms = event_ms;
                     }
-                }
 
-                if let Some(state) = merge.state {
-                    // The published rows are the new conservative bounds: a later update may
-                    // only tighten them, and only a newer snapshot may raise them.
-                    self.state.write().record_balance_bounds(&state.balances);
-                    self.emitter.send_account_state(state);
+                    if let Some(account_state) = merge.state.as_ref() {
+                        // The published rows are the new conservative bounds: a later update
+                        // may only tighten them, and only a newer snapshot may raise them.
+                        state.record_balance_bounds(&account_state.balances);
+                    }
+
+                    if merge.refresh_owed {
+                        state.note_balance_refresh_owed();
+                    }
+
+                    merge
+                };
+
+                if let Some(account_state) = merge.state {
+                    self.emitter.send_account_state(account_state);
                 }
 
                 if merge.refresh_owed {
-                    self.state.write().note_balance_refresh_owed();
                     self.refresh_owed_balances().await;
                 }
             }
@@ -3371,7 +3417,10 @@ impl ExecutionClient for AsterExecutionClient {
         let clock = self.clock;
 
         self.spawn_task("query_account", async move {
-            let epoch_at_start = stream_state.read().balance_epoch;
+            let (epoch_at_start, generation_at_start) = {
+                let state = stream_state.read();
+                (state.balance_epoch, state.balance_refresh_generation)
+            };
             let balances = http_client
                 .query_balances()
                 .await
@@ -3386,6 +3435,7 @@ impl ExecutionClient for AsterExecutionClient {
                 state.commit_balance_snapshot(
                     &parsed,
                     epoch_at_start,
+                    generation_at_start,
                     (clock.get_time_ns().as_u64() / 1_000_000) as i64,
                 )
             };
@@ -4461,11 +4511,11 @@ mod tests {
     }
 
     /// A snapshot that left an asset unknown is not a verified account: the rows it stated are
-    /// published, the unknown asset is withheld, and the debt stays.
+    /// published, the unknown asset is withheld, and the commit itself establishes the debt so
+    /// the timer retries without the caller having to pre-set it.
     #[rstest]
-    fn test_partial_snapshot_keeps_the_debt_for_the_unknown_asset() {
+    fn test_partial_snapshot_establishes_the_debt_for_the_unknown_asset() {
         let mut state = StreamState::default();
-        state.note_balance_refresh_owed();
 
         let balances: Vec<AsterBalance> = serde_json::from_str(
             r#"[{"asset":"USDT","balance":"100.0"},
@@ -4474,7 +4524,8 @@ mod tests {
         .unwrap();
         let parsed = parse_account_balances(&balances);
         let epoch = state.balance_epoch;
-        let published = state.commit_balance_snapshot(&parsed, epoch, 1_000);
+        let generation = state.balance_refresh_generation;
+        let published = state.commit_balance_snapshot(&parsed, epoch, generation, 1_000);
 
         assert_eq!(published.len(), 1);
         assert_eq!(published[0].currency, Currency::BTC());
@@ -4500,6 +4551,7 @@ mod tests {
         let mut state = StreamState::default();
         state.note_balance_refresh_owed();
         let epoch_at_start = state.balance_epoch;
+        let generation_at_start = state.balance_refresh_generation;
 
         // A newer read commits first: USDT 5 is verified, BTC is unknown, so the debt stays.
         let newer_rows: Vec<AsterBalance> = serde_json::from_str(
@@ -4508,7 +4560,7 @@ mod tests {
         )
         .unwrap();
         let newer = parse_account_balances(&newer_rows);
-        let _ = state.commit_balance_snapshot(&newer, epoch_at_start, 1_000);
+        let _ = state.commit_balance_snapshot(&newer, epoch_at_start, generation_at_start, 1_000);
         assert_eq!(
             state
                 .balance_bounds
@@ -4530,7 +4582,8 @@ mod tests {
         )
         .unwrap();
         let older = parse_account_balances(&older_rows);
-        let published = state.commit_balance_snapshot(&older, epoch_at_start, 2_000);
+        let published =
+            state.commit_balance_snapshot(&older, epoch_at_start, generation_at_start, 2_000);
 
         assert_eq!(
             state
@@ -4546,6 +4599,62 @@ mod tests {
             state.owed_balance_refresh,
             "a possibly older response cannot clear the debt"
         );
+    }
+
+    /// A stream row that restates the same numbers still leaves the split unverified, so a
+    /// response read before it may not clear the debt even though no bound moved.
+    #[rstest]
+    fn test_a_value_preserving_update_keeps_an_in_flight_response_from_clearing_the_debt() {
+        let mut state = StreamState::default();
+        let verified: Vec<AsterBalance> = serde_json::from_str(
+            r#"[{"asset":"USDT","balance":"100.0","availableBalance":"20.0"}]"#,
+        )
+        .unwrap();
+        state.replace_balance_bounds(&parse_account_balances(&verified).balances);
+        state.note_balance_refresh_success(0);
+
+        // A read starts while the account is verified and clean.
+        let epoch_at_start = state.balance_epoch;
+        let generation_at_start = state.balance_refresh_generation;
+
+        // A newer row restates the same wallet balance: the merged bound does not move, but the
+        // available split is no longer verified.
+        let same = account_update(r#"[{"a":"USDT","wb":"100.0","cw":"100.0"}]"#);
+        let merged = merge_aster_account_update(
+            &same,
+            account_id(),
+            UnixNanos::default(),
+            &state.balance_bounds,
+            0,
+        );
+        assert!(merged.refresh_owed);
+        let balances = merged
+            .state
+            .expect("the bounded row is publishable")
+            .balances;
+        state.record_balance_bounds(&balances);
+        state.note_balance_refresh_owed();
+        assert_eq!(
+            state.balance_epoch, epoch_at_start,
+            "the restated numbers did not move the bound",
+        );
+
+        // The old response completes: it cannot clear the debt the newer row raised, and the
+        // timer still has to take the snapshot that can.
+        let parsed = parse_account_balances(&verified);
+        let published =
+            state.commit_balance_snapshot(&parsed, epoch_at_start, generation_at_start, 1_000);
+
+        assert_eq!(published[0].free.as_decimal(), dec("20"));
+        assert!(
+            state.owed_balance_refresh,
+            "the newer row keeps the debt even though no bound moved"
+        );
+        assert!(
+            !state.balance_refresh_due(1_000),
+            "the retry waits for the interval"
+        );
+        assert!(state.balance_refresh_due(6_000));
     }
 
     /// A snapshot that no bound-changing update overtook is the new bound, including when it
@@ -4567,7 +4676,8 @@ mod tests {
         .unwrap();
         let parsed = parse_account_balances(&raised);
         let epoch = state.balance_epoch;
-        let published = state.commit_balance_snapshot(&parsed, epoch, 1_000);
+        let generation = state.balance_refresh_generation;
+        let published = state.commit_balance_snapshot(&parsed, epoch, generation, 1_000);
 
         assert_eq!(published[0].free.as_decimal(), dec("20"));
         assert_eq!(
