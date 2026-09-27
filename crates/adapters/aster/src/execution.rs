@@ -520,6 +520,27 @@ struct DeliveredFill {
     trade_id: i64,
 }
 
+/// Adds every verified REST row to the recovery ledger candidates.
+///
+/// A mass-status response is not an acknowledgement from the execution manager. In particular,
+/// the manager may filter the order after this method returns. Keeping the complete verified
+/// history here ensures rows outside the initial lookback window remain recoverable by ID.
+fn append_delivered_fills(
+    delivered: &mut Vec<DeliveredFill>,
+    symbol: Ustr,
+    fills: &[FillReport],
+) -> anyhow::Result<()> {
+    for fill in fills {
+        let trade_id = fill
+            .trade_id
+            .as_str()
+            .parse::<i64>()
+            .with_context(|| format!("Aster trade ID {} is not numeric", fill.trade_id))?;
+        delivered.push(DeliveredFill { symbol, trade_id });
+    }
+    Ok(())
+}
+
 /// Cross-task view of what the private stream has already reported.
 ///
 /// The execution client's cache is `Rc`-based and cannot cross into the spawned stream tasks,
@@ -952,15 +973,14 @@ impl StreamState {
         let cached = self
             .applied_trades
             .get(symbol)
-            .map(|applied| {
+            .map_or(Decimal::ZERO, |applied| {
                 applied
                     .ids
                     .values()
                     .filter(|trade| trade.venue_order_id == venue_order_id)
                     .map(|trade| trade.qty)
                     .sum()
-            })
-            .unwrap_or(Decimal::ZERO);
+            });
         if cached != confirmed {
             self.coverage_unknown.insert(venue_order_id);
             self.pending_orders.insert(venue_order_id, *symbol);
@@ -973,6 +993,35 @@ impl StreamState {
 
     fn terminal_was_delivered(&self, venue_order_id: &Ustr) -> bool {
         self.terminal_delivered_orders.contains(venue_order_id)
+    }
+
+    /// Classifies a status while holding the state write lock.
+    ///
+    /// A repeated terminal status with no fill evidence and the same cumulative quantity is
+    /// already accounted for by the accepted terminal bundle. Check that marker before marking
+    /// an evicted exact-ID cache as unknown; otherwise an ordinary duplicate after cache
+    /// eviction creates a permanent recovery debt before the emitter can suppress it.
+    fn inspect_status_coverage(
+        &mut self,
+        symbol: &Ustr,
+        venue_order_id: Ustr,
+        is_terminal: bool,
+        filled_qty: Decimal,
+        has_fill_evidence: bool,
+    ) -> (bool, bool, bool) {
+        let duplicate_terminal = is_terminal
+            && !has_fill_evidence
+            && self.terminal_was_delivered(&venue_order_id)
+            && self.confirmed_fill_qty(&venue_order_id) == filled_qty;
+        if !duplicate_terminal {
+            self.mark_coverage_unknown_if_incomplete(symbol, venue_order_id);
+        }
+
+        (
+            self.coverage_unknown(&venue_order_id),
+            self.can_rebase_unknown_order(&venue_order_id),
+            duplicate_terminal,
+        )
     }
 
     fn mark_terminal_delivered(&mut self, venue_order_id: Ustr) {
@@ -2160,8 +2209,7 @@ impl SessionContext {
                 outcome.delivered.insert(client_order_id);
             }
             log::info!(
-                "Applied {} Aster fills missed by the user stream for order {venue_order_id}",
-                fill_count,
+                "Applied {fill_count} Aster fills missed by the user stream for order {venue_order_id}",
             );
         } else {
             // Keep every source trade pending, including rows that failed to parse. A later
@@ -2366,15 +2414,20 @@ impl SessionContext {
             },
         };
 
-        let (coverage_unknown, can_rebase_unknown) = {
+        let (coverage_unknown, can_rebase_unknown, duplicate_terminal) = {
             let mut state = self.state.write();
             let venue_order_id_str = report.venue_order_id.inner();
-            state.mark_coverage_unknown_if_incomplete(symbol, venue_order_id_str);
-            (
-                state.coverage_unknown(&venue_order_id_str),
-                state.can_rebase_unknown_order(&venue_order_id_str),
+            state.inspect_status_coverage(
+                symbol,
+                venue_order_id_str,
+                report.order_status.is_closed(),
+                report.filled_qty.as_decimal(),
+                !direct_fills.is_empty(),
             )
         };
+        if duplicate_terminal {
+            return Ok(Some((report, Vec::new(), false)));
+        }
         if coverage_unknown {
             if !can_rebase_unknown {
                 // Historical rows may already have been applied while the engine's order cache
@@ -5164,7 +5217,7 @@ impl ExecutionClient for AsterExecutionClient {
         let mut order_reports = build_order_status_reports(self, &order_cmd, false).await?;
         // Fetched without committing the dedupe records: the positions request below can still
         // fail the whole snapshot, and a trade the engine never saw must stay deliverable.
-        let (fill_reports, delivered) = self.fetch_fill_reports(fill_cmd).await?;
+        let (fill_reports, mut delivered) = self.fetch_fill_reports(fill_cmd).await?;
         let position_reports = self.generate_position_status_reports(&position_cmd).await?;
 
         // A fill inside the window whose order was *created* before it is not an orphan: the
@@ -5272,6 +5325,7 @@ impl ExecutionClient for AsterExecutionClient {
                     match SessionContext::complete_order_fills_for_status(report, &history)? {
                         Some(complete) => {
                             let order_id = report.venue_order_id.inner();
+                            append_delivered_fills(&mut delivered, symbol, &complete)?;
                             let mut existing_ids: AHashSet<i64> = matched_fills
                                 .iter()
                                 .filter(|fill| fill.venue_order_id == report.venue_order_id)
@@ -6621,6 +6675,34 @@ mod tests {
     }
 
     #[rstest]
+    fn test_verified_history_rows_stay_pending_until_accepted() {
+        let symbol = Ustr::from("BTCUSDT");
+        let mut older = fill_at(1_000);
+        older.trade_id = nautilus_model::identifiers::TradeId::new("100");
+        let mut newer = fill_at(2_000);
+        newer.trade_id = nautilus_model::identifiers::TradeId::new("200");
+
+        // The initial lookback already covered the newer row. The verified order history adds
+        // the older row that a filtered mass consumer would otherwise make unrecoverable.
+        let mut delivered = vec![DeliveredFill {
+            symbol,
+            trade_id: 200,
+        }];
+        append_delivered_fills(&mut delivered, symbol, &[older, newer]).unwrap();
+
+        let mut state = StreamState::default();
+        for fill in delivered {
+            state.note_pending_fill(fill.symbol, fill.trade_id);
+        }
+
+        assert_eq!(
+            state.pending_trade_ids(&symbol),
+            BTreeSet::from([100, 200]),
+            "all verified history rows must survive a filtered mass response",
+        );
+    }
+
+    #[rstest]
     fn test_pending_order_evidence_survives_until_resolution() {
         let mut state = StreamState::default();
         let symbol = Ustr::from("BTCUSDT");
@@ -7096,6 +7178,60 @@ mod tests {
         assert!(state.pending_orders.is_empty());
         assert!(state.pending_trades.is_empty());
         assert!(!state.has_recovery_debt());
+    }
+
+    #[rstest]
+    fn test_terminal_duplicate_is_safe_after_trade_cache_eviction() {
+        let mut state = StreamState::default();
+        let symbol = Ustr::from("BTCUSDT");
+        let terminal_order = Ustr::from("terminal-delivered");
+        let qty = Decimal::from_str_exact("0.001").unwrap();
+
+        state.track_working_venue_order(terminal_order);
+        assert!(state.record_delivered_fill_for_order(symbol, terminal_order, 0, 0, qty, false,));
+        state.mark_terminal_delivered(terminal_order);
+        state.forget_working_venue_order(&terminal_order);
+
+        for index in 1..=MAX_TRACKED_TRADE_IDS as i64 {
+            let other_order = Ustr::from(&format!("terminal-other-{index}"));
+            state.track_working_venue_order(other_order);
+            assert!(state.record_delivered_fill_for_order(
+                symbol,
+                other_order,
+                index,
+                index,
+                qty,
+                false,
+            ));
+            state.forget_working_venue_order(&other_order);
+        }
+
+        assert!(
+            !state.has_fill(&symbol, 0),
+            "the terminal trade metadata was evicted"
+        );
+        let (unknown, _can_rebase, duplicate) =
+            state.inspect_status_coverage(&symbol, terminal_order, true, qty, false);
+        assert!(
+            duplicate,
+            "the accepted terminal marker still proves this status is a replay"
+        );
+        assert!(
+            !unknown && !state.has_recovery_debt(),
+            "a duplicate terminal status must not create recovery debt before suppression",
+        );
+        assert!(
+            !state
+                .inspect_status_coverage(&symbol, terminal_order, true, qty, true,)
+                .2,
+            "new fill evidence must not be suppressed"
+        );
+        assert!(
+            !state
+                .inspect_status_coverage(&symbol, terminal_order, true, qty + qty, false,)
+                .2,
+            "a larger cumulative quantity must not be suppressed"
+        );
     }
 
     #[rstest]
