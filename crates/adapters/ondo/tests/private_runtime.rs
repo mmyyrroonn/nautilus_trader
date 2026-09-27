@@ -5411,6 +5411,189 @@ async fn test_production_rechecks_after_budget_wait(#[case] condition: &str) {
     let _ = harness.client.disconnect().await;
 }
 
+/// Parks the sole native worker while the test's own runtime keeps serving loopback I/O.
+/// The release sender also opens the gate during unwinding.
+struct NativeWorkerBarrier(Option<std::sync::mpsc::Sender<()>>);
+
+impl Drop for NativeWorkerBarrier {
+    fn drop(&mut self) {
+        if let Some(release) = self.0.take() {
+            let _ = release.send(());
+        }
+    }
+}
+
+async fn park_native_worker() -> NativeWorkerBarrier {
+    let (release, wait) = std::sync::mpsc::channel();
+    let (entered, reached) = tokio::sync::oneshot::channel();
+    nautilus_common::live::get_runtime().spawn(async move {
+        entered.send(()).unwrap();
+        wait.recv_timeout(WAIT)
+            .expect("the test releases the native worker");
+    });
+    tokio::time::timeout(WAIT, reached).await.unwrap().unwrap();
+    NativeWorkerBarrier(Some(release))
+}
+
+/// Each child owns a single native worker, so the barriers control actual submission tasks
+/// without adding a test hook or changing the production spawner.
+#[rstest]
+fn test_production_prepared_cancellation_barriers() {
+    const CHILD: &str = "ONDO_PREPARED_CANCELLATION_CHILD";
+    let Ok(phase) = std::env::var(CHILD) else {
+        for phase in ["before_poll", "budget_wait", "after_send"] {
+            let output = std::process::Command::new(std::env::current_exe().unwrap())
+                .arg("test_production_prepared_cancellation_barriers")
+                .arg("--exact")
+                .arg("--nocapture")
+                .arg("--test-threads=1")
+                .env(CHILD, phase)
+                .output()
+                .unwrap();
+            assert!(
+                output.status.success(),
+                "{phase}: {}\n{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        return;
+    };
+    let native = tokio::runtime::Builder::new_multi_thread()
+        .worker_threads(1)
+        .enable_all()
+        .build()
+        .unwrap();
+    assert!(nautilus_common::live::runtime::set_runtime(native).is_ok());
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async {
+            let journal = JournalPath::new("prepared-barrier");
+            let rest = MockRest::start().await;
+            rest.state.hold_create.store(true, Ordering::SeqCst);
+            let private = MockPrivate::start(Venue::Ack).await;
+            let budget = OndoRateBudget::with_quota(
+                Quota::with_period(Duration::from_secs(30))
+                    .unwrap()
+                    .allow_burst(NonZeroU32::new(64).unwrap()),
+            );
+            let config = production_config(&journal);
+            let mut harness = build_harness_on_budget(&rest, &private, config, budget.clone());
+            harness.client.start().unwrap();
+            harness.client.connect().await.unwrap();
+            production_quote(&harness, now());
+            let order = production_order("barrier-entry", false, "0.05", "230.00");
+            seed_order(&harness, &order);
+            let id = order.client_order_id();
+            let barrier = if phase == "before_poll" {
+                Some(park_native_worker().await)
+            } else {
+                None
+            };
+            if phase == "budget_wait" {
+                while budget
+                    .limiter()
+                    .check_key(&ustr::Ustr::from(
+                        nautilus_ondo::http::rate_limit::ONDO_REST_BUCKET,
+                    ))
+                    .is_ok()
+                {}
+            }
+            harness.client.submit_order(submit_command(&order)).unwrap();
+            assert!(harness.client.production_trade_snapshot().is_none());
+            if phase == "before_poll" {
+                assert!(
+                    drain_events(&mut harness)
+                        .iter()
+                        .all(|e| !matches!(e, ExecutionEvent::Order(OrderEventAny::Submitted(_))))
+                );
+            } else if phase == "budget_wait" {
+                wait_until(
+                    &mut harness,
+                    "submission entered the budget wait",
+                    |_, events| {
+                        events.iter().any(|e| {
+                            matches!(e, ExecutionEvent::Order(OrderEventAny::Submitted(_)))
+                        })
+                    },
+                )
+                .await;
+            } else {
+                await_mock_method(&rest, "POST", "authorized create at the barrier").await;
+            }
+            let barrier = if barrier.is_some() {
+                barrier
+            } else {
+                Some(park_native_worker().await)
+            };
+            assert_eq!(rest.writes(), usize::from(phase == "after_send"));
+            harness.client.abort_request_tasks();
+            drop(barrier);
+            // A large test quota allows subsequent reads even over the prior long-period debt
+            budget.limiter().add_quota_for_key(
+                ustr::Ustr::from(nautilus_ondo::http::rate_limit::ONDO_REST_BUCKET),
+                Quota::per_second(NonZeroU32::new(1_000_000).unwrap())
+                    .unwrap()
+                    .allow_burst(NonZeroU32::new(u32::MAX).unwrap()),
+            );
+            if phase != "after_send" {
+                wait_until(
+                    &mut harness,
+                    "cancelled command terminal event",
+                    |_, events| {
+                        events.iter().any(|e| {
+                            matches!(
+                                e,
+                                ExecutionEvent::Order(
+                                    OrderEventAny::Denied(_) | OrderEventAny::Rejected(_)
+                                )
+                            )
+                        })
+                    },
+                )
+                .await;
+                assert!(!harness.client.tracks(&id));
+                let judgment = harness
+                    .client
+                    .account()
+                    .reconcile_account(now())
+                    .await
+                    .unwrap();
+                assert!(judgment.is_clean());
+                assert_eq!(
+                    harness.client.production_trade_snapshot().unwrap()["phase"],
+                    "reconciled"
+                );
+                harness
+                    .client
+                    .disconnect()
+                    .await
+                    .expect("clean includes task group drain");
+                let proof = harness.client.production_trade_snapshot().unwrap();
+                assert_eq!(proof["phase"], "final");
+                assert_eq!(proof["shutdown_status"], "clean");
+                assert_eq!(rest.writes(), 0);
+            } else {
+                // The sent create is unresolved even though REST's account snapshot is flat
+                assert!(harness.client.tracks(&id));
+                let _ = harness.client.account().reconcile_account(now()).await;
+                assert!(harness.client.production_trade_snapshot().is_none());
+                assert!(!harness.client.order_state(&id).unwrap().is_settled());
+                let error = harness.client.disconnect().await.unwrap_err().to_string();
+                assert!(error.contains("tasks_drained=true"), "{error}");
+                assert_eq!(rest.with_method("POST").len(), 1);
+                assert!(
+                    harness
+                        .client
+                        .production_trade_snapshot()
+                        .is_none_or(|s| s["phase"] != "final" && s["complete"] != true)
+                );
+            }
+        });
+}
+
 /// A submission cancelled while it waits for the shared budget never becomes a request, and the
 /// order it would have become is settled locally: the engine sees a terminal event, the reporter
 /// stops tracking it, and the cancel a stop registered for it beforehand is cleared, so the
