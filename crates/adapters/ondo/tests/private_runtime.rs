@@ -4617,6 +4617,85 @@ fn production_config(journal: &JournalPath) -> OndoExecutionClientConfig {
     }
 }
 
+#[rstest]
+#[case(Some("10"), false)]
+#[case(Some("7"), true)]
+#[case(None, true)]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_cleanup_minimum_refuses_entry_before_http(
+    #[case] minimum: Option<&str>,
+    #[case] admitted: bool,
+) {
+    let journal = JournalPath::new("cleanup-minimum");
+    let rest = MockRest::start().await;
+    rest.set_create_answer("<production-ioc>");
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut config = production_config(&journal);
+    let e = config.execution_envelope.as_mut().unwrap();
+    e.entry_side = "sell".into();
+    e.entry_max_quantity = rust_decimal::Decimal::from_str_exact("0.1").unwrap();
+    e.entry_worst_price = rust_decimal::Decimal::from(150);
+    e.close_side = "buy".into();
+    e.close_worst_price = rust_decimal::Decimal::from(151);
+    e.validate(now().as_u64()).unwrap();
+    let mut harness = build_harness(&rest, &private, config);
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    let mut instrument = nautilus_ondo::http::models::parse_instruments(
+        MARKETS_BODY,
+        &[InstrumentId::from(NVDA)],
+        now(),
+    )
+    .unwrap()
+    .remove(0);
+    let nautilus_model::instruments::InstrumentAny::CryptoPerpetual(ref mut perpetual) = instrument
+    else {
+        panic!("fixture instrument");
+    };
+    perpetual.min_notional = minimum.map(|amount| {
+        Money::from_decimal(
+            rust_decimal::Decimal::from_str_exact(amount).unwrap(),
+            Currency::from("USD"),
+        )
+        .unwrap()
+    });
+    harness
+        .cache
+        .borrow_mut()
+        .add_instrument(instrument)
+        .unwrap();
+    production_quote(&harness, now());
+    let order = OrderTestBuilder::new(OrderType::Limit)
+        .trader_id(TraderId::from("TESTER-001"))
+        .strategy_id(StrategyId::from("S-001"))
+        .instrument_id(InstrumentId::from(NVDA))
+        .client_order_id(ClientOrderId::from("cleanup-minimum-entry"))
+        .side(OrderSide::Sell)
+        .quantity(Quantity::from("0.1"))
+        .price(Price::from("150"))
+        .time_in_force(TimeInForce::Ioc)
+        .build();
+    seed_order(&harness, &order);
+    harness.client.submit_order(submit_command(&order)).unwrap();
+    if admitted {
+        await_mock_method(&rest, "POST", "a feasible entry").await;
+        assert_eq!(rest.writes(), 1);
+    } else {
+        wait_until(&mut harness, "infeasible cleanup rejection", |_, events| {
+            events.iter().any(|event| {
+                matches!(event,
+                ExecutionEvent::Order(OrderEventAny::Rejected(e))
+                    if e.reason.contains("no approved production close"))
+            })
+        })
+        .await;
+        assert_eq!(rest.writes(), 0);
+    }
+    // The positive fixture's IOC is not a full-cycle cleanup witness
+    harness.client.abort_request_tasks();
+    harness.client.stop().unwrap();
+}
+
 #[tokio::test(flavor = "multi_thread")]
 async fn test_production_start_publishes_real_complete_snapshot_after_dms_ack() {
     let journal = JournalPath::new("production-start");
