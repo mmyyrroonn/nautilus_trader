@@ -86,6 +86,7 @@ pyo3-stub-gen = { workspace = true, optional = true }
 
 [dev-dependencies]
 nautilus-execution = { workspace = true }
+nautilus-portfolio = { workspace = true }
 
 axum = { workspace = true }
 log = { workspace = true }
