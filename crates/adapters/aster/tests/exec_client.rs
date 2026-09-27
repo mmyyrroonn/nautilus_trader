@@ -723,52 +723,97 @@ async fn review_round5_ambiguous_submit_full_fill_reaches_engine_once() {
         }
     }
 
-    let cache = cache.borrow();
-    let order = cache
-        .order(&ClientOrderId::from(client_order_id))
-        .expect("the ambiguous order must be reconstructed");
-    assert_eq!(order.filled_qty(), Quantity::from("0.010"));
-    let mut trade_ids = order
-        .trade_ids()
-        .iter()
-        .map(ToString::to_string)
-        .collect::<Vec<_>>();
-    trade_ids.sort();
-    assert_eq!(
-        trade_ids,
-        vec![low_trade_id.to_string(), high_trade_id.to_string()],
-        "the engine must retain each real trade ID exactly once: {:?}",
-        order.trade_ids(),
-    );
-    assert_eq!(
-        order.commissions().get(&Currency::USDT()),
-        Some(&Money::from("0.02 USDT")),
-        "the two real commissions must be applied once",
-    );
-    let position = cache
-        .position_for_order(&ClientOrderId::from(client_order_id))
-        .expect("the real fill must create a position");
-    assert_eq!(position.quantity, Quantity::from("0.010"));
-    assert_eq!(position.commissions(), vec![Money::from("0.02 USDT")]);
-    assert_eq!(
+    {
+        let cache_ref = cache.borrow();
+        let order = cache_ref
+            .order(&ClientOrderId::from(client_order_id))
+            .expect("the ambiguous order must be reconstructed");
+        assert_eq!(order.filled_qty(), Quantity::from("0.010"));
+        let mut trade_ids = order
+            .trade_ids()
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+        trade_ids.sort();
+        assert_eq!(
+            trade_ids,
+            vec![low_trade_id.to_string(), high_trade_id.to_string()],
+            "the engine must retain each real trade ID exactly once: {:?}",
+            order.trade_ids(),
+        );
+        assert_eq!(
+            order.commissions().get(&Currency::USDT()),
+            Some(&Money::from("0.02 USDT")),
+            "the two real commissions must be applied once",
+        );
+        let position = cache_ref
+            .position_for_order(&ClientOrderId::from(client_order_id))
+            .expect("the real fill must create a position");
+        assert_eq!(position.quantity, Quantity::from("0.010"));
+        assert_eq!(position.commissions(), vec![Money::from("0.02 USDT")]);
+        assert_eq!(
+            cache_ref
+                .account(&AccountId::from(ACCOUNT_ID))
+                .expect("the account must remain cached")
+                .balance_total(Some(Currency::USDT())),
+            Some(Money::from("999.98 USDT")),
+            "the cached funds must reflect the real commission exactly once",
+        );
+        assert_eq!(
+            portfolio.net_position(&InstrumentId::from(BTC)),
+            Decimal::from_str_exact("0.010").unwrap(),
+            "portfolio position must match the once-only engine fill",
+        );
+        assert_eq!(
+            portfolio
+                .equity(&ASTER_VENUE, Some(&AccountId::from(ACCOUNT_ID)))
+                .get(&Currency::USDT()),
+            Some(&Money::from("999.98 USDT")),
+            "portfolio equity must remain consistent with the cached account funds",
+        );
+    }
+    cache
+        .borrow_mut()
+        .purge_closed_orders(UnixNanos::from(u64::MAX / 2), 0);
+    assert!(
         cache
-            .account(&AccountId::from(ACCOUNT_ID))
-            .expect("the account must remain cached")
-            .balance_total(Some(Currency::USDT())),
-        Some(Money::from("999.98 USDT")),
-        "the cached funds must reflect the real commission exactly once",
+            .borrow()
+            .order(&ClientOrderId::from(client_order_id))
+            .is_none(),
+        "the duplicate terminal check must protect a purged engine order",
+    );
+
+    venue.push_ws(&json!({
+        "e": "ORDER_TRADE_UPDATE",
+        "E": trade_ms + 1,
+        "T": trade_ms + 1,
+        "o": {
+            "s": "BTCUSDT", "c": client_order_id, "S": "BUY", "o": "LIMIT", "f": "GTC",
+            "q": "0.010", "p": "50000.00", "ap": "50000.00", "sp": "0",
+            "x": "TRADE", "X": "FILLED", "i": venue_order_id, "l": "0", "z": "0.010",
+            "L": "50000.00", "N": "USDT", "n": "0", "T": trade_ms + 1,
+            "t": high_trade_id, "m": true, "R": false, "wt": "CONTRACT_PRICE",
+            "ot": "LIMIT", "ps": "BOTH", "cp": false, "rp": "0"
+        }
+    }));
+    tokio::time::sleep(Duration::from_millis(250)).await;
+    let duplicate_after_purge = drain_exec(&mut harness.exec_rx);
+    assert!(
+        fill_trade_ids(&duplicate_after_purge).is_empty()
+            && order_reports(&duplicate_after_purge).is_empty(),
+        "a duplicate terminal status must be suppressed after engine cache purge: {duplicate_after_purge:?}",
     );
     assert_eq!(
         portfolio.net_position(&InstrumentId::from(BTC)),
         Decimal::from_str_exact("0.010").unwrap(),
-        "portfolio position must match the once-only engine fill",
+        "suppressing the duplicate must preserve the once-only portfolio position",
     );
     assert_eq!(
         portfolio
             .equity(&ASTER_VENUE, Some(&AccountId::from(ACCOUNT_ID)))
             .get(&Currency::USDT()),
         Some(&Money::from("999.98 USDT")),
-        "portfolio equity must remain consistent with the cached account funds",
+        "suppressing the duplicate must preserve the once-only portfolio commission",
     );
 }
 
