@@ -752,6 +752,9 @@ impl PrivateTransportState {
                     };
 
                     self.diagnostics.record_frame_received();
+                    if let Some(guard) = self.account.production_authority() {
+                        guard.note_private_text_frame(&text);
+                    }
 
                     let ts_init = self.clock();
                     let outcome = session.handle_frame(&text, ts_init);

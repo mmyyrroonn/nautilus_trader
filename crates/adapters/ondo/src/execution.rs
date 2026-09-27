@@ -1625,6 +1625,16 @@ impl ShutdownBudget {
         }
     }
 
+    /// A checkpoint or transport close may consume the budget after the last async wait.
+    fn conclude(&self, report: &mut StopReport) {
+        if self.remaining().is_zero() && report.outcome == StopOutcome::Complete {
+            log::warn!(
+                "Ondo production shutdown budget exhausted after checkpoint or transport close"
+            );
+            report.outcome = StopOutcome::TimedOut;
+        }
+    }
+
     /// The time left before the budget expires; zero once it has.
     fn remaining(&self) -> Duration {
         self.deadline
@@ -1639,12 +1649,16 @@ struct ShutdownRecord {
     report: Option<StopReport>,
     /// Whether the request task generation drained.
     tasks_drained: bool,
+    /// Production requires native final proof in addition to a completed stop report.
+    production_finalized: bool,
 }
 
 impl ShutdownRecord {
     /// Returns whether the shutdown finished with nothing outstanding.
     fn is_complete(&self) -> bool {
-        self.tasks_drained && self.report.as_ref().is_some_and(StopReport::is_clean)
+        self.tasks_drained
+            && self.production_finalized
+            && self.report.as_ref().is_some_and(StopReport::is_clean)
     }
 
     /// Renders the incomplete shutdown as an error naming what is left.
@@ -1665,8 +1679,9 @@ impl ShutdownRecord {
 
         anyhow::anyhow!(
             "the Ondo shutdown left work unresolved: outcome={outcome}, tasks_drained={}, \
-             switch_released={released}, outstanding={outstanding:?}",
+             switch_released={released}, production_finalized={}, outstanding={outstanding:?}",
             self.tasks_drained,
+            self.production_finalized,
         )
     }
 }
@@ -1686,6 +1701,9 @@ impl Drop for JournalCheckpoint {
             guard.note_release_shutdown_timeout();
         }
         self.0.persist_journal(self.0.now());
+        if let Some(guard) = &self.0.production {
+            guard.note_checkpoint_finished();
+        }
     }
 }
 
@@ -1997,6 +2015,15 @@ impl OndoExecutionClient {
             .production
             .as_ref()
             .and_then(|guard| guard.snapshot())
+    }
+
+    /// Returns sanitized production shutdown diagnostics, independently of account proof.
+    #[must_use]
+    pub fn production_shutdown_diagnostics(&self) -> Option<serde_json::Value> {
+        self.account
+            .production
+            .as_ref()
+            .map(|guard| guard.shutdown_diagnostics())
     }
 
     /// Returns whether this client is an account read-only session.
@@ -2488,7 +2515,11 @@ impl OndoExecutionClient {
 
             match self.private_stream.as_ref() {
                 Some(stream) => {
-                    let allowance = budget.remaining().max(Duration::from_millis(500));
+                    let allowance = if self.account.production.is_some() {
+                        budget.remaining()
+                    } else {
+                        budget.remaining().max(Duration::from_millis(500))
+                    };
 
                     match tokio::time::timeout(allowance, stream.send_switch_frame(&frame)).await {
                         Ok(Ok(())) => {
@@ -2538,6 +2569,9 @@ impl OndoExecutionClient {
             );
         }
 
+        if let Some(guard) = &self.account.production {
+            guard.note_stream_stop(false);
+        }
         // Step 5: close the private stream and wait for the transport to end. This always runs,
         // even when the budget is spent: a socket still being read is never left behind.
         match self.private_stream.as_mut() {
@@ -2552,6 +2586,9 @@ impl OndoExecutionClient {
             None => report.stream_ended = true,
         }
 
+        if let Some(guard) = &self.account.production {
+            guard.note_stream_stop(true);
+        }
         if report.stream_ended {
             self.private_stream = None;
         }
@@ -3464,6 +3501,14 @@ impl OndoAccountRuntime {
     #[must_use]
     pub fn reconciliation_state(&self) -> ReconciliationState {
         self.reconciliation.read().state()
+    }
+
+    /// Returns sanitized production shutdown diagnostics, independently of account proof.
+    #[must_use]
+    pub fn production_shutdown_diagnostics(&self) -> Option<serde_json::Value> {
+        self.production
+            .as_ref()
+            .map(|guard| guard.shutdown_diagnostics())
     }
 
     /// Returns whether this client is an account read-only session.
@@ -4797,6 +4842,7 @@ impl ExecutionClient for OndoExecutionClient {
             self.last_shutdown = Some(ShutdownRecord {
                 report: None,
                 tasks_drained: false,
+                production_finalized: false,
             });
         }
 
@@ -5000,6 +5046,9 @@ impl ExecutionClient for OndoExecutionClient {
                 guard.remaining().min(ONDO_PRODUCTION_DISCONNECT_TIMEOUT)
             });
         let budget = ShutdownBudget::new(disconnect_timeout);
+        if let Some(guard) = &self.account.production {
+            guard.note_shutdown_started(disconnect_timeout);
+        }
         let now = self.account.now();
 
         // Any exit from here - including the node's own disconnect bound dropping this future -
@@ -5040,6 +5089,9 @@ impl ExecutionClient for OndoExecutionClient {
             result.is_ok()
         };
 
+        if let Some(guard) = &self.account.production {
+            guard.note_request_drain_finished(tasks_drained);
+        }
         if !tasks_drained {
             log::error!(
                 "The Ondo request task generation did not drain within its bound; {} task(s) \
@@ -5049,18 +5101,28 @@ impl ExecutionClient for OndoExecutionClient {
         }
 
         // Step 4: the ordered stop on what is left of the budget.
-        let report = self.stop_and_wait_within(now, &budget).await;
+        let mut report = self.stop_and_wait_within(now, &budget).await;
 
         self.account.persist_journal(self.account.now());
+        // Synchronous checkpoint work cannot be cancelled by an outer async timeout. Include
+        // every checkpoint before deciding clean, including the Drop checkpoint.
+        drop(_checkpoint);
+        if self.account.production.is_some() {
+            budget.conclude(&mut report);
+        }
 
         if !self.core.is_disconnected() {
             self.core.set_disconnected();
         }
 
-        let record = ShutdownRecord {
+        let mut record = ShutdownRecord {
             report: Some(report),
             tasks_drained,
+            production_finalized: true,
         };
+        if let Some(guard) = &self.account.production {
+            record.production_finalized = guard.finish(record.is_complete());
+        }
         let complete = record.is_complete();
         let error = (!complete).then(|| record.error());
 
@@ -5070,9 +5132,6 @@ impl ExecutionClient for OndoExecutionClient {
             OwnedShutdownStatus::Dirty
         });
 
-        if let Some(guard) = &self.account.production {
-            guard.finish(complete);
-        }
         self.last_shutdown = Some(record);
 
         match error {
@@ -6884,6 +6943,42 @@ mod tests {
             production_readonly_readiness_timeout_secs(http_timeout_secs),
             expected,
         );
+    }
+
+    #[rstest]
+    #[case(false)]
+    #[case(true)]
+    fn test_shutdown_budget_accounts_for_synchronous_checkpoint_work(#[case] expires: bool) {
+        let budget = ShutdownBudget::new(if expires {
+            Duration::from_millis(5)
+        } else {
+            Duration::from_secs(10)
+        });
+        let mut report = StopReport {
+            steps: vec![StopStep::ReleaseDeadMansSwitch],
+            outcome: StopOutcome::Complete,
+            cancellations_issued: 0,
+            unresolved_orders: Vec::new(),
+            unconfirmed_cancels: Vec::new(),
+            unknown_submissions: Vec::new(),
+            released_switch: true,
+            stream_ended: true,
+        };
+        // Model a synchronous write that returns after the last async stage. An async timeout
+        // cannot interrupt this work, so the final decision must inspect the monotonic budget.
+        std::thread::sleep(Duration::from_millis(10));
+        budget.conclude(&mut report);
+        assert_eq!(report.is_clean(), !expires);
+        assert!(
+            report.released_switch,
+            "budget expiry does not erase the observed ACK"
+        );
+        let record = ShutdownRecord {
+            report: Some(report),
+            tasks_drained: true,
+            production_finalized: true,
+        };
+        assert_eq!(record.is_complete(), !expires);
     }
 
     /// One `ApiFill`, built from the documented members with the caller's overrides.

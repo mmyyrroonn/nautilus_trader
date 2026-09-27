@@ -282,6 +282,15 @@ impl OndoExecutionClientFactory {
             .map(OndoReadOnlyDiagnostics::snapshot)
     }
 
+    /// Returns sanitized production shutdown diagnostics, independently of account proof.
+    #[must_use]
+    pub fn production_shutdown_diagnostics(&self) -> Option<serde_json::Value> {
+        self.production
+            .read()
+            .as_ref()
+            .map(|guard| guard.shutdown_diagnostics())
+    }
+
     /// Returns the current run's native production evidence, or no completed snapshot.
     #[must_use]
     pub fn production_trade_snapshot(&self) -> Option<serde_json::Value> {
