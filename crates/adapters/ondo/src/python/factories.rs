@@ -141,6 +141,19 @@ impl OndoExecutionClientFactory {
         true
     }
 
+    #[pyo3(name = "production_shutdown_diagnostics")]
+    #[gen_stub(override_return_type(type_repr="dict[str, typing.Any] | None", imports=("typing",)))]
+    fn py_production_shutdown_diagnostics<'py>(
+        &self,
+        py: Python<'py>,
+    ) -> PyResult<Option<Bound<'py, PyDict>>> {
+        let Some(snapshot) = self.production_shutdown_diagnostics() else {
+            return Ok(None);
+        };
+        let value = PyModule::import(py, "json")?.call_method1("loads", (snapshot.to_string(),))?;
+        Ok(Some(value.cast_into::<PyDict>()?))
+    }
+
     #[pyo3(name = "production_trade_snapshot")]
     #[gen_stub(override_return_type(type_repr="dict[str, typing.Any] | None", imports=("typing",)))]
     fn py_production_trade_snapshot<'py>(

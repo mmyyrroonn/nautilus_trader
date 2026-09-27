@@ -342,8 +342,33 @@ struct ProductionState {
     release_ack_observed: bool,
     release_acked: bool,
     dms_release: DmsReleaseDiagnostics,
+    shutdown_trace: ShutdownTrace,
     known_zero: BTreeSet<String>,
     identity_verified: bool,
+}
+
+/// Bounded diagnostics with fixed labels, never raw private frame fields.
+#[derive(Debug, Default, Serialize)]
+struct ShutdownTrace {
+    shutdown_started_unix_nanos: Option<u64>,
+    shutdown_budget_nanos: Option<u64>,
+    shutdown_finished_unix_nanos: Option<u64>,
+    checkpoint_finished_unix_nanos: Option<u64>,
+    request_drain_finished_unix_nanos: Option<u64>,
+    requests_drained: Option<bool>,
+    stream_stop_started_unix_nanos: Option<u64>,
+    stream_stop_finished_unix_nanos: Option<u64>,
+    release_started_unix_nanos: Option<u64>,
+    release_sent_unix_nanos: Option<u64>,
+    release_ack_observed_unix_nanos: Option<u64>,
+    text_frames_before_release: u64,
+    text_frames_after_release: u64,
+    dms_subscribed_after_release: u64,
+    dms_unsubscribed_after_release: u64,
+    other_unsubscribed_after_release: u64,
+    unclassified_after_release: u64,
+    last_frame_kind: Option<&'static str>,
+    last_frame_unix_nanos: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -974,26 +999,33 @@ impl ProductionAuthority {
         let state = self.state.lock();
         let mut snapshot = state.snapshot.clone()?;
         if let Some(object) = snapshot.as_object_mut() {
-            let release = state.dms_release;
-            object.insert(
-                "dms_release".to_string(),
-                serde_json::json!({
-                    "attempted": release.attempted,
-                    "frame_sent": release.frame_sent,
-                    "acknowledged": release.acknowledged,
-                    "outcome": release.outcome,
-                    "updates_before_release": release.updates_before_release,
-                    "updates_after_release": release.updates_after_release,
-                    "last_update_data_kind": release.last_update_data_kind,
-                    "last_update_op": release.last_update_op,
-                    "last_update_timeout": release.last_update_timeout,
-                    "last_update_status": release.last_update_status,
-                    "last_update_enabled": release.last_update_enabled,
-                }),
-            );
+            object.insert("dms_release".to_string(), Self::release_diagnostics(&state));
         }
         Some(snapshot)
     }
+    /// Safe diagnostics survive a missing account proof and cannot establish readiness.
+    pub(crate) fn shutdown_diagnostics(&self) -> serde_json::Value {
+        Self::release_diagnostics(&self.state.lock())
+    }
+
+    fn release_diagnostics(state: &ProductionState) -> serde_json::Value {
+        let release = state.dms_release;
+        serde_json::json!({
+            "trace": state.shutdown_trace,
+            "attempted": release.attempted,
+            "frame_sent": release.frame_sent,
+            "acknowledged": release.acknowledged,
+            "outcome": release.outcome,
+            "updates_before_release": release.updates_before_release,
+            "updates_after_release": release.updates_after_release,
+            "last_update_data_kind": release.last_update_data_kind,
+            "last_update_op": release.last_update_op,
+            "last_update_timeout": release.last_update_timeout,
+            "last_update_status": release.last_update_status,
+            "last_update_enabled": release.last_update_enabled,
+        })
+    }
+
     pub(crate) fn stop_creates(&self) {
         let mut state = self.state.lock();
         if !state.stopped && !state.frozen {
@@ -1032,6 +1064,76 @@ impl ProductionAuthority {
         )
     }
 
+    /// Observes only fixed protocol classes; observation is never release confirmation.
+    pub(crate) fn note_private_text_frame(&self, text: &str) {
+        let value = serde_json::from_str::<serde_json::Value>(text).ok();
+        let kind = match value.as_ref().and_then(|v| v["type"].as_str()) {
+            Some("subscribed") => "subscribed",
+            Some("unsubscribed") => "unsubscribed",
+            Some("update") => "update",
+            Some("loggedIn") => "logged_in",
+            Some("pong") => "pong",
+            Some("error") => "venue_error",
+            _ => "unclassified",
+        };
+        let dms =
+            value.as_ref().and_then(|v| v["channel"].as_str()) == Some("cancelAllOrdersAfterPerps");
+        let mut state = self.state.lock();
+        let after_release = state.release_started;
+        let trace = &mut state.shutdown_trace;
+        trace.last_frame_kind = Some(kind);
+        trace.last_frame_unix_nanos = Some(get_atomic_clock_realtime().get_time_ns().as_u64());
+        if after_release {
+            trace.text_frames_after_release = trace.text_frames_after_release.saturating_add(1);
+            let counter = match (kind, dms) {
+                ("subscribed", true) => &mut trace.dms_subscribed_after_release,
+                ("unsubscribed", true) => &mut trace.dms_unsubscribed_after_release,
+                ("unsubscribed", false) => &mut trace.other_unsubscribed_after_release,
+                ("unclassified", _) => &mut trace.unclassified_after_release,
+                _ => return,
+            };
+            *counter = counter.saturating_add(1);
+        } else {
+            trace.text_frames_before_release = trace.text_frames_before_release.saturating_add(1);
+        }
+    }
+
+    pub(crate) fn note_shutdown_started(&self, budget: std::time::Duration) {
+        let mut state = self.state.lock();
+        // A retry must not replace the timeline of the original shutdown.
+        if state.shutdown_trace.shutdown_started_unix_nanos.is_none() {
+            state.shutdown_trace.shutdown_started_unix_nanos =
+                Some(get_atomic_clock_realtime().get_time_ns().as_u64());
+            state.shutdown_trace.shutdown_budget_nanos =
+                Some(u64::try_from(budget.as_nanos()).unwrap_or(u64::MAX));
+        }
+    }
+
+    pub(crate) fn note_request_drain_finished(&self, drained: bool) {
+        let mut state = self.state.lock();
+        state.shutdown_trace.request_drain_finished_unix_nanos =
+            Some(get_atomic_clock_realtime().get_time_ns().as_u64());
+        state.shutdown_trace.requests_drained = Some(drained);
+    }
+
+    pub(crate) fn note_stream_stop(&self, finished: bool) {
+        let mut state = self.state.lock();
+        let at = Some(get_atomic_clock_realtime().get_time_ns().as_u64());
+        if finished {
+            state.shutdown_trace.stream_stop_finished_unix_nanos = at;
+        } else {
+            state.shutdown_trace.stream_stop_started_unix_nanos = at;
+        }
+    }
+
+    pub(crate) fn note_checkpoint_finished(&self) {
+        self.state
+            .lock()
+            .shutdown_trace
+            .checkpoint_finished_unix_nanos =
+            Some(get_atomic_clock_realtime().get_time_ns().as_u64());
+    }
+
     pub(crate) fn remaining(&self) -> std::time::Duration {
         std::time::Duration::from_nanos(
             self.envelope
@@ -1045,6 +1147,8 @@ impl ProductionAuthority {
             return Err("production DMS operation is pending or release already started".into());
         }
         state.release_started = true;
+        state.shutdown_trace.release_started_unix_nanos =
+            Some(get_atomic_clock_realtime().get_time_ns().as_u64());
         state.dms_release.attempted = true;
         state.dms_release.outcome = "checking";
         state.release_ack_observed = false;
@@ -1106,6 +1210,8 @@ impl ProductionAuthority {
         let mut state = self.state.lock();
         state.dms_release.attempted = true;
         state.dms_release.frame_sent = true;
+        state.shutdown_trace.release_sent_unix_nanos =
+            Some(get_atomic_clock_realtime().get_time_ns().as_u64());
         if !state.release_pending {
             return;
         }
@@ -1159,6 +1265,8 @@ impl ProductionAuthority {
 
     pub(crate) fn confirm_release(&self) {
         let mut state = self.state.lock();
+        state.shutdown_trace.release_ack_observed_unix_nanos =
+            Some(get_atomic_clock_realtime().get_time_ns().as_u64());
         if state.release_pending && !self.remaining().is_zero() {
             state.release_ack_observed = true;
             if state.dms_release.frame_sent {
@@ -1234,22 +1342,31 @@ impl ProductionAuthority {
     pub(crate) fn permits_dms(&self) -> bool {
         self.remaining() > std::time::Duration::ZERO
     }
-    pub(crate) fn finish(&self, clean: bool) {
+    pub(crate) fn finish(&self, clean: bool) -> bool {
+        let journal_healthy = self.evidence(false).is_ok_and(|e| e.journal_healthy);
         let mut state = self.state.lock();
         state.frozen = true;
+        if state.shutdown_trace.shutdown_finished_unix_nanos.is_none() {
+            state.shutdown_trace.shutdown_finished_unix_nanos =
+                Some(get_atomic_clock_realtime().get_time_ns().as_u64());
+        }
         let confirmed_release = state.release_acked;
+        let mut finalized = false;
         if let Some(snapshot) = state.snapshot.as_mut() {
             if snapshot["phase"] == "reconciled"
                 && clean
+                && journal_healthy
                 && confirmed_release
                 && !self.remaining().is_zero()
             {
+                finalized = true;
                 snapshot["phase"] = serde_json::json!("final");
                 snapshot["shutdown_status"] = serde_json::json!("clean");
             } else {
                 snapshot["shutdown_status"] = serde_json::json!("uncertain");
             }
         }
+        finalized
     }
 }
 
@@ -1776,6 +1893,29 @@ mod tests {
         assert_eq!(guard.state.lock().dms_release.outcome, "shutdown_timeout");
         guard.confirm_release();
         assert!(!guard.release_acked());
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[rstest]
+    fn test_shutdown_diagnostics_survive_missing_proof_without_private_values() {
+        let (guard, path) = authority(30);
+        guard.note_private_text_frame(r#"{"type":"subscribed","channel":"cancelAllOrdersAfterPerps","private":"SYNTHETIC_PRIVATE"}"#);
+        guard.begin_release().unwrap();
+        guard.note_private_text_frame(
+            r#"{"type":"SYNTHETIC_PRIVATE","channel":"SYNTHETIC_PRIVATE"}"#,
+        );
+        guard.note_private_text_frame("not JSON SYNTHETIC_PRIVATE");
+        let diagnostic = guard.shutdown_diagnostics();
+        assert_eq!(diagnostic["trace"]["text_frames_before_release"], 1);
+        assert_eq!(diagnostic["trace"]["text_frames_after_release"], 2);
+        assert_eq!(diagnostic["trace"]["unclassified_after_release"], 2);
+        assert_eq!(diagnostic["trace"]["last_frame_kind"], "unclassified");
+        assert!(!diagnostic.to_string().contains("SYNTHETIC_PRIVATE"));
+        assert!(guard.snapshot().is_none());
+        assert!(
+            !guard.finish(true),
+            "no account proof cannot become clean shutdown"
+        );
         std::fs::remove_file(path).unwrap();
     }
 

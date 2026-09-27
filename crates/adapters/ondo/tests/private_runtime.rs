@@ -6153,6 +6153,211 @@ async fn test_production_final_clean_requires_matching_release_ack(
 }
 
 #[rstest]
+#[case("no_ack", None, None)]
+#[case(
+    "old_arm",
+    Some(r#"{"type":"subscribed","channel":"cancelAllOrdersAfterPerps"}"#),
+    Some("dms_subscribed_after_release")
+)]
+#[case(
+    "wrong_shape",
+    Some(r#"{"type":"unsubscribed","channel":{"private":"SYNTHETIC_PRIVATE"}}"#),
+    Some("other_unsubscribed_after_release")
+)]
+#[case(
+    "wrong_channel",
+    Some(r#"{"type":"unsubscribed","channel":"ordersPerps"}"#),
+    Some("other_unsubscribed_after_release")
+)]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_outer_timeout_and_late_release_ack_stay_dirty(
+    #[case] label: &str,
+    #[case] frame: Option<&str>,
+    #[case] counter: Option<&str>,
+) {
+    let journal = JournalPath::new(label);
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::NoReleaseAck).await;
+    let mut harness = build_harness(&rest, &private, production_config(&journal));
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    let respond = async {
+        tokio::time::timeout(WAIT, async {
+            while !switch_frames(&private)
+                .iter()
+                .any(|b| is_a_switch_release(b))
+            {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("release sent before caller timeout");
+        if let Some(frame) = frame {
+            private.push(frame);
+        }
+    };
+    let (result, ()) = tokio::join!(
+        tokio::time::timeout(Duration::from_secs(1), harness.client.disconnect()),
+        respond
+    );
+    assert!(result.is_err(), "only the caller timeout may end this wait");
+    let before = harness.client.production_shutdown_diagnostics().unwrap();
+    assert_eq!(before["frame_sent"], true);
+    assert_eq!(before["acknowledged"], false);
+    assert_eq!(before["outcome"], "shutdown_timeout");
+    assert!(
+        before["trace"]["text_frames_before_release"]
+            .as_u64()
+            .unwrap()
+            > 0
+    );
+    if let Some(counter) = counter {
+        assert_eq!(before["trace"][counter], 1);
+        assert!(
+            before["trace"]["text_frames_after_release"]
+                .as_u64()
+                .unwrap()
+                > 0
+        );
+    }
+    assert!(!before.to_string().contains("SYNTHETIC_PRIVATE"));
+    let began = before["trace"]["shutdown_started_unix_nanos"].clone();
+    let sent = before["trace"]["release_sent_unix_nanos"].as_u64().unwrap();
+    let checkpoint = before["trace"]["checkpoint_finished_unix_nanos"]
+        .as_u64()
+        .unwrap();
+    assert!(sent <= checkpoint);
+
+    // The stream is still owned after cancellation. A late matching frame is observed,
+    // but the abandoned pending release cannot be acknowledged retroactively.
+    private.push(r#"{"type":"unsubscribed","channel":"cancelAllOrdersAfterPerps"}"#);
+    wait_until(&mut harness, "late frame observed", |client, _| {
+        client.production_shutdown_diagnostics().unwrap()["trace"]["dms_unsubscribed_after_release"]
+            == 1
+    })
+    .await;
+    let late = harness.client.production_shutdown_diagnostics().unwrap();
+    assert_eq!(late["acknowledged"], false);
+    assert!(
+        harness
+            .client
+            .production_trade_snapshot()
+            .is_none_or(|s| s["phase"] != "final")
+    );
+    assert!(harness.client.disconnect().await.is_err());
+    harness.client.stop().unwrap();
+    assert!(harness.client.disconnect().await.is_err());
+    let final_diagnostics = harness.client.production_shutdown_diagnostics().unwrap();
+    assert_eq!(final_diagnostics["acknowledged"], false);
+    assert_eq!(
+        final_diagnostics["trace"]["shutdown_started_unix_nanos"],
+        began
+    );
+    assert_eq!(
+        harness
+            .client
+            .read_only_diagnostics()
+            .snapshot()
+            .shutdown_status,
+        "incomplete"
+    );
+    assert_eq!(private.connection_count(), 1);
+    assert_eq!(rest.writes(), 0);
+}
+
+#[rstest]
+#[case("short")]
+#[case("equal")]
+#[case("long")]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_outer_budget_matrix_preserves_absolute_cleanup_deadline(
+    #[case] relation: &str,
+) {
+    let journal = JournalPath::new(relation);
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::NoReleaseAck).await;
+    let mut config = production_config(&journal);
+    let began = now().as_u64();
+    let deadline = began + 6_000_000_000;
+    let envelope = config.execution_envelope.as_mut().unwrap();
+    envelope.entry_deadline_unix_nanos = began + 5_000_000_000;
+    envelope.cleanup_deadline_unix_nanos = deadline;
+    let mut harness = build_harness(&rest, &private, config);
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    let remaining = Duration::from_nanos(deadline.saturating_sub(now().as_u64()));
+    let outer = match relation {
+        "short" => Duration::from_secs(1),
+        "equal" => remaining,
+        "long" => Duration::from_secs(30),
+        _ => unreachable!(),
+    };
+    let result = tokio::time::timeout(outer, harness.client.disconnect()).await;
+    match relation {
+        "short" => assert!(result.is_err()),
+        "equal" => assert!(result.is_err() || result.unwrap().is_err()),
+        "long" => assert!(result.unwrap().is_err()),
+        _ => unreachable!(),
+    }
+    let diagnostics = harness.client.production_shutdown_diagnostics().unwrap();
+    assert_eq!(diagnostics["acknowledged"], false);
+    let started = diagnostics["trace"]["shutdown_started_unix_nanos"]
+        .as_u64()
+        .unwrap();
+    let budget = diagnostics["trace"]["shutdown_budget_nanos"]
+        .as_u64()
+        .unwrap();
+    assert!(started.saturating_add(budget) <= deadline + 1_000_000);
+    assert!(
+        harness
+            .client
+            .production_trade_snapshot()
+            .is_none_or(|s| s["phase"] != "final")
+    );
+    assert!(harness.client.disconnect().await.is_err());
+    assert_eq!(rest.writes(), 0);
+    assert_eq!(private.connection_count(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_matching_release_has_ordered_safe_timeline() {
+    let journal = JournalPath::new("release-timeline");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::DelayedReleaseAck).await;
+    let mut harness = build_harness(&rest, &private, production_config(&journal));
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    tokio::time::timeout(Duration::from_secs(30), harness.client.disconnect())
+        .await
+        .unwrap()
+        .unwrap();
+    let diagnostics = harness.client.production_shutdown_diagnostics().unwrap();
+    assert_eq!(diagnostics["acknowledged"], true);
+    let trace = &diagnostics["trace"];
+    let started = trace["shutdown_started_unix_nanos"].as_u64().unwrap();
+    let release = trace["release_started_unix_nanos"].as_u64().unwrap();
+    let sent = trace["release_sent_unix_nanos"].as_u64().unwrap();
+    let ack = trace["release_ack_observed_unix_nanos"].as_u64().unwrap();
+    let checkpoint = trace["checkpoint_finished_unix_nanos"].as_u64().unwrap();
+    let finished = trace["shutdown_finished_unix_nanos"].as_u64().unwrap();
+    assert!(started <= release && release <= sent && sent <= ack);
+    assert!(ack <= checkpoint && checkpoint <= finished);
+    assert_eq!(trace["requests_drained"], true);
+    let drained = trace["request_drain_finished_unix_nanos"].as_u64().unwrap();
+    let stream_start = trace["stream_stop_started_unix_nanos"].as_u64().unwrap();
+    let stream_end = trace["stream_stop_finished_unix_nanos"].as_u64().unwrap();
+    assert!(started <= drained && drained <= release);
+    assert!(ack <= stream_start && stream_start <= stream_end && stream_end <= checkpoint);
+    assert_eq!(trace["shutdown_budget_nanos"], 15_000_000_000_u64);
+    assert_eq!(trace["dms_unsubscribed_after_release"], 1);
+    assert_eq!(
+        harness.client.production_trade_snapshot().unwrap()["shutdown_status"],
+        "clean"
+    );
+    assert_eq!(rest.writes(), 0);
+}
+
+#[rstest]
 #[case(false)]
 #[case(true)]
 #[tokio::test(flavor = "multi_thread")]
