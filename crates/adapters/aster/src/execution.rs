@@ -2492,15 +2492,20 @@ impl SessionContext {
         symbol: &Ustr,
         report: &OrderStatusReport,
     ) -> anyhow::Result<()> {
-        let (coverage_unknown, can_rebase_unknown) = {
+        let (coverage_unknown, can_rebase_unknown, duplicate_terminal) = {
             let mut state = self.state.write();
             let venue_order_id = report.venue_order_id.inner();
-            state.mark_coverage_unknown_if_incomplete(symbol, venue_order_id);
-            (
-                state.coverage_unknown(&venue_order_id),
-                state.can_rebase_unknown_order(&venue_order_id),
+            state.inspect_status_coverage(
+                symbol,
+                venue_order_id,
+                report.order_status.is_closed(),
+                report.filled_qty.as_decimal(),
+                false,
             )
         };
+        if duplicate_terminal {
+            return Ok(());
+        }
         if coverage_unknown {
             if !can_rebase_unknown {
                 self.hold_order_evidence(
