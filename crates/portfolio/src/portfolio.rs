@@ -1690,7 +1690,15 @@ impl Portfolio {
                 );
 
                 match result {
-                    Some((updated_account, _)) => {
+                    Some((mut updated_account, _)) => {
+                        if let (AccountAny::Margin(reported), AccountAny::Margin(updated)) =
+                            (&account, &mut updated_account)
+                            && !reported.calculate_account_state
+                        {
+                            // Local margin estimates do not supersede venue-reported balances
+                            let balances: Vec<_> = reported.balances.values().copied().collect();
+                            updated.base.update_balances(&balances);
+                        }
                         self.cache
                             .borrow_mut()
                             .update_account(&updated_account)
@@ -1921,7 +1929,13 @@ impl Portfolio {
                 );
 
                 match result {
-                    Some((updated_account, _)) => {
+                    Some((mut updated_account, _)) => {
+                        if !margin_account.calculate_account_state {
+                            // Retain the venue's total/free/locked while estimating position margin
+                            let balances: Vec<_> =
+                                margin_account.balances.values().copied().collect();
+                            updated_account.base.update_balances(&balances);
+                        }
                         self.cache
                             .borrow_mut()
                             .update_account(&AccountAny::Margin(updated_account))

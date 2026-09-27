@@ -40,7 +40,7 @@ use async_trait::async_trait;
 use futures_util::StreamExt;
 use nautilus_binance::{
     common::{
-        enums::{BinanceEnvironment, BinanceProductType},
+        enums::{BinanceEnvironment, BinancePositionSide, BinanceProductType},
         fees::{FeeScope, clear_instrument_fee, clear_scope_fees, register_instrument_fees},
         symbol::format_binance_symbol,
     },
@@ -105,8 +105,8 @@ use crate::{
         client::{ASTER_HISTORY_MAX_INTERVAL_MS, ASTER_HISTORY_PAGE_LIMIT},
         error::AsterHttpError,
         models::{
-            AsterBalance, AsterOrder, AsterUserTrade, millis_to_nanos, parse_decimal,
-            parse_order_side,
+            AsterBalance, AsterOrder, AsterPositionRisk, AsterUserTrade, millis_to_nanos,
+            parse_decimal, parse_order_side,
         },
     },
     websocket::AsterUserStreamClient,
@@ -1799,7 +1799,16 @@ impl SessionContext {
             log::error!("Aster balance refresh after {reason} failed: {e}");
             failure.get_or_insert_with(|| format!("balance refresh failed: {e}"));
         }
-        if let Err(e) = self.refresh_positions().await {
+        let infer_flat = {
+            let state = self.state.read();
+            coverage == FillCoverage::Complete
+                && failure.is_none()
+                && !fills_uncovered
+                && state.pending_trades.is_empty()
+                && state.pending_orders.is_empty()
+                && state.unresolved_coverage_count() == 0
+        };
+        if let Err(e) = self.refresh_positions(infer_flat).await {
             log::error!("Aster position refresh after {reason} failed: {e}");
             failure.get_or_insert_with(|| format!("position refresh failed: {e}"));
         }
@@ -2857,87 +2866,27 @@ impl SessionContext {
     ///
     /// A position closed during the outage must be reported as flat, otherwise the engine keeps
     /// the stale quantity.
-    async fn refresh_positions(&self) -> anyhow::Result<()> {
+    async fn refresh_positions(&self, infer_flat: bool) -> anyhow::Result<()> {
+        let mut scope = self.instruments.read().snapshot();
         let positions = self
             .http_client
             .query_position_risk(None)
             .await
             .map_err(|e| anyhow::anyhow!("Aster position risk query failed: {e}"))?;
 
-        let ts_now = self.clock.get_time_ns();
-        // A position row on a loaded symbol that cannot be parsed leaves the local position
-        // view incomplete. Valid rows are still published, but the caller must not treat the
-        // account as verified.
-        let mut failure: Option<String> = None;
-
-        for position in &positions {
-            let Some(context) = self.context_for(&position.symbol) else {
-                continue;
-            };
-
-            let signed_quantity = match position.signed_quantity() {
-                Ok(value) => value,
-                Err(e) => {
-                    log::error!("Failed to parse Aster position {}: {e}", position.symbol);
-                    failure.get_or_insert_with(|| {
-                        format!("failed to parse position {}: {e}", position.symbol)
-                    });
-                    continue;
-                }
-            };
-
-            let side = if signed_quantity > Decimal::ZERO {
-                PositionSide::Long
-            } else if signed_quantity < Decimal::ZERO {
-                PositionSide::Short
-            } else {
-                PositionSide::Flat
-            };
-
-            let quantity =
-                match Quantity::from_decimal_dp(signed_quantity.abs(), context.size_precision) {
-                    Ok(quantity) => quantity,
-                    Err(e) => {
-                        log::error!("Failed to parse Aster position {}: {e}", position.symbol);
-                        failure.get_or_insert_with(|| {
-                            format!("failed to parse position {}: {e}", position.symbol)
-                        });
-                        continue;
-                    }
-                };
-
-            // A flat row has no economic entry price and some venue responses encode that field
-            // as an empty or otherwise non-numeric placeholder. An open position, however,
-            // needs the protocol's numeric entry price for a complete recovery report.
-            let avg_px = match parse_decimal(&position.entry_price, "entryPrice") {
-                Ok(price) => Some(price),
-                Err(_) if matches!(side, PositionSide::Flat) => None,
-                Err(e) => {
-                    log::error!("Failed to parse Aster position {}: {e}", position.symbol);
-                    failure.get_or_insert_with(|| {
-                        format!(
-                            "failed to parse position {} entryPrice: {e}",
-                            position.symbol
-                        )
-                    });
-                    continue;
-                }
-            };
-
-            self.emitter.send_position_report(PositionStatusReport::new(
-                self.account_id,
-                context.instrument_id,
-                side,
-                quantity,
-                position.update_time.map_or(ts_now, millis_to_nanos),
-                ts_now,
-                Some(UUID4::new()),
-                None, // venue_position_id: one-way mode
-                avg_px,
-            ));
+        // Neither newly loaded nor unloaded instruments are covered by this in-flight request.
+        retain_position_scope(&mut scope, &self.instruments.read());
+        let parsed = parse_position_snapshot(
+            &positions,
+            &scope,
+            self.account_id,
+            self.clock.get_time_ns(),
+            infer_flat,
+        );
+        for report in parsed.reports {
+            self.emitter.send_position_report(report);
         }
-
-        failure.map_or(Ok(()), |e| Err(anyhow::anyhow!(e)))
+        parsed.failure.map_or(Ok(()), Err)
     }
 }
 
@@ -3938,6 +3887,124 @@ fn instrument_load_retry_config() -> RetryConfig {
         immediate_first: false,
         max_elapsed_ms: None,
     }
+}
+
+/// Keeps only instruments loaded both before and after a position request.
+fn retain_position_scope(scope: &mut Vec<InstrumentAny>, current: &InstrumentIndex) {
+    scope.retain(|instrument| {
+        current
+            .by_id(&instrument.id())
+            .is_some_and(|loaded| loaded.raw_symbol() == instrument.raw_symbol())
+    });
+}
+
+/// The usable rows of a position snapshot and any reason it cannot prove absence.
+struct ParsedPositionSnapshot {
+    reports: Vec<PositionStatusReport>,
+    failure: Option<anyhow::Error>,
+}
+
+/// Parses the unpaginated positionRisk snapshot for a fixed set of loaded instruments.
+///
+/// The 2026-09-05 Aster testnet acceptance recorded an empty positionRisk response after
+/// closing ETHUSDT (test_data/http_position_risk_closed_testnet.json). An omitted symbol in a
+/// successful, entirely valid response therefore means flat within the requested scope.
+/// A malformed or duplicate row invalidates that inference for the whole response; recovery
+/// may still publish individually valid rows, but keeps the account degraded. Recovery also
+/// withholds inferred flats until the preceding real-fill pass has no outstanding evidence.
+fn parse_position_snapshot(
+    positions: &[AsterPositionRisk],
+    scope: &[InstrumentAny],
+    account_id: AccountId,
+    ts_now: UnixNanos,
+    infer_flat: bool,
+) -> ParsedPositionSnapshot {
+    let mut parsed = ParsedPositionSnapshot {
+        reports: Vec::new(),
+        failure: None,
+    };
+    let mut seen = AHashSet::new();
+    for position in positions {
+        let result = (|| -> anyhow::Result<Option<PositionStatusReport>> {
+            anyhow::ensure!(seen.insert(position.symbol), "duplicate position symbol");
+            anyhow::ensure!(
+                position
+                    .position_side
+                    .is_none_or(|side| side == BinancePositionSide::Both),
+                "position snapshot is not in one-way mode",
+            );
+            // Validate every row before inferring absence, including symbols outside our scope.
+            let signed = position.signed_quantity()?;
+            let side = if signed > Decimal::ZERO {
+                PositionSide::Long
+            } else if signed < Decimal::ZERO {
+                PositionSide::Short
+            } else {
+                PositionSide::Flat
+            };
+            let avg_px = match parse_decimal(&position.entry_price, "entryPrice") {
+                Ok(price) => Some(price),
+                Err(_) if side == PositionSide::Flat => None,
+                Err(e) => return Err(e),
+            };
+            let Some(instrument) = scope
+                .iter()
+                .find(|i| i.raw_symbol().inner() == position.symbol)
+            else {
+                return Ok(None);
+            };
+            let quantity = Quantity::from_decimal_dp(signed.abs(), instrument.size_precision())?;
+            Ok(Some(PositionStatusReport::new(
+                account_id,
+                instrument.id(),
+                side,
+                quantity,
+                position.update_time.map_or(ts_now, millis_to_nanos),
+                ts_now,
+                Some(UUID4::new()),
+                None,
+                avg_px,
+            )))
+        })();
+        match result {
+            Ok(Some(report)) => parsed.reports.push(report),
+            Ok(None) => {}
+            Err(e) => {
+                let e =
+                    anyhow::anyhow!("Failed to parse Aster position {}: {e:#}", position.symbol);
+                log::error!("{e:#}");
+                parsed.failure.get_or_insert(e);
+            }
+        }
+    }
+    if infer_flat && parsed.failure.is_none() {
+        let mut flat_reports = Vec::new();
+        for instrument in scope {
+            if seen.contains(&instrument.raw_symbol().inner()) {
+                continue;
+            }
+            match Quantity::from_decimal_dp(Decimal::ZERO, instrument.size_precision()) {
+                Ok(quantity) => flat_reports.push(PositionStatusReport::new(
+                    account_id,
+                    instrument.id(),
+                    PositionSide::Flat,
+                    quantity,
+                    ts_now,
+                    ts_now,
+                    Some(UUID4::new()),
+                    None,
+                    None,
+                )),
+                Err(e) => {
+                    parsed.failure.get_or_insert(e.into());
+                }
+            }
+        }
+        if parsed.failure.is_none() {
+            parsed.reports.extend(flat_reports);
+        }
+    }
+    parsed
 }
 
 /// Warns once per process about Aster reporting `availableBalance` above `walletBalance`.
@@ -5456,14 +5523,23 @@ impl ExecutionClient for AsterExecutionClient {
         // has nothing to confirm against, and every one of its orders is then demoted to
         // order-only projection with an error. A flat row states what the venue's omission
         // already means, so the check can be answered instead of skipped.
-        let position_reports = with_flat_rows_for_traded_instruments(
-            position_reports,
-            &order_reports,
-            &matched_fills,
-            self.core.account_id,
-            ts_init,
-            &self.instruments.read(),
-        );
+        let position_reports = if reports_complete {
+            with_flat_rows_for_traded_instruments(
+                position_reports,
+                &order_reports,
+                &matched_fills,
+                self.core.account_id,
+                ts_init,
+                &self.instruments.read(),
+            )
+        } else {
+            // An incomplete fill bundle cannot justify a closing inference. Keep open rows,
+            // but defer flat reports until real trade IDs and commissions can be recovered.
+            position_reports
+                .into_iter()
+                .filter(|r| r.position_side != PositionSide::Flat)
+                .collect()
+        };
 
         let mut mass_status = ExecutionMassStatus::new(
             self.core.client_id,
@@ -5500,77 +5576,43 @@ impl ExecutionClient for AsterExecutionClient {
             .map(|id| self.symbol_context(&id).map(|(symbol, _)| symbol))
             .transpose()?;
 
+        let mut scope = self.instruments.read().snapshot();
+        if let Some(instrument_id) = cmd.instrument_id {
+            scope.retain(|instrument| instrument.id() == instrument_id);
+        }
+
         let positions = self
             .http_client
             .query_position_risk(symbol.as_deref())
             .await
             .map_err(|e| anyhow::anyhow!("Aster position risk query failed: {e}"))?;
 
-        let ts_now = self.clock.get_time_ns();
-        let mut reports = Vec::new();
-
-        for position in &positions {
-            let context = {
-                let guard = self.instruments.read();
-                Self::context_for_symbol(&guard, &position.symbol)
-            };
-            let Some(context) = context else {
-                log::debug!(
-                    "Skipping Aster position for unloaded symbol {}",
-                    position.symbol
-                );
-                continue;
-            };
-
-            // The quantity is parsed before anything branches on flatness: an unparsable
-            // value must fail the report rather than read as "no position".
-            let signed_quantity = position
-                .signed_quantity()
-                .with_context(|| format!("Failed to parse Aster position {}", position.symbol))?;
-
-            // Flat rows are reported, not dropped. "The venue holds nothing here" is a fact the
-            // engine needs: it closes a position the cache still believes in, and under a
-            // bounded report window it is the only thing that can confirm the windowed fills
-            // net out (see `generate_mass_status`).
-            let position_side = if signed_quantity > Decimal::ZERO {
-                PositionSide::Long
-            } else if signed_quantity < Decimal::ZERO {
-                PositionSide::Short
-            } else {
-                PositionSide::Flat
-            };
-
-            let quantity = Quantity::from_decimal_dp(signed_quantity.abs(), context.size_precision)
-                .with_context(|| format!("Failed to parse Aster position {}", position.symbol))?;
-
-            // A flat row has no economic entry price and may carry a non-numeric placeholder;
-            // for a non-flat row the numeric field is required to build a complete report.
-            let avg_px = match parse_decimal(&position.entry_price, "entryPrice") {
-                Ok(price) => Some(price),
-                Err(_) if matches!(position_side, PositionSide::Flat) => None,
-                Err(e) => {
-                    return Err(anyhow::anyhow!(
-                        "Failed to parse Aster position {} entryPrice: {e}",
-                        position.symbol
-                    ));
-                }
-            };
-            let ts_last = position.update_time.map_or(ts_now, millis_to_nanos);
-
-            reports.push(PositionStatusReport::new(
-                self.core.account_id,
-                context.instrument_id,
-                position_side,
-                quantity,
-                ts_last,
-                ts_now,
-                Some(UUID4::new()),
-                None, // venue_position_id: one-way mode carries no venue position ID
-                avg_px,
-            ));
+        if let Some(symbol) = symbol {
+            anyhow::ensure!(
+                positions
+                    .iter()
+                    .all(|position| position.symbol.as_str() == symbol),
+                "Aster position snapshot contains symbols outside requested scope {symbol}",
+            );
         }
-
-        Ok(reports)
+        retain_position_scope(&mut scope, &self.instruments.read());
+        let infer_flat = {
+            let state = self.stream_state.read();
+            state.pending_trades.is_empty()
+                && state.pending_orders.is_empty()
+                && state.unresolved_coverage_count() == 0
+        };
+        let parsed = parse_position_snapshot(
+            &positions,
+            &scope,
+            self.core.account_id,
+            self.clock.get_time_ns(),
+            infer_flat,
+        );
+        if let Some(e) = parsed.failure {
+            return Err(e);
+        }
+        Ok(parsed.reports)
     }
 }
 
@@ -6804,6 +6846,42 @@ mod tests {
         fill.instrument_id = instrument_id;
 
         (vec![report], vec![fill], index)
+    }
+
+    #[rstest]
+    fn test_position_snapshot_scope_excludes_unloaded_and_newly_loaded_instruments() {
+        let (_, _, mut index) = flat_position_inputs();
+        let mut scope = index.snapshot();
+        index.replace(Vec::new());
+        retain_position_scope(&mut scope, &index);
+        let parsed = parse_position_snapshot(&[], &scope, account_id(), UnixNanos::default(), true);
+        assert!(parsed.reports.is_empty());
+        index.replace(vec![InstrumentAny::CryptoPerpetual(
+            crypto_perpetual_ethusdt(),
+        )]);
+        retain_position_scope(&mut scope, &index);
+        assert!(
+            scope.is_empty(),
+            "a new load was not covered by the request"
+        );
+    }
+
+    #[rstest]
+    fn test_bad_unloaded_position_row_invalidates_flat_inference_for_loaded_symbols() {
+        let (_, _, index) = flat_position_inputs();
+        let positions: Vec<AsterPositionRisk> = serde_json::from_str(
+            r#"[{"symbol":"UNLOADED","positionAmt":"bad","entryPrice":"0","positionSide":"BOTH"}]"#,
+        )
+        .unwrap();
+        let parsed = parse_position_snapshot(
+            &positions,
+            &index.snapshot(),
+            account_id(),
+            UnixNanos::default(),
+            true,
+        );
+        assert!(parsed.failure.is_some());
+        assert!(parsed.reports.is_empty());
     }
 
     #[rstest]

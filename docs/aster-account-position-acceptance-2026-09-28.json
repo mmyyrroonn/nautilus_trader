@@ -1,0 +1,84 @@
+{
+  "date": "2026-09-28",
+  "base_commit": "ecbd39cb1293afcee9650da37721ff6f1b08f882",
+  "native_source_unchanged_during_checks": true,
+  "native_checks": [
+    {
+      "name": "fmt",
+      "exit_code": 0,
+      "duration_ms": 390
+    },
+    {
+      "name": "test",
+      "exit_code": 0,
+      "duration_ms": 88703
+    },
+    {
+      "name": "doctest",
+      "exit_code": 0,
+      "duration_ms": 875
+    },
+    {
+      "name": "clippy",
+      "exit_code": 0,
+      "duration_ms": 655
+    }
+  ],
+  "tests": {
+    "aster": 421,
+    "portfolio": 227,
+    "passed": 648
+  },
+  "build": {
+    "profile": "nextest",
+    "features": "extension-module,arrow,betfair,high-precision,mimalloc,redis,postgres,defi,hypersync,tracing-bridge",
+    "wheel_filename": "nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+    "wheel_sha256": "3bb85f719d8f21332f07ccddffc160d39dd2346dae9cd4b3c44fe65bdf795f2d",
+    "installed_native_sha256": "acea9d58e992b8e597f851afb9e0a200d142fe653bf7b010bd0109c18859ed5d",
+    "installed_binary_matches_wheel": true
+  },
+  "source_sha256": {
+    "crates/adapters/aster/src/execution.rs": "95181b90e6b5d3abfe30c856a699cc1053c6dad366a96ce54357244d10fa0875",
+    "crates/adapters/aster/tests/common/mod.rs": "d261fc9b51de46745ef16fe12533c87f5a33f6c14faf99bb38b1a4f9133d5e0f",
+    "crates/adapters/aster/tests/exec_client.rs": "49d2f7ccd8e0505eeba225f82fcb36718255cdaeb1ec7ec0ca6ded636ba0df8f",
+    "crates/adapters/aster/test_data/http_position_risk_closed_testnet.json": "a575374d1210af75db07e4d7ae421b75b26b6c6a5b7500bf27c7ca878219fb49",
+    "crates/portfolio/src/portfolio.rs": "6a1cb17d3d17dddc7da6f48399d5a076578299f5ce84487076522f638e145c08",
+    "crates/portfolio/tests/portfolio.rs": "c80502c094f07e0ac412ff3a7eb1a2b45d1d46e54e91e72da5e9761a8cad1bcf",
+    "tests/integration_tests/adapters/aster/account_position_acceptance.py": "1dcfa3790c918a0dda7530b9771bd9ecbf88a9da6db801045793b9920058c4e5"
+  },
+  "application_reporter_sha256": "60c8b33af9df502170779e93e5ff332ed0045ee806b6700fa0287d69f5a29eaf",
+  "application_acceptance": {
+    "ws_free": "20.00000000",
+    "risk_denial": "INITIAL_MARGIN_EXCEEDS_FREE_BALANCE: free=20.00000000 USDT, margin=25.00000000 USDT",
+    "flat": true,
+    "closing_trade": "990102",
+    "commission_each": "0.02 USDT",
+    "repeated_reconnect": true,
+    "live_orders": 0,
+    "application_display": [
+      "[connect-only] ASTER account ASTER-001: USDT=100.00000000 USDT (free 20.00000000 USDT, locked 80.00000000 USDT)",
+      "[connect-only] ASTER position BTCUSDT-PERP.ASTER LONG qty=0.010 avg_px=50000.0",
+      "[connect-only] ASTER: 1 open position(s), 0 open order(s)",
+      "[connect-only] marks maker mid=50000 hedge mid=50000",
+      "[connect-only] ASTER account ASTER-001: USDT=100.00000000 USDT (free 20.00000000 USDT, locked 80.00000000 USDT)",
+      "[connect-only] ASTER position BTCUSDT-PERP.ASTER LONG qty=0.010 avg_px=50000.0",
+      "[connect-only] ASTER: 1 open position(s), 0 open order(s)",
+      "[connect-only] marks maker mid=50000 hedge mid=50000",
+      "[connect-only] ASTER account ASTER-001: USDT=100.00000000 USDT (free 30.00000000 USDT, locked 70.00000000 USDT)",
+      "[connect-only] ASTER: 0 open position(s), 0 open order(s)",
+      "[connect-only] marks maker mid=50000 hedge mid=50000"
+    ]
+  },
+  "environment": "Isolated CPython 3.12 venv on Windows; loopback REST/WS only; no credentials or real venue orders.",
+  "application_existing_tests": {
+    "files": [
+      "tests/test_exec_probe.py",
+      "tests/test_live_limits.py",
+      "tests/test_maker_live.py"
+    ],
+    "passed": 385,
+    "subtests_passed": 97,
+    "warnings": 1,
+    "duration_seconds": 28.06
+  }
+}
