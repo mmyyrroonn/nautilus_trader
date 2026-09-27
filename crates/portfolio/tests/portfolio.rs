@@ -667,6 +667,128 @@ fn test_initialize_positions_splits_margin_by_account_when_broker_routed(
 }
 
 #[rstest]
+#[case::reported_position(false, false, "20.00 USD")]
+#[case::calculated_position(true, false, "9997.00 USD")]
+#[case::reported_order(false, true, "20.00 USD")]
+#[case::calculated_order(true, true, "9997.00 USD")]
+fn test_initialize_margin_preserves_reported_balances(
+    mut simple_cache: Cache,
+    clock: TestClock,
+    #[case] calculated: bool,
+    #[case] initialize_orders: bool,
+    #[case] expected_free: &str,
+) {
+    let account_id = AccountId::new("SIM-001");
+    let instrument = InstrumentAny::CurrencyPair(default_fx_ccy(
+        Symbol::from("EUR/USD"),
+        Some(Venue::new("SIM")),
+    ));
+    simple_cache.add_instrument(instrument.clone()).unwrap();
+    let mut portfolio = Portfolio::new(
+        Rc::new(RefCell::new(clock)),
+        Rc::new(RefCell::new(simple_cache)),
+        None,
+    );
+    let mut state = get_margin_account(Some(account_id.as_str()));
+    state.balances = vec![AccountBalance::new(
+        Money::from("10000.00 USD"),
+        Money::from("9980.00 USD"),
+        Money::from("20.00 USD"),
+    )];
+    portfolio.update_account(&state);
+    portfolio
+        .cache()
+        .borrow_mut()
+        .account_mut(&account_id)
+        .unwrap()
+        .set_calculate_account_state(calculated);
+    let fill = make_fill_for_account(
+        &instrument,
+        account_id,
+        OrderSide::Buy,
+        Quantity::from("100"),
+        Price::from("1.00000"),
+        PositionId::new("P-REPORTED"),
+    );
+    if initialize_orders {
+        let order = OrderTestBuilder::new(OrderType::Limit)
+            .client_order_id(ClientOrderId::new("O-REPORTED"))
+            .instrument_id(instrument.id())
+            .side(OrderSide::Buy)
+            .quantity(Quantity::from("100"))
+            .price(Price::from("1.00000"))
+            .build();
+        portfolio
+            .cache()
+            .borrow_mut()
+            .add_order(order.clone(), None, None, false)
+            .unwrap();
+        let submitted = order_submitted(
+            order.trader_id(),
+            order.strategy_id(),
+            order.instrument_id(),
+            order.client_order_id(),
+            account_id,
+            uuid4(),
+        );
+        portfolio
+            .cache()
+            .borrow_mut()
+            .update_order(&OrderEventAny::Submitted(submitted))
+            .unwrap();
+        let accepted = order_accepted(
+            order.trader_id(),
+            order.strategy_id(),
+            order.instrument_id(),
+            order.client_order_id(),
+            account_id,
+            VenueOrderId::new("V-REPORTED"),
+            uuid4(),
+        );
+        portfolio
+            .cache()
+            .borrow_mut()
+            .update_order(&OrderEventAny::Accepted(accepted))
+            .unwrap();
+    } else {
+        let position = Position::new(&instrument, fill);
+        portfolio
+            .cache()
+            .borrow_mut()
+            .add_position(&position, OmsType::Hedging)
+            .unwrap();
+    }
+    let quote = get_quote_tick(&instrument, 1.0, 1.0, 1.0, 1.0);
+    portfolio.cache().borrow_mut().add_quote(quote).unwrap();
+    if initialize_orders {
+        portfolio.initialize_orders();
+    } else {
+        portfolio.initialize_positions();
+    }
+    let account = portfolio
+        .cache()
+        .borrow()
+        .account_owned(&account_id)
+        .unwrap();
+    assert_eq!(
+        account.balance_free(Some(Currency::USD())),
+        Some(Money::from(expected_free))
+    );
+    assert_eq!(
+        account.balance_total(Some(Currency::USD())),
+        Some(Money::from("10000.00 USD"))
+    );
+    let AccountAny::Margin(account) = account else {
+        panic!("expected margin account")
+    };
+    assert_eq!(
+        account.margins.len(),
+        1,
+        "margin estimates remain available"
+    );
+}
+
+#[rstest]
 fn test_initialize_orders_splits_initial_margin_by_account_when_broker_routed(
     mut simple_cache: Cache,
     clock: TestClock,

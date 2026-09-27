@@ -1,0 +1,11 @@
+{
+  "_source": {
+    "venue": "Aster testnet",
+    "observed_on": "2026-09-05",
+    "endpoint": "GET positionRisk",
+    "evidence": "https://github.com/mmyyrroonn/Nautilus-Perps/blob/aff9530799e70423207bb9e4f5b14e8dd274fba1/reports/aster-review-2026-09-05-response.md",
+    "section": "D2",
+    "note": "Historical acceptance report records positionRisk=[] after five IOC buys and two manual reduce-only sells closed ETHUSDT. This preserves that recorded empty response, not a new capture or the complete trade history."
+  },
+  "response": []
+}

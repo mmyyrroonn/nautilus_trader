@@ -334,6 +334,10 @@ longer be confirmed must not keep being applied as though it still were.
 
 ## Testing
 
+Account availability, omitted-position recovery, installed-wheel application acceptance,
+and the historical omission fixture are described in the
+[2026-09-28 acceptance report](../../../docs/aster-account-position-acceptance-2026-09-28.md).
+
 `test_data/signing_vectors.json` carries the EIP-712 signature vectors. Their parameter strings
 come from CCXT's static request fixtures; the expected signatures were regenerated with
 `eth-account` (the library used by Aster's own signing example) because CCXT lists `signature`

@@ -135,6 +135,11 @@ pub(crate) struct VenueScript {
     pub(crate) order_query_faults: HashMap<String, usize>,
     /// `GET /fapi/v3/positionRisk` body.
     pub(crate) position_risk: Value,
+    /// Raw position endpoint failure or delay, for incomplete-snapshot recovery tests.
+    pub(crate) position_status: Option<(u16, String)>,
+    pub(crate) position_stall: Option<Duration>,
+    /// Raw balance endpoint failure, for account verification tests.
+    pub(crate) balance_status: Option<(u16, String)>,
     /// `GET /fapi/v3/positionSide/dual` body, when the venue answers one.
     pub(crate) position_mode: Option<Value>,
     /// Aster error body returned by `GET /fapi/v3/positionSide/dual`, if any.
@@ -175,6 +180,9 @@ impl Default for VenueScript {
             user_trades_error: HashMap::new(),
             order_query_faults: HashMap::new(),
             position_risk: json!([]),
+            position_status: None,
+            position_stall: None,
+            balance_status: None,
             position_mode: None,
             position_mode_error: None,
             position_mode_status: None,
@@ -405,7 +413,7 @@ async fn handle_commission_rate(
 async fn handle_balance(State(venue): State<MockVenue>) -> Response {
     venue.record("GET", "balance", HashMap::new());
 
-    let (stall, body) = {
+    let (stall, body, failure) = {
         let mut script = venue.script.lock();
         let stall = if script.balance_stalls > 0 {
             script.balance_stalls -= 1;
@@ -415,11 +423,19 @@ async fn handle_balance(State(venue): State<MockVenue>) -> Response {
         };
         // The body is read when the request arrives, not when the response leaves: a stalled
         // response must carry the account as it was when the read began.
-        (stall, script.balances.clone())
+        (
+            stall,
+            script.balances.clone(),
+            script.balance_status.clone(),
+        )
     };
 
     if let Some(delay) = stall {
         tokio::time::sleep(delay).await;
+    }
+
+    if let Some((status, body)) = failure {
+        return (StatusCode::from_u16(status).expect("test status"), body).into_response();
     }
 
     json_ok(&body)
@@ -430,7 +446,20 @@ async fn handle_position_risk(
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
     venue.record("GET", "positionRisk", params);
-    let body = venue.script.lock().position_risk.clone();
+    let (body, failure, stall) = {
+        let script = venue.script.lock();
+        (
+            script.position_risk.clone(),
+            script.position_status.clone(),
+            script.position_stall,
+        )
+    };
+    if let Some(delay) = stall {
+        tokio::time::sleep(delay).await;
+    }
+    if let Some((status, body)) = failure {
+        return (StatusCode::from_u16(status).expect("test status"), body).into_response();
+    }
     json_ok(&body)
 }
 

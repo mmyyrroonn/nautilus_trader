@@ -1631,7 +1631,277 @@ async fn test_generate_position_status_reports_allows_an_unparsable_flat_entry_p
         .await
         .expect("flat positions do not require an entry price");
 
-    assert_eq!(reports.len(), 1);
+    assert_eq!(
+        reports.len(),
+        2,
+        "the omitted loaded ETH symbol is also flat"
+    );
+    let btc = reports
+        .iter()
+        .find(|r| r.instrument_id == InstrumentId::from(BTC))
+        .unwrap();
+    assert_eq!(btc.position_side, PositionSide::Flat);
+    assert!(btc.avg_px_open.is_none());
+}
+
+/// A complete positionRisk response omits closed symbols. Reporting that omission must have
+/// the same meaning at startup, in periodic reports, and after a stream outage.
+#[rstest]
+#[case(None, vec![BTC, ETH])]
+#[case(Some(BTC), vec![BTC])]
+#[tokio::test]
+async fn test_complete_position_snapshot_reports_omitted_loaded_symbols_as_flat(
+    #[case] requested: Option<&str>,
+    #[case] expected: Vec<&str>,
+) {
+    let venue = MockVenue::start().await;
+    let harness = connected_harness(&venue).await;
+    let fixture: Value = serde_json::from_str(include_str!(
+        "../test_data/http_position_risk_closed_testnet.json"
+    ))
+    .expect("historical testnet fixture");
+    venue.script(|s| s.position_risk = fixture["response"].clone());
+    let cmd = GeneratePositionStatusReports::new(
+        UUID4::new(),
+        UnixNanos::default(),
+        requested.map(InstrumentId::from),
+        None,
+        None,
+        None,
+        None,
+    );
+    let reports = harness
+        .client
+        .generate_position_status_reports(&cmd)
+        .await
+        .unwrap();
+    let mut ids: Vec<_> = reports
+        .iter()
+        .map(|r| r.instrument_id.to_string())
+        .collect();
+    ids.sort();
+    assert_eq!(ids, expected);
+    assert!(
+        reports
+            .iter()
+            .all(|r| r.position_side == PositionSide::Flat && r.quantity.is_zero())
+    );
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_reconnect_reports_flat_for_a_position_omitted_after_external_close() {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    venue.script(|s| {
+        s.position_risk = json!([{
+            "symbol": "BTCUSDT", "positionAmt": "0.010", "entryPrice": "50000.00",
+            "positionSide": "BOTH", "updateTime": now_ms(),
+        }]);
+    });
+    drive_compensation(&venue, 2).await;
+    let events = drain_exec(&mut harness.exec_rx);
+    assert!(events.iter().any(|event| matches!(event,
+        ExecutionEvent::Report(ExecutionReport::Position(r))
+            if r.instrument_id == InstrumentId::from(BTC) && r.position_side == PositionSide::Long
+    )));
+    venue.script(|s| s.position_risk = json!([]));
+    drive_compensation(&venue, 3).await;
+    let events = drain_exec(&mut harness.exec_rx);
+    assert!(events.iter().any(|event| matches!(event,
+        ExecutionEvent::Report(ExecutionReport::Position(r))
+            if r.instrument_id == InstrumentId::from(BTC) && r.position_side == PositionSide::Flat
+                && r.quantity.is_zero()
+    )), "the closed position must be reported: {events:?}");
+    assert!(harness.client.is_ready());
+}
+
+#[rstest]
+#[case("bad_quantity")]
+#[case("bad_entry_price")]
+#[case("duplicate")]
+#[case("hedged")]
+#[case("http_failure")]
+#[case("timeout")]
+#[tokio::test]
+async fn test_incomplete_reconnect_snapshot_never_infers_flat(#[case] fault: &str) {
+    let venue = MockVenue::start().await;
+    script_connect(&venue);
+    let mut harness = build_harness(&venue, Some(1));
+    seed_account(&harness.cache);
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    drain_exec(&mut harness.exec_rx);
+    venue.clear_requests();
+    venue.script(|s| {
+        let mut row = json!({"symbol":"BTCUSDT", "positionAmt":"0.010",
+            "entryPrice":"50000.00", "positionSide":"BOTH", "updateTime":now_ms()});
+        match fault {
+            "bad_quantity" => row["positionAmt"] = json!("invalid"),
+            "bad_entry_price" => row["entryPrice"] = json!("invalid"),
+            "hedged" => row["positionSide"] = json!("LONG"),
+            "http_failure" => s.position_status = Some((503, "unavailable".to_string())),
+            "timeout" => s.position_stall = Some(Duration::from_secs(3)),
+            _ => {}
+        }
+        s.position_risk = if fault == "duplicate" {
+            json!([row.clone(), row])
+        } else {
+            json!([row])
+        };
+    });
+    venue.drop_ws();
+    wait_until_async(
+        || async { venue.ws_connection_count() >= 2 },
+        Duration::from_secs(20),
+    )
+    .await;
+    wait_until_async(
+        || async { !venue.requests_for("GET", "positionRisk").is_empty() },
+        Duration::from_secs(20),
+    )
+    .await;
+    // Observe past the HTTP timeout too; no later response may supply an inferred flat.
+    let events = wait_for_events(&mut harness, Duration::from_secs(3), |_| false).await;
+    assert!(!events.iter().any(|event| matches!(event,
+        ExecutionEvent::Report(ExecutionReport::Position(r)) if r.position_side == PositionSide::Flat
+    )), "an incomplete response must not clear ETH or BTC: {events:?}");
+    assert!(!harness.client.is_ready());
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_reconnect_with_fill_debt_never_infers_flat() {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    drain_exec(&mut harness.exec_rx);
+    venue.script(|s| {
+        s.user_trades_error.insert(
+            "BTCUSDT".to_string(),
+            json!({"code": -1000, "msg": "unavailable"}),
+        );
+        s.position_risk = json!([]);
+    });
+    drive_compensation(&venue, 2).await;
+    let events = drain_exec(&mut harness.exec_rx);
+    assert!(!events.iter().any(|event| matches!(event,
+        ExecutionEvent::Report(ExecutionReport::Position(r)) if r.position_side == PositionSide::Flat
+    )), "fills must be recovered before inferring flat: {events:?}");
+    assert!(!harness.client.is_ready());
+}
+
+/// The final flat report confirms the real closing trade rather than replacing its economics.
+#[rstest]
+#[tokio::test]
+async fn test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once() {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    drain_exec(&mut harness.exec_rx);
+    let time = now_ms();
+    venue.script(|s| {
+        for (order_id, trade_id, client_id, side, offset) in [
+            (980001, 980101, "O-OPEN-FLAT", "BUY", 0),
+            (980002, 980102, "O-CLOSE-FLAT", "SELL", 1),
+        ] {
+            let mut order = venue_order(order_id, client_id, "BTCUSDT", "FILLED", side);
+            order["time"] = json!(time + offset);
+            order["updateTime"] = json!(time + offset);
+            order["reduceOnly"] = json!(side == "SELL");
+            s.orders.insert(order_id.to_string(), order);
+            let mut trade = venue_trade(trade_id, order_id, "BTCUSDT", time + offset, "0.02");
+            trade["side"] = json!(side);
+            trade["buyer"] = json!(side == "BUY");
+            s.user_trades
+                .entry("BTCUSDT".to_string())
+                .or_default()
+                .push(trade);
+        }
+        s.position_risk = json!([]);
+    });
+    drive_compensation(&venue, 2).await;
+    let mut events = drain_exec(&mut harness.exec_rx);
+    drive_compensation(&venue, 3).await;
+    events.extend(drain_exec(&mut harness.exec_rx));
+
+    let cache = Rc::new(RefCell::new(Cache::default()));
+    seed_account(&cache);
+    while let Ok(event) = harness.data_rx.try_recv() {
+        if let DataEvent::Instrument(instrument) = event {
+            cache.borrow_mut().add_instrument(instrument).unwrap();
+        }
+    }
+    let mut engine =
+        ExecutionEngine::new(Rc::new(RefCell::new(TestClock::new())), cache.clone(), None);
+    engine.register_client(Box::new(harness.client)).unwrap();
+    engine.register_oms_type(StrategyId::from("EXTERNAL"), OmsType::Netting);
+    for event in &events {
+        if let ExecutionEvent::Report(report) = event {
+            engine.reconcile_execution_report(report);
+        }
+    }
+    let cache = cache.borrow();
+    for (client_id, trade_id) in [("O-OPEN-FLAT", "980101"), ("O-CLOSE-FLAT", "980102")] {
+        let order = cache.order(&ClientOrderId::from(client_id)).unwrap();
+        assert_eq!(order.filled_qty(), Quantity::from("0.010"));
+        assert_eq!(order.trade_ids().len(), 1);
+        assert_eq!(order.trade_ids()[0].as_str(), trade_id);
+        assert_eq!(
+            order.commissions().get(&Currency::USDT()),
+            Some(&Money::from("0.02 USDT"))
+        );
+    }
+    assert!(
+        cache
+            .positions_open(None, Some(&InstrumentId::from(BTC)), None, None, None)
+            .is_empty()
+    );
+    assert_eq!(
+        cache
+            .positions(None, Some(&InstrumentId::from(BTC)), None, None, None)
+            .len(),
+        1
+    );
+}
+
+/// #2: failed verification leaves the conservative amount intact and makes readiness visible.
+#[rstest]
+#[tokio::test]
+async fn test_failed_balance_verification_preserves_available_and_degrades_readiness() {
+    let venue = MockVenue::start().await;
+    script_connect(&venue);
+    venue.script(|s| {
+        s.balances = json!([{"asset":"USDT", "balance":"100", "availableBalance":"20"}]);
+    });
+    let mut harness = build_harness(&venue, Some(1));
+    seed_account(&harness.cache);
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    drain_exec(&mut harness.exec_rx);
+    venue.script(|s| s.balance_status = Some((503, "unavailable".to_string())));
+    venue.push_ws(&json!({"e":"ACCOUNT_UPDATE", "E":now_ms(), "T":now_ms(),
+        "a":{"m":"ORDER", "B":[{"a":"USDT","wb":"100","cw":"100","bc":"0"}], "P":[]}}));
+    let events = wait_for_events(&mut harness, Duration::from_secs(10), |events| {
+        !account_states(events).is_empty()
+    })
+    .await;
+    let states = account_states(&events);
+    assert_eq!(
+        states.last().unwrap().balances[0].free,
+        Money::from("20 USDT")
+    );
+    wait_until_async(
+        || async { !harness.client.is_ready() },
+        Duration::from_secs(15),
+    )
+    .await;
+    let events = drain_exec(&mut harness.exec_rx);
+    assert!(
+        account_states(&events)
+            .iter()
+            .flat_map(|s| &s.balances)
+            .all(|balance| balance.free == Money::from("20 USDT"))
+    );
+    assert_eq!(harness.client.readiness_phase(), "degraded");
 }
 
 // ------------------------------------------------------------------------------------------------
