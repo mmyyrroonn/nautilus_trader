@@ -26,7 +26,13 @@
 //! rejected at submission. Order modification is not supported by this adapter: cancel and
 //! resubmit instead.
 
-use std::{collections::BTreeSet, fmt, str::FromStr, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+    str::FromStr,
+    sync::Arc,
+    time::Duration,
+};
 
 use ahash::{AHashMap, AHashSet};
 use anyhow::Context;
@@ -52,7 +58,7 @@ use nautilus_common::{
     clients::ExecutionClient,
     live::runner::{get_exec_event_sender, try_get_data_event_sender},
     messages::{
-        DataEvent,
+        DataEvent, ExecutionReport,
         execution::{
             CancelAllOrders, CancelOrder, GenerateFillReports, GenerateFillReportsBuilder,
             GenerateOrderStatusReport, GenerateOrderStatusReports,
@@ -143,7 +149,11 @@ const AMBIGUOUS_SUBMIT_QUERY_DELAYS: [Duration; 3] = [
 const COMPENSATION_FILL_RETRY_DELAYS: [Duration; 2] =
     [Duration::from_secs(1), Duration::from_secs(3)];
 
-/// Trade IDs retained per symbol for deduplicating REST compensation against stream fills.
+/// Maximum number of exact trade IDs retained per symbol for the fast duplicate path.
+///
+/// Once an ID leaves this cache, the owning order is marked as having incomplete ID coverage.
+/// A later status/query path must then verify the order against its complete real trade history;
+/// an evicted ID is never treated as delivered merely because it is numerically older.
 const MAX_TRACKED_TRADE_IDS: usize = 4_096;
 
 /// How far back compensation looks for fills on a symbol the stream never reported one for.
@@ -336,7 +346,9 @@ fn align_report_with_fills(report: &mut OrderStatusReport, fills: &[&FillReport]
 /// Called once per successful `connect`. Everything older belongs to the execution engine's
 /// startup reconciliation, which delivers it as reports against the orders it already knows.
 fn mark_session_start(state: &Arc<RwLock<StreamState>>, now_ms: i64) {
-    state.write().session_start_ms = now_ms;
+    let mut state = state.write();
+    state.session_start_ms = now_ms;
+    state.history_checkpoints.clear();
 }
 
 /// Returns whether a failed user data stream connect is worth repeating.
@@ -407,32 +419,51 @@ struct SymbolContext {
 
 /// The trades already applied for one symbol, with the newest trade time observed.
 ///
-/// The set is bounded: compensation only needs to recognise trades the stream already
-/// delivered around the outage, not the account's whole history.
+/// The ledger stores a bounded exact ID cache. When an ID leaves it, the owning order becomes
+/// coverage-unknown and must be checked against complete REST history before another cumulative
+/// status can be emitted. A lower ID that was never delivered therefore remains distinguishable
+/// from an old replay, even when the cache is full.
 #[derive(Debug, Default)]
 struct AppliedTrades {
-    ids: BTreeSet<i64>,
+    ids: BTreeMap<i64, AppliedTrade>,
     last_ts_ms: i64,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct AppliedTrade {
+    venue_order_id: Ustr,
+    qty: Decimal,
+    ts_ms: i64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum AppliedTradeResult {
+    New,
+    Duplicate,
+    Evicted(AppliedTrade),
+}
+
 impl AppliedTrades {
-    fn record(&mut self, trade_id: i64, ts_ms: i64) -> bool {
-        self.last_ts_ms = self.last_ts_ms.max(ts_ms);
-
-        if !self.ids.insert(trade_id) {
-            return false;
+    fn record(&mut self, trade_id: i64, trade: AppliedTrade) -> AppliedTradeResult {
+        if self.ids.contains_key(&trade_id) {
+            return AppliedTradeResult::Duplicate;
         }
 
-        while self.ids.len() > MAX_TRACKED_TRADE_IDS {
-            let oldest = *self.ids.iter().next().expect("set is non-empty");
-            self.ids.remove(&oldest);
-        }
+        self.last_ts_ms = self.last_ts_ms.max(trade.ts_ms);
+        self.ids.insert(trade_id, trade);
 
-        true
+        let evicted = if self.ids.len() > MAX_TRACKED_TRADE_IDS {
+            let oldest = *self.ids.first_key_value().expect("cache is non-empty").0;
+            self.ids.remove(&oldest)
+        } else {
+            None
+        };
+
+        evicted.map_or(AppliedTradeResult::New, AppliedTradeResult::Evicted)
     }
 
     fn contains(&self, trade_id: i64) -> bool {
-        self.ids.contains(&trade_id)
+        self.ids.contains_key(&trade_id)
     }
 }
 
@@ -483,12 +514,14 @@ impl CompensatedFills {
 }
 
 /// One trade a report request covered, pending the dedupe commit.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct DeliveredFill {
     symbol: Ustr,
     venue_order_id: Ustr,
     trade_id: i64,
     ts_ms: i64,
+    /// The already parsed quantity, kept in the same exact Decimal form as the FillReport.
+    qty: Decimal,
 }
 
 /// Cross-task view of what the private stream has already reported.
@@ -500,6 +533,10 @@ struct DeliveredFill {
 struct StreamState {
     /// Client order ID to venue symbol, for every order believed to be working at the venue.
     working_orders: AHashMap<Ustr, Ustr>,
+    /// Venue order IDs that are still working. This lets the bounded trade cache distinguish an
+    /// active order, whose evicted ID is a recovery debt, from a terminal order whose exact
+    /// lifecycle has already completed and whose fast-path metadata may be reclaimed.
+    working_venue_orders: AHashSet<Ustr>,
     /// Applied trade IDs per venue symbol.
     applied_trades: AHashMap<Ustr, AppliedTrades>,
     /// Trade IDs reported but not applied, per symbol.
@@ -508,12 +545,31 @@ struct StreamState {
     /// whatever blocked it — a missing order, most often — has resolved, however far the
     /// window this pass reads has since moved on.
     pending_trades: AHashMap<Ustr, BTreeSet<i64>>,
+    /// Venue orders whose cumulative filled quantity still needs real trade evidence.
+    ///
+    /// The order ID is retained independently of `working_orders`: a filled order can disappear
+    /// from `openOrders` before its user-trade history becomes readable.
+    pending_orders: AHashMap<Ustr, Ustr>,
+    /// Exact quantities covered by trade IDs already delivered to the engine, keyed by venue
+    /// order ID. A cumulative order status is safe only when this amount matches it.
+    confirmed_fill_qty: AHashMap<Ustr, Decimal>,
+    /// Orders for which the bounded ID cache no longer contains every delivered trade.
+    ///
+    /// These orders must be verified from complete REST history before another cumulative
+    /// status is emitted. The marker is cleared only by that full-history proof.
+    coverage_unknown: AHashSet<Ustr>,
     /// Millisecond timestamp at which this client connected.
     ///
     /// Compensation never reaches behind it. Fills older than the connect belong to the
     /// engine's own startup reconciliation, and re-delivering them as live session events is
     /// what makes the engine reject an `OrderFilled` for an order it already holds as filled.
     session_start_ms: i64,
+    /// End of the last complete, successfully delivered history pass per symbol.
+    ///
+    /// This is the only compensation watermark. A single WebSocket fill may arrive out of order
+    /// relative to an external order that was never in `working_orders`; advancing from that
+    /// fill's timestamp would leave the older real trade outside the next query window.
+    history_checkpoints: AHashMap<Ustr, i64>,
     /// The conservative upper bound of each asset's available amount, keyed by asset.
     ///
     /// A REST snapshot is the only surface on which the venue states how much of an asset is
@@ -565,8 +621,53 @@ impl StreamState {
         self.working_orders.insert(client_order_id, symbol);
     }
 
+    fn track_working_venue_order(&mut self, venue_order_id: Ustr) {
+        self.working_venue_orders.insert(venue_order_id);
+    }
+
     fn forget_working_order(&mut self, client_order_id: &Ustr) {
         self.working_orders.remove(client_order_id);
+    }
+
+    fn forget_working_venue_order(&mut self, venue_order_id: &Ustr) {
+        self.working_venue_orders.remove(venue_order_id);
+    }
+
+    fn note_pending_order(&mut self, venue_order_id: Ustr, symbol: Ustr) {
+        self.pending_orders.insert(venue_order_id, symbol);
+    }
+
+    fn forget_pending_order(&mut self, venue_order_id: &Ustr) {
+        self.pending_orders.remove(venue_order_id);
+    }
+
+    fn pending_orders(&self) -> Vec<(Ustr, Ustr)> {
+        self.pending_orders
+            .iter()
+            .map(|(venue_order_id, symbol)| (*venue_order_id, *symbol))
+            .collect()
+    }
+
+    fn has_recovery_debt(&self) -> bool {
+        !self.pending_trades.is_empty()
+            || !self.pending_orders.is_empty()
+            || self.unresolved_coverage_count() > 0
+    }
+
+    /// Returns coverage markers that still belong to an order whose lifecycle is unresolved.
+    ///
+    /// An eviction from the bounded fast cache is not, by itself, a missing fill. Once a
+    /// terminal order has delivered its exact bundle, its cache rows may be reclaimed without
+    /// holding the whole session in `Degraded`. An active or pending order is different: a later
+    /// status or trade cannot safely be interpreted until the complete order history is read.
+    fn unresolved_coverage_count(&self) -> usize {
+        self.coverage_unknown
+            .iter()
+            .filter(|venue_order_id| {
+                self.working_venue_orders.contains(venue_order_id)
+                    || self.pending_orders.contains_key(venue_order_id)
+            })
+            .count()
     }
 
     /// Replaces the conservative bounds with one full account snapshot.
@@ -701,8 +802,14 @@ impl StreamState {
         parsed.balances.clone()
     }
 
-    /// Records a fill, returning whether it had not been applied before.
-    fn record_fill(&mut self, symbol: Ustr, trade_id: i64, ts_ms: i64) -> bool {
+    fn record_trade(
+        &mut self,
+        symbol: Ustr,
+        venue_order_id: Ustr,
+        trade_id: i64,
+        ts_ms: i64,
+        qty: Decimal,
+    ) -> AppliedTradeResult {
         if let Some(pending) = self.pending_trades.get_mut(&symbol) {
             pending.remove(&trade_id);
             if pending.is_empty() {
@@ -710,10 +817,157 @@ impl StreamState {
             }
         }
 
-        self.applied_trades
-            .entry(symbol)
-            .or_default()
-            .record(trade_id, ts_ms)
+        let (result, current_retained) = {
+            let applied = self.applied_trades.entry(symbol).or_default();
+            let result = applied.record(
+                trade_id,
+                AppliedTrade {
+                    venue_order_id,
+                    qty,
+                    ts_ms,
+                },
+            );
+            let current_retained = applied.contains(trade_id);
+            (result, current_retained)
+        };
+
+        if let AppliedTradeResult::Evicted(evicted) = &result {
+            // The exact metadata of the evicted ID is intentionally not treated as a floor.
+            // Mark the order that owned that ID, and if the newly inserted ID itself fell out
+            // of the bounded cache (a sparse, late low ID), mark its order as unknown too.
+            if !evicted.venue_order_id.as_str().is_empty()
+                && (self.working_venue_orders.contains(&evicted.venue_order_id)
+                    || self.pending_orders.contains_key(&evicted.venue_order_id))
+            {
+                self.coverage_unknown.insert(evicted.venue_order_id);
+                self.pending_orders.insert(evicted.venue_order_id, symbol);
+            }
+            if !current_retained
+                && !venue_order_id.as_str().is_empty()
+                && (self.working_venue_orders.contains(&venue_order_id)
+                    || self.pending_orders.contains_key(&venue_order_id))
+            {
+                self.coverage_unknown.insert(venue_order_id);
+                self.pending_orders.insert(venue_order_id, symbol);
+            }
+        }
+
+        result
+    }
+
+    /// Records a real fill and its exact contribution to the order cumulative quantity.
+    ///
+    /// The quantity is added only when the trade ID was new. Callers must check the returned
+    /// value before emitting a report so a repeated WebSocket/REST observation has no economic
+    /// effect and cannot double-count the order.
+    fn record_fill_for_order(
+        &mut self,
+        symbol: Ustr,
+        venue_order_id: Ustr,
+        trade_id: i64,
+        ts_ms: i64,
+        qty: Decimal,
+    ) -> bool {
+        if self.coverage_unknown.contains(&venue_order_id) {
+            self.note_pending_order(venue_order_id, symbol);
+            self.note_pending_fill(symbol, trade_id);
+            return false;
+        }
+
+        let result = self.record_trade(symbol, venue_order_id, trade_id, ts_ms, qty);
+        if matches!(result, AppliedTradeResult::Duplicate)
+            || self.coverage_unknown.contains(&venue_order_id)
+        {
+            if self.coverage_unknown.contains(&venue_order_id) {
+                self.note_pending_order(venue_order_id, symbol);
+                self.note_pending_fill(symbol, trade_id);
+            }
+            return false;
+        }
+
+        *self.confirmed_fill_qty.entry(venue_order_id).or_default() += qty;
+        true
+    }
+
+    fn commit_verified_order_history(
+        &mut self,
+        symbol: Ustr,
+        venue_order_id: Ustr,
+        fills: &[FillReport],
+        filled_qty: Decimal,
+    ) {
+        for fill in fills {
+            let Ok(trade_id) = fill.trade_id.as_str().parse::<i64>() else {
+                continue;
+            };
+            self.record_trade(
+                symbol,
+                venue_order_id,
+                trade_id,
+                (fill.ts_event.as_u64() / 1_000_000) as i64,
+                fill.last_qty.as_decimal(),
+            );
+        }
+
+        // The complete history is the source of truth for the aggregate, regardless of which
+        // individual IDs remain in the bounded fast cache after this commit.
+        self.confirmed_fill_qty.insert(venue_order_id, filled_qty);
+        self.coverage_unknown.remove(&venue_order_id);
+    }
+
+    fn confirmed_fill_qty(&self, venue_order_id: &Ustr) -> Decimal {
+        self.confirmed_fill_qty
+            .get(venue_order_id)
+            .copied()
+            .unwrap_or(Decimal::ZERO)
+    }
+
+    /// Marks an order unknown when a later status needs IDs that the bounded cache no longer has.
+    ///
+    /// Terminal cache eviction alone is harmless: it does not create a debt or prevent a clean
+    /// reconnect. The first status/fill that needs the aggregate is the point at which the
+    /// missing exact IDs become material. At that point the order is held for a complete history
+    /// proof instead of allowing a bare cumulative status to manufacture a trade after the
+    /// execution engine has pruned its own order cache.
+    fn mark_coverage_unknown_if_incomplete(&mut self, symbol: &Ustr, venue_order_id: Ustr) {
+        if self.coverage_unknown.contains(&venue_order_id) {
+            return;
+        }
+
+        let confirmed = self.confirmed_fill_qty(&venue_order_id);
+        if confirmed.is_zero() {
+            return;
+        }
+
+        let cached = self
+            .applied_trades
+            .get(symbol)
+            .map(|applied| {
+                applied
+                    .ids
+                    .values()
+                    .filter(|trade| trade.venue_order_id == venue_order_id)
+                    .map(|trade| trade.qty)
+                    .sum()
+            })
+            .unwrap_or(Decimal::ZERO);
+        if cached != confirmed {
+            self.coverage_unknown.insert(venue_order_id);
+            self.pending_orders.insert(venue_order_id, *symbol);
+        }
+    }
+
+    fn coverage_unknown(&self, venue_order_id: &Ustr) -> bool {
+        self.coverage_unknown.contains(venue_order_id)
+    }
+
+    /// Full-history replay is unambiguous only when no prior quantity for the order was
+    /// delivered. Once the bounded cache has evicted an ID from an order with a nonzero
+    /// aggregate, this client cannot prove which historical rows the execution engine still
+    /// owns (the engine cache may have pruned the order), so it must stay pending rather than
+    /// replaying old economics.
+    fn can_rebase_unknown_order(&self, venue_order_id: &Ustr) -> bool {
+        self.coverage_unknown(venue_order_id) && self.confirmed_fill_qty(venue_order_id).is_zero()
     }
 
     /// Notes a trade that was reported but not applied, so it stays recoverable.
@@ -750,27 +1004,24 @@ impl StreamState {
             .is_some_and(|applied| applied.contains(trade_id))
     }
 
-    /// Returns the newest trade time seen for a symbol, if any.
-    fn last_fill_ms(&self, symbol: &Ustr) -> Option<i64> {
-        self.applied_trades
-            .get(symbol)
-            .map(|applied| applied.last_ts_ms)
-            .filter(|ts| *ts > 0)
-    }
-
-    /// Returns the millisecond floor compensation may query from for `symbol`.
+    /// Returns the next complete-history checkpoint for `symbol`.
     ///
-    /// Never earlier than the connect: an outage this session observed cannot have hidden a
-    /// fill that happened before the session existed.
-    ///
-    /// Trades still awaiting recovery deliberately do *not* pull this floor back to their own
-    /// timestamp. The dedupe set is bounded, so a window reaching behind it re-reads trades it
-    /// can no longer recognise and re-delivers them as live fills; those trades are fetched by
-    /// ID instead (see [`SessionContext::query_pending_trades`]).
+    /// Before the first successful pass this starts at the connection instant (or the bounded
+    /// fallback for an unconnected unit state). A high-timestamp WebSocket row never advances
+    /// it, so an external order with an older fill cannot be skipped by a later query.
     fn compensation_start_ms(&self, symbol: &Ustr, default_start_ms: i64) -> i64 {
-        self.last_fill_ms(symbol)
+        self.history_checkpoints
+            .get(symbol)
+            .copied()
             .unwrap_or(default_start_ms)
             .max(self.session_start_ms)
+    }
+
+    /// Advances the symbol checkpoint only after the history request and every missed order in
+    /// it were delivered successfully. WebSocket observations never call this method.
+    fn advance_history_checkpoint(&mut self, symbol: Ustr, end_ms: i64) {
+        self.history_checkpoints
+            .insert(symbol, end_ms.max(self.session_start_ms));
     }
 }
 
@@ -932,6 +1183,7 @@ impl Readiness {
             return;
         }
 
+        self.generation = self.generation.wrapping_add(1);
         self.phase = ReadinessPhase::Degraded;
         self.reason = Some(reason.into());
     }
@@ -1001,7 +1253,16 @@ impl SessionContext {
 
         match self.compensate(reason).await {
             Ok(()) => {
-                if self.readiness.write().mark_ready(generation) {
+                // Hold the state read lock through the readiness transition. A concurrent
+                // evidence handler takes state -> readiness while recording debt, so it cannot
+                // add a marker between this final check and `mark_ready`.
+                let state = self.state.read();
+                let mut readiness = self.readiness.write();
+                if state.has_recovery_debt() {
+                    readiness.degrade(
+                        "recovery completed while real order or fill evidence was still pending",
+                    );
+                } else if readiness.mark_ready(generation) {
                     log::info!("Aster execution readiness restored after {reason}");
                 }
             }
@@ -1037,15 +1298,22 @@ impl SessionContext {
 
     /// Records what a status report implies about the order's working state.
     fn track_order_state(&self, report: &OrderStatusReport, symbol: Ustr) {
-        let Some(client_order_id) = report.client_order_id else {
-            return;
-        };
-
         let mut state = self.state.write();
+        let venue_order_id = report.venue_order_id.inner();
         if report.order_status.is_closed() {
-            state.forget_working_order(&client_order_id.inner());
+            if let Some(client_order_id) = report.client_order_id {
+                state.forget_working_order(&client_order_id.inner());
+            }
+            state.forget_working_venue_order(&venue_order_id);
         } else {
-            state.track_working_order(client_order_id.inner(), symbol);
+            state.track_working_venue_order(venue_order_id);
+            if let Some(client_order_id) = report.client_order_id {
+                state.track_working_order(client_order_id.inner(), symbol);
+            }
+        }
+
+        if report.filled_qty.is_zero() {
+            state.forget_pending_order(&venue_order_id);
         }
     }
 
@@ -1326,13 +1594,25 @@ impl SessionContext {
                 Ok(venue_order) => {
                     match self.order_to_report(&venue_order, self.clock.get_time_ns()) {
                         Ok(Some(report)) => {
-                            log::info!(
-                                "Resolved ambiguous Aster submission for {client_order_id} as \
-                                 {:?}",
-                                report.order_status,
+                            if self
+                                .emit_order_evidence(
+                                    venue_order.symbol,
+                                    venue_order.order_id,
+                                    Some(report),
+                                    Vec::new(),
+                                    false,
+                                )
+                                .await
+                            {
+                                log::info!(
+                                    "Resolved ambiguous Aster submission for {client_order_id}"
+                                );
+                                return;
+                            }
+                            log::warn!(
+                                "Aster found ambiguous submission {client_order_id}, but its \
+                                 real fill evidence is still incomplete"
                             );
-                            self.track_order_state(&report, venue_order.symbol);
-                            self.emitter.send_order_status_report(report);
                         }
                         Ok(None) => log::error!(
                             "Aster reported {client_order_id} on unloaded symbol {}; the order \
@@ -1344,7 +1624,6 @@ impl SessionContext {
                              an ambiguous submission: {e}"
                         ),
                     }
-                    return;
                 }
                 Err(e) if e.is_unknown_order() => {
                     log::warn!(
@@ -1397,6 +1676,10 @@ impl SessionContext {
         // the real trade then arrives against an already-complete order, trips the overfill
         // guard, and is dropped — leaving the order holding a synthetic trade ID and no
         // commission. The economics, not just the log line, depend on this ordering.
+        // Snapshot order debt before the fill pass. A newly uncovered trade/order must remain
+        // pending until the next bounded recovery pass; retrying it in this same pass would turn
+        // a transient order-query failure into a partial bundle and defeat the holdback contract.
+        let pending_orders_before = self.state.read().pending_orders();
         let mut fills = CompensatedFills::default();
         let mut coverage = FillCoverage::Unreliable;
 
@@ -1417,6 +1700,7 @@ impl SessionContext {
         }
 
         let mut failure = None;
+        let mut fills_uncovered = false;
 
         if coverage == FillCoverage::Unreliable {
             log::error!(
@@ -1436,14 +1720,14 @@ impl SessionContext {
                      trade(s) pending; the account stays unverified until they are recovered",
                     fills.uncovered.len(),
                 );
-                failure = Some(format!(
-                    "{} uncovered order(s) and {pending} pending trade(s)",
-                    fills.uncovered.len(),
-                ));
+                fills_uncovered = true;
             }
         }
 
-        if let Err(e) = self.compensate_orders(&fills, coverage).await {
+        if let Err(e) = self
+            .compensate_orders(&fills, coverage, &pending_orders_before)
+            .await
+        {
             log::error!("Aster order compensation after {reason} failed: {e}");
             failure.get_or_insert_with(|| format!("order compensation failed: {e}"));
         }
@@ -1456,6 +1740,38 @@ impl SessionContext {
             failure.get_or_insert_with(|| format!("position refresh failed: {e}"));
         }
 
+        // The state may have changed while the account, position, or targeted order requests
+        // were in flight. Read the live debt unconditionally at the end of the pass instead of
+        // trusting the earlier fill snapshot; readiness must never be restored over a debt that
+        // was raised during recovery.
+        let (pending_trades, pending_orders, unknown_coverage) = {
+            let state = self.state.read();
+            (
+                state.pending_trades.len(),
+                state.pending_orders.len(),
+                state.unresolved_coverage_count(),
+            )
+        };
+        if pending_trades > 0 || pending_orders > 0 || unknown_coverage > 0 {
+            failure.get_or_insert_with(|| {
+                format!(
+                    "{} uncovered order(s), {pending_trades} pending trade(s), and \
+                     {pending_orders} pending order(s) ({unknown_coverage} unknown coverage)",
+                    fills.uncovered.len(),
+                )
+            });
+        } else if fills_uncovered {
+            // Keep the conservative diagnostic if a future implementation records an uncovered
+            // result without retaining a marker, while still returning success only for a clean
+            // live state.
+            failure.get_or_insert_with(|| {
+                format!(
+                    "{} uncovered order(s) remain unresolved",
+                    fills.uncovered.len()
+                )
+            });
+        }
+
         failure.map_or(Ok(()), Err)
     }
 
@@ -1465,6 +1781,7 @@ impl SessionContext {
         &self,
         fills: &CompensatedFills,
         coverage: FillCoverage,
+        pending_orders_before: &[(Ustr, Ustr)],
     ) -> anyhow::Result<()> {
         let open_orders = self
             .http_client
@@ -1475,7 +1792,8 @@ impl SessionContext {
         let ts_init = self.clock.get_time_ns();
         let mut still_open: AHashSet<Ustr> = AHashSet::new();
         // An order the venue holds but this pass cannot interpret leaves the account view
-        // incomplete, so it is remembered as a failure rather than only logged.
+        // incomplete, so it remains pending and is reported as a failure if it is still pending
+        // after the targeted recovery pass below.
         let mut failure: Option<String> = None;
 
         for order in &open_orders {
@@ -1495,16 +1813,34 @@ impl SessionContext {
                 Ok(Some(report)) => {
                     let order_coverage = fills.coverage_for(order.order_id, coverage);
                     if defer_uncovered_status(&report, order_coverage) {
-                        failure.get_or_insert_with(|| {
-                            format!(
-                                "order {} status withheld: its fills are uncovered",
-                                report.venue_order_id
-                            )
-                        });
+                        self.hold_order_evidence(
+                            order.symbol,
+                            Ustr::from(&order.order_id.to_string()),
+                            &[],
+                            "the compensation fill pass did not prove this cumulative status",
+                        );
+                        log::warn!(
+                            "Aster open order {} status remains pending because its fills are \
+                             uncovered",
+                            report.venue_order_id
+                        );
                         continue;
                     }
-                    self.track_order_state(&report, order.symbol);
-                    self.emitter.send_order_status_report(report);
+                    if !self
+                        .emit_order_evidence(
+                            order.symbol,
+                            order.order_id,
+                            Some(report),
+                            Vec::new(),
+                            false,
+                        )
+                        .await
+                    {
+                        log::warn!(
+                            "Aster open order {} remains pending until its real fills are read",
+                            order.order_id
+                        );
+                    }
                 }
                 Ok(None) => log::debug!(
                     "Ignoring Aster open order on unloaded symbol {}",
@@ -1544,16 +1880,34 @@ impl SessionContext {
                     Ok(Some(report)) => {
                         let order_coverage = fills.coverage_for(order.order_id, coverage);
                         if defer_uncovered_status(&report, order_coverage) {
-                            failure.get_or_insert_with(|| {
-                                format!(
-                                    "order {} status withheld: its fills are uncovered",
-                                    report.venue_order_id
-                                )
-                            });
+                            self.hold_order_evidence(
+                                order.symbol,
+                                Ustr::from(&order.order_id.to_string()),
+                                &[],
+                                "the compensation fill pass did not prove this cumulative status",
+                            );
+                            log::warn!(
+                                "Aster vanished order {} status remains pending because its \
+                                 fills are uncovered",
+                                report.venue_order_id
+                            );
                             continue;
                         }
-                        self.track_order_state(&report, order.symbol);
-                        self.emitter.send_order_status_report(report);
+                        if !self
+                            .emit_order_evidence(
+                                order.symbol,
+                                order.order_id,
+                                Some(report),
+                                Vec::new(),
+                                false,
+                            )
+                            .await
+                        {
+                            log::warn!(
+                                "Aster vanished order {client_order_id} remains pending until \
+                                 its real fills are read"
+                            );
+                        }
                     }
                     Ok(None) => log::debug!("Ignoring Aster order on unloaded symbol {symbol}"),
                     Err(e) => {
@@ -1574,6 +1928,64 @@ impl SessionContext {
                     });
                 }
             }
+        }
+
+        // A filled order can disappear from openOrders before its user-trade history becomes
+        // readable. Keep retrying every such order by venue ID instead of letting the bounded
+        // open-order pass forget the cumulative status and manufacture a fill.
+        for &(venue_order_id, symbol) in pending_orders_before {
+            if fills.delivered.contains(&venue_order_id) {
+                // The fill pass already emitted this order together with its real trades. A
+                // second status-only query would duplicate terminal evidence and could make
+                // consumers infer a synthetic fill from the cumulative quantity.
+                continue;
+            }
+
+            let Ok(order_id) = venue_order_id.as_str().parse::<i64>() else {
+                failure.get_or_insert_with(|| {
+                    format!("pending Aster order ID {venue_order_id} is not numeric")
+                });
+                continue;
+            };
+
+            match self
+                .http_client
+                .query_order(symbol.as_str(), Some(order_id), None)
+                .await
+            {
+                Ok(order) => match self.order_to_report(&order, self.clock.get_time_ns()) {
+                    Ok(Some(report)) => {
+                        if !self
+                            .emit_order_evidence(symbol, order_id, Some(report), Vec::new(), false)
+                            .await
+                        {
+                            log::warn!("Aster pending order {venue_order_id} remains uncovered");
+                        }
+                    }
+                    Ok(None) => {
+                        failure.get_or_insert_with(|| {
+                            format!("pending order {venue_order_id} has an unloaded symbol")
+                        });
+                    }
+                    Err(e) => {
+                        failure.get_or_insert_with(|| {
+                            format!("failed to parse pending order {venue_order_id}: {e}")
+                        });
+                    }
+                },
+                Err(e) => {
+                    failure.get_or_insert_with(|| {
+                        format!("pending order query failed for {venue_order_id}: {e}")
+                    });
+                }
+            }
+        }
+
+        let pending_count = self.state.read().pending_orders().len();
+        if pending_count > 0 {
+            failure.get_or_insert_with(|| {
+                format!("{pending_count} Aster order(s) still need real fill evidence")
+            });
         }
 
         failure.map_or(Ok(()), |e| Err(anyhow::anyhow!(e)))
@@ -1628,6 +2040,11 @@ impl SessionContext {
                 .collect();
 
             if missed.is_empty() {
+                if self.state.read().pending_trade_ids(&symbol).is_empty() {
+                    self.state
+                        .write()
+                        .advance_history_checkpoint(symbol, now_ms);
+                }
                 continue;
             }
 
@@ -1636,11 +2053,21 @@ impl SessionContext {
                 by_order.entry(trade.order_id).or_default().push(trade);
             }
 
+            let mut symbol_complete = true;
             for (venue_order_id, trades) in by_order {
-                recovered.merge(
-                    self.emit_missed_fills(&symbol, venue_order_id, &trades)
-                        .await,
-                );
+                let outcome = self
+                    .emit_missed_fills(&symbol, venue_order_id, &trades)
+                    .await;
+                if !outcome.uncovered.is_empty() {
+                    symbol_complete = false;
+                }
+                recovered.merge(outcome);
+            }
+
+            if symbol_complete && self.state.read().pending_trade_ids(&symbol).is_empty() {
+                self.state
+                    .write()
+                    .advance_history_checkpoint(symbol, now_ms);
             }
         }
 
@@ -1691,59 +2118,48 @@ impl SessionContext {
             }
         }
 
-        // The order is only queried once every one of its trades has been built: a partial
-        // bundle understates the order's filled quantity by exactly the trades that failed,
-        // which is the gap the engine fills with a fabricated trade.
+        // A partial parse is evidence that the history is incomplete, so the shared resolver
+        // must read the order and its trades again before anything is published. This also
+        // handles a status query failure and checks the cumulative quantity instead of trusting
+        // a bare status.
         let status = if unparsable == 0 && !fills.is_empty() {
             self.query_order_report(symbol, venue_order_id, ts_init)
                 .await
         } else {
             None
         };
+        let status_client_order_id = status
+            .as_ref()
+            .and_then(|report| report.client_order_id.map(|id| id.inner()));
+        let fill_count = fills.len();
+        let reports: Vec<FillReport> = fills.into_iter().map(|(report, _, _)| report).collect();
+        let delivered = self
+            .emit_order_evidence(*symbol, venue_order_id, status, reports, unparsable > 0)
+            .await;
 
-        let Some(status) = status else {
-            {
-                let mut state = self.state.write();
-                for trade in trades {
-                    state.note_pending_fill(*symbol, trade.id);
-                }
+        if delivered {
+            outcome
+                .delivered
+                .insert(Ustr::from(&venue_order_id.to_string()));
+            if let Some(client_order_id) = status_client_order_id {
+                outcome.delivered.insert(client_order_id);
             }
-
-            log::warn!(
-                "Holding back {} Aster fill(s) for order {venue_order_id} on {symbol}: they \
-                 stay eligible for recovery rather than reaching the engine without the order \
-                 state they belong to",
-                trades.len(),
+            log::info!(
+                "Applied {} Aster fills missed by the user stream for order {venue_order_id}",
+                fill_count,
             );
+        } else {
+            // Keep every source trade pending, including rows that failed to parse. A later
+            // pass addresses pending IDs directly and can therefore recover one outside the
+            // moving time window once the venue returns a complete row.
+            let mut state = self.state.write();
+            for trade in trades {
+                state.note_pending_fill(*symbol, trade.id);
+            }
             outcome
                 .uncovered
                 .insert(Ustr::from(&venue_order_id.to_string()));
-            return outcome;
-        };
-
-        {
-            let mut state = self.state.write();
-            for (_, trade_id, ts_ms) in &fills {
-                state.record_fill(*symbol, *trade_id, *ts_ms);
-            }
         }
-
-        outcome
-            .delivered
-            .insert(Ustr::from(&venue_order_id.to_string()));
-        if let Some(client_order_id) = status.client_order_id {
-            outcome.delivered.insert(client_order_id.inner());
-        }
-
-        let reports: Vec<FillReport> = fills.into_iter().map(|(report, _, _)| report).collect();
-        log::info!(
-            "Applied {} Aster fills missed by the user stream for order {venue_order_id}",
-            reports.len(),
-        );
-
-        // One report, so the engine applies the trades and the resulting status together and
-        // never has a window in which it must invent the missing quantity.
-        self.emitter.send_order_with_fills(status, reports);
 
         outcome
     }
@@ -1771,10 +2187,7 @@ impl SessionContext {
         };
 
         match self.order_to_report(&order, ts_init) {
-            Ok(Some(report)) => {
-                self.track_order_state(&report, order.symbol);
-                Some(report)
-            }
+            Ok(Some(report)) => Some(report),
             Ok(None) => {
                 log::error!("Ignoring Aster order {venue_order_id} on unloaded symbol {symbol}");
                 None
@@ -1784,6 +2197,499 @@ impl SessionContext {
                 None
             }
         }
+    }
+
+    /// Fetches real trades for one order so a cumulative status can be checked against evidence.
+    async fn query_order_fills(
+        &self,
+        symbol: &Ustr,
+        venue_order_id: i64,
+    ) -> anyhow::Result<Vec<FillReport>> {
+        let Some(context) = self.context_for(symbol) else {
+            anyhow::bail!("Aster symbol {symbol} is not loaded");
+        };
+
+        let now_ms = self.now_ms();
+        // A direct order/status query may refer to an order older than the live compensation
+        // window. Use the venue's largest supported history window here; if the order predates
+        // it, the exact status is deliberately reported as incomplete rather than fabricated.
+        let start_ms = now_ms.saturating_sub(DEFAULT_REPORT_LOOKBACK_MS);
+        let trades = self
+            .query_user_trades_paged(symbol.as_str(), start_ms, now_ms)
+            .await?;
+
+        trades
+            .iter()
+            .filter(|trade| trade.order_id == venue_order_id)
+            .map(|trade| {
+                trade
+                    .to_fill_report(
+                        self.account_id,
+                        context.instrument_id,
+                        context.price_precision,
+                        context.size_precision,
+                        AsterExecutionClient::settlement_currency(),
+                        self.clock.get_time_ns(),
+                    )
+                    .with_context(|| {
+                        format!("Failed to parse Aster trade {} on {symbol}", trade.id)
+                    })
+            })
+            .collect()
+    }
+
+    /// Returns every real fill in `fills` for `report` when their exact quantities explain the
+    /// venue's cumulative status. This is the recovery path after the bounded ID cache has
+    /// evicted a trade: the cache is no longer allowed to decide whether a repeated ID is new,
+    /// so the complete order history becomes the source of truth and the engine receives the
+    /// whole bundle again for its own exact trade-ID reconciliation.
+    fn complete_order_fills_for_status(
+        report: &OrderStatusReport,
+        fills: &[FillReport],
+    ) -> anyhow::Result<Option<Vec<FillReport>>> {
+        let mut seen_trade_ids = AHashSet::new();
+        let mut complete = Vec::new();
+        let mut covered_qty = Decimal::ZERO;
+
+        for fill in fills {
+            if fill.venue_order_id != report.venue_order_id {
+                continue;
+            }
+
+            let trade_id: i64 = fill
+                .trade_id
+                .as_str()
+                .parse()
+                .with_context(|| format!("Aster trade ID {} is not numeric", fill.trade_id))?;
+            if seen_trade_ids.insert(trade_id) {
+                covered_qty += fill.last_qty.as_decimal();
+                complete.push(fill.clone());
+            }
+        }
+
+        if covered_qty == report.filled_qty.as_decimal() {
+            Ok(Some(complete))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Returns fresh fills and whether they cover the status cumulative quantity.
+    fn fresh_fills_for_status(
+        &self,
+        symbol: &Ustr,
+        report: &OrderStatusReport,
+        fills: &[FillReport],
+    ) -> anyhow::Result<(Vec<FillReport>, bool)> {
+        let venue_order_id = report.venue_order_id.inner();
+        let state = self.state.read();
+        if state.coverage_unknown(&venue_order_id) {
+            // An ID may have left the bounded cache. The persistent aggregate is not enough to
+            // decide whether a later trade is a replay, so only complete order history can clear
+            // this status; callers use `complete_order_fills_for_status` for that proof.
+            return Ok((Vec::new(), false));
+        }
+        let mut covered_qty = state.confirmed_fill_qty(&venue_order_id);
+        let mut seen_trade_ids = AHashSet::new();
+        let mut fresh = Vec::new();
+
+        for fill in fills {
+            if fill.venue_order_id != report.venue_order_id {
+                continue;
+            }
+
+            let trade_id: i64 = fill
+                .trade_id
+                .as_str()
+                .parse()
+                .with_context(|| format!("Aster trade ID {} is not numeric", fill.trade_id))?;
+            if !seen_trade_ids.insert(trade_id) {
+                continue;
+            }
+
+            let known = state.has_fill(symbol, trade_id);
+            if !known {
+                covered_qty += fill.last_qty.as_decimal();
+                fresh.push(fill.clone());
+            }
+        }
+
+        // A status is safe only when the known and newly read real trades explain its exact
+        // cumulative quantity. Both an under-report and an over-report indicate that one side
+        // of the evidence is stale or incomplete, and either side would make the execution
+        // engine invent or discard economics.
+        Ok((fresh, covered_qty == report.filled_qty.as_decimal()))
+    }
+
+    /// Resolves an order status and its real fills before any cumulative quantity is emitted.
+    ///
+    /// A direct stream fill is used when it proves the status. Otherwise the order's REST trade
+    /// history is read. A status that still lacks enough real quantity remains pending so the
+    /// execution engine cannot manufacture a fill with a lost trade ID or commission.
+    async fn resolve_order_evidence(
+        &self,
+        symbol: &Ustr,
+        venue_order_id: i64,
+        report: Option<OrderStatusReport>,
+        direct_fills: &[FillReport],
+        require_trade_evidence: bool,
+    ) -> anyhow::Result<Option<(OrderStatusReport, Vec<FillReport>, bool)>> {
+        let report = match report {
+            Some(report) => report,
+            // `emit_missed_fills` has already attempted the order query for a non-empty trade
+            // batch. Retrying that same query in the order-evidence helper would turn a
+            // transient failure into a partially applied pass, publishing the bundle earlier
+            // than the compensation retry contract allows. A malformed stream update, on the
+            // other hand, has no direct fills and still needs the REST repair here.
+            None if !require_trade_evidence && !direct_fills.is_empty() => return Ok(None),
+            None => match self
+                .query_order_report(symbol, venue_order_id, self.clock.get_time_ns())
+                .await
+            {
+                Some(report) => report,
+                None => return Ok(None),
+            },
+        };
+
+        let (coverage_unknown, can_rebase_unknown) = {
+            let mut state = self.state.write();
+            let venue_order_id_str = report.venue_order_id.inner();
+            state.mark_coverage_unknown_if_incomplete(symbol, venue_order_id_str);
+            (
+                state.coverage_unknown(&venue_order_id_str),
+                state.can_rebase_unknown_order(&venue_order_id_str),
+            )
+        };
+        if coverage_unknown {
+            if !can_rebase_unknown {
+                // Historical rows may already have been applied while the engine's order cache
+                // was later pruned. Replaying the complete history would recreate old fees and
+                // position quantity, so fail closed until a lifecycle-level reconciliation can
+                // prove ownership of those IDs.
+                return Ok(None);
+            }
+            // Once the bounded cache has evicted any trade for this order, neither the stored
+            // aggregate nor a status alone can distinguish a replay from a late sparse ID. Read
+            // the complete order history and rebase the aggregate only from that exact bundle.
+            let queried = match self.query_order_fills(symbol, venue_order_id).await {
+                Ok(queried) => queried,
+                Err(e) => {
+                    self.hold_order_evidence(
+                        *symbol,
+                        report.venue_order_id.inner(),
+                        &[],
+                        &e.to_string(),
+                    );
+                    return Err(e);
+                }
+            };
+            let Some(complete) = Self::complete_order_fills_for_status(&report, &queried)? else {
+                return Ok(None);
+            };
+            return Ok(Some((report, complete, true)));
+        }
+
+        // A REST status with zero cumulative quantity is complete evidence that no fill exists.
+        // It is also the repair that clears a pending marker left by a malformed zero-fill
+        // stream update, so it must not remain blocked by the stream-side parse failure.
+        if require_trade_evidence && report.filled_qty.is_zero() && direct_fills.is_empty() {
+            return Ok(Some((report, Vec::new(), false)));
+        }
+
+        let (fresh, covered) = self.fresh_fills_for_status(symbol, &report, direct_fills)?;
+        if covered {
+            return Ok(Some((report, fresh, false)));
+        }
+
+        let queried = self.query_order_fills(symbol, venue_order_id).await?;
+        let (fresh, covered) = self.fresh_fills_for_status(symbol, &report, &queried)?;
+        if covered {
+            if let Some(complete) = Self::complete_order_fills_for_status(&report, &queried)? {
+                return Ok(Some((report, complete, true)));
+            }
+            return Ok(Some((report, fresh, false)));
+        }
+
+        Ok(None)
+    }
+
+    /// Verifies that a status report can be returned without sending a second, fill-inferring
+    /// event. A report request has no place to carry newly discovered fills, so a status whose
+    /// quantity is explained only by fresh REST trades must stay pending for the fill report
+    /// path instead.
+    async fn ensure_status_covered(
+        &self,
+        symbol: &Ustr,
+        report: &OrderStatusReport,
+    ) -> anyhow::Result<()> {
+        let (coverage_unknown, can_rebase_unknown) = {
+            let mut state = self.state.write();
+            let venue_order_id = report.venue_order_id.inner();
+            state.mark_coverage_unknown_if_incomplete(symbol, venue_order_id);
+            (
+                state.coverage_unknown(&venue_order_id),
+                state.can_rebase_unknown_order(&venue_order_id),
+            )
+        };
+        if coverage_unknown {
+            if !can_rebase_unknown {
+                self.hold_order_evidence(
+                    *symbol,
+                    report.venue_order_id.inner(),
+                    &[],
+                    "bounded trade coverage was evicted after prior fills; engine ownership is unproven",
+                );
+                anyhow::bail!(
+                    "Aster order {} cannot safely replay evicted fills",
+                    report.venue_order_id
+                );
+            }
+            let venue_order_id: i64 =
+                report.venue_order_id.as_str().parse().with_context(|| {
+                    format!(
+                        "Aster venue order ID {} is not numeric",
+                        report.venue_order_id
+                    )
+                })?;
+            let queried = match self.query_order_fills(symbol, venue_order_id).await {
+                Ok(queried) => queried,
+                Err(e) => {
+                    self.hold_order_evidence(
+                        *symbol,
+                        report.venue_order_id.inner(),
+                        &[],
+                        &e.to_string(),
+                    );
+                    return Err(e);
+                }
+            };
+            let complete = Self::complete_order_fills_for_status(report, &queried)?;
+            self.hold_order_evidence(
+                *symbol,
+                report.venue_order_id.inner(),
+                complete.as_deref().unwrap_or(&[]),
+                "bounded trade coverage was evicted; status requires a bundled full-history fill report",
+            );
+            anyhow::bail!(
+                "Aster order {} requires full-history fills before a bare status can be emitted",
+                report.venue_order_id
+            );
+        }
+
+        let (fresh, covered) = self.fresh_fills_for_status(symbol, report, &[])?;
+        if covered && fresh.is_empty() {
+            return Ok(());
+        }
+
+        let venue_order_id: i64 = report.venue_order_id.as_str().parse().with_context(|| {
+            format!(
+                "Aster venue order ID {} is not numeric",
+                report.venue_order_id
+            )
+        })?;
+        let queried = match self.query_order_fills(symbol, venue_order_id).await {
+            Ok(queried) => queried,
+            Err(e) => {
+                self.hold_order_evidence(
+                    *symbol,
+                    report.venue_order_id.inner(),
+                    &[],
+                    &e.to_string(),
+                );
+                return Err(e);
+            }
+        };
+        let (fresh, covered) = self.fresh_fills_for_status(symbol, report, &queried)?;
+        if covered && fresh.is_empty() {
+            return Ok(());
+        }
+
+        self.hold_order_evidence(
+            *symbol,
+            report.venue_order_id.inner(),
+            &fresh,
+            "a status report found fills that have not yet been delivered",
+        );
+        anyhow::bail!(
+            "Aster order {} has cumulative quantity without delivered real fills",
+            report.venue_order_id
+        )
+    }
+
+    /// Retains unresolved order/fill evidence for a later compensation pass.
+    fn hold_order_evidence(
+        &self,
+        symbol: Ustr,
+        venue_order_id: Ustr,
+        fills: &[FillReport],
+        reason: &str,
+    ) {
+        let mut state = self.state.write();
+        state.note_pending_order(venue_order_id, symbol);
+        for fill in fills {
+            if let Ok(trade_id) = fill.trade_id.as_str().parse::<i64>() {
+                state.note_pending_fill(symbol, trade_id);
+            }
+        }
+
+        // Keep state -> readiness ordering with `recover`: the debt marker and the generation
+        // invalidation become one critical section from the point of view of readiness.
+        let reason =
+            format!("real Aster fill evidence for order {venue_order_id} is incomplete: {reason}");
+        log::warn!("Aster execution readiness degraded: {reason}");
+        self.readiness.write().degrade(reason);
+    }
+
+    /// Emits an order status only after its real fills are proven and deduplicated.
+    async fn emit_order_evidence(
+        &self,
+        symbol: Ustr,
+        venue_order_id: i64,
+        report: Option<OrderStatusReport>,
+        direct_fills: Vec<FillReport>,
+        require_trade_evidence: bool,
+    ) -> bool {
+        let evidence = self
+            .resolve_order_evidence(
+                &symbol,
+                venue_order_id,
+                report,
+                &direct_fills,
+                require_trade_evidence,
+            )
+            .await;
+
+        let Some((report, fills, full_history)) = (match evidence {
+            Ok(evidence) => evidence,
+            Err(e) => {
+                self.hold_order_evidence(
+                    symbol,
+                    Ustr::from(&venue_order_id.to_string()),
+                    &direct_fills,
+                    &e.to_string(),
+                );
+                return false;
+            }
+        }) else {
+            self.hold_order_evidence(
+                symbol,
+                Ustr::from(&venue_order_id.to_string()),
+                &direct_fills,
+                "the venue has not returned enough real trades",
+            );
+            return false;
+        };
+
+        // A REST order row can be stamped after an earlier trade in the same bundle (and an
+        // out-of-order WS/REST repair makes this common). The execution state machine orders
+        // reports by acceptance before applying fills, so pull acceptance back to the earliest
+        // real fill before sending the atomic bundle.
+        let mut report = report;
+        let fill_refs: Vec<&FillReport> = fills.iter().collect();
+        align_report_with_fills(&mut report, &fill_refs);
+        let venue_order_id_str = report.venue_order_id.inner();
+        let (_deliverable, send_error) = {
+            let mut state = self.state.write();
+            if !full_history && state.coverage_unknown(&venue_order_id_str) {
+                state.note_pending_order(venue_order_id_str, symbol);
+                for fill in &fills {
+                    if let Ok(trade_id) = fill.trade_id.as_str().parse::<i64>() {
+                        state.note_pending_fill(symbol, trade_id);
+                    }
+                }
+                let reason = format!(
+                    "real Aster fill evidence for order {venue_order_id_str} is incomplete: \
+                     bounded trade coverage was evicted while applying this bundle"
+                );
+                log::warn!("Aster execution readiness degraded: {reason}");
+                self.readiness.write().degrade(reason);
+                (
+                    Vec::new(),
+                    Some("bounded trade coverage was evicted".to_string()),
+                )
+            } else {
+                let deliverable = if full_history {
+                    // The bounded cache is only a fast path. Once coverage was lost, rebase the
+                    // aggregate from the complete history and send every real fill; the
+                    // execution engine deduplicates repeated IDs without changing economics.
+                    fills.clone()
+                } else {
+                    fills
+                        .iter()
+                        .filter(|fill| {
+                            fill.trade_id
+                                .as_str()
+                                .parse::<i64>()
+                                .is_ok_and(|trade_id| !state.has_fill(&symbol, trade_id))
+                        })
+                        .cloned()
+                        .collect()
+                };
+                let execution_report = if deliverable.is_empty() {
+                    ExecutionReport::Order(Box::new(report.clone()))
+                } else {
+                    ExecutionReport::OrderWithFills(Box::new(report.clone()), deliverable.clone())
+                };
+
+                match self.emitter.try_send_execution_report(execution_report) {
+                    Ok(()) => {
+                        if full_history {
+                            state.commit_verified_order_history(
+                                symbol,
+                                venue_order_id_str,
+                                &fills,
+                                report.filled_qty.as_decimal(),
+                            );
+                        } else {
+                            for fill in &deliverable {
+                                let Ok(trade_id) = fill.trade_id.as_str().parse::<i64>() else {
+                                    continue;
+                                };
+                                state.record_fill_for_order(
+                                    symbol,
+                                    venue_order_id_str,
+                                    trade_id,
+                                    (fill.ts_event.as_u64() / 1_000_000) as i64,
+                                    fill.last_qty.as_decimal(),
+                                );
+                            }
+                        }
+                        state.forget_pending_order(&venue_order_id_str);
+                        (deliverable, None)
+                    }
+                    Err(e) => {
+                        // The report was not accepted by the execution channel. Keep the whole
+                        // evidence bundle pending and invalidate readiness while state is still
+                        // held, so a later recovery can retry it without losing economics.
+                        state.note_pending_order(venue_order_id_str, symbol);
+                        for fill in &fills {
+                            if let Ok(trade_id) = fill.trade_id.as_str().parse::<i64>() {
+                                state.note_pending_fill(symbol, trade_id);
+                            }
+                        }
+                        let reason = format!(
+                            "real Aster fill evidence for order {venue_order_id_str} could not be \
+                             delivered: {e}"
+                        );
+                        log::warn!("Aster execution readiness degraded: {reason}");
+                        self.readiness.write().degrade(reason);
+                        (Vec::new(), Some(e.to_string()))
+                    }
+                }
+            }
+        };
+
+        if let Some(error) = send_error {
+            log::warn!(
+                "Aster order {venue_order_id_str} remains pending after execution report send \
+                 failure: {error}"
+            );
+            return false;
+        }
+
+        self.track_order_state(&report, symbol);
+
+        true
     }
 
     async fn refresh_account_state(&self) -> anyhow::Result<()> {
@@ -2216,12 +3122,14 @@ impl AsterExecutionClient {
                     .with_context(|| {
                         format!("Failed to parse Aster trade {} on {symbol}", trade.id)
                     })?;
+                let qty = report.last_qty.as_decimal();
                 reports.push(report);
                 delivered.push(DeliveredFill {
                     symbol: Ustr::from(&symbol),
                     venue_order_id: Ustr::from(&trade.order_id.to_string()),
                     trade_id: trade.id,
                     ts_ms: trade.time,
+                    qty,
                 });
             }
         }
@@ -2260,7 +3168,19 @@ impl AsterExecutionClient {
 
         let mut state = self.stream_state.write();
         for fill in delivered {
-            state.record_fill(fill.symbol, fill.trade_id, fill.ts_ms);
+            let applied = state.record_fill_for_order(
+                fill.symbol,
+                fill.venue_order_id,
+                fill.trade_id,
+                fill.ts_ms,
+                fill.qty,
+            );
+            if !applied && state.coverage_unknown(&fill.venue_order_id) {
+                // An evicted order cannot be advanced by a blind cumulative increment. Keep the
+                // exact trade pending until a complete order-history bundle can rebase it.
+                state.note_pending_order(fill.venue_order_id, fill.symbol);
+                state.note_pending_fill(fill.symbol, fill.trade_id);
+            }
         }
     }
 
@@ -2531,9 +3451,25 @@ impl AsterExecutionClient {
         for order in &orders {
             match session.order_to_report(order, ts_init) {
                 Ok(Some(report)) => {
-                    session.track_order_state(&report, order.symbol);
-                    self.emitter.send_order_status_report(report);
-                    reported += 1;
+                    if session
+                        .emit_order_evidence(
+                            order.symbol,
+                            order.order_id,
+                            Some(report),
+                            Vec::new(),
+                            false,
+                        )
+                        .await
+                    {
+                        reported += 1;
+                    } else {
+                        failure.get_or_insert_with(|| {
+                            format!(
+                                "open order {} is missing real fill evidence",
+                                order.order_id
+                            )
+                        });
+                    }
                 }
                 Ok(None) => log::debug!(
                     "Ignoring Aster open order on unloaded symbol {}",
@@ -3209,7 +4145,7 @@ impl SessionContext {
                     return;
                 };
 
-                let status = match parse_futures_order_update_to_order_status(
+                let parsed_status = match parse_futures_order_update_to_order_status(
                     msg,
                     context.instrument_id,
                     context.price_precision,
@@ -3226,15 +4162,21 @@ impl SessionContext {
                     }
                 };
 
-                if let Some(report) = status.as_ref() {
-                    self.track_order_state(report, symbol);
-                }
+                // A malformed half of an order update is evidence that this event cannot be
+                // trusted on its own. Force the shared path to read the complete REST order and
+                // trade history, while retaining the order as pending if that repair fails.
+                let mut incomplete = parsed_status.is_none();
+                let has_fill = match parse_decimal(&msg.order.last_filled_qty, "lastFilledQty") {
+                    Ok(qty) => !qty.is_zero(),
+                    Err(e) => {
+                        log::error!("Failed to parse Aster lastFilledQty: {e}");
+                        self.degrade(format!("failed to parse lastFilledQty: {e}"));
+                        incomplete = true;
+                        false
+                    }
+                };
 
-                // `lastFilledQty` is non-zero only on the TRADE execution type.
-                let has_fill = parse_decimal(&msg.order.last_filled_qty, "lastFilledQty")
-                    .is_ok_and(|qty| !qty.is_zero());
-
-                let fill = if has_fill {
+                let fills = if has_fill {
                     match parse_futures_order_update_to_fill(
                         msg,
                         account_id,
@@ -3247,37 +4189,34 @@ impl SessionContext {
                         None, // venue_position_id: one-way mode
                         ts_init,
                     ) {
-                        Ok(report) => Some(report),
+                        Ok(report) => vec![report],
                         Err(e) => {
                             log::error!("Failed to parse Aster fill report: {e}");
                             self.degrade(format!("failed to parse a fill report: {e}"));
-                            None
+                            incomplete = true;
+                            Vec::new()
                         }
                     }
                 } else {
-                    None
+                    Vec::new()
                 };
 
-                if fill.is_some() {
-                    // Recorded before emitting so a compensation pass racing this dispatch
-                    // cannot re-apply the same trade from `userTrades`.
-                    self.state.write().record_fill(
-                        symbol,
-                        msg.order.trade_id,
-                        msg.order.trade_time,
-                    );
+                if incomplete {
+                    self.state
+                        .write()
+                        .note_pending_order(Ustr::from(&msg.order.order_id.to_string()), symbol);
                 }
 
-                // Sending a fill on its own would let the engine bootstrap a synthetic order at
-                // the fill quantity, which then closes early and rejects later fills for the
-                // same venue order, so both reports are bundled whenever both parsed.
-                match (status, fill) {
-                    (Some(status), Some(fill)) => {
-                        self.emitter.send_order_with_fills(status, vec![fill]);
-                    }
-                    (Some(status), None) => self.emitter.send_order_status_report(status),
-                    (None, Some(fill)) => self.emitter.send_fill_report(fill),
-                    (None, None) => {}
+                let status = (!incomplete).then_some(parsed_status).flatten();
+                let repaired = self
+                    .emit_order_evidence(symbol, msg.order.order_id, status, fills, incomplete)
+                    .await;
+
+                // A malformed stream row degrades readiness even when REST repairs its order
+                // evidence. Re-run the normal bounded account recovery before promoting Ready;
+                // resolving one order alone cannot prove balances, positions, and other orders.
+                if incomplete && repaired {
+                    self.recover("a malformed order update was repaired").await;
                 }
             }
             BinanceFuturesWsStreamsMessage::AccountUpdate(msg) => {
@@ -3343,6 +4282,87 @@ impl SessionContext {
             }
         }
     }
+}
+
+/// Builds order status reports, optionally checking cumulative quantities against delivered
+/// trades. A mass snapshot reads one shared trade window and performs that check after linking
+/// the window, while ordinary report requests verify each order before returning it.
+async fn build_order_status_reports(
+    client: &AsterExecutionClient,
+    cmd: &GenerateOrderStatusReports,
+    verify_coverage: bool,
+) -> anyhow::Result<Vec<OrderStatusReport>> {
+    let session = client.session();
+    let ts_init = client.clock.get_time_ns();
+    let now_ms = session.now_ms();
+    // The end of the window is pinned up front so pagination cannot chase orders placed
+    // while it runs and never terminate.
+    let start_ms = cmd.start.map_or(now_ms - DEFAULT_REPORT_LOOKBACK_MS, |ts| {
+        (ts.as_u64() / 1_000_000) as i64
+    });
+    let end_ms = cmd
+        .end
+        .map_or(now_ms, |ts| (ts.as_u64() / 1_000_000) as i64);
+
+    let orders = if cmd.open_only {
+        let symbol = cmd
+            .instrument_id
+            .map(|id| client.symbol_context(&id).map(|(symbol, _)| symbol))
+            .transpose()?;
+
+        client
+            .http_client
+            .query_open_orders(symbol.as_deref())
+            .await
+            .map_err(|e| anyhow::anyhow!("Aster open orders query failed: {e}"))?
+    } else {
+        // Aster requires a symbol for the historical order endpoint, so the request is
+        // fanned out across loaded instruments when none is given.
+        let symbols: Vec<String> = match cmd.instrument_id {
+            Some(instrument_id) => vec![client.symbol_context(&instrument_id)?.0],
+            None => {
+                let guard = client.instruments.read();
+                guard.by_id.keys().map(format_binance_symbol).collect()
+            }
+        };
+
+        let mut orders = Vec::new();
+        for symbol in symbols {
+            // A failed page is not "no orders": returning a partial history as a complete
+            // one is what lets the engine infer fills that never happened.
+            let mut batch = session
+                .query_all_orders_paged(&symbol, start_ms, end_ms)
+                .await?;
+            orders.append(&mut batch);
+        }
+        orders
+    };
+
+    let mut reports = Vec::with_capacity(orders.len());
+    for order in &orders {
+        match session.order_to_report(order, ts_init)? {
+            Some(report) => {
+                if verify_coverage {
+                    session
+                        .ensure_status_covered(&order.symbol, &report)
+                        .await?;
+                }
+                // Keep the lifecycle marker in sync for status reports returned to the engine,
+                // including reports produced by a mass snapshot. This is what lets a later
+                // bounded-cache eviction distinguish an order that is still active from one
+                // whose terminal lifecycle has already completed.
+                session.track_order_state(&report, Ustr::from(order.symbol.as_str()));
+                reports.push(report);
+            }
+            None => log::debug!(
+                "Ignoring Aster order {} on unloaded symbol {}",
+                order.order_id,
+                order.symbol,
+            ),
+        }
+    }
+
+    Ok(reports)
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -3498,16 +4518,12 @@ impl ExecutionClient for AsterExecutionClient {
                 .degrade(format!("open order reconciliation failed: {e}"));
         }
 
-        // A prior session may have held a fill back because its order could not be read. The
-        // pending ID is deliberately retained across stop/connect and is recovered by ID, so a
-        // fresh session must not mark itself ready before that debt has been verified. In
-        // particular, do not let the new session's history window hide an older pending trade.
-        if self.stream_state.read().has_pending_trades() {
-            log::warn!(
-                "Aster new session has pending trade evidence; running recovery before readiness"
-            );
+        if self.stream_state.read().has_recovery_debt() {
+            // Pending evidence survives a stop/disconnect. A fresh socket and one open-order
+            // sweep do not prove those old trades; run the same bounded recovery contract before
+            // admitting new risk, including pending orders that no longer appear in openOrders.
             self.session()
-                .recover("pending trade evidence after a new connection")
+                .recover("recovery debt carried into a new session")
                 .await;
         } else {
             self.readiness.write().mark_ready(generation);
@@ -3930,17 +4946,14 @@ impl ExecutionClient for AsterExecutionClient {
     }
 
     fn query_order(&self, cmd: QueryOrder) -> anyhow::Result<()> {
-        let (symbol, context) = self.symbol_context(&cmd.instrument_id)?;
+        let (symbol, _) = self.symbol_context(&cmd.instrument_id)?;
 
         let Some(spawner) = self.spawner() else {
             return Ok(());
         };
 
         let http_client = self.http_client.clone();
-        let emitter = self.emitter.clone();
-        let account_id = self.core.account_id;
-        let clock = self.clock;
-        let treat_expired_as_canceled = self.config.treat_expired_as_canceled;
+        let session = self.session();
         let client_order_id = cmd.client_order_id;
         let venue_order_id = cmd
             .venue_order_id
@@ -3957,15 +4970,28 @@ impl ExecutionClient for AsterExecutionClient {
             };
 
             match result {
-                Ok(order) => match order.to_order_status_report(
-                    account_id,
-                    context.instrument_id,
-                    context.price_precision,
-                    context.size_precision,
-                    treat_expired_as_canceled,
-                    clock.get_time_ns(),
-                ) {
-                    Ok(report) => emitter.send_order_status_report(report),
+                Ok(order) => match session.order_to_report(&order, session.clock.get_time_ns()) {
+                    Ok(Some(report)) => {
+                        if !session
+                            .emit_order_evidence(
+                                order.symbol,
+                                order.order_id,
+                                Some(report),
+                                Vec::new(),
+                                false,
+                            )
+                            .await
+                        {
+                            log::warn!(
+                                "Aster order query for {client_order_id} remains incomplete"
+                            );
+                        }
+                    }
+                    Ok(None) => log::debug!(
+                        "Ignoring Aster order {} on unloaded symbol {}",
+                        order.order_id,
+                        order.symbol,
+                    ),
                     Err(e) => log::error!("Failed to build Aster order status report: {e}"),
                 },
                 Err(e) => log::warn!("Aster order query failed for {client_order_id}: {e}"),
@@ -4006,14 +5032,20 @@ impl ExecutionClient for AsterExecutionClient {
         };
 
         match result {
-            Ok(order) => Ok(Some(order.to_order_status_report(
-                self.core.account_id,
-                context.instrument_id,
-                context.price_precision,
-                context.size_precision,
-                self.config.treat_expired_as_canceled,
-                self.clock.get_time_ns(),
-            )?)),
+            Ok(order) => {
+                let report = order.to_order_status_report(
+                    self.core.account_id,
+                    context.instrument_id,
+                    context.price_precision,
+                    context.size_precision,
+                    self.config.treat_expired_as_canceled,
+                    self.clock.get_time_ns(),
+                )?;
+                let session = self.session();
+                let symbol = Ustr::from(&symbol);
+                session.ensure_status_covered(&symbol, &report).await?;
+                Ok(Some(report))
+            }
             Err(e) if e.is_unknown_order() => Ok(None),
             Err(e) => Err(anyhow::anyhow!("Aster order status query failed: {e}")),
         }
@@ -4023,64 +5055,7 @@ impl ExecutionClient for AsterExecutionClient {
         &self,
         cmd: &GenerateOrderStatusReports,
     ) -> anyhow::Result<Vec<OrderStatusReport>> {
-        let session = self.session();
-        let ts_init = self.clock.get_time_ns();
-        let now_ms = session.now_ms();
-        // The end of the window is pinned up front so pagination cannot chase orders placed
-        // while it runs and never terminate.
-        let start_ms = cmd.start.map_or(now_ms - DEFAULT_REPORT_LOOKBACK_MS, |ts| {
-            (ts.as_u64() / 1_000_000) as i64
-        });
-        let end_ms = cmd
-            .end
-            .map_or(now_ms, |ts| (ts.as_u64() / 1_000_000) as i64);
-
-        let orders = if cmd.open_only {
-            let symbol = cmd
-                .instrument_id
-                .map(|id| self.symbol_context(&id).map(|(symbol, _)| symbol))
-                .transpose()?;
-
-            self.http_client
-                .query_open_orders(symbol.as_deref())
-                .await
-                .map_err(|e| anyhow::anyhow!("Aster open orders query failed: {e}"))?
-        } else {
-            // Aster requires a symbol for the historical order endpoint, so the request is
-            // fanned out across loaded instruments when none is given.
-            let symbols: Vec<String> = match cmd.instrument_id {
-                Some(instrument_id) => vec![self.symbol_context(&instrument_id)?.0],
-                None => {
-                    let guard = self.instruments.read();
-                    guard.by_id.keys().map(format_binance_symbol).collect()
-                }
-            };
-
-            let mut orders = Vec::new();
-            for symbol in symbols {
-                // A failed page is not "no orders": returning a partial history as a complete
-                // one is what lets the engine infer fills that never happened.
-                let mut batch = session
-                    .query_all_orders_paged(&symbol, start_ms, end_ms)
-                    .await?;
-                orders.append(&mut batch);
-            }
-            orders
-        };
-
-        let mut reports = Vec::with_capacity(orders.len());
-        for order in &orders {
-            match session.order_to_report(order, ts_init)? {
-                Some(report) => reports.push(report),
-                None => log::debug!(
-                    "Ignoring Aster order {} on unloaded symbol {}",
-                    order.order_id,
-                    order.symbol,
-                ),
-            }
-        }
-
-        Ok(reports)
+        build_order_status_reports(self, cmd, true).await
     }
 
     async fn generate_fill_reports(
@@ -4089,8 +5064,11 @@ impl ExecutionClient for AsterExecutionClient {
     ) -> anyhow::Result<Vec<FillReport>> {
         let (reports, delivered) = self.fetch_fill_reports(cmd).await?;
 
-        // Only now, with the whole request answered, are the trades recorded as delivered.
-        self.commit_delivered_fills(delivered);
+        // Returning a vector is not proof that the execution engine accepted every row: the
+        // caller may reject it later for scope, time, or missing order attribution. Keep the
+        // exact IDs pending until an OrderWithFills path commits them after successful delivery;
+        // a reconnect can then recover a row that a consumer discarded.
+        self.hold_back_fills(&delivered);
 
         Ok(reports)
     }
@@ -4155,7 +5133,7 @@ impl ExecutionClient for AsterExecutionClient {
             .build()
             .context("failed to build Aster position status reports command")?;
 
-        let mut order_reports = self.generate_order_status_reports(&order_cmd).await?;
+        let mut order_reports = build_order_status_reports(self, &order_cmd, false).await?;
         // Fetched without committing the dedupe records: the positions request below can still
         // fail the whole snapshot, and a trade the engine never saw must stay deliverable.
         let (fill_reports, delivered) = self.fetch_fill_reports(fill_cmd).await?;
@@ -4208,8 +5186,8 @@ impl ExecutionClient for AsterExecutionClient {
 
         // Every fill is retained; the completeness flag carries whether they could all be
         // attributed to an order.
-        let matched_fills = fill_reports;
-        let reports_complete = unlinked_fills == 0;
+        let mut matched_fills = fill_reports;
+        let mut reports_complete = unlinked_fills == 0;
 
         if !reports_complete {
             log::warn!(
@@ -4218,12 +5196,157 @@ impl ExecutionClient for AsterExecutionClient {
             );
         }
 
+        // An order whose bounded trade-ID coverage was evicted cannot be checked against the
+        // persistent quantity alone. Re-read its complete order history and append that exact
+        // bundle to the mass status; if the history is unavailable, omit the status and leave a
+        // pending debt for the targeted recovery pass.
+        let unknown_orders: Vec<(Ustr, i64)> = {
+            let state = self.stream_state.read();
+            order_reports
+                .iter()
+                .filter_map(|report| {
+                    state
+                        .coverage_unknown(&report.venue_order_id.inner())
+                        .then(|| {
+                            (
+                                Ustr::from(&format_binance_symbol(&report.instrument_id)),
+                                report.venue_order_id.as_str().parse::<i64>().ok(),
+                            )
+                        })
+                        .and_then(|(symbol, venue_order_id)| {
+                            venue_order_id.map(|venue_order_id| (symbol, venue_order_id))
+                        })
+                })
+                .collect()
+        };
+        let mut verified_histories: AHashMap<Ustr, Vec<FillReport>> = AHashMap::new();
+        for (symbol, venue_order_id) in unknown_orders {
+            if !self
+                .stream_state
+                .read()
+                .can_rebase_unknown_order(&Ustr::from(&venue_order_id.to_string()))
+            {
+                // Prior fills exist but the cache no longer proves which of them the execution
+                // engine owns. A full replay could recreate old fees after an engine cache
+                // purge, so leave this order pending and fail the mass completeness check.
+                reports_complete = false;
+                continue;
+            }
+            let Some(report) = order_reports
+                .iter()
+                .find(|report| report.venue_order_id.as_str() == venue_order_id.to_string())
+            else {
+                continue;
+            };
+            let session = self.session();
+            match session.query_order_fills(&symbol, venue_order_id).await {
+                Ok(history) => {
+                    match SessionContext::complete_order_fills_for_status(report, &history)? {
+                        Some(complete) => {
+                            let order_id = report.venue_order_id.inner();
+                            let mut existing_ids: AHashSet<i64> = matched_fills
+                                .iter()
+                                .filter(|fill| fill.venue_order_id == report.venue_order_id)
+                                .filter_map(|fill| fill.trade_id.as_str().parse().ok())
+                                .collect();
+                            for fill in &complete {
+                                let Ok(trade_id) = fill.trade_id.as_str().parse::<i64>() else {
+                                    continue;
+                                };
+                                if existing_ids.insert(trade_id) {
+                                    matched_fills.push(fill.clone());
+                                }
+                            }
+                            verified_histories.insert(order_id, complete);
+                        }
+                        None => {
+                            reports_complete = false;
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Aster full trade history for unknown-coverage order {venue_order_id} \
+                         could not be verified: {e}"
+                    );
+                    reports_complete = false;
+                }
+            }
+        }
+
         let mut fills_by_order: AHashMap<Ustr, Vec<&FillReport>> = AHashMap::new();
         for fill in &matched_fills {
             fills_by_order
                 .entry(fill.venue_order_id.inner())
                 .or_default()
                 .push(fill);
+        }
+
+        // Aster's cumulative status may include fills older than this bounded window. Do not
+        // pass such a status to `ExecutionManager`: it would infer the missing quantity as a
+        // synthetic trade before the real history can be repaired. A status is retained only
+        // when the already delivered quantity plus the exact trades in this snapshot explain it.
+        let state = self.stream_state.read();
+        let mut incomplete_orders = AHashSet::new();
+        let mut pending_orders = Vec::new();
+        for report in &order_reports {
+            let symbol = Ustr::from(&format_binance_symbol(&report.instrument_id));
+            let venue_order_id = report.venue_order_id.inner();
+            let unknown_coverage = state.coverage_unknown(&venue_order_id);
+            let mut covered_qty = if let Some(history) = verified_histories.get(&venue_order_id) {
+                history.iter().map(|fill| fill.last_qty.as_decimal()).sum()
+            } else if unknown_coverage {
+                // A bounded-cache miss is never covered by the old aggregate or by the moving
+                // window alone. Keep the status out of the mass report until full history proves
+                // it.
+                Decimal::ZERO
+            } else {
+                state.confirmed_fill_qty(&venue_order_id)
+            };
+            let mut seen_trade_ids = AHashSet::new();
+            if !unknown_coverage && let Some(fills) = fills_by_order.get(&venue_order_id) {
+                for fill in fills {
+                    let Ok(trade_id) = fill.trade_id.as_str().parse::<i64>() else {
+                        incomplete_orders.insert(venue_order_id);
+                        continue;
+                    };
+                    if seen_trade_ids.insert(trade_id) && !state.has_fill(&symbol, trade_id) {
+                        covered_qty += fill.last_qty.as_decimal();
+                    }
+                }
+            }
+
+            if covered_qty != report.filled_qty.as_decimal() {
+                incomplete_orders.insert(venue_order_id);
+                log::warn!(
+                    "Holding back Aster order {} from mass status: cumulative filled quantity {} \
+                     is not covered by real fills (covered {})",
+                    report.venue_order_id,
+                    report.filled_qty,
+                    covered_qty,
+                );
+                pending_orders.push((venue_order_id, symbol));
+            }
+        }
+        drop(state);
+
+        if !pending_orders.is_empty() {
+            let mut state = self.stream_state.write();
+            for (venue_order_id, symbol) in pending_orders {
+                state.note_pending_order(venue_order_id, symbol);
+            }
+        }
+
+        if !incomplete_orders.is_empty() {
+            reports_complete = false;
+            order_reports
+                .retain(|report| !incomplete_orders.contains(&report.venue_order_id.inner()));
+            // Only reports that will actually be put into the mass status may claim a fill was
+            // linked. The omitted orders remain recoverable through the pending-order map.
+            reported_orders = order_reports
+                .iter()
+                .map(|report| report.venue_order_id.inner())
+                .collect();
         }
 
         let mut realigned = 0usize;
@@ -4240,6 +5363,31 @@ impl ExecutionClient for AsterExecutionClient {
                 "Pulled the reported acceptance time back to the first fill for {realigned} \
                  Aster order(s)"
             );
+        }
+
+        // A full-history proof rebases the exact cumulative quantity and clears the unknown
+        // marker only for orders that will actually be delivered in this mass status. Do this
+        // before the ordinary bounded fast-path commit so an evicted order can never be
+        // incremented from a replaying window.
+        let verified_order_ids: AHashSet<Ustr> = verified_histories.keys().copied().collect();
+        if !verified_histories.is_empty() {
+            let mut state = self.stream_state.write();
+            for (venue_order_id, history) in &verified_histories {
+                let Some(report) = order_reports
+                    .iter()
+                    .find(|report| report.venue_order_id.inner() == *venue_order_id)
+                else {
+                    continue;
+                };
+                let symbol = Ustr::from(&format_binance_symbol(&report.instrument_id));
+                state.commit_verified_order_history(
+                    symbol,
+                    *venue_order_id,
+                    history,
+                    report.filled_qty.as_decimal(),
+                );
+                state.forget_pending_order(venue_order_id);
+            }
         }
 
         // Under a bounded window the engine confirms that the reported fills explain the
@@ -4276,9 +5424,21 @@ impl ExecutionClient for AsterExecutionClient {
         // fill event at all (`ExecutionManager` skips it), so "the report call returned Ok" is
         // not "the fill was applied". Marking those delivered would make the next compensation
         // pass skip a trade nothing ever applied.
-        let (linked, unlinked): (Vec<DeliveredFill>, Vec<DeliveredFill>) = delivered
-            .into_iter()
-            .partition(|fill| reported_orders.contains(&fill.venue_order_id));
+        let mut linked = Vec::new();
+        let mut unlinked = Vec::new();
+        for fill in delivered {
+            if verified_order_ids.contains(&fill.venue_order_id) {
+                // The full-history commit above owns this order's exact aggregate and all of
+                // its IDs; the original window rows must not be replayed through the bounded
+                // increment path.
+                continue;
+            }
+            if reported_orders.contains(&fill.venue_order_id) {
+                linked.push(fill);
+            } else {
+                unlinked.push(fill);
+            }
+        }
 
         self.commit_delivered_fills(linked);
         self.hold_back_fills(&unlinked);
@@ -4393,6 +5553,13 @@ mod tests {
 
     fn account_id() -> AccountId {
         AccountId::from("ASTER-001")
+    }
+
+    fn record_test_fill(state: &mut StreamState, symbol: Ustr, trade_id: i64, ts_ms: i64) -> bool {
+        !matches!(
+            state.record_trade(symbol, Ustr::default(), trade_id, ts_ms, Decimal::ZERO),
+            AppliedTradeResult::Duplicate
+        )
     }
 
     /// Builds a margin account seeded with `balances`.
@@ -5427,14 +6594,43 @@ mod tests {
         let mut state = StreamState::default();
         let symbol = Ustr::from("BTCUSDT");
 
-        assert!(state.record_fill(symbol, 10, 1_000));
-        assert!(!state.record_fill(symbol, 10, 1_000), "a repeat is not new");
-        assert!(state.record_fill(symbol, 11, 2_000));
+        assert!(record_test_fill(&mut state, symbol, 10, 1_000));
+        assert!(
+            !record_test_fill(&mut state, symbol, 10, 1_000),
+            "a repeat is not new"
+        );
+        assert!(record_test_fill(&mut state, symbol, 11, 2_000));
 
         assert!(state.has_fill(&symbol, 10));
         assert!(!state.has_fill(&symbol, 12));
-        assert_eq!(state.last_fill_ms(&symbol), Some(2_000));
-        assert_eq!(state.last_fill_ms(&Ustr::from("ETHUSDT")), None);
+        assert_eq!(state.applied_trades[&symbol].last_ts_ms, 2_000);
+        assert!(!state.applied_trades.contains_key(&Ustr::from("ETHUSDT")));
+    }
+
+    #[rstest]
+    fn test_order_fill_evidence_deduplicates_exact_quantity() {
+        let mut state = StreamState::default();
+        let symbol = Ustr::from("BTCUSDT");
+        let venue_order_id = Ustr::from("910001");
+        let qty = Decimal::from_str_exact("0.004000").unwrap();
+
+        assert!(state.record_fill_for_order(symbol, venue_order_id, 7, 1_000, qty));
+        assert!(!state.record_fill_for_order(symbol, venue_order_id, 7, 1_000, qty));
+        assert_eq!(state.confirmed_fill_qty(&venue_order_id), qty);
+        assert!(state.has_fill(&symbol, 7));
+    }
+
+    #[rstest]
+    fn test_pending_order_evidence_survives_until_resolution() {
+        let mut state = StreamState::default();
+        let symbol = Ustr::from("BTCUSDT");
+        let venue_order_id = Ustr::from("910001");
+
+        state.note_pending_order(venue_order_id, symbol);
+        assert_eq!(state.pending_orders(), vec![(venue_order_id, symbol)]);
+
+        state.forget_pending_order(&venue_order_id);
+        assert!(state.pending_orders().is_empty());
     }
 
     #[rstest]
@@ -5451,11 +6647,18 @@ mod tests {
             "a lookback older than the connect must be clamped to the connect",
         );
 
-        state.record_fill(symbol, 1, 2_000_000);
+        record_test_fill(&mut state, symbol, 1, 2_000_000);
         assert_eq!(
             state.compensation_start_ms(&symbol, 500_000),
-            2_000_000,
-            "once a fill is seen, that is the floor",
+            1_000_000,
+            "a WebSocket fill must not advance the complete-history checkpoint",
+        );
+
+        state.advance_history_checkpoint(symbol, 3_000_000);
+        assert_eq!(
+            state.compensation_start_ms(&symbol, 500_000),
+            3_000_000,
+            "only a successful complete-history pass may advance the checkpoint",
         );
     }
 
@@ -5634,12 +6837,12 @@ mod tests {
         state.session_start_ms = 1_000;
 
         state.note_pending_fill(symbol, 500);
-        state.record_fill(symbol, 600, 9_000);
+        record_test_fill(&mut state, symbol, 600, 9_000);
 
         assert_eq!(
             state.compensation_start_ms(&symbol, 1_000),
-            9_000,
-            "the window must stay at the watermark, whatever is still awaiting recovery",
+            1_000,
+            "a WebSocket timestamp must not advance the complete-history checkpoint",
         );
         assert_eq!(
             state.pending_trade_ids(&symbol),
@@ -5648,22 +6851,26 @@ mod tests {
         );
 
         // Once it is applied, nothing is left to recover.
-        state.record_fill(symbol, 500, 2_000);
-        assert_eq!(state.compensation_start_ms(&symbol, 1_000), 9_000);
+        record_test_fill(&mut state, symbol, 500, 2_000);
+        assert_eq!(
+            state.compensation_start_ms(&symbol, 1_000),
+            1_000,
+            "only a successful complete-history pass may advance the checkpoint",
+        );
         assert!(state.pending_trade_ids(&symbol).is_empty());
     }
 
     #[rstest]
-    fn test_a_pending_trade_survives_the_eviction_of_its_generation() {
-        // The dedupe set is bounded, so a long history evicts the oldest IDs. A trade still
-        // awaiting recovery must not be lost with them, and the trades that *were* applied must
-        // stay recognised as applied so a pass that reads them again does not re-deliver them.
+    fn test_a_pending_trade_stays_recoverable_alongside_a_long_history() {
+        // A trade still awaiting recovery must remain separate from the exact delivered ledger,
+        // and the trades that *were* applied must stay recognised as applied so a pass that reads
+        // them again does not re-deliver them.
         let mut state = StreamState::default();
         let symbol = Ustr::from("BTCUSDT");
 
         state.note_pending_fill(symbol, 1);
-        for trade_id in 2..=(MAX_TRACKED_TRADE_IDS as i64 + 1) {
-            state.record_fill(symbol, trade_id, 1_000 + trade_id);
+        for trade_id in 2..=4_097 {
+            record_test_fill(&mut state, symbol, trade_id, 1_000 + trade_id);
         }
 
         assert!(
@@ -5676,8 +6883,8 @@ mod tests {
             "eviction must not drop a trade still awaiting recovery",
         );
         assert!(
-            state.has_fill(&symbol, MAX_TRACKED_TRADE_IDS as i64 + 1),
-            "the newest applied trades stay recognised",
+            state.has_fill(&symbol, 4_097),
+            "the applied ledger must retain exact membership",
         );
     }
 
@@ -5685,7 +6892,7 @@ mod tests {
     fn test_a_pending_note_for_an_applied_fill_is_ignored() {
         let mut state = StreamState::default();
         let symbol = Ustr::from("BTCUSDT");
-        state.record_fill(symbol, 500, 5_000);
+        record_test_fill(&mut state, symbol, 500, 5_000);
 
         state.note_pending_fill(symbol, 500);
 
@@ -5697,27 +6904,164 @@ mod tests {
         let mut state = StreamState::default();
         let symbol = Ustr::from("BTCUSDT");
 
-        assert!(state.record_fill(symbol, 4_242, 1_500_000));
+        assert!(record_test_fill(&mut state, symbol, 4_242, 1_500_000));
 
         assert!(state.has_fill(&symbol, 4_242));
         assert!(
-            !state.record_fill(symbol, 4_242, 1_500_000),
+            !record_test_fill(&mut state, symbol, 4_242, 1_500_000),
             "a trade ID already applied must never be delivered twice",
         );
     }
 
     #[rstest]
-    fn test_applied_trades_is_bounded() {
+    fn test_applied_trades_compacts_dense_ids_without_losing_membership() {
         let mut applied = AppliedTrades::default();
 
-        for trade_id in 0..(MAX_TRACKED_TRADE_IDS as i64 + 100) {
-            applied.record(trade_id, trade_id);
+        for trade_id in 0..4_196 {
+            applied.record(
+                trade_id,
+                AppliedTrade {
+                    venue_order_id: Ustr::default(),
+                    qty: Decimal::ZERO,
+                    ts_ms: trade_id,
+                },
+            );
         }
 
         assert_eq!(applied.ids.len(), MAX_TRACKED_TRADE_IDS);
-        // The oldest IDs are dropped first, so the newest window stays recognisable.
-        assert!(applied.contains(MAX_TRACKED_TRADE_IDS as i64 + 99));
-        assert!(!applied.contains(0));
+        assert!(!applied.contains(0), "the bounded cache evicts old IDs");
+        assert!(applied.contains(4_195));
+    }
+
+    #[rstest]
+    fn test_order_fill_evidence_deduplicates_after_a_long_history() {
+        let mut state = StreamState::default();
+        let symbol = Ustr::from("BTCUSDT");
+        let venue_order_id = Ustr::from("910001");
+        let qty = Decimal::from_str_exact("0.001").unwrap();
+        state.track_working_venue_order(venue_order_id);
+
+        for trade_id in 0..MAX_TRACKED_TRADE_IDS as i64 {
+            assert!(state.record_fill_for_order(symbol, venue_order_id, trade_id, trade_id, qty,));
+        }
+
+        let expected = qty * Decimal::from(MAX_TRACKED_TRADE_IDS as u64);
+        assert_eq!(state.confirmed_fill_qty(&venue_order_id), expected);
+        assert!(
+            !state.record_fill_for_order(
+                symbol,
+                venue_order_id,
+                MAX_TRACKED_TRADE_IDS as i64,
+                MAX_TRACKED_TRADE_IDS as i64,
+                qty,
+            ),
+            "the first cache eviction must fail closed",
+        );
+        assert!(
+            !state.record_fill_for_order(symbol, venue_order_id, 0, 0, qty),
+            "an evicted trade ID must fail closed until full history is read",
+        );
+        assert_eq!(state.confirmed_fill_qty(&venue_order_id), expected);
+        assert!(state.coverage_unknown(&venue_order_id));
+    }
+
+    #[rstest]
+    fn test_order_fill_evidence_accepts_a_late_lower_id_after_sparse_history() {
+        let mut state = StreamState::default();
+        let symbol = Ustr::from("BTCUSDT");
+        let venue_order_id = Ustr::from("910002");
+        let qty = Decimal::from_str_exact("0.001").unwrap();
+        state.track_working_venue_order(venue_order_id);
+
+        // Trade IDs are numeric, but delivery can be out of order and the account's history can
+        // contain gaps. A lower ID that was never delivered must remain distinguishable from a
+        // replay of an already delivered ID.
+        for trade_id in (2..=8_194).step_by(2).take(MAX_TRACKED_TRADE_IDS) {
+            assert!(state.record_fill_for_order(symbol, venue_order_id, trade_id, trade_id, qty,));
+        }
+
+        assert!(
+            !state.record_fill_for_order(symbol, venue_order_id, 1, 1, qty),
+            "a late sparse ID cannot be classified from the bounded cache and stays pending",
+        );
+        assert_eq!(
+            state.confirmed_fill_qty(&venue_order_id),
+            qty * Decimal::from(MAX_TRACKED_TRADE_IDS as u64),
+        );
+        assert!(
+            state.coverage_unknown(&venue_order_id),
+            "the late ID must require a complete order-history proof",
+        );
+
+        let mut applied = AppliedTrades::default();
+        for trade_id in (2..=8_194).step_by(2) {
+            applied.record(
+                trade_id,
+                AppliedTrade {
+                    venue_order_id,
+                    qty,
+                    ts_ms: trade_id,
+                },
+            );
+        }
+        assert!(!applied.contains(1));
+        assert!(
+            !applied.contains(2) && applied.contains(8_194),
+            "cache membership is exact IDs rather than a numeric floor",
+        );
+    }
+
+    #[rstest]
+    fn test_terminal_trade_cache_eviction_does_not_create_recovery_debt() {
+        let mut state = StreamState::default();
+        let symbol = Ustr::from("BTCUSDT");
+        let qty = Decimal::from_str_exact("0.001").unwrap();
+
+        // Each order is terminal before another order can evict its only trade from the bounded
+        // fast cache. Reclaiming that optimization row must not turn a healthy session into an
+        // unbounded list of unknown orders or hold readiness in Degraded.
+        for index in 0..=MAX_TRACKED_TRADE_IDS as i64 {
+            let venue_order_id = Ustr::from(&format!("terminal-{index}"));
+            state.track_working_venue_order(venue_order_id);
+            assert!(state.record_fill_for_order(symbol, venue_order_id, index, index, qty,));
+            state.forget_working_venue_order(&venue_order_id);
+        }
+
+        assert!(state.coverage_unknown.is_empty());
+        assert!(state.pending_orders.is_empty());
+        assert!(state.pending_trades.is_empty());
+        assert!(!state.has_recovery_debt());
+    }
+
+    #[rstest]
+    fn test_terminal_eviction_becomes_debt_only_when_a_status_needs_missing_ids() {
+        let mut state = StreamState::default();
+        let symbol = Ustr::from("BTCUSDT");
+        let terminal_order = Ustr::from("terminal-evicted");
+        let qty = Decimal::from_str_exact("0.001").unwrap();
+
+        state.track_working_venue_order(terminal_order);
+        assert!(state.record_fill_for_order(symbol, terminal_order, 0, 0, qty));
+        state.forget_working_venue_order(&terminal_order);
+
+        for index in 1..=MAX_TRACKED_TRADE_IDS as i64 {
+            let venue_order_id = Ustr::from(&format!("terminal-{index}"));
+            state.track_working_venue_order(venue_order_id);
+            assert!(state.record_fill_for_order(symbol, venue_order_id, index, index, qty));
+            state.forget_working_venue_order(&venue_order_id);
+        }
+
+        assert!(!state.coverage_unknown(&terminal_order));
+        assert!(!state.has_recovery_debt());
+
+        state.mark_coverage_unknown_if_incomplete(&symbol, terminal_order);
+        assert!(state.coverage_unknown(&terminal_order));
+        assert_eq!(
+            state.pending_orders(),
+            vec![(terminal_order, symbol)],
+            "only the later status observation turns a missing cache row into debt",
+        );
+        assert!(state.has_recovery_debt());
     }
 
     // ------------------------------------------------------------------------------------------

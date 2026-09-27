@@ -57,7 +57,9 @@ use nautilus_model::{
     orders::{Order, OrderAny, builder::OrderTestBuilder},
     types::{AccountBalance, Currency, Money, Price, Quantity},
 };
+use nautilus_portfolio::Portfolio;
 use rstest::rstest;
+use rust_decimal::Decimal;
 use serde_json::{Value, json};
 use tokio::sync::mpsc::UnboundedReceiver;
 
@@ -568,6 +570,212 @@ async fn test_unknown_execution_status_is_reconciled_rather_than_rejected(#[case
     );
 }
 
+/// An ambiguous submit can have filled the order before the POST response was lost. The
+/// reconciliation query must carry the venue's real trade into the execution engine rather than
+/// publishing a cumulative `FILLED` status that makes the engine invent a synthetic fill.
+#[rstest]
+#[tokio::test]
+async fn review_round5_ambiguous_submit_full_fill_reaches_engine_once() {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    drain_exec(&mut harness.exec_rx);
+
+    let client_order_id = "O-R5-AMBIG-FILLED";
+    let venue_order_id = 970_501;
+    let high_trade_id = 970_601;
+    let low_trade_id = 970_600;
+    let trade_ms = now_ms();
+    venue.script(|s| {
+        s.submit = SubmitOutcome::AsterError {
+            code: -1007,
+            msg: "Timeout waiting for response from backend server.".to_string(),
+        };
+        let mut row = venue_order(venue_order_id, client_order_id, "BTCUSDT", "FILLED", "BUY");
+        row["avgPrice"] = json!("50000.00");
+        row["cumQuote"] = json!("500.0");
+        row["time"] = json!(trade_ms - 1);
+        row["updateTime"] = json!(trade_ms);
+        s.orders.insert(client_order_id.to_string(), row.clone());
+        s.orders.insert(venue_order_id.to_string(), row);
+        s.open_orders = json!([]);
+        let mut low_trade = venue_trade(low_trade_id, venue_order_id, "BTCUSDT", trade_ms, "0.008");
+        low_trade["qty"] = json!("0.004");
+        low_trade["quoteQty"] = json!("200.0");
+        let mut high_trade = venue_trade(
+            high_trade_id,
+            venue_order_id,
+            "BTCUSDT",
+            trade_ms - 1,
+            "0.012",
+        );
+        high_trade["qty"] = json!("0.006");
+        high_trade["quoteQty"] = json!("300.0");
+        s.user_trades
+            .insert("BTCUSDT".to_string(), vec![low_trade, high_trade]);
+    });
+
+    let order = limit_order(client_order_id, OrderSide::Buy, false);
+    harness
+        .cache
+        .borrow_mut()
+        .add_order(order.clone(), None, None, false)
+        .expect("cached");
+
+    // The stream sees the higher trade ID first. The ambiguous POST's REST repair then returns
+    // the complete history, including the lower ID, so the real engine is tested on an
+    // out-of-order WS/REST duplicate rather than on a single adapter event count.
+    venue.push_ws(&json!({
+        "e": "ORDER_TRADE_UPDATE",
+        "E": trade_ms,
+        "T": trade_ms,
+        "o": {
+            "s": "BTCUSDT", "c": client_order_id, "S": "BUY", "o": "LIMIT", "f": "GTC",
+            "q": "0.010", "p": "50000.00", "ap": "50000.00", "sp": "0",
+            "x": "TRADE", "X": "PARTIALLY_FILLED", "i": venue_order_id, "l": "0.006", "z": "0.006",
+            "L": "50000.00", "N": "USDT", "n": "0.012", "T": trade_ms - 1,
+            "t": high_trade_id, "m": true, "R": false, "wt": "CONTRACT_PRICE",
+            "ot": "LIMIT", "ps": "BOTH", "cp": false, "rp": "0"
+        }
+    }));
+    let mut events = wait_for_events(&mut harness, Duration::from_secs(10), |events| {
+        fill_trade_ids(events)
+            .iter()
+            .any(|id| id.as_str() == high_trade_id.to_string())
+    })
+    .await;
+
+    harness
+        .client
+        .submit_order(submit_command(&order))
+        .expect("submit accepted");
+    wait_until_async(
+        || async { !venue.requests_for("POST", "order").is_empty() },
+        Duration::from_secs(5),
+    )
+    .await;
+
+    let rest_events = wait_for_events(&mut harness, Duration::from_secs(20), |events| {
+        fill_trade_ids(events)
+            .iter()
+            .any(|id| id.as_str() == low_trade_id.to_string())
+    })
+    .await;
+    events.extend(rest_events);
+    assert_eq!(venue.requests_for("POST", "order").len(), 1);
+    let observed_trade_ids = fill_trade_ids(&events);
+    let high_trade_id_str = high_trade_id.to_string();
+    assert_eq!(
+        observed_trade_ids.first().map(String::as_str),
+        Some(high_trade_id_str.as_str()),
+        "the higher WS trade must arrive before the REST repair: {events:?}",
+    );
+    let mut sorted_trade_ids = observed_trade_ids;
+    sorted_trade_ids.sort();
+    assert_eq!(
+        sorted_trade_ids,
+        vec![
+            low_trade_id.to_string(),
+            high_trade_id.to_string(),
+            high_trade_id.to_string(),
+        ],
+        "WS high ID plus REST's complete history must preserve both real trades: {events:?}",
+    );
+    assert!(
+        !order_events(&events)
+            .iter()
+            .any(|event| matches!(event, OrderEventAny::Rejected(_))),
+        "a filled order behind an ambiguous POST must not be rejected: {events:?}",
+    );
+
+    let cache = Rc::new(RefCell::new(Cache::default()));
+    seed_account(&cache);
+    while let Ok(event) = harness.data_rx.try_recv() {
+        if let DataEvent::Instrument(instrument) = event {
+            cache.borrow_mut().add_instrument(instrument).unwrap();
+        }
+    }
+    let clock = Rc::new(RefCell::new(TestClock::new()));
+    let mut portfolio = Portfolio::new(clock.clone(), cache.clone(), None);
+    let mut manager = ExecutionManager::new(
+        clock.clone(),
+        cache.clone(),
+        ExecutionManagerConfig::default(),
+    )
+    .expect("manager");
+    let mut engine = ExecutionEngine::new(clock, cache.clone(), None);
+    engine.register_client(Box::new(harness.client)).unwrap();
+    engine.register_oms_type(StrategyId::from("EXTERNAL"), OmsType::Netting);
+    for event in &events {
+        if let ExecutionEvent::Report(report) = event {
+            manager.observe_execution_report(report);
+            engine.reconcile_execution_report(report);
+        }
+    }
+    // The same terminal REST repair can be observed more than once after the websocket's higher
+    // trade ID arrived first. Replay that exact report through the live manager/cache/engine: the
+    // trade IDs, commissions, position quantity, and portfolio state must remain exactly once.
+    for event in events.iter().filter(|event| {
+        matches!(
+            event,
+            ExecutionEvent::Report(ExecutionReport::OrderWithFills(report, _))
+                if report.order_status == OrderStatus::Filled
+        )
+    }) {
+        if let ExecutionEvent::Report(report) = event {
+            manager.observe_execution_report(report);
+            engine.reconcile_execution_report(report);
+        }
+    }
+
+    let cache = cache.borrow();
+    let order = cache
+        .order(&ClientOrderId::from(client_order_id))
+        .expect("the ambiguous order must be reconstructed");
+    assert_eq!(order.filled_qty(), Quantity::from("0.010"));
+    let mut trade_ids = order
+        .trade_ids()
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+    trade_ids.sort();
+    assert_eq!(
+        trade_ids,
+        vec![low_trade_id.to_string(), high_trade_id.to_string()],
+        "the engine must retain each real trade ID exactly once: {:?}",
+        order.trade_ids(),
+    );
+    assert_eq!(
+        order.commissions().get(&Currency::USDT()),
+        Some(&Money::from("0.02 USDT")),
+        "the two real commissions must be applied once",
+    );
+    let position = cache
+        .position_for_order(&ClientOrderId::from(client_order_id))
+        .expect("the real fill must create a position");
+    assert_eq!(position.quantity, Quantity::from("0.010"));
+    assert_eq!(position.commissions(), vec![Money::from("0.02 USDT")]);
+    assert_eq!(
+        cache
+            .account(&AccountId::from(ACCOUNT_ID))
+            .expect("the account must remain cached")
+            .balance_total(Some(Currency::USDT())),
+        Some(Money::from("999.98 USDT")),
+        "the cached funds must reflect the real commission exactly once",
+    );
+    assert_eq!(
+        portfolio.net_position(&InstrumentId::from(BTC)),
+        Decimal::from_str_exact("0.010").unwrap(),
+        "portfolio position must match the once-only engine fill",
+    );
+    assert_eq!(
+        portfolio
+            .equity(&ASTER_VENUE, Some(&AccountId::from(ACCOUNT_ID)))
+            .get(&Currency::USDT()),
+        Some(&Money::from("999.98 USDT")),
+        "portfolio equity must remain consistent with the cached account funds",
+    );
+}
+
 #[rstest]
 #[tokio::test]
 async fn test_client_side_timeout_on_submit_is_reconciled_rather_than_rejected() {
@@ -965,10 +1173,10 @@ async fn test_outage_compensation_does_not_reapply_a_fill_already_seen_on_the_st
 
 #[rstest]
 #[tokio::test]
-async fn test_startup_reconciliation_fills_are_not_replayed_by_compensation() {
-    // A live run replayed a fill from a previous process as a session event, which the engine
-    // rejected with `InvalidStateTrigger` because the order was already filled. Fills handed to
-    // the engine's startup reconciliation must not come back as live fills after a reconnect.
+async fn test_startup_reconciliation_fills_remain_recoverable_until_consumed() {
+    // Generating a vector of reports does not prove that the downstream engine accepted it. A
+    // fill that cannot be attributed or is rejected by a scoped position recovery must remain
+    // recoverable after a reconnect instead of being marked delivered by the query alone.
     let venue = MockVenue::start().await;
     let mut harness = connected_harness(&venue).await;
 
@@ -1014,8 +1222,8 @@ async fn test_startup_reconciliation_fills_are_not_replayed_by_compensation() {
 
     let compensated = drain_exec(&mut harness.exec_rx);
     assert!(
-        !fill_trade_ids(&compensated).contains(&"8100".to_string()),
-        "a trade already reported to the engine must not be re-delivered: {compensated:?}",
+        fill_trade_ids(&compensated).contains(&"8100".to_string()),
+        "a report not confirmed by the downstream engine must remain recoverable: {compensated:?}",
     );
 }
 
@@ -1577,8 +1785,7 @@ async fn test_order_status_reports_page_past_the_venue_limit() {
 
     let orders: Vec<Value> = (0..1_200i64)
         .map(|index| {
-            let mut order =
-                venue_order(index + 1, &format!("O-{index}"), "BTCUSDT", "FILLED", "BUY");
+            let mut order = venue_order(index + 1, &format!("O-{index}"), "BTCUSDT", "NEW", "BUY");
             order["time"] = json!(1_788_571_663_000i64 + index);
             order["updateTime"] = json!(1_788_571_663_000i64 + index);
             order
@@ -3683,6 +3890,16 @@ async fn review_round4_uncovered_fills_are_withheld_until_their_order_answers() 
         .position_for_order(&external)
         .expect("the fills must open a position");
     assert_eq!(position.quantity, Quantity::from("0.030"));
+    assert_eq!(
+        order.commissions().get(&Currency::USDT()),
+        Some(&Money::from("0.06 USDT")),
+        "the three real commissions must be applied once",
+    );
+    assert_eq!(
+        position.commissions(),
+        vec![Money::from("0.06 USDT")],
+        "the position must carry the same once-only commission total",
+    );
 }
 
 /// R4-01: the order sweep of the same compensation pass must withhold the status of an order
@@ -4049,10 +4266,11 @@ async fn review_round4_hedge_mode_account_is_rejected_at_connect() {
 }
 
 // ------------------------------------------------------------------------------------------------
-// R4 - bounded dedupe memory against the pending-trade pull-back
+// R4 - exact trade dedupe against the pending-trade pull-back
 // ------------------------------------------------------------------------------------------------
 
-/// Trades the venue holds for the symbol under test, comfortably past the adapter's dedupe cap.
+/// Trades the venue holds for the symbol under test, long enough to exercise the exact ledger
+/// beyond the old bounded cache window.
 const HISTORY_TRADES: i64 = 6_000;
 /// Trades per historical order, so the history is a handful of orders rather than 6,000 of them.
 const TRADES_PER_ORDER: i64 = 100;
@@ -4087,7 +4305,7 @@ fn bulk_order(order_id: i64, client_order_id: &str, time_ms: i64, update_ms: i64
     })
 }
 
-/// Scripts a symbol whose recent history is longer than the adapter can remember.
+/// Scripts a symbol whose recent history is longer than the adapter's former per-ID cache.
 ///
 /// The oldest trade belongs to an order the venue no longer answers for, which is what keeps a
 /// trade pending after startup reconciliation.
@@ -4184,22 +4402,20 @@ fn btc_position(cache: &Rc<RefCell<Cache>>) -> Option<(Quantity, PositionSide)> 
 }
 
 /// R4-04: a trade held back for recovery must not drag the compensation window back over a
-/// history the bounded dedupe set has already forgotten.
+/// long history that the exact delivered-trade ledger already accounts for.
 ///
 /// The account below is ordinary: 6,000 trades in the reconciliation window, one of them
-/// unlinkable because the venue no longer answers for its order. Startup applies 6,000 trade
-/// IDs, `MAX_TRACKED_TRADE_IDS` (4,096) of which fit in the dedupe set, and the remaining 1,904
-/// are evicted. If the pending trade pulled the next compensation window back to its own
-/// timestamp, every one of those 1,904 evicted trades would read as missed and be re-delivered
-/// as a live fill — on *every* reconnect, because re-recording an evicted ID immediately evicts
-/// it again. The engine absorbs the replay only while it still holds the orders that own those
-/// trade IDs; a node that has purged its closed orders (which live nodes do routinely) instead
-/// bootstraps them again and books the quantity a second time.
+/// unlinkable because the venue no longer answers for its order. Startup applies all 6,000
+/// delivered trade IDs to the exact ledger. If the pending trade pulled the next compensation
+/// window back to its own timestamp, every one of those already delivered trades would be read
+/// again; the ledger must recognise them without changing the confirmed quantity. The engine
+/// must not be asked to absorb a replay merely because it still holds the orders that own those
+/// trade IDs.
 ///
 /// So the pending trade is fetched by ID, and the window stays at the watermark.
 #[rstest]
 #[tokio::test]
-async fn review_round4_a_pending_trade_does_not_replay_the_evicted_history() {
+async fn review_round4_a_pending_trade_does_not_replay_the_long_history() {
     let venue = MockVenue::start().await;
     let mut harness = connected_harness(&venue).await;
     drain_exec(&mut harness.exec_rx);
@@ -4906,6 +5122,254 @@ async fn review_round4_malformed_order_update_denies_new_risk() {
         venue.requests_for("POST", "order").is_empty(),
         "the denied order must never reach the venue: {:?}",
         venue.requests(),
+    );
+}
+
+/// #5: a malformed zero-fill stream row is repaired by a reliable REST zero status. The repair
+/// runs the normal account recovery before readiness is restored and does not need a reconnect.
+#[rstest]
+#[tokio::test]
+async fn review_round5_rest_zero_fill_clears_malformed_stream_debt_without_reconnect() {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    drain_exec(&mut harness.exec_rx);
+
+    let order_id = 970_301i64;
+    let client_order_id = "O-R5-ZERO";
+    let event_ms = now_ms();
+    venue.script(|s| {
+        let mut row = venue_order(order_id, client_order_id, "BTCUSDT", "NEW", "BUY");
+        row["origQty"] = json!("0.010");
+        row["executedQty"] = json!("0.000");
+        row["avgPrice"] = json!("0");
+        row["time"] = json!(event_ms - 1);
+        row["updateTime"] = json!(event_ms);
+        s.orders.insert(order_id.to_string(), row.clone());
+        s.orders.insert(client_order_id.to_string(), row);
+    });
+
+    let connections_before = venue.ws_connection_count();
+    venue.push_ws(&json!({
+        "e": "ORDER_TRADE_UPDATE",
+        "E": event_ms,
+        "T": event_ms,
+        "o": {
+            "s": "BTCUSDT", "c": client_order_id, "S": "BUY", "o": "LIMIT", "f": "GTC",
+            "q": "not-a-number", "p": "50000.00", "ap": "0", "sp": "0",
+            "x": "NEW", "X": "NEW", "i": order_id, "l": "0", "z": "0",
+            "L": "0", "N": "USDT", "n": "0", "T": event_ms,
+            "t": 0i64, "m": false, "R": false, "wt": "CONTRACT_PRICE",
+            "ot": "LIMIT", "ps": "BOTH", "cp": false, "rp": "0"
+        }
+    }));
+
+    wait_until_async(
+        || async {
+            venue
+                .requests_for("GET", "order")
+                .iter()
+                .any(|request| request.param("orderId") == Some(&order_id.to_string()))
+        },
+        Duration::from_secs(5),
+    )
+    .await;
+    wait_until_async(
+        || async { harness.client.is_ready() },
+        Duration::from_secs(10),
+    )
+    .await;
+
+    assert_eq!(
+        venue.ws_connection_count(),
+        connections_before,
+        "REST evidence repair must not require a socket reconnect",
+    );
+    let events = drain_exec(&mut harness.exec_rx);
+    assert!(
+        fill_trade_ids(&events).is_empty(),
+        "a repaired zero-fill status must not manufacture a fill: {events:?}",
+    );
+}
+
+/// #5: if the execution event channel is unavailable, the evidence bundle stays pending and is
+/// delivered after the next session installs a live consumer. A successful REST query alone must
+/// never commit a trade that the execution engine could not receive.
+#[rstest]
+#[tokio::test]
+async fn review_round5_failed_execution_send_keeps_real_fill_recoverable() {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    drain_exec(&mut harness.exec_rx);
+
+    let order_id = 970_351i64;
+    let client_order_id = "O-R5-SEND-FAIL";
+    let trade_id = 970_352i64;
+    let event_ms = now_ms();
+    venue.script(|s| {
+        let mut row = venue_order(order_id, client_order_id, "BTCUSDT", "FILLED", "BUY");
+        row["origQty"] = json!("0.010");
+        row["executedQty"] = json!("0.010");
+        row["time"] = json!(event_ms - 2);
+        row["updateTime"] = json!(event_ms);
+        s.orders.insert(order_id.to_string(), row.clone());
+        s.orders.insert(client_order_id.to_string(), row);
+        s.open_orders = json!([]);
+        s.user_trades.insert(
+            "BTCUSDT".to_string(),
+            vec![venue_trade(trade_id, order_id, "BTCUSDT", event_ms, "0.02")],
+        );
+    });
+
+    // Close the only receiver before a real order/fill bundle arrives. The adapter's sender must
+    // report the failure and retain both the pending order and exact trade ID.
+    drop(harness.exec_rx);
+    venue.push_ws(&json!({
+        "e": "ORDER_TRADE_UPDATE",
+        "E": event_ms,
+        "T": event_ms,
+        "o": {
+            "s": "BTCUSDT", "c": client_order_id, "S": "BUY", "o": "LIMIT", "f": "GTC",
+            "q": "0.010", "p": "50000.00", "ap": "50000.00", "sp": "0",
+            "x": "TRADE", "X": "FILLED", "i": order_id, "l": "0.010", "z": "0.010",
+            "L": "50000.00", "N": "USDT", "n": "0.02", "T": event_ms,
+            "t": trade_id, "m": true, "R": false, "wt": "CONTRACT_PRICE",
+            "ot": "LIMIT", "ps": "BOTH", "cp": false, "rp": "0"
+        }
+    }));
+
+    wait_until_async(
+        || async { !harness.client.is_ready() },
+        Duration::from_secs(10),
+    )
+    .await;
+
+    // Install a fresh consumer and force the carried debt through the normal stop/connect path.
+    harness.client.stop().expect("stop after failed send");
+    let (exec_tx, exec_rx) = tokio::sync::mpsc::unbounded_channel();
+    replace_exec_event_sender(exec_tx);
+    harness.exec_rx = exec_rx;
+    harness.client.start().expect("restart after failed send");
+    harness
+        .client
+        .connect()
+        .await
+        .expect("recover after failed send");
+
+    let events = wait_for_events(&mut harness, Duration::from_secs(20), |events| {
+        fill_trade_ids(events)
+            .iter()
+            .filter(|id| id.as_str() == trade_id.to_string())
+            .count()
+            == 1
+    })
+    .await;
+    assert_eq!(
+        fill_trade_ids(&events),
+        vec![trade_id.to_string()],
+        "the failed send must be retried as the one real fill: {events:?}",
+    );
+    assert!(harness.client.is_ready());
+}
+
+/// #5: evidence debt from a failed compensation pass survives `stop` and blocks the next
+/// session until its targeted order/trade recovery completes.
+#[rstest]
+#[tokio::test]
+async fn review_round5_pending_evidence_survives_stop_and_connect() {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    drain_exec(&mut harness.exec_rx);
+
+    let order_id = 970_401i64;
+    let client_order_id = "O-R5-STOP-DEBT";
+    let trade_ms = now_ms();
+    venue.script(|s| {
+        let mut row = venue_order(order_id, client_order_id, "BTCUSDT", "FILLED", "BUY");
+        row["origQty"] = json!("0.010");
+        row["executedQty"] = json!("0.010");
+        row["time"] = json!(trade_ms - 2);
+        row["updateTime"] = json!(trade_ms);
+        s.orders.insert(order_id.to_string(), row.clone());
+        s.orders.insert(client_order_id.to_string(), row);
+        s.open_orders = json!([]);
+        s.user_trades.insert(
+            "BTCUSDT".to_string(),
+            vec![venue_trade(970_402, order_id, "BTCUSDT", trade_ms, "0.02")],
+        );
+        // The first compensation pass must retain the order and trade as debt rather than
+        // retrying the failed order query in the same pass.
+        s.order_query_faults.insert(order_id.to_string(), 1);
+    });
+
+    venue.drop_ws();
+    wait_until_async(
+        || async { venue.ws_connection_count() >= 2 },
+        Duration::from_secs(20),
+    )
+    .await;
+    wait_until_async(
+        || async { !venue.requests_for("GET", "userTrades").is_empty() },
+        Duration::from_secs(20),
+    )
+    .await;
+    tokio::time::sleep(Duration::from_millis(500)).await;
+
+    assert!(
+        !harness.client.is_ready(),
+        "unresolved evidence must deny risk"
+    );
+    assert!(
+        fill_trade_ids(&drain_exec(&mut harness.exec_rx)).is_empty(),
+        "the failed first pass must not publish a bare or synthetic fill",
+    );
+
+    harness.client.stop().expect("stop with recovery debt");
+    assert_eq!(harness.client.readiness_phase(), "stopping");
+    venue.clear_requests();
+    harness.client.connect().await.expect("connect with debt");
+
+    assert!(
+        harness.client.is_ready(),
+        "the new session must complete the carried recovery debt before Ready",
+    );
+    let events = drain_exec(&mut harness.exec_rx);
+    assert_eq!(
+        fill_trade_ids(&events)
+            .iter()
+            .filter(|trade_id| *trade_id == "970402")
+            .count(),
+        1,
+        "the carried real fill must be delivered exactly once: {events:?}",
+    );
+    assert_eq!(
+        events
+            .iter()
+            .filter(|event| {
+                matches!(
+                    event,
+                    ExecutionEvent::Report(ExecutionReport::OrderWithFills(report, fills))
+                        if report.client_order_id == Some(ClientOrderId::from(client_order_id))
+                            && fills.iter().any(|fill| fill.trade_id.as_str() == "970402")
+                )
+            })
+            .count(),
+        1,
+        "the carried order and fill must be bundled once: {events:?}",
+    );
+    assert!(
+        !events.iter().any(|event| {
+            matches!(
+                event,
+                ExecutionEvent::Report(ExecutionReport::Order(report))
+                    if report.client_order_id == Some(ClientOrderId::from(client_order_id))
+            )
+        }),
+        "the fill pass must not be followed by a bare cumulative status: {events:?}",
+    );
+    assert_eq!(
+        venue.requests_for("GET", "order").len(),
+        1,
+        "a fill already bundled by the fill pass needs no second pending-order query",
     );
 }
 
