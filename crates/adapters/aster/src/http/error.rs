@@ -300,6 +300,9 @@ impl From<HttpClientError> for AsterHttpError {
     fn from(err: HttpClientError) -> Self {
         match err {
             HttpClientError::TimeoutError(msg) => Self::Timeout(msg),
+            // A refused admission never reached the network: it is a local fault, not a
+            // transport one, so it must not be classified as ambiguous or retryable.
+            HttpClientError::AdmissionDenied(msg) => Self::ValidationError(msg),
             HttpClientError::InvalidProxy(msg)
             | HttpClientError::ClientBuildError(msg)
             | HttpClientError::Error(msg) => Self::NetworkError(msg),

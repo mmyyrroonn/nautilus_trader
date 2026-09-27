@@ -84,6 +84,8 @@ class AsterExecutionClientConfig:
     @property
     def treat_expired_as_canceled(self) -> bool: ...
     @property
+    def assume_one_way_mode_when_unconfirmed(self) -> bool: ...
+    @property
     def venue(self) -> model.Venue | None: ...
     def __init__(
         self,
@@ -101,6 +103,7 @@ class AsterExecutionClientConfig:
         proxy_url: str | None = None,
         treat_expired_as_canceled: bool | None = None,
         venue: model.Venue | None = None,
+        assume_one_way_mode_when_unconfirmed: bool | None = None,
     ) -> None: ...
     def has_explicit_credentials(self) -> bool: ...
 

@@ -33,6 +33,13 @@ pub enum HttpClientError {
 
     #[error("Failed to build HTTP client: {0}")]
     ClientBuildError(String),
+
+    /// A caller-supplied admission check refused the request before it was dispatched.
+    ///
+    /// The request provably never left the client, so callers must not treat it as a transport
+    /// or venue outcome.
+    #[error("Request refused by admission check: {0}")]
+    AdmissionDenied(String),
 }
 
 impl From<reqwest::Error> for HttpClientError {

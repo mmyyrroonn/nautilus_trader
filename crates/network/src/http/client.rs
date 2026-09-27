@@ -243,8 +243,49 @@ impl HttpClient {
         timeout_secs: Option<u64>,
         keys: Option<Vec<String>>,
     ) -> Result<HttpResponse, HttpClientError> {
+        self.request_with_url_redacted_admitted(
+            method,
+            url,
+            params,
+            headers,
+            body,
+            timeout_secs,
+            keys,
+            None,
+        )
+        .await
+    }
+
+    /// Sends an HTTP request while redacting the URL, re-checking `admission` after every local
+    /// rate-limit wait and before the request is dispatched.
+    ///
+    /// `admission` is the caller's last chance to refuse a request that queued behind a shared
+    /// quota: it runs after `await_rate_limits`, so a session that lost its execution readiness
+    /// while the request waited cannot reach the network. A refusal is
+    /// [`HttpClientError::AdmissionDenied`] and the request was never sent.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the admission check refuses the request, or if the request fails or
+    /// times out.
+    #[expect(clippy::too_many_arguments)]
+    pub async fn request_with_url_redacted_admitted(
+        &self,
+        method: Method,
+        url: String,
+        params: Option<&HashMap<String, Vec<String>>>,
+        headers: Option<HashMap<String, String>>,
+        body: Option<Vec<u8>>,
+        timeout_secs: Option<u64>,
+        keys: Option<Vec<String>>,
+        admission: Option<&(dyn Fn() -> Result<(), String> + Send + Sync)>,
+    ) -> Result<HttpResponse, HttpClientError> {
         let keys = keys.map(into_ustr_vec);
         self.await_rate_limits(keys.as_deref()).await;
+
+        if let Some(admission) = admission {
+            admission().map_err(HttpClientError::AdmissionDenied)?;
+        }
 
         self.client
             .send_request_with_url_redacted(method, url, params, headers, body, timeout_secs)
@@ -777,7 +818,11 @@ mod encode_url_params_tests {
 #[cfg(test)]
 #[cfg(target_os = "linux")] // Only run network tests on Linux (CI stability)
 mod tests {
-    use std::{net::SocketAddr, num::NonZeroU32};
+    use std::{
+        net::SocketAddr,
+        num::NonZeroU32,
+        sync::atomic::{AtomicBool, Ordering},
+    };
 
     use axum::{
         Router,
@@ -1018,6 +1063,64 @@ mod tests {
 
         assert!(global_limiter.check_key(&global_key).is_err());
         assert!(order_limiter.check_key(&order_key).is_err());
+    }
+
+    #[cfg_attr(
+        not(all(feature = "simulation", madsim)),
+        tokio::test(start_paused = true)
+    )]
+    #[cfg_attr(all(feature = "simulation", madsim), madsim::test)]
+    async fn test_an_admitted_request_checks_admission_after_the_rate_limit_wait() {
+        let key = Ustr::from("scope:order");
+        let limiter = Arc::new(RateLimiter::new_with_quota(
+            None,
+            vec![(key, Quota::with_period(Duration::from_secs(10)).unwrap())],
+        ));
+        limiter.check_key(&key).unwrap();
+
+        let client = HttpClient::builder()
+            .rate_limiters(vec![Arc::clone(&limiter)])
+            .build()
+            .unwrap();
+
+        let admitted = Arc::new(AtomicBool::new(true));
+        let admitted_for_request = Arc::clone(&admitted);
+        let request = test_task::spawn(async move {
+            let admission = move || {
+                if admitted_for_request.load(Ordering::Acquire) {
+                    Ok(())
+                } else {
+                    Err("not ready".to_string())
+                }
+            };
+
+            client
+                .request_with_url_redacted_admitted(
+                    Method::GET,
+                    "http://127.0.0.1:1/never".to_string(),
+                    None,
+                    None,
+                    None,
+                    Some(1),
+                    Some(vec![key.to_string()]),
+                    Some(&admission),
+                )
+                .await
+        });
+        test_task::yield_now().await;
+
+        // The request is waiting on the exhausted quota; revoke admission meanwhile.
+        admitted.store(false, Ordering::Release);
+        advance_test_clock(Duration::from_secs(10)).await;
+
+        let result = request.await.unwrap();
+        assert!(
+            matches!(
+                result,
+                Err(HttpClientError::AdmissionDenied(ref reason)) if reason == "not ready"
+            ),
+            "a request that queued behind the quota must be refused at the dispatch boundary",
+        );
     }
 
     #[cfg(all(feature = "simulation", madsim))]

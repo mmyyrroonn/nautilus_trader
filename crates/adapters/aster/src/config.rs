@@ -231,6 +231,14 @@ pub struct AsterExecutionClientConfig {
     /// Aster reports the unfilled remainder of `IOC`/`FOK` orders as `EXPIRED`, which maps
     /// more naturally onto `CANCELED` for the execution engine.
     pub treat_expired_as_canceled: bool,
+    /// Whether to trade an account whose position mode the venue did not confirm.
+    ///
+    /// The adapter assumes one-way mode everywhere. A venue answer that the position-mode
+    /// endpoint is unavailable leaves the mode unproven, and by default the session comes up
+    /// with new risk denied while cancellations, queries, and provably reduce-only orders stay
+    /// available. Setting this to `true` accepts the one-way assumption for a known
+    /// environment; it is an explicit exemption and is logged on every connect.
+    pub assume_one_way_mode_when_unconfirmed: bool,
     /// Optional Nautilus venue identifier override (defaults to `ASTER`).
     pub venue: Option<Venue>,
 }
@@ -254,6 +262,10 @@ impl std::fmt::Debug for AsterExecutionClientConfig {
             .field("ws_connect_timeout_secs", &self.ws_connect_timeout_secs)
             .field("proxy_url", &self.proxy_url)
             .field("treat_expired_as_canceled", &self.treat_expired_as_canceled)
+            .field(
+                "assume_one_way_mode_when_unconfirmed",
+                &self.assume_one_way_mode_when_unconfirmed,
+            )
             .field("venue", &self.venue)
             .finish()
     }
@@ -273,6 +285,7 @@ nautilus_core::impl_pyo3_config_getters!(AsterExecutionClientConfig {
     ws_connect_timeout_secs: Option<u64>,
     proxy_url: Option<String>,
     treat_expired_as_canceled: bool,
+    assume_one_way_mode_when_unconfirmed: bool,
     venue: Option<Venue>,
 });
 
@@ -292,6 +305,7 @@ impl Default for AsterExecutionClientConfig {
             ws_connect_timeout_secs: Some(DEFAULT_WS_CONNECT_TIMEOUT_SECS),
             proxy_url: None,
             treat_expired_as_canceled: true,
+            assume_one_way_mode_when_unconfirmed: false,
             venue: None,
         }
     }
