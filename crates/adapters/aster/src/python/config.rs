@@ -105,6 +105,7 @@ impl AsterExecutionClientConfig {
         proxy_url = None,
         treat_expired_as_canceled = None,
         venue = None,
+        assume_one_way_mode_when_unconfirmed = None,
     ))]
     #[expect(clippy::too_many_arguments)]
     fn py_new(
@@ -122,6 +123,7 @@ impl AsterExecutionClientConfig {
         proxy_url: Option<String>,
         treat_expired_as_canceled: Option<bool>,
         venue: Option<Venue>,
+        assume_one_way_mode_when_unconfirmed: Option<bool>,
     ) -> PyResult<Self> {
         let defaults = Self::default();
         let config = Self {
@@ -140,6 +142,8 @@ impl AsterExecutionClientConfig {
             treat_expired_as_canceled: treat_expired_as_canceled
                 .unwrap_or(defaults.treat_expired_as_canceled),
             venue: venue.or(defaults.venue),
+            assume_one_way_mode_when_unconfirmed: assume_one_way_mode_when_unconfirmed
+                .unwrap_or(defaults.assume_one_way_mode_when_unconfirmed),
         };
         config.validate().map_err(to_pyvalue_err)?;
         Ok(config)
@@ -157,5 +161,28 @@ impl AsterExecutionClientConfig {
     /// Never renders the signer private key.
     fn __repr__(&self) -> String {
         stringify!(AsterExecutionClientConfig).to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use super::*;
+
+    #[rstest]
+    #[case(None, false)]
+    #[case(Some(false), false)]
+    #[case(Some(true), true)]
+    fn test_python_execution_config_position_mode_exemption(
+        #[case] exemption: Option<bool>,
+        #[case] expected: bool,
+    ) {
+        let config = AsterExecutionClientConfig::py_new(
+            None, None, None, None, None, None, None, None, None, None, None, None, None, None,
+            exemption,
+        )
+        .unwrap();
+        assert_eq!(config.assume_one_way_mode_when_unconfirmed, expected);
     }
 }

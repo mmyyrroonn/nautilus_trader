@@ -733,6 +733,17 @@ impl StreamState {
         self.pending_trades.get(symbol).cloned().unwrap_or_default()
     }
 
+    /// Returns whether any trade remains held back for recovery.
+    ///
+    /// Pending IDs survive a stop and the next connect: dropping them would make the new
+    /// session look complete while the engine still lacks the order/fill bundle that belongs to
+    /// the trade.
+    fn has_pending_trades(&self) -> bool {
+        self.pending_trades
+            .values()
+            .any(|trades| !trades.is_empty())
+    }
+
     fn has_fill(&self, symbol: &Ustr, trade_id: i64) -> bool {
         self.applied_trades
             .get(symbol)
@@ -1790,14 +1801,15 @@ impl SessionContext {
         // This snapshot seeds the conservative bounds every later stream update tightens, and
         // verifies whatever a stream row had left owed - unless a bound moved while it was in
         // flight, in which case only a tightening is applied and the debt stays.
-        let published = {
+        let (published, verification_pending) = {
             let mut state = self.state.write();
-            state.commit_balance_snapshot(
+            let published = state.commit_balance_snapshot(
                 &parsed,
                 epoch_at_start,
                 generation_at_start,
                 self.now_ms(),
-            )
+            );
+            (published, state.owed_balance_refresh)
         };
         self.emitter.emit_account_state(
             published,
@@ -1805,6 +1817,16 @@ impl SessionContext {
             true, // reported
             self.clock.get_time_ns(),
             None, // info
+        );
+
+        anyhow::ensure!(
+            parsed.unverified.is_empty(),
+            "Aster balance snapshot did not verify available balances for {:?}",
+            parsed.unverified,
+        );
+        anyhow::ensure!(
+            !verification_pending,
+            "Aster balance snapshot was superseded before it could verify the account",
         );
         Ok(())
     }
@@ -1862,6 +1884,24 @@ impl SessionContext {
                     }
                 };
 
+            // A flat row has no economic entry price and some venue responses encode that field
+            // as an empty or otherwise non-numeric placeholder. An open position, however,
+            // needs the protocol's numeric entry price for a complete recovery report.
+            let avg_px = match parse_decimal(&position.entry_price, "entryPrice") {
+                Ok(price) => Some(price),
+                Err(_) if matches!(side, PositionSide::Flat) => None,
+                Err(e) => {
+                    log::error!("Failed to parse Aster position {}: {e}", position.symbol);
+                    failure.get_or_insert_with(|| {
+                        format!(
+                            "failed to parse position {} entryPrice: {e}",
+                            position.symbol
+                        )
+                    });
+                    continue;
+                }
+            };
+
             self.emitter.send_position_report(PositionStatusReport::new(
                 self.account_id,
                 context.instrument_id,
@@ -1871,7 +1911,7 @@ impl SessionContext {
                 ts_now,
                 Some(UUID4::new()),
                 None, // venue_position_id: one-way mode
-                parse_decimal(&position.entry_price, "entryPrice").ok(),
+                avg_px,
             ));
         }
 
@@ -2033,11 +2073,6 @@ impl AsterExecutionClient {
     #[must_use]
     pub fn readiness_phase(&self) -> &'static str {
         self.readiness.read().phase.as_str()
-    }
-
-    /// Returns why a submission is refused at the current readiness, if it is.
-    fn submission_refusal(&self, reduce_only: bool) -> Option<String> {
-        self.readiness.read().refusal(reduce_only)
     }
 
     /// Returns the settlement currency used for commissions and balances.
@@ -2425,7 +2460,7 @@ impl AsterExecutionClient {
 
     async fn fetch_account_state(
         &self,
-    ) -> anyhow::Result<(Vec<AccountBalance>, Vec<MarginBalance>)> {
+    ) -> anyhow::Result<(Vec<AccountBalance>, Vec<MarginBalance>, Vec<Ustr>)> {
         let (epoch_at_start, generation_at_start) = {
             let state = self.stream_state.read();
             (state.balance_epoch, state.balance_refresh_generation)
@@ -2451,11 +2486,11 @@ impl AsterExecutionClient {
                 (self.clock.get_time_ns().as_u64() / 1_000_000) as i64,
             )
         };
-        Ok((published, Vec::new()))
+        Ok((published, Vec::new(), parsed.unverified))
     }
 
     async fn emit_account_state(&self) -> anyhow::Result<()> {
-        let (balances, margins) = self.fetch_account_state().await?;
+        let (balances, margins, unverified) = self.fetch_account_state().await?;
 
         if balances.is_empty() {
             log::warn!("Aster account reports no non-zero balances");
@@ -2464,6 +2499,11 @@ impl AsterExecutionClient {
         let ts_event = self.clock.get_time_ns();
         self.emitter
             .emit_account_state(balances, margins, true, ts_event, None);
+
+        anyhow::ensure!(
+            unverified.is_empty(),
+            "Aster initial balance snapshot did not verify available balances for {unverified:?}",
+        );
         Ok(())
     }
 
@@ -3118,22 +3158,32 @@ impl SessionContext {
                 let mut state = self.state.write();
                 state.balance_refresh_in_flight = false;
                 state.note_balance_refresh_failure(self.now_ms());
+                drop(state);
                 log::warn!("Aster owed balance snapshot failed: {e}");
+                self.degrade(format!("owed balance snapshot failed: {e}"));
                 return;
             }
         };
 
         let parsed = parse_account_balances(&balances);
-        let published = {
+        let (published, verification_pending) = {
             let mut state = self.state.write();
             state.balance_refresh_in_flight = false;
-            state.commit_balance_snapshot(
+            let published = state.commit_balance_snapshot(
                 &parsed,
                 epoch_at_start,
                 generation_at_start,
                 self.now_ms(),
-            )
+            );
+            (published, state.owed_balance_refresh)
         };
+        if !parsed.unverified.is_empty() || verification_pending {
+            self.degrade(format!(
+                "owed balance snapshot did not verify available balances for {:?}",
+                parsed.unverified,
+            ));
+        }
+
         self.emitter.emit_account_state(
             published,
             Vec::new(),
@@ -3448,7 +3498,20 @@ impl ExecutionClient for AsterExecutionClient {
                 .degrade(format!("open order reconciliation failed: {e}"));
         }
 
-        self.readiness.write().mark_ready(generation);
+        // A prior session may have held a fill back because its order could not be read. The
+        // pending ID is deliberately retained across stop/connect and is recovered by ID, so a
+        // fresh session must not mark itself ready before that debt has been verified. In
+        // particular, do not let the new session's history window hide an older pending trade.
+        if self.stream_state.read().has_pending_trades() {
+            log::warn!(
+                "Aster new session has pending trade evidence; running recovery before readiness"
+            );
+            self.session()
+                .recover("pending trade evidence after a new connection")
+                .await;
+        } else {
+            self.readiness.write().mark_ready(generation);
+        }
 
         self.core.set_connected();
         log::info!("Aster execution client connected");
@@ -3507,8 +3570,17 @@ impl ExecutionClient for AsterExecutionClient {
 
         // Admission is checked before the order is reported as submitted, and again at the
         // actual send boundary inside the HTTP client: the first check keeps a doomed order out
-        // of the engine's lifecycle, the second covers the wait between the two.
-        if let Some(reason) = self.submission_refusal(request.reduce_only) {
+        // of the engine's lifecycle, the second covers the wait between the two. Capture the
+        // generation while taking the first check so a queued new-risk request cannot be
+        // admitted by a later recovery of the same task.
+        let (admission_generation, refusal) = {
+            let readiness = self.readiness.read();
+            (
+                (!request.reduce_only).then_some(readiness.generation),
+                readiness.refusal(request.reduce_only),
+            )
+        };
+        if let Some(reason) = refusal {
             self.emitter.emit_order_denied(&order, &reason);
             return Ok(());
         }
@@ -3533,9 +3605,21 @@ impl ExecutionClient for AsterExecutionClient {
         self.emitter.emit_order_submitted(&order);
 
         spawner.spawn(async move {
-            let admission = move || match readiness.read().refusal(reduce_only) {
-                Some(reason) => Err(reason),
-                None => Ok(()),
+            let admission = move || {
+                let readiness = readiness.read();
+                if let Some(reason) = readiness.refusal(reduce_only) {
+                    return Err(reason);
+                }
+
+                if let Some(admitted_generation) = admission_generation
+                    && readiness.generation != admitted_generation
+                {
+                    return Err(
+                        "Aster execution readiness changed after order admission".to_string(),
+                    );
+                }
+
+                Ok(())
             };
 
             match http_client
@@ -4254,7 +4338,18 @@ impl ExecutionClient for AsterExecutionClient {
             let quantity = Quantity::from_decimal_dp(signed_quantity.abs(), context.size_precision)
                 .with_context(|| format!("Failed to parse Aster position {}", position.symbol))?;
 
-            let avg_px = parse_decimal(&position.entry_price, "entryPrice").ok();
+            // A flat row has no economic entry price and may carry a non-numeric placeholder;
+            // for a non-flat row the numeric field is required to build a complete report.
+            let avg_px = match parse_decimal(&position.entry_price, "entryPrice") {
+                Ok(price) => Some(price),
+                Err(_) if matches!(position_side, PositionSide::Flat) => None,
+                Err(e) => {
+                    return Err(anyhow::anyhow!(
+                        "Failed to parse Aster position {} entryPrice: {e}",
+                        position.symbol
+                    ));
+                }
+            };
             let ts_last = position.update_time.map_or(ts_now, millis_to_nanos);
 
             reports.push(PositionStatusReport::new(

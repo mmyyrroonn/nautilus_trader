@@ -1315,6 +1315,76 @@ async fn test_generate_position_status_reports_propagates_an_unparsable_quantity
     assert!(error.to_string().contains("BTCUSDT"), "{error}");
 }
 
+#[rstest]
+#[tokio::test]
+async fn test_generate_position_status_reports_propagates_an_unparsable_non_flat_entry_price() {
+    let venue = MockVenue::start().await;
+    let harness = connected_harness(&venue).await;
+
+    venue.script(|script| {
+        script.position_risk = json!([{
+            "symbol": "BTCUSDT",
+            "positionAmt": "0.010",
+            "entryPrice": "not-a-number",
+            "positionSide": "BOTH",
+            "updateTime": 1_788_571_663_397i64,
+        }]);
+    });
+
+    let cmd = GeneratePositionStatusReports::new(
+        UUID4::new(),
+        UnixNanos::default(),
+        None, // instrument_id
+        None, // start
+        None, // end
+        None, // params
+        None, // correlation_id
+    );
+
+    let error = harness
+        .client
+        .generate_position_status_reports(&cmd)
+        .await
+        .expect_err("a non-flat position needs a numeric entry price");
+
+    assert!(error.to_string().contains("entryPrice"), "{error}");
+    assert!(error.to_string().contains("BTCUSDT"), "{error}");
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_generate_position_status_reports_allows_an_unparsable_flat_entry_price() {
+    let venue = MockVenue::start().await;
+    let harness = connected_harness(&venue).await;
+
+    venue.script(|script| {
+        script.position_risk = json!([{
+            "symbol": "BTCUSDT",
+            "positionAmt": "0",
+            "entryPrice": "not-a-number",
+            "positionSide": "BOTH",
+            "updateTime": 1_788_571_663_397i64,
+        }]);
+    });
+
+    let cmd = GeneratePositionStatusReports::new(
+        UUID4::new(),
+        UnixNanos::default(),
+        None, // instrument_id
+        None, // start
+        None, // end
+        None, // params
+        None, // correlation_id
+    );
+    let reports = harness
+        .client
+        .generate_position_status_reports(&cmd)
+        .await
+        .expect("flat positions do not require an entry price");
+
+    assert_eq!(reports.len(), 1);
+}
+
 // ------------------------------------------------------------------------------------------------
 // F05 - side-filtered cancellation
 // ------------------------------------------------------------------------------------------------
@@ -4407,6 +4477,107 @@ async fn review_round4_successful_recovery_restores_new_risk() {
     assert_eq!(venue.requests_for("POST", "order").len(), 1);
 }
 
+/// #4: an initial balance response that cannot verify an asset must fail connect after
+/// publishing the rows it did verify. The session never reaches readiness on a partial snapshot.
+#[rstest]
+#[tokio::test]
+async fn review_round4_initial_unverified_balance_fails_connect_after_publishing_verified_rows() {
+    let venue = MockVenue::start().await;
+    let mut harness = started_harness(&venue);
+    venue.script(|s| {
+        s.balances = json!([
+            {"asset": "USDT", "balance": "1000.0"},
+            {"asset": "BTC", "balance": "0.5", "availableBalance": "0.5"},
+        ]);
+    });
+
+    let error = harness
+        .client
+        .connect()
+        .await
+        .expect_err("a partial initial balance snapshot must fail connect");
+    assert!(error.to_string().contains("available balances"), "{error}");
+    assert!(!harness.client.is_connected());
+    assert!(!harness.client.is_ready());
+
+    let events = drain_exec(&mut harness.exec_rx);
+    let state = account_states(&events)
+        .last()
+        .copied()
+        .expect("the verified rows must still be published");
+    assert!(
+        state
+            .balances
+            .iter()
+            .any(|balance| balance.currency == Currency::BTC()),
+        "the valid BTC row must be preserved: {state:?}",
+    );
+}
+
+/// #4: an owed snapshot that returns an unverified available balance degrades a Ready session,
+/// while valid rows remain published. A complete reconnect is what restores readiness.
+#[rstest]
+#[tokio::test]
+async fn review_round4_unverified_owed_balance_degrades_until_recovery() {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    drain_exec(&mut harness.exec_rx);
+
+    venue.script(|s| {
+        s.balances = json!([
+            {"asset": "USDT", "balance": "1000.0"},
+            {"asset": "BTC", "balance": "0.5", "availableBalance": "0.5"},
+        ]);
+    });
+    venue.push_ws(&json!({
+        "e": "ACCOUNT_UPDATE",
+        "E": 1_788_571_667_000i64,
+        "T": 1_788_571_667_000i64,
+        "a": {
+            "m": "ORDER",
+            "B": [{"a": "USDT", "wb": "1000.00000000", "cw": "1000.00000000", "bc": "0"}],
+            "P": []
+        }
+    }));
+
+    let events = wait_for_events(&mut harness, Duration::from_secs(5), |events| {
+        account_states(events).iter().any(|state| {
+            state
+                .balances
+                .iter()
+                .any(|balance| balance.currency == Currency::BTC())
+        })
+    })
+    .await;
+    assert!(
+        account_states(&events).iter().any(|state| {
+            state
+                .balances
+                .iter()
+                .any(|balance| balance.currency == Currency::BTC())
+        }),
+        "valid rows from the partial owed snapshot must be published: {events:?}",
+    );
+    wait_until_async(
+        || async { !harness.client.is_ready() },
+        Duration::from_secs(5),
+    )
+    .await;
+
+    venue.script(|s| {
+        s.balances = json!([
+            {"asset": "USDT", "balance": "1000.0", "availableBalance": "1000.0"},
+            {"asset": "BTC", "balance": "0.5", "availableBalance": "0.5"},
+        ]);
+    });
+    venue.drop_ws();
+    wait_until_async(
+        || async { harness.client.is_ready() },
+        Duration::from_secs(20),
+    )
+    .await;
+}
+
 /// #4: an order already queued behind a venue cooldown is re-checked at the actual send
 /// boundary. Losing the stream while it waits must keep it off the wire.
 #[rstest]
@@ -4485,6 +4656,110 @@ async fn review_round4_queued_submit_is_denied_after_the_stream_drops() {
     );
 }
 
+/// #4: a queued new-risk order belongs to the readiness generation that admitted it. A socket
+/// outage may recover to `Ready` before its cooldown expires, but that must not admit the old
+/// request into the recovered session.
+#[rstest]
+#[tokio::test]
+async fn review_round4_queued_submit_is_denied_after_recovery_reclaims_readiness() {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    drain_exec(&mut harness.exec_rx);
+
+    venue.script(|s| {
+        s.submit = SubmitOutcome::StatusWithRetryAfter {
+            status: 429,
+            body: "rate limited".to_string(),
+            retry_after: "5".to_string(),
+        };
+    });
+    let first = limit_order("O-COOLDOWN-GENERATION-FIRST", OrderSide::Buy, false);
+    submit_and_settle(&harness, &first, &venue).await;
+    let events = wait_for_events(&mut harness, Duration::from_secs(5), |events| {
+        order_events(events)
+            .iter()
+            .any(|event| matches!(event, OrderEventAny::Rejected(_)))
+    })
+    .await;
+    assert!(
+        order_events(&events)
+            .iter()
+            .any(|event| matches!(event, OrderEventAny::Rejected(_))),
+        "the rate-limited order must be reported as rejected: {events:?}",
+    );
+
+    // The next request is accepted by the venue, but remains queued behind the first request's
+    // cooldown. A stalled recovery keeps the generation transition observable in this test.
+    venue.script(|s| {
+        s.submit = SubmitOutcome::Accepted;
+        s.balance_stalls = 1;
+        s.balance_stall = Duration::from_secs(1);
+    });
+    venue.clear_requests();
+
+    let second = limit_order("O-COOLDOWN-GENERATION-SECOND", OrderSide::Buy, false);
+    harness
+        .cache
+        .borrow_mut()
+        .add_order(second.clone(), None, None, false)
+        .expect("cached");
+    drain_exec(&mut harness.exec_rx);
+    harness
+        .client
+        .submit_order(submit_command(&second))
+        .expect("submit accepted");
+    wait_until_async(
+        || async { harness.client.http_client().cooldown_remaining().is_some() },
+        Duration::from_secs(2),
+    )
+    .await;
+
+    venue.drop_ws();
+    wait_until_async(
+        || async { !harness.client.is_ready() },
+        Duration::from_secs(10),
+    )
+    .await;
+    wait_until_async(
+        || async { harness.client.is_ready() },
+        Duration::from_secs(10),
+    )
+    .await;
+    assert!(
+        harness.client.is_ready(),
+        "the recovery must reach Ready while the queued request is still waiting",
+    );
+    assert!(
+        venue.requests_for("POST", "order").is_empty(),
+        "the queued request must still be off the wire after recovery: {:?}",
+        venue.requests(),
+    );
+
+    let events = wait_for_events(&mut harness, Duration::from_secs(20), |events| {
+        order_events(events)
+            .iter()
+            .any(|event| matches!(event, OrderEventAny::Rejected(_)))
+    })
+    .await;
+    assert!(
+        order_events(&events)
+            .iter()
+            .any(|event| matches!(event, OrderEventAny::Rejected(_))),
+        "the old-generation order must be rejected at the send boundary: {events:?}",
+    );
+    assert!(
+        venue.requests_for("POST", "order").is_empty(),
+        "the old-generation order must never reach the recovered venue session: {:?}",
+        venue.requests(),
+    );
+
+    // The recovered session still admits a new order once the old cooldown has been consumed.
+    let third = limit_order("O-COOLDOWN-GENERATION-NEW", OrderSide::Buy, false);
+    venue.clear_requests();
+    submit_and_settle(&harness, &third, &venue).await;
+    assert_eq!(venue.requests_for("POST", "order").len(), 1);
+}
+
 /// #4: stopping closes admission, and a later connect starts a fresh session that must be
 /// verified again before it admits risk.
 #[rstest]
@@ -4504,6 +4779,74 @@ async fn review_round4_stop_denies_new_risk_until_a_new_session_is_verified() {
     let order = limit_order("O-AFTER-STOP", OrderSide::Buy, false);
     submit_and_settle(&harness, &order, &venue).await;
     assert_eq!(venue.requests_for("POST", "order").len(), 1);
+}
+
+/// A fill held back by an outage remains recovery debt across stop/connect. The next session
+/// must recover that debt before it can publish readiness; reconnecting alone must not admit new
+/// risk while the venue still refuses the order state needed to bundle the real fill.
+#[rstest]
+#[tokio::test]
+async fn review_round4_stop_connect_keeps_pending_trade_debt_unready() {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    drain_exec(&mut harness.exec_rx);
+
+    let trade_ms = now_ms();
+    venue.script(|s| {
+        s.user_trades.insert(
+            "BTCUSDT".to_string(),
+            vec![venue_trade(970_201, 970_002, "BTCUSDT", trade_ms, "0.02")],
+        );
+        let mut row = venue_order(
+            970_002,
+            "O-R4-PENDING-RECONNECT",
+            "BTCUSDT",
+            "FILLED",
+            "BUY",
+        );
+        row["avgPrice"] = json!("50000.00");
+        row["time"] = json!(trade_ms);
+        row["updateTime"] = json!(trade_ms);
+        s.orders.insert("970002".to_string(), row);
+        s.open_orders = json!([]);
+        // Keep the order unavailable for both the outage recovery and the explicit reconnect.
+        s.order_query_faults.insert("970002".to_string(), 100);
+    });
+
+    venue.drop_ws();
+    wait_until_async(
+        || async { venue.ws_connection_count() >= 2 },
+        Duration::from_secs(20),
+    )
+    .await;
+    wait_until_async(
+        || async { !venue.requests_for("GET", "order").is_empty() },
+        Duration::from_secs(20),
+    )
+    .await;
+    wait_until_async(
+        || async { !harness.client.is_ready() },
+        Duration::from_secs(20),
+    )
+    .await;
+
+    venue.clear_requests();
+    harness.client.stop().expect("stop");
+    harness.client.connect().await.expect("reconnect");
+
+    assert_eq!(
+        harness.client.readiness_phase(),
+        "degraded",
+        "a reconnect with unresolved trade evidence must stay degraded",
+    );
+    assert!(
+        !harness.client.is_ready(),
+        "reconnect must not admit new risk while a prior fill remains pending",
+    );
+    assert!(
+        !venue.requests_for("GET", "userTrades").is_empty(),
+        "reconnect must run the pending-trade recovery path",
+    );
 }
 
 /// #4: an order update the adapter cannot parse means its account view can no longer be
