@@ -517,11 +517,7 @@ impl CompensatedFills {
 #[derive(Debug, Clone)]
 struct DeliveredFill {
     symbol: Ustr,
-    venue_order_id: Ustr,
     trade_id: i64,
-    ts_ms: i64,
-    /// The already parsed quantity, kept in the same exact Decimal form as the FillReport.
-    qty: Decimal,
 }
 
 /// Cross-task view of what the private stream has already reported.
@@ -855,37 +851,45 @@ impl StreamState {
         result
     }
 
-    /// Records a real fill and its exact contribution to the order cumulative quantity.
+    /// Records a fill whose execution report has already been accepted by the emitter.
     ///
-    /// The quantity is added only when the trade ID was new. Callers must check the returned
-    /// value before emitting a report so a repeated WebSocket/REST observation has no economic
-    /// effect and cannot double-count the order.
-    fn record_fill_for_order(
+    /// The exact-ID cache and the economic contribution have different lifetimes. A new trade
+    /// can be accepted by the engine and immediately evicted from the bounded cache when it is
+    /// the lowest ID in a full sparse window. In that case the contribution still belongs in the
+    /// confirmed aggregate, while the order must become unknown and stay pending so a later
+    /// cumulative status cannot manufacture (or replay) the missing trade. `allow_new_coverage`
+    /// is true for the remainder of one already-accepted bundle after its first row creates that
+    /// marker; callers must pass false when the order was unknown before the bundle was sent.
+    fn record_delivered_fill_for_order(
         &mut self,
         symbol: Ustr,
         venue_order_id: Ustr,
         trade_id: i64,
         ts_ms: i64,
         qty: Decimal,
+        allow_new_coverage: bool,
     ) -> bool {
-        if self.coverage_unknown.contains(&venue_order_id) {
+        if self.coverage_unknown.contains(&venue_order_id) && !allow_new_coverage {
             self.note_pending_order(venue_order_id, symbol);
             self.note_pending_fill(symbol, trade_id);
             return false;
         }
 
         let result = self.record_trade(symbol, venue_order_id, trade_id, ts_ms, qty);
-        if matches!(result, AppliedTradeResult::Duplicate)
-            || self.coverage_unknown.contains(&venue_order_id)
-        {
-            if self.coverage_unknown.contains(&venue_order_id) {
-                self.note_pending_order(venue_order_id, symbol);
-                self.note_pending_fill(symbol, trade_id);
-            }
+        if matches!(result, AppliedTradeResult::Duplicate) {
             return false;
         }
 
+        // The report was already accepted, so retain its exact economic contribution even when
+        // record_trade evicted the metadata that would have made a later replay distinguishable.
         *self.confirmed_fill_qty.entry(venue_order_id).or_default() += qty;
+
+        if self.coverage_unknown.contains(&venue_order_id) {
+            self.note_pending_order(venue_order_id, symbol);
+            self.note_pending_fill(symbol, trade_id);
+            return false;
+        }
+
         true
     }
 
@@ -2404,9 +2408,11 @@ impl SessionContext {
         let queried = self.query_order_fills(symbol, venue_order_id).await?;
         let (fresh, covered) = self.fresh_fills_for_status(symbol, &report, &queried)?;
         if covered {
-            if let Some(complete) = Self::complete_order_fills_for_status(&report, &queried)? {
-                return Ok(Some((report, complete, true)));
-            }
+            // This is the ordinary bounded path: any rows already represented in the exact
+            // cache have reached the engine before. Only the genuinely fresh rows belong in
+            // this report. Replaying the complete REST history here would duplicate fees and
+            // position quantity after the engine later purges its order cache. The only safe
+            // full-history rebase is the explicit zero-delivery unknown-coverage branch above.
             return Ok(Some((report, fresh, false)));
         }
 
@@ -2641,20 +2647,40 @@ impl SessionContext {
                                 report.filled_qty.as_decimal(),
                             );
                         } else {
+                            // The complete bundle was accepted before this bookkeeping runs.
+                            // Keep recording later rows even if the first row makes the bounded
+                            // cache unknown; their economic contributions have already reached
+                            // the engine and must not be mistaken for zero-delivery history.
                             for fill in &deliverable {
                                 let Ok(trade_id) = fill.trade_id.as_str().parse::<i64>() else {
                                     continue;
                                 };
-                                state.record_fill_for_order(
+                                state.record_delivered_fill_for_order(
                                     symbol,
                                     venue_order_id_str,
                                     trade_id,
                                     (fill.ts_event.as_u64() / 1_000_000) as i64,
                                     fill.last_qty.as_decimal(),
+                                    true,
                                 );
                             }
                         }
-                        state.forget_pending_order(&venue_order_id_str);
+
+                        // A successful send can itself create a new active-order coverage debt
+                        // when a sparse/late ID is evicted. Preserve that marker and degrade
+                        // readiness before releasing the state lock; never clear it as if the
+                        // order had been fully proven.
+                        if !state.coverage_unknown(&venue_order_id_str) {
+                            state.forget_pending_order(&venue_order_id_str);
+                        }
+                        if state.has_recovery_debt() {
+                            let reason = format!(
+                                "real Aster fill evidence for order {venue_order_id_str} remains \
+                                 incomplete after delivery"
+                            );
+                            log::warn!("Aster execution readiness degraded: {reason}");
+                            self.readiness.write().degrade(reason);
+                        }
                         (deliverable, None)
                     }
                     Err(e) => {
@@ -3066,8 +3092,8 @@ impl AsterExecutionClient {
     /// The dedupe records are *returned*, not applied. Recording a trade as delivered while
     /// the request is still being built loses it outright when a later row fails: the whole
     /// call returns `Err`, the engine never receives the earlier trade, and the next
-    /// compensation pass skips it as already applied. Only a caller that has finished
-    /// successfully may commit them (see [`Self::commit_delivered_fills`]).
+    /// compensation pass skips it as already applied. Only an accepted emitter bundle may
+    /// commit them.
     async fn fetch_fill_reports(
         &self,
         cmd: GenerateFillReports,
@@ -3122,14 +3148,10 @@ impl AsterExecutionClient {
                     .with_context(|| {
                         format!("Failed to parse Aster trade {} on {symbol}", trade.id)
                     })?;
-                let qty = report.last_qty.as_decimal();
                 reports.push(report);
                 delivered.push(DeliveredFill {
                     symbol: Ustr::from(&symbol),
-                    venue_order_id: Ustr::from(&trade.order_id.to_string()),
                     trade_id: trade.id,
-                    ts_ms: trade.time,
-                    qty,
                 });
             }
         }
@@ -3155,32 +3177,6 @@ impl AsterExecutionClient {
         let mut state = self.stream_state.write();
         for fill in pending {
             state.note_pending_fill(fill.symbol, fill.trade_id);
-        }
-    }
-
-    /// Records trades as delivered so a later compensation pass does not repeat them.
-    ///
-    /// Called only once the request that produced them has succeeded in full.
-    fn commit_delivered_fills(&self, delivered: Vec<DeliveredFill>) {
-        if delivered.is_empty() {
-            return;
-        }
-
-        let mut state = self.stream_state.write();
-        for fill in delivered {
-            let applied = state.record_fill_for_order(
-                fill.symbol,
-                fill.venue_order_id,
-                fill.trade_id,
-                fill.ts_ms,
-                fill.qty,
-            );
-            if !applied && state.coverage_unknown(&fill.venue_order_id) {
-                // An evicted order cannot be advanced by a blind cumulative increment. Keep the
-                // exact trade pending until a complete order-history bundle can rebase it.
-                state.note_pending_order(fill.venue_order_id, fill.symbol);
-                state.note_pending_fill(fill.symbol, fill.trade_id);
-            }
         }
     }
 
@@ -5341,12 +5337,6 @@ impl ExecutionClient for AsterExecutionClient {
             reports_complete = false;
             order_reports
                 .retain(|report| !incomplete_orders.contains(&report.venue_order_id.inner()));
-            // Only reports that will actually be put into the mass status may claim a fill was
-            // linked. The omitted orders remain recoverable through the pending-order map.
-            reported_orders = order_reports
-                .iter()
-                .map(|report| report.venue_order_id.inner())
-                .collect();
         }
 
         let mut realigned = 0usize;
@@ -5365,30 +5355,10 @@ impl ExecutionClient for AsterExecutionClient {
             );
         }
 
-        // A full-history proof rebases the exact cumulative quantity and clears the unknown
-        // marker only for orders that will actually be delivered in this mass status. Do this
-        // before the ordinary bounded fast-path commit so an evicted order can never be
-        // incremented from a replaying window.
-        let verified_order_ids: AHashSet<Ustr> = verified_histories.keys().copied().collect();
-        if !verified_histories.is_empty() {
-            let mut state = self.stream_state.write();
-            for (venue_order_id, history) in &verified_histories {
-                let Some(report) = order_reports
-                    .iter()
-                    .find(|report| report.venue_order_id.inner() == *venue_order_id)
-                else {
-                    continue;
-                };
-                let symbol = Ustr::from(&format_binance_symbol(&report.instrument_id));
-                state.commit_verified_order_history(
-                    symbol,
-                    *venue_order_id,
-                    history,
-                    report.filled_qty.as_decimal(),
-                );
-                state.forget_pending_order(venue_order_id);
-            }
-        }
+        // A complete history proves the mass report's arithmetic, but returning that report is
+        // not proof that the downstream manager accepted it. Keep the bounded-cache marker and
+        // pending evidence until an accepted emitter bundle records the trade IDs; otherwise a
+        // filtered mass report would permanently clear the only recovery path for its fills.
 
         // Under a bounded window the engine confirms that the reported fills explain the
         // reported position, per instrument. An instrument with activity but no position row
@@ -5419,29 +5389,13 @@ impl ExecutionClient for AsterExecutionClient {
         mass_status.add_fill_reports(matched_fills);
         mass_status.add_position_reports(position_reports);
 
-        // Only the trades whose order the snapshot could name are the engine's to reconcile.
-        // A one-way fill with no cached order and no venue position ID is not turned into a
-        // fill event at all (`ExecutionManager` skips it), so "the report call returned Ok" is
-        // not "the fill was applied". Marking those delivered would make the next compensation
-        // pass skip a trade nothing ever applied.
-        let mut linked = Vec::new();
-        let mut unlinked = Vec::new();
-        for fill in delivered {
-            if verified_order_ids.contains(&fill.venue_order_id) {
-                // The full-history commit above owns this order's exact aggregate and all of
-                // its IDs; the original window rows must not be replayed through the bounded
-                // increment path.
-                continue;
-            }
-            if reported_orders.contains(&fill.venue_order_id) {
-                linked.push(fill);
-            } else {
-                unlinked.push(fill);
-            }
-        }
-
-        self.commit_delivered_fills(linked);
-        self.hold_back_fills(&unlinked);
+        // Only an accepted emitter bundle may commit the exact-ID ledger. A mass-status return
+        // has no consumer acknowledgement: the manager can filter an order or instrument after
+        // this method returns. Keep every queried trade pending so the normal recovery path can
+        // bundle it with its order and commit only after the execution channel accepts it. The
+        // engine's own fill dedupe makes a later replay economically inert when the mass status
+        // was consumed successfully.
+        self.hold_back_fills(&delivered);
 
         Ok(Some(mass_status))
     }
@@ -6614,8 +6568,22 @@ mod tests {
         let venue_order_id = Ustr::from("910001");
         let qty = Decimal::from_str_exact("0.004000").unwrap();
 
-        assert!(state.record_fill_for_order(symbol, venue_order_id, 7, 1_000, qty));
-        assert!(!state.record_fill_for_order(symbol, venue_order_id, 7, 1_000, qty));
+        assert!(state.record_delivered_fill_for_order(
+            symbol,
+            venue_order_id,
+            7,
+            1_000,
+            qty,
+            false,
+        ));
+        assert!(!state.record_delivered_fill_for_order(
+            symbol,
+            venue_order_id,
+            7,
+            1_000,
+            qty,
+            false,
+        ));
         assert_eq!(state.confirmed_fill_qty(&venue_order_id), qty);
         assert!(state.has_fill(&symbol, 7));
     }
@@ -6942,27 +6910,78 @@ mod tests {
         state.track_working_venue_order(venue_order_id);
 
         for trade_id in 0..MAX_TRACKED_TRADE_IDS as i64 {
-            assert!(state.record_fill_for_order(symbol, venue_order_id, trade_id, trade_id, qty,));
+            assert!(state.record_delivered_fill_for_order(
+                symbol,
+                venue_order_id,
+                trade_id,
+                trade_id,
+                qty,
+                false,
+            ));
         }
 
         let expected = qty * Decimal::from(MAX_TRACKED_TRADE_IDS as u64);
         assert_eq!(state.confirmed_fill_qty(&venue_order_id), expected);
         assert!(
-            !state.record_fill_for_order(
+            !state.record_delivered_fill_for_order(
                 symbol,
                 venue_order_id,
                 MAX_TRACKED_TRADE_IDS as i64,
                 MAX_TRACKED_TRADE_IDS as i64,
                 qty,
+                false,
             ),
-            "the first cache eviction must fail closed",
+            "the first cache eviction must require recovery",
         );
         assert!(
-            !state.record_fill_for_order(symbol, venue_order_id, 0, 0, qty),
+            !state.record_delivered_fill_for_order(symbol, venue_order_id, 0, 0, qty, false),
             "an evicted trade ID must fail closed until full history is read",
         );
-        assert_eq!(state.confirmed_fill_qty(&venue_order_id), expected);
+        assert_eq!(
+            state.confirmed_fill_qty(&venue_order_id),
+            expected + qty,
+            "the accepted fill remains in the economic aggregate even when its metadata is evicted",
+        );
         assert!(state.coverage_unknown(&venue_order_id));
+    }
+
+    #[rstest]
+    fn test_accepted_fill_eviction_keeps_qty_and_degrades_readiness() {
+        let mut state = StreamState::default();
+        let symbol = Ustr::from("BTCUSDT");
+        let venue_order_id = Ustr::from("910003");
+        let qty = Decimal::from_str_exact("0.001").unwrap();
+        state.track_working_venue_order(venue_order_id);
+
+        for trade_id in 1..=MAX_TRACKED_TRADE_IDS as i64 {
+            assert!(state.record_delivered_fill_for_order(
+                symbol,
+                venue_order_id,
+                trade_id,
+                trade_id,
+                qty,
+                true,
+            ));
+        }
+
+        // A sparse/late low ID is accepted by the emitter but is immediately evicted from the
+        // bounded cache. The economic contribution must remain exact even though recovery is now
+        // required before another cumulative status can be trusted.
+        assert!(!state.record_delivered_fill_for_order(symbol, venue_order_id, 0, 0, qty, true,));
+        assert_eq!(
+            state.confirmed_fill_qty(&venue_order_id),
+            qty * Decimal::from((MAX_TRACKED_TRADE_IDS + 1) as u64),
+        );
+        assert!(state.coverage_unknown(&venue_order_id));
+        assert!(state.has_recovery_debt());
+
+        let mut readiness = Readiness::default();
+        let generation = readiness.begin_connect();
+        readiness.verify_position_mode();
+        assert!(readiness.mark_ready(generation));
+        readiness.degrade("accepted fill evicted its exact metadata");
+        assert!(!readiness.allows_new_risk());
+        assert!(readiness.refusal(false).is_some());
     }
 
     #[rstest]
@@ -6977,16 +6996,23 @@ mod tests {
         // contain gaps. A lower ID that was never delivered must remain distinguishable from a
         // replay of an already delivered ID.
         for trade_id in (2..=8_194).step_by(2).take(MAX_TRACKED_TRADE_IDS) {
-            assert!(state.record_fill_for_order(symbol, venue_order_id, trade_id, trade_id, qty,));
+            assert!(state.record_delivered_fill_for_order(
+                symbol,
+                venue_order_id,
+                trade_id,
+                trade_id,
+                qty,
+                false,
+            ));
         }
 
         assert!(
-            !state.record_fill_for_order(symbol, venue_order_id, 1, 1, qty),
+            !state.record_delivered_fill_for_order(symbol, venue_order_id, 1, 1, qty, false),
             "a late sparse ID cannot be classified from the bounded cache and stays pending",
         );
         assert_eq!(
             state.confirmed_fill_qty(&venue_order_id),
-            qty * Decimal::from(MAX_TRACKED_TRADE_IDS as u64),
+            qty * Decimal::from((MAX_TRACKED_TRADE_IDS + 1) as u64),
         );
         assert!(
             state.coverage_unknown(&venue_order_id),
@@ -7023,7 +7049,14 @@ mod tests {
         for index in 0..=MAX_TRACKED_TRADE_IDS as i64 {
             let venue_order_id = Ustr::from(&format!("terminal-{index}"));
             state.track_working_venue_order(venue_order_id);
-            assert!(state.record_fill_for_order(symbol, venue_order_id, index, index, qty,));
+            assert!(state.record_delivered_fill_for_order(
+                symbol,
+                venue_order_id,
+                index,
+                index,
+                qty,
+                false,
+            ));
             state.forget_working_venue_order(&venue_order_id);
         }
 
@@ -7041,13 +7074,20 @@ mod tests {
         let qty = Decimal::from_str_exact("0.001").unwrap();
 
         state.track_working_venue_order(terminal_order);
-        assert!(state.record_fill_for_order(symbol, terminal_order, 0, 0, qty));
+        assert!(state.record_delivered_fill_for_order(symbol, terminal_order, 0, 0, qty, false,));
         state.forget_working_venue_order(&terminal_order);
 
         for index in 1..=MAX_TRACKED_TRADE_IDS as i64 {
             let venue_order_id = Ustr::from(&format!("terminal-{index}"));
             state.track_working_venue_order(venue_order_id);
-            assert!(state.record_fill_for_order(symbol, venue_order_id, index, index, qty));
+            assert!(state.record_delivered_fill_for_order(
+                symbol,
+                venue_order_id,
+                index,
+                index,
+                qty,
+                false,
+            ));
             state.forget_working_venue_order(&venue_order_id);
         }
 

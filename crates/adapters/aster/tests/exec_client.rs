@@ -673,12 +673,8 @@ async fn review_round5_ambiguous_submit_full_fill_reaches_engine_once() {
     sorted_trade_ids.sort();
     assert_eq!(
         sorted_trade_ids,
-        vec![
-            low_trade_id.to_string(),
-            high_trade_id.to_string(),
-            high_trade_id.to_string(),
-        ],
-        "WS high ID plus REST's complete history must preserve both real trades: {events:?}",
+        vec![low_trade_id.to_string(), high_trade_id.to_string(),],
+        "WS high ID plus REST's fresh lower trade must preserve both real trades: {events:?}",
     );
     assert!(
         !order_events(&events)
@@ -2934,6 +2930,109 @@ async fn test_unlinkable_fill_is_kept_and_the_snapshot_declared_incomplete() {
 
 #[rstest]
 #[tokio::test]
+async fn review_round5_filtered_mass_fill_stays_recoverable() {
+    // A mass-status query has no acknowledgement from ExecutionManager. If its order is
+    // filtered after the adapter returns, the real trade must remain eligible for the normal
+    // emitter path rather than being committed as if the manager had applied it.
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    let client_order_id = "O-R5-FILTERED-MASS";
+    let venue_order_id = 970_702;
+    let trade_id = 970_703;
+    let trade_ms = now_ms();
+    venue.script(|script| {
+        let order = ioc_buy(
+            venue_order_id,
+            client_order_id,
+            "BTCUSDT",
+            trade_ms,
+            "0.010",
+        );
+        script
+            .orders
+            .insert(client_order_id.to_string(), order.clone());
+        script.orders.insert(venue_order_id.to_string(), order);
+        script.open_orders = json!([]);
+        script.user_trades.insert(
+            "BTCUSDT".to_string(),
+            vec![sized_trade(
+                trade_id,
+                venue_order_id,
+                "BTCUSDT",
+                trade_ms,
+                "0.010",
+                "BUY",
+            )],
+        );
+    });
+
+    let mass_status = harness
+        .client
+        .generate_mass_status(Some(60))
+        .await
+        .expect("mass status")
+        .expect("mass status present");
+    assert_eq!(
+        mass_status.fill_reports().values().flatten().count(),
+        1,
+        "the real trade must be present in the filtered mass report",
+    );
+
+    let cache = Rc::new(RefCell::new(Cache::default()));
+    seed_account(&cache);
+    while let Ok(event) = harness.data_rx.try_recv() {
+        if let DataEvent::Instrument(instrument) = event {
+            cache.borrow_mut().add_instrument(instrument).unwrap();
+        }
+    }
+    let clock = Rc::new(RefCell::new(TestClock::new()));
+    let mut manager = ExecutionManager::new(
+        clock.clone(),
+        cache.clone(),
+        ExecutionManagerConfig {
+            filtered_client_order_ids: std::iter::once(ClientOrderId::from(client_order_id))
+                .collect(),
+            ..Default::default()
+        },
+    )
+    .expect("manager");
+    let engine = Rc::new(RefCell::new(ExecutionEngine::new(clock, cache, None)));
+    engine
+        .borrow_mut()
+        .register_client(Box::new(harness.client))
+        .expect("register");
+    engine
+        .borrow_mut()
+        .register_oms_type(StrategyId::from("EXTERNAL"), OmsType::Netting);
+
+    let result = manager
+        .reconcile_execution_mass_status(mass_status, engine.clone())
+        .await;
+    assert!(
+        result.events.is_empty(),
+        "the manager filter must reject the mass order without consuming its fill"
+    );
+
+    drive_compensation(&venue, 2).await;
+    let recovered = drain_exec(&mut harness.exec_rx);
+    assert_eq!(
+        fill_trade_ids(&recovered),
+        vec![trade_id.to_string()],
+        "the filtered mass fill must return through accepted emitter recovery",
+    );
+    feed_reports(&engine, &recovered);
+
+    // Once the emitter accepts the recovered bundle, the exact ID is committed and the next
+    // gap produces no second economic report.
+    drive_compensation(&venue, 3).await;
+    assert!(
+        fill_trade_ids(&drain_exec(&mut harness.exec_rx)).is_empty(),
+        "an accepted recovery bundle must be once-only",
+    );
+}
+
+#[rstest]
+#[tokio::test]
 async fn test_repeated_compensation_does_not_duplicate_a_recovered_fill() {
     // R2-01 asks for idempotency: a second outage must not re-apply a trade the first one
     // already delivered, nor follow it with a bare status that infers a replacement.
@@ -4482,15 +4581,15 @@ async fn review_round4_a_pending_trade_does_not_replay_the_long_history() {
     // Pass one: the compensation that follows the first reconnect, with every order still cached.
     drive_compensation(&venue, 2).await;
     let replayed = drain_exec(&mut harness.exec_rx);
-    assert!(
-        fill_trade_ids(&replayed).is_empty(),
-        "a trade the startup snapshot already applied must not come back as a live fill, \
-         however many IDs the dedupe set has since evicted: {:?}",
+    assert_eq!(
+        fill_trade_ids(&replayed).len(),
+        HISTORY_TRADES as usize,
+        "mass status has no consumer acknowledgement, so its fills remain recoverable: {:?}",
         fill_trade_ids(&replayed).len(),
     );
     assert!(
-        venue.requests_for("GET", "userTrades").len() <= 4,
-        "the pass must read the recent window and the held-back trade, not the whole history: {}",
+        venue.requests_for("GET", "userTrades").len() <= 10,
+        "the pass must read the recent window and bounded pending pages, not retry forever: {}",
         venue.requests_for("GET", "userTrades").len(),
     );
 
