@@ -607,6 +607,39 @@ impl ProductionAuthority {
         Ok((tick, step))
     }
 
+    fn cleanup_minimum_feasible(
+        &self,
+        minimum: Option<Decimal>,
+        tick: Decimal,
+        step: Decimal,
+    ) -> Result<(), String> {
+        let Some(minimum) = minimum else {
+            return Ok(());
+        };
+        let e = &self.envelope;
+        let overflow = || "production cleanup notional overflow".to_string();
+        let notional = if e.close_side == "buy" {
+            e.close_max_quantity
+                .checked_mul(e.close_worst_price)
+                .ok_or_else(overflow)?
+        } else {
+            // A sell approval has a price floor. One lot gives the finest notional grid
+            // and can witness a legal close above that floor without increasing approval.
+            let grid = step.checked_mul(tick).ok_or_else(overflow)?;
+            let ticks = minimum.checked_div(grid).ok_or_else(overflow)?.ceil();
+            let price = ticks.checked_mul(tick).ok_or_else(overflow)?;
+            step.checked_mul(price.max(e.close_worst_price))
+                .ok_or_else(overflow)?
+        };
+        if notional < minimum
+            || notional > e.max_notional_per_order_usd
+            || notional > e.max_gross_exposure_usd
+        {
+            return Err("published minimum notional leaves no approved production close".into());
+        }
+        Ok(())
+    }
+
     pub(crate) fn authorize_post(&self, target: &str, body: &[u8]) -> Result<(), String> {
         if target != "/v1/perps/orders" {
             return Err("production supports one limit IOC create only".into());
@@ -665,6 +698,9 @@ impl ProductionAuthority {
             || notional > e.max_gross_exposure_usd
         {
             return Err("production hard notional ceiling exceeded".into());
+        }
+        if !order.reduce_only {
+            self.cleanup_minimum_feasible(minimum, tick, step)?;
         }
         let evidence = self.evidence(false)?;
         let unverified = unverified_production_conditions(&state, &evidence, now);
@@ -1384,6 +1420,75 @@ mod tests {
             guard.activity_generation(),
         );
         assert_eq!(guard.snapshot().unwrap()["phase"], "reconciled");
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[rstest]
+    #[case("0.05", Some("10"), false)]
+    #[case("0.1", Some("10"), true)]
+    #[case("0.05", None, true)]
+    #[case("0.05", Some("7.55"), true)]
+    #[case("0.05", Some("7.5501"), false)]
+    fn test_entry_requires_an_approved_close_above_published_minimum(
+        #[case] close_quantity: &str,
+        #[case] minimum: Option<&str>,
+        #[case] admitted: bool,
+    ) {
+        let (mut guard, path) = started_authority(30);
+        let e = &mut Arc::get_mut(&mut guard).unwrap().envelope;
+        e.entry_side = "sell".into();
+        e.entry_max_quantity = Decimal::from_str_exact("0.1").unwrap();
+        e.entry_worst_price = Decimal::from(150);
+        e.close_side = "buy".into();
+        e.close_max_quantity = Decimal::from_str_exact(close_quantity).unwrap();
+        e.close_worst_price = Decimal::from(151);
+        e.validate(get_atomic_clock_realtime().get_time_ns().as_u64())
+            .unwrap();
+        let body = serde_json::to_vec(&serde_json::json!({
+            "market": "NVDA-USD.P", "side": "sell", "type": "limit",
+            "size": "0.1", "price": "150", "timeInForce": "IOC",
+            "postOnly": false, "reduceOnly": false, "clientOrderId": "entry-minimum"
+        }))
+        .unwrap();
+        guard
+            .prepare(
+                "entry-minimum".into(),
+                body.clone(),
+                Some(prepared_quote(&guard)),
+                minimum.map(|v| Decimal::from_str_exact(v).unwrap()),
+            )
+            .unwrap();
+        let result = guard.authorize_post("/v1/perps/orders", &body);
+        assert_eq!(result.is_ok(), admitted, "{result:?}");
+        assert_eq!(guard.state.lock().creates.len(), usize::from(admitted));
+        if !admitted {
+            assert!(result.unwrap_err().contains("no approved production close"));
+            assert_eq!(guard.state.lock().requests, 0);
+        }
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[rstest]
+    fn test_sell_cleanup_price_floor_allows_a_higher_legal_price() {
+        let (guard, path) = started_authority(30);
+        assert!(
+            guard
+                .cleanup_minimum_feasible(
+                    Some(Decimal::from(12)),
+                    Decimal::from_str_exact("0.01").unwrap(),
+                    Decimal::from_str_exact("0.01").unwrap(),
+                )
+                .is_ok()
+        );
+        assert!(
+            guard
+                .cleanup_minimum_feasible(
+                    Some(Decimal::from(51)),
+                    Decimal::from_str_exact("0.01").unwrap(),
+                    Decimal::from_str_exact("0.01").unwrap(),
+                )
+                .is_err()
+        );
         std::fs::remove_file(path).unwrap();
     }
 
