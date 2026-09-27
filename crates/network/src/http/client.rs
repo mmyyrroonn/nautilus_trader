@@ -27,7 +27,10 @@ use reqwest::{
 use ustr::Ustr;
 
 use super::{HttpClientError, HttpResponse, HttpStatus};
-use crate::ratelimiter::{RateLimiter, clock::MonotonicClock, quota::Quota};
+use crate::{
+    dst::time::{Instant, timeout},
+    ratelimiter::{RateLimiter, clock::MonotonicClock, quota::Quota},
+};
 
 /// Default maximum idle connections per host.
 const DEFAULT_POOL_MAX_IDLE_PER_HOST: usize = 32;
@@ -290,6 +293,88 @@ impl HttpClient {
         self.client
             .send_request_with_url_redacted(method, url, params, headers, body, timeout_secs)
             .await
+    }
+
+    /// Prepares and sends a redacted request after acquiring its rate-limit quota.
+    ///
+    /// `prepare` builds the URL and optional body synchronously after all quota waits. This
+    /// lets callers sign with a fresh nonce and revalidate admission at the dispatch boundary.
+    /// No additional quota is acquired after preparation. A deadline bounds both the quota
+    /// wait and transport; expiration before dispatch is an admission refusal, while expiration
+    /// after dispatch is a transport timeout with a potentially unknown venue outcome.
+    ///
+    /// # Errors
+    ///
+    /// Returns the caller's preparation error, an admission refusal when the deadline expires
+    /// before dispatch, or a transport error after dispatch.
+    pub async fn request_with_url_redacted_prepared<F, E>(
+        &self,
+        method: Method,
+        headers: Option<HashMap<String, String>>,
+        keys: Option<Vec<String>>,
+        deadline: Option<Instant>,
+        prepare: F,
+    ) -> Result<HttpResponse, E>
+    where
+        F: FnOnce() -> Result<(String, Option<Vec<u8>>), E>,
+        E: From<HttpClientError>,
+    {
+        let keys = keys.map(into_ustr_vec);
+        let queued_at = Instant::now();
+        let wait = self.await_rate_limits(keys.as_deref());
+        if let Some(deadline) = deadline {
+            if deadline <= Instant::now()
+                || timeout(deadline.saturating_duration_since(Instant::now()), wait)
+                    .await
+                    .is_err()
+            {
+                log::debug!(
+                    "HTTP request refused before dispatch: quota deadline expired after {} ms",
+                    queued_at.elapsed().as_millis()
+                );
+                return Err(HttpClientError::AdmissionDenied(
+                    "request deadline expired before dispatch".to_string(),
+                )
+                .into());
+            }
+        } else {
+            wait.await;
+        }
+
+        log::debug!(
+            "HTTP request quota acquired after {} ms",
+            queued_at.elapsed().as_millis()
+        );
+
+        if deadline.is_some_and(|deadline| deadline <= Instant::now()) {
+            return Err(HttpClientError::AdmissionDenied(
+                "request deadline expired before preparation".to_string(),
+            )
+            .into());
+        }
+        let (url, body) = prepare()?;
+        if deadline.is_some_and(|deadline| deadline <= Instant::now()) {
+            return Err(HttpClientError::AdmissionDenied(
+                "request deadline expired before dispatch".to_string(),
+            )
+            .into());
+        }
+
+        let send = self
+            .client
+            .send_request_with_url_redacted(method, url, None, headers, body, None);
+        if let Some(deadline) = deadline {
+            timeout(deadline.saturating_duration_since(Instant::now()), send)
+                .await
+                .map_err(|_| {
+                    E::from(HttpClientError::TimeoutError(
+                        "request deadline expired after dispatch".to_string(),
+                    ))
+                })?
+                .map_err(E::from)
+        } else {
+            send.await.map_err(E::from)
+        }
     }
 
     /// Sends an HTTP request with serializable query parameters.
@@ -847,6 +932,90 @@ mod tests {
 
     use super::*;
     use crate::logging::tests::capture_logs;
+
+    #[cfg_attr(
+        not(all(feature = "simulation", madsim)),
+        tokio::test(start_paused = true)
+    )]
+    #[cfg_attr(all(feature = "simulation", madsim), madsim::test)]
+    async fn test_request_preparation_waits_for_quota_and_runs_once() {
+        let key = Ustr::from("scope:prepared");
+        let limiter = Arc::new(RateLimiter::new_with_quota(
+            None,
+            vec![(key, Quota::with_period(Duration::from_secs(10)).unwrap())],
+        ));
+        limiter.check_key(&key).unwrap();
+        let client = HttpClient::builder()
+            .rate_limiters(vec![limiter])
+            .build()
+            .unwrap();
+        let prepared = Arc::new(AtomicBool::new(false));
+        let prepared_for_task = Arc::clone(&prepared);
+        let request = test_task::spawn(async move {
+            client
+                .request_with_url_redacted_prepared(
+                    Method::POST,
+                    None,
+                    Some(vec![key.to_string()]),
+                    None,
+                    || -> Result<(String, Option<Vec<u8>>), HttpClientError> {
+                        assert!(!prepared_for_task.swap(true, Ordering::AcqRel));
+                        Err(HttpClientError::AdmissionDenied("probe".to_string()))
+                    },
+                )
+                .await
+        });
+        test_task::yield_now().await;
+        assert!(!prepared.load(Ordering::Acquire));
+        advance_test_clock(Duration::from_secs(10)).await;
+        assert!(matches!(
+            request.await.unwrap(),
+            Err(HttpClientError::AdmissionDenied(_))
+        ));
+        assert!(prepared.load(Ordering::Acquire));
+    }
+
+    #[cfg_attr(
+        not(all(feature = "simulation", madsim)),
+        tokio::test(start_paused = true)
+    )]
+    #[cfg_attr(all(feature = "simulation", madsim), madsim::test)]
+    async fn test_request_deadline_expires_before_preparation() {
+        let key = Ustr::from("scope:deadline");
+        let limiter = Arc::new(RateLimiter::new_with_quota(
+            None,
+            vec![(key, Quota::with_period(Duration::from_secs(10)).unwrap())],
+        ));
+        limiter.check_key(&key).unwrap();
+        let client = HttpClient::builder()
+            .rate_limiters(vec![limiter])
+            .build()
+            .unwrap();
+        let prepared = Arc::new(AtomicBool::new(false));
+        let prepared_for_task = Arc::clone(&prepared);
+        let deadline = Instant::now() + Duration::from_secs(2);
+        let request = test_task::spawn(async move {
+            client
+                .request_with_url_redacted_prepared(
+                    Method::POST,
+                    None,
+                    Some(vec![key.to_string()]),
+                    Some(deadline),
+                    || -> Result<(String, Option<Vec<u8>>), HttpClientError> {
+                        prepared_for_task.store(true, Ordering::Release);
+                        Ok(("http://127.0.0.1:1/never".to_string(), None))
+                    },
+                )
+                .await
+        });
+        test_task::yield_now().await;
+        advance_test_clock(Duration::from_secs(2)).await;
+        assert!(matches!(
+            request.await.unwrap(),
+            Err(HttpClientError::AdmissionDenied(_))
+        ));
+        assert!(!prepared.load(Ordering::Acquire));
+    }
 
     async fn capture_request(request: Request) -> impl IntoResponse {
         let (parts, body) = request.into_parts();

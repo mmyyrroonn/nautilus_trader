@@ -24,17 +24,23 @@
 //! authentication triple `nonce`, `user`, `signer`, signed, and then sent as the query string
 //! for `GET` or as an `application/x-www-form-urlencoded` body otherwise.
 
-use std::{collections::HashMap, num::NonZeroU32, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    num::NonZeroU32,
+    sync::{Arc, LazyLock},
+    time::Duration,
+};
 
 use nautilus_core::consts::NAUTILUS_USER_AGENT;
 use nautilus_network::{
-    http::{HttpClient, HttpResponse, Method, USER_AGENT},
-    ratelimiter::quota::Quota,
+    http::{HttpClient, HttpResponse, Method, USER_AGENT, Url},
+    ratelimiter::{RateLimiter, clock::MonotonicClock, quota::Quota},
     retry::{RetryConfig, RetryManager},
 };
 use parking_lot::Mutex;
 use serde::de::DeserializeOwned;
-use tokio::time::{Instant, sleep_until};
+use tokio::time::{Instant, sleep_until, timeout_at};
+use ustr::Ustr;
 
 use crate::{
     common::{
@@ -99,6 +105,33 @@ const MAX_COOLDOWN_SECS: u64 = 300;
 /// Characters of a response body retained in an error message.
 const MAX_ERROR_BODY_CHARS: usize = 512;
 
+/// Ordinary traffic leaves twenty percent of the signed-request budget for cleanup and reads.
+const ORDINARY_RATE_KEY: &str = "aster:ordinary";
+const ORDINARY_REQUESTS_PER_MINUTE: NonZeroU32 =
+    NonZeroU32::new(ASTER_REQUEST_WEIGHT_PER_MINUTE * 4 / 5).expect("non-zero quota");
+const ORDINARY_ORDERS_PER_MINUTE: NonZeroU32 =
+    NonZeroU32::new(ASTER_ORDERS_PER_MINUTE * 4 / 5).expect("non-zero quota");
+const ORDINARY_ORDER_RATE_KEY: &str = "aster:ordinary-orders";
+
+type SharedLimiter = Arc<RateLimiter<Ustr, MonotonicClock>>;
+
+/// Retains budget debt across client recreation within this process.
+static TRANSPORT_SCOPES: LazyLock<Mutex<TransportScopes>> =
+    LazyLock::new(|| Mutex::new(TransportScopes::default()));
+
+#[derive(Default)]
+struct TransportScopes {
+    globals: HashMap<String, GlobalScope>,
+    accounts: HashMap<(String, String), SharedLimiter>,
+    signers: HashMap<(String, String), Arc<NonceGenerator>>,
+}
+
+#[derive(Clone)]
+struct GlobalScope {
+    limiter: SharedLimiter,
+    cooldown: Arc<Mutex<Option<Instant>>>,
+}
+
 /// Maximum page size Aster accepts on `allOrders` and `userTrades` (the default is 500).
 pub const ASTER_HISTORY_PAGE_LIMIT: u32 = 1_000;
 
@@ -120,9 +153,11 @@ struct AsterHttpClientInner {
     client: HttpClient,
     base_url: String,
     credential: Option<AsterCredential>,
-    nonce: NonceGenerator,
+    nonce: Arc<NonceGenerator>,
+    /// Overall signed-request budget, including local waits and GET retries.
+    timeout: Option<Duration>,
     /// Instant before which no further request may be sent, armed by a `429` or `418`.
-    cooldown_until: Mutex<Option<Instant>>,
+    cooldown_until: Arc<Mutex<Option<Instant>>>,
 }
 
 impl AsterHttpClient {
@@ -141,26 +176,64 @@ impl AsterHttpClient {
         timeout_secs: Option<u64>,
         proxy_url: Option<String>,
     ) -> AsterHttpResult<Self> {
-        Self::with_rate_limit_quotas(
-            base_url,
-            credential,
-            timeout_secs,
-            proxy_url,
-            Self::rate_limit_quotas(),
-        )
-    }
-
-    /// Builds a client with explicit keyed quotas.
-    ///
-    /// Production always uses the published Aster budgets through [`Self::new`]; tests use this
-    /// to make the venue budget small enough to exhaust without waiting a real minute.
-    fn with_rate_limit_quotas(
-        base_url: &str,
-        credential: Option<AsterCredential>,
-        timeout_secs: Option<u64>,
-        proxy_url: Option<String>,
-        quotas: Vec<(String, Quota)>,
-    ) -> AsterHttpResult<Self> {
+        let authority = Url::parse(base_url)
+            .map_err(|_| AsterHttpError::ValidationError("invalid Aster base URL".to_string()))?
+            .origin()
+            .ascii_serialization();
+        let (limiters, nonce, cooldown_until) = {
+            let mut scopes = TRANSPORT_SCOPES.lock();
+            let global = scopes
+                .globals
+                .entry(authority.clone())
+                .or_insert_with(|| {
+                    let mut quotas: Vec<_> = Self::rate_limit_quotas()
+                        .into_iter()
+                        .filter(|(key, _)| key == ASTER_GLOBAL_RATE_KEY)
+                        .map(|(key, quota)| (Ustr::from(&key), quota))
+                        .collect();
+                    quotas.push((
+                        Ustr::from(ORDINARY_RATE_KEY),
+                        Quota::per_minute(ORDINARY_REQUESTS_PER_MINUTE),
+                    ));
+                    GlobalScope {
+                        limiter: Arc::new(RateLimiter::new_with_quota(None, quotas)),
+                        cooldown: Arc::new(Mutex::new(None)),
+                    }
+                })
+                .clone();
+            let mut limiters = vec![global.limiter];
+            let nonce = if let Some(credential) = &credential {
+                let account = (
+                    authority.clone(),
+                    credential.user_address().to_ascii_lowercase(),
+                );
+                let limiter = scopes
+                    .accounts
+                    .entry(account)
+                    .or_insert_with(|| {
+                        let mut quotas: Vec<_> = Self::rate_limit_quotas()
+                            .into_iter()
+                            .filter(|(key, _)| key == ASTER_ORDER_RATE_KEY)
+                            .map(|(key, quota)| (Ustr::from(&key), quota))
+                            .collect();
+                        quotas.push((
+                            Ustr::from(ORDINARY_ORDER_RATE_KEY),
+                            Quota::per_minute(ORDINARY_ORDERS_PER_MINUTE),
+                        ));
+                        Arc::new(RateLimiter::new_with_quota(None, quotas))
+                    })
+                    .clone();
+                limiters.push(limiter);
+                scopes
+                    .signers
+                    .entry((authority, credential.signer_address().to_ascii_lowercase()))
+                    .or_insert_with(|| Arc::new(NonceGenerator::new()))
+                    .clone()
+            } else {
+                Arc::new(NonceGenerator::new())
+            };
+            (limiters, nonce, global.cooldown)
+        };
         let mut headers = HashMap::new();
         headers.insert(USER_AGENT.to_string(), NAUTILUS_USER_AGENT.to_string());
 
@@ -168,7 +241,7 @@ impl AsterHttpClient {
             .headers(headers)
             // Retained from every response so a `429` or `418` can honour the venue's own wait.
             .header_keys(vec![RETRY_AFTER_HEADER.to_string()])
-            .keyed_quotas(quotas)
+            .rate_limiters(limiters)
             .maybe_timeout_secs(timeout_secs)
             .maybe_proxy_url(proxy_url)
             .build()?;
@@ -178,8 +251,9 @@ impl AsterHttpClient {
                 client,
                 base_url: base_url.trim_end_matches('/').to_string(),
                 credential,
-                nonce: NonceGenerator::new(),
-                cooldown_until: Mutex::new(None),
+                nonce,
+                timeout: timeout_secs.map(Duration::from_secs),
+                cooldown_until,
             }),
         })
     }
@@ -464,9 +538,17 @@ impl AsterHttpClient {
         params: AsterParams,
         counts_against_order_quota: bool,
     ) -> AsterHttpResult<T> {
+        let deadline = self.request_deadline();
         if method != Method::GET {
             return self
-                .send_signed(method, path, params, counts_against_order_quota, None)
+                .send_signed(
+                    method,
+                    path,
+                    params,
+                    counts_against_order_quota,
+                    None,
+                    deadline,
+                )
                 .await;
         }
 
@@ -475,28 +557,39 @@ impl AsterHttpClient {
         let operation = || {
             let params = params.clone();
             async move {
-                self.send_signed(Method::GET, path, params, false, None)
+                self.send_signed(Method::GET, path, params, false, None, deadline)
                     .await
             }
         };
 
-        Self::get_retry_manager()
-            .execute_with_retry(
-                path,
-                operation,
-                AsterHttpError::is_retryable_transport,
-                // Only reached for retry-control failures; an exhausted budget returns the last
-                // transport error verbatim, which is what the caller needs to see.
-                |e| AsterHttpError::NetworkError(format!("GET {path} retry failed: {e}")),
-            )
-            .await
+        let retry_manager = Self::get_retry_manager();
+        let retry = retry_manager.execute_with_retry(
+            path,
+            operation,
+            AsterHttpError::is_retryable_transport,
+            // Only reached for retry-control failures; an exhausted budget returns the last
+            // transport error verbatim, which is what the caller needs to see.
+            |e| AsterHttpError::NetworkError(format!("GET {path} retry failed: {e}")),
+        );
+        if let Some(deadline) = deadline {
+            timeout_at(deadline, retry)
+                .await
+                .map_err(|_| AsterHttpError::Timeout("GET request budget exhausted".to_string()))?
+        } else {
+            retry.await
+        }
+    }
+
+    fn request_deadline(&self) -> Option<Instant> {
+        self.inner.timeout.map(|timeout| Instant::now() + timeout)
     }
 
     /// Returns the retry policy applied to idempotent `GET` requests.
     ///
     /// Up to `GET_MAX_RETRIES` repeats after the first attempt, with a fixed 500 ms / 1 s / 2 s
     /// backoff (no jitter: this is a single client, not a fleet that needs de-synchronising).
-    /// The per-attempt timeout is left to the HTTP client's own configured request timeout.
+    /// Attempts and backoff share the signed request's original deadline; the HTTP client's
+    /// configured transport timeout also remains in force.
     fn get_retry_manager() -> RetryManager<AsterHttpError> {
         RetryManager::new(RetryConfig {
             max_retries: GET_MAX_RETRIES,
@@ -517,10 +610,27 @@ impl AsterHttpClient {
         params: AsterParams,
         counts_against_order_quota: bool,
         admission: Option<&(dyn Fn() -> Result<(), String> + Send + Sync)>,
+        deadline: Option<Instant>,
     ) -> AsterHttpResult<T> {
-        // Waited out before signing: a nonce drawn now and sent minutes later would be stale,
-        // and Aster rejects a stale nonce.
-        self.await_cooldown().await;
+        if !self.has_credentials() {
+            return Err(AsterHttpError::MissingCredentials);
+        }
+        if let Some(deadline) = deadline {
+            if deadline <= Instant::now() {
+                return Err(AsterHttpError::ValidationError(
+                    "request deadline expired before dispatch".to_string(),
+                ));
+            }
+            timeout_at(deadline, self.await_cooldown())
+                .await
+                .map_err(|_| {
+                    AsterHttpError::ValidationError(
+                        "request deadline expired during cooldown".to_string(),
+                    )
+                })?;
+        } else {
+            self.await_cooldown().await;
+        }
 
         // Refused before signing when the session is already unready; the authoritative check
         // runs again after the shared rate-limit wait, at the network dispatch boundary, so a
@@ -529,40 +639,68 @@ impl AsterHttpClient {
             admission().map_err(AsterHttpError::ValidationError)?;
         }
 
-        let payload = self.build_signed_payload(&params)?;
         let is_get = method == Method::GET;
-
-        let url = if is_get {
-            format!("{}{path}?{payload}", self.inner.base_url)
-        } else {
-            format!("{}{path}", self.inner.base_url)
-        };
-
         let mut headers = HashMap::new();
-        let body = if is_get {
-            None
-        } else {
+        if !is_get {
             headers.insert("Content-Type".to_string(), FORM_CONTENT_TYPE.to_string());
-            Some(payload.into_bytes())
-        };
-
-        let keys = Self::rate_limit_keys(path, &params, counts_against_order_quota);
+        }
+        let mut keys = Self::rate_limit_keys(path, &params, counts_against_order_quota);
+        let priority = method == Method::DELETE
+            || method == Method::PUT
+            || params.get("reduceOnly") == Some("true")
+            || (method == Method::GET
+                && matches!(
+                    path,
+                    ASTER_ORDER_PATH
+                        | ASTER_OPEN_ORDERS_PATH
+                        | ASTER_BALANCE_PATH
+                        | ASTER_POSITION_RISK_PATH
+                ));
+        if !priority {
+            keys.extend(std::iter::repeat_n(
+                ORDINARY_RATE_KEY.to_string(),
+                Self::request_weight(path, &params) as usize,
+            ));
+            if counts_against_order_quota {
+                keys.push(ORDINARY_ORDER_RATE_KEY.to_string());
+            }
+        }
 
         // The signed payload carries the signature, so the URL is redacted from logs and
         // transport errors for GET requests.
         let response = self
             .inner
             .client
-            .request_with_url_redacted_admitted(
-                method,
-                url,
-                None,
-                Some(headers),
-                body,
-                None,
-                Some(keys),
-                admission,
-            )
+            .request_with_url_redacted_prepared(method, Some(headers), Some(keys), deadline, || {
+                // A different response can arm a cooldown while this request waits for
+                // quota. Refuse locally rather than sending through the new cooldown or
+                // holding an old quota reservation until it expires.
+                if self.cooldown_remaining().is_some() {
+                    return Err(AsterHttpError::ValidationError(
+                        "venue cooldown changed while waiting for quota".to_string(),
+                    ));
+                }
+                if let Some(admission) = admission {
+                    admission().map_err(AsterHttpError::ValidationError)?;
+                }
+                let payload = self.build_signed_payload(&params)?;
+                if self.cooldown_remaining().is_some() {
+                    return Err(AsterHttpError::ValidationError(
+                        "venue cooldown changed before dispatch".to_string(),
+                    ));
+                }
+                if let Some(admission) = admission {
+                    admission().map_err(AsterHttpError::ValidationError)?;
+                }
+                if is_get {
+                    Ok((format!("{}{path}?{payload}", self.inner.base_url), None))
+                } else {
+                    Ok((
+                        format!("{}{path}", self.inner.base_url),
+                        Some(payload.into_bytes()),
+                    ))
+                }
+            })
             .await?;
 
         self.arm_cooldown(&response);
@@ -648,6 +786,7 @@ impl AsterHttpClient {
             params,
             true,
             Some(&admission),
+            self.request_deadline(),
         )
         .await
     }
@@ -912,6 +1051,8 @@ mod tests {
 
     use axum::{
         Router,
+        body::to_bytes,
+        extract::Request,
         http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
         response::IntoResponse,
     };
@@ -921,6 +1062,204 @@ mod tests {
 
     use super::*;
     use crate::common::enums::AsterEnvironment;
+
+    fn client_with_quotas(
+        base_url: &str,
+        credential: Option<AsterCredential>,
+        timeout_secs: Option<u64>,
+        proxy_url: Option<String>,
+        quotas: Vec<(String, Quota)>,
+    ) -> AsterHttpResult<AsterHttpClient> {
+        let client = HttpClient::builder()
+            .keyed_quotas(quotas)
+            .maybe_timeout_secs(timeout_secs)
+            .maybe_proxy_url(proxy_url)
+            .build()?;
+        Ok(AsterHttpClient {
+            inner: Arc::new(AsterHttpClientInner {
+                client,
+                base_url: base_url.trim_end_matches('/').to_string(),
+                credential,
+                nonce: Arc::new(NonceGenerator::new()),
+                timeout: timeout_secs.map(Duration::from_secs),
+                cooldown_until: Arc::new(Mutex::new(None)),
+            }),
+        })
+    }
+
+    #[rstest]
+    fn test_client_recreation_keeps_signer_nonce_and_authority_cooldown() {
+        let first =
+            AsterHttpClient::new("http://127.0.0.1:19003", Some(credential()), Some(5), None)
+                .unwrap();
+        let second =
+            AsterHttpClient::new("http://127.0.0.1:19003/", Some(credential()), Some(5), None)
+                .unwrap();
+        assert!(Arc::ptr_eq(&first.inner.nonce, &second.inner.nonce));
+        assert!(Arc::ptr_eq(
+            &first.inner.cooldown_until,
+            &second.inner.cooldown_until
+        ));
+        let previous = first.inner.nonce.next();
+        drop(first);
+        let recreated =
+            AsterHttpClient::new("http://127.0.0.1:19003", Some(credential()), Some(5), None)
+                .unwrap();
+        assert!(recreated.inner.nonce.next() > previous);
+        let separate =
+            AsterHttpClient::new("http://127.0.0.1:19004", Some(credential()), Some(5), None)
+                .unwrap();
+        assert!(!Arc::ptr_eq(
+            &second.inner.cooldown_until,
+            &separate.inner.cooldown_until
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_independent_clients_share_the_authority_request_budget() {
+        let venue = MockVenue::start(Vec::new()).await;
+        let first = AsterHttpClient::new(&venue.url(), Some(credential()), Some(1), None).unwrap();
+        let second = AsterHttpClient::new(&venue.url(), Some(credential()), Some(1), None).unwrap();
+        let limiter = TRANSPORT_SCOPES.lock().globals[&venue.url()]
+            .limiter
+            .clone();
+        limiter.add_quota_for_key(
+            Ustr::from(ASTER_GLOBAL_RATE_KEY),
+            Quota::with_period(Duration::from_secs(10)).unwrap(),
+        );
+        first
+            .signed_get::<serde_json::Value>(ASTER_ORDER_PATH, AsterParams::new())
+            .await
+            .unwrap();
+        let error = second
+            .signed_post::<serde_json::Value>(ASTER_ORDER_PATH, AsterParams::new(), false)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(error, AsterHttpError::ValidationError(_)),
+            "{error}"
+        );
+        assert_eq!(venue.hits(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_independent_clients_share_the_account_order_budget() {
+        let venue = MockVenue::start(Vec::new()).await;
+        let first_credential = credential();
+        let second_credential = credential();
+        let first =
+            AsterHttpClient::new(&venue.url(), Some(first_credential), Some(1), None).unwrap();
+        let second =
+            AsterHttpClient::new(&venue.url(), Some(second_credential), Some(1), None).unwrap();
+        let account_key = (
+            venue.url(),
+            credential().user_address().to_ascii_lowercase(),
+        );
+        let limiter = TRANSPORT_SCOPES.lock().accounts[&account_key].clone();
+        limiter.add_quota_for_key(
+            Ustr::from(ASTER_ORDER_RATE_KEY),
+            Quota::with_period(Duration::from_secs(10)).unwrap(),
+        );
+
+        // The global budget is untouched and has ample capacity. The first order consumes the
+        // account-scoped order cell; the second client must still wait on that same account.
+        first
+            .signed_post::<serde_json::Value>(ASTER_ORDER_PATH, AsterParams::new(), true)
+            .await
+            .unwrap();
+        let error = second
+            .signed_post::<serde_json::Value>(ASTER_ORDER_PATH, AsterParams::new(), true)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(error, AsterHttpError::ValidationError(_)),
+            "{error}"
+        );
+        assert!(!error.is_ambiguous_execution());
+        assert_eq!(venue.hits(), 1);
+    }
+
+    #[rstest]
+    #[case(ASTER_ORDER_PATH)]
+    #[case(ASTER_OPEN_ORDERS_PATH)]
+    #[tokio::test]
+    async fn test_cleanup_queries_do_not_wait_behind_the_ordinary_budget(#[case] path: &str) {
+        let venue = MockVenue::start(Vec::new()).await;
+        let client = client_with_quotas(
+            &venue.url(),
+            Some(credential()),
+            Some(1),
+            None,
+            vec![
+                (
+                    ASTER_GLOBAL_RATE_KEY.to_string(),
+                    Quota::per_minute(NonZeroU32::new(10).unwrap()),
+                ),
+                (
+                    ORDINARY_RATE_KEY.to_string(),
+                    Quota::with_period(Duration::from_secs(10)).unwrap(),
+                ),
+            ],
+        )
+        .unwrap();
+        client
+            .signed_post::<serde_json::Value>(ASTER_ORDER_PATH, AsterParams::new(), false)
+            .await
+            .unwrap();
+        let waiting =
+            client.signed_post::<serde_json::Value>(ASTER_ORDER_PATH, AsterParams::new(), false);
+        tokio::pin!(waiting);
+        assert!(futures_util::poll!(&mut waiting).is_pending());
+        client
+            .signed_get::<serde_json::Value>(path, AsterParams::new().with("symbol", "BTCUSDT"))
+            .await
+            .unwrap();
+        assert_eq!(
+            venue.hits(),
+            2,
+            "priority query uses the shared global budget but not ordinary quota"
+        );
+    }
+
+    #[rstest]
+    #[case(ASTER_ORDER_PATH)]
+    #[case(ASTER_OPEN_ORDERS_PATH)]
+    #[tokio::test]
+    async fn test_priority_query_still_waits_for_the_full_global_budget(#[case] path: &str) {
+        let venue = MockVenue::start(Vec::new()).await;
+        let client = client_with_quotas(
+            &venue.url(),
+            Some(credential()),
+            Some(1),
+            None,
+            vec![(
+                ASTER_GLOBAL_RATE_KEY.to_string(),
+                Quota::with_period(Duration::from_secs(10)).unwrap(),
+            )],
+        )
+        .unwrap();
+
+        // A priority order query bypasses the ordinary reserve, but its documented request
+        // weight still has to consume the actual global limiter.
+        client
+            .signed_get::<serde_json::Value>(path, AsterParams::new().with("symbol", "BTCUSDT"))
+            .await
+            .unwrap();
+        let error = client
+            .signed_get::<serde_json::Value>(path, AsterParams::new().with("symbol", "BTCUSDT"))
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(error, AsterHttpError::ValidationError(_)),
+            "{error}"
+        );
+        assert!(!error.is_ambiguous_execution());
+        assert_eq!(
+            venue.hits(),
+            1,
+            "global quota must still gate priority queries"
+        );
+    }
 
     /// One scripted response from the stand-in venue.
     #[derive(Clone, Debug)]
@@ -937,17 +1276,26 @@ mod tests {
     struct MockVenue {
         addr: SocketAddr,
         hits: Arc<AtomicUsize>,
+        requests: Arc<Mutex<Vec<String>>>,
     }
 
     impl MockVenue {
         async fn start(responses: Vec<ScriptedResponse>) -> Self {
             let hits = Arc::new(AtomicUsize::new(0));
-            let state = (hits.clone(), Arc::new(responses));
+            let requests = Arc::new(Mutex::new(Vec::new()));
+            let state = (hits.clone(), Arc::new(responses), requests.clone());
 
-            let router = Router::new().fallback(move || {
-                let (hits, script) = state.clone();
+            let router = Router::new().fallback(move |request: Request| {
+                let (hits, script, requests) = state.clone();
 
                 async move {
+                    let (parts, body) = request.into_parts();
+                    let body = to_bytes(body, 1_048_576).await.expect("request body");
+                    requests.lock().push(if body.is_empty() {
+                        parts.uri.query().unwrap_or_default().to_string()
+                    } else {
+                        String::from_utf8(body.to_vec()).expect("request text")
+                    });
                     let index = hits.fetch_add(1, Ordering::SeqCst);
 
                     match script.get(index) {
@@ -980,7 +1328,11 @@ mod tests {
                 let _ = axum::serve(listener, router.into_make_service()).await;
             });
 
-            Self { addr, hits }
+            Self {
+                addr,
+                hits,
+                requests,
+            }
         }
 
         fn url(&self) -> String {
@@ -1191,6 +1543,40 @@ mod tests {
     }
 
     #[rstest]
+    fn test_concurrent_clones_sign_with_distinct_nonces() {
+        let client = client();
+        let barrier = Arc::new(std::sync::Barrier::new(8));
+        let mut nonces = std::thread::scope(|scope| {
+            let handles: [_; 8] = std::array::from_fn(|_| {
+                let client = client.clone();
+                let barrier = Arc::clone(&barrier);
+                scope.spawn(move || {
+                    barrier.wait();
+                    (0..16)
+                        .map(|_| {
+                            client
+                                .build_signed_payload(&AsterParams::new())
+                                .unwrap()
+                                .split('&')
+                                .find_map(|pair| pair.strip_prefix("nonce="))
+                                .unwrap()
+                                .parse::<u64>()
+                                .unwrap()
+                        })
+                        .collect::<Vec<_>>()
+                })
+            });
+            handles
+                .into_iter()
+                .flat_map(|handle| handle.join().unwrap())
+                .collect::<Vec<_>>()
+        });
+        nonces.sort_unstable();
+        assert_eq!(nonces.len(), 128);
+        assert!(nonces.windows(2).all(|pair| pair[0] < pair[1]));
+    }
+
+    #[rstest]
     #[tokio::test]
     async fn test_cancel_order_requires_an_identifier() {
         let error = client()
@@ -1359,7 +1745,14 @@ mod tests {
 
     #[tokio::test(start_paused = true)]
     async fn test_await_cooldown_waits_for_the_armed_deadline() {
-        let client = client();
+        let client = client_with_quotas(
+            "https://fapi.asterdex.com/",
+            Some(credential()),
+            Some(30),
+            None,
+            AsterHttpClient::rate_limit_quotas(),
+        )
+        .unwrap();
 
         assert_eq!(client.cooldown_remaining(), None);
 
@@ -1413,14 +1806,8 @@ mod tests {
             (ASTER_GLOBAL_RATE_KEY.to_string(), quota),
             (ASTER_ORDER_RATE_KEY.to_string(), quota),
         ];
-        let client = AsterHttpClient::with_rate_limit_quotas(
-            &venue.url(),
-            Some(credential()),
-            Some(5),
-            None,
-            quotas,
-        )
-        .expect("client");
+        let client = client_with_quotas(&venue.url(), Some(credential()), Some(5), None, quotas)
+            .expect("client");
 
         let params = AsterParams::new().with("symbol", "BTCUSDT");
 
@@ -1467,6 +1854,198 @@ mod tests {
             1,
             "the refused order must not reach the venue"
         );
+    }
+
+    #[tokio::test]
+    async fn test_signed_payload_is_built_after_the_quota_wait() {
+        let venue = MockVenue::start(Vec::new()).await;
+        let quota = Quota::with_period(Duration::from_millis(500)).expect("period");
+        let client = client_with_quotas(
+            &venue.url(),
+            Some(credential()),
+            Some(5),
+            None,
+            vec![(ASTER_GLOBAL_RATE_KEY.to_string(), quota)],
+        )
+        .unwrap();
+        let params = AsterParams::new().with("symbol", "BTCUSDT");
+        let _: AsterHttpResult<serde_json::Value> = client
+            .signed_post(ASTER_ORDER_PATH, params.clone(), false)
+            .await;
+        assert_eq!(venue.hits(), 1);
+
+        let request = client.signed_post::<serde_json::Value>(ASTER_ORDER_PATH, params, false);
+        tokio::pin!(request);
+        assert!(futures_util::poll!(&mut request).is_pending());
+        let after_queued = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_micros() as u64;
+        request.await.unwrap();
+
+        let requests = venue.requests.lock();
+        let nonce: u64 = requests[1]
+            .split('&')
+            .find_map(|field| field.strip_prefix("nonce="))
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert!(
+            nonce >= after_queued,
+            "nonce was generated before the quota wait"
+        );
+        assert_eq!(venue.hits(), 2, "quota must not be acquired twice");
+    }
+
+    #[tokio::test]
+    async fn test_quota_timeout_is_local_and_never_resends_a_post() {
+        let venue = MockVenue::start(Vec::new()).await;
+        let quota = Quota::with_period(Duration::from_secs(10)).expect("period");
+        let client = client_with_quotas(
+            &venue.url(),
+            Some(credential()),
+            Some(1),
+            None,
+            vec![(ASTER_GLOBAL_RATE_KEY.to_string(), quota)],
+        )
+        .unwrap();
+        let params = AsterParams::new().with("symbol", "BTCUSDT");
+        client
+            .signed_post::<serde_json::Value>(ASTER_ORDER_PATH, params.clone(), false)
+            .await
+            .unwrap();
+        let error = client
+            .signed_post::<serde_json::Value>(ASTER_ORDER_PATH, params, false)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(error, AsterHttpError::ValidationError(_)),
+            "{error}"
+        );
+        assert!(!error.is_ambiguous_execution());
+        assert!(!error.is_retryable_transport());
+        assert_eq!(venue.hits(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_new_cooldown_refuses_an_already_queued_request() {
+        let venue = MockVenue::start(Vec::new()).await;
+        let quota = Quota::with_period(Duration::from_millis(500)).expect("period");
+        let client = client_with_quotas(
+            &venue.url(),
+            Some(credential()),
+            Some(5),
+            None,
+            vec![(ASTER_GLOBAL_RATE_KEY.to_string(), quota)],
+        )
+        .unwrap();
+        let params = AsterParams::new().with("symbol", "BTCUSDT");
+        client
+            .signed_post::<serde_json::Value>(ASTER_ORDER_PATH, params.clone(), false)
+            .await
+            .unwrap();
+        let request = client.signed_post::<serde_json::Value>(ASTER_ORDER_PATH, params, false);
+        tokio::pin!(request);
+        assert!(futures_util::poll!(&mut request).is_pending());
+        *client.inner.cooldown_until.lock() = Some(Instant::now() + Duration::from_secs(30));
+        let error = request.await.unwrap_err();
+        assert!(
+            matches!(error, AsterHttpError::ValidationError(_)),
+            "{error}"
+        );
+        assert!(!error.is_ambiguous_execution());
+        assert_eq!(venue.hits(), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_cooldown_timeout_is_a_local_refusal() {
+        let client = client_with_quotas(
+            "https://fapi.asterdex.com/",
+            Some(credential()),
+            Some(30),
+            None,
+            AsterHttpClient::rate_limit_quotas(),
+        )
+        .unwrap();
+        *client.inner.cooldown_until.lock() = Some(Instant::now() + Duration::from_secs(60));
+        let error = client.submit_order(AsterParams::new()).await.unwrap_err();
+        assert!(
+            matches!(error, AsterHttpError::ValidationError(_)),
+            "{error}"
+        );
+        assert!(!error.is_ambiguous_execution());
+    }
+
+    #[tokio::test]
+    async fn test_timeout_after_dispatch_keeps_the_post_unknown() {
+        let hits = Arc::new(AtomicUsize::new(0));
+        let hits_for_handler = Arc::clone(&hits);
+        let router = Router::new().fallback(move || {
+            let hits = Arc::clone(&hits_for_handler);
+            async move {
+                hits.fetch_add(1, Ordering::SeqCst);
+                tokio::time::sleep(Duration::from_secs(10)).await;
+                "{}"
+            }
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        let client = AsterHttpClient::new(
+            &format!("http://{address}"),
+            Some(credential()),
+            Some(1),
+            None,
+        )
+        .unwrap();
+        let error = client.submit_order(AsterParams::new()).await.unwrap_err();
+        assert!(error.is_ambiguous_execution(), "{error}");
+        assert_eq!(hits.load(Ordering::SeqCst), 1, "POST must never be retried");
+        server.abort();
+    }
+
+    #[tokio::test]
+    async fn test_get_retry_backoff_uses_the_original_request_budget() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let hits = Arc::new(AtomicUsize::new(0));
+        let hits_for_server = Arc::clone(&hits);
+        let server = tokio::spawn(async move {
+            loop {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut buffer = [0; 4096];
+                if stream.read(&mut buffer).await.unwrap() == 0 {
+                    continue;
+                }
+                hits_for_server.fetch_add(1, Ordering::SeqCst);
+                stream
+                    .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n")
+                    .await
+                    .unwrap();
+                stream.shutdown().await.unwrap();
+            }
+        });
+        let client = AsterHttpClient::new(
+            &format!("http://{address}"),
+            Some(credential()),
+            Some(1),
+            None,
+        )
+        .unwrap();
+        let error = client
+            .signed_get::<serde_json::Value>(ASTER_ORDER_PATH, AsterParams::new())
+            .await
+            .unwrap_err();
+        assert!(matches!(error, AsterHttpError::Timeout(_)), "{error}");
+        assert!(
+            hits.load(Ordering::SeqCst) < GET_MAX_RETRIES as usize + 1,
+            "retry backoff must not reset the overall deadline"
+        );
+        server.abort();
     }
 
     #[tokio::test]
