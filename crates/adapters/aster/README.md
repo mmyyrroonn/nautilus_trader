@@ -74,6 +74,28 @@ Both are enforced client-side by keyed quotas on the shared HTTP client. Aster a
 rate-limits `exchangeInfo` aggressively, so prefer `BinanceInstrumentProviderConfig::load_ids`
 over `load_all` and leave the refresh intervals at their defaults.
 
+Signed HTTP clients in one process share request weight and cooldown by REST authority, order
+quota by authority and master account, and nonce allocation by authority and signer. Recreating a
+client preserves these scopes. Requests through different proxies to the same authority share
+the conservative budget. Other processes, public data traffic delegated to Binance, and other
+tools using the same egress IP are outside this signed-client budget and require coordinated
+deployment limits.
+
+Ordinary creates and history reads use at most 80% of the request budget; ordinary creates also
+use at most 80% of the order budget. The remaining capacity is available to reduce-only creates,
+cancels, order and open-order queries, balance queries, position queries and listen-key renewal.
+These requests still acquire the full shared venue quota and cannot bypass it.
+
+Nonce generation and signing occur after quota acquisition. The final preparation checks
+admission and any cooldown armed while the request waited. A newly armed cooldown refuses that
+attempt locally; state-changing requests are not automatically repeated. Consumed quota is not
+refunded after a local refusal.
+
+For signed requests, `http_timeout_secs` covers cooldown, quota waiting, transport and response
+reading. GET retries and their backoff share the original budget. Expiration before dispatch is
+a local validation error; expiration after dispatch leaves a state-changing request unknown.
+Passing `None` explicitly leaves the local budget unbounded.
+
 The `nonce` is a microsecond timestamp that must fall within ±60 s of server time, and Aster
 tracks it per signer address, so it must be strictly increasing. One `AsterHttpClient` and all
 of its clones therefore draw from a single monotonic counter.
