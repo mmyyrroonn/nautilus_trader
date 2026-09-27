@@ -155,6 +155,7 @@ struct RestState {
     /// asserts a submission never becomes a request relies on.
     create_answer: Mutex<Option<String>>,
     production_close_fill_limit: Mutex<Option<String>>,
+    production_entry_fill_limit: Mutex<Option<String>>,
     production_residual_override: Mutex<Option<String>>,
     contracts: Mutex<String>,
     reject_next_close: AtomicBool,
@@ -196,6 +197,7 @@ impl RestState {
             funding: Mutex::new(Vec::new()),
             create_answer: Mutex::new(None),
             production_close_fill_limit: Mutex::new(None),
+            production_entry_fill_limit: Mutex::new(None),
             production_residual_override: Mutex::new(None),
             contracts: Mutex::new(
                 r#"[{"market":"NVDA-USD.P","isClosed":false,"disabled":false}]"#.into(),
@@ -514,7 +516,7 @@ async fn answer(stream: &mut TcpStream, state: &RestState, request: &Captured) {
                     let limited = if body["reduceOnly"] == true {
                         state.production_close_fill_limit.lock().unwrap().take()
                     } else {
-                        None
+                        state.production_entry_fill_limit.lock().unwrap().take()
                     };
                     let qty = limited.as_deref().unwrap_or(requested);
                     let side = body["side"].as_str().unwrap();
@@ -4694,6 +4696,183 @@ async fn test_production_cleanup_minimum_refuses_entry_before_http(
     // The positive fixture's IOC is not a full-cycle cleanup witness
     harness.client.abort_request_tasks();
     harness.client.stop().unwrap();
+}
+
+#[rstest]
+#[case(false)]
+#[case(true)]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_reconciliation_tail_handoff_barrier(#[case] supersede: bool) {
+    let journal = JournalPath::new("tail-handoff");
+    let rest = MockRest::start().await;
+    rest.set_create_answer("<production-ioc>");
+    *rest.state.production_entry_fill_limit.lock().unwrap() = Some("0.02".into());
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut harness = build_harness(&rest, &private, production_config(&journal));
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    production_quote(&harness, now());
+    let entry = production_order("tail-entry", false, "0.05", "230.00");
+    seed_order(&harness, &entry);
+    harness.client.submit_order(submit_command(&entry)).unwrap();
+    wait_until(&mut harness, "partial entry settled", |client, _| {
+        client
+            .order_state(&entry.client_order_id())
+            .is_some_and(|o| o.is_settled() && o.filled == Quantity::from("0.02"))
+    })
+    .await;
+    production_quote(&harness, now());
+    let close = production_order("tail-close", true, "0.02", "225.00");
+    seed_order(&harness, &close);
+    harness.client.submit_order(submit_command(&close)).unwrap();
+    wait_until(&mut harness, "initial flat proof", |client, _| {
+        client
+            .production_trade_snapshot()
+            .is_some_and(|s| s["phase"] == "reconciled")
+    })
+    .await;
+    assert_eq!(harness.client.applied_fill_count(), 2);
+
+    let account = harness.client.account();
+    let holder = account.clone();
+    let (drained, reached) = tokio::sync::oneshot::channel();
+    let (release, resume) = tokio::sync::oneshot::channel();
+    let first = tokio::spawn(async move {
+        let pass = holder.prepare_reconciliation(now()).await.unwrap();
+        drained.send(()).unwrap();
+        resume.await.unwrap();
+        pass.commit()
+    });
+    tokio::time::timeout(WAIT, reached).await.unwrap().unwrap();
+    let reading_before = harness.client.last_reading();
+    let published_before = account.account_state_published();
+    assert!(
+        account
+            .reconcile_account(now())
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("already")
+    );
+
+    let mut order: serde_json::Value =
+        serde_json::from_str(&rest.state.orders.lock().unwrap()[0]).unwrap();
+    order["filledSize"] = serde_json::json!("0.05");
+    let mut fill: serde_json::Value = serde_json::from_str(&api_fill(
+        "tail-new-fill",
+        "venue-tail-entry",
+        "tail-entry",
+        "0.03",
+    ))
+    .unwrap();
+    fill["fee"] = serde_json::json!("0.02");
+    fill["price"] = serde_json::json!("230.00");
+    assert_eq!(
+        account.ingest_stream_order(
+            nautilus_ondo::http::orders::OndoApiOrder::from_text(&order.to_string()).unwrap(),
+        ),
+        OndoStreamIngestion::Buffered
+    );
+    for _ in 0..2 {
+        assert_eq!(
+            account.ingest_stream_fill(
+                OndoApiFill::from_raw(
+                    &serde_json::value::RawValue::from_string(fill.to_string()).unwrap()
+                )
+                .unwrap(),
+            ),
+            OndoStreamIngestion::Buffered
+        );
+    }
+    assert_eq!(harness.client.last_reading(), reading_before);
+    assert_eq!(account.account_state_published(), published_before);
+    assert_eq!(harness.client.applied_fill_count(), 2);
+    assert_eq!(
+        harness
+            .client
+            .order_state(&entry.client_order_id())
+            .unwrap()
+            .filled,
+        Quantity::from("0.02")
+    );
+    assert!(harness.client.production_trade_snapshot().is_none());
+    if supersede {
+        account.begin_recovery(now());
+    } else {
+        rest.state.orders.lock().unwrap()[0] = order.to_string();
+        *rest.state.positions.lock().unwrap() = vec![api_position("0.03")];
+    }
+    release.send(()).unwrap();
+    let result = first.await.unwrap();
+    if supersede {
+        assert!(result.unwrap_err().to_string().contains("superseded"));
+        let judgment = account.reconcile_account(now()).await.unwrap();
+        assert!(
+            judgment
+                .findings
+                .iter()
+                .any(|f| matches!(f, Finding::LostReports { .. }))
+        );
+        assert!(!judgment.is_clean());
+        assert_eq!(harness.client.applied_fill_count(), 2);
+    } else {
+        result.unwrap();
+        assert!(
+            harness.client.production_trade_snapshot().is_none(),
+            "tail invalidates A's proof"
+        );
+        // No new WS message and no explicit pass: the real periodic scheduler drains the tail
+        wait_until(&mut harness, "idle periodic tail replay", |client, _| {
+            client.applied_fill_count() == 3
+        })
+        .await;
+        assert_eq!(
+            harness
+                .client
+                .order_state(&entry.client_order_id())
+                .unwrap()
+                .filled,
+            Quantity::from("0.05")
+        );
+        rest.state.fills.lock().unwrap().push(fill.to_string());
+        account.reconcile_account(now()).await.unwrap();
+        assert_eq!(harness.client.applied_fill_count(), 3);
+        let events = drain_events(&mut harness);
+        let charged: Vec<_> = fill_reports(&events)
+            .into_iter()
+            .filter(|f| f.trade_id.as_str() == "tail-new-fill")
+            .collect();
+        assert_eq!(charged.len(), 1);
+        assert_eq!(
+            charged[0].commission,
+            Money::from_decimal(
+                rust_decimal::Decimal::from_str_exact("0.02").unwrap(),
+                Currency::from("USDC"),
+            )
+            .unwrap()
+        );
+        assert!(harness.client.production_trade_snapshot().is_none());
+    }
+    harness.client.stop().unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_abandoned_account_transaction_releases_claim_and_stays_uncertain() {
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut harness = build_harness(&rest, &private, sandbox_config());
+    converge(&mut harness).await;
+    let account = harness.client.account();
+    let published = account.account_state_published();
+    let pass = account.prepare_reconciliation(now()).await.unwrap();
+    drop(pass);
+    assert_eq!(
+        account.reconciliation_state(),
+        ReconciliationState::Uncertain
+    );
+    assert_eq!(account.account_state_published(), published);
+    account.reconcile_account(now()).await.unwrap();
+    harness.client.disconnect().await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread")]

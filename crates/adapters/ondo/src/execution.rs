@@ -1563,10 +1563,10 @@ impl Drop for PassGuard<'_> {
 fn drain_for_commit(
     buffer: &RwLock<ReconciliationBuffer>,
     reconciliation: &RwLock<ReconciliationMachine>,
-) -> DrainedReports {
+) -> (DrainedReports, u64) {
     let mut buffer = buffer.write();
     let generation = reconciliation.read().recovery_generation();
-    buffer.drain_generation(generation)
+    (buffer.drain_generation(generation), generation)
 }
 
 /// The live execution client for the Ondo Perps API.
@@ -2915,6 +2915,87 @@ pub struct OndoAccountRuntime {
     production: Option<Arc<crate::production::ProductionAuthority>>,
 }
 
+/// An exclusively owned, read account pass awaiting publication and checkpoint.
+///
+/// The claim covers the commit tail. Reports arriving after its drain remain buffered for
+/// the next pass, including when this transaction is abandoned. A superseded transaction
+/// cannot conclude an old reading as the state of a newer recovery generation.
+#[derive(Debug)]
+#[must_use = "The account pass must be committed or dropped to release recovery ownership"]
+pub struct OndoReconciliationPass<'a> {
+    account: &'a OndoAccountRuntime,
+    _claim: PassGuard<'a>,
+    reading: Option<AccountReading>,
+    generation: u64,
+    activity: Option<u64>,
+    now: UnixNanos,
+}
+
+impl OndoReconciliationPass<'_> {
+    /// Concludes, publishes and checkpoints the exclusively owned account reading.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the recovery generation changed or the production cleanup
+    /// deadline expired after the read. Neither case publishes a completion proof.
+    pub fn commit(mut self) -> anyhow::Result<AccountJudgment> {
+        let reading = self
+            .reading
+            .take()
+            .ok_or_else(|| anyhow::anyhow!("account pass already consumed"))?;
+        let account = self.account;
+        let judgment = {
+            let mut machine = account.reconciliation.write();
+            if machine.recovery_generation() != self.generation {
+                machine.note_lost_reports(1, "account pass superseded before commit".into());
+                machine.note_pass_failed("account pass superseded before commit".into(), self.now);
+                drop(machine);
+                if let Some(guard) = &account.production {
+                    guard.activity();
+                }
+                anyhow::bail!("account pass superseded before commit");
+            }
+            if account
+                .production
+                .as_ref()
+                .is_some_and(|g| g.remaining().is_zero())
+            {
+                machine.note_pass_failed(
+                    "production cleanup deadline exhausted before commit".into(),
+                    self.now,
+                );
+                anyhow::bail!("production cleanup deadline exhausted before commit");
+            }
+            machine.conclude_pass(&reading, self.now);
+            machine.last_judgment().cloned().unwrap_or_default()
+        };
+        account.publish_account_state(self.now);
+        account.persist_journal(self.now);
+        if let Some(guard) = &account.production {
+            guard.reconcile(
+                &reading,
+                judgment.is_clean(),
+                self.activity.unwrap_or_default(),
+            );
+        }
+        Ok(judgment)
+    }
+}
+
+impl Drop for OndoReconciliationPass<'_> {
+    fn drop(&mut self) {
+        if self.reading.is_some() {
+            self.account
+                .reconciliation
+                .write()
+                .note_pass_failed("account pass dropped before commit".into(), self.now);
+            if let Some(guard) = &self.account.production {
+                guard.activity();
+            }
+        }
+    }
+}
+
 /// Where a journal checkpoint is written, and how many writes have failed.
 ///
 /// It is a handle rather than a method because not every writer is the runtime: a submission that
@@ -3933,14 +4014,26 @@ impl OndoAccountRuntime {
     /// machine is left [`ReconciliationState::Uncertain`] in that case, because a pass that stopped
     /// early must not look like an account that was read.
     pub async fn reconcile_account(&self, now: UnixNanos) -> anyhow::Result<AccountJudgment> {
-        // The claim is held until this function returns, including every early return and
-        // unwind: `_claim` has no release other than `Drop`.
-        let Some(_claim) = self.pass.claim() else {
-            log::error!("Ondo refused a recovery pass: another pass already owns the account");
+        self.prepare_reconciliation(now).await?.commit()
+    }
 
+    /// Reads and drains one account pass while retaining exclusive ownership until commit.
+    ///
+    /// The returned transaction allows a recovery coordinator to separate reading from
+    /// publication. Dropping it before commit records an incomplete pass and releases ownership.
+    /// Normal callers can use [`Self::reconcile_account`] to perform both phases together.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if another pass owns the account, a read is incomplete, or the
+    /// approved production cleanup deadline expires while reading.
+    pub async fn prepare_reconciliation(
+        &self,
+        now: UnixNanos,
+    ) -> anyhow::Result<OndoReconciliationPass<'_>> {
+        let Some(claim) = self.pass.claim() else {
             return Err(RecoveryPassRefusal::AlreadyRunning.into());
         };
-
         let activity = self.production.as_ref().map(|g| g.activity_generation());
         let reading = if let Some(guard) = &self.production {
             match tokio::time::timeout(guard.remaining(), self.read_account(now)).await {
@@ -3953,37 +4046,19 @@ impl OndoAccountRuntime {
             self.read_account(now).await
         };
         match reading {
-            Ok(reading) => {
-                // This round's judgment is taken once, immediately after the conclusion and
-                // while the claim still holds, so the publication, the production guard and
-                // the return all speak from the same immutable round result instead of
-                // re-reading a judgment a later round could have replaced.
-                let judgment = {
-                    let mut machine = self.reconciliation.write();
-                    machine.conclude_pass(&reading, now);
-                    machine.last_judgment().cloned()
-                };
-
-                // The two things a concluded pass produces outside the state machine: the
-                // account's state, for the engine, and the checkpoint, for the next process.
-                // Both are taken from the state the pass just concluded rather than from the
-                // reading, so what is published is what the machine judged.
-                self.publish_account_state(now);
-                self.persist_journal(now);
-                if let Some(guard) = &self.production {
-                    let clean = judgment.as_ref().is_some_and(AccountJudgment::is_clean);
-                    guard.reconcile(&reading, clean, activity.unwrap_or_default());
-                }
-
-                Ok(judgment.unwrap_or_default())
-            }
-            Err(error) => {
-                log::error!("Ondo account reconciliation failed: {error}");
+            Ok((reading, generation)) => Ok(OndoReconciliationPass {
+                account: self,
+                _claim: claim,
+                reading: Some(reading),
+                generation,
+                activity,
+                now,
+            }),
+            Err(e) => {
                 self.reconciliation
                     .write()
-                    .note_pass_failed(error.to_string(), now);
-
-                Err(error)
+                    .note_pass_failed(e.to_string(), now);
+                Err(e)
             }
         }
     }
@@ -4097,7 +4172,7 @@ impl OndoAccountRuntime {
     /// published and checkpointed - so a report arriving after it is buffered rather than applied
     /// beside this pass's conclusion. After the drain nothing in this function can fail, so a pass
     /// that took reports out of the buffer is a pass that applied them.
-    async fn read_account(&self, now: UnixNanos) -> anyhow::Result<AccountReading> {
+    async fn read_account(&self, now: UnixNanos) -> anyhow::Result<(AccountReading, u64)> {
         let mut reading = AccountReading::default();
         let mut observed = ObservedOrders::default();
 
@@ -4122,7 +4197,7 @@ impl OndoAccountRuntime {
             }
         }
 
-        let drained = drain_for_commit(&self.buffer, &self.reconciliation);
+        let (drained, generation) = drain_for_commit(&self.buffer, &self.reconciliation);
 
         self.replay(&drained, &mut observed, &mut reading);
 
@@ -4133,7 +4208,7 @@ impl OndoAccountRuntime {
             .collect();
         reading.applied_net = self.reporter.state.read().applied_net();
 
-        Ok(reading)
+        Ok((reading, generation))
     }
 
     /// Walks the venue's order list, applying every payload it carries.
