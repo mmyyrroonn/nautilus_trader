@@ -2138,6 +2138,12 @@ criteria = "safe-to-deploy"
 delta = "0.23.42 -> 0.23.43"
 notes = "Fixes a pre-authentication AWS-LC ticket decryption panic and tightens QUIC version and cipher-suite validation with defensive arithmetic. No new dependencies, unsafe code, build script, filesystem, process, or network destination behavior."
 
+[[audits.rustls]]
+who = "mmyyrroonn <qiufan_glamour@hotmail.com>"
+criteria = "safe-to-deploy"
+delta = "0.23.43 -> 0.23.45"
+notes = "Reviewed the published crate diff and upstream release notes. Fixes TLS 1.3 handshake alignment and ECH rejection name verification, tightens retry and message validation, restricts Unix key-log file permissions, and adds AWS-LC ML-DSA certificate support. No new build-script or network destination behavior; aws-lc-rs and webpki minimum versions increase."
+
 [[audits.rustls-native-certs]]
 who = "Nautech Systems <info@nautechsystems.io>"
 criteria = "safe-to-deploy"
