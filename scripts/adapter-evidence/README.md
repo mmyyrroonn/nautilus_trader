@@ -129,15 +129,17 @@ To reproduce the CI result locally, run `native_checks.py` - it is the same entr
   `src/execution.rs`, and workspace `missing_panics_doc` errors). `nautilus-aster` is
   clean. The debt is tracked under #11 and is cleared in its own change; the convention
   is to fix the lints, not to add `#[allow]` or drop `-D warnings`.
-- **Clean-runner wheel evidence is still pending**: the controlled local build entry
-  exists, and the application repository has a staged Windows/Linux workflow. It can run
-  after the builder and workflow are committed; no hosted result is claimed here.
+- **Clean-runner candidate evidence**: the [Windows/Linux build run](https://github.com/mmyyrroonn/Nautilus-Perps/actions/runs/36380868905)
+  produced source-bound wheels from native commit eeeb8eefc7921b7f81cb611cb3c851c665cd1ff1.
+  The [public release](https://github.com/mmyyrroonn/nautilus_trader/releases/tag/native-candidate-eeeb8eefc7)
+  pins those artifacts, and the [portable install run](https://github.com/mmyyrroonn/Nautilus-Perps/actions/runs/36389550745)
+  downloaded and tested them on fresh Windows and Ubuntu runners. These runs do not
+  clear the separate native Clippy debt tracked in #11.
 
 ## Still open in #11
 
-The full issue also asks for: a wheel-building CI leg with consumable artifacts, the
-cross-repo workflow that checks out Nautilus-Perps and installs the same candidate wheel,
-a fixture manifest (observed / official-example / synthetic with source and hash), a
-versioned capability matrix, and README pointers to the current evidence entry points.
-Until those land, this directory is the authoritative "can this be re-run" entry for the
-two adapters.
+The application repository now owns the cross-repo wheel build and portable install
+workflows. Native #11 still tracks the adapter fixture manifest (observed /
+official-example / synthetic with source and hash), a versioned capability matrix,
+native repository CI integration and the Clippy debt above. This directory remains
+the native adapter evidence entry point.
