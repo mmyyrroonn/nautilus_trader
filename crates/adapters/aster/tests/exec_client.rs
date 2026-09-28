@@ -40,7 +40,7 @@ use nautilus_common::{
     },
     testing::wait_until_async,
 };
-use nautilus_core::{UUID4, UnixNanos};
+use nautilus_core::{AtomicTime, UUID4, UnixNanos};
 use nautilus_execution::engine::ExecutionEngine;
 use nautilus_live::{
     ExecutionClientCore,
@@ -114,6 +114,7 @@ fn build_harness_inner(
         http_timeout_secs,
         ws_connect_timeout_secs,
         venue_override,
+        None,
         |_| {},
     )
 }
@@ -123,6 +124,7 @@ fn build_harness_configured(
     http_timeout_secs: Option<u64>,
     ws_connect_timeout_secs: Option<u64>,
     venue_override: Option<Venue>,
+    clock: Option<&'static AtomicTime>,
     edit: impl FnOnce(&mut AsterExecutionClientConfig),
 ) -> Harness {
     let account_id = AccountId::from(ACCOUNT_ID);
@@ -158,7 +160,11 @@ fn build_harness_configured(
     replace_exec_event_sender(exec_tx);
     replace_data_event_sender(data_tx);
 
-    let client = AsterExecutionClient::new(core, config).expect("client");
+    let client = match clock {
+        Some(clock) => AsterExecutionClient::new_with_clock(core, config, clock),
+        None => AsterExecutionClient::new(core, config),
+    }
+    .expect("client");
 
     Harness {
         client,
@@ -2393,6 +2399,148 @@ async fn test_stream_updates_within_the_window_cost_one_snapshot_read() {
     );
 }
 
+/// Uses a separate static clock so concurrent integration tests keep their own time.
+fn owed_refresh_clock() -> &'static AtomicTime {
+    Box::leak(Box::new(AtomicTime::new(
+        false,
+        UnixNanos::from(now_ms() as u64 * 1_000_000),
+    )))
+}
+
+/// Waits for a published account amount without advancing the paused Tokio clock.
+async fn wait_for_free_balance(harness: &mut Harness, expected: Money) {
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        let events = drain_exec(&mut harness.exec_rx);
+        if account_states(&events).iter().any(|state| {
+            state
+                .balances
+                .iter()
+                .any(|balance| balance.currency == Currency::USDT() && balance.free == expected)
+        }) {
+            return;
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "Aster did not publish the expected USDT free balance {expected}"
+        );
+        tokio::task::yield_now().await;
+    }
+}
+
+/// Two real stream dispatches inside the success window leave one owed read. A newer REST
+/// snapshot may then widen free, although neither stream row may widen the old bound.
+#[rstest]
+#[tokio::test]
+async fn test_owed_balance_timer_relaxes_bound_after_quiet_stream() {
+    let venue = MockVenue::start().await;
+    script_connect(&venue);
+    venue.script(|script| {
+        script.balances = json!([{"asset":"USDT", "balance":"1000", "availableBalance":"800"}]);
+    });
+    let clock = owed_refresh_clock();
+    let mut harness = build_harness_configured(&venue, Some(30), None, None, Some(clock), |_| {});
+    seed_account(&harness.cache);
+    harness.client.start().expect("start");
+    harness.client.connect().await.expect("connect");
+    venue.clear_requests();
+    drain_exec(&mut harness.exec_rx);
+
+    clock.increment_time(5_000_000_000).expect("advance clock");
+    tokio::time::pause();
+    venue.script(|script| {
+        script.balances = json!([{"asset":"USDT", "balance":"1000", "availableBalance":"900"}]);
+    });
+    let event_ms = now_ms();
+    venue.push_ws(&json!({"e":"ACCOUNT_UPDATE", "E":event_ms, "T":event_ms,
+        "a":{"m":"ORDER", "B":[{"a":"USDT", "wb":"1000", "cw":"1000", "bc":"0"}],
+             "P":[]}}));
+    wait_for_free_balance(&mut harness, Money::from("900 USDT")).await;
+    assert_eq!(venue.requests_for("GET", "balance").len(), 1);
+
+    venue.script(|script| {
+        script.balances = json!([{"asset":"USDT", "balance":"1000", "availableBalance":"950"}]);
+    });
+    venue.push_ws(
+        &json!({"e":"ACCOUNT_UPDATE", "E":event_ms + 1, "T":event_ms + 1,
+        "a":{"m":"ORDER", "B":[{"a":"USDT", "wb":"1000", "cw":"1000", "bc":"0"}],
+             "P":[]}}),
+    );
+    wait_for_free_balance(&mut harness, Money::from("900 USDT")).await;
+    assert_eq!(
+        venue.requests_for("GET", "balance").len(),
+        1,
+        "the newer stream row cannot widen free or force a read inside the window"
+    );
+
+    clock.increment_time(4_000_000_000).expect("advance clock");
+    tokio::time::advance(Duration::from_secs(1)).await;
+    assert_eq!(venue.requests_for("GET", "balance").len(), 1);
+    clock.increment_time(1_000_000_000).expect("advance clock");
+    tokio::time::advance(Duration::from_secs(1)).await;
+    wait_for_free_balance(&mut harness, Money::from("950 USDT")).await;
+    assert_eq!(
+        venue.requests_for("GET", "balance").len(),
+        2,
+        "the timer reads a newer REST snapshot without another stream message"
+    );
+}
+
+/// A failed owed read survives a quiet stream and clears only after the timer retries it.
+#[rstest]
+#[tokio::test]
+async fn test_owed_balance_timer_retries_failure_without_stream_messages() {
+    let venue = MockVenue::start().await;
+    script_connect(&venue);
+    venue.script(|script| {
+        script.balances = json!([{"asset":"USDT", "balance":"1000", "availableBalance":"800"}]);
+    });
+    let clock = owed_refresh_clock();
+    let mut harness = build_harness_configured(&venue, Some(30), None, None, Some(clock), |_| {});
+    seed_account(&harness.cache);
+    harness.client.start().expect("start");
+    harness.client.connect().await.expect("connect");
+    venue.clear_requests();
+    drain_exec(&mut harness.exec_rx);
+
+    clock.increment_time(5_000_000_000).expect("advance clock");
+    tokio::time::pause();
+    venue.script(|script| {
+        script.balance_status = Some((503, "unavailable".to_string()));
+    });
+    let event_ms = now_ms();
+    venue.push_ws(&json!({"e":"ACCOUNT_UPDATE", "E":event_ms, "T":event_ms,
+        "a":{"m":"ORDER", "B":[{"a":"USDT", "wb":"1000", "cw":"1000", "bc":"0"}],
+             "P":[]}}));
+    wait_for_free_balance(&mut harness, Money::from("800 USDT")).await;
+    wait_until_async(
+        || async { !harness.client.is_ready() },
+        Duration::from_secs(5),
+    )
+    .await;
+    assert_eq!(venue.requests_for("GET", "balance").len(), 1);
+
+    venue.script(|script| {
+        script.balance_status = None;
+        script.balances = json!([{"asset":"USDT", "balance":"1000", "availableBalance":"850"}]);
+    });
+    clock.increment_time(4_000_000_000).expect("advance clock");
+    tokio::time::advance(Duration::from_secs(1)).await;
+    assert_eq!(venue.requests_for("GET", "balance").len(), 1);
+    clock.increment_time(1_000_000_000).expect("advance clock");
+    tokio::time::advance(Duration::from_secs(1)).await;
+    wait_for_free_balance(&mut harness, Money::from("850 USDT")).await;
+    assert_eq!(venue.requests_for("GET", "balance").len(), 2);
+
+    clock.increment_time(60_000_000_000).expect("advance clock");
+    tokio::time::advance(Duration::from_secs(1)).await;
+    assert_eq!(
+        venue.requests_for("GET", "balance").len(),
+        2,
+        "a successful retry clears the owed read"
+    );
+}
+
 /// A stream row that restates the same wallet balance still leaves the available split
 /// unverified, so a balance response read before it cannot clear the debt: the timer has to
 /// read again even though no further message arrives.
@@ -4144,7 +4292,7 @@ fn started_harness(venue: &MockVenue) -> Harness {
 /// Builds a started harness that accepts an unconfirmed position mode as one-way.
 fn started_harness_assuming_one_way(venue: &MockVenue) -> Harness {
     script_connect(venue);
-    let mut harness = build_harness_configured(venue, Some(30), None, None, |config| {
+    let mut harness = build_harness_configured(venue, Some(30), None, None, None, |config| {
         config.assume_one_way_mode_when_unconfirmed = true;
     });
     seed_account(&harness.cache);

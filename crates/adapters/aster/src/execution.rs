@@ -2926,6 +2926,19 @@ impl AsterExecutionClient {
         core: ExecutionClientCore,
         config: AsterExecutionClientConfig,
     ) -> anyhow::Result<Self> {
+        Self::new_with_clock(core, config, get_atomic_clock_realtime())
+    }
+
+    /// Creates an Aster execution client with the supplied clock.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if credentials cannot be resolved or an HTTP client cannot be built.
+    pub fn new_with_clock(
+        core: ExecutionClientCore,
+        config: AsterExecutionClientConfig,
+        clock: &'static AtomicTime,
+    ) -> anyhow::Result<Self> {
         config.validate()?;
 
         let credential = AsterCredential::resolve(
@@ -2954,7 +2967,7 @@ impl AsterExecutionClient {
         let instrument_http_client = BinanceFuturesHttpClient::new(
             BinanceProductType::UsdM,
             BinanceEnvironment::Live,
-            get_atomic_clock_realtime(),
+            clock,
             None, // api_key
             None, // api_secret
             Some(http_base),
@@ -2966,7 +2979,6 @@ impl AsterExecutionClient {
         .map_err(|e| anyhow::anyhow!("Failed to build Aster instrument client: {e}"))?
         .with_venue(venue);
 
-        let clock = get_atomic_clock_realtime();
         let emitter = ExecutionEventEmitter::new(
             clock,
             core.trader_id,
