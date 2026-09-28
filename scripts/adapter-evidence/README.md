@@ -84,6 +84,32 @@ file itself is hashed so the declaration is traceable.
 `embedded_adapter_stubs` entry (path mapping strips a leading `python/`), so a stub can be
 checked against what the wheel actually carries instead of being trusted by name.
 
+
+## Controlled wheel build
+
+`build_native.py` is the build entry for the adapter fork. Use a CPython 3.12.9 native
+venv prepared from `python/uv.lock` with uv 0.12.6 and maturin 1.15.0, and Rust
+1.98.0. A clean source checkout is required for a formal candidate.
+
+```text
+<native-python> scripts/adapter-evidence/build_native.py --native-root <source-checkout> --python <native-python> --output-dir <empty-dir> --profile release
+```
+
+The default Cargo mode is `--locked --offline`; `--online` permits fetching only
+locked dependencies. The wrapper captures the native Git commit, tree, dirty
+diff/untracked content fingerprint, Cargo.lock, tool versions and build arguments
+before the build. It calls maturin exactly once and verifies the source fingerprint
+again before writing `native-provenance.json` with `source_binding=verified`,
+wheel/native/stub hashes, Python ABI and platform tags. A source change during
+build fails. A dirty source is recorded but only usable as an explicit local
+experiment by the application installer.
+
+On Windows, the wrapper removes Conda directories from the build PATH and scopes
+`CARGO_BUILD_WARNINGS=allow` to its maturin subprocess for the known MSVC import
+library notice; the repository-wide lint policy is not changed. The build record
+names this exception. The legacy `wheel_provenance.py` inventory still writes
+`source_binding=unknown` when run by itself.
+
 ## CI
 
 [`.github/workflows/nautilus-adapter-checks.yml`](../../.github/workflows/nautilus-adapter-checks.yml)
@@ -103,9 +129,9 @@ To reproduce the CI result locally, run `native_checks.py` - it is the same entr
   `src/execution.rs`, and workspace `missing_panics_doc` errors). `nautilus-aster` is
   clean. The debt is tracked under #11 and is cleared in its own change; the convention
   is to fix the lints, not to add `#[allow]` or drop `-D warnings`.
-- **Wheel builds are not automated here yet**: `wheel_provenance.py` records a wheel that
-  was built with the documented repository build steps; wiring the build itself into CI is
-  the next layer of #11.
+- **Clean-runner wheel evidence is still pending**: the controlled local build entry
+  exists, and the application repository has a staged Windows/Linux workflow. It can run
+  after the builder and workflow are committed; no hosted result is claimed here.
 
 ## Still open in #11
 
