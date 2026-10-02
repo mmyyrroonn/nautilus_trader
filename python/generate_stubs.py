@@ -41,6 +41,7 @@ from typing import TYPE_CHECKING
 
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
     from collections.abc import Sequence
 
 # Renames applied to method definitions
@@ -1119,6 +1120,351 @@ def elide_forward_class_defaults_in_signatures(content: str) -> str:
         result.append(updated_line)
 
     return "\n".join(result)
+
+
+@dataclass(frozen=True)
+class RustConfigParameter:
+    """One public constructor parameter, retaining order, kind and source default."""
+
+    name: str
+    rust_type: str
+    kind: str = "positional_or_keyword"
+    default: str | None = None
+    python_type: str | None = None
+
+
+@dataclass
+class RustConfigExport:
+    """Actual exported config contract, independent of its private storage layout."""
+
+    module: str
+    python_name: str
+    rust_name: str
+    source: Path
+    fields: dict[str, str]
+    constructor: tuple[RustConfigParameter, ...] | None = None
+    getters: dict[str, str] = field(default_factory=dict)
+
+
+def _rust_structure_lines(source: str) -> list[str]:
+    """Mask literals/comments before counting delimiters, retaining line boundaries."""
+    tokens = re.compile(
+        r'\br(?P<hashes>\#*)"[\s\S]*?"(?P=hashes)'
+        r'|"(?:\\[\s\S]|[^"\\])*"'
+        r"|'(?:\\.|[^'\\])'"
+        r"|//[^\n]*|/\*[\s\S]*?\*/",
+    )
+
+    def mask(match: re.Match[str]) -> str:
+        text = match.group()
+        # Keep using the same escaped quoted-string behavior as attribute parsing.
+        if text.startswith('"'):
+            masked = strip_double_quoted_strings(text)
+            return "".join(
+                "\n" if original == "\n" else char
+                for original, char in zip(text, masked, strict=True)
+            )
+        return "".join("\n" if char == "\n" else " " for char in text)
+
+    return tokens.sub(mask, source).split("\n")
+
+
+def _consume_rust_source_block(lines: list[str], start: int) -> tuple[str, int]:
+    """Consume a declaration block, reusing the quoted-string scanner."""
+    depth = 0
+    opened = False
+    collected = []
+    structural = _rust_structure_lines("\n".join(lines[start:]))
+    for index in range(start, len(lines)):
+        line = lines[index]
+        collected.append(line)
+        code = structural[index - start]
+        opened |= "{" in code or "(" in code
+        depth += code.count("{") + code.count("(") - code.count("}") - code.count(")")
+        if opened and depth == 0:
+            return "\n".join(collected), index + 1
+        if not opened and code.rstrip().endswith(";"):
+            return "\n".join(collected), index + 1
+    raise ValueError(f"Unterminated Rust source block at line {start + 1}")
+
+
+def _rust_source_items(source: str) -> Iterator[tuple]:  # noqa: C901
+    # Declaration alternatives each consume one complete source item.
+    """Yield attributed structs, impls and config macro forms at declaration boundaries."""
+    lines = source.splitlines()
+    local_macros = set(re.findall(r"macro_rules!\s+(\w+)", source))
+    attrs: list[str] = []
+    index = 0
+    while index < len(lines):
+        stripped = lines[index].strip()
+        if stripped.startswith("#["):
+            attribute, index = consume_rust_attribute(lines, index)
+            attrs.append(attribute)
+            continue
+        if not stripped or stripped.startswith("//"):
+            index += 1
+            continue
+        struct = RUST_STRUCT_RE.match(lines[index])
+        implementation = RUST_IMPL_RE.match(lines[index])
+        macro = re.match(r"\s*macro_rules!\s+(\w+)", lines[index])
+        invocation = re.match(r"\s*(?:\w+::)*(\w+)!\(\s*([\w:]+)", lines[index])
+        if struct and not any(PYCLASS_ATTR_RE.search(attr) for attr in attrs):
+            struct = None
+        if implementation and not any(attr in PYMETHODS_ATTRS for attr in attrs):
+            implementation = None
+        if invocation and not (
+            invocation.group(2).endswith("Config")
+            or invocation.group(1) == "impl_pyo3_config_getters"
+            or invocation.group(1) in local_macros
+        ):
+            invocation = None
+        if struct or implementation or macro or invocation:
+            block, index = _consume_rust_source_block(lines, index)
+            if struct:
+                yield "struct", struct.group(1), attrs, block
+            elif implementation:
+                yield "impl", implementation.group(1), attrs, block
+            elif macro:
+                yield "macro", macro.group(1), attrs, block
+            else:
+                yield "invoke", (invocation.group(1), invocation.group(2)), attrs, block
+        else:
+            index += 1
+        attrs = []
+
+
+def _rust_source_fields(block: str) -> dict[str, str]:
+    """Read direct storage or getter-macro fields without interpreting private payloads."""
+    return dict(
+        re.findall(
+            r"^\s*(?:pub(?:\([^)]*\))?\s+)?(\w+)\s*:(?!:)\s*([^\n]+?),?\s*$",
+            block,
+            re.MULTILINE,
+        )
+    )
+
+
+def _rust_config_methods(block: str) -> Iterator[tuple[list[str], re.Match[str]]]:
+    """Read method metadata using the shared attribute and signature parsers."""
+    lines = block.splitlines()
+    attrs: list[str] = []
+    index = 0
+    while index < len(lines):
+        stripped = lines[index].strip()
+        if stripped.startswith("#["):
+            attribute, index = consume_rust_attribute(lines, index)
+            attrs.append(attribute)
+            continue
+        if not stripped or stripped.startswith("//"):
+            index += 1
+            continue
+        if re.search(r"\bfn\s+", stripped):
+            match, _ = consume_rust_method_signature(lines, index)
+            _, index = _consume_rust_source_block(lines, index)
+            if match is not None:
+                yield attrs, match
+            attrs = []
+            continue
+        index += 1
+
+
+def _rust_config_constructor(attrs: list[str], arguments: str) -> tuple[RustConfigParameter, ...]:  # noqa: C901, PLR0912
+    # Explicit signature separators and defaults are distinct public contract cases.
+    types = {}
+    overrides = {}
+    for argument in _split_signature_params(arguments):
+        raw = argument
+        override = re.search(r'type_repr\s*=\s*"([^"]+)"', raw)
+        raw = raw.strip()
+        while raw.startswith("#["):
+            masked = strip_double_quoted_strings(raw)
+            depth = 0
+            for index, char in enumerate(masked[1:], start=1):
+                depth += (char == "[") - (char == "]")
+                if depth == 0:
+                    raw = raw[index + 1 :].strip()
+                    break
+            else:
+                raise ValueError("Unterminated Rust argument attribute")
+        name, separator, rust_type = raw.partition(":")
+        name = name.strip().removeprefix("mut ")
+        if separator and not rust_type.strip().startswith("Python<"):
+            types[name] = rust_type.strip()
+            overrides[name] = override.group(1) if override else None
+    signature = next(
+        (PYO3_SIGNATURE_RE.search(attr) for attr in attrs if PYO3_SIGNATURE_RE.search(attr)), None
+    )
+    if signature is None:
+        return tuple(
+            RustConfigParameter(name, rust_type, python_type=overrides[name])
+            for name, rust_type in types.items()
+        )
+    attribute = next(attr for attr in attrs if PYO3_SIGNATURE_RE.search(attr))
+    raw_parameters = _split_signature_params(
+        _extract_signature_params_str(attribute, signature.end() - 1)
+    )
+    parameters = []
+    kind = "positional_or_keyword"
+    for raw in raw_parameters:
+        name, separator, default = raw.strip().partition("=")
+        name = name.strip()
+        if not name:
+            continue
+        if name == "*":
+            kind = "keyword_only"
+        elif name == "/":
+            parameters = [
+                RustConfigParameter(
+                    p.name, p.rust_type, "positional_only", p.default, p.python_type
+                )
+                for p in parameters
+            ]
+        elif name not in {"self", "cls"}:
+            parameter_kind = (
+                "var_keyword"
+                if name.startswith("**")
+                else "var_positional"
+                if name.startswith("*")
+                else kind
+            )
+            name = name.lstrip("*")
+            if name not in types:
+                raise ValueError(f"Constructor signature parameter {name} has no Rust argument")
+            parameters.append(
+                RustConfigParameter(
+                    name,
+                    types[name],
+                    parameter_kind,
+                    default.strip() if separator else None,
+                    overrides[name],
+                )
+            )
+            if parameter_kind == "var_positional":
+                kind = "keyword_only"
+    if {p.name for p in parameters} != set(types):
+        raise ValueError("Constructor signature and Rust arguments disagree")
+    return tuple(parameters)
+
+
+def collect_rust_config_exports(root: Path) -> dict[tuple[str, str], RustConfigExport]:  # noqa: C901, PLR0912, PLR0915
+    # Two passes resolve declarations before their cross-file impls and getter macros.
+    """
+    Inventory exported PyO3 configs by public module/name, rejecting ambiguity.
+
+    Private native homonyms and inner payload fields never become Python properties.
+    Qualified impls resolve within their crate; unqualified cross-file impls must have
+    exactly one matching exported Rust type, rather than silently merging contracts.
+    """
+    exports: dict[tuple[str, str], RustConfigExport] = {}
+    declarations = {}
+    items = []
+    for path in sorted(root.glob("crates/**/src/**/*.rs")):
+        relative = path.relative_to(root / "crates").parts
+        source_index = relative.index("src")
+        crate = relative[:source_index]
+        module_parts = list(relative[source_index + 1 : -1])
+        if path.stem not in {"mod", "lib"}:
+            module_parts.append(path.stem)
+        rust_module = "::".join(["crate", *module_parts])
+        for kind, name, attrs, block in _rust_source_items(path.read_text(encoding="utf-8")):
+            items.append((crate, rust_module, path, kind, name, attrs, block))
+            if kind != "struct":
+                continue
+            pyclass = next((attr for attr in attrs if PYCLASS_ATTR_RE.search(attr)), None)
+            if pyclass is None:
+                continue
+            py_name = ATTR_NAME_RE.search(pyclass)
+            python_name = py_name.group(1) if py_name else name
+            if not python_name.endswith("Config"):
+                continue
+            module = re.search(r'\bmodule\s*=\s*"([^"]+)"', pyclass)
+            if module is None:
+                raise ValueError(f"Exported config {name} has no explicit Python module: {path}")
+            key = module.group(1), python_name
+            if key in exports:
+                raise ValueError(f"Ambiguous config export {key}: {exports[key].source}, {path}")
+            export = RustConfigExport(*key, name, path, _rust_source_fields(block))
+            exports[key] = export
+            declarations[crate, f"{rust_module}::{name}"] = export
+            if pyclass_has_option(pyclass, "get_all"):
+                export.getters.update(export.fields)
+
+    def resolve(crate: tuple[str, ...], rust_module: str, target: str) -> RustConfigExport | None:
+        target = target.split("<", 1)[0]
+        if target.startswith("self::"):
+            qualified = f"{rust_module}::{target.removeprefix('self::')}"
+        elif target.startswith("super::"):
+            parts = rust_module.split("::")
+            while target.startswith("super::"):
+                parts.pop()
+                target = target.removeprefix("super::")
+            qualified = "::".join([*parts, target])
+        else:
+            qualified = target if "::" in target else f"{rust_module}::{target}"
+        if (crate, qualified) in declarations:
+            return declarations[crate, qualified]
+        if "::" in qualified and ("::" in target or qualified != f"{rust_module}::{target}"):
+            return None
+        matches = [
+            export
+            for (owner, rust_name), export in declarations.items()
+            if owner == crate and rust_name.rsplit("::", 1)[-1] == target
+        ]
+        if len(matches) > 1:
+            raise ValueError(f"Ambiguous Rust config impl {target} in {crate}")
+        return matches[0] if matches else None
+
+    macros = {(path, name): block for _, _, path, kind, name, _, block in items if kind == "macro"}
+    for crate, rust_module, path, kind, name, attrs, source_block in items:
+        block = source_block
+        if kind == "impl" and any(attr in PYMETHODS_ATTRS for attr in attrs):
+            export = resolve(crate, rust_module, name)
+        elif kind == "invoke":
+            macro_name, target = name
+            export = resolve(crate, rust_module, target)
+            if export is not None and macro_name == "impl_pyo3_config_getters":
+                export.getters.update(_rust_source_fields(block))
+                continue
+            block = macros.get((path, macro_name), "")
+        else:
+            continue
+        if export is None:
+            continue
+        for method_attrs, method in _rust_config_methods(block):
+            if "#[new]" in method_attrs:
+                if export.constructor is not None:
+                    raise ValueError(
+                        f"Ambiguous config constructor {export.module}.{export.python_name}"
+                    )
+                try:
+                    export.constructor = _rust_config_constructor(method_attrs, method.group(2))
+                except ValueError as e:
+                    raise ValueError(f"{export.module}.{export.python_name}: {e}") from e
+            if any(attr.startswith("#[getter") for attr in method_attrs):
+                getter_attr = next(attr for attr in method_attrs if attr.startswith("#[getter"))
+                explicit = re.search(r'getter\(\s*"?(\w+)"?\s*\)', getter_attr)
+                public_name = (
+                    explicit.group(1)
+                    if explicit
+                    else _python_exposed_name(method.group(1), method_attrs, is_getter=True)
+                )
+                if public_name in export.getters:
+                    raise ValueError(
+                        "Ambiguous config getter "
+                        f"{export.module}.{export.python_name}.{public_name}"
+                    )
+                override = next(
+                    (
+                        re.search(r'type_repr\s*=\s*"([^"]+)"', attr)
+                        for attr in method_attrs
+                        if "override_return_type" in attr
+                    ),
+                    None,
+                )
+                export.getters[public_name] = (
+                    "@python:" + override.group(1) if override else method.group(3) or "()"
+                )
+    return exports
 
 
 def _collect_pyclass_name_fixups(source: str, fixups: dict[str, ClassMethodFixup]) -> None:
