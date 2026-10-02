@@ -46,6 +46,7 @@ high-precision = ["nautilus-model/high-precision"]
 nautilus-common = { workspace = true, features = ["live"] }
 nautilus-core = { workspace = true }
 nautilus-cryptography = { workspace = true }
+nautilus-execution = { workspace = true }
 nautilus-live = { workspace = true }
 nautilus-model = { workspace = true }
 nautilus-network = { workspace = true }
