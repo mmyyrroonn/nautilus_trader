@@ -13,11 +13,17 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-//! Read-only native account runtime. Mutations remain explicitly refused.
+//! Native account runtime, read-only by default, with explicit guarded loopback single orders.
 pub mod client;
+mod commands;
 pub mod config;
+mod identity;
 pub mod private;
+pub mod restricted;
 pub mod telemetry;
-pub use client::{BackpackExecutionClient, BackpackExecutionClientFactory, BackpackFillDelivery};
+pub use client::{
+    BackpackExecutionClient, BackpackExecutionClientFactory, BackpackFillAcknowledgement,
+    BackpackFillDelivery,
+};
 pub use config::{BackpackExecutionClientConfig, BackpackExecutionPolicy};
 pub use telemetry::{BackpackAccountHealth, BackpackAccountState, BackpackAccountTelemetry};

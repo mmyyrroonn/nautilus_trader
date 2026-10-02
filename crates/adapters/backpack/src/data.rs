@@ -103,6 +103,7 @@ impl BackpackDataClient {
             2,
         )
         .map_err(|_| BackpackDataError::Configuration("HTTP policy"))?;
+        let scope_quota = quota.clone();
         let http = BackpackHttpClient::new(
             config.scope().endpoints().clone(),
             None,
@@ -112,6 +113,8 @@ impl BackpackDataClient {
         )
         .map_err(|_| BackpackDataError::Transport)?;
         let gate = config.telemetry().claim(
+            config.scope().endpoints(),
+            &scope_quota,
             config.lifecycle().ws_idle_timeout_secs,
             config.lifecycle().quote_stale_after_ms,
         )?;

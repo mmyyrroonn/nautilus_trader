@@ -65,6 +65,11 @@ impl BackpackQuota {
             )),
         })
     }
+    /// Returns whether these handles consume the same caller-owned REST limiter.
+    #[must_use]
+    pub fn shares_scope(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.limiter, &other.limiter)
+    }
     pub(crate) fn into_limiter(self) -> Arc<RateLimiter<Ustr, MonotonicClock>> {
         self.limiter
     }

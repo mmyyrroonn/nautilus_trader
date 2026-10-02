@@ -4,8 +4,9 @@ This crate provides a credential-free native public data client, checked instrum
 public stream decoding and bounded depth synchronization. It also provides audience-bound
 credentials, signed read transport, typed account observations, durable local order identity and a
 guarded mutation owner for explicit loopback protocol peers. A native read-only account client
-provides bounded REST/private-stream lifecycle. Restricted native execution integration remains
-later work. Public Python config/factory bindings are available with the
+provides bounded REST/private-stream lifecycle. Explicit guarded loopback configuration integrates
+native single-order commands with engine/cache/portfolio delivery. Public and read-only Python
+config/factory bindings are available with the
 `python` feature. Configuration and credential construction
 perform no I/O or environment lookup.
 
@@ -22,15 +23,15 @@ perform no I/O or environment lookup.
 | REST signing and authenticated/public GET transport | Implemented with local transport tests          | Account runtime lifecycle                       |
 | Account snapshot/history and fill reconciliation    | Read-only protocol and delivery contracts       | Runtime coverage and durable consumer ACK       |
 | Native read-only account client and factory         | Bounded REST/private streams, degraded evidence | Verified subscription and account coverage      |
-| Guarded loopback mutations                          | Single-attempt protocol owner                   | Native execution/cache integration              |
-| Engine execution and production writes              | Explicit unsupported error                      | Separately accepted private execution readiness |
+| Guarded loopback mutations                          | Native single-order commands and true fills     | Durable production economic consumer contract   |
+| Production writes                                   | Explicit unsupported error                      | Separately accepted private execution readiness |
 
-`BackpackCapability::PublicMarketData` and `ReadOnlyAccount` have implemented runtimes. Restricted
-engine execution still returns `BackpackUnsupportedCapabilityError`. A static capability is
+`BackpackCapability::PublicMarketData`, `ReadOnlyAccount` and `RestrictedExecution` describe
+implemented runtimes. Restricted execution is confined to an explicit loopback peer. A static capability is
 not live freshness or execution admission. The guarded mutation owner below is limited to explicit
 local protocol peers. Production submission/cancellation, modification, batches, borrowing,
-transfers, withdrawals and a dead man's switch remain unsupported. The read-only account client does not authorize mutations. No restricted engine execution client
-or Python write API is exposed.
+transfers, withdrawals and a dead man's switch remain unsupported. The default read-only account
+configuration does not authorize mutations. No Python write API is exposed.
 
 ## Native public owner
 
@@ -178,7 +179,8 @@ continuity alone does not authorize execution or make emitted outer levels a tru
 ## Guarded loopback order owner
 
 `execution::owner::BackpackOrderOwner` is an independently testable protocol owner, without an
-`ExecutionClient`, engine events, cache/portfolio delivery, factory, or Python interface. It rejects
+`ExecutionClient`, engine events, cache/portfolio delivery or Python interface itself. The optional
+native client integration is described below. It rejects
 production endpoints as an explicit runtime capability boundary. It requires exact agreement
 between configuration/transport endpoints, endpoint-bound local credentials, and
 `BackpackClientIdNamespace::loopback_peer(endpoints, account, subaccount)`. That namespace binds
@@ -468,7 +470,8 @@ read-only connection are implemented; validation in this change uses loopback pe
 No production private account access or mutation was performed.
 
 The normal `BackpackExecutionClientFactory` constructs `ExecutionClientCore` and
-`ExecutionEventEmitter`. All seven mutation trait methods return an explicit read-only error before
+`ExecutionEventEmitter`. With the default configuration, all seven mutation trait methods return
+an explicit read-only error before
 requests are issued. Commission inference and complete mass-status coverage are unsupported. Bulk
 position coverage is false, so omitted positions cannot manufacture flat positions. Account-state
 balances represent observed wallet trading funds; equity, dynamic margin availability and staked
@@ -495,9 +498,10 @@ is never economic application ACK.
 `pending` and `applied` expose staged reports and consumer-confirmed receipts. `acknowledge_with`
 clones the pending receipt, releases all adapter locks, invokes the consumer's durable application
 callback, then validates and marks that receipt applied. A failed callback retains pending delivery;
-callbacks may reenter read-only health/pending APIs. Concurrent callbacks require an idempotent
-consumer keyed by instrument/true trade ID. Repeated ACK after application returns an error without
-calling the consumer. `BackpackFillReconciler::pending_acknowledgement` and `acknowledge_committed`
+callbacks may reenter health/pending APIs. Same-key concurrent or reentrant ACK returns `InProgress`
+without running a second callback; an applied duplicate returns `AlreadyApplied`. A successful ACK
+returns `Applied`. Callback error or panic releases the lease and retains pending work. The consumer
+must remain idempotent by instrument/true trade ID across crashes and uncertain external commits. `BackpackFillReconciler::pending_acknowledgement` and `acknowledge_committed`
 provide the same explicit two-phase boundary for external owners. Keeping a delivery handle alive
 retains the original identity lock. Restore only durable applied receipts before the first start.
 Automatic order publication excludes every nonzero cumulative fill quantity and records
@@ -506,8 +510,8 @@ and commissions before true fills arrive. Granular query DTOs retain their obser
 quantities. Automatic economic events contain independently staged true `FillReport`s only; runtime
 position reports are explicit diagnostics, while mass-status reconciliation remains unsupported.
 A real ExecutionEngine/cache regression checks only observed trade IDs and exact rebates, without
-inferred trades or fees. Full portfolio acceptance, durable consumer application acknowledgement
-and restricted execution integration are separate.
+inferred trades or fees. The guarded native integration below adds real Portfolio acceptance and an
+explicit synthetic consumer checkpoint witness; production durable consumer ACK remains separate.
 
 Each config clone shares an exclusive telemetry claim, but each successful claim creates a new
 private runtime gate and monotonic run ID. `BackpackAccountTelemetry::snapshot` produces serializable
@@ -584,6 +588,59 @@ The type stub is produced by the repository stub generator from the Rust binding
 it must not be edited by hand. Embedded Python tests exercise exact economics, native config
 extraction, actual data-factory construction and telemetry ownership. Installed-wheel node/runtime
 acceptance is a separate application task.
+
+## Guarded native loopback integration
+
+Read-only remains the default. Native callers may opt in using
+`with_loopback_execution(authority, mutation_policy, public_rest_quota, public_telemetry)`.
+The public `BackpackDataClient::with_quota` must already own the supplied telemetry. Its actual
+endpoint pair and limiter identity must match the execution client; cloning or configuring a
+telemetry object alone establishes neither. Production endpoints cannot opt in. The normal native
+factory retains one identity store/OS lock and constructs one guarded order owner.
+
+`begin_loopback_session` returns an opaque run/private-generation/private-epoch token.
+`accept_loopback_account` accepts explicitly synthetic peer facts with that generation and finite
+account/authority age. It does not promote REST coverage, configured AccountId, ordinary callback
+or private WebSocket subscription into authenticated production identity. `refresh_loopback_market`
+reads the actual native cache quote and checked provider metadata. Final admission checks public
+run/generation/epoch/fault serial and exact original event/receipt times, quote/account ages,
+metadata grids, finite reservations and authorization expiry after shared quota and durable intent.
+Same-epoch public recovery cannot revive old write authority. Current-session independently owned
+cancel uses its separate exit permission even when new-risk public data is invalid.
+
+Only the original cached supported native single order is translated. Submitted/Accepted are
+published from a full matched true POST response. Unknown submission stays submitted/unknown,
+with no invented rejection, replacement identity or replay. A response arriving after session
+invalidation may preserve its true durable binding, but cannot publish into that old native session.
+Cancel 202 remains pending; it does not emit Canceled. Advanced commands remain explicit errors.
+
+A first true fill is staged before POST ACK and cannot become an external engine order. After the
+independent binding, its retained clientId/venue/instrument and exact economics are reparsed before
+native attribution. Conflicting same-trade economics fail even before ACK. Pending order observations
+retain the highest cumulative quantity, known candidate ID and terminal watermark across older
+snapshots. A larger true late fill can increase economics after cancellation without undoing that
+watermark. No cumulative order report creates a native synthetic fill; restricted native query
+results also withhold unbound/nonzero cumulative reports. Lower-level account DTO reads remain
+available for explicit diagnosis. Economics reach the engine only as true `FillReport`s.
+
+Channel delivery, native cache updates and Portfolio updates never commit economic dedup or free
+order capacity. The explicit consumer callback must durably couple actually applied native economic
+state with its immutable receipt. `accept_loopback_terminal` additionally requires an observed
+terminal, independent original binding, exact cumulative quantity covered by consumer-ACKed true
+fills and an explicit economic reference. New account evidence is required afterward. A larger true
+late cumulative observation reopens Unknown and retains capacity. Repeated stop remains dirty.
+`restore_loopback_order` accepts only a complete consumer-restored native order matching the original
+durable intent and POST binding; it does not resend or invent an economic ACK.
+
+Synthetic tests use real public/private peers, ExecutionEngine, cache and Portfolio. They prove
+first-fill-before-ACK attribution, exact quantities/fees/rebates and a Decimal reference roundtrip
+PnL of `0.000014 USDC`, duplicates, pending 202 cancellation, terminal ACK/late-fill risk reopening,
+lost POST acknowledgement, public-fault zero new POST with owned cancellation still allowed,
+and complete native order/position plus coupled receipt restoration followed by REST dedup.
+A local checkpoint test persists actual native state and its receipt together. This demonstrates an
+explicit consumer boundary; the framework offers no atomic cross-engine/cache/portfolio durable
+transaction through EventEmitter. Production identity, account coverage, private ACK verification,
+production readiness and a general durable economic consumer remain unverified/unsupported.
 
 ## Python offline replay
 

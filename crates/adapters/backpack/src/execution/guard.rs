@@ -129,8 +129,26 @@ impl BackpackExecutionGuard {
         state.session_active = true;
         state.account = None;
         state.markets.clear();
+        state.public = None;
         Ok(())
     }
+    pub(crate) fn bind_public(
+        &self,
+        telemetry: crate::telemetry::BackpackPublicTelemetry,
+    ) -> Result<(), BackpackExecutionError> {
+        let (observed, token) = telemetry.admission_snapshot();
+        if observed.run_id.is_none()
+            || !observed.connected
+            || !observed.metadata_ready
+            || observed.stale_reason.is_some()
+        {
+            return Err(BackpackExecutionErrorKind::Readiness.into());
+        }
+        let mut state = self.lock()?;
+        state.public = Some(PublicAdmission { telemetry, token });
+        Ok(())
+    }
+
     /// Accepts explicitly complete local peer account facts. This never verifies a real account.
     ///
     /// # Errors
@@ -225,6 +243,11 @@ impl BackpackExecutionGuard {
         state.markets.insert(facts.metadata.instrument_id, facts);
         Ok(())
     }
+    pub(crate) fn invalidate_account(&self) {
+        if let Ok(mut state) = self.state.lock() {
+            state.account = None;
+        }
+    }
     /// Replaces finite authority; outstanding reservations remain held.
     ///
     /// # Errors
@@ -304,6 +327,9 @@ impl OwnerState {
         ) {
             return Err(BackpackExecutionErrorKind::Readiness.into());
         }
+        if let Some(public) = &self.public {
+            public.validate(market)?;
+        }
         spec.validate(&market.metadata, &self.config)?;
         let records = self.records.values().filter(|record| {
             record.holds_capacity()
@@ -377,7 +403,7 @@ fn fresh(observed_ms: u64, now_ms: u64, max_age_ms: u64) -> bool {
         .checked_sub(observed_ms)
         .is_some_and(|age| age <= max_age_ms)
 }
-fn add(left: Decimal, right: Decimal) -> Result<Decimal, BackpackExecutionError> {
+pub(crate) fn add(left: Decimal, right: Decimal) -> Result<Decimal, BackpackExecutionError> {
     let left = left.normalize();
     let right = right.normalize();
     let scale = left.scale().max(right.scale());
@@ -414,4 +440,35 @@ fn multiply(left: Decimal, right: Decimal) -> Result<Decimal, BackpackExecutionE
         left.scale() + right.scale(),
     )
     .map_err(|_| BackpackExecutionErrorKind::Capacity.into())
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct PublicAdmission {
+    telemetry: crate::telemetry::BackpackPublicTelemetry,
+    token: crate::telemetry::BackpackPublicAdmissionToken,
+}
+impl PublicAdmission {
+    fn validate(&self, market: &BackpackLoopbackMarketFacts) -> Result<(), BackpackExecutionError> {
+        let (current, token) = self.telemetry.admission_snapshot();
+        let symbol = market.metadata.raw_symbol.as_str();
+        if token != self.token
+            || !current.connected
+            || !current.metadata_ready
+            || current.stale_reason.is_some()
+            || current.quotes_fresh.get(symbol) != Some(&true)
+            || current
+                .quote_event_ns
+                .get(symbol)
+                .and_then(|value| value.parse::<u64>().ok())
+                != Some(market.quote.ts_event.as_u64())
+            || current
+                .quote_received_ns
+                .get(symbol)
+                .and_then(|value| value.parse::<u64>().ok())
+                != Some(market.quote.ts_init.as_u64())
+        {
+            return Err(BackpackExecutionErrorKind::Readiness.into());
+        }
+        Ok(())
+    }
 }

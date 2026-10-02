@@ -44,7 +44,7 @@ use nautilus_backpack::{
     config::BackpackConfig,
     execution_client::{
         BackpackAccountState, BackpackExecutionClient, BackpackExecutionClientConfig,
-        BackpackExecutionClientFactory, BackpackExecutionPolicy,
+        BackpackExecutionClientFactory, BackpackExecutionPolicy, BackpackFillAcknowledgement,
     },
     http::quota::BackpackQuota,
     identity::{BackpackClientIdNamespace, BackpackClientIdStore, BackpackSubmissionIntent},
@@ -119,6 +119,13 @@ struct PeerState {
     capital_requests: AtomicUsize,
     capital_delay_ms: AtomicU64,
     bad_history: AtomicBool,
+    public_senders: Mutex<Vec<mpsc::UnboundedSender<PeerCommand>>>,
+    guarded: AtomicBool,
+    post_hold: AtomicBool,
+    post_notify: tokio::sync::Notify,
+    post_bodies: Mutex<Vec<Value>>,
+    cancel_pending: AtomicBool,
+    lost_post: AtomicBool,
     fills: Mutex<Vec<Value>>,
     positions: Mutex<Vec<Value>>,
 }
@@ -185,12 +192,16 @@ async fn upgrade(State(state): State<Arc<PeerState>>, ws: WebSocketUpgrade) -> R
 }
 async fn private_peer(mut socket: WebSocket, state: Arc<PeerState>) {
     let (tx, mut rx) = mpsc::unbounded_channel();
-    state.senders.lock().unwrap().push(tx);
+    state.senders.lock().unwrap().push(tx.clone());
     loop {
         tokio::select! {
             message=socket.recv()=>match message {
                 Some(Ok(Message::Text(text)))=>{
                     let Ok(value)=serde_json::from_str::<Value>(&text) else {break;};
+                    if value.get("signature").is_none() {
+                        state.public_senders.lock().unwrap().push(tx.clone());
+                        continue;
+                    }
                     let signed=&value["signature"];
                     let ts=signed[2].as_str().unwrap().parse::<u64>().unwrap();let window=signed[3].as_str().unwrap().parse::<u64>().unwrap();
                     let signature=STANDARD.decode(signed[1].as_str().unwrap()).unwrap();let signature=Signature::from_slice(&signature).unwrap();
@@ -224,6 +235,36 @@ async fn rest(State(state): State<Arc<PeerState>>, request: Request) -> Response
         path.clone(),
         authenticated,
     ));
+    if state.guarded.load(Ordering::Relaxed) && path == "/api/v1/order" {
+        if request.method() == "POST" {
+            let bytes = axum::body::to_bytes(request.into_body(), 4096)
+                .await
+                .unwrap();
+            let body: Value = serde_json::from_slice(&bytes).unwrap();
+            state.post_bodies.lock().unwrap().push(body.clone());
+            if state.post_hold.load(Ordering::Relaxed) {
+                state.post_notify.notified().await;
+            }
+            if state.lost_post.load(Ordering::Relaxed) {
+                return Json(json!({"unknown":true})).into_response();
+            }
+            let mut response = body;
+            response["id"] = json!(if state.post_bodies.lock().unwrap().len() == 1 {
+                "synthetic-order-A"
+            } else {
+                "synthetic-order-B"
+            });
+            response["status"] = json!("New");
+            response["executedQuantity"] = json!("0");
+            response["executedQuoteQuantity"] = json!("0");
+            response["createdAt"] = json!(0);
+            response["selfTradePrevention"] = json!("RejectTaker");
+            return Json(response).into_response();
+        }
+        if request.method() == "DELETE" && state.cancel_pending.load(Ordering::Relaxed) {
+            return StatusCode::ACCEPTED.into_response();
+        }
+    }
     let body =
         match path.as_str() {
             "/api/v1/markets" => json!([serde_json::from_str::<Value>(include_str!(
@@ -239,7 +280,13 @@ async fn rest(State(state): State<Arc<PeerState>>, request: Request) -> Response
             }
             "/api/v1/capital/collateral" => fixture("collateral"),
             "/api/v1/position" => json!(state.positions.lock().unwrap().clone()),
-            "/api/v1/orders" => json!([fixture("resting_order")]),
+            "/api/v1/orders" => {
+                if state.guarded.load(Ordering::Relaxed) {
+                    json!([])
+                } else {
+                    json!([fixture("resting_order")])
+                }
+            }
             "/api/v1/order" => {
                 return (
                     StatusCode::NOT_FOUND,
@@ -248,7 +295,13 @@ async fn rest(State(state): State<Arc<PeerState>>, request: Request) -> Response
                     .into_response();
             }
             "/wapi/v1/history/fills" => json!(state.fills.lock().unwrap().clone()),
-            "/wapi/v1/history/orders" => json!([fixture("history_order")]),
+            "/wapi/v1/history/orders" => {
+                if state.guarded.load(Ordering::Relaxed) {
+                    json!([])
+                } else {
+                    json!([fixture("history_order")])
+                }
+            }
             _ => return StatusCode::NOT_FOUND.into_response(),
         };
     let count = body.as_array().map_or(0, Vec::len);
@@ -895,13 +948,14 @@ async fn test_ack_callback_reentry_health_and_recovery_never_hold_adapter_locks(
         .unwrap();
     assert_eq!(callback_count.load(Ordering::Relaxed), 1);
     assert_eq!(client.fill_delivery().applied().len(), 1);
-    assert!(
+    assert_eq!(
         client
             .acknowledge_fill_with(key, |_| {
                 callback_count.fetch_add(1, Ordering::Relaxed);
                 Ok(())
             })
-            .is_err()
+            .unwrap(),
+        BackpackFillAcknowledgement::AlreadyApplied
     );
     assert_eq!(callback_count.load(Ordering::Relaxed), 1);
     client.disconnect().await.unwrap();
@@ -1283,4 +1337,1108 @@ async fn test_real_execution_engine_cache_receives_only_true_trade_ids_and_fees(
         2
     );
     client.disconnect().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_ack_lease_reentry_error_panic_and_duplicate_do_not_commit_twice() {
+    let peer = Peer::start().await;
+    let directory = TempDir::new().unwrap();
+    let (mut client, _rx) = client(config(&peer, &directory));
+    client.connect().await.unwrap();
+    until(|| peer.state.subscriptions.lock().unwrap().len() == 1).await;
+    peer.send(&order_frame("orderFill", 77));
+    until(|| client.health().pending_fills == 1).await;
+    let delivery = client.fill_delivery();
+    let report = delivery.pending()[0].clone();
+    let key = BackpackFillKey {
+        instrument_id: report.instrument_id,
+        trade_id: report.trade_id,
+    };
+    assert!(matches!(
+        delivery.acknowledge_with(key, |_| {
+            assert_eq!(
+                delivery
+                    .acknowledge_with(key, |_| panic!("reentry invoked callback"))
+                    .unwrap(),
+                BackpackFillAcknowledgement::InProgress
+            );
+            Err(BackpackAccountError::Conflict)
+        }),
+        Err(BackpackAccountError::Conflict)
+    ));
+    assert_eq!(delivery.pending().len(), 1);
+    assert!(delivery.applied().is_empty());
+    let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _ = delivery.acknowledge_with(key, |_| panic!("synthetic interrupted consumer"));
+    }));
+    assert!(panic.is_err());
+    assert_eq!(delivery.pending().len(), 1);
+    assert_eq!(
+        delivery.acknowledge_with(key, |_| Ok(())).unwrap(),
+        BackpackFillAcknowledgement::Applied
+    );
+    assert_eq!(
+        delivery
+            .acknowledge_with(key, |_| panic!("applied duplicate invoked callback"))
+            .unwrap(),
+        BackpackFillAcknowledgement::AlreadyApplied
+    );
+    assert_eq!(delivery.applied().len(), 1);
+    assert_eq!(client.health().pending_fills, 0);
+    client.disconnect().await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_ack_lease_concurrency_counts_new_pending_evidence() {
+    let peer = Peer::start().await;
+    let directory = TempDir::new().unwrap();
+    let (mut client, _rx) = client(config(&peer, &directory));
+    client.connect().await.unwrap();
+    until(|| peer.state.subscriptions.lock().unwrap().len() == 1).await;
+    peer.send(&order_frame("orderFill", 77));
+    until(|| client.health().pending_fills == 1).await;
+    let delivery = client.fill_delivery();
+    let report = delivery.pending()[0].clone();
+    let key = BackpackFillKey {
+        instrument_id: report.instrument_id,
+        trade_id: report.trade_id,
+    };
+    let (entered, entered_rx) = tokio::sync::oneshot::channel();
+    let (release, release_rx) = std::sync::mpsc::channel();
+    let worker = delivery.clone();
+    let ack = tokio::task::spawn_blocking(move || {
+        worker.acknowledge_with(key, |_| {
+            entered.send(()).unwrap();
+            release_rx.recv_timeout(Duration::from_secs(3)).unwrap();
+            Ok(())
+        })
+    });
+    entered_rx.await.unwrap();
+    assert_eq!(
+        delivery
+            .acknowledge_with(key, |_| panic!("concurrent same-key callback"))
+            .unwrap(),
+        BackpackFillAcknowledgement::InProgress
+    );
+    let mut second = order_frame("orderFill", 78);
+    second["data"]["X"] = json!("Filled");
+    second["data"]["z"] = json!("0.00002");
+    second["data"]["Z"] = json!("0.002002");
+    peer.send(&second);
+    until(|| client.health().pending_fills == 2).await;
+    release.send(()).unwrap();
+    assert_eq!(
+        ack.await.unwrap().unwrap(),
+        BackpackFillAcknowledgement::Applied
+    );
+    assert_eq!(client.health().pending_fills, 1);
+    assert_eq!(delivery.pending().len(), 1);
+    assert_eq!(delivery.applied().len(), 1);
+    client.disconnect().await.unwrap();
+}
+
+mod guarded {
+    use super::*;
+    use nautilus_backpack::{
+        config::BackpackDataClientConfig,
+        data::BackpackDataClient,
+        execution::{
+            guard::{BackpackExecutionAuthority, BackpackLoopbackAccountFacts},
+            owner::BackpackMutationPolicy,
+        },
+        execution_client::restricted::BackpackLoopbackSession,
+        instruments::{BackpackEconomicsSource, BackpackInstrumentEconomics},
+    };
+    use nautilus_common::{
+        clients::DataClient,
+        clock::{Clock, TestClock},
+        live::runner::replace_data_event_sender,
+        messages::{DataEvent, data::SubscribeQuotes},
+    };
+    use nautilus_execution::engine::ExecutionEngine;
+    use nautilus_model::{
+        accounts::{AccountAny, MarginAccount},
+        data::Data,
+        enums::{AccountType, OmsType, OrderSide, OrderType},
+        events::AccountState,
+        identifiers::ClientId,
+        orders::{Order, OrderAny, OrderTestBuilder},
+        types::{AccountBalance, Currency, Money, Price, Quantity},
+    };
+    use nautilus_portfolio::portfolio::Portfolio;
+    use std::collections::BTreeMap;
+
+    fn decimal(text: &str) -> Decimal {
+        Decimal::from_str_exact(text).unwrap()
+    }
+    fn now_ns() -> UnixNanos {
+        get_atomic_clock_realtime().get_time_ns()
+    }
+    struct Harness {
+        peer: Peer,
+        directory: TempDir,
+        public: BackpackDataClient,
+        client: BackpackExecutionClient,
+        cache: Rc<RefCell<Cache>>,
+        engine: ExecutionEngine,
+        portfolio: Portfolio,
+        rx: mpsc::UnboundedReceiver<ExecutionEvent>,
+        data_rx: mpsc::UnboundedReceiver<DataEvent>,
+        session: BackpackLoopbackSession,
+        namespace: BackpackClientIdNamespace,
+        config: BackpackExecutionClientConfig,
+    }
+    impl Harness {
+        async fn new() -> Self {
+            let peer = Peer::start().await;
+            peer.state.guarded.store(true, Ordering::Relaxed);
+            let directory = TempDir::new().unwrap();
+            let scope = BackpackConfig::with_endpoints_checked(
+                vec!["BTC_USDC_PERP".into()],
+                peer.endpoints.clone(),
+            )
+            .unwrap();
+            let economics = BackpackInstrumentEconomics::new_checked(
+                decimal("0.1"),
+                decimal("0.05"),
+                Decimal::ZERO,
+                Decimal::ZERO,
+                BackpackEconomicsSource::Synthetic,
+                "explicit local peer reference model".into(),
+            )
+            .unwrap();
+            let config = BackpackDataClientConfig::new_checked(
+                scope.clone(),
+                BTreeMap::from([("BTC_USDC_PERP".into(), economics)]),
+            )
+            .unwrap();
+            let public_telemetry = config.telemetry().clone();
+            let quota = BackpackQuota::default();
+            let (tx, mut data_rx) = mpsc::unbounded_channel();
+            replace_data_event_sender(tx);
+            let mut public =
+                BackpackDataClient::with_quota(ClientId::from("BP"), config, quota.clone())
+                    .unwrap();
+            public.connect().await.unwrap();
+            let cache = Rc::new(RefCell::new(Cache::default()));
+            let event = tokio::time::timeout(Duration::from_secs(3), data_rx.recv())
+                .await
+                .unwrap()
+                .unwrap();
+            let DataEvent::Instrument(native) = event else {
+                panic!("metadata must precede public data")
+            };
+            cache.borrow_mut().add_instrument(native).unwrap();
+            public
+                .subscribe_quotes(SubscribeQuotes::new(
+                    instrument(),
+                    Some(ClientId::from("BP")),
+                    None,
+                    UUID4::new(),
+                    now_ns(),
+                    None,
+                    None,
+                ))
+                .unwrap();
+            until(|| !peer.state.public_senders.lock().unwrap().is_empty()).await;
+            let namespace =
+                BackpackClientIdNamespace::loopback_peer(&peer.endpoints, "101", Some("2"))
+                    .unwrap();
+            let config = BackpackExecutionClientConfig::new_read_only(
+                scope,
+                BackpackCredential::loopback_peer(&STANDARD.encode([7; 32]), &peer.endpoints)
+                    .unwrap(),
+                AccountId::from("BACKPACK-SYNTHETIC"),
+                namespace.clone(),
+                directory.path().join("identity"),
+                BackpackExecutionPolicy {
+                    recovery_interval: Duration::from_secs(30),
+                    shutdown_timeout: Duration::from_millis(300),
+                    ..Default::default()
+                },
+                BackpackReadBudget::new(10, 10, 100, Duration::from_secs(3)).unwrap(),
+                quota.clone(),
+            )
+            .unwrap()
+            .with_loopback_execution(
+                BackpackExecutionAuthority {
+                    expires_at_ms: now_ns().as_u64() / 1_000_000 + 60_000,
+                    max_account_age_ms: 5000,
+                    max_market_age_ms: 5000,
+                    max_order_notional: decimal("1"),
+                    max_reserved_notional: decimal("2"),
+                    max_reserved_margin: decimal("1"),
+                    max_unsettled_orders: 1,
+                    allow_new_risk: true,
+                    allow_reduction: true,
+                    allow_owned_cancel: true,
+                },
+                BackpackMutationPolicy {
+                    budget: Duration::from_secs(3),
+                    window: Default::default(),
+                },
+                &quota,
+                public_telemetry,
+            )
+            .unwrap();
+            let clock: Rc<RefCell<dyn Clock>> = Rc::new(RefCell::new(TestClock::new()));
+            let portfolio = Portfolio::new(clock.clone(), cache.clone(), None);
+            let account = AccountState::new(
+                AccountId::from("BACKPACK-SYNTHETIC"),
+                AccountType::Margin,
+                vec![AccountBalance::new(
+                    Money::from("100 USDC"),
+                    Money::from("0 USDC"),
+                    Money::from("100 USDC"),
+                )],
+                vec![],
+                true,
+                UUID4::new(),
+                now_ns(),
+                now_ns(),
+                None,
+            );
+            cache
+                .borrow_mut()
+                .add_account(AccountAny::Margin(MarginAccount::new(account, true)))
+                .unwrap();
+            let mut engine = ExecutionEngine::new(clock, cache.clone(), None);
+            engine.register_oms_type(StrategyId::from("S-001"), OmsType::Netting);
+            let mut client = BackpackExecutionClient::new(
+                trader(),
+                "BACKPACK",
+                config.clone(),
+                CacheView::new(cache.clone()),
+            )
+            .unwrap();
+            let (tx, rx) = mpsc::unbounded_channel();
+            client.set_event_sender(tx);
+            client.connect().await.unwrap();
+            until(|| peer.state.subscriptions.lock().unwrap().len() == 1).await;
+            let session = client.begin_loopback_session().unwrap();
+            let mut harness = Self {
+                peer,
+                directory,
+                public,
+                client,
+                cache,
+                engine,
+                portfolio,
+                rx,
+                data_rx,
+                session,
+                namespace,
+                config,
+            };
+            harness.quote(1).await;
+            harness.account(Decimal::ZERO);
+            harness.apply_events();
+            harness
+        }
+        async fn quote(&mut self, sequence: u64) {
+            let stamp = timestamp();
+            let frame = json!({"stream":"bookTicker.BTC_USDC_PERP","data":{"e":"bookTicker","E":stamp,"T":stamp,"s":"BTC_USDC_PERP","a":"101.0","A":"1.00000","b":"100.0","B":"1.00000","u":sequence}});
+            self.peer
+                .state
+                .public_senders
+                .lock()
+                .unwrap()
+                .last()
+                .unwrap()
+                .send(PeerCommand::Text(frame.to_string()))
+                .unwrap();
+            loop {
+                let event = tokio::time::timeout(Duration::from_secs(3), self.data_rx.recv())
+                    .await
+                    .unwrap()
+                    .unwrap();
+                if let DataEvent::Data(Data::Quote(quote)) = event {
+                    self.cache.borrow_mut().add_quote(quote).unwrap();
+                    self.portfolio.update_quote_tick(&quote);
+                    break;
+                }
+            }
+            self.client
+                .refresh_loopback_market(self.session, instrument())
+                .unwrap();
+        }
+        fn account(&self, quantity: Decimal) {
+            self.client
+                .accept_loopback_account(
+                    self.session,
+                    BackpackLoopbackAccountFacts {
+                        namespace: self.namespace.clone(),
+                        generation: self.session.generation(),
+                        observed_at_ms: now_ns().as_u64() / 1_000_000,
+                        available_margin: decimal("100"),
+                        margin_per_notional: decimal("0.1"),
+                        fee_buffer_per_notional: decimal("0.001"),
+                        economics_reference: "synthetic local venue economics v1".into(),
+                        net_positions: BTreeMap::from([(instrument(), quantity)]),
+                        auto_borrow: false,
+                        auto_lend: false,
+                        auto_repay: false,
+                        liquidating: false,
+                        complete: true,
+                    },
+                )
+                .unwrap();
+        }
+        fn order(&self, id: &str, side: OrderSide, reduce: bool) -> OrderAny {
+            OrderTestBuilder::new(OrderType::Limit)
+                .trader_id(trader())
+                .strategy_id(StrategyId::from("S-001"))
+                .instrument_id(instrument())
+                .client_order_id(ClientOrderId::from(id))
+                .side(side)
+                .quantity(Quantity::from("0.00002"))
+                .price(Price::from("100.5"))
+                .post_only(false)
+                .reduce_only(reduce)
+                .ts_init(now_ns())
+                .build()
+        }
+        fn submit(&self, order: &OrderAny) -> anyhow::Result<()> {
+            self.cache
+                .borrow_mut()
+                .add_order(order.clone(), None, Some(ClientId::from("BACKPACK")), false)
+                .unwrap();
+            self.client.submit_order(SubmitOrder::from_order(
+                order,
+                trader(),
+                Some(ClientId::from("BACKPACK")),
+                None,
+                UUID4::new(),
+                now_ns(),
+            ))
+        }
+        fn fill(&self, trade: i64, cumulative: &str, fee: &str) -> Value {
+            let mut frame = order_frame("orderFill", trade);
+            let bodies = self.peer.state.post_bodies.lock().unwrap();
+            frame["data"]["c"] = bodies.last().unwrap()["clientId"].clone();
+            frame["data"]["S"] = bodies.last().unwrap()["side"].clone();
+            frame["data"]["r"] = bodies.last().unwrap()["reduceOnly"].clone();
+            frame["data"]["i"] = json!(if bodies.len() == 1 {
+                "synthetic-order-A"
+            } else {
+                "synthetic-order-B"
+            });
+            frame["data"]["p"] = json!("100.5");
+            frame["data"]["y"] = json!(false);
+            frame["data"]["z"] = json!(cumulative);
+            frame["data"]["n"] = json!(fee);
+            if cumulative == "0.00002" {
+                frame["data"]["X"] = json!("Filled");
+                frame["data"]["Z"] = json!("0.002002");
+            }
+            frame
+        }
+        fn apply_events(&mut self) -> usize {
+            let mut fills = 0;
+            for event in drain(&mut self.rx) {
+                match event {
+                    ExecutionEvent::Order(event) => self.engine.process(&event),
+                    ExecutionEvent::Report(report) => {
+                        if matches!(&report, ExecutionReport::Fill(_)) {
+                            fills += 1;
+                        }
+                        self.engine.reconcile_execution_report(&report);
+                    }
+                    _ => {}
+                }
+            }
+            fills
+        }
+        async fn stop(&mut self) {
+            self.client.disconnect().await.unwrap();
+            self.public.disconnect().await.unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn test_guarded_true_first_fill_waits_for_post_ack_then_real_engine_and_portfolio() {
+        let mut h = Harness::new().await;
+        h.peer.state.post_hold.store(true, Ordering::Relaxed);
+        let order = h.order("LOCAL-FIRST", OrderSide::Buy, false);
+        h.submit(&order).unwrap();
+        until(|| h.peer.state.post_bodies.lock().unwrap().len() == 1).await;
+        let first = h.fill(77, "0.00001", "-0.000001");
+        h.peer.send(&first);
+        until(|| h.client.health().pending_fills == 1).await;
+        assert_eq!(h.apply_events(), 0);
+        assert_eq!(
+            h.cache.borrow().orders(None, None, None, None, None).len(),
+            1
+        );
+        assert!(
+            h.cache
+                .borrow()
+                .order(&order.client_order_id())
+                .unwrap()
+                .trade_ids()
+                .is_empty()
+        );
+        assert_eq!(h.portfolio.net_position(&instrument()), Decimal::ZERO);
+        h.peer.state.post_notify.notify_one();
+        until(|| {
+            h.client.fill_delivery().pending()[0].client_order_id == Some(order.client_order_id())
+        })
+        .await;
+        assert_eq!(h.apply_events(), 1);
+        let actual = h
+            .cache
+            .borrow()
+            .order(&order.client_order_id())
+            .unwrap()
+            .clone();
+        assert_eq!(actual.status(), OrderStatus::PartiallyFilled);
+        assert_eq!(actual.trade_ids().len(), 1);
+        assert_eq!(actual.filled_qty().as_decimal(), decimal("0.00001"));
+        assert_eq!(
+            actual.commissions()[&Currency::USDC()].as_decimal(),
+            decimal("-0.000001")
+        );
+        assert_eq!(h.portfolio.net_position(&instrument()), decimal("0.00001"));
+        assert_eq!(h.client.health().pending_fills, 1);
+        h.peer.send(&first);
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        h.apply_events();
+        assert_eq!(
+            h.cache
+                .borrow()
+                .order(&order.client_order_id())
+                .unwrap()
+                .trade_ids()
+                .len(),
+            1
+        );
+        assert_eq!(h.portfolio.net_position(&instrument()), decimal("0.00001"));
+        assert_eq!(h.peer.state.post_bodies.lock().unwrap().len(), 1);
+        h.stop().await;
+        assert!(h.client.loopback_shutdown_report().unwrap().dirty);
+        // Receipt persistence is intentionally separate from actual framework application.
+        assert!(h.client.fill_delivery().applied().is_empty());
+        assert!(h.directory.path().exists());
+    }
+    #[tokio::test]
+    async fn test_guarded_pre_ack_conflicting_fill_economics_fault_without_attribution() {
+        let mut h = Harness::new().await;
+        h.peer.state.post_hold.store(true, Ordering::Relaxed);
+        let order = h.order("LOCAL-CONFLICT", OrderSide::Buy, false);
+        h.submit(&order).unwrap();
+        until(|| h.peer.state.post_bodies.lock().unwrap().len() == 1).await;
+        let first = h.fill(77, "0.00001", "-0.000001");
+        h.peer.send(&first);
+        until(|| h.client.health().pending_fills == 1).await;
+        let mut conflict = first.clone();
+        conflict["data"]["n"] = json!("0.000002");
+        h.peer.send(&conflict);
+        until(|| h.client.health().parse_failures > 0).await;
+        assert_eq!(h.apply_events(), 0);
+        assert_eq!(
+            h.client.fill_delivery().pending()[0]
+                .commission
+                .as_decimal(),
+            decimal("-0.000001")
+        );
+        assert!(
+            h.client.fill_delivery().pending()[0]
+                .client_order_id
+                .is_none()
+        );
+        assert!(
+            h.client
+                .refresh_loopback_market(h.session, instrument())
+                .is_err()
+        );
+        h.peer.state.post_notify.notify_one();
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        assert_eq!(h.apply_events(), 0);
+        assert_eq!(h.peer.state.post_bodies.lock().unwrap().len(), 1);
+        h.stop().await;
+        assert!(h.client.loopback_shutdown_report().unwrap().dirty);
+    }
+
+    #[tokio::test]
+    async fn test_guarded_cancel_202_terminal_waits_for_durable_true_fill_ack_and_late_fill_reopens_risk()
+     {
+        use nautilus_backpack::execution::owner::BackpackLoopbackTerminalEvidence;
+        use std::io::Write;
+        let mut h = Harness::new().await;
+        let order = h.order("LOCAL-CANCEL", OrderSide::Buy, false);
+        h.submit(&order).unwrap();
+        until(|| h.peer.state.post_bodies.lock().unwrap().len() == 1).await;
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        h.apply_events();
+        let first = h.fill(77, "0.00001", "-0.000001");
+        h.peer.send(&first);
+        until(|| h.client.health().pending_fills == 1).await;
+        h.apply_events();
+        h.peer.state.cancel_pending.store(true, Ordering::Relaxed);
+        h.client
+            .cancel_order(CancelOrder::new(
+                trader(),
+                Some(ClientId::from("BACKPACK")),
+                StrategyId::from("S-001"),
+                instrument(),
+                order.client_order_id(),
+                Some(VenueOrderId::from("synthetic-order-A")),
+                UUID4::new(),
+                now_ns(),
+                None,
+                None,
+            ))
+            .unwrap();
+        until(|| h.client.health().evidence_gaps.contains("CancelPending")).await;
+        h.apply_events();
+        assert_eq!(
+            h.cache
+                .borrow()
+                .order(&order.client_order_id())
+                .unwrap()
+                .status(),
+            OrderStatus::PartiallyFilled
+        );
+        let mut terminal = first.clone();
+        terminal["data"]["e"] = json!("orderCancelled");
+        terminal["data"]["X"] = json!("Cancelled");
+        terminal["data"]["t"] = Value::Null;
+        for key in ["l", "L", "m", "n", "N"] {
+            terminal["data"].as_object_mut().unwrap().remove(key);
+        }
+        h.peer.send(&terminal);
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        h.apply_events();
+        assert_eq!(
+            h.cache
+                .borrow()
+                .order(&order.client_order_id())
+                .unwrap()
+                .status(),
+            OrderStatus::PartiallyFilled
+        );
+        let evidence = BackpackLoopbackTerminalEvidence {
+            client_order_id: order.client_order_id(),
+            venue_order_id: VenueOrderId::from("synthetic-order-A"),
+            instrument_id: instrument(),
+            generation: h.session.generation(),
+            cumulative_quantity: decimal("0.00001"),
+            applied_fill_quantity: decimal("0.00001"),
+            economic_ack_reference: "synthetic-consumer/checkpoint-1".into(),
+        };
+        assert!(
+            h.client
+                .accept_loopback_terminal(h.session, &evidence)
+                .is_err()
+        );
+        let delivery = h.client.fill_delivery();
+        let report = delivery.pending()[0].clone();
+        let key = BackpackFillKey {
+            instrument_id: report.instrument_id,
+            trade_id: report.trade_id,
+        };
+        // Persist the ACTUALLY APPLIED native order/positions and immutable receipt together.
+        // This local witness demonstrates the consumer boundary; it does not make the
+        // framework's asynchronous event routing an atomic production transaction.
+        let checkpoint = h.directory.path().join("consumer.json");
+        delivery.acknowledge_with(key, |receipt| {
+            let cache = h.cache.borrow();
+            let state = json!({"order":(*cache.order(&order.client_order_id()).unwrap()).clone(),"positions":cache.positions(None,None,None,None,None).into_iter().map(|position|(*position).clone()).collect::<Vec<_>>(),"receipt":receipt,"reference":{"quantity":"0.00001","fee":"-0.000001"}});
+            let mut file = tempfile::NamedTempFile::new_in(h.directory.path()).unwrap();
+            file.write_all(&serde_json::to_vec(&state).unwrap()).unwrap(); file.as_file().sync_all().unwrap(); file.persist(&checkpoint).unwrap();
+            Ok(())
+        }).unwrap();
+        h.apply_events();
+        assert_eq!(
+            h.cache
+                .borrow()
+                .order(&order.client_order_id())
+                .unwrap()
+                .status(),
+            OrderStatus::Canceled
+        );
+        assert_eq!(h.portfolio.net_position(&instrument()), decimal("0.00001"));
+        h.client
+            .accept_loopback_terminal(h.session, &evidence)
+            .unwrap();
+        // A duplicated terminal acknowledgement cannot free a second reservation.
+        h.client
+            .accept_loopback_terminal(h.session, &evidence)
+            .unwrap();
+        let late = h.fill(78, "0.00002", "0.000001");
+        h.peer.send(&late);
+        until(|| h.client.health().pending_fills == 1).await;
+        h.apply_events();
+        assert_eq!(
+            h.cache
+                .borrow()
+                .order(&order.client_order_id())
+                .unwrap()
+                .trade_ids()
+                .len(),
+            2
+        );
+        assert_eq!(h.portfolio.net_position(&instrument()), decimal("0.00002"));
+        assert_eq!(h.client.fill_delivery().applied().len(), 1);
+        h.account(decimal("0.00002"));
+        h.quote(2).await;
+        let next = h.order("BLOCKED-NEW", OrderSide::Buy, false);
+        assert!(h.submit(&next).is_err());
+        assert_eq!(h.peer.state.post_bodies.lock().unwrap().len(), 1);
+        h.stop().await;
+        let stopped = h.client.loopback_shutdown_report().unwrap();
+        assert!(stopped.dirty);
+        assert_eq!(stopped.unknown, 1);
+        h.client.stop().unwrap();
+        assert_eq!(h.client.loopback_shutdown_report(), Some(stopped));
+        let restored: Value = serde_json::from_slice(&std::fs::read(checkpoint).unwrap()).unwrap();
+        assert_eq!(restored["reference"]["quantity"], "0.00001");
+        let restored_order: OrderAny = serde_json::from_value(restored["order"].clone()).unwrap();
+        assert_eq!(restored_order.trade_ids().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_guarded_exact_reference_roundtrip_native_positions_fees_and_portfolio_pnl() {
+        use nautilus_backpack::execution::owner::BackpackLoopbackTerminalEvidence;
+        let mut h = Harness::new().await;
+        let entry = h.order("ENTRY", OrderSide::Buy, false);
+        h.submit(&entry).unwrap();
+        until(|| h.peer.state.post_bodies.lock().unwrap().len() == 1).await;
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        h.apply_events();
+        let first = h.fill(77, "0.00001", "0.000001");
+        h.peer.send(&first);
+        until(|| h.client.health().pending_fills == 1).await;
+        h.apply_events();
+        let mut second = h.fill(78, "0.00002", "-0.000001");
+        second["data"]["L"] = json!("100.2");
+        second["data"]["Z"] = json!("0.002003");
+        h.peer.send(&second);
+        until(|| h.client.health().pending_fills == 2).await;
+        h.apply_events();
+        assert_eq!(h.portfolio.net_position(&instrument()), decimal("0.00002"));
+        let delivery = h.client.fill_delivery();
+        for report in delivery.pending() {
+            delivery
+                .acknowledge_with(
+                    BackpackFillKey {
+                        instrument_id: report.instrument_id,
+                        trade_id: report.trade_id,
+                    },
+                    |_| Ok(()),
+                )
+                .unwrap();
+        }
+        h.client
+            .accept_loopback_terminal(
+                h.session,
+                &BackpackLoopbackTerminalEvidence {
+                    client_order_id: entry.client_order_id(),
+                    venue_order_id: VenueOrderId::from("synthetic-order-A"),
+                    instrument_id: instrument(),
+                    generation: h.session.generation(),
+                    cumulative_quantity: decimal("0.00002"),
+                    applied_fill_quantity: decimal("0.00002"),
+                    economic_ack_reference: "explicit synthetic consumer applied entry".into(),
+                },
+            )
+            .unwrap();
+        h.account(decimal("0.00002"));
+        h.quote(2).await;
+        let exit = h.order("EXIT", OrderSide::Sell, true);
+        h.submit(&exit).unwrap();
+        until(|| h.peer.state.post_bodies.lock().unwrap().len() == 2).await;
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        h.apply_events();
+        let mut close = h.fill(79, "0.00002", "0.000003");
+        close["data"]["l"] = json!("0.00002");
+        close["data"]["L"] = json!("101.0");
+        close["data"]["Z"] = json!("0.002020");
+        h.peer.send(&close);
+        until(|| h.client.health().pending_fills == 1).await;
+        h.apply_events();
+        let entry_cost =
+            decimal("0.00001") * decimal("100.1") + decimal("0.00001") * decimal("100.2");
+        let exit_proceeds = decimal("0.00002") * decimal("101.0");
+        let fees = decimal("0.000001") + decimal("-0.000001") + decimal("0.000003");
+        let reference_pnl = exit_proceeds - entry_cost - fees;
+        assert_eq!(reference_pnl, decimal("0.000014"));
+        assert_eq!(h.portfolio.net_position(&instrument()), Decimal::ZERO);
+        assert_eq!(
+            h.portfolio
+                .realized_pnl(&instrument())
+                .unwrap()
+                .as_decimal(),
+            reference_pnl
+        );
+        assert_eq!(
+            h.cache
+                .borrow()
+                .order(&entry.client_order_id())
+                .unwrap()
+                .status(),
+            OrderStatus::Filled
+        );
+        assert_eq!(
+            h.cache
+                .borrow()
+                .order(&exit.client_order_id())
+                .unwrap()
+                .status(),
+            OrderStatus::Filled
+        );
+        assert_eq!(
+            h.cache
+                .borrow()
+                .order(&exit.client_order_id())
+                .unwrap()
+                .commissions()[&Currency::USDC()]
+                .as_decimal(),
+            fees
+        );
+        assert_eq!(delivery.applied().len(), 2);
+        assert_eq!(h.client.health().pending_fills, 1); // Portfolio application alone never ACKs.
+        h.peer.send(&close);
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        h.apply_events();
+        assert_eq!(
+            h.portfolio
+                .realized_pnl(&instrument())
+                .unwrap()
+                .as_decimal(),
+            reference_pnl
+        );
+        h.stop().await;
+    }
+
+    #[tokio::test]
+    async fn test_guarded_public_generation_fault_refuses_new_post_but_owned_cancel_uses_exit_authority()
+     {
+        let mut h = Harness::new().await;
+        let order = h.order("OWNED", OrderSide::Buy, false);
+        h.submit(&order).unwrap();
+        until(|| h.peer.state.post_bodies.lock().unwrap().len() == 1).await;
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        h.apply_events();
+        h.public.disconnect().await.unwrap();
+        let new = h.order("NEW-STALE", OrderSide::Buy, false);
+        assert!(h.submit(&new).is_err());
+        h.peer.state.cancel_pending.store(true, Ordering::Relaxed);
+        h.client
+            .cancel_order(CancelOrder::new(
+                trader(),
+                Some(ClientId::from("BACKPACK")),
+                StrategyId::from("S-001"),
+                instrument(),
+                order.client_order_id(),
+                Some(VenueOrderId::from("synthetic-order-A")),
+                UUID4::new(),
+                now_ns(),
+                None,
+                None,
+            ))
+            .unwrap();
+        until(|| h.client.health().evidence_gaps.contains("CancelPending")).await;
+        assert_eq!(h.peer.state.post_bodies.lock().unwrap().len(), 1);
+        assert_eq!(
+            h.peer
+                .state
+                .requests
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(method, _, _)| method == "DELETE")
+                .count(),
+            1
+        );
+        h.apply_events();
+        assert_eq!(
+            h.cache
+                .borrow()
+                .order(&order.client_order_id())
+                .unwrap()
+                .status(),
+            OrderStatus::Accepted
+        );
+        h.stop().await;
+    }
+
+    #[tokio::test]
+    async fn test_guarded_lost_post_ack_rest_collision_remains_unbound_and_never_retried() {
+        let mut h = Harness::new().await;
+        h.peer.state.lost_post.store(true, Ordering::Relaxed);
+        let order = h.order("UNKNOWN", OrderSide::Buy, false);
+        h.submit(&order).unwrap();
+        until(|| {
+            h.client
+                .health()
+                .evidence_gaps
+                .contains("MutationOutcomeUnknown")
+        })
+        .await;
+        h.apply_events();
+        assert_eq!(
+            h.cache
+                .borrow()
+                .order(&order.client_order_id())
+                .unwrap()
+                .status(),
+            OrderStatus::Submitted
+        );
+        h.peer.send(&h.fill(77, "0.00001", "0.000001"));
+        until(|| h.client.health().pending_fills == 1).await;
+        assert_eq!(h.apply_events(), 0);
+        assert!(
+            h.client.fill_delivery().pending()[0]
+                .client_order_id
+                .is_none()
+        );
+        assert!(
+            h.client
+                .cancel_order(CancelOrder::new(
+                    trader(),
+                    None,
+                    StrategyId::from("S-001"),
+                    instrument(),
+                    order.client_order_id(),
+                    None,
+                    UUID4::new(),
+                    now_ns(),
+                    None,
+                    None
+                ))
+                .is_err()
+        );
+        assert!(
+            h.client
+                .submit_order(SubmitOrder::from_order(
+                    &order,
+                    trader(),
+                    None,
+                    None,
+                    UUID4::new(),
+                    now_ns()
+                ))
+                .is_err()
+        );
+        assert_eq!(h.peer.state.post_bodies.lock().unwrap().len(), 1);
+        assert_eq!(
+            h.peer
+                .state
+                .requests
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(method, _, _)| method == "DELETE")
+                .count(),
+            0
+        );
+        assert_eq!(h.portfolio.net_position(&instrument()), Decimal::ZERO);
+        h.stop().await;
+        assert_eq!(h.client.loopback_shutdown_report().unwrap().unknown, 1);
+    }
+
+    #[tokio::test]
+    async fn test_guarded_restart_rest_true_fill_dedup_couples_native_state_and_consumer_receipt() {
+        use nautilus_backpack::account::reconciliation::BackpackAppliedFill;
+        use nautilus_model::position::Position;
+        use std::io::Write;
+        let mut h = Harness::new().await;
+        let order = h.order("RESTART", OrderSide::Buy, false);
+        h.submit(&order).unwrap();
+        until(|| h.peer.state.post_bodies.lock().unwrap().len() == 1).await;
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        h.apply_events();
+        let first = h.fill(77, "0.00001", "-0.000001");
+        h.peer.send(&first);
+        until(|| h.client.health().pending_fills == 1).await;
+        h.apply_events();
+        let checkpoint = h.directory.path().join("consumer-restart.json");
+        let delivery = h.client.fill_delivery();
+        let fill = delivery.pending()[0].clone();
+        let key = BackpackFillKey {
+            instrument_id: fill.instrument_id,
+            trade_id: fill.trade_id,
+        };
+        delivery.acknowledge_with(key,|receipt| {
+            let cache = h.cache.borrow();
+            let state = json!({"order":(*cache.order(&order.client_order_id()).unwrap()).clone(),
+                "positions":cache.positions(None,None,None,None,None).into_iter().map(|position|(*position).clone()).collect::<Vec<_>>(),
+                "receipt":receipt,"account":(*cache.account(&AccountId::from("BACKPACK-SYNTHETIC")).unwrap()).clone()});
+            let mut file = tempfile::NamedTempFile::new_in(h.directory.path()).unwrap();
+            file.write_all(&serde_json::to_vec(&state).unwrap()).unwrap(); file.as_file().sync_all().unwrap(); file.persist(&checkpoint).unwrap();
+            Ok(())
+        }).unwrap();
+        let raw_fill = json!({"clientId":first["data"]["c"].as_u64().unwrap().to_string(),"fee":"-0.000001","feeSymbol":"USDC","isMaker":true,"orderId":"synthetic-order-A","price":"100.1","quantity":"0.00001","side":"Bid","symbol":"BTC_USDC_PERP","systemOrderType":null,"timestamp":jiff::Timestamp::from_microsecond(first["data"]["T"].as_i64().unwrap()).unwrap().to_zoned(jiff::tz::TimeZone::UTC).datetime().to_string(),"tradeId":77});
+        h.peer.state.fills.lock().unwrap().push(raw_fill);
+        h.client.disconnect().await.unwrap();
+        let stopped = h.client.loopback_shutdown_report().unwrap();
+        assert!(stopped.dirty);
+        let config = h.config.clone();
+        let Harness {
+            peer,
+            directory,
+            mut public,
+            client,
+            cache: old_cache,
+            engine,
+            portfolio,
+            ..
+        } = h;
+        drop(delivery);
+        drop(client);
+        drop(engine);
+        drop(portfolio);
+        let serialized: Value =
+            serde_json::from_slice(&std::fs::read(&checkpoint).unwrap()).unwrap();
+        let restored_order: OrderAny = serde_json::from_value(serialized["order"].clone()).unwrap();
+        let positions: Vec<Position> =
+            serde_json::from_value(serialized["positions"].clone()).unwrap();
+        let receipt: BackpackAppliedFill =
+            serde_json::from_value(serialized["receipt"].clone()).unwrap();
+        let cache = Rc::new(RefCell::new(Cache::default()));
+        cache
+            .borrow_mut()
+            .add_instrument(
+                old_cache
+                    .borrow()
+                    .instrument(&instrument())
+                    .unwrap()
+                    .clone(),
+            )
+            .unwrap();
+        let account: AccountAny = serde_json::from_value(serialized["account"].clone()).unwrap();
+        cache.borrow_mut().add_account(account).unwrap();
+        cache
+            .borrow_mut()
+            .add_order(
+                restored_order.clone(),
+                None,
+                Some(ClientId::from("BACKPACK")),
+                false,
+            )
+            .unwrap();
+        for position in &positions {
+            cache
+                .borrow_mut()
+                .add_position(position, OmsType::Netting)
+                .unwrap();
+        }
+        let clock: Rc<RefCell<dyn Clock>> = Rc::new(RefCell::new(TestClock::new()));
+        let mut portfolio = Portfolio::new(clock.clone(), cache.clone(), None);
+        portfolio.initialize_positions();
+        let mut engine = ExecutionEngine::new(clock, cache.clone(), None);
+        engine.register_oms_type(StrategyId::from("S-001"), OmsType::Netting);
+        let mut client = BackpackExecutionClient::new(
+            trader(),
+            "BACKPACK",
+            config,
+            CacheView::new(cache.clone()),
+        )
+        .unwrap();
+        client.restore_applied_fills(vec![receipt]).unwrap();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        client.set_event_sender(tx);
+        client.connect().await.unwrap();
+        until(|| peer.state.subscriptions.lock().unwrap().len() == 2).await;
+        let token = client.begin_loopback_session().unwrap();
+        assert!(token.generation() > 1);
+        client
+            .restore_loopback_order(token, order.client_order_id())
+            .unwrap();
+        let reports = client
+            .generate_fill_reports(GenerateFillReports::new(
+                UUID4::new(),
+                now_ns(),
+                Some(instrument()),
+                None,
+                None,
+                None,
+                None,
+                None,
+            ))
+            .await
+            .unwrap();
+        assert!(reports.is_empty());
+        for event in drain(&mut rx) {
+            if let ExecutionEvent::Report(report) = event {
+                engine.reconcile_execution_report(&report);
+            }
+        }
+        assert_eq!(
+            cache
+                .borrow()
+                .order(&order.client_order_id())
+                .unwrap()
+                .trade_ids()
+                .len(),
+            1
+        );
+        assert_eq!(portfolio.net_position(&instrument()), decimal("0.00001"));
+        assert_eq!(client.fill_delivery().applied().len(), 1);
+        assert_eq!(client.health().pending_fills, 0);
+        assert!(
+            client
+                .submit_order(SubmitOrder::from_order(
+                    &order,
+                    trader(),
+                    None,
+                    None,
+                    UUID4::new(),
+                    now_ns()
+                ))
+                .is_err()
+        );
+        assert_eq!(peer.state.post_bodies.lock().unwrap().len(), 1);
+        client.disconnect().await.unwrap();
+        assert!(client.loopback_shutdown_report().unwrap().dirty);
+        public.disconnect().await.unwrap();
+        assert!(directory.path().exists());
+    }
+    #[tokio::test]
+    async fn test_guarded_old_config_and_telemetry_cannot_hold_owner_after_client_drop() {
+        let mut h = Harness::new().await;
+        let old_config = h.config.clone();
+        let old_telemetry = h.client.telemetry();
+        h.client.disconnect().await.unwrap();
+        let Harness {
+            peer,
+            directory,
+            mut public,
+            client,
+            namespace,
+            ..
+        } = h;
+        drop(client);
+        let fresh = BackpackExecutionClientConfig::new_read_only(
+            BackpackConfig::with_endpoints_checked(
+                vec!["BTC_USDC_PERP".into()],
+                peer.endpoints.clone(),
+            )
+            .unwrap(),
+            BackpackCredential::loopback_peer(&STANDARD.encode([7; 32]), &peer.endpoints).unwrap(),
+            AccountId::from("BACKPACK-SYNTHETIC"),
+            namespace,
+            directory.path().join("identity"),
+            BackpackExecutionPolicy::default(),
+            BackpackReadBudget::new(10, 10, 100, Duration::from_secs(3)).unwrap(),
+            BackpackQuota::default(),
+        )
+        .unwrap();
+        assert_ne!(
+            old_config.telemetry().snapshot().run_id,
+            fresh.telemetry().snapshot().run_id
+        );
+        let fresh_client =
+            BackpackExecutionClient::new(trader(), "BACKPACK", fresh, cache()).unwrap();
+        assert_eq!(
+            old_telemetry.snapshot().state,
+            BackpackAccountState::Stopped
+        );
+        assert!(!old_telemetry.snapshot().transport_connected);
+        assert!(fresh_client.begin_loopback_session().is_err());
+        drop(fresh_client);
+        public.disconnect().await.unwrap();
+        assert!(old_config.identity_directory().exists());
+    }
 }

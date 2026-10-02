@@ -80,6 +80,7 @@ pub(crate) struct Gate {
     pub running: bool,
     pub revision: u64,
     pub pending_frames: usize,
+    pub restricted: Option<std::sync::Weak<super::restricted::LoopbackExecution>>,
 }
 impl Gate {
     pub(crate) fn current(&self, run: u64, generation: u64, epoch: u64) -> bool {
@@ -90,6 +91,9 @@ impl Gate {
             && self.health.transport_connected
     }
     pub(crate) fn fault(&mut self, reason: &str) {
+        if let Some(restricted) = self.restricted.as_ref().and_then(std::sync::Weak::upgrade) {
+            restricted.invalidate();
+        }
         self.revision = self.revision.saturating_add(1);
         self.health.rest_snapshot_observed = false;
         self.health.state = BackpackAccountState::Degraded;

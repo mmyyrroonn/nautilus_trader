@@ -22,8 +22,8 @@
 //! It persists durable local order identity and unsigned intents.
 //! It provides typed account reads, conservative coverage evidence and staged fill reconciliation.
 //! It provides a native read-only account client with bounded REST/private-stream lifecycle.
-//! Loopback-only guarded protocol mutations are available; engine execution integration
-//! and production writes remain unsupported.
+//! Guarded single-order native execution is available only for explicit loopback peers.
+//! Production writes and automatic durable consumer economic acknowledgement remain unsupported.
 //! The optional `python` feature exposes public and read-only account configuration and factories.
 //! The optional `high-precision` feature propagates
 //! the Nautilus domain precision mode; default features remain empty.
