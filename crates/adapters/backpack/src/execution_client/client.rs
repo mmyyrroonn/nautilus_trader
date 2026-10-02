@@ -56,7 +56,7 @@ use super::{
 };
 use crate::{
     account::{
-        BackpackAccountError,
+        BackpackAccountError, BackpackEvidenceGap,
         client::{BackpackAccountReader, BackpackAccountSnapshot, BackpackRestingOrder},
         pagination::BackpackHistoryWindow,
         reconciliation::{
@@ -738,7 +738,21 @@ impl Shared {
                     context.order(*raw)?
                 };
                 for gap in observation.gaps {
-                    self.fault(generation, &format!("{gap:?}"));
+                    if matches!(
+                        gap,
+                        BackpackEvidenceGap::AccountIdentityUnverified
+                            | BackpackEvidenceGap::OrderTimeUnknown
+                    ) {
+                        // These documented venue limitations degrade evidence without
+                        // invalidating a correctly correlated owned-order session.
+                        let mut gate = self.gate.lock();
+                        if gate.current(self.run, generation, epoch) {
+                            gate.health.state = BackpackAccountState::Degraded;
+                            gate.health.evidence_gaps.insert(format!("{gap:?}"));
+                        }
+                    } else {
+                        self.fault(generation, &format!("{gap:?}"));
+                    }
                 }
                 if let Some(control) = &self.restricted {
                     control.owner.guard().invalidate_account();

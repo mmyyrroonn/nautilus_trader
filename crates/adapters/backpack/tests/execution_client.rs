@@ -128,6 +128,8 @@ struct PeerState {
     lost_post: AtomicBool,
     fills: Mutex<Vec<Value>>,
     positions: Mutex<Vec<Value>>,
+    resting_order: Mutex<Option<Value>>,
+    order_queries: Mutex<Vec<(String, bool)>>,
 }
 #[derive(Debug)]
 struct Peer {
@@ -236,6 +238,31 @@ async fn rest(State(state): State<Arc<PeerState>>, request: Request) -> Response
         authenticated,
     ));
     if state.guarded.load(Ordering::Relaxed) && path == "/api/v1/order" {
+        if request.method() == "GET" {
+            let query = request.uri().query().unwrap_or_default().to_string();
+            let headers = request.headers();
+            let ts = headers["x-timestamp"].to_str().unwrap();
+            let window = headers["x-window"].to_str().unwrap();
+            let signature = Signature::from_slice(
+                &STANDARD
+                    .decode(headers["x-signature"].to_str().unwrap())
+                    .unwrap(),
+            )
+            .unwrap();
+            let key = SigningKey::from_bytes(&[7; 32]).verifying_key();
+            let verified = key
+                .verify_strict(
+                    format!("instruction=orderQuery&{query}&timestamp={ts}&window={window}")
+                        .as_bytes(),
+                    &signature,
+                )
+                .is_ok()
+                && headers["x-api-key"].to_str().unwrap() == STANDARD.encode(key.as_bytes());
+            state.order_queries.lock().unwrap().push((query, verified));
+            if let Some(order) = state.resting_order.lock().unwrap().clone() {
+                return Json(order).into_response();
+            }
+        }
         if request.method() == "POST" {
             let bytes = axum::body::to_bytes(request.into_body(), 4096)
                 .await
@@ -1480,6 +1507,7 @@ mod guarded {
         peer: Peer,
         directory: TempDir,
         public: BackpackDataClient,
+        public_config: BackpackDataClientConfig,
         client: BackpackExecutionClient,
         cache: Rc<RefCell<Cache>>,
         engine: ExecutionEngine,
@@ -1645,6 +1673,7 @@ mod guarded {
                 BTreeMap::from([("BTC_USDC_PERP".into(), economics)]),
             )
             .unwrap();
+            let public_config = config.clone();
             let public_telemetry = config.telemetry().clone();
             let quota = BackpackQuota::default();
             let (tx, mut data_rx) = mpsc::unbounded_channel();
@@ -1753,6 +1782,7 @@ mod guarded {
                 peer,
                 directory,
                 public,
+                public_config,
                 client,
                 cache,
                 engine,
@@ -1886,6 +1916,338 @@ mod guarded {
             self.client.disconnect().await.unwrap();
             self.public.disconnect().await.unwrap();
         }
+    }
+
+    // Build through the real factory after a genuine public owner has claimed telemetry/quota.
+    // Retain the engine and cache so REST cumulative reports cannot silently infer economics.
+    async fn attached_owned_query(cumulative: bool, abnormal: Option<&str>) {
+        use nautilus_backpack::execution_client::loopback_config::{
+            BackpackLoopbackExecutionClientConfig, BackpackLoopbackExecutionClientFactory,
+        };
+        let Harness {
+            peer,
+            directory,
+            mut public,
+            public_config,
+            mut client,
+            cache,
+            mut engine,
+            portfolio,
+            rx,
+            data_rx,
+            namespace,
+            config,
+            ..
+        } = Harness::new().await;
+        client.disconnect().await.unwrap();
+        drop(client);
+        drop(rx);
+        let plan = BackpackLoopbackExecutionClientConfig::new_checked(
+            config,
+            public_config,
+            BackpackExecutionAuthority {
+                expires_at_ms: now_ns().as_u64() / 1_000_000 + 60_000,
+                max_account_age_ms: 5000,
+                max_market_age_ms: 5000,
+                max_order_notional: decimal("1"),
+                max_reserved_notional: decimal("2"),
+                max_reserved_margin: decimal("1"),
+                max_unsettled_orders: 1,
+                allow_new_risk: true,
+                allow_reduction: true,
+                allow_owned_cancel: true,
+            },
+            BackpackMutationPolicy {
+                budget: Duration::from_secs(3),
+                window: Default::default(),
+            },
+        )
+        .unwrap();
+        let control = plan.control();
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        nautilus_common::live::runner::replace_exec_event_sender(tx);
+        let mut client = BackpackLoopbackExecutionClientFactory
+            .create(trader(), "BACKPACK", &plan, CacheView::new(cache.clone()))
+            .unwrap();
+        client.connect().await.unwrap();
+        until(|| peer.state.subscriptions.lock().unwrap().len() == 2).await;
+        let session = control.begin_session().unwrap();
+        control.refresh_market(session, instrument()).unwrap();
+        control
+            .accept_account(
+                session,
+                BackpackLoopbackAccountFacts {
+                    namespace,
+                    generation: session.generation(),
+                    observed_at_ms: now_ns().as_u64() / 1_000_000,
+                    available_margin: decimal("100"),
+                    margin_per_notional: decimal("0.1"),
+                    fee_buffer_per_notional: decimal("0.001"),
+                    economics_reference: "synthetic peer v1".into(),
+                    net_positions: BTreeMap::from([(instrument(), Decimal::ZERO)]),
+                    auto_borrow: false,
+                    auto_lend: false,
+                    auto_repay: false,
+                    liquidating: false,
+                    complete: true,
+                },
+            )
+            .unwrap();
+        let order = OrderTestBuilder::new(OrderType::Limit)
+            .trader_id(trader())
+            .strategy_id(StrategyId::from("S-001"))
+            .instrument_id(instrument())
+            .client_order_id(ClientOrderId::from("OWNED-QUERY"))
+            .side(OrderSide::Buy)
+            .quantity(Quantity::from("0.00002"))
+            .price(Price::from("100.5"))
+            .post_only(false)
+            .ts_init(now_ns())
+            .build();
+        cache
+            .borrow_mut()
+            .add_order(order.clone(), None, Some(ClientId::from("BACKPACK")), false)
+            .unwrap();
+        client
+            .submit_order(SubmitOrder::from_order(
+                &order,
+                trader(),
+                Some(ClientId::from("BACKPACK")),
+                None,
+                UUID4::new(),
+                now_ns(),
+            ))
+            .unwrap();
+        until(|| peer.state.post_bodies.lock().unwrap().len() == 1).await;
+        tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                for event in drain(&mut rx) {
+                    if let ExecutionEvent::Order(event) = event {
+                        engine.process(&event);
+                    }
+                }
+                if cache
+                    .borrow()
+                    .order(&order.client_order_id())
+                    .unwrap()
+                    .status()
+                    == OrderStatus::Accepted
+                {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let mut resting = peer.state.post_bodies.lock().unwrap()[0].clone();
+        resting["id"] = json!("synthetic-order-A");
+        resting["status"] = json!(if cumulative { "PartiallyFilled" } else { "New" });
+        resting["executedQuantity"] = json!(if cumulative { "0.00001" } else { "0" });
+        resting["executedQuoteQuantity"] = json!(if cumulative { "0.001001" } else { "0" });
+        resting["createdAt"] = json!(0);
+        resting["selfTradePrevention"] = json!("RejectTaker");
+        if cumulative {
+            let mut frame = order_frame("orderFill", 77);
+            frame["data"]["c"] = resting["clientId"].clone();
+            frame["data"]["p"] = json!("100.5");
+            frame["data"]["y"] = json!(false);
+            peer.send(&frame);
+            until(|| control.pending().unwrap().len() == 1).await;
+            let mut fills = 0;
+            tokio::time::timeout(Duration::from_secs(3), async {
+                loop {
+                    for event in drain(&mut rx) {
+                        match event {
+                            ExecutionEvent::Order(event) => engine.process(&event),
+                            ExecutionEvent::Report(report) => {
+                                fills += usize::from(matches!(&report, ExecutionReport::Fill(_)));
+                                engine.reconcile_execution_report(&report);
+                            }
+                            _ => {}
+                        }
+                    }
+                    if fills == 1 {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(1)).await;
+                }
+            })
+            .await
+            .unwrap();
+            assert_eq!(fills, 1);
+        }
+        if let Some(kind) = abnormal {
+            if kind == "unknown-field" {
+                resting["futureOrderPolicy"] = json!(true);
+            } else {
+                resting["id"] = json!("external-conflicting-order");
+            }
+        }
+        *peer.state.resting_order.lock().unwrap() = Some(resting.clone());
+        // Both supported selectors travel through actual signed GETs. An omitted venue ID
+        // must resolve the already committed local intent, never adopt a caller-supplied ID.
+        for numeric in [false, true] {
+            client
+                .query_order(QueryOrder::new(
+                    trader(),
+                    Some(ClientId::from("BACKPACK")),
+                    StrategyId::from("S-001"),
+                    instrument(),
+                    order.client_order_id(),
+                    (!numeric).then(|| VenueOrderId::from("synthetic-order-A")),
+                    UUID4::new(),
+                    now_ns(),
+                    None,
+                    None,
+                ))
+                .unwrap();
+            if abnormal.is_some() {
+                until(|| {
+                    control
+                        .health()
+                        .unwrap()
+                        .evidence_gaps
+                        .contains("OrderQueryIncomplete")
+                        || control
+                            .health()
+                            .unwrap()
+                            .evidence_gaps
+                            .contains("UnknownFields")
+                })
+                .await;
+                break;
+            }
+            until(|| {
+                peer.state.order_queries.lock().unwrap().len() == usize::from(numeric) + 1
+                    && control
+                        .health()
+                        .unwrap()
+                        .evidence_gaps
+                        .contains("OrderTimeUnknown")
+            })
+            .await;
+            tokio::time::sleep(Duration::from_millis(20)).await;
+            for event in drain(&mut rx) {
+                match event {
+                    ExecutionEvent::Order(event) => engine.process(&event),
+                    ExecutionEvent::Report(report) => {
+                        assert!(!matches!(&report, ExecutionReport::Fill(_)));
+                        engine.reconcile_execution_report(&report);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        let queries = peer.state.order_queries.lock().unwrap().clone();
+        assert!(queries.iter().all(|(_, verified)| *verified));
+        assert_eq!(
+            queries[0].0,
+            "orderId=synthetic-order-A&symbol=BTC_USDC_PERP"
+        );
+        if abnormal.is_none() {
+            assert_eq!(
+                queries[1].0,
+                format!("clientId={}&symbol=BTC_USDC_PERP", resting["clientId"])
+            );
+            let health = control.health().unwrap();
+            assert_eq!(health.state, BackpackAccountState::Degraded);
+            assert!(health.evidence_gaps.contains("AccountIdentityUnverified"));
+            assert!(health.evidence_gaps.contains("OrderTimeUnknown"));
+            assert!(health.rest_snapshot_observed);
+            assert!(!health.private_subscription_confirmed);
+            control.refresh_market(session, instrument()).unwrap();
+        } else {
+            assert!(control.refresh_market(session, instrument()).is_err());
+        }
+        peer.state.cancel_pending.store(true, Ordering::Relaxed);
+        let cancel = client.cancel_order(CancelOrder::new(
+            trader(),
+            Some(ClientId::from("BACKPACK")),
+            StrategyId::from("S-001"),
+            instrument(),
+            order.client_order_id(),
+            Some(VenueOrderId::from("synthetic-order-A")),
+            UUID4::new(),
+            now_ns(),
+            None,
+            None,
+        ));
+        if abnormal.is_none() {
+            cancel.unwrap();
+            until(|| {
+                control
+                    .health()
+                    .unwrap()
+                    .evidence_gaps
+                    .contains("CancelPending")
+            })
+            .await;
+            assert_eq!(
+                peer.state
+                    .requests
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|(method, path, _)| method == "DELETE" && path == "/api/v1/order")
+                    .count(),
+                1
+            );
+        } else {
+            assert!(cancel.is_err());
+            assert!(
+                !peer
+                    .state
+                    .requests
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|(method, _, _)| method == "DELETE")
+            );
+        }
+        let cached = cache
+            .borrow()
+            .order(&order.client_order_id())
+            .unwrap()
+            .clone();
+        assert_eq!(
+            cached.filled_qty().as_decimal(),
+            if cumulative {
+                decimal("0.00001")
+            } else {
+                Decimal::ZERO
+            }
+        );
+        assert_eq!(cached.trade_ids().len(), usize::from(cumulative));
+        if cumulative {
+            assert_eq!(
+                cached.commissions()[&Currency::USDC()].as_decimal(),
+                decimal("-0.000001")
+            );
+            assert_eq!(control.pending().unwrap().len(), 1);
+        }
+        client.disconnect().await.unwrap();
+        assert!(control.shutdown().unwrap().dirty);
+        public.disconnect().await.unwrap();
+        // The real cache/portfolio and metadata receiver remain owned for the entire run.
+        drop((portfolio, data_rx, directory));
+    }
+
+    #[tokio::test]
+    async fn test_attached_owned_query_static_gaps_preserve_session_and_cancel_202() {
+        attached_owned_query(false, None).await;
+    }
+    #[tokio::test]
+    async fn test_attached_owned_query_cumulative_never_infers_fill_or_acknowledges() {
+        attached_owned_query(true, None).await;
+    }
+    #[tokio::test]
+    async fn test_attached_owned_query_unknown_field_invalidates_session() {
+        attached_owned_query(false, Some("unknown-field")).await;
+    }
+    #[tokio::test]
+    async fn test_attached_owned_query_correlation_conflict_invalidates_session() {
+        attached_owned_query(false, Some("correlation-conflict")).await;
     }
 
     #[tokio::test]
