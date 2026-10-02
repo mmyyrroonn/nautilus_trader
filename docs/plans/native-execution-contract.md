@@ -71,6 +71,10 @@ A migration to a current reference page must preserve that historical file and m
 location superseded. Native and application tests must validate the same schema version and
 field types before an installed wheel is accepted.
 
+The [Backpack send contract and evidence index](backpack-send-contract.md) maps the accepted
+numeric-loopback tranche to precise tests and a source-bound application artifact. It does not
+close the shared diagnostic or production acceptance requirements in this proposal.
+
 ## Coverage inventory
 
 This is the native-side inventory. The application test matrix belongs to

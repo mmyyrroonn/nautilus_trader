@@ -10,6 +10,9 @@ config/factory bindings are available with the
 `python` feature. Configuration and credential construction
 perform no I/O or environment lookup.
 
+The [send contract and evidence index](../../../docs/plans/backpack-send-contract.md) records
+accepted numeric-loopback boundaries, precise tests and remaining coverage.
+
 ## Current capability boundary
 
 | Surface                                             | Behavior                                        | Later scope                                     |
@@ -717,7 +720,6 @@ Embedded tests construct a real native LiveNode using Python-extracted config/fa
 identity-directory ownership and namespace mismatch, and verify no-I/O constructors, audience
 isolation, exact policy bounds, shared limiter identity and sanitized errors. Generated stubs come
 from the repository generator. Installed-wheel account loopback acceptance is the application task.
-
 
 ## Guarded Python synthetic peer control
 
