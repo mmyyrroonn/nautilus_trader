@@ -22,6 +22,7 @@
 pub mod account;
 pub mod config;
 pub mod execution;
+pub mod replay;
 
 use account::{PyBackpackCredential, PyBackpackExecutionClientConfig, PyBackpackQuota};
 use config::{PyBackpackDataClientConfig, PyBackpackInstrumentEconomics};
@@ -109,6 +110,7 @@ pub fn backpack(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyBackpackExecutionClientConfig>()?;
     m.add_class::<PyBackpackExecutionClientFactory>()?;
     register_execution()?;
+    m.add_class::<replay::PyBackpackPublicReplay>()?;
     let registry = get_global_pyo3_registry();
     registry
         .register_factory_extractor("BACKPACK".to_string(), extract_data_factory)

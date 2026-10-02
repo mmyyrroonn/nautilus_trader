@@ -29,6 +29,7 @@ __all__ = [
     "BackpackQuota",
     "BackpackExecutionClientConfig",
     "BackpackExecutionClientFactory",
+    "BackpackPublicReplay",
 ]
 
 fixup_module_names(globals(), __name__)

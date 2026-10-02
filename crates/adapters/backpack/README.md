@@ -456,61 +456,6 @@ Tests issue signed, bodyless GETs only to audience-bound loopback listeners. The
 unknown identity/policy, exact economics, system fills, bounded traversal faults and delivery ACK
 crash windows; they do not demonstrate a live account or native ExecutionClient lifecycle.
 
-## Public Python configuration and factory
-
-The native Python module exports `BackpackInstrumentEconomics`, `BackpackDataClientConfig`,
-`BackpackDataClientFactory`, and the standard `BACKPACK`, `BACKPACK_CLIENT_ID`, `BACKPACK_VENUE`
-constants through `nautilus_trader.adapters.backpack`. The facade delegates protocol work to Rust;
-it has no Python REST/WebSocket implementation or credential discovery.
-
-Constructing economics, config and factory performs no filesystem, environment or network access.
-The factory registers the real native data client with the standard `LiveNode` builder. A client
-claims its config's telemetry at construction; a second live owner using the same config is refused.
-Connecting the node begins metadata and WebSocket work. Factory capabilities describe implemented
-surfaces; `config.telemetry_snapshot_json()` separately reports actual sanitized run observations.
-Neither a connected socket nor a successful factory call proves execution readiness.
-
-```python
-from nautilus_trader.adapters.backpack import BackpackDataClientConfig
-from nautilus_trader.adapters.backpack import BackpackDataClientFactory
-from nautilus_trader.adapters.backpack import BackpackInstrumentEconomics
-
-# Explicit synthetic values for a public-data or replay experiment only.
-economics = BackpackInstrumentEconomics(
-    margin_init="0.1",
-    margin_maint="0.05",
-    maker_fee="0.0002",
-    taker_fee="0.0005",
-    source="Synthetic",
-    source_reference="public-data experiment; no account verification",
-)
-config = BackpackDataClientConfig(
-    symbols=["BTC_USDC_PERP"],
-    economics={"BTC_USDC_PERP": economics},
-    quote_stale_after_ms=3000,
-)
-factory = BackpackDataClientFactory()
-# Existing LiveNodeBuilder: builder.add_data_client("BACKPACK", factory, config)
-```
-
-Economic arguments are exact decimal strings, never floats. The economics map must cover exactly
-the duplicate-free native-symbol allowlist. Source provenance is explicit caller evidence, not an
-adapter verification of fees, margin or identity. Properties are read-only. Defaults select public
-production origins; an explicit local protocol peer requires both `base_url_http` and `base_url_ws`
-with validated numeric loopback origins. Arbitrary remote overrides and partial endpoint pairs fail.
-
-All native lifecycle limits are available as checked keyword arguments: HTTP/WS connection,
-heartbeat, idle, reconnect and shutdown timeouts; quote staleness; snapshot depth; buffered frame,
-stored level and message byte bounds. Public telemetry includes per-symbol quote/book freshness,
-generation/connection epoch, metadata state, and the bounded book's coverage. Funding-rate units,
-full-book coverage and private subscription acknowledgement are not inferred. This Python slice
-exposes no execution factory, signer, raw authenticated client, account config or mutation API.
-
-The type stub is produced by the repository stub generator from the Rust binding declarations;
-it must not be edited by hand. Embedded Python tests exercise exact economics, native config
-extraction, actual data-factory construction and telemetry ownership. Installed-wheel node/runtime
-acceptance is a separate application task.
-
 ## Native read-only account client
 
 `execution_client::BackpackExecutionClientConfig::new_read_only` accepts explicit audience-bound
@@ -583,3 +528,73 @@ replay and REST dedup, missing positions, identity collisions, malformed/ambiguo
 bootstrap faults, concurrent ACK/health/recovery, wrong-venue requests before I/O and repeated bounded
 shutdown. These tests establish protocol/lifecycle behavior, not venue account verification or
 production economic acceptance.
+
+## Public Python configuration and factory
+
+The native Python module exports `BackpackInstrumentEconomics`, `BackpackDataClientConfig`,
+`BackpackDataClientFactory`, and the standard `BACKPACK`, `BACKPACK_CLIENT_ID`, `BACKPACK_VENUE`
+constants through `nautilus_trader.adapters.backpack`. The facade delegates protocol work to Rust;
+it has no Python REST/WebSocket implementation or credential discovery.
+
+Constructing economics, config and factory performs no filesystem, environment or network access.
+The factory registers the real native data client with the standard `LiveNode` builder. A client
+claims its config's telemetry at construction; a second live owner using the same config is refused.
+Connecting the node begins metadata and WebSocket work. Factory capabilities describe implemented
+surfaces; `config.telemetry_snapshot_json()` separately reports actual sanitized run observations.
+Neither a connected socket nor a successful factory call proves execution readiness.
+
+```python
+from nautilus_trader.adapters.backpack import BackpackDataClientConfig
+from nautilus_trader.adapters.backpack import BackpackDataClientFactory
+from nautilus_trader.adapters.backpack import BackpackInstrumentEconomics
+
+# Explicit synthetic values for a public-data or replay experiment only.
+economics = BackpackInstrumentEconomics(
+    margin_init="0.1",
+    margin_maint="0.05",
+    maker_fee="0.0002",
+    taker_fee="0.0005",
+    source="Synthetic",
+    source_reference="public-data experiment; no account verification",
+)
+config = BackpackDataClientConfig(
+    symbols=["BTC_USDC_PERP"],
+    economics={"BTC_USDC_PERP": economics},
+    quote_stale_after_ms=3000,
+)
+factory = BackpackDataClientFactory()
+# Existing LiveNodeBuilder: builder.add_data_client("BACKPACK", factory, config)
+```
+
+Economic arguments are exact decimal strings, never floats. The economics map must cover exactly
+the duplicate-free native-symbol allowlist. Source provenance is explicit caller evidence, not an
+adapter verification of fees, margin or identity. Properties are read-only. Defaults select public
+production origins; an explicit local protocol peer requires both `base_url_http` and `base_url_ws`
+with validated numeric loopback origins. Arbitrary remote overrides and partial endpoint pairs fail.
+
+All native lifecycle limits are available as checked keyword arguments: HTTP/WS connection,
+heartbeat, idle, reconnect and shutdown timeouts; quote staleness; snapshot depth; buffered frame,
+stored level and message byte bounds. Public telemetry includes per-symbol quote/book freshness,
+generation/connection epoch, metadata state, and the bounded book's coverage. Funding-rate units,
+full-book coverage and private subscription acknowledgement are not inferred. This Python slice
+exposes no execution factory, signer, raw authenticated client, account config or mutation API.
+
+The type stub is produced by the repository stub generator from the Rust binding declarations;
+it must not be edited by hand. Embedded Python tests exercise exact economics, native config
+extraction, actual data-factory construction and telemetry ownership. Installed-wheel node/runtime
+acceptance is a separate application task.
+
+## Python offline replay
+
+`BackpackPublicReplay(config, market_json, metadata_received_at_ns, generation=1)` validates one
+recorded allowlisted public market and its explicit config economics without I/O. `instrument`
+returns the native `CryptoPerpetual`; it retains the caller's provenance and execution-ready=false.
+Market JSON is bounded to 1 MiB. No environment variable, file or network is accessed.
+
+`apply_record(record_bytes)` uses the native replay contract above and returns an actual native
+`QuoteTick`, `TradeTick`, `MarkPriceUpdate`, `OrderBookDeltas`, or `None` for a duplicate, unavailable
+quote or old generation. It preserves original engine and receipt times and exact decimals. Invalid
+records raise a sanitized error and invalidate depth until a strictly newer restart. This is historical
+replay; it does not claim live freshness, account verification or order execution. Each input record
+uses the native message-size bound. The application must additionally bound total records, run time
+and output bytes, and owns file input and any explicitly synthetic paper trading orchestration.
