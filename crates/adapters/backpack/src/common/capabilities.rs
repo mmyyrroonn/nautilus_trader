@@ -13,11 +13,11 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-//! Capabilities intended for later phases, without runtime support claims.
+//! Static implementation boundaries; runtime health remains a separate observation.
 
 use thiserror::Error;
 
-/// A planned Backpack adapter capability.
+/// A Backpack adapter capability.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum BackpackCapability {
     /// Public instrument discovery and market data.
@@ -33,9 +33,12 @@ impl BackpackCapability {
     ///
     /// # Errors
     ///
-    /// Always returns an explicit unsupported error in this foundation phase.
+    /// Returns an unsupported error for account and execution runtimes.
     pub const fn require_implemented(self) -> Result<(), BackpackUnsupportedCapabilityError> {
-        Err(BackpackUnsupportedCapabilityError { capability: self })
+        match self {
+            Self::PublicMarketData => Ok(()),
+            _ => Err(BackpackUnsupportedCapabilityError { capability: self }),
+        }
     }
 }
 
@@ -54,7 +57,6 @@ mod tests {
     use super::*;
 
     #[rstest]
-    #[case(BackpackCapability::PublicMarketData)]
     #[case(BackpackCapability::ReadOnlyAccount)]
     #[case(BackpackCapability::RestrictedExecution)]
     fn test_unimplemented_capabilities_are_explicitly_refused(

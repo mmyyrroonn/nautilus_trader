@@ -1,11 +1,10 @@
 # Backpack Exchange adapter foundations
 
-This crate contains configuration, authentication and transport foundations, exact public market
-metadata, public stream decoding, bounded depth synchronization, and durable local order identity for a phased Backpack Exchange integration. It validates
-product eligibility and complete provider refreshes, constructs Ed25519 authentication, and provides
-a restricted GET transport. Domain data/account runtime clients, execution, factories, and Python
-bindings remain later work. Constructing configuration and credentials performs no I/O or
-environment lookup.
+This crate provides a credential-free native public data client, checked instrument metadata,
+public stream decoding and bounded depth synchronization. Authentication and restricted GET
+transport, durable local order identity and unsigned intents are separate foundations. Account
+runtime, execution and Python bindings remain later work. Configuration and credential construction
+perform no I/O or environment lookup.
 
 ## Current capability boundary
 
@@ -19,14 +18,51 @@ environment lookup.
 | REST signing and authenticated/public GET transport | Implemented with local transport tests         | Typed domain parsing and reconciliation         |
 | Private WS subscription authentication              | Payload construction only                      | Connection lifecycle and account processing     |
 | Public stream parsing and depth replay              | Implemented without transport                  | Native data client lifecycle                    |
-| Public market data and account runtime clients      | Explicit unsupported error                     | Instrument discovery, data, account state       |
+| Native public data client and factory               | Public instruments, BBO, trades, mark and L2    | Python registry projection                      |
+| Private account runtime                             | Explicit unsupported error                     | Account state and reconciliation                |
 | Restricted execution                                | Explicit unsupported error                     | Guarded order surface after deterministic tests |
 
-`BackpackCapability::require_implemented` still returns `BackpackUnsupportedCapabilityError` for
-all engine runtime capabilities. Low-level GET transport does not establish a working account or
-data client. No mutation transport is exposed. Submission, cancellation, modification, batches,
+`BackpackCapability::PublicMarketData.require_implemented()` succeeds. Account and execution
+capabilities still return `BackpackUnsupportedCapabilityError`. A static capability is not live
+freshness or execution admission. No mutation transport is exposed. Submission, cancellation, modification, batches,
 borrowing, transfers, withdrawals, and a dead man's switch are unavailable. Write retry and order
 recovery semantics require acceptance when a real guarded execution owner is introduced.
+
+## Native public owner
+
+`config::BackpackDataClientConfig::new_checked(scope, economics)` requires economics for exactly
+all allowlisted native symbols. `with_lifecycle_checked` checks bounded HTTP/handshake/heartbeat,
+idle and recovery/shutdown deadlines, quote age, snapshot depth and protocol buffers. The default
+BBO age limit is 3000 ms. `data::BackpackDataClient` implements the native `DataClient` and strict
+`InstrumentProvider`; `factories::BackpackDataClientFactory` supplies the native registry seam.
+An explicit `with_quota` constructor shares one caller-owned public/private REST scope.
+
+Connect and every shared WebSocket reconnect validate the entire metadata allowlist and economic
+conversion before publishing all instruments, then admit current-session data. Subscription intent
+uses the shared subscription tracker. Sends bind to the connection epoch; queued frames carry both
+that epoch and the subscription revision. Each depth bootstrap has an independent token and owned
+cancelable GET task. Receive-before-snapshot deltas are buffered and validated as one rebuild batch.
+Late epochs, canceled topics and old snapshot tokens are ignored before parser/synchronizer calls.
+Critical malformed/oversized messages and transport loss synchronously close the publication gate.
+Depth sequence gaps invalidate that book and bootstrap a new bounded snapshot. Shared live task
+ownership retains canceled tasks until bounded graceful/forced teardown observes their completion.
+
+`config.telemetry().snapshot()` observes the actual exclusively claimed client run. Each claim
+replaces the observation Gate with a fresh allocation, so old tasks cannot affect a replacement
+run. JSON schema version 1 exposes run/generation/epoch, metadata and transport readiness, BBO
+freshness and exact event/receipt nanosecond strings, and independent book continuity, freshness
+and truncated coverage. Age uses original packet timestamps; duplicates and mark updates do not
+renew a quote. Future event/receipt timestamps do not establish freshness. Positive subscription
+ACK semantics remain unverified (`subscription_acknowledgements_verified=false`); a successful
+send is not a positive venue acknowledgment. `execution_ready` is always false.
+
+`examples/public_observe.rs` observes only public BTC BBO for an explicit 1..60 second duration.
+Its margin/fee inputs are explicitly Synthetic and never establish account economics.
+`replay::BackpackPublicReplay` streams bounded JSONL records with `kind=frame|snapshot|restart`,
+`generation`, `received_at_ns`, and optional raw JSON `payload`. It preserves original timestamps
+and known-field duplicate rejection, discards old generations before domain decoding, and does not
+claim live freshness. Unknown rate units, bars, index prices, depth10, historical data and custom
+subscriptions return explicit unsupported errors.
 
 ## Product boundary
 

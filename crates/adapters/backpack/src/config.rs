@@ -250,3 +250,161 @@ mod tests {
         assert_eq!(config.endpoints(), &endpoints);
     }
 }
+
+/// Bounded transport and recovery policy for a public session.
+///
+/// These are operational adapter limits, not claims about venue quotas or feed cadence.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BackpackPublicLifecycleConfig {
+    /// Overall HTTP budget including quota and read retries.
+    pub http_timeout_secs: u64,
+    /// Initial and replacement WebSocket handshake bound.
+    pub ws_connect_timeout_secs: u64,
+    /// Protocol Ping cadence; no account authentication is attached.
+    pub ws_heartbeat_secs: u64,
+    /// Maximum application frame silence before transport recovery.
+    pub ws_idle_timeout_secs: u64,
+    /// Maximum age of the latest valid BBO event and its original receipt.
+    pub quote_stale_after_ms: u64,
+    /// Maximum continuous recovery interval before closing this session.
+    pub reconnect_timeout_secs: u64,
+    /// Graceful teardown bound, followed by an equal forced drain bound.
+    pub shutdown_timeout_secs: u64,
+    /// Explicit per-side REST snapshot depth.
+    pub depth_snapshot_limit: usize,
+    /// Shared raw message queue and per-book bootstrap frame bound.
+    pub max_buffer_frames: usize,
+    /// Maximum levels stored per book side.
+    pub max_levels_per_side: usize,
+    /// Maximum incoming application frame bytes.
+    pub max_ws_message_bytes: usize,
+}
+impl Default for BackpackPublicLifecycleConfig {
+    fn default() -> Self {
+        Self {
+            http_timeout_secs: 15,
+            ws_connect_timeout_secs: 10,
+            ws_heartbeat_secs: 10,
+            ws_idle_timeout_secs: 30,
+            quote_stale_after_ms: 3000,
+            reconnect_timeout_secs: 60,
+            shutdown_timeout_secs: 5,
+            depth_snapshot_limit: 1000,
+            max_buffer_frames: 2048,
+            max_levels_per_side: 5000,
+            max_ws_message_bytes: 1_048_576,
+        }
+    }
+}
+impl BackpackPublicLifecycleConfig {
+    /// Checks operational bounds before transport creation.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for zero/unbounded timings, unsupported depth, or excessive buffers.
+    pub fn validate(&self) -> Result<(), crate::data_error::BackpackDataError> {
+        use crate::data_error::BackpackDataError;
+        let timings = [
+            self.http_timeout_secs,
+            self.ws_connect_timeout_secs,
+            self.ws_heartbeat_secs,
+            self.ws_idle_timeout_secs,
+            self.reconnect_timeout_secs,
+            self.shutdown_timeout_secs,
+        ];
+        if timings.iter().any(|v| !(1..=60).contains(v))
+            || !(1..=30_000).contains(&self.quote_stale_after_ms)
+            || self.ws_idle_timeout_secs <= self.ws_heartbeat_secs
+            || self.reconnect_timeout_secs < self.ws_connect_timeout_secs
+            || ![5, 10, 20, 50, 100, 500, 1000].contains(&self.depth_snapshot_limit)
+            || !(1..=2048).contains(&self.max_buffer_frames)
+            || self.max_levels_per_side < self.depth_snapshot_limit
+            || self.max_levels_per_side > 10_000
+            || !(1024..=1_048_576).contains(&self.max_ws_message_bytes)
+        {
+            return Err(BackpackDataError::Configuration("lifecycle bounds"));
+        }
+        Ok(())
+    }
+}
+
+/// Credential-free native public data configuration with explicit per-symbol economics.
+#[derive(Clone, Debug)]
+pub struct BackpackDataClientConfig {
+    scope: BackpackConfig,
+    economics: std::collections::BTreeMap<String, crate::instruments::BackpackInstrumentEconomics>,
+    lifecycle: BackpackPublicLifecycleConfig,
+    telemetry: crate::telemetry::BackpackPublicTelemetry,
+}
+impl BackpackDataClientConfig {
+    /// Requires economics for exactly the configured native symbol allowlist.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for missing/additional economic inputs or an excessive instrument set.
+    pub fn new_checked(
+        scope: BackpackConfig,
+        economics: std::collections::BTreeMap<
+            String,
+            crate::instruments::BackpackInstrumentEconomics,
+        >,
+    ) -> Result<Self, crate::data_error::BackpackDataError> {
+        if scope.symbols().len() > 100
+            || economics.keys().collect::<std::collections::BTreeSet<_>>()
+                != scope
+                    .symbols()
+                    .iter()
+                    .collect::<std::collections::BTreeSet<_>>()
+        {
+            return Err(crate::data_error::BackpackDataError::Configuration(
+                "economics must exactly cover allowlist",
+            ));
+        }
+        Ok(Self {
+            scope,
+            economics,
+            lifecycle: BackpackPublicLifecycleConfig::default(),
+            telemetry: crate::telemetry::BackpackPublicTelemetry::default(),
+        })
+    }
+    /// Selects a checked operational lifecycle policy.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when the supplied policy exceeds implementation bounds.
+    pub fn with_lifecycle_checked(
+        mut self,
+        lifecycle: BackpackPublicLifecycleConfig,
+    ) -> Result<Self, crate::data_error::BackpackDataError> {
+        lifecycle.validate()?;
+        self.lifecycle = lifecycle;
+        Ok(self)
+    }
+    /// Returns the observation handle claimed by the actual native client.
+    #[must_use]
+    pub const fn telemetry(&self) -> &crate::telemetry::BackpackPublicTelemetry {
+        &self.telemetry
+    }
+    /// Returns the exact product and endpoint scope.
+    #[must_use]
+    pub const fn scope(&self) -> &BackpackConfig {
+        &self.scope
+    }
+    /// Returns caller-supplied economics; these do not establish execution readiness.
+    #[must_use]
+    pub fn economics(
+        &self,
+    ) -> &std::collections::BTreeMap<String, crate::instruments::BackpackInstrumentEconomics> {
+        &self.economics
+    }
+    /// Returns the checked public operational policy.
+    #[must_use]
+    pub const fn lifecycle(&self) -> &BackpackPublicLifecycleConfig {
+        &self.lifecycle
+    }
+}
+impl nautilus_common::factories::ClientConfig for BackpackDataClientConfig {
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+}
