@@ -31,6 +31,8 @@ use nautilus_model::identifiers::ClientOrderId;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::common::endpoints::BackpackEndpoints;
+
 const SCHEMA_VERSION: u32 = 1;
 const MARKER_CONTENT: &[u8] = b"backpack-client-identity-v1\n";
 const JOURNAL_NAME: &str = "identity.json";
@@ -70,6 +72,25 @@ impl BackpackClientIdNamespace {
         Ok(namespace)
     }
 
+    /// Binds a synthetic/local account namespace to exactly one validated loopback peer.
+    ///
+    /// # Errors
+    /// Returns an error for production endpoints or invalid account/subaccount components.
+    pub fn loopback_peer(
+        endpoints: &BackpackEndpoints,
+        account: &str,
+        subaccount: Option<&str>,
+    ) -> Result<Self, BackpackIdentityError> {
+        if !endpoints.is_loopback() {
+            return Err(BackpackIdentityError::InvalidNamespace);
+        }
+        Self::new_checked(&loopback_environment(endpoints), account, subaccount)
+    }
+
+    pub(crate) fn matches_loopback_peer(&self, endpoints: &BackpackEndpoints) -> bool {
+        endpoints.is_loopback() && self.environment == loopback_environment(endpoints)
+    }
+
     fn validate(&self) -> Result<(), BackpackIdentityError> {
         if !valid_component(&self.environment)
             || !valid_component(&self.account)
@@ -82,6 +103,14 @@ impl BackpackClientIdNamespace {
         }
         Ok(())
     }
+}
+
+fn loopback_environment(endpoints: &BackpackEndpoints) -> String {
+    format!(
+        "loopback|rest={}|websocket={}",
+        endpoints.rest_url(),
+        endpoints.websocket_url()
+    )
 }
 
 impl Debug for BackpackClientIdNamespace {
@@ -353,6 +382,14 @@ impl BackpackClientIdStore {
             .iter()
             .map(|(venue_id, order_id)| (*order_id, *venue_id))
     }
+    pub(crate) fn execution_directory(&self) -> &Path {
+        &self.directory
+    }
+
+    pub(crate) fn namespace_matches(&self, namespace: &BackpackClientIdNamespace) -> bool {
+        &self.state.namespace == namespace
+    }
+
     /// Returns the monotonic high-water mark; u32::MAX + 1 means exhaustion.
     #[must_use]
     pub const fn next_client_id(&self) -> u64 {
