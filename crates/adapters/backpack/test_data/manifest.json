@@ -1,0 +1,24 @@
+[
+  {
+    "file": "btc_usdc_perp.json",
+    "kind": "public_observation",
+    "url": "https://api.backpack.exchange/api/v1/market?symbol=BTC_USDC_PERP",
+    "observed_http_date": "Fri, 02 Oct 2026 04:14:48 GMT",
+    "sha256": "c9086aa458500f700d02da86f5c688ba7901cd9d08b3cc3b2550ee854157d379"
+  },
+  {
+    "file": "sol_usdc_perp.json",
+    "kind": "public_observation",
+    "url": "https://api.backpack.exchange/api/v1/market?symbol=SOL_USDC_PERP",
+    "observed_http_date": "Fri, 02 Oct 2026 04:14:49 GMT",
+    "sha256": "723e2c2b84b2b92eed561a8b41b019dfbc6b6e5ebca26246e7b8812de38173d6"
+  },
+  {
+    "file": "official_market_schema.json",
+    "kind": "official_schema_extract",
+    "url": "https://docs.backpack.exchange/#tag/Markets/operation/get_market",
+    "observed_http_date": "Fri, 02 Oct 2026 04:18:07 GMT",
+    "sha256": "39f3e6fed1d56168ee51f70b2b1aaaf16cd6015e19f63e082b6ead28ef51b043",
+    "extraction": "Unmodified named schemas from embedded __redoc_state.spec.data.components.schemas"
+  }
+]
