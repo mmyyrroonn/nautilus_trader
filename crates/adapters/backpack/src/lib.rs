@@ -21,7 +21,8 @@
 //! A native public data owner and factory manage instrument discovery and bounded public feeds.
 //! Typed account reads and bounded fill reconciliation are independent read-only foundations.
 //! Account runtime and restricted execution remain unavailable in this phase.
-//! There are no Python bindings. The optional `high-precision` feature propagates
+//! The optional `python` feature exposes public configuration and the native data factory.
+//! The optional `high-precision` feature propagates
 //! the Nautilus domain precision mode; default features remain empty.
 
 #![deny(unsafe_code)]
@@ -46,3 +47,6 @@ pub mod replay;
 mod runtime;
 pub mod signing;
 pub mod telemetry;
+
+#[cfg(feature = "python")]
+pub mod python;

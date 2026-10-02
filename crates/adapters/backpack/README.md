@@ -3,7 +3,7 @@
 This crate provides a credential-free native public data client, checked instrument metadata,
 public stream decoding and bounded depth synchronization. Authentication and restricted GET
 transport, typed account observations and reconciliation, durable local order identity and unsigned intents are separate foundations. Account
-runtime, execution and Python bindings remain later work. Configuration and credential construction
+runtime and execution remain later work. Public Python bindings are available with the `python` feature. Configuration and credential construction
 perform no I/O or environment lookup.
 
 ## Current capability boundary
@@ -16,10 +16,10 @@ perform no I/O or environment lookup.
 | Durable clientId and unsigned intent                | Local filesystem ownership and recovery tested | Execution admission and reconciliation          |
 | Endpoint validation and credential audience         | Implemented offline                            | Production or explicit local protocol peers     |
 | REST signing and authenticated/public GET transport | Implemented with local transport tests         | Typed domain parsing and reconciliation         |
-| Account snapshot/history and fill reconciliation    | Read-only protocol and delivery contracts       | Runtime coverage and durable consumer ACK        |
+| Account snapshot/history and fill reconciliation    | Read-only protocol and delivery contracts      | Runtime coverage and durable consumer ACK       |
 | Private WS subscription authentication              | Payload construction only                      | Connection lifecycle and account processing     |
 | Public stream parsing and depth replay              | Implemented without transport                  | Native data client lifecycle                    |
-| Native public data client and factory               | Public instruments, BBO, trades, mark and L2    | Python registry projection                      |
+| Native public data client and factory               | Public instruments, BBO, trades, mark and L2   | Python registry projection                      |
 | Private account runtime                             | Explicit unsupported error                     | Account state and reconciliation                |
 | Restricted execution                                | Explicit unsupported error                     | Guarded order surface after deterministic tests |
 
@@ -363,3 +363,58 @@ Account fixtures under `test_data/account` have explicit official-schema versus 
 Tests issue signed, bodyless GETs only to audience-bound loopback listeners. They cover empty/missing,
 unknown identity/policy, exact economics, system fills, bounded traversal faults and delivery ACK
 crash windows; they do not demonstrate a live account or native ExecutionClient lifecycle.
+
+## Public Python configuration and factory
+
+The native Python module exports `BackpackInstrumentEconomics`, `BackpackDataClientConfig`,
+`BackpackDataClientFactory`, and the standard `BACKPACK`, `BACKPACK_CLIENT_ID`, `BACKPACK_VENUE`
+constants through `nautilus_trader.adapters.backpack`. The facade delegates protocol work to Rust;
+it has no Python REST/WebSocket implementation or credential discovery.
+
+Constructing economics, config and factory performs no filesystem, environment or network access.
+The factory registers the real native data client with the standard `LiveNode` builder. A client
+claims its config's telemetry at construction; a second live owner using the same config is refused.
+Connecting the node begins metadata and WebSocket work. Factory capabilities describe implemented
+surfaces; `config.telemetry_snapshot_json()` separately reports actual sanitized run observations.
+Neither a connected socket nor a successful factory call proves execution readiness.
+
+```python
+from nautilus_trader.adapters.backpack import BackpackDataClientConfig
+from nautilus_trader.adapters.backpack import BackpackDataClientFactory
+from nautilus_trader.adapters.backpack import BackpackInstrumentEconomics
+
+# Explicit synthetic values for a public-data or replay experiment only.
+economics = BackpackInstrumentEconomics(
+    margin_init="0.1",
+    margin_maint="0.05",
+    maker_fee="0.0002",
+    taker_fee="0.0005",
+    source="Synthetic",
+    source_reference="public-data experiment; no account verification",
+)
+config = BackpackDataClientConfig(
+    symbols=["BTC_USDC_PERP"],
+    economics={"BTC_USDC_PERP": economics},
+    quote_stale_after_ms=3000,
+)
+factory = BackpackDataClientFactory()
+# Existing LiveNodeBuilder: builder.add_data_client("BACKPACK", factory, config)
+```
+
+Economic arguments are exact decimal strings, never floats. The economics map must cover exactly
+the duplicate-free native-symbol allowlist. Source provenance is explicit caller evidence, not an
+adapter verification of fees, margin or identity. Properties are read-only. Defaults select public
+production origins; an explicit local protocol peer requires both `base_url_http` and `base_url_ws`
+with validated numeric loopback origins. Arbitrary remote overrides and partial endpoint pairs fail.
+
+All native lifecycle limits are available as checked keyword arguments: HTTP/WS connection,
+heartbeat, idle, reconnect and shutdown timeouts; quote staleness; snapshot depth; buffered frame,
+stored level and message byte bounds. Public telemetry includes per-symbol quote/book freshness,
+generation/connection epoch, metadata state, and the bounded book's coverage. Funding-rate units,
+full-book coverage and private subscription acknowledgement are not inferred. This Python slice
+exposes no execution factory, signer, raw authenticated client, account config or mutation API.
+
+The type stub is produced by the repository stub generator from the Rust binding declarations;
+it must not be edited by hand. Embedded Python tests exercise exact economics, native config
+extraction, actual data-factory construction and telemetry ownership. Installed-wheel node/runtime
+acceptance is a separate application task.
