@@ -1,29 +1,32 @@
 # Backpack Exchange adapter foundations
 
-This crate contains configuration, public market metadata, public stream decoding, and bounded depth synchronization.
-It validates configuration, product eligibility, exact instrument fields, complete provider refreshes,
-and bounded public observations. It has no HTTP or WebSocket client, live data or execution
-client, authentication, account access, factory, or Python bindings. It is not a production adapter.
-Constructing a configuration performs no I/O and reads no credentials or environment files.
+This crate contains configuration, authentication and transport foundations, exact public market
+metadata, bounded public stream/depth parsing, and durable local order identity for a phased Backpack Exchange integration. It validates
+product eligibility and complete provider refreshes, constructs Ed25519 authentication, and provides
+a restricted GET transport. Domain data/account runtime clients, execution, factories, and Python
+bindings remain later work. Constructing configuration and credentials performs no I/O or
+environment lookup.
 
 ## Current capability boundary
 
-| Surface                                   | B0.1 behavior                                  | Later scope                                        |
-| ----------------------------------------- | ---------------------------------------------- | -------------------------------------------------- |
-| Symbol allowlist and market eligibility   | Implemented and tested offline                 | Used by discovery and both clients                 |
-| Public metadata and instrument conversion | Implemented, with explicit economic inputs     | Runtime discovery and account verification         |
-| Metadata provider                         | Complete refresh validation, without transport | A public data client supplies fresh responses      |
-| Endpoint validation                       | Implemented and tested offline                 | Public production or explicit local protocol peers |
-| Public stream parsing and depth replay    | Implemented without transport                  | Native data client and WebSocket lifecycle         |
-| Public market data runtime                | Explicit unsupported error                     | Instrument discovery and market data               |
-| Private account reads                     | Explicit unsupported error                     | Account state and reconciliation                   |
-| Restricted execution                      | Explicit unsupported error                     | A bounded order surface after deterministic tests  |
+| Surface                                             | Behavior                                       | Later scope                                     |
+| --------------------------------------------------- | ---------------------------------------------- | ----------------------------------------------- |
+| Symbol allowlist and market eligibility             | Implemented offline                            | Discovery and domain clients                    |
+| Public metadata and instrument conversion           | Implemented with explicit economic inputs      | Runtime discovery and account verification      |
+| Metadata provider                                   | Complete refresh validation without transport  | Data client supplies fresh responses            |
+| Durable clientId and unsigned intent                | Local filesystem ownership and recovery tested | Execution admission and reconciliation          |
+| Endpoint validation and credential audience         | Implemented offline                            | Production or explicit local protocol peers     |
+| REST signing and authenticated/public GET transport | Implemented with local transport tests         | Typed domain parsing and reconciliation         |
+| Private WS subscription authentication              | Payload construction only                      | Connection lifecycle and account processing     |
+| Public stream parsing and depth synchronization    | Bounded continuous views with explicit coverage | Native data client and WebSocket lifecycle      |
+| Public market data and account runtime clients      | Explicit unsupported error                     | Instrument discovery, data, account state       |
+| Restricted execution                                | Explicit unsupported error                     | Guarded order surface after deterministic tests |
 
-`BackpackCapability::require_implemented` returns `BackpackUnsupportedCapabilityError` for every
-runtime capability above. No order command is exposed. Submission, cancellation, modification,
-batches, transfers, withdrawals, and a dead man's switch are unavailable. Later phases must reject
-commands outside their implemented surface explicitly before transport; venue support alone does
-not establish adapter support.
+`BackpackCapability::require_implemented` still returns `BackpackUnsupportedCapabilityError` for
+all engine runtime capabilities. Low-level GET transport does not establish a working account or
+data client. No mutation transport is exposed. Submission, cancellation, modification, batches,
+borrowing, transfers, withdrawals, and a dead man's switch are unavailable. Write retry and order
+recovery semantics require acceptance when a real guarded execution owner is introduced.
 
 ## Product boundary
 
@@ -139,12 +142,39 @@ The only venue environment recorded by this crate is Production:
 No official testnet or sandbox endpoint has been verified for this phase. There is no environment
 fallback to production and no arbitrary remote URL override.
 
-`BackpackEndpoints::loopback_override` is an explicit selection for local public protocol peers,
-not another venue environment. It accepts only numeric loopback IP origins, the transport's HTTP
-or WebSocket scheme, and no URL credentials, path, query, fragment, or port zero. DNS names,
-including `localhost`, are rejected. This does not authenticate a peer or implement a transport.
-Production credentials must never be sent to loopback overrides. A future authenticated transport
-must independently enforce its endpoint and redirect policy before signing or transmitting requests.
+`BackpackEndpoints::loopback_override` explicitly selects local protocol peers. It accepts only
+numeric loopback IP origins, the transport's HTTP or WebSocket scheme, and no URL credentials,
+path, query, fragment, or port zero. DNS names including `localhost` are rejected.
+`BackpackCredential::production` and `loopback_peer` decode caller-provided base64 Ed25519 seeds;
+they never read environment variables. Local credentials bind to the exact endpoint pair and
+cannot be forwarded to production or a different local peer. Production credentials cannot be
+used with a local override. The transport rejects redirects and disables system proxy discovery.
+
+## Authentication and transport
+
+`BackpackParameters` provides validated scalar values to both sorted canonical bytes and wire
+parameters. Booleans use lowercase text, optional absent values are omitted, and monetary scalars
+use exact `Decimal`. Inputs requiring escaping, repeated parameter names, reserved authentication
+fields, arrays, and unsupported GET parameters are rejected. The array `marketType` filters on markets and order/fill history are
+unavailable in this slice; discover/filter supported products using metadata instead. The supported
+receive window is 1 through 60,000 milliseconds, default 5,000. Credentials zeroize their shared seed when the final owner drops; Debug and errors redact
+credentials, URLs, payloads, and authentication. Explicit response/wire accessors must not be logged.
+
+Every client consumes a caller-owned, cloneable `BackpackQuota`: public and private traffic must
+share it for one subaccount scope. Defaults conservatively pace standard traffic at 32 ms and
+historical market traffic at 2.1 s. Separate processes require additional shared coordination.
+The shared HTTP client acquires quota once, then prepares the timestamp, signature, and request.
+Admission is checked before queuing and after quota acquisition.
+
+`BackpackHttpPolicy` bounds the whole operation, including quota queues, all read attempts, and
+429/backoff delays, to at most 60 seconds. Transport failures, 429, and 5xx can retry within the
+configured budget; other responses and malformed JSON do not retry. Pagination response headers
+are restricted to `X-PAGE-COUNT`, `X-CURRENT-PAGE`, `X-PAGE-SIZE`, `X-TOTAL`, and `Retry-After`.
+The shared transport enforces its existing 100 MiB response body cap.
+
+`NotSent`, `VenueRejected`, and `Unknown` describe transmission evidence only. Cancellation or
+uncertainty after possible dispatch remains `Unknown`, including across retries. GET order 404
+cannot prove an order was never submitted or filled, and cannot resolve mutation state.
 
 ```rust
 use nautilus_backpack::config::BackpackConfig;
@@ -153,6 +183,40 @@ let config = BackpackConfig::new_checked(vec!["BTC_USDC_PERP".to_string()])?;
 config.validate_market("BTC_USDC_PERP", "PERP", "USDC")?;
 # Ok::<(), nautilus_backpack::config::BackpackConfigError>(())
 ```
+
+## Durable local order identity
+
+`identity::BackpackClientIdStore` owns a configured local state directory for one exact environment,
+venue account and optional subaccount. It uses an OS `File::try_lock` held on a stable lock file for
+the owner's entire lifetime. A second handle or process is refused; dropping or killing the owner
+releases the OS lock without deleting its file. Namespace strings are explicit, never normalized,
+and checked against the stored namespace before any mapping is restored.
+
+`reserve_intent` commits the Nautilus `ClientOrderId`, monotonic Backpack uint32 `clientId`, and
+original unsigned submission encoding together before returning an ID. IDs start at one, with zero
+reserved conservatively, and are never reclaimed after cancellation, settlement, unknown outcome,
+or an intent that was never sent. The next counter is u64 and refuses allocation at u32::MAX + 1.
+Both lookup directions and `reserved_ids` survive restart. A duplicate creation intent is refused;
+lookup and enumeration are recovery facts and never authority to resend. The external-order
+sentinel and unknown venue IDs cannot be adopted as local ownership.
+
+The journal has a strict versioned schema, validates bijection/high-water invariants, and carries
+a BLAKE3 checksum over its complete state. The checksum detects accidental corruption, not
+malicious edits or a valid historic rollback. Checkpoints use exclusive sibling temporary files,
+file synchronization and atomic replacement, followed by synchronization of the replaced file.
+Unix also synchronizes the containing directory. Initialization writes a permanent marker first;
+a missing initialized journal, partial marker or interrupted initialization fails closed. Orphan
+temporary files are never guessed to be newer authoritative state. A commit error returns no ID
+and poisons the handle even when the disk outcome may be ambiguous; reopen and reconcile.
+
+Use one stable, private directory per authenticated namespace throughout its lifetime. Moving to
+a fresh directory, deleting all namespace state, externally replacing the lock file, whole-state
+rollback, and faulty hardware/filesystems are outside this local guarantee. First use and recovery
+must independently check venue-side external clientId collisions before execution is enabled.
+The Windows guarantee covers process termination on a functioning local filesystem with OS locks
+and atomic replacement; it does not claim power-loss durability without a directory metadata
+barrier. Namespace and intent Debug representations omit private identity and payload fields.
+Unsigned payloads must contain no credentials, authentication headers or signatures.
 
 ## Protocol references
 
@@ -166,17 +230,33 @@ The following official sources establish the venue contract, not implemented run
   timestamp units, sequence ranges, and explicit snapshot limits.
 - [Order execution contract](https://docs.backpack.exchange/#tag/Order/operation/execute_order): venue
   order types and flags. No order payload or execution semantics are implemented here.
+- [Authentication](https://docs.backpack.exchange/#section/Authentication): sorted REST signing,
+  Ed25519/base64 headers, timestamp/window, and WS subscribe authentication.
+- [Order query](https://docs.backpack.exchange/#tag/Order/operation/get_order): exclusive
+  `orderId`/`clientId` identity. This does not establish clientId idempotency or historical finality.
 
-Authentication, signing, request canonicalization, client order identity, transport, and recovery
-are separate subsequent changes. Public fixture provenance lives in `test_data/manifest.json`. Unknown protocol fields or behavior must
-be checked against official evidence before those changes expose capabilities.
+Protocol evidence was checked on 2026-10-02. Metadata fixture provenance lives in
+`test_data/manifest.json`. Unknown fields and mutation behavior must be verified before further
+capabilities are exposed. No testnet, DMS, or clientId uniqueness guarantee is asserted.
 
 ## Validation
 
 Run `cargo test -p nautilus-backpack` and `cargo clippy -p nautilus-backpack --all-targets -- -D warnings`.
-Tests cover official BTC/SOL market observations, captured public BTC perpetual frames, native
-order book replay, truncated coverage and synchronization faults and explicitly synthetic adverse metadata, exact
-decimal and unit boundaries, complete refreshes, economic provenance, allowlist errors, production
-defaults, loopback origin validation, and explicit refusals of planned runtime capabilities. They perform no network I/O or account operations.
+Tests cover official BTC/SOL market observations and explicitly synthetic adverse metadata, exact
+decimal and unit boundaries, complete refreshes, economic provenance, configuration, and capability
+refusals. Identity tests cover durable restart/mapping, exhaustion, checksum/schema corruption,
+interrupted checkpoints, Windows replacement failure, and real multi-process ownership.
+
+Public stream tests replay captured BTC perpetual quotes, trades, marks and depth frames. They
+verify exact units/grids, nullable sides, atomic native book batches, initial overlap, gaps, bounded
+buffers, stale generations and truncated price-band coverage.
+
+Authentication tests cover scalar/wire canonicalization, an independent public RFC 8032 section
+[7.1 signature vector](https://www.rfc-editor.org/rfc/rfc8032#section-7.1), audience isolation, and
+synthetic loopback transport. Transport probes verify fresh signatures after a queue longer than
+the default window, stale admission/deadlines, shared public/private quota, redaction, redirects,
+pagination, bounded retries, and cancellation before/after dispatch. Authentication test seeds and
+transport responses are public synthetic material, never captured account fixtures. Tests make no
+live venue requests or account mutations. Actual POST/DELETE paths are not implemented or tested.
 See the repository [adapter guide](../../../docs/developer_guide/adapters.md) for later transport,
 client, and acceptance tests.
