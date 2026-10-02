@@ -22,8 +22,15 @@ crate-type = ["rlib"]
 
 [features]
 default = []
+high-precision = ["nautilus-model/high-precision"]
 
 [dependencies]
+nautilus-core = { workspace = true }
+nautilus-model = { workspace = true }
+
+rust_decimal = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true, features = ["arbitrary_precision"] }
 thiserror = { workspace = true }
 url = { workspace = true }
 

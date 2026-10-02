@@ -5501,7 +5501,12 @@ dependencies = [
 name = "nautilus-backpack"
 version = "0.63.0"
 dependencies = [
+ "nautilus-core",
+ "nautilus-model",
  "rstest",
+ "rust_decimal",
+ "serde",
+ "serde_json",
  "thiserror 2.0.20",
  "url",
 ]
