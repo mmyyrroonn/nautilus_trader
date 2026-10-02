@@ -194,7 +194,7 @@ mod tests {
     #[case("BTC_USDC_PERP ")]
     #[case(" BTC_USDC_PERP")]
     #[case("BTC/USDC_PERP")]
-    #[case("BТC_USDC_PERP")]
+    #[case("B\u{0422}C_USDC_PERP")]
     fn test_invalid_allowlist_symbol(#[case] symbol: &str) {
         assert_eq!(
             BackpackConfig::new_checked(vec![symbol.to_string()]),
