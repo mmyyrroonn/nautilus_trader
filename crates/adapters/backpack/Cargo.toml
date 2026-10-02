@@ -74,8 +74,8 @@ pyo3 = { workspace = true, optional = true }
 pyo3-stub-gen = { workspace = true, optional = true }
 
 [dev-dependencies]
-futures-util = { workspace = true }
 axum = { workspace = true }
+futures-util = { workspace = true }
 rstest = { workspace = true }
 
 [[test]]

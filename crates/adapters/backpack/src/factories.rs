@@ -61,7 +61,8 @@ impl DataClientFactory for BackpackDataClientFactory {
             .downcast_ref::<BackpackDataClientConfig>()
             .ok_or(BackpackDataError::Configuration("factory config type"))?;
         Ok(Box::new(BackpackDataClient::with_quota(
-            ClientId::from(name),
+            ClientId::new_checked(name)
+                .map_err(|_| BackpackDataError::Configuration("invalid client name"))?,
             config.clone(),
             self.quota.clone(),
         )?))

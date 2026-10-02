@@ -86,3 +86,38 @@ impl BackpackPublicTelemetry {
         self.inner.claimed.store(false, Ordering::Release);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use nautilus_core::UnixNanos;
+    use rstest::rstest;
+
+    use super::*;
+    #[rstest]
+    fn fresh_claim_cannot_inherit_old_gate_or_future_receipts() {
+        let telemetry = BackpackPublicTelemetry::default();
+        let old = telemetry.claim(30, 3000).unwrap();
+        let old_id = telemetry.snapshot().run_id;
+        {
+            let mut gate = old.lock();
+            gate.running = true;
+            gate.connected = true;
+            gate.metadata_ready = true;
+            gate.owner = 7;
+            let future = UnixNanos::from(crate::runtime::now().as_u64() + 1_000_000_000);
+            gate.quote_receipts
+                .insert("BTC_USDC_PERP".into(), (future, future));
+        }
+        assert!(!telemetry.snapshot().quotes_fresh["BTC_USDC_PERP"]);
+        telemetry.release();
+        let new = telemetry.claim(30, 3000).unwrap();
+        assert!(!Arc::ptr_eq(&old, &new));
+        old.lock().connected = true;
+        old.lock().metadata_ready = true;
+        let snapshot = telemetry.snapshot();
+        assert_ne!(snapshot.run_id, old_id);
+        assert_eq!(snapshot.generation, 0);
+        assert!(!snapshot.connected && !snapshot.metadata_ready);
+        assert!(snapshot.quotes_fresh.is_empty() && snapshot.books.is_empty());
+    }
+}

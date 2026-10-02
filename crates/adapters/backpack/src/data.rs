@@ -164,16 +164,19 @@ impl BackpackDataClient {
             self.subscriptions.mark_unsubscribe(&topic);
             present
         };
+
         if changed {
             let revision = gate.revisions.entry(topic).or_default();
             *revision = revision.checked_add(1).ok_or(BackpackDataError::Lifecycle(
                 "subscription revision exhausted",
             ))?;
         }
+
         if !subscribe {
             if channel == "bookTicker" {
                 gate.quote_receipts.remove(&symbol);
             }
+
             if channel == "depth" {
                 gate.books.insert(symbol, None);
             }
@@ -206,19 +209,23 @@ impl BackpackDataClient {
     ) -> anyhow::Result<()> {
         self.check_alive()?;
         self.store.clear();
+
         if filters.is_some_and(|f| !f.is_empty()) {
             return Err(BackpackDataError::Unsupported("instrument filters").into());
         }
+
         if self.gate.lock().running {
             return Err(BackpackDataError::Lifecycle(
                 "explicit provider refresh requires disconnected owner",
             )
             .into());
         }
+
         if let Some(ids) = ids {
             if ids.is_empty() {
                 return Err(BackpackDataError::Configuration("empty instrument selection").into());
             }
+
             for id in ids {
                 self.symbol(*id)?;
             }
@@ -239,6 +246,7 @@ impl BackpackDataClient {
         if !state.running || !state.metadata_ready {
             return Err(BackpackDataError::Lifecycle("metadata unavailable").into());
         }
+
         for instrument in &state.instruments {
             if id.is_none_or(|id| id == instrument.id()) {
                 self.sender
@@ -322,12 +330,15 @@ impl DataClient for BackpackDataClient {
     }
     async fn connect(&mut self) -> anyhow::Result<()> {
         self.check_alive()?;
+
         if self.is_connected() {
             return Ok(());
         }
+
         if self.gate.lock().running {
             return Err(BackpackDataError::Lifecycle("connection recovery in progress").into());
         }
+
         if !self.tasks.is_open() {
             self.drain().await?;
             self.tasks
@@ -366,6 +377,7 @@ impl DataClient for BackpackDataClient {
                 if !state.current(owner, 0) {
                     return Err(BackpackDataError::Lifecycle("bootstrap admission lost"));
                 }
+
                 for instrument in &instruments {
                     self.sender
                         .send(DataEvent::Instrument(instrument.clone()))
@@ -373,8 +385,8 @@ impl DataClient for BackpackDataClient {
                 }
                 state.instruments = instruments.clone();
             }
-            self.store.add_bulk(instruments);
-            self.store.set_initialized();
+            // The explicit provider store is disconnected-only. Live requests use the run Gate.
+            self.store.clear();
             let session = PublicSession {
                 config: self.config.clone(),
                 http: self.http.clone(),
@@ -406,6 +418,7 @@ impl DataClient for BackpackDataClient {
             Ok::<(), BackpackDataError>(())
         }
         .await;
+
         match result {
             Ok(()) => {
                 guard.disarm();
@@ -429,6 +442,7 @@ impl DataClient for BackpackDataClient {
         }
         self.tasks.begin_shutdown();
         self.store.clear();
+
         if let Some(ws) = self.websocket.take() {
             let bound = Duration::from_secs(self.config.lifecycle().shutdown_timeout_secs);
             let _ = nautilus_network::dst::time::timeout(bound, ws.disconnect()).await;

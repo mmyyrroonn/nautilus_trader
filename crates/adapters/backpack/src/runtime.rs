@@ -79,7 +79,7 @@ pub struct BackpackPublicHealth {
     pub execution_ready: bool,
     /// Sequence continuity of each currently subscribed bounded book.
     pub books_continuous: BTreeMap<String, bool>,
-    /// Original receipt age of each bounded book is within the operational idle policy.
+    /// Both engine event and original receipt ages are within the operational idle policy.
     pub books_fresh: BTreeMap<String, bool>,
     /// Exact Unix nanoseconds of the latest valid BBO engine event.
     pub quote_event_ns: BTreeMap<String, String>,
@@ -250,6 +250,8 @@ pub(crate) async fn load_metadata(
         .read(&request, deadline, admission, cancel)
         .await
         .map_err(|_| BackpackDataError::Metadata)?;
+    let received_at = now();
+
     if response.body().len() > 8 * 1024 * 1024 {
         return Err(BackpackDataError::Metadata);
     }
@@ -257,10 +259,11 @@ pub(crate) async fn load_metadata(
         serde_json::from_slice(response.body()).map_err(|_| BackpackDataError::Metadata)?;
     let mut provider = BackpackInstrumentProvider::new(config.scope().clone());
     provider
-        .replace_markets(&markets, now())
+        .replace_markets(&markets, received_at)
         .map_err(|_| BackpackDataError::Metadata)?;
     let mut metadata = Metadata::new();
     let mut instruments = Vec::new();
+
     for market in provider.all() {
         let economics = config
             .economics()
@@ -309,6 +312,7 @@ struct MarketState {
     parser: BackpackPublicStreamParser,
     book: Option<BackpackDepthSynchronizer>,
     token: u64,
+    last_sequence: Option<u64>,
     snapshot_cancel: Option<CancellationToken>,
 }
 impl Drop for MarketState {
@@ -317,6 +321,13 @@ impl Drop for MarketState {
             c.cancel();
         }
     }
+}
+
+struct ActorState {
+    epoch: u64,
+    generation: u64,
+    markets: BTreeMap<String, MarketState>,
+    sent: BTreeMap<String, u64>,
 }
 
 impl PublicSession {
@@ -390,6 +401,7 @@ impl PublicSession {
                     None
                 }
             };
+
             if let Some(input) = input
                 && frame_tx.try_send(input).is_err()
             {
@@ -441,35 +453,48 @@ impl PublicSession {
         spawner: TaskSpawner,
     ) {
         let cancel = spawner.cancellation_token();
-        let mut epoch = 0;
-        let mut generation = 0;
-        let mut markets = BTreeMap::new();
-        let mut sent = BTreeMap::new();
-        for (symbol, m) in initial {
-            generation += 1;
-            markets.insert(
+        let mut actor = ActorState {
+            epoch: 0,
+            generation: 0,
+            markets: BTreeMap::new(),
+            sent: BTreeMap::new(),
+        };
+
+        for (symbol, metadata) in initial {
+            actor.generation += 1;
+            actor.markets.insert(
                 symbol,
                 MarketState {
-                    metadata: m.clone(),
-                    stream_token: generation,
+                    stream_token: actor.generation,
                     book_parser: None,
-                    parser: BackpackPublicStreamParser::new(m, generation),
+                    parser: BackpackPublicStreamParser::new(metadata.clone(), actor.generation),
+                    metadata,
                     book: None,
-                    token: generation,
+                    token: actor.generation,
+                    last_sequence: None,
                     snapshot_cancel: None,
                 },
             );
         }
+
         loop {
-            if cancel.is_cancelled() || {
+            let (current, expired, ready) = {
                 let state = self.gate.lock();
-                !state.running || state.owner != owner
-            } {
+                (
+                    state.running && state.owner == owner,
+                    state.lost_at.is_some_and(|t| {
+                        t.elapsed()
+                            >= Duration::from_secs(self.config.lifecycle().reconnect_timeout_secs)
+                    }),
+                    state.admits(owner, actor.epoch),
+                )
+            };
+
+            if cancel.is_cancelled() || !current {
                 break;
             }
-            if self.gate.lock().lost_at.is_some_and(|t| {
-                t.elapsed() >= Duration::from_secs(self.config.lifecycle().reconnect_timeout_secs)
-            }) {
+
+            if expired {
                 self.gate.lock().invalidate("recovery deadline");
                 let _ = nautilus_network::dst::time::timeout(
                     Duration::from_secs(self.config.lifecycle().shutdown_timeout_secs),
@@ -478,115 +503,374 @@ impl PublicSession {
                 .await;
                 break;
             }
-            let ready = self.gate.lock().admits(owner, epoch);
+
             if ready
                 && self
                     .reconcile(
                         owner,
-                        epoch,
+                        actor.epoch,
                         &ws,
-                        &mut markets,
-                        &mut sent,
-                        &mut generation,
+                        &mut actor.markets,
+                        &mut actor.sent,
+                        &mut actor.generation,
                         &spawner,
                         &tx,
                     )
                     .await
                     .is_err()
             {
-                self.fault(owner, epoch, "subscription send failed", &ws);
+                self.fault(owner, actor.epoch, "subscription send failed", &ws);
             }
-            tokio::select! {
+            let input = tokio::select! {
                 biased;
                 ()=cancel.cancelled()=>break,
                 ()=self.notify.notified()=> {
-                    if !self.gate.lock().admits(owner,epoch) {let _=ws.reconnect_handle().request_reconnect();}
+                    if !self.gate.lock().admits(owner,actor.epoch) {
+                        let _=ws.reconnect_handle().request_reconnect();
+                    }
+                    None
                 },
-                ()=nautilus_network::dst::time::sleep(Duration::from_millis(100))=>{
-                    let expired=self.gate.lock().lost_at.is_some_and(|t|t.elapsed()>=Duration::from_secs(self.config.lifecycle().reconnect_timeout_secs));
-                    if expired {self.gate.lock().invalidate("recovery deadline");let _=nautilus_network::dst::time::timeout(Duration::from_secs(self.config.lifecycle().shutdown_timeout_secs),ws.disconnect()).await;break;}
+                ()=nautilus_network::dst::time::sleep(Duration::from_millis(100))=>None,
+                input=rx.recv()=>match input {Some(input)=>Some(input),None=>break},
+            };
+
+            match input {
+                Some(Input::Reconnected(epoch)) => {
+                    self.rebootstrap(owner, &ws, &mut actor, epoch, &cancel)
+                        .await;
+                }
+                Some(Input::Frame(frame)) => {
+                    self.frame(owner, &ws, &mut actor, &frame, &spawner, &tx);
+                }
+                Some(Input::Snapshot(snapshot)) => self.install(owner, &ws, &mut actor, snapshot),
+                None => {}
+            }
+        }
+        {
+            let mut state = self.gate.lock();
+            if state.owner == owner {
+                let reason = state.stale.unwrap_or("session stopped");
+                state.invalidate(reason);
+                state.running = false;
+            }
+        }
+        drop(actor);
+        let _ = nautilus_network::dst::time::timeout(
+            Duration::from_secs(self.config.lifecycle().shutdown_timeout_secs),
+            ws.disconnect(),
+        )
+        .await;
+    }
+
+    async fn rebootstrap(
+        &self,
+        owner: u64,
+        ws: &WebSocketClient,
+        actor: &mut ActorState,
+        epoch: u64,
+        cancel: &CancellationToken,
+    ) {
+        let (current, fault_serial, deadline, bootstrap) = {
+            let state = self.gate.lock();
+            (
+                epoch > actor.epoch && state.current(owner, epoch),
+                state.fault_serial,
+                state.lost_at.and_then(|t| {
+                    t.checked_add(Duration::from_secs(
+                        self.config.lifecycle().reconnect_timeout_secs,
+                    ))
+                }),
+                state.stale == Some("replacement bootstrap"),
+            )
+        };
+
+        if !current {
+            return;
+        }
+        actor.epoch = epoch;
+        actor.markets.clear();
+        actor.sent.clear();
+        self.subscriptions.reset_after_reconnect();
+
+        if !bootstrap {
+            self.fault(owner, epoch, "bootstrap invalidated", ws);
+            return;
+        }
+        let gate = self.gate.clone();
+        let admission = move || {
+            let state = gate.lock();
+            state.current(owner, epoch) && state.fault_serial == fault_serial
+        };
+        let result =
+            load_metadata(&self.config, &self.http, cancel, Some(&admission), deadline).await;
+        let Ok((metadata, instruments)) = result else {
+            self.fault(owner, epoch, "metadata refresh failed", ws);
+            return;
+        };
+        let mut state = self.gate.lock();
+        if !state.current(owner, epoch) || state.fault_serial != fault_serial {
+            drop(state);
+            self.fault(owner, epoch, "bootstrap invalidated", ws);
+            return;
+        }
+
+        for instrument in &instruments {
+            if self
+                .sender
+                .send(DataEvent::Instrument(instrument.clone()))
+                .is_err()
+            {
+                state.invalidate("data engine unavailable");
+                state.running = false;
+                return;
+            }
+        }
+
+        for (symbol, metadata) in metadata {
+            actor.generation += 1;
+            actor.markets.insert(
+                symbol,
+                MarketState {
+                    stream_token: actor.generation,
+                    book_parser: None,
+                    parser: BackpackPublicStreamParser::new(metadata.clone(), actor.generation),
+                    metadata,
+                    book: None,
+                    token: actor.generation,
+                    last_sequence: None,
+                    snapshot_cancel: None,
                 },
-                input=rx.recv()=>{
-                    match input {
-                        None=>break,
-                        Some(Input::Reconnected(new_epoch))=>{
-                            if new_epoch<=epoch || !self.gate.lock().current(owner,new_epoch){continue;}
-                            epoch=new_epoch;markets.clear();sent.clear();self.subscriptions.reset_after_reconnect();
-                            let gate=self.gate.clone();
-                            let (fault_serial,deadline,bootstrap)={let state=self.gate.lock();(state.fault_serial,state.lost_at.and_then(|t|t.checked_add(Duration::from_secs(self.config.lifecycle().reconnect_timeout_secs))),state.stale==Some("replacement bootstrap"))};
-                            if !bootstrap{self.fault(owner,epoch,"bootstrap invalidated",&ws);continue;}
-                            let admission=move ||{let state=gate.lock();state.current(owner,new_epoch) && state.fault_serial==fault_serial};
-                            match load_metadata(&self.config,&self.http,&cancel,Some(&admission),deadline).await {
-                                Ok((metadata,instruments))=>{
-                                    let mut state=self.gate.lock();if !state.current(owner,epoch) || state.fault_serial!=fault_serial {drop(state);self.fault(owner,epoch,"bootstrap invalidated",&ws);continue;}
-                                    let mut valid=true;for instrument in &instruments {if self.sender.send(DataEvent::Instrument(instrument.clone())).is_err(){valid=false;break;}}
-                                    if !valid {state.invalidate("data engine unavailable");break;}
-                                    for (symbol,m) in metadata {generation+=1;markets.insert(symbol,MarketState{metadata:m.clone(),stream_token:generation,book_parser:None,parser:BackpackPublicStreamParser::new(m,generation),book:None,token:generation,snapshot_cancel:None});}
-                                    state.instruments=instruments;state.metadata_ready=true;state.connected=true;state.stale=None;state.lost_at=None;
-                                },
-                                Err(_)=>self.fault(owner,epoch,"metadata refresh failed",&ws),
+            );
+        }
+        state.instruments = instruments;
+        state.metadata_ready = true;
+        state.connected = true;
+        state.stale = None;
+        state.lost_at = None;
+    }
+
+    fn frame(
+        &self,
+        owner: u64,
+        ws: &WebSocketClient,
+        actor: &mut ActorState,
+        frame: &Frame,
+        spawner: &TaskSpawner,
+        tx: &mpsc::Sender<Input>,
+    ) {
+        let epoch = actor.epoch;
+        if frame.epoch != epoch || !self.current_topic(owner, epoch, &frame.topic, frame.revision) {
+            return;
+        }
+
+        if !self.fresh(frame.received) {
+            self.fault(owner, epoch, "stale queued frame", ws);
+            return;
+        }
+        let Some((_, symbol)) = frame.topic.split_once('.') else {
+            self.fault(owner, epoch, "invalid stream topic", ws);
+            return;
+        };
+        let Some(market) = actor.markets.get_mut(symbol) else {
+            self.fault(owner, epoch, "unknown public instrument", ws);
+            return;
+        };
+        let decoded = if frame.topic.starts_with("depth.") {
+            if frame.book_token != market.token {
+                return;
+            }
+            let Some(parser) = market.book_parser.as_mut() else {
+                return;
+            };
+            parser.decode(market.token, &frame.bytes, frame.received)
+        } else {
+            market
+                .parser
+                .decode(market.stream_token, &frame.bytes, frame.received)
+        };
+
+        match decoded {
+            Ok(BackpackPublicEvent::Quote(quote)) => {
+                let mut state = self.gate.lock();
+                if !self.admits_topic(&state, owner, epoch, &frame.topic, frame.revision) {
+                    return;
+                }
+                let monotonic = state
+                    .quote_receipts
+                    .get(symbol)
+                    .is_none_or(|(event, receipt)| {
+                        quote.ts_event >= *event && frame.received >= *receipt
+                    });
+                let observed_now = now().as_u64();
+                let current = quote.ts_event.as_u64() <= observed_now
+                    && frame.received.as_u64() <= observed_now
+                    && (observed_now - quote.ts_event.as_u64())
+                        .max(observed_now - frame.received.as_u64())
+                        <= self.config.lifecycle().quote_stale_after_ms * 1_000_000;
+
+                if monotonic && current {
+                    state
+                        .quote_receipts
+                        .insert(symbol.to_owned(), (quote.ts_event, frame.received));
+
+                    if self
+                        .sender
+                        .send(DataEvent::Data(Data::Quote(quote)))
+                        .is_err()
+                    {
+                        state.invalidate("data engine unavailable");
+                        state.running = false;
+                    }
+                } else {
+                    state.quote_receipts.remove(symbol);
+                }
+            }
+            Ok(BackpackPublicEvent::QuoteUnavailable { .. }) => {
+                let mut state = self.gate.lock();
+                if self.admits_topic(&state, owner, epoch, &frame.topic, frame.revision) {
+                    state.quote_receipts.remove(symbol);
+                }
+            }
+            Ok(BackpackPublicEvent::Trade(trade)) => self.publish(
+                owner,
+                epoch,
+                &frame.topic,
+                frame.revision,
+                Data::Trade(trade),
+            ),
+            Ok(BackpackPublicEvent::Mark { price, .. }) => self.publish(
+                owner,
+                epoch,
+                &frame.topic,
+                frame.revision,
+                Data::MarkPrice(price),
+            ),
+            Ok(BackpackPublicEvent::Depth(update)) => {
+                if !self.fresh(update.ts_event) {
+                    self.fault(owner, epoch, "stale or future depth event", ws);
+                    return;
+                }
+                let last = update.last;
+                let observed_at = update.ts_event.min(frame.received);
+                let advances = market.last_sequence.is_none_or(|previous| last > previous);
+                if let Some(book) = market.book.as_mut() {
+                    match book.apply(update) {
+                        Ok(Some(batch)) => {
+                            market.last_sequence = Some(last);
+                            self.book_ready(
+                                owner,
+                                epoch,
+                                symbol,
+                                frame.revision,
+                                book.coverage(),
+                                batch.ts_init.min(batch.ts_event),
+                            );
+                            self.publish(
+                                owner,
+                                epoch,
+                                &frame.topic,
+                                frame.revision,
+                                Data::from(batch),
+                            );
+                        }
+                        Ok(None) => {
+                            if book.is_continuous() && advances {
+                                market.last_sequence = Some(last);
+                                self.book_ready(
+                                    owner,
+                                    epoch,
+                                    symbol,
+                                    frame.revision,
+                                    book.coverage(),
+                                    observed_at,
+                                );
                             }
-                        },
-                        Some(Input::Frame(frame))=>{
-                            if !self.current_topic(owner,epoch,&frame.topic,frame.revision) || frame.epoch!=epoch {continue;}
-                            if !self.fresh(frame.received) {self.fault(owner,epoch,"stale queued frame",&ws);continue;}
-                            let Some((_,symbol))=frame.topic.split_once('.') else {self.fault(owner,epoch,"invalid stream topic",&ws);continue;};
-                            let Some(market)=markets.get_mut(symbol) else {self.fault(owner,epoch,"unknown public instrument",&ws);continue;};
-                            let decoded=if frame.topic.starts_with("depth.") {if frame.book_token!=market.token {continue;}let Some(parser)=market.book_parser.as_mut()else{continue;};parser.decode(market.token,&frame.bytes,frame.received)}else{market.parser.decode(market.stream_token,&frame.bytes,frame.received)};
-                            match decoded {
-                                Ok(BackpackPublicEvent::Quote(quote))=>{
-                                    let mut state=self.gate.lock();if self.admits_topic(&state,owner,epoch,&frame.topic,frame.revision) {
-                                        let monotonic=state.quote_receipts.get(symbol).is_none_or(|(event,receipt)| quote.ts_event>=*event && frame.received>=*receipt);
-                                        let current=quote.ts_event.as_u64()<=now().as_u64() && frame.received.as_u64()<=now().as_u64() && now().as_u64().saturating_sub(quote.ts_event.as_u64()).max(now().as_u64().saturating_sub(frame.received.as_u64()))<=self.config.lifecycle().quote_stale_after_ms*1_000_000;
-                                        if monotonic && current {state.quote_receipts.insert(symbol.to_owned(),(quote.ts_event,frame.received));let _=self.sender.send(DataEvent::Data(Data::Quote(quote)));} else {state.quote_receipts.remove(symbol);}
-                                    }
-                                },
-                                Ok(BackpackPublicEvent::QuoteUnavailable{..})=>{self.gate.lock().quote_receipts.remove(symbol);},
-                                Ok(BackpackPublicEvent::Trade(trade))=>self.publish(owner,epoch,&frame.topic,frame.revision,Data::Trade(trade)),
-                                Ok(BackpackPublicEvent::Mark{price,..})=>self.publish(owner,epoch,&frame.topic,frame.revision,Data::MarkPrice(price)),
-                                Ok(BackpackPublicEvent::Depth(update))=>{
-                                    if update.ts_event.as_u64()>now().as_u64(){self.fault(owner,epoch,"future depth event",&ws);continue;}
-                                    if let Some(book)=market.book.as_mut() {
-                                        match book.apply(update) {
-                                            Ok(Some(batch))=>{self.book_ready(owner,epoch,symbol,book.coverage(),batch.ts_init);self.publish(owner,epoch,&frame.topic,frame.revision,Data::from(batch));},
-                                            Ok(None)=>{if book.is_continuous(){self.book_ready(owner,epoch,symbol,book.coverage(),frame.received);}},
-                                            Err(_)=>{
-                                                self.book_ready(owner,epoch,symbol,None,now());generation+=1;
-                                                if self.start_book(owner,epoch,symbol,frame.revision,generation,market,&spawner,&tx).is_err(){self.fault(owner,epoch,"depth recovery failed",&ws);}
-                                            },
-                                        }
-                                    }
-                                },
-                                Ok(BackpackPublicEvent::Duplicate)=>{},
-                                Err(_)=>self.fault(owner,epoch,"invalid public observation",&ws),
+                        }
+                        Err(_) => {
+                            self.book_ready(
+                                owner,
+                                epoch,
+                                symbol,
+                                frame.revision,
+                                None,
+                                frame.received,
+                            );
+                            actor.generation += 1;
+
+                            if self
+                                .start_book(
+                                    owner,
+                                    epoch,
+                                    symbol,
+                                    frame.revision,
+                                    actor.generation,
+                                    market,
+                                    spawner,
+                                    tx,
+                                )
+                                .is_err()
+                            {
+                                self.fault(owner, epoch, "depth recovery failed", ws);
                             }
-                        },
-                        Some(Input::Snapshot(snapshot))=>{
-                            let topic=format!("depth.{}",snapshot.symbol);
-                            if snapshot.epoch!=epoch || !self.current_topic(owner,epoch,&topic,snapshot.revision){continue;}
-                            let Some(market)=markets.get_mut(&snapshot.symbol) else {continue;};
-                            if market.token!=snapshot.token {continue;}
-                            if !self.fresh(snapshot.received) {self.fault(owner,epoch,"stale depth snapshot",&ws);continue;}
-                            match snapshot.result {
-                                Ok(body)=>{
-                                    if let Some(book)=market.book.as_mut() {
-                                        match book.install_snapshot(snapshot.token,&body,snapshot.received) {
-                                            Ok(batch)=>{if !self.fresh(batch.ts_init)||batch.ts_event.as_u64()>now().as_u64(){book.invalidate();self.fault(owner,epoch,"stale or future depth replay",&ws);}else{self.book_ready(owner,epoch,&snapshot.symbol,book.coverage(),batch.ts_init);self.publish(owner,epoch,&topic,snapshot.revision,Data::from(batch));}},
-                                            Err(_)=>self.fault(owner,epoch,"depth snapshot rejected",&ws),
-                                        }
-                                    }
-                                },
-                                Err(_)=>self.fault(owner,epoch,"depth snapshot failed",&ws),
-                            }
-                        },
+                        }
                     }
                 }
             }
+            Ok(BackpackPublicEvent::Duplicate) => {}
+            Err(_) => self.fault(owner, epoch, "invalid public observation", ws),
         }
-        let mut state = self.gate.lock();
-        if state.owner == owner {
-            state.invalidate("session stopped");
-            state.running = false;
+    }
+
+    fn install(
+        &self,
+        owner: u64,
+        ws: &WebSocketClient,
+        actor: &mut ActorState,
+        snapshot: Snapshot,
+    ) {
+        let epoch = actor.epoch;
+        let topic = format!("depth.{}", snapshot.symbol);
+        if snapshot.epoch != epoch || !self.current_topic(owner, epoch, &topic, snapshot.revision) {
+            return;
+        }
+        let Some(market) = actor.markets.get_mut(&snapshot.symbol) else {
+            return;
+        };
+
+        if market.token != snapshot.token {
+            return;
+        }
+
+        if !self.fresh(snapshot.received) {
+            self.fault(owner, epoch, "stale depth snapshot", ws);
+            return;
+        }
+        let Ok(body) = snapshot.result else {
+            self.fault(owner, epoch, "depth snapshot failed", ws);
+            return;
+        };
+
+        if let Some(book) = market.book.as_mut() {
+            match book.install_snapshot(snapshot.token, &body, snapshot.received) {
+                Ok(batch) => {
+                    if !self.fresh(batch.ts_init) || !self.fresh(batch.ts_event) {
+                        book.invalidate();
+                        self.fault(owner, epoch, "stale or future depth replay", ws);
+                    } else {
+                        market.last_sequence = Some(batch.sequence);
+                        self.book_ready(
+                            owner,
+                            epoch,
+                            &snapshot.symbol,
+                            snapshot.revision,
+                            book.coverage(),
+                            batch.ts_init.min(batch.ts_event),
+                        );
+                        self.publish(owner, epoch, &topic, snapshot.revision, Data::from(batch));
+                    }
+                }
+                Err(_) => self.fault(owner, epoch, "depth snapshot rejected", ws),
+            }
         }
     }
 
@@ -620,12 +904,14 @@ impl PublicSession {
             Data::Deltas(d) => Some(d.ts_event),
             _ => None,
         };
-        let state = self.gate.lock();
+        let mut state = self.gate.lock();
         if self.admits_topic(&state, owner, epoch, topic, revision)
             && self.fresh(data.ts_init())
             && event_time.is_some_and(|t| t.as_u64() <= now().as_u64())
+            && self.sender.send(DataEvent::Data(data)).is_err()
         {
-            let _ = self.sender.send(DataEvent::Data(data));
+            state.invalidate("data engine unavailable");
+            state.running = false;
         }
     }
     fn book_ready(
@@ -633,21 +919,30 @@ impl PublicSession {
         owner: u64,
         epoch: u64,
         symbol: &str,
+        revision: u64,
         coverage: Option<BackpackBookCoverage>,
         received: UnixNanos,
     ) {
         let mut state = self.gate.lock();
-        if state.current(owner, epoch) {
+        if self.admits_topic(&state, owner, epoch, &format!("depth.{symbol}"), revision) {
             state.books.insert(symbol.to_owned(), coverage);
             state.book_receipts.insert(symbol.to_owned(), received);
         }
     }
     fn fault(&self, owner: u64, epoch: u64, reason: &'static str, ws: &WebSocketClient) {
         let mut state = self.gate.lock();
-        if state.current(owner, epoch) {
-            state.invalidate(reason);
+        if !state.current(owner, epoch) {
+            return;
         }
+        state.invalidate(reason);
+        let expired = state.lost_at.is_some_and(|t| {
+            t.elapsed() >= Duration::from_secs(self.config.lifecycle().reconnect_timeout_secs)
+        });
         drop(state);
+
+        if expired {
+            return;
+        }
         let _ = ws.reconnect_handle().request_reconnect();
     }
 
@@ -679,6 +974,7 @@ impl PublicSession {
             .filter(|(t, r)| desired.get(*t) != Some(*r))
             .map(|(t, _)| t.clone())
             .collect::<Vec<_>>();
+
         for topic in removed {
             ws.send_text_on_connection(
                 serde_json::json!({"method":"UNSUBSCRIBE","params":[topic]}).to_string(),
@@ -695,17 +991,19 @@ impl PublicSession {
                         c.cancel();
                     }
                 }
-                self.book_ready(owner, epoch, symbol, None, now());
+                self.book_ready(owner, epoch, symbol, 0, None, now());
             }
         }
+
         for (topic, revision) in desired {
             if sent.get(&topic) == Some(&revision) {
                 continue;
             }
+
             if let Some(symbol) = topic.strip_prefix("depth.") {
                 let market = markets.get_mut(symbol).ok_or(BackpackDataError::Metadata)?;
                 *generation += 1;
-                self.prepare_book(symbol, *generation, market)?;
+                self.prepare_book(owner, epoch, revision, symbol, *generation, market)?;
             }
             ws.send_text_on_connection(
                 serde_json::json!({"method":"SUBSCRIBE","params":[topic]}).to_string(),
@@ -724,10 +1022,18 @@ impl PublicSession {
     }
     fn prepare_book(
         &self,
+        owner: u64,
+        epoch: u64,
+        revision: u64,
         symbol: &str,
         token: u64,
         market: &mut MarketState,
     ) -> Result<(), BackpackDataError> {
+        let mut state = self.gate.lock();
+        if !self.admits_topic(&state, owner, epoch, &format!("depth.{symbol}"), revision) {
+            return Ok(());
+        }
+
         if let Some(c) = market.snapshot_cancel.take() {
             c.cancel();
         }
@@ -735,6 +1041,7 @@ impl PublicSession {
         let p = self.config.lifecycle();
         market.book_parser = Some(BackpackPublicStreamParser::new(metadata.clone(), token));
         market.token = token;
+        market.last_sequence = None;
         market.book = Some(
             BackpackDepthSynchronizer::new_checked(
                 metadata,
@@ -745,7 +1052,6 @@ impl PublicSession {
             )
             .map_err(|_| BackpackDataError::Configuration("depth policy"))?,
         );
-        let mut state = self.gate.lock();
         state.books.insert(symbol.to_owned(), None);
         state.book_tokens.insert(symbol.to_owned(), token);
         Ok(())
@@ -762,7 +1068,7 @@ impl PublicSession {
         spawner: &TaskSpawner,
         tx: &mpsc::Sender<Input>,
     ) -> Result<(), BackpackDataError> {
-        self.prepare_book(symbol, token, market)?;
+        self.prepare_book(owner, epoch, revision, symbol, token, market)?;
         self.snapshot(owner, epoch, symbol, revision, market, spawner, tx)
     }
     #[expect(clippy::too_many_arguments)]

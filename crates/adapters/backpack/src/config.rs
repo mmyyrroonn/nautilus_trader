@@ -312,6 +312,7 @@ impl BackpackPublicLifecycleConfig {
             self.reconnect_timeout_secs,
             self.shutdown_timeout_secs,
         ];
+
         if timings.iter().any(|v| !(1..=60).contains(v))
             || !(1..=30_000).contains(&self.quote_stale_after_ms)
             || self.ws_idle_timeout_secs <= self.ws_heartbeat_secs

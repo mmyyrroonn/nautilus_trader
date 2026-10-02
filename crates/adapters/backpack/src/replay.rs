@@ -103,6 +103,7 @@ impl BackpackPublicReplay {
             self.book.invalidate();
             BackpackDataError::Replay
         })?;
+
         if record.generation < self.generation {
             return Ok(None);
         }
@@ -133,6 +134,7 @@ impl BackpackPublicReplay {
             }
             Kind::Frame => {
                 let payload = record.payload.ok_or(BackpackDataError::Replay)?;
+
                 match self
                     .parser
                     .decode(
@@ -155,6 +157,7 @@ impl BackpackPublicReplay {
                 }
             }
         };
+
         if result.is_err() {
             self.book.invalidate();
         }
@@ -181,6 +184,7 @@ impl BackpackPublicReplay {
                 .take(self.policy.max_ws_message_bytes as u64 + 1)
                 .read_until(b'\n', &mut line)
                 .map_err(|_| BackpackDataError::Replay)?;
+
             if length == 0 {
                 break;
             }
@@ -193,6 +197,7 @@ impl BackpackPublicReplay {
                 self.book.invalidate();
                 return Err(BackpackDataError::Replay);
             }
+
             if let Some(data) = self.apply_record(&line)? {
                 publish(data);
             }

@@ -63,6 +63,7 @@ use nautilus_model::{
     data::Data,
     enums::BookType,
     identifiers::{ClientId, InstrumentId},
+    instruments::Instrument,
 };
 use parking_lot::Mutex;
 use rstest::rstest;
@@ -85,7 +86,7 @@ fn id() -> InstrumentId {
 }
 #[derive(Clone, Debug)]
 enum Command {
-    Frame(String),
+    Frame(Value),
     Close,
 }
 #[derive(Clone)]
@@ -93,10 +94,12 @@ struct SnapshotReply {
     id: u64,
     delay_ms: u64,
 }
+type CapturedRequest = (String, String, HashMap<String, String>);
 struct ServerState {
     commands: Mutex<Vec<(usize, Value)>>,
-    requests: Mutex<Vec<(String, String, HashMap<String, String>)>>,
+    requests: Mutex<Vec<CapturedRequest>>,
     connections: AtomicUsize,
+    active_connections: AtomicUsize,
     market_delay_ms: AtomicU64,
     market_override: Mutex<Option<Value>>,
     control: broadcast::Sender<Command>,
@@ -122,6 +125,7 @@ impl Server {
             commands: Mutex::new(vec![]),
             requests: Mutex::new(vec![]),
             connections: AtomicUsize::new(0),
+            active_connections: AtomicUsize::new(0),
             market_delay_ms: AtomicU64::new(0),
             market_override: Mutex::new(None),
             control,
@@ -133,6 +137,7 @@ impl Server {
             .route("/api/v1/markets", get(markets))
             .route("/api/v1/depth", get(depth))
             .with_state(state.clone());
+
         let task = tokio::spawn(async move {
             axum::serve(listener, app).await.unwrap();
         });
@@ -176,10 +181,7 @@ impl Server {
         .unwrap()
     }
     fn send(&self, value: Value) {
-        self.state
-            .control
-            .send(Command::Frame(value.to_string()))
-            .unwrap();
+        self.state.control.send(Command::Frame(value)).unwrap();
     }
     fn snapshot(&self, id: u64, delay_ms: u64) {
         self.state
@@ -196,6 +198,7 @@ impl Server {
                         && c["method"] == method
                         && c["params"].as_array().unwrap().iter().any(|v| v == topic)
                 });
+
                 if found {
                     break;
                 }
@@ -245,6 +248,7 @@ async fn markets(State(state): State<Arc<ServerState>>, request: Request) -> Jso
         state.market_delay_ms.load(Ordering::Acquire),
     ))
     .await;
+
     if let Some(value) = state.market_override.lock().clone() {
         return Json(value);
     }
@@ -261,8 +265,9 @@ async fn depth(State(state): State<Arc<ServerState>>, request: Request) -> Json<
     });
     let stamp = micros();
     tokio::time::sleep(Duration::from_millis(reply.delay_ms)).await;
+    let bid = if reply.id == 999 { "102.0" } else { "100.0" };
     Json(
-        json!({"asks":[["101.0","1.00000"]],"bids":[["100.0","1.00000"]],"lastUpdateId":reply.id.to_string(),"timestamp":stamp}),
+        json!({"asks":[["101.0","1.00000"]],"bids":[[bid,"1.00000"]],"lastUpdateId":reply.id.to_string(),"timestamp":stamp}),
     )
 }
 async fn ws(
@@ -275,15 +280,34 @@ async fn ws(
 }
 async fn serve_ws(socket: WebSocket, state: Arc<ServerState>) {
     let index = state.connections.fetch_add(1, Ordering::AcqRel);
+    state.active_connections.fetch_add(1, Ordering::AcqRel);
     let (mut write, mut read) = socket.split();
     let mut control = state.control.subscribe();
+
     loop {
         tokio::select! {
-         command=control.recv()=>match command{Ok(Command::Frame(v))=>{if write.send(Message::Text(v.into())).await.is_err(){break;}},Ok(Command::Close)=>{let _=write.send(Message::Close(None)).await;break;},Err(_)=>break},
-         message=read.next()=>match message {Some(Ok(Message::Text(v)))=>{state.commands.lock().push((index,serde_json::from_str(&v).unwrap()));state.notify.notify_waiters();},Some(Ok(Message::Ping(v)))=>{let _=write.send(Message::Pong(v)).await;},Some(Ok(Message::Close(_)))|None|Some(Err(_))=>break,_=>{}}
+            command=control.recv()=>match command {
+                Ok(Command::Frame(value))=>{
+                    if write.send(Message::Text(value.to_string().into())).await.is_err(){break;}
+                },
+                Ok(Command::Close)=>{let _=write.send(Message::Close(None)).await;break;},
+                Err(_)=>break,
+            },
+            message=read.next()=>match message {
+                Some(Ok(Message::Text(value)))=>{
+                    state.commands.lock().push((index,serde_json::from_str(&value).unwrap()));
+                    state.notify.notify_waiters();
+                },
+                Some(Ok(Message::Ping(value)))=>{let _=write.send(Message::Pong(value)).await;},
+                Some(Ok(Message::Close(_)) | Err(_)) | None=>break,
+                _=>{},
+            }
         }
     }
+    state.active_connections.fetch_sub(1, Ordering::AcqRel);
+    state.notify.notify_waiters();
 }
+
 fn quote(seq: u64) -> Value {
     let t = micros();
     json!({"stream":format!("bookTicker.{SYMBOL}"),"data":{"e":"bookTicker","E":t,"T":t,"s":SYMBOL,"a":"101.0","A":"1.00000","b":"100.0","B":"1.00000","u":seq}})
@@ -372,6 +396,7 @@ async fn loopback_factory_instruments_before_data_receive_before_snapshot_and_un
     server.send(trade(1));
     let mut kinds = vec![];
     let mut batch = None;
+
     for _ in 0..3 {
         match event(&mut rx).await {
             DataEvent::Data(Data::Quote(_)) => kinds.push("quote"),
@@ -418,6 +443,7 @@ async fn loopback_factory_instruments_before_data_receive_before_snapshot_and_un
     assert!(!config.telemetry().snapshot().connected);
     client.dispose().unwrap();
     assert!(client.connect().await.is_err());
+
     for (method, _, headers) in server.state.requests.lock().iter() {
         assert_eq!(method, "GET");
         assert!(
@@ -426,6 +452,7 @@ async fn loopback_factory_instruments_before_data_receive_before_snapshot_and_un
                 .any(|h| h.starts_with("x-api") || h == "x-signature")
         );
     }
+
     for (_, cmd) in server.state.commands.lock().iter() {
         assert!(cmd.get("signature").is_none());
         assert!(
@@ -577,12 +604,12 @@ async fn loopback_quote_freshness_null_side_old_event_and_malformed_duplicate() 
         .await;
     server.send(quote(1));
     let _ = event(&mut rx).await;
-    assert_eq!(client.health().quotes_fresh[SYMBOL], true);
+    assert!(client.health().quotes_fresh[SYMBOL]);
     tokio::time::sleep(Duration::from_millis(110)).await;
-    assert_eq!(client.health().quotes_fresh[SYMBOL], false);
+    assert!(!client.health().quotes_fresh[SYMBOL]);
     server.send(quote(1));
     no_event(&mut rx).await;
-    assert_eq!(client.health().quotes_fresh[SYMBOL], false);
+    assert!(!client.health().quotes_fresh[SYMBOL]);
     let mut future = quote(2);
     future["data"]["T"] = json!(micros() + 1_000_000_000);
     server.send(future);
@@ -723,4 +750,386 @@ async fn loopback_partial_connect_cancellation_and_invalid_complete_metadata_rol
     client.reset().unwrap();
     client.disconnect().await.unwrap();
     no_event(&mut rx).await;
+}
+
+#[tokio::test]
+async fn loopback_reconnect_new_tick_reaches_engine_and_instrument_response() {
+    let server = Server::start().await;
+    let config = server.config();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    replace_data_event_sender(tx);
+    let mut client = BackpackDataClient::new(ClientId::from("BP"), config).unwrap();
+    client.load_all(None).await.unwrap();
+    assert_eq!(client.store().count(), 1);
+    client
+        .subscribe_quotes(SubscribeQuotes::new(
+            id(),
+            Some(ClientId::from("BP")),
+            None,
+            UUID4::new(),
+            instant(),
+            None,
+            None,
+        ))
+        .unwrap();
+    client.connect().await.unwrap();
+    let _ = event(&mut rx).await;
+    assert!(client.store().is_empty());
+    server
+        .wait_topic(0, "SUBSCRIBE", &format!("bookTicker.{SYMBOL}"))
+        .await;
+    // This edited public metadata is deliberately synthetic, never a venue tick-change claim.
+    let mut market: Value =
+        serde_json::from_str(include_str!("../test_data/btc_usdc_perp.json")).unwrap();
+    market["filters"]["price"]["tickSize"] = json!("0.5");
+    market["filters"]["price"]["minPrice"] = json!("0.5");
+    *server.state.market_override.lock() = Some(json!([market]));
+    server.state.control.send(Command::Close).unwrap();
+    server
+        .wait_topic(1, "SUBSCRIBE", &format!("bookTicker.{SYMBOL}"))
+        .await;
+    let DataEvent::Instrument(instrument) = event(&mut rx).await else {
+        panic!("missing fresh instrument")
+    };
+    assert_eq!(instrument.price_increment().to_string(), "0.5");
+    assert!(client.store().is_empty());
+    let request = nautilus_common::messages::data::RequestInstrument::new(
+        id(),
+        None,
+        None,
+        Some(ClientId::from("BP")),
+        UUID4::new(),
+        instant(),
+        None,
+    );
+    let correlation = request.request_id;
+    client.request_instrument(request).unwrap();
+    let DataEvent::Response(nautilus_common::messages::data::DataResponse::Instrument(response)) =
+        event(&mut rx).await
+    else {
+        panic!("missing current metadata response")
+    };
+    assert_eq!(response.correlation_id, correlation);
+    assert_eq!(response.data.price_increment().to_string(), "0.5");
+    client.disconnect().await.unwrap();
+}
+
+#[tokio::test]
+async fn loopback_duplicate_depth_does_not_extend_book_freshness_but_empty_progress_does() {
+    let server = Server::start().await;
+    let config = server
+        .config()
+        .with_lifecycle_checked(BackpackPublicLifecycleConfig {
+            ws_idle_timeout_secs: 2,
+            ..server.config().lifecycle().clone()
+        })
+        .unwrap();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    replace_data_event_sender(tx);
+    let mut client = BackpackDataClient::new(ClientId::from("BP"), config).unwrap();
+    client
+        .subscribe_book_deltas(SubscribeBookDeltas::new(
+            id(),
+            BookType::L2_MBP,
+            Some(ClientId::from("BP")),
+            None,
+            UUID4::new(),
+            instant(),
+            None,
+            true,
+            None,
+            None,
+        ))
+        .unwrap();
+    client.connect().await.unwrap();
+    let _ = event(&mut rx).await;
+    let _ = event(&mut rx).await;
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    server.send(update(100, 100));
+    no_event(&mut rx).await;
+    tokio::time::sleep(Duration::from_millis(1000)).await;
+    assert!(client.health().connected);
+    assert!(!client.health().books_fresh[SYMBOL]);
+    assert!(client.health().books_continuous[SYMBOL]);
+    let mut empty = update(101, 101);
+    empty["data"]["a"] = json!([]);
+    empty["data"]["b"] = json!([]);
+    server.send(empty);
+    no_event(&mut rx).await;
+    assert!(client.health().books_fresh[SYMBOL]);
+    client.disconnect().await.unwrap();
+}
+
+#[tokio::test]
+async fn loopback_queue_overflow_during_metadata_bootstrap_cannot_reopen_that_epoch() {
+    let server = Server::start().await;
+    let config = server
+        .config()
+        .with_lifecycle_checked(BackpackPublicLifecycleConfig {
+            max_buffer_frames: 1,
+            ..server.config().lifecycle().clone()
+        })
+        .unwrap();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    replace_data_event_sender(tx);
+    let mut client = BackpackDataClient::new(ClientId::from("BP"), config).unwrap();
+    client
+        .subscribe_quotes(SubscribeQuotes::new(
+            id(),
+            Some(ClientId::from("BP")),
+            None,
+            UUID4::new(),
+            instant(),
+            None,
+            None,
+        ))
+        .unwrap();
+    client.connect().await.unwrap();
+    let _ = event(&mut rx).await;
+    server
+        .wait_topic(0, "SUBSCRIBE", &format!("bookTicker.{SYMBOL}"))
+        .await;
+    server.state.market_delay_ms.store(300, Ordering::Release);
+    server.state.control.send(Command::Close).unwrap();
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            let wait = server.state.notify.notified();
+            if server
+                .state
+                .requests
+                .lock()
+                .iter()
+                .filter(|(_, p, _)| p == "/api/v1/markets")
+                .count()
+                >= 2
+            {
+                break;
+            }
+            wait.await;
+        }
+    })
+    .await
+    .unwrap();
+
+    for seq in 1..=8 {
+        server.send(quote(seq));
+    }
+    server
+        .wait_topic(2, "SUBSCRIBE", &format!("bookTicker.{SYMBOL}"))
+        .await;
+    assert!(matches!(event(&mut rx).await, DataEvent::Instrument(_)));
+    assert_eq!(client.health().connection_epoch, 2);
+    assert!(client.health().quotes_fresh.is_empty());
+    server.send(quote(10));
+    assert!(matches!(
+        event(&mut rx).await,
+        DataEvent::Data(Data::Quote(_))
+    ));
+    client.disconnect().await.unwrap();
+}
+
+#[tokio::test]
+async fn loopback_snapshot_failure_reconnects_without_publishing_invalid_book() {
+    let server = Server::start().await;
+    server.snapshot(999, 0);
+    let config = server.config();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    replace_data_event_sender(tx);
+    let mut client = BackpackDataClient::new(ClientId::from("BP"), config).unwrap();
+    client
+        .subscribe_book_deltas(SubscribeBookDeltas::new(
+            id(),
+            BookType::L2_MBP,
+            Some(ClientId::from("BP")),
+            None,
+            UUID4::new(),
+            instant(),
+            None,
+            true,
+            None,
+            None,
+        ))
+        .unwrap();
+    client.connect().await.unwrap();
+    assert!(matches!(event(&mut rx).await, DataEvent::Instrument(_)));
+    assert!(matches!(event(&mut rx).await, DataEvent::Instrument(_)));
+    let DataEvent::Data(Data::Deltas(batch)) = event(&mut rx).await else {
+        panic!("missing valid recovery snapshot")
+    };
+    assert_eq!(batch.sequence, 100);
+    assert_eq!(client.health().connection_epoch, 1);
+    client.disconnect().await.unwrap();
+}
+#[tokio::test]
+async fn loopback_idle_feed_recovery_does_not_reuse_previous_quote_freshness() {
+    let server = Server::start().await;
+    let config = server
+        .config()
+        .with_lifecycle_checked(BackpackPublicLifecycleConfig {
+            ws_idle_timeout_secs: 2,
+            ..server.config().lifecycle().clone()
+        })
+        .unwrap();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    replace_data_event_sender(tx);
+    let mut client = BackpackDataClient::new(ClientId::from("BP"), config).unwrap();
+    client
+        .subscribe_quotes(SubscribeQuotes::new(
+            id(),
+            Some(ClientId::from("BP")),
+            None,
+            UUID4::new(),
+            instant(),
+            None,
+            None,
+        ))
+        .unwrap();
+    client.connect().await.unwrap();
+    let _ = event(&mut rx).await;
+    server
+        .wait_topic(0, "SUBSCRIBE", &format!("bookTicker.{SYMBOL}"))
+        .await;
+    server.send(quote(1));
+    let _ = event(&mut rx).await;
+    server
+        .wait_topic(1, "SUBSCRIBE", &format!("bookTicker.{SYMBOL}"))
+        .await;
+    assert!(matches!(event(&mut rx).await, DataEvent::Instrument(_)));
+    assert!(client.health().quotes_fresh.is_empty());
+    server.send(quote(1));
+    assert!(matches!(
+        event(&mut rx).await,
+        DataEvent::Data(Data::Quote(_))
+    ));
+    client.disconnect().await.unwrap();
+}
+#[tokio::test]
+async fn loopback_recovery_deadline_covers_slow_metadata_and_owned_teardown() {
+    let server = Server::start().await;
+    let config = server
+        .config()
+        .with_lifecycle_checked(BackpackPublicLifecycleConfig {
+            reconnect_timeout_secs: 2,
+            ..server.config().lifecycle().clone()
+        })
+        .unwrap();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    replace_data_event_sender(tx);
+    let mut client = BackpackDataClient::new(ClientId::from("BP"), config).unwrap();
+    client
+        .subscribe_quotes(SubscribeQuotes::new(
+            id(),
+            Some(ClientId::from("BP")),
+            None,
+            UUID4::new(),
+            instant(),
+            None,
+            None,
+        ))
+        .unwrap();
+    client.connect().await.unwrap();
+    let _ = event(&mut rx).await;
+    server
+        .wait_topic(0, "SUBSCRIBE", &format!("bookTicker.{SYMBOL}"))
+        .await;
+    server.state.market_delay_ms.store(5000, Ordering::Release);
+    server.state.control.send(Command::Close).unwrap();
+    tokio::time::timeout(Duration::from_secs(4), async {
+        loop {
+            if client.health().stale_reason == Some("recovery deadline") {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(!client.health().connected && !client.health().metadata_ready);
+    client.disconnect().await.unwrap();
+    no_event(&mut rx).await;
+}
+
+#[tokio::test]
+async fn loopback_closed_data_sink_closes_owning_public_socket() {
+    let server = Server::start().await;
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    replace_data_event_sender(tx);
+    let mut client = BackpackDataClient::new(ClientId::from("BP"), server.config()).unwrap();
+    client
+        .subscribe_quotes(SubscribeQuotes::new(
+            id(),
+            Some(ClientId::from("BP")),
+            None,
+            UUID4::new(),
+            instant(),
+            None,
+            None,
+        ))
+        .unwrap();
+    client.connect().await.unwrap();
+    let _ = event(&mut rx).await;
+    server
+        .wait_topic(0, "SUBSCRIBE", &format!("bookTicker.{SYMBOL}"))
+        .await;
+    drop(rx);
+    server.send(quote(1));
+    tokio::time::timeout(Duration::from_secs(3), async {
+        loop {
+            let wait = server.state.notify.notified();
+            if server.state.active_connections.load(Ordering::Acquire) == 0 {
+                break;
+            }
+            wait.await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(!client.health().connected);
+    assert_eq!(
+        client.health().stale_reason,
+        Some("data engine unavailable")
+    );
+    client.disconnect().await.unwrap();
+}
+
+#[tokio::test]
+async fn loopback_old_depth_event_cannot_become_fresh_by_arriving_now() {
+    let server = Server::start().await;
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    replace_data_event_sender(tx);
+    let mut client = BackpackDataClient::new(ClientId::from("BP"), server.config()).unwrap();
+    client
+        .subscribe_book_deltas(SubscribeBookDeltas::new(
+            id(),
+            BookType::L2_MBP,
+            Some(ClientId::from("BP")),
+            None,
+            UUID4::new(),
+            instant(),
+            None,
+            true,
+            None,
+            None,
+        ))
+        .unwrap();
+    client.connect().await.unwrap();
+    assert!(matches!(event(&mut rx).await, DataEvent::Instrument(_)));
+    assert!(matches!(
+        event(&mut rx).await,
+        DataEvent::Data(Data::Deltas(_))
+    ));
+    let mut delayed = update(101, 101);
+    delayed["data"]["T"] = json!(micros() - 120_000_000);
+    delayed["data"]["E"] = delayed["data"]["T"].clone();
+    server.send(delayed);
+    server
+        .wait_topic(1, "SUBSCRIBE", &format!("depth.{SYMBOL}"))
+        .await;
+    assert!(matches!(event(&mut rx).await, DataEvent::Instrument(_)));
+    let DataEvent::Data(Data::Deltas(batch)) = event(&mut rx).await else {
+        panic!("missing fresh replacement snapshot")
+    };
+    assert_eq!(batch.sequence, 100);
+    assert!(client.health().books_fresh[SYMBOL]);
+    client.disconnect().await.unwrap();
 }

@@ -17,10 +17,12 @@
 //!
 //! This crate validates an explicit USDC perpetual allowlist and endpoint selection.
 //! It provides audience-bound credentials, protocol signing, and a restricted GET transport.
-//! It parses exact public metadata and persists durable local order identity and unsigned intents.
-//! A native public data owner and factory manage instrument discovery and bounded public feeds.
-//! Typed account reads and bounded fill reconciliation are independent read-only foundations.
-//! Account runtime and restricted execution remain unavailable in this phase.
+//! It parses exact public metadata and bounded public streams with depth synchronization.
+//! A native public data owner and factory manage discovery and bounded public feeds.
+//! It persists durable local order identity and unsigned intents.
+//! It provides typed account reads, conservative coverage evidence and staged fill reconciliation.
+//! Loopback-only guarded mutations are available; account runtime, engine execution integration
+//! and production writes remain unsupported.
 //! The optional `python` feature exposes public configuration and the native data factory.
 //! The optional `high-precision` feature propagates
 //! the Nautilus domain precision mode; default features remain empty.
@@ -35,6 +37,7 @@ pub mod config;
 pub mod data;
 pub mod data_error;
 pub mod depth;
+pub mod execution;
 pub mod factories;
 pub mod http;
 pub mod identity;
