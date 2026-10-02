@@ -52,6 +52,6 @@ ustr = { workspace = true }
 zeroize = { workspace = true }
 
 [dev-dependencies]
-futures-util = { workspace = true }
 axum = { workspace = true }
+futures-util = { workspace = true }
 rstest = { workspace = true }

@@ -16,10 +16,10 @@ perform no I/O or environment lookup.
 | Durable clientId and unsigned intent                | Local filesystem ownership and recovery tested | Execution admission and reconciliation          |
 | Endpoint validation and credential audience         | Implemented offline                            | Production or explicit local protocol peers     |
 | REST signing and authenticated/public GET transport | Implemented with local transport tests         | Typed domain parsing and reconciliation         |
-| Account snapshot/history and fill reconciliation    | Read-only protocol and delivery contracts       | Runtime coverage and durable consumer ACK        |
+| Account snapshot/history and fill reconciliation    | Read-only protocol and delivery contracts      | Runtime coverage and durable consumer ACK       |
 | Private WS subscription authentication              | Payload construction only                      | Connection lifecycle and account processing     |
 | Public stream parsing and depth replay              | Implemented without transport                  | Native data client lifecycle                    |
-| Native public data client and factory               | Public instruments, BBO, trades, mark and L2    | Python registry projection                      |
+| Native public data client and factory               | Public instruments, BBO, trades, mark and L2   | Python registry projection                      |
 | Private account runtime                             | Explicit unsupported error                     | Account state and reconciliation                |
 | Restricted execution                                | Explicit unsupported error                     | Guarded order surface after deterministic tests |
 
@@ -36,7 +36,9 @@ all allowlisted native symbols. `with_lifecycle_checked` checks bounded HTTP/han
 idle and recovery/shutdown deadlines, quote age, snapshot depth and protocol buffers. The default
 BBO age limit is 3000 ms. `data::BackpackDataClient` implements the native `DataClient` and strict
 `InstrumentProvider`; `factories::BackpackDataClientFactory` supplies the native registry seam.
-An explicit `with_quota` constructor shares one caller-owned public/private REST scope.
+An explicit `with_quota` constructor shares one caller-owned public/private REST scope. The trait
+provider store is a disconnected explicit-load snapshot and is cleared on connect. Live instrument
+requests and reconnect announcements always use the current run Gate, including changed precision.
 
 Connect and every shared WebSocket reconnect validate the entire metadata allowlist and economic
 conversion before publishing all instruments, then admit current-session data. Subscription intent
@@ -53,7 +55,8 @@ replaces the observation Gate with a fresh allocation, so old tasks cannot affec
 run. JSON schema version 1 exposes run/generation/epoch, metadata and transport readiness, BBO
 freshness and exact event/receipt nanosecond strings, and independent book continuity, freshness
 and truncated coverage. Age uses original packet timestamps; duplicates and mark updates do not
-renew a quote. Future event/receipt timestamps do not establish freshness. Positive subscription
+renew a quote. Duplicate depth frames do not renew book freshness; valid empty sequence progress
+does. Future event/receipt timestamps do not establish freshness. Positive subscription
 ACK semantics remain unverified (`subscription_acknowledgements_verified=false`); a successful
 send is not a positive venue acknowledgment. `execution_ready` is always false.
 
@@ -279,6 +282,12 @@ capabilities are exposed. No testnet, DMS, or clientId uniqueness guarantee is a
 ## Validation
 
 Run `cargo test -p nautilus-backpack` and `cargo clippy -p nautilus-backpack --all-targets -- -D warnings`.
+Native loopback tests exercise factory extraction, instruments before data, receive-before-snapshot
+bootstrap, depth gaps, cancellation/unsubscribe, idle/reconnect recovery, changed metadata precision,
+bounded recovery deadlines, malformed/duplicate/future observations and exclusive telemetry run
+isolation. Replay tests preserve exact original timestamps and bound raw records. These tests make
+no venue calls; the separate credential-free example observes public venue data only.
+
 Tests cover official BTC/SOL market observations and explicitly synthetic adverse metadata, exact
 decimal and unit boundaries, public stream decoding, native depth replay and coverage faults, complete refreshes, economic provenance, configuration, and capability
 refusals. Identity tests cover durable restart/mapping, exhaustion, checksum/schema corruption,
@@ -297,7 +306,6 @@ transport responses are public synthetic material, never captured account fixtur
 live venue requests or account mutations. Actual POST/DELETE paths are not implemented or tested.
 See the repository [adapter guide](../../../docs/developer_guide/adapters.md) for later transport,
 client, and acceptance tests.
-
 
 ## Account observations and reconciliation
 

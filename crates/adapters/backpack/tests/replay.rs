@@ -41,8 +41,11 @@ fn replay() -> BackpackPublicReplay {
     .unwrap()
 }
 fn record(kind: &str, generation: u64, received_at_ns: u64, payload: Value) -> Vec<u8> {
-    serde_json::to_vec(&json!({"kind":kind,"generation":generation,"received_at_ns":received_at_ns,"payload":payload})).unwrap()
+    let mut value = json!({"kind":kind,"generation":generation,"received_at_ns":received_at_ns});
+    value["payload"] = payload;
+    serde_json::to_vec(&value).unwrap()
 }
+
 fn snapshot() -> Value {
     json!({"asks":[["101.0","1.00000"]],"bids":[["100.0","1.00000"]],"lastUpdateId":"100","timestamp":500})
 }
