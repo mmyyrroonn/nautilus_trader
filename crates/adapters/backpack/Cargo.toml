@@ -1,0 +1,31 @@
+[package]
+name = "nautilus-backpack"
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Backpack Exchange adapter foundations for the Nautilus trading engine"
+categories.workspace = true
+keywords.workspace = true
+documentation.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[lints]
+workspace = true
+
+[lib]
+name = "nautilus_backpack"
+crate-type = ["rlib"]
+
+[features]
+default = []
+
+[dependencies]
+thiserror = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+rstest = { workspace = true }

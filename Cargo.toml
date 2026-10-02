@@ -4,6 +4,7 @@ members = [
   "crates",
   "crates/adapters/architect_ax",
   "crates/adapters/aster",
+  "crates/adapters/backpack",
   "crates/adapters/betfair",
   "crates/adapters/binance",
   "crates/adapters/bitmex",
