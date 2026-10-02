@@ -20,6 +20,7 @@
 )]
 
 pub mod config;
+pub mod replay;
 
 use config::{PyBackpackDataClientConfig, PyBackpackInstrumentEconomics};
 use nautilus_common::factories::{ClientConfig, DataClientFactory};
@@ -92,6 +93,7 @@ pub fn backpack(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyBackpackInstrumentEconomics>()?;
     m.add_class::<PyBackpackDataClientConfig>()?;
     m.add_class::<PyBackpackDataClientFactory>()?;
+    m.add_class::<replay::PyBackpackPublicReplay>()?;
     let registry = get_global_pyo3_registry();
     registry
         .register_factory_extractor("BACKPACK".to_string(), extract_data_factory)

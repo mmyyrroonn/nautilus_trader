@@ -581,3 +581,18 @@ The type stub is produced by the repository stub generator from the Rust binding
 it must not be edited by hand. Embedded Python tests exercise exact economics, native config
 extraction, actual data-factory construction and telemetry ownership. Installed-wheel node/runtime
 acceptance is a separate application task.
+
+## Python offline replay
+
+`BackpackPublicReplay(config, market_json, metadata_received_at_ns, generation=1)` validates one
+recorded allowlisted public market and its explicit config economics without I/O. `instrument`
+returns the native `CryptoPerpetual`; it retains the caller's provenance and execution-ready=false.
+Market JSON is bounded to 1 MiB. No environment variable, file or network is accessed.
+
+`apply_record(record_bytes)` uses the native replay contract above and returns an actual native
+`QuoteTick`, `TradeTick`, `MarkPriceUpdate`, `OrderBookDeltas`, or `None` for a duplicate, unavailable
+quote or old generation. It preserves original engine and receipt times and exact decimals. Invalid
+records raise a sanitized error and invalidate depth until a strictly newer restart. This is historical
+replay; it does not claim live freshness, account verification or order execution. Each input record
+uses the native message-size bound. The application must additionally bound total records, run time
+and output bytes, and owns file input and any explicitly synthetic paper trading orchestration.
