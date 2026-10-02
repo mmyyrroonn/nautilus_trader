@@ -1825,6 +1825,16 @@ impl ExecutionManager {
                 continue;
             }
 
+            // Locally generated terminal events can update the cache without passing
+            // through observe_order_event, retire them before any retry or venue query.
+            if self
+                .get_order(client_order_id)
+                .is_some_and(|order| order.is_closed())
+            {
+                self.clear_recon_tracking(&client_order_id, true);
+                continue;
+            }
+
             if self.targeted_order_queries.contains(&client_order_id) {
                 continue;
             }
@@ -5554,7 +5564,10 @@ mod tests {
     use nautilus_model::{
         accounts::AccountAny,
         enums::{LiquiditySide, OmsType, PositionSide},
-        events::order::spec::{OrderPendingCancelSpec, OrderPendingUpdateSpec, OrderUpdatedSpec},
+        events::order::spec::{
+            OrderDeniedSpec, OrderExpiredSpec, OrderFillVoidedSpec, OrderPendingCancelSpec,
+            OrderPendingUpdateSpec, OrderRejectedSpec, OrderUpdatedSpec,
+        },
         identifiers::{Symbol, Venue},
         instruments::{
             CurrencyPair, Instrument,
@@ -6911,6 +6924,334 @@ mod tests {
         assert!(second.events.is_empty());
         assert!(second.queries.is_empty());
         assert!(!manager.inflight_checks.contains_key(&client_order_id));
+    }
+
+    #[rstest]
+    #[case(OrderStatus::Denied, false)]
+    #[case(OrderStatus::Denied, true)]
+    #[case(OrderStatus::Rejected, false)]
+    #[case(OrderStatus::Canceled, false)]
+    #[case(OrderStatus::Expired, false)]
+    #[case(OrderStatus::Filled, false)]
+    #[case(OrderStatus::Voided, false)]
+    #[cfg_attr(
+        not(all(feature = "simulation", madsim)),
+        tokio::test(start_paused = true)
+    )]
+    #[cfg_attr(all(feature = "simulation", madsim), madsim::test)]
+    async fn test_inflight_check_retires_direct_cached_terminal_without_observing_event(
+        #[case] status: OrderStatus,
+        #[case] targeted: bool,
+    ) {
+        let client_order_id = ClientOrderId::from("O-DIRECT-TERMINAL");
+        let venue_order_id = VenueOrderId::from("V-DIRECT-TERMINAL");
+        let account_id = AccountId::from("TEST-001");
+        let instrument = InstrumentAny::CryptoPerpetual(crypto_perpetual_ethusdt());
+        let order = OrderTestBuilder::new(OrderType::Limit)
+            .client_order_id(client_order_id)
+            .instrument_id(instrument.id())
+            .quantity(Quantity::from("10.0"))
+            .price(Price::from("100.0"))
+            .build();
+        let cache = Rc::new(RefCell::new(Cache::default()));
+        cache
+            .borrow_mut()
+            .add_order(order.clone(), None, None, false)
+            .unwrap();
+        let mut manager = ExecutionManager::new(
+            Rc::new(RefCell::new(TestClock::new())),
+            cache.clone(),
+            ExecutionManagerConfig {
+                inflight_threshold_ms: 100,
+                ..Default::default()
+            },
+        )
+        .expect("valid config");
+        manager.register_inflight(client_order_id);
+        manager.order_query_recency.mark(client_order_id);
+        manager.record_local_activity(client_order_id);
+        manager
+            .missing_order_coverage_warnings
+            .insert(client_order_id);
+        manager.open_check_lookback_warnings.insert(client_order_id);
+        manager.unresolved_order_coverage.insert(client_order_id);
+        if targeted {
+            manager.targeted_order_queries.insert(client_order_id);
+        }
+        if status != OrderStatus::Denied {
+            cache
+                .borrow_mut()
+                .update_order(&TestOrderEventStubs::submitted(&order, account_id))
+                .unwrap();
+        }
+        if !matches!(status, OrderStatus::Denied | OrderStatus::Rejected) {
+            cache
+                .borrow_mut()
+                .update_order(&TestOrderEventStubs::accepted(
+                    &order,
+                    account_id,
+                    venue_order_id,
+                ))
+                .unwrap();
+        }
+        let cached_order = cache.borrow().order_owned(&client_order_id).unwrap();
+        let event = match status {
+            OrderStatus::Denied => OrderEventAny::Denied(
+                OrderDeniedSpec::builder()
+                    .trader_id(order.trader_id())
+                    .strategy_id(order.strategy_id())
+                    .instrument_id(instrument.id())
+                    .client_order_id(client_order_id)
+                    .reason(Ustr::from("LOCAL_READINESS_REFUSAL"))
+                    .build(),
+            ),
+            OrderStatus::Rejected => OrderEventAny::Rejected(
+                OrderRejectedSpec::builder()
+                    .trader_id(order.trader_id())
+                    .strategy_id(order.strategy_id())
+                    .instrument_id(instrument.id())
+                    .client_order_id(client_order_id)
+                    .account_id(account_id)
+                    .build(),
+            ),
+            OrderStatus::Canceled => {
+                TestOrderEventStubs::canceled(&order, account_id, Some(venue_order_id))
+            }
+            OrderStatus::Expired => OrderEventAny::Expired(
+                OrderExpiredSpec::builder()
+                    .trader_id(order.trader_id())
+                    .strategy_id(order.strategy_id())
+                    .instrument_id(instrument.id())
+                    .client_order_id(client_order_id)
+                    .venue_order_id(venue_order_id)
+                    .account_id(account_id)
+                    .build(),
+            ),
+            OrderStatus::Filled | OrderStatus::Voided => TestOrderEventStubs::filled(
+                &cached_order,
+                &instrument,
+                Some(TradeId::from("T-TERMINAL")),
+                None,
+                Some(Price::from("100.0")),
+                Some(Quantity::from("10.0")),
+                None,
+                None,
+                None,
+                Some(account_id),
+            ),
+            _ => unreachable!(),
+        };
+        // Match engine-local denial: apply directly to the real cache, deliberately omit
+        // manager.observe_order_event so its event-based tracking cleanup cannot mask the bug.
+        cache.borrow_mut().update_order(&event).unwrap();
+        if status == OrderStatus::Voided {
+            let voided = OrderEventAny::FillVoided(
+                OrderFillVoidedSpec::builder()
+                    .trader_id(order.trader_id())
+                    .strategy_id(order.strategy_id())
+                    .instrument_id(instrument.id())
+                    .client_order_id(client_order_id)
+                    .venue_order_id(venue_order_id)
+                    .account_id(account_id)
+                    .trade_id(TradeId::from("T-TERMINAL"))
+                    .voided_qty(Quantity::from("10.0"))
+                    .order_type(OrderType::Limit)
+                    .last_px(Price::from("100.0"))
+                    .currency(Currency::USDT())
+                    .liquidity_side(LiquiditySide::Maker)
+                    .position_id(PositionId::from("1"))
+                    .build(),
+            );
+            cache.borrow_mut().update_order(&voided).unwrap();
+        }
+        assert_eq!(
+            cache.borrow().order(&client_order_id).unwrap().status(),
+            status
+        );
+        dst::time::sleep(Duration::from_millis(101)).await;
+        // Even a targeted query and a very recent retry cannot keep terminal tracking alive.
+        if targeted {
+            manager
+                .inflight_checks
+                .get_mut(&client_order_id)
+                .unwrap()
+                .last_query_at = Some(dst::time::Instant::now());
+        }
+        let result = manager.check_inflight_orders();
+        assert!(result.events.is_empty());
+        assert!(result.queries.is_empty());
+        assert!(!manager.inflight_checks.contains_key(&client_order_id));
+        assert!(!manager.recon_check_retries.contains_key(&client_order_id));
+        assert!(!manager.order_query_recency.contains_key(&client_order_id));
+        assert!(!manager.order_local_activity.contains_key(&client_order_id));
+        assert!(!manager.targeted_order_queries.contains(&client_order_id));
+        assert!(
+            !manager
+                .missing_order_coverage_warnings
+                .contains(&client_order_id)
+        );
+        assert!(
+            !manager
+                .open_check_lookback_warnings
+                .contains(&client_order_id)
+        );
+        assert!(!manager.unresolved_order_coverage.contains(&client_order_id));
+        dst::time::sleep(Duration::from_millis(101)).await;
+        let again = manager.check_inflight_orders();
+        assert!(again.events.is_empty());
+        assert!(again.queries.is_empty());
+        assert_eq!(
+            cache.borrow().order(&client_order_id).unwrap().status(),
+            status
+        );
+    }
+
+    #[rstest]
+    #[case(OrderStatus::Submitted)]
+    #[case(OrderStatus::PendingUpdate)]
+    #[case(OrderStatus::PendingCancel)]
+    #[cfg_attr(
+        not(all(feature = "simulation", madsim)),
+        tokio::test(start_paused = true)
+    )]
+    #[cfg_attr(all(feature = "simulation", madsim), madsim::test)]
+    async fn test_inflight_check_preserves_real_pending_retries_and_queries(
+        #[case] status: OrderStatus,
+    ) {
+        let client_order_id = ClientOrderId::from("O-TRUE-PENDING");
+        let venue_order_id = VenueOrderId::from("V-TRUE-PENDING");
+        let account_id = AccountId::from("TEST-001");
+        let client_id = ClientId::from("TEST");
+        let instrument_id = crypto_perpetual_ethusdt().id();
+        let cache = Rc::new(RefCell::new(Cache::default()));
+        insert_accepted_limit_order(
+            &cache,
+            client_order_id,
+            venue_order_id,
+            instrument_id,
+            client_id,
+        );
+        let order = cache.borrow().order_owned(&client_order_id).unwrap();
+        if status == OrderStatus::Submitted {
+            // Use a genuine submitted order with no invented venue acknowledgement.
+            let submitted = OrderTestBuilder::new(OrderType::Limit)
+                .client_order_id(ClientOrderId::from("O-SUBMITTED"))
+                .instrument_id(instrument_id)
+                .quantity(Quantity::from("10.0"))
+                .price(Price::from("100.0"))
+                .build();
+            cache
+                .borrow_mut()
+                .add_order(submitted.clone(), None, Some(client_id), false)
+                .unwrap();
+            cache
+                .borrow_mut()
+                .update_order(&TestOrderEventStubs::submitted(&submitted, account_id))
+                .unwrap();
+        } else {
+            let event = if status == OrderStatus::PendingUpdate {
+                OrderEventAny::PendingUpdate(
+                    OrderPendingUpdateSpec::builder()
+                        .trader_id(order.trader_id())
+                        .strategy_id(order.strategy_id())
+                        .instrument_id(instrument_id)
+                        .client_order_id(client_order_id)
+                        .venue_order_id(venue_order_id)
+                        .account_id(account_id)
+                        .build(),
+                )
+            } else {
+                OrderEventAny::PendingCancel(
+                    OrderPendingCancelSpec::builder()
+                        .trader_id(order.trader_id())
+                        .strategy_id(order.strategy_id())
+                        .instrument_id(instrument_id)
+                        .client_order_id(client_order_id)
+                        .venue_order_id(venue_order_id)
+                        .account_id(account_id)
+                        .build(),
+                )
+            };
+            cache.borrow_mut().update_order(&event).unwrap();
+        }
+        let client_order_id = if status == OrderStatus::Submitted {
+            ClientOrderId::from("O-SUBMITTED")
+        } else {
+            client_order_id
+        };
+        let mut manager = ExecutionManager::new(
+            Rc::new(RefCell::new(TestClock::new())),
+            cache.clone(),
+            ExecutionManagerConfig {
+                inflight_threshold_ms: 100,
+                inflight_max_retries: 3,
+                ..Default::default()
+            },
+        )
+        .expect("valid config");
+        manager.register_inflight(client_order_id);
+        for retry in 1..3 {
+            dst::time::sleep(Duration::from_millis(101)).await;
+            let result = manager.check_inflight_orders();
+            let [TradingCommand::QueryOrder(query)] = result.queries.as_slice() else {
+                panic!("expected actual pending query");
+            };
+            assert_eq!(query.client_order_id, client_order_id);
+            assert_eq!(query.client_id, Some(client_id));
+            assert_eq!(
+                query.venue_order_id,
+                (status != OrderStatus::Submitted).then_some(venue_order_id)
+            );
+            assert!(result.events.is_empty());
+            assert_eq!(manager.recon_check_retry_count(&client_order_id), retry);
+            assert_eq!(
+                cache.borrow().order(&client_order_id).unwrap().status(),
+                status
+            );
+        }
+        dst::time::sleep(Duration::from_millis(101)).await;
+        let exhausted = manager.check_inflight_orders();
+        assert!(exhausted.queries.is_empty());
+        assert_eq!(exhausted.events.len(), 1);
+        assert!(!manager.inflight_checks.contains_key(&client_order_id));
+        assert_eq!(
+            cache.borrow().order(&client_order_id).unwrap().status(),
+            status
+        );
+    }
+
+    #[rstest]
+    #[cfg_attr(
+        not(all(feature = "simulation", madsim)),
+        tokio::test(start_paused = true)
+    )]
+    #[cfg_attr(all(feature = "simulation", madsim), madsim::test)]
+    async fn test_inflight_check_missing_cached_order_keeps_existing_bounded_retry() {
+        let client_order_id = ClientOrderId::from("O-NOT-CACHED");
+        let mut manager = ExecutionManager::new(
+            Rc::new(RefCell::new(TestClock::new())),
+            Rc::new(RefCell::new(Cache::default())),
+            ExecutionManagerConfig {
+                inflight_threshold_ms: 100,
+                inflight_max_retries: 2,
+                ..Default::default()
+            },
+        )
+        .expect("valid config");
+        manager.register_inflight(client_order_id);
+        dst::time::sleep(Duration::from_millis(101)).await;
+        let first = manager.check_inflight_orders();
+        assert!(first.events.is_empty());
+        assert!(first.queries.is_empty());
+        assert!(manager.inflight_checks.contains_key(&client_order_id));
+        assert_eq!(manager.recon_check_retry_count(&client_order_id), 1);
+        assert!(manager.order_query_recency.contains_key(&client_order_id));
+        dst::time::sleep(Duration::from_millis(101)).await;
+        let exhausted = manager.check_inflight_orders();
+        assert!(exhausted.events.is_empty());
+        assert!(exhausted.queries.is_empty());
+        assert!(!manager.inflight_checks.contains_key(&client_order_id));
+        assert!(!manager.order_query_recency.contains_key(&client_order_id));
     }
 
     #[rstest]
