@@ -18,7 +18,8 @@
 //! This crate validates an explicit USDC perpetual allowlist and endpoint selection.
 //! It provides audience-bound credentials, protocol signing, and a restricted GET transport.
 //! It parses exact public metadata and persists durable local order identity and unsigned intents.
-//! Domain market/account clients and restricted execution remain unavailable in this phase.
+//! It provides typed account reads, conservative coverage evidence and staged fill reconciliation.
+//! Engine market/account runtime clients and restricted execution remain unavailable in this phase.
 //! There are no Python bindings. The optional `high-precision` feature propagates
 //! the Nautilus domain precision mode; default features remain empty.
 
@@ -26,6 +27,7 @@
 #![deny(missing_debug_implementations)]
 #![deny(rustdoc::broken_intra_doc_links)]
 
+pub mod account;
 pub mod common;
 pub mod config;
 pub mod http;
