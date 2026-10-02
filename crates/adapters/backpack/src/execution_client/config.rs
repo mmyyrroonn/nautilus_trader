@@ -28,6 +28,7 @@ use crate::{
     account::pagination::BackpackReadBudget,
     common::credential::BackpackCredential,
     config::BackpackConfig,
+    execution::{guard::BackpackExecutionAuthority, owner::BackpackMutationPolicy},
     http::{client::BackpackHttpPolicy, quota::BackpackQuota},
     identity::BackpackClientIdNamespace,
 };
@@ -85,7 +86,7 @@ impl BackpackExecutionPolicy {
         Ok(self)
     }
 }
-/// Immutable read-only configuration. Construction performs no I/O or environment lookup.
+/// Immutable configuration, read-only by default; guarded local mutations require explicit opt-in. Construction performs no I/O or environment lookup.
 /// The account ID is a configured engine label, never venue-verified account identity.
 /// Clones share a quota and exclusive telemetry claim; only one factory client owns them.
 #[derive(Clone, Debug)]
@@ -100,6 +101,7 @@ pub struct BackpackExecutionClientConfig {
     pub(crate) http_policy: BackpackHttpPolicy,
     pub(crate) quota: BackpackQuota,
     pub(crate) telemetry: BackpackAccountTelemetry,
+    pub(crate) restricted: Option<BackpackLoopbackExecutionMode>,
 }
 impl BackpackExecutionClientConfig {
     /// Creates explicit audience-bound configuration without opening files/sockets.
@@ -139,8 +141,51 @@ impl BackpackExecutionClientConfig {
             quota,
             http_policy: BackpackHttpPolicy::default(),
             telemetry: BackpackAccountTelemetry::default(),
+            restricted: None,
         })
     }
+    /// Opts into guarded mutations for one exact synthetic loopback peer.
+    /// Public reads, account reads and writes must consume the same explicit REST quota.
+    /// No production configuration can opt into this capability.
+    ///
+    /// # Errors
+    /// Returns an error for production, unbound namespace, mismatched quota or invalid limits.
+    pub fn with_loopback_execution(
+        mut self,
+        authority: BackpackExecutionAuthority,
+        mutation_policy: BackpackMutationPolicy,
+        public_rest_quota: &BackpackQuota,
+        public_telemetry: crate::telemetry::BackpackPublicTelemetry,
+    ) -> anyhow::Result<Self> {
+        anyhow::ensure!(
+            self.scope.endpoints().is_loopback(),
+            "production writes unsupported"
+        );
+        anyhow::ensure!(
+            self.namespace.matches_loopback_peer(self.scope.endpoints()),
+            "loopback namespace must bind exact transport origins"
+        );
+        anyhow::ensure!(
+            self.quota.shares_scope(public_rest_quota),
+            "public/private REST quota mismatch"
+        );
+        anyhow::ensure!(
+            public_telemetry.owns_scope(self.scope.endpoints(), &self.quota),
+            "actual public endpoint/quota scope mismatch"
+        );
+        authority.validate()?;
+        anyhow::ensure!(
+            !mutation_policy.budget.is_zero() && mutation_policy.budget <= Duration::from_secs(60),
+            "invalid mutation budget"
+        );
+        self.restricted = Some(BackpackLoopbackExecutionMode {
+            authority,
+            mutation_policy,
+            public_telemetry,
+        });
+        Ok(self)
+    }
+
     #[must_use]
     pub const fn scope(&self) -> &BackpackConfig {
         &self.scope
@@ -196,4 +241,11 @@ mod tests {
             assert!(!path.exists());
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct BackpackLoopbackExecutionMode {
+    pub authority: BackpackExecutionAuthority,
+    pub mutation_policy: BackpackMutationPolicy,
+    pub public_telemetry: crate::telemetry::BackpackPublicTelemetry,
 }

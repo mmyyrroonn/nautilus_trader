@@ -66,6 +66,11 @@ pub struct BackpackPrivateObservation {
     /// Exact raw private evidence; never used as an authenticated identity/ACK.
     pub raw: Option<Value>,
     pub facts: Vec<BackpackPrivateFact>,
+    /// Retained true fill fields for revalidating attribution after an independent POST ACK.
+    /// The owner bounds pending storage and never attributes from a numeric ID alone.
+    pub raw_fills: Vec<BackpackFill>,
+    /// Raw standard order observations; restricted clients never infer fills from cumulative totals.
+    pub raw_orders: Vec<BackpackOrder>,
     pub gaps: BTreeSet<BackpackEvidenceGap>,
 }
 #[derive(Deserialize)]
@@ -159,6 +164,8 @@ pub fn decode_private(
         topic: env.stream.clone(),
         raw: env.data.clone(),
         facts: Vec::new(),
+        raw_fills: Vec::new(),
+        raw_orders: Vec::new(),
         gaps: BTreeSet::from([BackpackEvidenceGap::AccountIdentityUnverified]),
     };
     let Some(topic) = env.stream else {
@@ -295,6 +302,7 @@ pub fn decode_private(
             system_order_type: system.clone(),
             extra,
         };
+        observation.raw_orders.push(order.clone());
         let converted = order_report(order, context)?;
         observation.gaps.extend(converted.gaps);
         if let Some(mut report) = converted.report {
@@ -330,6 +338,7 @@ pub fn decode_private(
                 trade_id: Some(trade),
                 extra: BTreeMap::new(),
             };
+            observation.raw_fills.push(fill.clone());
             let converted = fill_report(fill, context)?;
             observation.gaps.extend(converted.gaps);
             let report = converted.report.ok_or_else(required)?;

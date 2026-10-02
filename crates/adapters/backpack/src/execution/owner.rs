@@ -144,6 +144,7 @@ impl BackpackOrderOwner {
             dirty_sticky: false,
             account: None,
             markets: BTreeMap::new(),
+            public: None,
             records: BTreeMap::new(),
             checkpoint,
             checkpoint_bytes: None,
@@ -165,6 +166,30 @@ impl BackpackOrderOwner {
     #[must_use]
     pub fn guard(&self) -> BackpackExecutionGuard {
         self.guard.clone()
+    }
+
+    // Internal report conversion reads one immutable view while retaining the identity lock.
+    // The closure is adapter-owned parsing, never a caller admission/transport callback.
+    pub(crate) fn with_report_identity<T>(
+        &self,
+        parse: impl FnOnce(
+            &BackpackClientIdStore,
+            &crate::account::reports::BackpackOrderBindings,
+        ) -> anyhow::Result<T>,
+    ) -> anyhow::Result<T> {
+        let state = self.guard.lock()?;
+        let mut bindings = crate::account::reports::BackpackOrderBindings::default();
+        for (id, record) in &state.records {
+            if let Some(venue) = &record.venue_order_id {
+                bindings.confirm_acknowledged(
+                    *id,
+                    VenueOrderId::new_checked(venue)?,
+                    record.spec.instrument_id,
+                    &state.identities,
+                )?;
+            }
+        }
+        parse(&state.identities, &bindings)
     }
 
     /// Commits one immutable create intent before quota and dispatches at most once.
@@ -276,6 +301,55 @@ impl BackpackOrderOwner {
         self.dispatch(id, generation, true, cancel, deadline).await
     }
 
+    pub(crate) fn observe_owned_order(
+        &self,
+        id: ClientOrderId,
+        raw: &crate::account::models::BackpackOrder,
+    ) -> Result<(), BackpackExecutionError> {
+        let mut state = self.guard.lock()?;
+        state.account = None;
+        let record = state
+            .records
+            .get_mut(&id)
+            .ok_or(BackpackExecutionErrorKind::Ownership)?;
+        let expected = record
+            .spec
+            .parameters(&record.symbol, Some(record.client_id))?
+            .json_body();
+        let cumulative = raw.executed_quantity.as_ref().map(|value| value.0);
+        let matched = record.venue_order_id.as_deref() == Some(raw.id.as_str())
+            && raw.symbol == record.symbol
+            && raw.client_id.is_none_or(|value| value == record.client_id)
+            && raw.side == expected["side"]
+            && raw.order_type == expected["orderType"]
+            && raw.time_in_force == expected["timeInForce"]
+            && raw.quantity.as_ref().map(|value| value.0) == Some(record.spec.quantity)
+            && raw.price.as_ref().map(|value| value.0) == record.spec.price
+            && raw.post_only == Some(record.spec.post_only)
+            && raw.reduce_only == Some(record.spec.reduce_only)
+            && cumulative
+                .is_some_and(|value| value >= Decimal::ZERO && value <= record.spec.quantity);
+        if !matched {
+            record.status = CreateStatus::Unknown;
+            state.dirty_sticky = true;
+            state.persist()?;
+            return Err(BackpackExecutionErrorKind::Ownership.into());
+        }
+        let cumulative = cumulative.ok_or(BackpackExecutionErrorKind::Validation)?;
+        if cumulative > record.observed_cumulative {
+            let reopened = record.status == CreateStatus::Reconciled;
+            if reopened {
+                record.status = CreateStatus::Unknown;
+            }
+            record.observed_cumulative = cumulative;
+            if reopened {
+                state.dirty_sticky = true;
+            }
+            state.persist()?;
+        }
+        Ok(())
+    }
+
     /// Returns only a durable binding established by the original matched POST response.
     #[must_use]
     pub fn confirmed_binding(&self, id: ClientOrderId) -> Option<(VenueOrderId, InstrumentId)> {
@@ -288,6 +362,26 @@ impl BackpackOrderOwner {
             VenueOrderId::new_checked(record.venue_order_id.as_ref()?).ok()?,
             record.spec.instrument_id,
         ))
+    }
+
+    pub(crate) fn restore_native_binding(
+        &self,
+        spec: &BackpackOrderSpec,
+        venue: VenueOrderId,
+    ) -> Result<(), BackpackExecutionError> {
+        let state = self.guard.lock()?;
+        let original = state
+            .records
+            .get(&spec.client_order_id)
+            .ok_or(BackpackExecutionErrorKind::Ownership)?;
+        if original.venue_order_id.as_deref() != Some(venue.as_str())
+            || serde_json::to_vec(&original.spec)
+                .map_err(|_| BackpackExecutionErrorKind::Storage)?
+                != serde_json::to_vec(spec).map_err(|_| BackpackExecutionErrorKind::Storage)?
+        {
+            return Err(BackpackExecutionErrorKind::Ownership.into());
+        }
+        Ok(())
     }
 
     /// Acknowledges independent terminal and already-applied true fill evidence from the local peer.
@@ -645,6 +739,7 @@ pub(crate) struct OwnerState {
     dirty_sticky: bool,
     pub(crate) account: Option<BackpackLoopbackAccountFacts>,
     pub(crate) markets: BTreeMap<InstrumentId, BackpackLoopbackMarketFacts>,
+    pub(crate) public: Option<super::guard::PublicAdmission>,
     pub(crate) records: BTreeMap<ClientOrderId, OrderRecord>,
     checkpoint: PathBuf,
     checkpoint_bytes: Option<Vec<u8>>,

@@ -33,12 +33,11 @@ impl BackpackCapability {
     ///
     /// # Errors
     ///
-    /// Returns an unsupported error for restricted execution. Implementation presence is
+    /// Production mutation admission remains unsupported. Implementation presence is
     /// independent of live transport health, account verification or execution admission.
     pub const fn require_implemented(self) -> Result<(), BackpackUnsupportedCapabilityError> {
         match self {
-            Self::PublicMarketData | Self::ReadOnlyAccount => Ok(()),
-            _ => Err(BackpackUnsupportedCapabilityError { capability: self }),
+            Self::PublicMarketData | Self::ReadOnlyAccount | Self::RestrictedExecution => Ok(()),
         }
     }
 }
@@ -69,13 +68,20 @@ mod tests {
         assert!(health.evidence_gaps.contains("AccountIdentityUnverified"));
     }
     #[rstest]
-    #[case(BackpackCapability::RestrictedExecution)]
-    fn test_unimplemented_capabilities_are_explicitly_refused(
-        #[case] capability: BackpackCapability,
-    ) {
+    fn test_guarded_implementation_does_not_claim_production_readiness() {
         assert_eq!(
-            capability.require_implemented(),
-            Err(BackpackUnsupportedCapabilityError { capability }),
+            BackpackCapability::RestrictedExecution.require_implemented(),
+            Ok(())
+        );
+        assert!(
+            !crate::telemetry::BackpackPublicTelemetry::default()
+                .snapshot()
+                .execution_ready
+        );
+        assert!(
+            !crate::execution_client::BackpackAccountTelemetry::default()
+                .snapshot()
+                .private_subscription_confirmed
         );
     }
 }
