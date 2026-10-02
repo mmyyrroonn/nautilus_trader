@@ -4,6 +4,7 @@ members = [
   "crates",
   "crates/adapters/architect_ax",
   "crates/adapters/aster",
+  "crates/adapters/backpack",
   "crates/adapters/betfair",
   "crates/adapters/binance",
   "crates/adapters/bitmex",
@@ -101,6 +102,7 @@ nautilus-trading = { path = "crates/trading", version = "0.63.0" }
 # -----------------------------------------------------------------------------
 nautilus-architect-ax = { path = "crates/adapters/architect_ax", version = "0.63.0" }
 nautilus-aster = { path = "crates/adapters/aster", version = "0.63.0", default-features = false }
+nautilus-backpack = { path = "crates/adapters/backpack", version = "0.63.0", default-features = false }
 nautilus-betfair = { path = "crates/adapters/betfair", version = "0.63.0", default-features = false }
 nautilus-binance = { path = "crates/adapters/binance", version = "0.63.0", default-features = false }
 nautilus-bitmex = { path = "crates/adapters/bitmex", version = "0.63.0", default-features = false }

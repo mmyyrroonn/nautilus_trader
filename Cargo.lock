@@ -5498,6 +5498,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nautilus-backpack"
+version = "0.63.0"
+dependencies = [
+ "rstest",
+ "thiserror 2.0.20",
+ "url",
+]
+
+[[package]]
 name = "nautilus-backtest"
 version = "0.63.0"
 dependencies = [
