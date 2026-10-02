@@ -18,6 +18,6 @@ pub mod client;
 pub mod config;
 pub mod private;
 pub mod telemetry;
-pub use client::{BackpackExecutionClient, BackpackExecutionClientFactory};
+pub use client::{BackpackExecutionClient, BackpackExecutionClientFactory, BackpackFillDelivery};
 pub use config::{BackpackExecutionClientConfig, BackpackExecutionPolicy};
 pub use telemetry::{BackpackAccountHealth, BackpackAccountState, BackpackAccountTelemetry};

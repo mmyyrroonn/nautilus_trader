@@ -21,7 +21,8 @@
 //! A native public data owner and factory manage discovery and bounded public feeds.
 //! It persists durable local order identity and unsigned intents.
 //! It provides typed account reads, conservative coverage evidence and staged fill reconciliation.
-//! Loopback-only guarded mutations are available; account runtime, engine execution integration
+//! It provides a native read-only account client with bounded REST/private-stream lifecycle.
+//! Loopback-only guarded mutations are available; native engine mutation integration
 //! and production writes remain unsupported.
 //! There are no Python bindings. The optional `high-precision` feature propagates
 //! the Nautilus domain precision mode; default features remain empty.
