@@ -15,6 +15,12 @@ __all__ = [
     "BackpackExecutionClientConfig",
     "BackpackExecutionClientFactory",
     "BackpackInstrumentEconomics",
+    "BackpackLoopbackAccountFacts",
+    "BackpackLoopbackControl",
+    "BackpackLoopbackExecutionAuthority",
+    "BackpackLoopbackExecutionClientConfig",
+    "BackpackLoopbackExecutionClientFactory",
+    "BackpackLoopbackSession",
     "BackpackPublicReplay",
     "BackpackQuota",
 ]
@@ -186,6 +192,132 @@ class BackpackInstrumentEconomics:
         source: str,
         source_reference: str,
     ) -> BackpackInstrumentEconomics: ...
+
+@typing.final
+class BackpackLoopbackAccountFacts:
+    @property
+    def observed_at_ms(self) -> int: ...
+    @property
+    def available_margin(self) -> str: ...
+    @property
+    def margin_per_notional(self) -> str: ...
+    @property
+    def fee_buffer_per_notional(self) -> str: ...
+    @property
+    def economics_reference(self) -> str: ...
+    @property
+    def net_positions(self) -> dict[str, str]: ...
+    @property
+    def auto_borrow(self) -> bool: ...
+    @property
+    def auto_lend(self) -> bool: ...
+    @property
+    def auto_repay(self) -> bool: ...
+    @property
+    def liquidating(self) -> bool: ...
+    @property
+    def complete(self) -> bool: ...
+    def __new__(
+        cls,
+        *,
+        observed_at_ms: int,
+        available_margin: str,
+        margin_per_notional: str,
+        fee_buffer_per_notional: str,
+        economics_reference: str,
+        net_positions: typing.Mapping[str, str],
+        auto_borrow: bool,
+        auto_lend: bool,
+        auto_repay: bool,
+        liquidating: bool,
+        complete: bool,
+    ) -> BackpackLoopbackAccountFacts: ...
+
+@typing.final
+class BackpackLoopbackControl:
+    def begin_session(self) -> BackpackLoopbackSession: ...
+    def accept_account(
+        self, session: BackpackLoopbackSession, facts: BackpackLoopbackAccountFacts
+    ) -> None: ...
+    def refresh_market(self, session: BackpackLoopbackSession, instrument_id: str) -> None: ...
+    def invalidate(self, session: BackpackLoopbackSession) -> None: ...
+    def pending_fills_json(self) -> str: ...
+    def telemetry_snapshot_json(self) -> str: ...
+    def shutdown_report_json(self) -> str | None: ...
+
+@typing.final
+class BackpackLoopbackExecutionAuthority:
+    @property
+    def expires_at_ms(self) -> int: ...
+    @property
+    def max_account_age_ms(self) -> int: ...
+    @property
+    def max_market_age_ms(self) -> int: ...
+    @property
+    def max_order_notional(self) -> str: ...
+    @property
+    def max_reserved_notional(self) -> str: ...
+    @property
+    def max_reserved_margin(self) -> str: ...
+    @property
+    def max_unsettled_orders(self) -> int: ...
+    @property
+    def allow_new_risk(self) -> bool: ...
+    @property
+    def allow_reduction(self) -> bool: ...
+    @property
+    def allow_owned_cancel(self) -> bool: ...
+    def __new__(
+        cls,
+        *,
+        expires_at_ms: int,
+        max_account_age_ms: int,
+        max_market_age_ms: int,
+        max_order_notional: str,
+        max_reserved_notional: str,
+        max_reserved_margin: str,
+        max_unsettled_orders: int,
+        allow_new_risk: bool,
+        allow_reduction: bool,
+        allow_owned_cancel: bool,
+    ) -> BackpackLoopbackExecutionAuthority: ...
+
+@typing.final
+class BackpackLoopbackExecutionClientConfig:
+    @property
+    def read_only_config(self) -> BackpackExecutionClientConfig: ...
+    @property
+    def public_config(self) -> BackpackDataClientConfig: ...
+    @property
+    def authority(self) -> BackpackLoopbackExecutionAuthority: ...
+    @property
+    def mutation_budget_ms(self) -> int: ...
+    @property
+    def receive_window_ms(self) -> int: ...
+    @property
+    def control(self) -> BackpackLoopbackControl: ...
+    def __new__(
+        cls,
+        read_only_config: BackpackExecutionClientConfig,
+        public_config: BackpackDataClientConfig,
+        *,
+        authority: BackpackLoopbackExecutionAuthority,
+        mutation_budget_ms: int,
+        receive_window_ms: int,
+    ) -> BackpackLoopbackExecutionClientConfig: ...
+
+@typing.final
+class BackpackLoopbackExecutionClientFactory:
+    @property
+    def config_type(self) -> str: ...
+    def __new__(cls) -> BackpackLoopbackExecutionClientFactory: ...
+    def name(self) -> str: ...
+    def capabilities_json(self) -> str: ...
+
+@typing.final
+class BackpackLoopbackSession:
+    @property
+    def generation(self) -> int: ...
 
 @typing.final
 class BackpackPublicReplay:

@@ -22,6 +22,8 @@
 pub mod account;
 pub mod config;
 pub mod execution;
+pub mod loopback;
+pub mod loopback_runtime;
 pub mod replay;
 
 use account::{PyBackpackCredential, PyBackpackExecutionClientConfig, PyBackpackQuota};
@@ -109,6 +111,12 @@ pub fn backpack(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyBackpackCredential>()?;
     m.add_class::<PyBackpackExecutionClientConfig>()?;
     m.add_class::<PyBackpackExecutionClientFactory>()?;
+    m.add_class::<loopback::PyBackpackLoopbackExecutionAuthority>()?;
+    m.add_class::<loopback::PyBackpackLoopbackAccountFacts>()?;
+    m.add_class::<loopback_runtime::PyBackpackLoopbackSession>()?;
+    m.add_class::<loopback_runtime::PyBackpackLoopbackControl>()?;
+    m.add_class::<loopback_runtime::PyBackpackLoopbackExecutionClientConfig>()?;
+    m.add_class::<loopback_runtime::PyBackpackLoopbackExecutionClientFactory>()?;
     register_execution()?;
     m.add_class::<replay::PyBackpackPublicReplay>()?;
     let registry = get_global_pyo3_registry();
