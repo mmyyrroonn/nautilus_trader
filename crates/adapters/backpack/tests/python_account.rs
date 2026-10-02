@@ -74,8 +74,48 @@ fn test_opaque_audience_bound_constructors_and_exact_policy_no_io() {
         let root = TempDir::new().unwrap();
         let m = module(py);
         let l = locals(py, &m, &root);
+        l.set_item(
+            "stub_source",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../python/nautilus_trader/adapters/backpack/__init__.pyi"
+            )),
+        )
+        .unwrap();
+        l.set_item(
+            "facade_source",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../python/nautilus_trader/adapters/backpack/__init__.py"
+            )),
+        )
+        .unwrap();
         py.run(c"
 import json
+import ast
+import inspect
+import pickle
+stub = ast.parse(stub_source)
+facade = ast.parse(facade_source)
+def exports(tree):
+    return next(ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == '__all__' for target in node.targets))
+assert exports(stub) == exports(facade)
+classes = {node.name: node for node in stub.body if isinstance(node, ast.ClassDef)}
+for name in ['BackpackCredential', 'BackpackQuota', 'BackpackExecutionClientConfig', 'BackpackExecutionClientFactory', 'BackpackDataClientFactory']:
+    cls = getattr(m, name)
+    constructor = next(node for node in classes[name].body if isinstance(node, ast.FunctionDef) and node.name in ['__init__', '__new__'])
+    positional = [arg.arg for arg in constructor.args.posonlyargs + constructor.args.args if arg.arg not in ['self', 'cls']]
+    keyword = [arg.arg for arg in constructor.args.kwonlyargs]
+    runtime = inspect.signature(cls)
+    assert list(runtime.parameters) == positional + keyword, name
+    for key in keyword:
+        assert runtime.parameters[key].kind == inspect.Parameter.KEYWORD_ONLY, (name, key)
+try:
+    pickle.dumps(credential)
+except (TypeError, pickle.PicklingError) as error:
+    assert seed not in str(error)
+else:
+    raise AssertionError('credentials must not serialize')
 config = m.BackpackExecutionClientConfig(*args, **kwargs)
 public = m.BackpackDataClientFactory(quota=quota)
 factory = m.BackpackExecutionClientFactory()
@@ -106,6 +146,10 @@ assert not hasattr(credential, '__dict__')
 assert not hasattr(config, 'credential') and not hasattr(m, 'BackpackHttpClient')
 assert not hasattr(factory, 'submit_order') and not hasattr(factory, 'create')
 assert factory.name() == 'BACKPACK' and factory.config_type == 'BackpackExecutionClientConfig'
+assert '*' in m.BackpackCredential.__text_signature__
+assert '*' in m.BackpackQuota.__text_signature__
+assert '*' in m.BackpackExecutionClientConfig.__text_signature__
+assert '*' in m.BackpackDataClientFactory.__text_signature__
 caps = json.loads(factory.capabilities_json())
 assert caps['read_only_account'] and not caps['restricted_execution']
 assert not caps['production_writes'] and not caps['durable_economic_ack']
@@ -171,6 +215,22 @@ fn test_credentials_namespace_and_quota_failures_are_redacted_without_discovery(
         let root = TempDir::new().unwrap();
         let m = module(py);
         let l = locals(py, &m, &root);
+        l.set_item(
+            "stub_source",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../python/nautilus_trader/adapters/backpack/__init__.pyi"
+            )),
+        )
+        .unwrap();
+        l.set_item(
+            "facade_source",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../python/nautilus_trader/adapters/backpack/__init__.py"
+            )),
+        )
+        .unwrap();
         py.run(c"
 sentinel = 'PRIVATE-SEED-MUST-NOT-APPEAR'
 for invalid in [sentinel, '', seed[:-1], seed + 'x']:
@@ -188,7 +248,7 @@ for changed in [dict(base_url_http='http://127.0.0.1:12347'), dict(base_url_ws='
         assert seed not in str(error)
     else:
         raise AssertionError('credential audience crossed')
-for changed in [dict(subaccount=''), dict(subaccount='bad\ncomponent')]:
+for changed in [dict(subaccount=''), dict(subaccount='bad' + chr(10) + 'component')]:
     try:
         m.BackpackExecutionClientConfig(*args, **(kwargs | changed))
     except ValueError:
@@ -234,6 +294,22 @@ async fn test_execution_registry_builds_actual_native_livenode_and_claims_identi
         let m = PyModule::new(py, "backpack").unwrap();
         python::backpack(&m).unwrap();
         let l = locals(py, &m, &root);
+        l.set_item(
+            "stub_source",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../python/nautilus_trader/adapters/backpack/__init__.pyi"
+            )),
+        )
+        .unwrap();
+        l.set_item(
+            "facade_source",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../../python/nautilus_trader/adapters/backpack/__init__.py"
+            )),
+        )
+        .unwrap();
         py.run(
             c"config = m.BackpackExecutionClientConfig(*args, **kwargs)
 factory = m.BackpackExecutionClientFactory()",

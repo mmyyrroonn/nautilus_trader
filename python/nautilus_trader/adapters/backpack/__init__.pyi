@@ -25,9 +25,9 @@ BACKPACK_VENUE: model.Venue
 
 @typing.final
 class BackpackCredential:
-    def __init__(
-        self, seed_base64: str, base_url_http: str | None = None, base_url_ws: str | None = None
-    ) -> None: ...
+    def __new__(
+        cls, seed_base64: str, *, base_url_http: str | None = None, base_url_ws: str | None = None
+    ) -> BackpackCredential: ...
 
 @typing.final
 class BackpackDataClientConfig:
@@ -84,38 +84,16 @@ class BackpackDataClientConfig:
 
 @typing.final
 class BackpackDataClientFactory:
-    def __init__(self, quota: BackpackQuota | None = None) -> None: ...
     @property
     def quota(self) -> BackpackQuota: ...
-    def name(self) -> str: ...
     @property
     def config_type(self) -> str: ...
+    def __new__(cls, *, quota: BackpackQuota | None = None) -> BackpackDataClientFactory: ...
+    def name(self) -> str: ...
     def capabilities_json(self) -> str: ...
 
 @typing.final
 class BackpackExecutionClientConfig:
-    def __init__(
-        self,
-        symbols: typing.Sequence[str],
-        credential: BackpackCredential,
-        account_id: str,
-        identity_account: str,
-        identity_directory: str,
-        quota: BackpackQuota,
-        subaccount: str | None = None,
-        base_url_http: str | None = None,
-        base_url_ws: str | None = None,
-        connect_timeout_ms: int = 20000,
-        shutdown_timeout_ms: int = 3000,
-        recovery_interval_ms: int = 30000,
-        recovery_lookback_ms: int = 3600000,
-        input_capacity: int = 256,
-        fill_capacity: int = 100000,
-        page_size: int = 1000,
-        max_pages: int = 10,
-        max_items: int = 10000,
-        read_timeout_ms: int = 30000,
-    ) -> None: ...
     @property
     def identity_account(self) -> str: ...
     @property
@@ -152,14 +130,37 @@ class BackpackExecutionClientConfig:
     def max_items(self) -> int: ...
     @property
     def read_timeout_ms(self) -> int: ...
+    def __new__(
+        cls,
+        symbols: typing.Sequence[str],
+        credential: BackpackCredential,
+        account_id: str,
+        identity_account: str,
+        identity_directory: str,
+        *,
+        quota: BackpackQuota,
+        subaccount: str | None = None,
+        base_url_http: str | None = None,
+        base_url_ws: str | None = None,
+        connect_timeout_ms: int = ...,
+        shutdown_timeout_ms: int = ...,
+        recovery_interval_ms: int = ...,
+        recovery_lookback_ms: int = ...,
+        input_capacity: int = ...,
+        fill_capacity: int = ...,
+        page_size: int = ...,
+        max_pages: int = ...,
+        max_items: int = ...,
+        read_timeout_ms: int = ...,
+    ) -> BackpackExecutionClientConfig: ...
     def telemetry_snapshot_json(self) -> str: ...
 
 @typing.final
 class BackpackExecutionClientFactory:
-    def __init__(self) -> None: ...
-    def name(self) -> str: ...
     @property
     def config_type(self) -> str: ...
+    def __new__(cls) -> BackpackExecutionClientFactory: ...
+    def name(self) -> str: ...
     def capabilities_json(self) -> str: ...
 
 @typing.final
@@ -206,5 +207,7 @@ class BackpackPublicReplay:
 
 @typing.final
 class BackpackQuota:
-    def __init__(self, standard_period_ms: int = 32, historical_period_ms: int = 2100) -> None: ...
+    def __new__(
+        cls, *, standard_period_ms: int = ..., historical_period_ms: int = ...
+    ) -> BackpackQuota: ...
     def shares_scope(self, other: BackpackQuota) -> bool: ...

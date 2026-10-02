@@ -22,14 +22,14 @@ __all__ = [
     "BACKPACK",
     "BACKPACK_CLIENT_ID",
     "BACKPACK_VENUE",
+    "BackpackCredential",
     "BackpackDataClientConfig",
     "BackpackDataClientFactory",
-    "BackpackInstrumentEconomics",
-    "BackpackCredential",
-    "BackpackQuota",
     "BackpackExecutionClientConfig",
     "BackpackExecutionClientFactory",
+    "BackpackInstrumentEconomics",
     "BackpackPublicReplay",
+    "BackpackQuota",
 ]
 
 fixup_module_names(globals(), __name__)

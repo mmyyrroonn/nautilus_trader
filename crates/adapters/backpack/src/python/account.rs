@@ -84,16 +84,9 @@ impl PyBackpackCredential {
     from_py_object
 )]
 #[pyo3_stub_gen::derive::gen_stub_pyclass(module = "nautilus_trader.adapters.backpack")]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct PyBackpackQuota {
     pub(crate) inner: BackpackQuota,
-}
-impl Default for PyBackpackQuota {
-    fn default() -> Self {
-        Self {
-            inner: BackpackQuota::default(),
-        }
-    }
 }
 #[pyo3_stub_gen::derive::gen_stub_pymethods]
 #[pymethods]

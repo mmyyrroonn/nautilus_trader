@@ -21,8 +21,8 @@
 //! A native public data owner and factory manage discovery and bounded public feeds.
 //! It persists durable local order identity and unsigned intents.
 //! It provides typed account reads, conservative coverage evidence and staged fill reconciliation.
-//! A native read-only account client provides bounded REST/private-stream lifecycle.
-//! Loopback-only guarded mutations are available; restricted engine execution integration
+//! It provides a native read-only account client with bounded REST/private-stream lifecycle.
+//! Loopback-only guarded protocol mutations are available; engine execution integration
 //! and production writes remain unsupported.
 //! The optional `python` feature exposes public and read-only account configuration and factories.
 //! The optional `high-precision` feature propagates

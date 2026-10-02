@@ -611,8 +611,8 @@ secret file is read. The caller owns the original Python seed value.
 and account config; `shares_scope` checks actual limiter identity, without exposing HTTP access.
 The account configuration requires this argument, so a joint node has an explicit sharing choice.
 A standalone public factory still supports its existing default. Sharing cannot account for other
-processes or external traffic. Standard pacing is at least 30 ms (default32); historical-market
-pacing at least2000 ms (default2100), with finite Python maxima60000/300000 ms respectively.
+processes or external traffic. Standard pacing is at least 30 ms (default 32); historical-market
+pacing at least 2000 ms (default 2100), with finite Python maxima 60000/300000 ms respectively.
 
 ```python
 from nautilus_trader.adapters.backpack import BackpackCredential
@@ -647,10 +647,10 @@ origin, account or subaccount cannot reuse another persistent namespace. Query o
 adopt external orders. Python does not expose restricted/production writes or an economic ACK API.
 
 Read-only properties preserve exact symbols, labels, namespace components, audience, directory and
-finite native lifecycle/read limits. Millisecond defaults are20000 connect,3000 shutdown,30000
-recovery interval,3600000 lookback,30000 total read deadline; capacities default256 input/100000
-fills, and pagination defaults1000 page size/10 pages/10000 items. Native checked bounds apply.
-`telemetry_snapshot_json()` reports schema version1, run/generation/epoch, actual transport,
+finite native lifecycle/read limits. Millisecond defaults are 20000 connect, 3000 shutdown, 30000
+recovery interval, 3600000 lookback, 30000 total read deadline; capacities default 256 input/100000
+fills, and pagination defaults 1000 page size/10 pages/10000 items. Native checked bounds apply.
+`telemetry_snapshot_json()` reports schema version 1, run/generation/epoch, actual transport,
 private subscription unconfirmed, observed topics, REST evidence, pending fills and explicit gaps.
 Static factory capabilities and `BackpackCapability::ReadOnlyAccount` indicate implementation
 presence only. Neither factory creation, queue enqueue nor connection establishes verified account

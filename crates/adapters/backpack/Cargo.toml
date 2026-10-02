@@ -44,9 +44,9 @@ high-precision = ["nautilus-model/high-precision"]
 
 [dependencies]
 nautilus-common = { workspace = true, features = ["live"] }
+nautilus-execution = { workspace = true }
 nautilus-core = { workspace = true }
 nautilus-cryptography = { workspace = true }
-nautilus-execution = { workspace = true }
 nautilus-live = { workspace = true }
 nautilus-model = { workspace = true }
 nautilus-network = { workspace = true }
@@ -75,6 +75,7 @@ pyo3 = { workspace = true, optional = true }
 pyo3-stub-gen = { workspace = true, optional = true }
 
 [dev-dependencies]
+nautilus-live = { workspace = true, features = ["node"] }
 axum = { workspace = true }
 futures-util = { workspace = true }
 rstest = { workspace = true }

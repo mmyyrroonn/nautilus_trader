@@ -36,7 +36,7 @@ pub struct PyBackpackExecutionClientFactory;
 impl PyBackpackExecutionClientFactory {
     #[new]
     fn py_new() -> Self {
-        Self::default()
+        Self
     }
     fn name(&self) -> &'static str {
         "BACKPACK"
