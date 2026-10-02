@@ -4,7 +4,8 @@ This crate provides a credential-free native public data client, checked instrum
 public stream decoding and bounded depth synchronization. It also provides audience-bound
 credentials, signed read transport, typed account observations, durable local order identity and a
 guarded mutation owner for explicit loopback protocol peers. A native read-only account client
-provides bounded REST/private-stream lifecycle. Native engine execution integration remains later work. Public Python config/factory bindings are available with the
+provides bounded REST/private-stream lifecycle. Restricted native execution integration remains
+later work. Public Python config/factory bindings are available with the
 `python` feature. Configuration and credential construction
 perform no I/O or environment lookup.
 
@@ -24,11 +25,12 @@ perform no I/O or environment lookup.
 | Guarded loopback mutations                          | Single-attempt protocol owner                   | Native execution/cache integration              |
 | Engine execution and production writes              | Explicit unsupported error                      | Separately accepted private execution readiness |
 
-`BackpackCapability::PublicMarketData.require_implemented()` succeeds. Account and execution
-runtime capabilities still return `BackpackUnsupportedCapabilityError`. A static capability is
+`BackpackCapability::PublicMarketData` and `ReadOnlyAccount` have implemented runtimes. Restricted
+engine execution still returns `BackpackUnsupportedCapabilityError`. A static capability is
 not live freshness or execution admission. The guarded mutation owner below is limited to explicit
 local protocol peers. Production submission/cancellation, modification, batches, borrowing,
-transfers, withdrawals and a dead man's switch remain unsupported. The native account client rejects every mutation; no Python write API is exposed.
+transfers, withdrawals and a dead man's switch remain unsupported. The read-only account client does not authorize mutations. No restricted engine execution client
+or Python write API is exposed.
 
 ## Native public owner
 
@@ -575,7 +577,8 @@ heartbeat, idle, reconnect and shutdown timeouts; quote staleness; snapshot dept
 stored level and message byte bounds. Public telemetry includes per-symbol quote/book freshness,
 generation/connection epoch, metadata state, and the bounded book's coverage. Funding-rate units,
 full-book coverage and private subscription acknowledgement are not inferred. This Python slice
-exposes no execution factory, signer, raw authenticated client, account config or mutation API.
+provides public configuration and data factory access. The separate read-only account surface below
+exposes no signer, raw authenticated client or mutation API.
 
 The type stub is produced by the repository stub generator from the Rust binding declarations;
 it must not be edited by hand. Embedded Python tests exercise exact economics, native config
@@ -596,3 +599,64 @@ records raise a sanitized error and invalidate depth until a strictly newer rest
 replay; it does not claim live freshness, account verification or order execution. Each input record
 uses the native message-size bound. The application must additionally bound total records, run time
 and output bytes, and owns file input and any explicitly synthetic paper trading orchestration.
+
+## Python read-only account configuration and factory
+
+`BackpackCredential` accepts one explicitly supplied base64 Ed25519 seed and binds it to production
+or an exact paired loopback REST/WS audience. It exposes no seed/key getter, signing method or
+serialization mechanism; repr and constructor errors are redacted. No environment variable or
+secret file is read. The caller owns the original Python seed value.
+
+`BackpackQuota` is an opaque in-process native limiter. Provide the same handle to public factory
+and account config; `shares_scope` checks actual limiter identity, without exposing HTTP access.
+The account configuration requires this argument, so a joint node has an explicit sharing choice.
+A standalone public factory still supports its existing default. Sharing cannot account for other
+processes or external traffic. Standard pacing is at least 30 ms (default 32); historical-market
+pacing at least 2000 ms (default 2100), with finite Python maxima 60000/300000 ms respectively.
+
+```python
+from nautilus_trader.adapters.backpack import BackpackCredential
+from nautilus_trader.adapters.backpack import BackpackDataClientFactory
+from nautilus_trader.adapters.backpack import BackpackExecutionClientConfig
+from nautilus_trader.adapters.backpack import BackpackExecutionClientFactory
+from nautilus_trader.adapters.backpack import BackpackQuota
+
+quota = BackpackQuota()
+credential = BackpackCredential(explicit_seed_base64)  # Explicit caller injection, no discovery.
+public_factory = BackpackDataClientFactory(quota=quota)
+account_config = BackpackExecutionClientConfig(
+    symbols=["BTC_USDC_PERP"],
+    credential=credential,
+    account_id="BACKPACK-ACCOUNT",  # Configured engine label, not venue-verified identity.
+    identity_account="stable-account-identifier",
+    subaccount="stable-subaccount-identifier",
+    identity_directory="E:/persarb/backpack-identity/account",
+    quota=quota,
+)
+account_factory = BackpackExecutionClientFactory()
+assert account_config.quota.shares_scope(public_factory.quota)
+# Existing LiveNodeBuilder: builder.add_exec_client("BACKPACK", account_factory, account_config)
+```
+
+Credential/config/factory object construction performs no filesystem or network I/O. Native
+client creation through the actual execution registry and LiveNode builder opens the persistent
+identity directory and acquires its OS lock. Explicit node connection starts signed read-only REST
+and private WebSocket work. Production plans are supported; this change's tests access local peers
+only. A local plan must supply both validated loopback origins to credential and config. A different
+origin, account or subaccount cannot reuse another persistent namespace. Query observation cannot
+adopt external orders. Python does not expose restricted/production writes or an economic ACK API.
+
+Read-only properties preserve exact symbols, labels, namespace components, audience, directory and
+finite native lifecycle/read limits. Millisecond defaults are 20000 connect, 3000 shutdown, 30000
+recovery interval, 3600000 lookback, 30000 total read deadline; capacities default 256 input/100000
+fills, and pagination defaults 1000 page size/10 pages/10000 items. Native checked bounds apply.
+`telemetry_snapshot_json()` reports schema version 1, run/generation/epoch, actual transport,
+private subscription unconfirmed, observed topics, REST evidence, pending fills and explicit gaps.
+Static factory capabilities and `BackpackCapability::ReadOnlyAccount` indicate implementation
+presence only. Neither factory creation, queue enqueue nor connection establishes verified account
+identity, complete coverage, Ready state or durable economic application acknowledgement.
+
+Embedded tests construct a real native LiveNode using Python-extracted config/factory, check
+identity-directory ownership and namespace mismatch, and verify no-I/O constructors, audience
+isolation, exact policy bounds, shared limiter identity and sanitized errors. Generated stubs come
+from the repository generator. Installed-wheel account loopback acceptance is the application task.

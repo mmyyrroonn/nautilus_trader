@@ -75,12 +75,17 @@ pyo3 = { workspace = true, optional = true }
 pyo3-stub-gen = { workspace = true, optional = true }
 
 [dev-dependencies]
+nautilus-live = { workspace = true, features = ["node"] }
 axum = { workspace = true }
 futures-util = { workspace = true }
 rstest = { workspace = true }
 
 [[test]]
 name = "python"
+required-features = ["python"]
+
+[[test]]
+name = "python_account"
 required-features = ["python"]
 
 [[test]]
