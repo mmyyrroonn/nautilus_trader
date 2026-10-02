@@ -24,6 +24,12 @@ crate-type = ["rlib"]
 default = []
 
 [dependencies]
+nautilus-model = { workspace = true }
+
+blake3 = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
 thiserror = { workspace = true }
 url = { workspace = true }
 
