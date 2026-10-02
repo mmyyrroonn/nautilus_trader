@@ -28,10 +28,12 @@
 
 pub mod common;
 pub mod config;
+pub mod depth;
 pub mod http;
 pub mod identity;
 pub mod instruments;
 pub mod models;
 pub mod parsing;
 pub mod provider;
+pub mod public;
 pub mod signing;

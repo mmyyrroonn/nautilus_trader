@@ -20,5 +20,76 @@
     "observed_http_date": "Fri, 02 Oct 2026 04:18:07 GMT",
     "sha256": "39f3e6fed1d56168ee51f70b2b1aaaf16cd6015e19f63e082b6ead28ef51b043",
     "extraction": "Unmodified named schemas from embedded __redoc_state.spec.data.components.schemas"
+  },
+  {
+    "file": "btc_depth_limit5.json",
+    "kind": "public_observation",
+    "url": "https://api.backpack.exchange/api/v1/depth?symbol=BTC_USDC_PERP&limit=5",
+    "observed_http_date": "Fri, 02 Oct 2026 04:30:12 GMT",
+    "sha256": "eccedee72b0e06caf408d7dd10e330a08d9c87db19699e7ff4ad2455464e1935"
+  },
+  {
+    "file": "official_book_ticker.json",
+    "kind": "official_documentation_example",
+    "url": "https://docs.backpack.exchange/#tag/Streams/Public/Book-ticker",
+    "observed_http_date": "Fri, 02 Oct 2026 04:31:41 GMT",
+    "sha256": "9d1bba5ed5056f7542f017d7a1ee9e1592d2cf03fd191694ed97034733b6dcb6",
+    "extraction": "JSON payload code block; inline comments removed, original values retained; spot symbols are not adapted to perpetuals"
+  },
+  {
+    "file": "official_depth.json",
+    "kind": "official_documentation_example",
+    "url": "https://docs.backpack.exchange/#tag/Streams/Public/Depth",
+    "observed_http_date": "Fri, 02 Oct 2026 04:31:41 GMT",
+    "sha256": "ce16564c6793539cdf8eea8454bef1881e97faf640984fa60a3adfb123e30c99",
+    "extraction": "JSON payload code block; inline comments removed, original values retained; spot symbols are not adapted to perpetuals"
+  },
+  {
+    "file": "official_trade.json",
+    "kind": "official_documentation_example",
+    "url": "https://docs.backpack.exchange/#tag/Streams/Public/Trade",
+    "observed_http_date": "Fri, 02 Oct 2026 04:31:41 GMT",
+    "sha256": "772fab00e748d57203d366f45716533e0f8ba9a2782e27d6d37c15780064ef01",
+    "extraction": "JSON payload code block; inline comments removed, original values retained; spot symbols are not adapted to perpetuals"
+  },
+  {
+    "file": "official_mark_price.json",
+    "kind": "official_documentation_example",
+    "url": "https://docs.backpack.exchange/#tag/Streams/Public/Mark-price",
+    "observed_http_date": "Fri, 02 Oct 2026 04:31:41 GMT",
+    "sha256": "d5eb50c0097c70847770589b5c3eea93872ca720c9e381f3e977c98c17c1d026",
+    "extraction": "JSON payload code block; inline comments removed, original values retained; spot symbols are not adapted to perpetuals"
+  },
+  {
+    "file": "public_depth_btc.json",
+    "kind": "public_stream_observation",
+    "url": "wss://ws.backpack.exchange",
+    "stream": "depth.BTC_USDC_PERP",
+    "captured_at_utc": "2026-10-02T04:32:06.900120+00:00",
+    "sha256": "bd02e496af530544ae3e58bcc17e8e82817817658630879337a30b637d4f98b0"
+  },
+  {
+    "file": "public_bookticker_btc.json",
+    "kind": "public_stream_observation",
+    "url": "wss://ws.backpack.exchange",
+    "stream": "bookTicker.BTC_USDC_PERP",
+    "captured_at_utc": "2026-10-02T04:32:06.916752+00:00",
+    "sha256": "8d44f284356099db60de0e449d59a4846fcfb1d22b021c8bcb713ce245e85be3"
+  },
+  {
+    "file": "public_markprice_btc.json",
+    "kind": "public_stream_observation",
+    "url": "wss://ws.backpack.exchange",
+    "stream": "markPrice.BTC_USDC_PERP",
+    "captured_at_utc": "2026-10-02T04:32:07.439001+00:00",
+    "sha256": "abc830758ae807102429f777326c96282a640e419c9c874529b91b1dd641bdc8"
+  },
+  {
+    "file": "public_trade_btc.json",
+    "kind": "public_stream_observation",
+    "url": "wss://ws.backpack.exchange",
+    "stream": "trade.BTC_USDC_PERP",
+    "captured_at_utc": "2026-10-02T04:32:12.825684+00:00",
+    "sha256": "5230a39e5af8e0587e46cf73f9a82c796d780a36eddeffbb039cc0dfb237d579"
   }
 ]
