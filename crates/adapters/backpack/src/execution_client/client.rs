@@ -862,10 +862,156 @@ impl BackpackFillDelivery {
         Ok(BackpackFillAcknowledgement::Applied)
     }
 }
+/// Owner-thread runtime retained exclusively by the actual native client.
+#[derive(Debug)]
+pub(super) struct BackpackLoopbackControlRuntime {
+    core: ExecutionClientCore,
+    shared: std::sync::Weak<Shared>,
+    control: std::cell::RefCell<Option<super::control::BackpackLoopbackControl>>,
+}
+impl BackpackLoopbackControlRuntime {
+    fn shared(&self) -> anyhow::Result<Arc<Shared>> {
+        self.shared
+            .upgrade()
+            .ok_or_else(|| anyhow::anyhow!("native loopback owner was disposed"))
+    }
+    fn loopback(&self, token: BackpackLoopbackSession) -> anyhow::Result<Arc<LoopbackExecution>> {
+        let shared = self.shared()?;
+        let gate = shared.gate.lock();
+        anyhow::ensure!(
+            gate.current(token.run, token.client_generation, token.private_epoch)
+                && token.run == shared.run,
+            "stale native loopback token"
+        );
+        let restricted = shared
+            .restricted
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("native account client is read-only"))?;
+        restricted.current(token)?;
+        Ok(restricted)
+    }
+    /// Starts a new explicit local-peer evidence generation for the current private/public run.
+    /// Caller-supplied local peer facts never turn account read uncertainty into production readiness.
+    ///
+    /// # Errors
+    /// Returns an error in read-only mode or with a stopped/disconnected/stale public or private owner.
+    pub(super) fn begin_session(&self) -> anyhow::Result<BackpackLoopbackSession> {
+        let shared = self.shared()?;
+        let gate = shared.gate.lock();
+        let epoch = gate
+            .health
+            .connection_epoch
+            .ok_or_else(|| anyhow::anyhow!("private epoch absent"))?;
+        anyhow::ensure!(
+            gate.current(shared.run, gate.health.generation, epoch),
+            "private owner is not current"
+        );
+        let mode = shared
+            .config
+            .restricted
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("client is read-only"))?;
+        let control = shared
+            .restricted
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("client is read-only"))?;
+        control.begin(
+            shared.run,
+            gate.health.generation,
+            epoch,
+            &shared.config.namespace,
+            mode.public_telemetry.clone(),
+        )
+    }
+    /// Accepts complete explicit local-peer account facts for the current opaque session.
+    ///
+    /// # Errors
+    /// Returns an error for old tokens, absent fields, unsupported policy or stale evidence.
+    pub(super) fn accept_account(
+        &self,
+        token: BackpackLoopbackSession,
+        facts: crate::execution::guard::BackpackLoopbackAccountFacts,
+    ) -> anyhow::Result<()> {
+        self.loopback(token)?
+            .account(token, facts, now().as_u64() / 1_000_000)
+    }
+    /// Refreshes one admitted market from the actual native quote cache and validated REST metadata.
+    /// Final admission additionally checks the current public token and exact original receipt times.
+    ///
+    /// # Errors
+    /// Returns an error for old sessions, missing metadata/quote, invalid grids or stale observations.
+    pub(super) fn refresh_market(
+        &self,
+        token: BackpackLoopbackSession,
+        id: InstrumentId,
+    ) -> anyhow::Result<()> {
+        let shared = self.shared()?;
+        let control = self.loopback(token)?;
+        let quote = self
+            .core
+            .cache()
+            .quote(&id)
+            .copied()
+            .ok_or_else(|| anyhow::anyhow!("native quote cache is empty"))?;
+        let metadata = shared
+            .provider
+            .lock()
+            .get(&id)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("validated metadata is absent"))?;
+        control.market(
+            token,
+            crate::execution::guard::BackpackLoopbackMarketFacts {
+                generation: token.generation,
+                quote,
+                metadata,
+            },
+            now().as_u64() / 1_000_000,
+        )
+    }
+    /// Invalidates only this currently admitted local-peer token; late invalidations cannot affect a replacement.
+    ///
+    /// # Errors
+    /// Returns an error for a stopped/replaced session or read-only client.
+    pub(super) fn invalidate(&self, token: BackpackLoopbackSession) -> anyhow::Result<()> {
+        self.loopback(token)?.invalidate();
+        Ok(())
+    }
+
+    pub(super) fn pending(&self) -> anyhow::Result<Vec<FillReport>> {
+        let shared = self.shared()?;
+        let reports = shared
+            .fills
+            .lock()
+            .pending_in_event_order()
+            .into_iter()
+            .cloned()
+            .collect();
+        Ok(reports)
+    }
+    pub(super) fn health(&self) -> anyhow::Result<BackpackAccountHealth> {
+        Ok(self.shared()?.telemetry.snapshot())
+    }
+    pub(super) fn shutdown(&self) -> Option<crate::execution::owner::BackpackShutdownReport> {
+        self.shared
+            .upgrade()
+            .and_then(|shared| *shared.shutdown.lock())
+    }
+}
+impl Drop for BackpackLoopbackControlRuntime {
+    fn drop(&mut self) {
+        let shutdown = self.shutdown();
+        if let Some(control) = self.control.get_mut().as_ref() {
+            control.remember_shutdown(shutdown);
+        }
+    }
+}
+
 /// Real native account client, read-only by default; guarded local mutations require explicit opt-in.
 /// Production execution readiness remains explicitly degraded.
 #[derive(Debug)]
 pub struct BackpackExecutionClient {
+    control_runtime: std::rc::Rc<BackpackLoopbackControlRuntime>,
     core: ExecutionClientCore,
     shared: Arc<Shared>,
     tasks: TaskGroup,
@@ -961,7 +1107,13 @@ impl BackpackExecutionClient {
                 http,
                 reader,
             });
+            let control_runtime = std::rc::Rc::new(BackpackLoopbackControlRuntime {
+                core: core.clone(),
+                shared: Arc::downgrade(&shared),
+                control: std::cell::RefCell::new(None),
+            });
             Ok(Self {
+                control_runtime,
                 core,
                 shared,
                 tasks: TaskGroup::new(),
@@ -982,110 +1134,61 @@ impl BackpackExecutionClient {
         self.shared.telemetry.clone()
     }
     fn loopback(&self, token: BackpackLoopbackSession) -> anyhow::Result<Arc<LoopbackExecution>> {
-        let gate = self.shared.gate.lock();
-        anyhow::ensure!(
-            gate.current(token.run, token.client_generation, token.private_epoch)
-                && token.run == self.shared.run,
-            "stale native loopback token"
-        );
-        let restricted = self
-            .shared
-            .restricted
-            .clone()
-            .ok_or_else(|| anyhow::anyhow!("native account client is read-only"))?;
-        restricted.current(token)?;
-        Ok(restricted)
+        self.control_runtime.loopback(token)
     }
-    /// Starts a new explicit local-peer evidence generation for the current private/public run.
-    /// Caller-supplied local peer facts never turn account read uncertainty into production readiness.
+    /// Attaches one weak owner-thread control without opening another identity store.
     ///
     /// # Errors
-    /// Returns an error in read-only mode or with a stopped/disconnected/stale public or private owner.
+    /// Returns an error for read-only mode or a previously attached control/client.
+    pub(super) fn attach_loopback_control(
+        &self,
+        control: &super::control::BackpackLoopbackControl,
+    ) -> anyhow::Result<()> {
+        anyhow::ensure!(self.shared.restricted.is_some(), "client is read-only");
+        let mut attached = self.control_runtime.control.borrow_mut();
+        anyhow::ensure!(attached.is_none(), "client control already attached");
+        control.attach(&self.control_runtime)?;
+        *attached = Some(control.clone());
+        Ok(())
+    }
+    /// Starts an explicit local-peer generation for the current private/public owners.
+    ///
+    /// # Errors
+    /// Returns an error in read-only mode or for stopped/disconnected/stale owners.
     pub fn begin_loopback_session(&self) -> anyhow::Result<BackpackLoopbackSession> {
-        let gate = self.shared.gate.lock();
-        let epoch = gate
-            .health
-            .connection_epoch
-            .ok_or_else(|| anyhow::anyhow!("private epoch absent"))?;
-        anyhow::ensure!(
-            gate.current(self.shared.run, gate.health.generation, epoch),
-            "private owner is not current"
-        );
-        let mode = self
-            .shared
-            .config
-            .restricted
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("client is read-only"))?;
-        let control = self
-            .shared
-            .restricted
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("client is read-only"))?;
-        control.begin(
-            self.shared.run,
-            gate.health.generation,
-            epoch,
-            &self.shared.config.namespace,
-            mode.public_telemetry.clone(),
-        )
+        self.control_runtime.begin_session()
     }
     /// Accepts complete explicit local-peer account facts for the current opaque session.
     ///
     /// # Errors
-    /// Returns an error for old tokens, absent fields, unsupported policy or stale evidence.
+    /// Returns an error for old tokens, unsupported policy, scope or stale evidence.
     pub fn accept_loopback_account(
         &self,
         token: BackpackLoopbackSession,
         facts: crate::execution::guard::BackpackLoopbackAccountFacts,
     ) -> anyhow::Result<()> {
-        self.loopback(token)?
-            .account(token, facts, now().as_u64() / 1_000_000)
+        self.control_runtime.accept_account(token, facts)
     }
-    /// Refreshes one admitted market from the actual native quote cache and validated REST metadata.
-    /// Final admission additionally checks the current public token and exact original receipt times.
+    /// Refreshes from the actual native quote cache and validated metadata.
     ///
     /// # Errors
-    /// Returns an error for old sessions, missing metadata/quote, invalid grids or stale observations.
+    /// Returns an error for an old session, absent metadata/quote or stale observations.
     pub fn refresh_loopback_market(
         &self,
         token: BackpackLoopbackSession,
         id: InstrumentId,
     ) -> anyhow::Result<()> {
-        let control = self.loopback(token)?;
-        let quote = self
-            .core
-            .cache()
-            .quote(&id)
-            .copied()
-            .ok_or_else(|| anyhow::anyhow!("native quote cache is empty"))?;
-        let metadata = self
-            .shared
-            .provider
-            .lock()
-            .get(&id)
-            .cloned()
-            .ok_or_else(|| anyhow::anyhow!("validated metadata is absent"))?;
-        control.market(
-            token,
-            crate::execution::guard::BackpackLoopbackMarketFacts {
-                generation: token.generation,
-                quote,
-                metadata,
-            },
-            now().as_u64() / 1_000_000,
-        )
+        self.control_runtime.refresh_market(token, id)
     }
-    /// Invalidates only this currently admitted local-peer token; late invalidations cannot affect a replacement.
+    /// Invalidates only this admitted token; an old token cannot affect a replacement.
     ///
     /// # Errors
-    /// Returns an error for a stopped/replaced session or read-only client.
+    /// Returns an error for stopped/replaced sessions or read-only clients.
     pub fn invalidate_loopback_session(
         &self,
         token: BackpackLoopbackSession,
     ) -> anyhow::Result<()> {
-        self.loopback(token)?.invalidate();
-        Ok(())
+        self.control_runtime.invalidate(token)
     }
 
     /// Reattaches a consumer-restored native order to its independently durable original POST binding.

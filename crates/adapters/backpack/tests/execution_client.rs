@@ -1438,7 +1438,8 @@ async fn test_ack_lease_concurrency_counts_new_pending_evidence() {
 }
 
 mod guarded {
-    use super::*;
+    use std::collections::BTreeMap;
+
     use nautilus_backpack::{
         config::BackpackDataClientConfig,
         data::BackpackDataClient,
@@ -1466,7 +1467,8 @@ mod guarded {
         types::{AccountBalance, Currency, Money, Price, Quantity},
     };
     use nautilus_portfolio::portfolio::Portfolio;
-    use std::collections::BTreeMap;
+
+    use super::*;
 
     fn decimal(text: &str) -> Decimal {
         Decimal::from_str_exact(text).unwrap()
@@ -1488,6 +1490,137 @@ mod guarded {
         namespace: BackpackClientIdNamespace,
         config: BackpackExecutionClientConfig,
     }
+    #[tokio::test]
+    async fn test_attached_control_recovers_after_private_first_public_admission_failure() {
+        use nautilus_backpack::execution_client::loopback_config::{
+            BackpackLoopbackExecutionClientConfig, BackpackLoopbackExecutionClientFactory,
+        };
+        use nautilus_common::factories::ExecutionClientFactory;
+
+        let peer = Peer::start().await;
+        peer.state.guarded.store(true, Ordering::Relaxed);
+        let directory = TempDir::new().unwrap();
+        let scope = BackpackConfig::with_endpoints_checked(
+            vec!["BTC_USDC_PERP".into()],
+            peer.endpoints.clone(),
+        )
+        .unwrap();
+        let economics = BackpackInstrumentEconomics::new_checked(
+            decimal("0.1"),
+            decimal("0.05"),
+            Decimal::ZERO,
+            Decimal::ZERO,
+            BackpackEconomicsSource::Synthetic,
+            "synthetic peer v1".into(),
+        )
+        .unwrap();
+        let public_config = BackpackDataClientConfig::new_checked(
+            scope.clone(),
+            BTreeMap::from([("BTC_USDC_PERP".into(), economics)]),
+        )
+        .unwrap();
+        let quota = BackpackQuota::default();
+        let (data_tx, _data_rx) = mpsc::unbounded_channel();
+        replace_data_event_sender(data_tx);
+        let (exec_tx, _exec_rx) = mpsc::unbounded_channel();
+        nautilus_common::live::runner::replace_exec_event_sender(exec_tx);
+        let mut public = BackpackDataClient::with_quota(
+            ClientId::from("BP-CONTROL"),
+            public_config.clone(),
+            quota.clone(),
+        )
+        .unwrap();
+        let namespace =
+            BackpackClientIdNamespace::loopback_peer(&peer.endpoints, "101", Some("2")).unwrap();
+        let account = BackpackExecutionClientConfig::new_read_only(
+            scope,
+            BackpackCredential::loopback_peer(&STANDARD.encode([7; 32]), &peer.endpoints).unwrap(),
+            AccountId::from("BACKPACK-SYNTHETIC"),
+            namespace.clone(),
+            directory.path().join("identity"),
+            BackpackExecutionPolicy {
+                recovery_interval: Duration::from_secs(30),
+                shutdown_timeout: Duration::from_millis(300),
+                ..Default::default()
+            },
+            BackpackReadBudget::new(10, 10, 100, Duration::from_secs(3)).unwrap(),
+            quota,
+        )
+        .unwrap();
+        let authority = BackpackExecutionAuthority {
+            expires_at_ms: now_ns().as_u64() / 1_000_000 + 60_000,
+            max_account_age_ms: 5000,
+            max_market_age_ms: 5000,
+            max_order_notional: decimal("1"),
+            max_reserved_notional: decimal("2"),
+            max_reserved_margin: decimal("1"),
+            max_unsettled_orders: 1,
+            allow_new_risk: true,
+            allow_reduction: true,
+            allow_owned_cancel: true,
+        };
+        let plan = BackpackLoopbackExecutionClientConfig::new_checked(
+            account,
+            public_config.clone(),
+            authority,
+            BackpackMutationPolicy {
+                budget: Duration::from_secs(3),
+                window: Default::default(),
+            },
+        )
+        .unwrap();
+        let control = plan.control();
+        let cache = Rc::new(RefCell::new(Cache::default()));
+        let mut client = BackpackLoopbackExecutionClientFactory
+            .create(trader(), "BACKPACK-CONTROL", &plan, CacheView::new(cache))
+            .unwrap();
+        client.connect().await.unwrap();
+        until(|| !peer.state.subscriptions.lock().unwrap().is_empty()).await;
+        assert!(client.is_connected());
+        assert!(!public_config.telemetry().snapshot().connected);
+        assert!(control.begin_session().is_err());
+        assert!(control.begin_session().is_err());
+        public.connect().await.unwrap();
+        assert!(public_config.telemetry().snapshot().connected);
+        let first = control.begin_session().unwrap();
+        assert!(first.generation() >= 3);
+        let current = control.begin_session().unwrap();
+        assert!(current.generation() > first.generation());
+        let facts = |generation| BackpackLoopbackAccountFacts {
+            namespace: namespace.clone(),
+            generation,
+            observed_at_ms: now_ns().as_u64() / 1_000_000,
+            available_margin: decimal("100"),
+            margin_per_notional: decimal("0.1"),
+            fee_buffer_per_notional: decimal("0.001"),
+            economics_reference: "synthetic peer v1".into(),
+            net_positions: BTreeMap::from([(instrument(), Decimal::ZERO)]),
+            auto_borrow: false,
+            auto_lend: false,
+            auto_repay: false,
+            liquidating: false,
+            complete: true,
+        };
+        assert!(
+            control
+                .accept_account(first, facts(first.generation()))
+                .is_err()
+        );
+        assert!(control.refresh_market(first, instrument()).is_err());
+        assert!(control.invalidate(first).is_err());
+        control
+            .accept_account(current, facts(current.generation()))
+            .unwrap();
+        control.invalidate(current).unwrap();
+        assert!(
+            control
+                .accept_account(current, facts(current.generation()))
+                .is_err()
+        );
+        client.disconnect().await.unwrap();
+        public.disconnect().await.unwrap();
+    }
+
     impl Harness {
         async fn new() -> Self {
             let peer = Peer::start().await;
@@ -1862,8 +1995,9 @@ mod guarded {
     #[tokio::test]
     async fn test_guarded_cancel_202_terminal_waits_for_durable_true_fill_ack_and_late_fill_reopens_risk()
      {
-        use nautilus_backpack::execution::owner::BackpackLoopbackTerminalEvidence;
         use std::io::Write;
+
+        use nautilus_backpack::execution::owner::BackpackLoopbackTerminalEvidence;
         let mut h = Harness::new().await;
         let order = h.order("LOCAL-CANCEL", OrderSide::Buy, false);
         h.submit(&order).unwrap();
@@ -2240,9 +2374,10 @@ mod guarded {
 
     #[tokio::test]
     async fn test_guarded_restart_rest_true_fill_dedup_couples_native_state_and_consumer_receipt() {
+        use std::io::Write;
+
         use nautilus_backpack::account::reconciliation::BackpackAppliedFill;
         use nautilus_model::position::Position;
-        use std::io::Write;
         let mut h = Harness::new().await;
         let order = h.order("RESTART", OrderSide::Buy, false);
         h.submit(&order).unwrap();

@@ -701,7 +701,7 @@ identity directory and acquires its OS lock. Explicit node connection starts sig
 and private WebSocket work. Production plans are supported; this change's tests access local peers
 only. A local plan must supply both validated loopback origins to credential and config. A different
 origin, account or subaccount cannot reuse another persistent namespace. Query observation cannot
-adopt external orders. Python does not expose restricted/production writes or an economic ACK API.
+adopt external orders. The read-only factory exposes no mutations; production writes and economic ACK remain unavailable in Python.
 
 Read-only properties preserve exact symbols, labels, namespace components, audience, directory and
 finite native lifecycle/read limits. Millisecond defaults are 20000 connect, 3000 shutdown, 30000
@@ -717,3 +717,44 @@ Embedded tests construct a real native LiveNode using Python-extracted config/fa
 identity-directory ownership and namespace mismatch, and verify no-I/O constructors, audience
 isolation, exact policy bounds, shared limiter identity and sanitized errors. Generated stubs come
 from the repository generator. Installed-wheel account loopback acceptance is the application task.
+
+
+## Guarded Python synthetic peer control
+
+The separately named `BackpackLoopbackExecutionClientConfig` and
+`BackpackLoopbackExecutionClientFactory` project the restricted native execution owner.
+They accept only exact paired numeric loopback origins, an explicit audience-bound credential,
+complete Synthetic public economics and finite `BackpackLoopbackExecutionAuthority` permissions.
+No option on the production read-only config enables writes. Configuration and factory construction
+perform no I/O; the actual native factory claims the identity directory during node construction.
+
+Build the native DataClient first with the same `BackpackQuota` object used by the read-only account
+config. The loopback plan references that actual public config and its telemetry; LiveNodeBuilder
+creates/registers data clients before execution clients. The execution factory checks the real
+public endpoint/limiter claim before opening its identity store. A disconnected or unclaimed public
+configuration cannot mint admission, and caller-provided health JSON is never an input.
+
+`config.control` is an opaque owner-thread handle. With an actual connected node, `begin_session()`
+returns a token for the current public/private owner generations. `accept_account(token, facts)`
+requires every field of `BackpackLoopbackAccountFacts`, including exact available margin, the local
+margin/fee model, complete signed allowlist positions and explicit disabled policy flags.
+`refresh_market(token, instrument_id)` reads the real native quote cache and validated metadata;
+it accepts no Python quote or metadata report. `invalidate(token)` freezes that session. Failed
+public admission consumes its generation and can be retried after public recovery; old tokens
+cannot alter a replacement session.
+
+Supported submit/cancel commands use the existing native Strategy/order-factory/risk/execution
+route. The control handle exposes no raw transport, signer, direct order dispatcher, adoption or
+economic ACK. Real fills reach the native engine but remain staged pending; cache application,
+queue enqueue and a Python callback are not durable consumer application. `pending_fills_json()`,
+`telemetry_snapshot_json()` and `shutdown_report_json()` expose actual bounded observations;
+private subscription verification and durable economic ACK remain false. Reservations are not
+released from cached terminal quantities, and residual work remains explicitly dirty. Durable
+consumer persistence and clean economic recovery require a separately reviewed implementation.
+
+Retaining a control, session, config or telemetry observation does not retain the actual client or
+its identity lock. Controls use weak, single-use factory attachments; disposing the native client
+invalidates the old attachment permanently. Stop diagnostics retain only copied values. A new
+independent config can reopen the same persistent namespace after the old node is dropped, while
+old controls cannot redirect to the replacement. Control calls follow the same owner-thread
+requirement as native LiveNode and PyCache, including hosted `run_async`.

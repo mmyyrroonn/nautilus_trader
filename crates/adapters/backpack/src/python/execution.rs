@@ -19,8 +19,15 @@ use nautilus_core::python::to_pyvalue_err;
 use nautilus_system::get_global_pyo3_registry;
 use pyo3::prelude::*;
 
-use super::account::PyBackpackExecutionClientConfig;
-use crate::execution_client::BackpackExecutionClientFactory;
+use super::{
+    account::PyBackpackExecutionClientConfig,
+    loopback_runtime::{
+        PyBackpackLoopbackExecutionClientConfig, PyBackpackLoopbackExecutionClientFactory,
+    },
+};
+use crate::execution_client::{
+    BackpackExecutionClientFactory, loopback_config::BackpackLoopbackExecutionClientFactory,
+};
 
 /// Native read-only execution factory; construction performs no I/O.
 #[pyclass(
@@ -55,6 +62,12 @@ impl PyBackpackExecutionClientFactory {
 }
 #[expect(clippy::needless_pass_by_value, reason = "registry callback signature")]
 fn extract_factory(py: Python<'_>, value: Py<PyAny>) -> PyResult<Box<dyn ExecutionClientFactory>> {
+    if value
+        .bind(py)
+        .is_instance_of::<PyBackpackLoopbackExecutionClientFactory>()
+    {
+        return Ok(Box::new(BackpackLoopbackExecutionClientFactory));
+    }
     value
         .extract::<PyBackpackExecutionClientFactory>(py)
         .map_err(|_| to_pyvalue_err("invalid BackpackExecutionClientFactory"))?;
@@ -67,6 +80,13 @@ fn extract_config(py: Python<'_>, value: Py<PyAny>) -> PyResult<Box<dyn ClientCo
         .map_err(|_| to_pyvalue_err("invalid BackpackExecutionClientConfig"))?;
     Ok(Box::new(wrapper.inner))
 }
+#[expect(clippy::needless_pass_by_value, reason = "registry callback signature")]
+fn extract_loopback_config(py: Python<'_>, value: Py<PyAny>) -> PyResult<Box<dyn ClientConfig>> {
+    let wrapper = value
+        .extract::<PyBackpackLoopbackExecutionClientConfig>(py)
+        .map_err(|_| to_pyvalue_err("invalid BackpackLoopbackExecutionClientConfig"))?;
+    Ok(Box::new(wrapper.inner))
+}
 pub(super) fn register_execution() -> PyResult<()> {
     let registry = get_global_pyo3_registry();
     registry
@@ -75,5 +95,11 @@ pub(super) fn register_execution() -> PyResult<()> {
     registry
         .register_config_extractor("BackpackExecutionClientConfig".into(), extract_config)
         .map_err(|_| to_pyvalue_err("Backpack account configuration registration failed"))?;
+    registry
+        .register_config_extractor(
+            "BackpackLoopbackExecutionClientConfig".into(),
+            extract_loopback_config,
+        )
+        .map_err(|_| to_pyvalue_err("Backpack loopback configuration registration failed"))?;
     Ok(())
 }

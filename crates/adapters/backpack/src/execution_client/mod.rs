@@ -17,7 +17,9 @@
 pub mod client;
 mod commands;
 pub mod config;
+pub mod control;
 mod identity;
+pub mod loopback_config;
 pub mod private;
 pub mod restricted;
 pub mod telemetry;

@@ -98,6 +98,8 @@ impl LoopbackExecution {
             .checked_add(1)
             .ok_or_else(|| anyhow::anyhow!("execution generation exhausted"))?;
         self.owner.guard().begin_session(namespace, next)?;
+        // A failed public binding still consumes the generation accepted by the owner
+        *state = (next, None);
         if let Err(error) = self.owner.guard().bind_public(public) {
             self.owner.guard().invalidate();
             state.1 = None;
@@ -306,6 +308,10 @@ fn terminal(status: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use rstest::rstest;
+    use rust_decimal::Decimal;
+    use serde_json::{Value, json};
+
     use super::*;
     use crate::{
         common::{credential::BackpackCredential, endpoints::BackpackEndpoints},
@@ -320,9 +326,6 @@ mod tests {
         },
         identity::BackpackClientIdStore,
     };
-    use rstest::rstest;
-    use rust_decimal::Decimal;
-    use serde_json::{Value, json};
     fn control() -> (tempfile::TempDir, LoopbackExecution) {
         let directory = tempfile::tempdir().unwrap();
         let endpoints =
