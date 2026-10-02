@@ -4,8 +4,8 @@ This crate contains configuration, authentication and transport foundations, exa
 metadata, bounded public stream/depth parsing, and durable local order identity for a phased Backpack Exchange integration. It validates
 product eligibility and complete provider refreshes, constructs Ed25519 authentication, and provides
 a restricted GET transport with typed account observations and bounded reconciliation.
-Engine data/account runtime clients, execution, factories, and Python
-bindings remain later work. Constructing configuration and credentials performs no I/O or
+A native read-only account client and factory provide bounded REST/private-stream lifecycle.
+Public data runtime, restricted execution and Python bindings remain later work. Constructing configuration and credentials performs no I/O or
 environment lookup.
 
 ## Current capability boundary
@@ -19,9 +19,10 @@ environment lookup.
 | Endpoint validation and credential audience         | Implemented offline                            | Production or explicit local protocol peers     |
 | REST signing and authenticated/public GET transport | Implemented with local transport tests         | Typed domain parsing and reconciliation         |
 | Account snapshot/history and fill reconciliation    | Read-only protocol and delivery contracts       | Runtime coverage and durable consumer ACK        |
-| Private WS subscription authentication              | Payload construction only                      | Connection lifecycle and account processing     |
+| Private WS subscription authentication              | Signed bounded read-only runtime                | Positive subscription ACK remains unverified    |
 | Public stream parsing and depth synchronization    | Bounded continuous views with explicit coverage | Native data client and WebSocket lifecycle      |
-| Public market data and account runtime clients      | Explicit unsupported error                     | Instrument discovery, data, account state       |
+| Native read-only account client and factory         | Implemented with explicit degraded evidence    | Durable consumer ACK and account verification   |
+| Public market data runtime                          | Explicit unsupported error                     | Data client and WebSocket lifecycle             |
 | Restricted execution                                | Explicit unsupported error                     | Guarded order surface after deterministic tests |
 
 `BackpackCapability::require_implemented` still returns `BackpackUnsupportedCapabilityError` for
@@ -328,3 +329,76 @@ Account fixtures under `test_data/account` have explicit official-schema versus 
 Tests issue signed, bodyless GETs only to audience-bound loopback listeners. They cover empty/missing,
 unknown identity/policy, exact economics, system fills, bounded traversal faults and delivery ACK
 crash windows; they do not demonstrate a live account or native ExecutionClient lifecycle.
+
+## Native read-only account client
+
+`execution_client::BackpackExecutionClientConfig::new_read_only` accepts explicit audience-bound
+credentials, an engine account label, an exact persistent identity namespace/directory, an explicit
+perpetual scope, a shared `BackpackQuota`, and finite read/lifecycle budgets. Configuration and factory
+object construction perform no I/O or environment lookup. Factory client creation opens the identity
+journal and acquires its OS lock; explicit `connect` performs typed public metadata, signed account
+GET bootstrap, and a signed private subscription. Production audience construction and explicit
+read-only connection are implemented; validation in this change uses loopback peers exclusively.
+No production private account access or mutation was performed.
+
+The normal `BackpackExecutionClientFactory` constructs `ExecutionClientCore` and
+`ExecutionEventEmitter`. All seven mutation trait methods return an explicit read-only error before
+requests are issued. Commission inference and complete mass-status coverage are unsupported. Bulk
+position coverage is false, so omitted positions cannot manufacture flat positions. Account-state
+balances represent observed wallet trading funds; equity, dynamic margin availability and staked
+funds are not inferred as spendable balances. Engine account IDs remain caller-configured labels.
+
+Startup/reconnect/periodic recovery use the same bounded account snapshot and fixed-cutoff fill
+history. Native granular order/fill/position report requests use the same typed reader and exact
+conversion. Resting 404 remains unknown. Unsupported order flags remain unrepresented with explicit
+gaps; historical orders missing required flags cannot become ordinary limit orders by default.
+Private schema provenance is [official Private Streams](https://docs.backpack.exchange/#tag/Streams/Private),
+checked 2026-10-02. Inline test events use fictional IDs, exact documented fields and deterministic
+public test signing material; they are not captured account data. Raw unsupported observations remain
+available from the decoder without an inferred native event.
+
+Private order/fill/position/balance events check topic identity, timestamps in microseconds, exact
+money/quantities, duplicate JSON keys and internal last-fill/cumulative/status consistency. Initial
+position rows without `e` describe only those explicit positions. System origins stay external even
+when a numeric clientId collides with a local reservation. Conditional orders and absent post-only
+flags do not invent ordinary orders. True fills preserve true trade IDs and fee rebates, share REST
+staging, and remain deliverable until actual consumer application is acknowledged. Channel enqueue
+is never economic application ACK.
+
+`BackpackFillDelivery` is a Send/Sync handle independent of the native client's thread-local cache.
+`pending` and `applied` expose staged reports and consumer-confirmed receipts. `acknowledge_with`
+clones the pending receipt, releases all adapter locks, invokes the consumer's durable application
+callback, then validates and marks that receipt applied. A failed callback retains pending delivery;
+callbacks may reenter read-only health/pending APIs. Concurrent callbacks require an idempotent
+consumer keyed by instrument/true trade ID. Repeated ACK after application returns an error without
+calling the consumer. `BackpackFillReconciler::pending_acknowledgement` and `acknowledge_committed`
+provide the same explicit two-phase boundary for external owners. Keeping a delivery handle alive
+retains the original identity lock. Restore only durable applied receipts before the first start.
+Automatic order publication excludes every nonzero cumulative fill quantity and records
+`CumulativeOrderReportUnpublished`, because native order reconciliation can otherwise infer trades
+and commissions before true fills arrive. Granular query DTOs retain their observed cumulative
+quantities. Automatic economic events contain independently staged true `FillReport`s only; runtime
+position reports are explicit diagnostics, while mass-status reconciliation remains unsupported.
+A real ExecutionEngine/cache regression checks only observed trade IDs and exact rebates, without
+inferred trades or fees. Full portfolio acceptance, durable consumer application acknowledgement
+and restricted execution integration are separate.
+
+Each config clone shares an exclusive telemetry claim, but each successful claim creates a new
+private runtime gate and monotonic run ID. `BackpackAccountTelemetry::snapshot` produces serializable
+schema version 1 evidence: run/generation/connection epoch, lifecycle, observed topics, REST snapshot
+observation, pending fills, counters and explicit gaps. It contains no account identifiers or
+credentials. Private subscription success ACK has not been established by the official evidence;
+`private_subscription_confirmed` remains false even after a TCP connection, generic success control,
+or a valid private event. Connected runs therefore remain `Degraded`, with account identity,
+non-atomic snapshot and retention/replication gaps. Observation receipt time is not a completeness
+or freshness proof.
+
+Owned TaskGroups, bounded input queues and finite shutdown/recovery budgets prevent unbounded
+background work. Connection loss invalidates evidence synchronously. Run/generation/epoch and fault/
+receive revisions gate metadata, late REST snapshots and report publication; buffered obsolete epoch
+frames cannot restore the current session. Consumer callbacks run outside gate/provider/fill locks.
+Tests cover actual signed HTTP/WS loopback lifecycle, ping/pong, reconnect authentication, private
+replay and REST dedup, missing positions, identity collisions, malformed/ambiguous fields, late
+bootstrap faults, concurrent ACK/health/recovery, wrong-venue requests before I/O and repeated bounded
+shutdown. These tests establish protocol/lifecycle behavior, not venue account verification or
+production economic acceptance.

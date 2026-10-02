@@ -27,7 +27,10 @@ use nautilus_model::{
     reports::{FillReport, OrderStatusReport, PositionStatusReport},
 };
 use rust_decimal::Decimal;
-use serde::Deserialize;
+use serde::{
+    Deserialize, Deserializer,
+    de::{Error, MapAccess, SeqAccess, Visitor},
+};
 use serde_json::Value;
 
 use crate::{
@@ -49,7 +52,7 @@ pub const MAX_PRIVATE_FRAME_BYTES: usize = 1_048_576;
 pub enum BackpackPrivateFact {
     Wallet {
         asset: String,
-        balance: BackpackWalletReport,
+        balance: Box<BackpackWalletReport>,
         ts_event: UnixNanos,
     },
     Order(Box<OrderStatusReport>),
@@ -60,6 +63,8 @@ pub enum BackpackPrivateFact {
 #[derive(Debug)]
 pub struct BackpackPrivateObservation {
     pub topic: Option<String>,
+    /// Exact raw private evidence; never used as an authenticated identity/ACK.
+    pub raw: Option<Value>,
     pub facts: Vec<BackpackPrivateFact>,
     pub gaps: BTreeSet<BackpackEvidenceGap>,
 }
@@ -79,6 +84,8 @@ struct Balance {
     A: BackpackDecimal,
     L: BackpackDecimal,
     S: BackpackDecimal,
+    #[serde(flatten)]
+    extra: BTreeMap<String, Value>,
 }
 #[derive(Deserialize)]
 #[allow(non_snake_case)]
@@ -139,7 +146,6 @@ struct Position {
 /// # Errors
 /// Returns sanitized errors for malformed shapes, unknown topics, identity mismatch,
 /// invalid timestamps, contradictions and unsupported native precision.
-
 pub fn decode_private(
     frame: &[u8],
     context: &BackpackReportContext<'_>,
@@ -147,9 +153,11 @@ pub fn decode_private(
     if frame.len() > MAX_PRIVATE_FRAME_BYTES {
         return Err(BackpackAccountError::Budget);
     }
+    serde_json::from_slice::<StrictJson>(frame).map_err(|_| BackpackAccountError::Decode)?;
     let env: Envelope = serde_json::from_slice(frame).map_err(|_| BackpackAccountError::Decode)?;
     let mut observation = BackpackPrivateObservation {
         topic: env.stream.clone(),
+        raw: env.data.clone(),
         facts: Vec::new(),
         gaps: BTreeSet::from([BackpackEvidenceGap::AccountIdentityUnverified]),
     };
@@ -173,6 +181,9 @@ pub fn decode_private(
             .map_err(|_| BackpackAccountError::InvalidField("event time"))?;
         let ts = unix_microseconds_to_nanos(b.T)
             .map_err(|_| BackpackAccountError::InvalidField("engine time"))?;
+        if !b.extra.is_empty() {
+            observation.gaps.insert(BackpackEvidenceGap::UnknownFields);
+        }
         let balance = wallet_report(
             &b.a,
             &BackpackWalletBalance {
@@ -184,7 +195,7 @@ pub fn decode_private(
         )?;
         observation.facts.push(BackpackPrivateFact::Wallet {
             asset: b.a,
-            balance,
+            balance: Box::new(balance),
             ts_event: ts,
         });
     } else if topic == "account.orderUpdate" || topic.starts_with("account.orderUpdate.") {
@@ -214,7 +225,50 @@ pub fn decode_private(
             return Err(BackpackAccountError::InvalidField("event status"));
         }
         // USER is the sole nonsystem origin. Unknown system origins never become locally owned.
+        if o.e == "orderFill" {
+            let last =
+                o.l.ok_or(BackpackAccountError::InvalidField("true fill quantity"))?
+                    .0;
+            if last <= Decimal::ZERO
+                || last > o.z.0
+                || o.X == "New"
+                || o.q.is_some_and(|q| {
+                    o.z.0 > q.0
+                        || (o.X == "Filled" && o.z.0 != q.0)
+                        || (o.X == "PartiallyFilled" && (o.z.0 <= Decimal::ZERO || o.z.0 >= q.0))
+                })
+            {
+                return Err(BackpackAccountError::InvalidField(
+                    "fill cumulative consistency",
+                ));
+            }
+            if o.q.is_none() {
+                observation
+                    .gaps
+                    .insert(BackpackEvidenceGap::UnknownVenueState);
+            }
+        }
         let system = (o.O != "USER").then(|| o.O.clone());
+        let mut extra = o.extra;
+        for (wire, canonical) in [
+            ("P", "triggerPrice"),
+            ("B", "triggerBy"),
+            ("a", "takeProfitTriggerPrice"),
+            ("b", "stopLossTriggerPrice"),
+            ("j", "takeProfitLimitPrice"),
+            ("k", "stopLossLimitPrice"),
+            ("d", "takeProfitTriggerBy"),
+            ("g", "stopLossTriggerBy"),
+            ("Y", "triggerQuantity"),
+            ("H", "strategyId"),
+        ] {
+            if let Some(value) = extra.remove(wire) {
+                extra.insert(canonical.into(), value);
+            }
+        }
+        if ["triggerPlaced", "triggerFailed"].contains(&o.e.as_str()) {
+            extra.insert("triggerEvent".into(), json_value(&o.e));
+        }
         let order = BackpackOrder {
             id: o.i.clone(),
             client_id: o.c,
@@ -239,7 +293,7 @@ pub fn decode_private(
             symbol: o.s.clone(),
             time_in_force: o.f,
             system_order_type: system.clone(),
-            extra: o.extra,
+            extra,
         };
         let converted = order_report(order, context)?;
         observation.gaps.extend(converted.gaps);
@@ -338,6 +392,9 @@ pub fn decode_private(
     }
     Ok(observation)
 }
+fn json_value(text: &str) -> Value {
+    Value::String(text.into())
+}
 fn validate_topic(
     topic: &str,
     prefix: &str,
@@ -353,4 +410,55 @@ fn validate_topic(
         .find(|m| m.raw_symbol.as_str() == symbol)
         .map(|m| m.instrument_id)
         .ok_or(BackpackAccountError::Unsupported("instrument"))
+}
+
+// Validate duplicate keys recursively before Value decoding can collapse ambiguity.
+// Numbers are discarded here; actual economic decoding still uses exact decimal text.
+struct StrictJson;
+impl<'de> Deserialize<'de> for StrictJson {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_any(StrictVisitor)
+    }
+}
+struct StrictVisitor;
+impl<'de> Visitor<'de> for StrictVisitor {
+    type Value = StrictJson;
+    fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("unambiguous JSON")
+    }
+    fn visit_map<M: MapAccess<'de>>(self, mut map: M) -> Result<StrictJson, M::Error> {
+        let mut keys = BTreeSet::new();
+        while let Some(key) = map.next_key::<String>()? {
+            if !keys.insert(key) {
+                return Err(M::Error::custom("duplicate private JSON field"));
+            }
+            map.next_value::<StrictJson>()?;
+        }
+        Ok(StrictJson)
+    }
+    fn visit_seq<S: SeqAccess<'de>>(self, mut seq: S) -> Result<StrictJson, S::Error> {
+        while seq.next_element::<StrictJson>()?.is_some() {}
+        Ok(StrictJson)
+    }
+    fn visit_bool<E: Error>(self, _: bool) -> Result<StrictJson, E> {
+        Ok(StrictJson)
+    }
+    fn visit_i64<E: Error>(self, _: i64) -> Result<StrictJson, E> {
+        Ok(StrictJson)
+    }
+    fn visit_u64<E: Error>(self, _: u64) -> Result<StrictJson, E> {
+        Ok(StrictJson)
+    }
+    fn visit_f64<E: Error>(self, _: f64) -> Result<StrictJson, E> {
+        Ok(StrictJson)
+    }
+    fn visit_str<E: Error>(self, _: &str) -> Result<StrictJson, E> {
+        Ok(StrictJson)
+    }
+    fn visit_unit<E: Error>(self) -> Result<StrictJson, E> {
+        Ok(StrictJson)
+    }
+    fn visit_none<E: Error>(self) -> Result<StrictJson, E> {
+        Ok(StrictJson)
+    }
 }

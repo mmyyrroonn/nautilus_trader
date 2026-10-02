@@ -92,8 +92,8 @@ impl Shared {
     fn token(&self) -> anyhow::Result<(u64, u64)> {
         let g = self.gate.lock();
         anyhow::ensure!(
-            g.running && g.health.run_id == Some(self.run),
-            "account client is stopped"
+            g.running && g.health.transport_connected && g.health.run_id == Some(self.run),
+            "account client is stopped or disconnected"
         );
         Ok((
             g.health.generation,
@@ -134,7 +134,8 @@ impl Shared {
             .raw_symbol
             .to_string())
     }
-    async fn metadata(&self, cancel: &CancellationToken) -> anyhow::Result<()> {
+    async fn metadata(&self, generation: u64, cancel: &CancellationToken) -> anyhow::Result<()> {
+        let revision = self.gate.lock().revision;
         let request = BackpackReadRequest::new(
             BackpackReadOperation::Markets,
             BackpackParameters::default(),
@@ -146,6 +147,15 @@ impl Shared {
         );
         let markets: Vec<BackpackMarket> = serde_json::from_slice(response.body())
             .map_err(|_| anyhow::anyhow!("invalid market metadata"))?;
+        let gate = self.gate.lock();
+        anyhow::ensure!(
+            gate.running
+                && gate.health.run_id == Some(self.run)
+                && gate.health.generation == generation
+                && gate.health.connection_epoch == Some(0)
+                && gate.revision == revision,
+            "stale market metadata"
+        );
         self.provider
             .lock()
             .replace_markets(&markets, now())
@@ -231,7 +241,12 @@ impl Shared {
             )?;
         }
         for report in reports {
-            self.emitter.try_send_execution_report(report)?;
+            match report {
+                ExecutionReport::Order(report) => {
+                    self.emit_order_without_inference(report, &mut gate)?;
+                }
+                other => self.emitter.try_send_execution_report(other)?,
+            }
         }
         gate.health.rest_snapshot_observed = true;
         gate.health.state = BackpackAccountState::Degraded;
@@ -295,6 +310,23 @@ impl Shared {
         gate.health.pending_fills = self.fills.lock().pending_in_event_order().len();
         Ok(())
     }
+    // Native engine cumulative reports can synthesize unobserved fills/fees. Only
+    // zero-execution lifecycle observations may be auto-published; query DTOs retain
+    // real cumulative quantities. Economics use independently staged true FillReports.
+    fn emit_order_without_inference(
+        &self,
+        report: Box<OrderStatusReport>,
+        gate: &mut super::telemetry::Gate,
+    ) -> anyhow::Result<()> {
+        if !report.filled_qty.is_zero() {
+            gate.health
+                .evidence_gaps
+                .insert("CumulativeOrderReportUnpublished".into());
+            return Ok(());
+        }
+        self.emitter
+            .try_send_execution_report(ExecutionReport::Order(report))
+    }
     fn stage_emit(&self, report: FillReport) -> anyhow::Result<()> {
         if let BackpackFillStage::Pending(report) = self.fills.lock().stage(report)? {
             self.emitter
@@ -326,9 +358,9 @@ impl Shared {
         }
         for fact in observation.facts {
             match fact {
-                BackpackPrivateFact::Order(report) => self
-                    .emitter
-                    .try_send_execution_report(ExecutionReport::Order(report))?,
+                BackpackPrivateFact::Order(report) => {
+                    self.emit_order_without_inference(report, &mut gate)?;
+                }
                 BackpackPrivateFact::Fill(report) => self.stage_emit(*report)?,
                 BackpackPrivateFact::Position(report) => self
                     .emitter
@@ -411,7 +443,10 @@ impl Shared {
             .reader
             .resting_order(&symbol, venue, numeric, cancel)
             .await?;
-        anyhow::ensure!(self.valid(generation, epoch), "stale order response");
+        anyhow::ensure!(
+            self.gate.lock().current(self.run, generation, epoch),
+            "stale order response"
+        );
         match observation {
             BackpackRestingOrder::UnknownNotResting => {
                 self.fault(generation, "RestingAbsenceIsUnknown");
@@ -442,6 +477,58 @@ enum Input {
     Frame(u64, Vec<u8>),
     Reconnected(u64),
 }
+/// Send/Sync economic delivery handle, independent of the native client's thread-local cache.
+/// Consumer callbacks run outside every adapter lock. Consumers must be idempotent by
+/// BackpackFillKey, including competing acknowledgements and recovery after a crash.
+/// Keeping this handle alive retains the original identity lock and pending deliveries.
+#[derive(Clone, Debug)]
+pub struct BackpackFillDelivery {
+    shared: Arc<Shared>,
+}
+impl BackpackFillDelivery {
+    /// Returns pending economic reports in event order, without marking delivery applied.
+    #[must_use]
+    pub fn pending(&self) -> Vec<FillReport> {
+        self.shared
+            .fills
+            .lock()
+            .pending_in_event_order()
+            .into_iter()
+            .cloned()
+            .collect()
+    }
+    /// Returns only consumer-acknowledged receipts, suitable for its durable checkpoint.
+    #[must_use]
+    pub fn applied(&self) -> Vec<BackpackAppliedFill> {
+        self.shared
+            .fills
+            .lock()
+            .applied_records()
+            .cloned()
+            .collect()
+    }
+    /// Commits dedup after actual durable consumer application, with no adapter lock in callback.
+    /// Concurrent calls may submit the same immutable receipt to an idempotent consumer.
+    ///
+    /// # Errors
+    /// Returns an error for unknown keys, conflicting economics or failed application.
+    pub fn acknowledge_with(
+        &self,
+        key: BackpackFillKey,
+        commit: impl FnOnce(&BackpackAppliedFill) -> Result<(), BackpackAccountError>,
+    ) -> Result<(), BackpackAccountError> {
+        let receipt = { self.shared.fills.lock().pending_acknowledgement(key)? };
+        commit(&receipt)?;
+        let mut gate = self.shared.gate.lock();
+        let count = {
+            let mut fills = self.shared.fills.lock();
+            fills.acknowledge_committed(&receipt)?;
+            fills.pending_in_event_order().len()
+        };
+        gate.health.pending_fills = count;
+        Ok(())
+    }
+}
 /// Real native account client. Connection is read-only; readiness remains explicitly degraded.
 #[derive(Debug)]
 pub struct BackpackExecutionClient {
@@ -461,7 +548,8 @@ impl BackpackExecutionClient {
         config: BackpackExecutionClientConfig,
         cache: CacheView,
     ) -> anyhow::Result<Self> {
-        let (run, gate) = config.telemetry.claim()?;
+        let telemetry = config.telemetry.clone();
+        let (run, gate) = telemetry.claim()?;
         let result = (|| {
             let identities =
                 BackpackClientIdStore::open(&config.identity_directory, &config.namespace)?;
@@ -497,7 +585,7 @@ impl BackpackExecutionClient {
                     [],
                 )?),
                 telemetry: config.telemetry.clone(),
-                config: config.clone(),
+                config,
                 run,
                 gate,
                 identities,
@@ -513,7 +601,7 @@ impl BackpackExecutionClient {
             })
         })();
         if result.is_err() {
-            config.telemetry.release(run);
+            telemetry.release(run);
         }
         result
     }
@@ -530,6 +618,12 @@ impl BackpackExecutionClient {
         let mut emitter = self.shared.emitter.clone();
         emitter.set_sender(sender);
     }
+    #[must_use]
+    pub fn fill_delivery(&self) -> BackpackFillDelivery {
+        BackpackFillDelivery {
+            shared: self.shared.clone(),
+        }
+    }
     /// Restores consumer-applied receipts before starting. No account observation creates receipts.
     ///
     /// # Errors
@@ -538,7 +632,10 @@ impl BackpackExecutionClient {
         &mut self,
         records: Vec<BackpackAppliedFill>,
     ) -> anyhow::Result<()> {
-        anyhow::ensure!(!self.core.is_started(), "restore receipts before start");
+        anyhow::ensure!(
+            !self.core.is_started() && self.health().generation == 0 && self.tasks.is_empty(),
+            "restore receipts before first start"
+        );
         *self.shared.fills.lock() =
             BackpackFillReconciler::from_applied(self.shared.config.policy.fill_capacity, records)?;
         Ok(())
@@ -553,17 +650,14 @@ impl BackpackExecutionClient {
         key: BackpackFillKey,
         commit: impl FnOnce(&BackpackAppliedFill) -> Result<(), BackpackAccountError>,
     ) -> Result<(), BackpackAccountError> {
-        self.shared.fills.lock().acknowledge_with(key, commit)?;
-        self.shared.gate.lock().health.pending_fills =
-            self.shared.fills.lock().pending_in_event_order().len();
-        Ok(())
+        self.fill_delivery().acknowledge_with(key, commit)
     }
     async fn connect_inner(
         &mut self,
         generation: u64,
         cancel: CancellationToken,
     ) -> anyhow::Result<()> {
-        self.shared.metadata(&cancel).await?;
+        self.shared.metadata(generation, &cancel).await?;
         self.shared.recover(generation, 0, &cancel).await?;
         let (tx, rx) = mpsc::channel(self.shared.config.policy.input_capacity);
         let gate = self.shared.gate.clone();
@@ -571,7 +665,9 @@ impl BackpackExecutionClient {
         let frame_tx = tx.clone();
         let handler = Arc::new(move |epoch: u64, message: Message| {
             let input = match message {
-                Message::Text(bytes) if bytes.as_ref() == b"RECONNECTED" => {
+                Message::Text(bytes)
+                    if bytes.as_ref() == nautilus_network::RECONNECTED.as_bytes() =>
+                {
                     Input::Reconnected(epoch)
                 }
                 Message::Text(bytes) => {
@@ -756,10 +852,10 @@ impl ExecutionClientFactory for BackpackExecutionClientFactory {
             cache,
         )?))
     }
-    fn name(&self) -> &str {
+    fn name(&self) -> &'static str {
         "BACKPACK"
     }
-    fn config_type(&self) -> &str {
+    fn config_type(&self) -> &'static str {
         "BackpackExecutionClientConfig"
     }
 }
@@ -965,11 +1061,10 @@ impl ExecutionClient for BackpackExecutionClient {
                 .await
             {
                 Ok(Some(report)) => {
-                    let g = shared.gate.lock();
+                    let mut g = shared.gate.lock();
                     if g.current(shared.run, generation, epoch)
                         && shared
-                            .emitter
-                            .try_send_execution_report(ExecutionReport::Order(Box::new(report)))
+                            .emit_order_without_inference(Box::new(report), &mut g)
                             .is_err()
                     {
                         drop(g);
@@ -1004,14 +1099,15 @@ impl ExecutionClient for BackpackExecutionClient {
     ) -> anyhow::Result<Vec<OrderStatusReport>> {
         let (generation, epoch) = self.shared.token()?;
         let cancel = self.tasks.cancellation_token();
+        let validated_symbol = cmd
+            .instrument_id
+            .map(|id| self.shared.symbol(id))
+            .transpose()?;
         let (records, gaps) = if cmd.open_only {
             let snapshot = self.shared.reader.snapshot(&cancel).await?;
             (snapshot.open_orders, snapshot.gaps)
         } else {
-            let symbol = cmd
-                .instrument_id
-                .map(|id| self.shared.symbol(id))
-                .transpose()?;
+            let symbol = validated_symbol.clone();
             let history = self
                 .shared
                 .reader
@@ -1108,12 +1204,11 @@ impl ExecutionClient for BackpackExecutionClient {
             gate.health
                 .evidence_gaps
                 .extend(observation.gaps.iter().map(|gap| format!("{gap:?}")));
-            if let Some(report) = observation.report {
-                if let BackpackFillStage::Pending(report) =
+            if let Some(report) = observation.report
+                && let BackpackFillStage::Pending(report) =
                     self.shared.fills.lock().stage(report)?
-                {
-                    result.push(*report);
-                }
+            {
+                result.push(*report);
             }
         }
         gate.health.pending_fills = self.shared.fills.lock().pending_in_event_order().len();
@@ -1128,6 +1223,9 @@ impl ExecutionClient for BackpackExecutionClient {
             "historical positions are unsupported"
         );
         let (generation, epoch) = self.shared.token()?;
+        if let Some(id) = cmd.instrument_id {
+            self.shared.symbol(id)?;
+        }
         let snapshot = self
             .shared
             .reader

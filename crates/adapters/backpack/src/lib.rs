@@ -20,7 +20,8 @@
 //! It parses exact public metadata and bounded public streams with depth synchronization.
 //! It persists durable local order identity and unsigned intents.
 //! It provides typed account reads, conservative coverage evidence and staged fill reconciliation.
-//! Engine market/account runtime clients and restricted execution remain unavailable in this phase.
+//! It provides a native read-only account client with bounded REST/private-stream lifecycle.
+//! Restricted execution and Python bindings remain unavailable in this phase.
 //! There are no Python bindings. The optional `high-precision` feature propagates
 //! the Nautilus domain precision mode; default features remain empty.
 
