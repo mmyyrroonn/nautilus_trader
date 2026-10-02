@@ -166,6 +166,53 @@ impl BackpackFillReconciler {
         Ok(())
     }
 
+    /// Clones the immutable pending receipt so consumer application can run outside owner locks.
+    /// This is staging evidence, never proof that economic application has occurred.
+    ///
+    /// # Errors
+    /// Returns an error for an unknown pending fill.
+    pub fn pending_acknowledgement(
+        &self,
+        key: BackpackFillKey,
+    ) -> Result<BackpackAppliedFill, BackpackAccountError> {
+        self.pending
+            .get(&key)
+            .map(|(record, _)| record.clone())
+            .ok_or(BackpackAccountError::UnknownAcknowledgement)
+    }
+
+    /// Marks a receipt applied only after the caller durably commits actual economic application.
+    /// The consumer must be idempotent: competing callers may commit the same immutable receipt.
+    /// A matching already-applied receipt succeeds; conflicting receipt economics never do.
+    ///
+    /// # Errors
+    /// Returns an error for unknown or conflicting acknowledgements.
+    pub fn acknowledge_committed(
+        &mut self,
+        receipt: &BackpackAppliedFill,
+    ) -> Result<(), BackpackAccountError> {
+        if let Some(applied) = self.applied.get(&receipt.key) {
+            return if applied == receipt {
+                Ok(())
+            } else {
+                Err(BackpackAccountError::Conflict)
+            };
+        }
+        let (pending, _) = self
+            .pending
+            .get(&receipt.key)
+            .ok_or(BackpackAccountError::UnknownAcknowledgement)?;
+        if pending != receipt {
+            return Err(BackpackAccountError::Conflict);
+        }
+        let (record, _) = self
+            .pending
+            .remove(&receipt.key)
+            .ok_or(BackpackAccountError::UnknownAcknowledgement)?;
+        self.applied.insert(receipt.key, record);
+        Ok(())
+    }
+
     /// Returns records suitable for the owner's durable applied-state checkpoint.
     pub fn applied_records(&self) -> impl Iterator<Item = &BackpackAppliedFill> {
         self.applied.values()
