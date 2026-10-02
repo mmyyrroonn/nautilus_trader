@@ -27,7 +27,9 @@
 
 pub mod common;
 pub mod config;
+pub mod depth;
 pub mod instruments;
 pub mod models;
 pub mod parsing;
 pub mod provider;
+pub mod public;

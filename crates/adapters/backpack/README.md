@@ -1,7 +1,8 @@
 # Backpack Exchange adapter foundations
 
-This crate contains the B0.1 configuration foundation and B1.1 public market metadata parser.
-It validates configuration, product eligibility, exact instrument fields, and complete provider refreshes. It has no HTTP or WebSocket client, live data or execution
+This crate contains configuration, public market metadata, public stream decoding, and bounded depth synchronization.
+It validates configuration, product eligibility, exact instrument fields, complete provider refreshes,
+and bounded public observations. It has no HTTP or WebSocket client, live data or execution
 client, authentication, account access, factory, or Python bindings. It is not a production adapter.
 Constructing a configuration performs no I/O and reads no credentials or environment files.
 
@@ -13,7 +14,8 @@ Constructing a configuration performs no I/O and reads no credentials or environ
 | Public metadata and instrument conversion | Implemented, with explicit economic inputs     | Runtime discovery and account verification         |
 | Metadata provider                         | Complete refresh validation, without transport | A public data client supplies fresh responses      |
 | Endpoint validation                       | Implemented and tested offline                 | Public production or explicit local protocol peers |
-| Public market data                        | Explicit unsupported error                     | Instrument discovery and market data               |
+| Public stream parsing and depth replay    | Implemented without transport                  | Native data client and WebSocket lifecycle         |
+| Public market data runtime                | Explicit unsupported error                     | Instrument discovery and market data               |
 | Private account reads                     | Explicit unsupported error                     | Account state and reconciliation                   |
 | Restricted execution                      | Explicit unsupported error                     | A bounded order surface after deterministic tests  |
 
@@ -77,6 +79,56 @@ previous snapshot. `get(&InstrumentId)` and `all()` expose only the latest succe
 refresh. The future transport owner must call `invalidate()` on request or response-decoding failure.
 This provider owns no transport and does not fetch, cache indefinitely, or infer readiness.
 
+## Public stream parsing and depth synchronization
+
+`public::BackpackPublicStreamParser::new(metadata, generation)` scopes decoding to a validated
+instrument and a caller-assigned bootstrap token. `decode(generation, frame, received_at)` requires
+an exact `stream`/`data.e`/`data.s` match. It accepts `bookTicker`, `trade`, `markPrice`, realtime
+`depth`, and documented `depth.200ms`, `depth.600ms`, `depth.1000ms` topics. Subscription/control
+acknowledgements and errors belong to the transport owner and are not data decoder input.
+Malformed/oversized frames, unsupported topics, wrong symbols, old tokens, non-executable grids,
+and checked timestamp overflow return typed errors. Duplicate JSON fields are rejected for known
+wire fields. The caller must invalidate cached freshness and associated book state on decoder errors.
+
+Complete BBO and trades become native `QuoteTick` and `TradeTick`. Explicit paired null sides
+produce `QuoteUnavailable`, never a zero-filled quote; omitted or unpaired side fields fail.
+Quote/trade IDs deduplicate within one parser generation. Official book ticker documentation shows
+a string update ID; the captured native perpetual stream uses an integer. Both exact unsigned
+forms are accepted; fractional, signed, and overflowing values are rejected. Buyer-maker `m=true`
+maps to sell aggressor. `T` is used for event time and both `E`/`T` microsecond values are checked.
+
+Mark price becomes `MarkPriceUpdate`, retaining exact theoretical precision without rounding to
+an order-entry tick. Funding `f` is retained as `BackpackFundingEstimate.raw_rate: Decimal`.
+The official description does not establish a fraction/percent/bps denominator, so no native
+`FundingRateUpdate.rate` is manufactured. `n` is checked milliseconds converted to nanoseconds;
+metadata funding interval stays milliseconds. Funding estimates are distinct from settled funding.
+
+`depth::BackpackDepthSynchronizer::new_checked(metadata, generation, snapshot_limit,
+max_buffer_frames, max_levels_per_side)` begins buffering validated opaque depth updates from the
+parser. Allowed REST limits are 5, 10, 20, 50, 100, 500, 1000 per side. The owner routes the
+matching symbol/limit HTTP response to `install_snapshot(generation, body, received_at)`; the REST
+body itself contains no symbol. Buffered updates with `u <= snapshot_id` are discarded. As an
+explicit bootstrap inference, the first surviving `U..u` range must contain `snapshot_id+1`.
+Every later range, including live updates, requires `U=previous_u+1`; live partial overlap fails.
+Older duplicates are ignored. Quantities replace the entire level, and zero quantity deletes it.
+Snapshot plus replay is validated atomically and published as one native `OrderBookDeltas`
+CLEAR/rebuild batch, sorted by price. Only the last delta carries `F_LAST`; snapshot deltas carry
+`F_SNAPSHOT`. Subsequent nonempty frames each form one atomic batch. Empty frames still advance
+sequence continuity. All protocol buffers, frames, and stored sides have explicit bounds.
+
+Every synchronizer error clears levels, buffers, and coverage before returning `Stale`.
+Reconnect, malformed input, and transport faults require owner invalidation before recovery.
+`restart(new_generation)` requires a strictly greater token and a new parser, even when reusing
+the same socket. Old snapshot tasks must be cancelled or rejected by token. This module owns no
+connection, retry timing, freshness timer, snapshot request, or publication channel.
+
+`is_continuous()` establishes only a continuous bounded sequence view. Snapshot truncation does
+not establish complete depth or complete top N. `coverage()` retains the initial bid floor and ask
+ceiling after edge deletion. `best_covered_bid/ask()` refuse an apparent best level outside that
+original band; a newly observed outer level cannot fill an unknown gap. A missing initial side has
+unknown coverage. Consumers must separately establish covered sides and wall-clock freshness;
+continuity alone does not authorize execution or make emitted outer levels a trusted BBO.
+
 ## Endpoints and credentials
 
 The only venue environment recorded by this crate is Production:
@@ -109,17 +161,21 @@ The following official sources establish the venue contract, not implemented run
 - [Introduction and production origins](https://docs.backpack.exchange/#section/Introduction).
 - [Market metadata](https://docs.backpack.exchange/#tag/Markets/operation/get_market): native symbols,
   `marketType`, `baseSymbol`, `quoteSymbol`, and decimal-valued filters.
+- [Public streams](https://docs.backpack.exchange/#tag/Streams) and
+  [depth snapshot](https://docs.backpack.exchange/#tag/Markets/operation/get_depth): envelope,
+  timestamp units, sequence ranges, and explicit snapshot limits.
 - [Order execution contract](https://docs.backpack.exchange/#tag/Order/operation/execute_order): venue
   order types and flags. No order payload or execution semantics are implemented here.
 
 Authentication, signing, request canonicalization, client order identity, transport, and recovery
-are separate subsequent changes. Metadata fixture provenance lives in `test_data/manifest.json`. Unknown protocol fields or behavior must
+are separate subsequent changes. Public fixture provenance lives in `test_data/manifest.json`. Unknown protocol fields or behavior must
 be checked against official evidence before those changes expose capabilities.
 
 ## Validation
 
 Run `cargo test -p nautilus-backpack` and `cargo clippy -p nautilus-backpack --all-targets -- -D warnings`.
-Tests cover official BTC/SOL market observations and explicitly synthetic adverse metadata, exact
+Tests cover official BTC/SOL market observations, captured public BTC perpetual frames, native
+order book replay, truncated coverage and synchronization faults and explicitly synthetic adverse metadata, exact
 decimal and unit boundaries, complete refreshes, economic provenance, allowlist errors, production
 defaults, loopback origin validation, and explicit refusals of planned runtime capabilities. They perform no network I/O or account operations.
 See the repository [adapter guide](../../../docs/developer_guide/adapters.md) for later transport,

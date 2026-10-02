@@ -216,7 +216,10 @@ pub enum BackpackInstrumentError {
     MissingMarket(String),
 }
 
-fn decimal(value: &str, field: &'static str) -> Result<Decimal, BackpackInstrumentError> {
+pub(crate) fn decimal(
+    value: &str,
+    field: &'static str,
+) -> Result<Decimal, BackpackInstrumentError> {
     // The venue declares decimal strings, not scientific notation, whitespace, or JSON numbers.
     let digits = value.strip_prefix('-').unwrap_or(value);
     let valid = !digits.is_empty()
@@ -265,7 +268,7 @@ fn validate_bounds(
     Ok(())
 }
 
-fn exact_price(value: Decimal, precision: u8) -> Result<Price, BackpackInstrumentError> {
+pub(crate) fn exact_price(value: Decimal, precision: u8) -> Result<Price, BackpackInstrumentError> {
     if precision > FIXED_PRECISION {
         return Err(BackpackInstrumentError::InvalidField("price precision"));
     }
@@ -282,7 +285,10 @@ fn exact_price(value: Decimal, precision: u8) -> Result<Price, BackpackInstrumen
     Ok(price)
 }
 
-fn exact_quantity(value: Decimal, precision: u8) -> Result<Quantity, BackpackInstrumentError> {
+pub(crate) fn exact_quantity(
+    value: Decimal,
+    precision: u8,
+) -> Result<Quantity, BackpackInstrumentError> {
     if precision > FIXED_PRECISION {
         return Err(BackpackInstrumentError::InvalidField("quantity precision"));
     }
