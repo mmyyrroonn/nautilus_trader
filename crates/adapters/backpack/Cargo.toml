@@ -81,3 +81,7 @@ rstest = { workspace = true }
 [[test]]
 name = "python"
 required-features = ["python"]
+
+[[test]]
+name = "python_replay"
+required-features = ["python"]

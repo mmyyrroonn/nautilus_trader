@@ -12,6 +12,7 @@ __all__ = [
     "BackpackDataClientConfig",
     "BackpackDataClientFactory",
     "BackpackInstrumentEconomics",
+    "BackpackPublicReplay",
 ]
 
 BACKPACK: str
@@ -102,3 +103,21 @@ class BackpackInstrumentEconomics:
         source: str,
         source_reference: str,
     ) -> BackpackInstrumentEconomics: ...
+
+@typing.final
+class BackpackPublicReplay:
+    @property
+    def instrument(self) -> model.CryptoPerpetual: ...
+    def __new__(
+        cls,
+        config: BackpackDataClientConfig,
+        market_json: str,
+        metadata_received_at_ns: int,
+        *,
+        generation: int = ...,
+    ) -> BackpackPublicReplay: ...
+    def apply_record(
+        self, record: bytes
+    ) -> (
+        model.QuoteTick | model.TradeTick | model.MarkPriceUpdate | model.OrderBookDeltas | None
+    ): ...
