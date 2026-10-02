@@ -13,7 +13,7 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-//! Production endpoints and a separate, public-only loopback override.
+//! Production endpoints and a separate explicit loopback override.
 
 use thiserror::Error;
 use url::{Host, Url};
@@ -23,7 +23,7 @@ pub const BACKPACK_REST_URL: &str = "https://api.backpack.exchange";
 /// Official production WebSocket origin.
 pub const BACKPACK_WEBSOCKET_URL: &str = "wss://ws.backpack.exchange";
 
-/// Validated endpoints for public protocol work.
+/// Validated endpoints for protocol work.
 ///
 /// Arbitrary remote overrides are not accepted. Loopback endpoints are explicitly
 /// selected for local protocol peers and must never receive production credentials.
@@ -45,7 +45,7 @@ impl BackpackEndpoints {
         }
     }
 
-    /// Selects a pair of loopback origins for a local public protocol peer.
+    /// Selects a pair of loopback origins for a local protocol peer.
     ///
     /// # Errors
     ///
@@ -83,7 +83,7 @@ impl BackpackEndpoints {
     }
 }
 
-/// An endpoint override outside the local public protocol boundary.
+/// An endpoint override outside the local protocol boundary.
 #[derive(Clone, Copy, Debug, Eq, Error, PartialEq)]
 #[error("invalid Backpack loopback endpoint: {0}")]
 pub struct BackpackEndpointError(pub &'static str);

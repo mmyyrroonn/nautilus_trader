@@ -13,18 +13,9 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-//! Foundations for the Backpack Exchange adapter.
-//!
-//! This crate validates an explicit USDC perpetual allowlist and endpoint selection.
-//! It provides audience-bound credentials, protocol signing, and a restricted GET transport.
-//! Domain market/account clients and restricted execution remain unavailable in this phase.
-//! There are no Python bindings or optional features.
+//! Read-only transport and request evidence.
 
-#![deny(unsafe_code)]
-#![deny(missing_debug_implementations)]
-#![deny(rustdoc::broken_intra_doc_links)]
-
-pub mod common;
-pub mod config;
-pub mod http;
-pub mod signing;
+pub mod client;
+pub mod error;
+pub mod quota;
+pub mod request;
