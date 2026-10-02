@@ -13,9 +13,15 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-//! Venue endpoints and explicit implementation boundaries.
+//! Canonical venue identity used by the public adapter facade.
 
-pub mod capabilities;
-pub mod consts;
-pub mod credential;
-pub mod endpoints;
+use std::sync::LazyLock;
+
+use nautilus_model::identifiers::{ClientId, Venue};
+
+/// Backpack adapter name.
+pub const BACKPACK: &str = "BACKPACK";
+/// Default Backpack data client identity.
+pub static BACKPACK_CLIENT_ID: LazyLock<ClientId> = LazyLock::new(|| ClientId::from(BACKPACK));
+/// Backpack venue identity.
+pub static BACKPACK_VENUE: LazyLock<Venue> = LazyLock::new(|| Venue::from(BACKPACK));

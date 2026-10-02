@@ -208,6 +208,11 @@ fn _libnautilus(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
         sys_modules.set_item(format!("{module_name}.{n}"), m.getattr(n)?)?;
     }
 
+    let n = "backpack";
+    let submodule = pyo3::wrap_pymodule!(nautilus_backpack::python::backpack);
+    m.add_wrapped(submodule)?;
+    sys_modules.set_item(format!("{module_name}.{n}"), m.getattr(n)?)?;
+
     let n = "binance";
     let submodule = pyo3::wrap_pymodule!(nautilus_binance::python::binance);
     m.add_wrapped(submodule)?;
