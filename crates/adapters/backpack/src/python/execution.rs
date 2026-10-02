@@ -31,8 +31,8 @@ use crate::execution_client::BackpackExecutionClientFactory;
 #[pyo3_stub_gen::derive::gen_stub_pyclass(module = "nautilus_trader.adapters.backpack")]
 #[derive(Clone, Debug, Default)]
 pub struct PyBackpackExecutionClientFactory;
-#[pymethods]
 #[pyo3_stub_gen::derive::gen_stub_pymethods]
+#[pymethods]
 impl PyBackpackExecutionClientFactory {
     #[new]
     fn py_new() -> Self {

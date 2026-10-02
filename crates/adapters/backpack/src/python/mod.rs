@@ -13,7 +13,7 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-//! Native public factory projection and registry extraction.
+//! Native public and read-only account factory projections and registry extraction.
 #![expect(
     clippy::missing_errors_doc,
     reason = "errors documented by checked native constructors"
@@ -49,8 +49,8 @@ pub struct PyBackpackDataClientFactory {
     inner: BackpackDataClientFactory,
     quota: PyBackpackQuota,
 }
-#[pymethods]
 #[pyo3_stub_gen::derive::gen_stub_pymethods]
+#[pymethods]
 impl PyBackpackDataClientFactory {
     #[new]
     #[pyo3(signature = (*, quota=None))]
@@ -96,7 +96,7 @@ fn extract_data_config(py: Python<'_>, value: Py<PyAny>) -> PyResult<Box<dyn Cli
     Ok(Box::new(wrapper.inner))
 }
 
-/// Exposes implemented native public capabilities through the normal adapter registry.
+/// Exposes public and read-only account capabilities through the normal adapter registry.
 #[pymodule]
 pub fn backpack(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("BACKPACK", BACKPACK)?;

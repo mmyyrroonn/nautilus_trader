@@ -106,7 +106,7 @@ impl BackpackExecutionClientConfig {
     /// Production connection requires an explicit caller invocation of connect.
     ///
     /// # Errors
-    /// Returns an error for audience mismatch, empty directory or invalid finite policy.
+    /// Returns an error for audience/issuer mismatch, empty directory or invalid finite policy.
     #[expect(clippy::too_many_arguments)]
     pub fn new_read_only(
         scope: BackpackConfig,
@@ -119,6 +119,10 @@ impl BackpackExecutionClientConfig {
         quota: BackpackQuota,
     ) -> anyhow::Result<Self> {
         credential.check_audience(scope.endpoints())?;
+        anyhow::ensure!(
+            account_id.get_issuer().as_str() == "BACKPACK",
+            "invalid Backpack account issuer"
+        );
         anyhow::ensure!(
             !identity_directory.as_os_str().is_empty(),
             "identity directory is required"
@@ -161,5 +165,35 @@ impl BackpackExecutionClientConfig {
 impl ClientConfig for BackpackExecutionClientConfig {
     fn as_any(&self) -> &dyn Any {
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_native_readonly_account_issuer_is_checked_before_identity_io() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("must-not-be-created");
+        for label in [
+            "ASTER-SYNTHETIC",
+            "backpack-SYNTHETIC",
+            "BACKPACKX-SYNTHETIC",
+        ] {
+            let result = BackpackExecutionClientConfig::new_read_only(
+                BackpackConfig::new_checked(vec!["BTC_USDC_PERP".into()]).unwrap(),
+                BackpackCredential::production("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+                    .unwrap(),
+                AccountId::new_checked(label).unwrap(),
+                BackpackClientIdNamespace::new_checked("production", "synthetic-account", None)
+                    .unwrap(),
+                path.clone(),
+                BackpackExecutionPolicy::default(),
+                BackpackReadBudget::new(10, 1, 10, Duration::from_secs(1)).unwrap(),
+                BackpackQuota::default(),
+            );
+            assert!(result.is_err());
+            assert!(!path.exists());
+        }
     }
 }

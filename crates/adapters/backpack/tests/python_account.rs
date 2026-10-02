@@ -23,9 +23,9 @@ use nautilus_backpack::{
         execution::PyBackpackExecutionClientFactory,
     },
 };
+use nautilus_common::enums::Environment;
 use nautilus_live::node::builder::LiveNodeBuilder;
 use nautilus_model::identifiers::TraderId;
-use nautilus_common::enums::Environment;
 use nautilus_system::get_global_pyo3_registry;
 use pyo3::{
     prelude::*,
@@ -85,6 +85,7 @@ assert not config.quota.shares_scope(m.BackpackQuota())
 assert config.symbols == ['BTC_USDC_PERP']
 assert config.account_id == 'BACKPACK-SYNTHETIC'
 assert config.identity_directory == directory
+assert config.identity_account == 'account-101' and config.subaccount == '2'
 assert config.base_url_http == http + '/'
 assert config.base_url_ws == ws + '/'
 assert config.connect_timeout_ms == 20000
@@ -194,6 +195,13 @@ for changed in [dict(subaccount=''), dict(subaccount='bad\ncomponent')]:
         pass
     else:
         raise AssertionError('invalid namespace accepted')
+for label in ['ASTER-SYNTHETIC', 'backpack-SYNTHETIC', 'BACKPACKX-SYNTHETIC']:
+    try:
+        m.BackpackExecutionClientConfig(args[0], args[1], label, *args[3:], **kwargs)
+    except ValueError as error:
+        assert seed not in str(error)
+    else:
+        raise AssertionError('wrong venue issuer accepted')
 for bad_credential in [None, seed, {}]:
     try:
         m.BackpackExecutionClientConfig(args[0], bad_credential, *args[2:], **kwargs)
@@ -280,7 +288,10 @@ factory = m.BackpackExecutionClientFactory()",
                     TraderId::from("TRADER-001"),
                     "DUPLICATE",
                     duplicate.as_ref(),
-                    std::rc::Rc::new(std::cell::RefCell::new(nautilus_common::cache::Cache::default())).into()
+                    std::rc::Rc::new(std::cell::RefCell::new(
+                        nautilus_common::cache::Cache::default()
+                    ))
+                    .into()
                 )
                 .is_err()
         );
@@ -301,7 +312,10 @@ other = m.BackpackExecutionClientConfig(*args, **kwargs)",
                     TraderId::from("TRADER-001"),
                     "MISMATCH",
                     mismatch.as_ref(),
-                    std::rc::Rc::new(std::cell::RefCell::new(nautilus_common::cache::Cache::default())).into()
+                    std::rc::Rc::new(std::cell::RefCell::new(
+                        nautilus_common::cache::Cache::default()
+                    ))
+                    .into()
                 )
                 .is_err()
         );

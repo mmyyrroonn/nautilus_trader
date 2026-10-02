@@ -52,8 +52,8 @@ fn endpoints(http: Option<&str>, ws: Option<&str>) -> PyResult<BackpackEndpoints
 pub struct PyBackpackCredential {
     pub(crate) inner: BackpackCredential,
 }
-#[pymethods]
 #[pyo3_stub_gen::derive::gen_stub_pymethods]
+#[pymethods]
 impl PyBackpackCredential {
     #[new]
     #[pyo3(signature = (seed_base64, *, base_url_http=None, base_url_ws=None))]
@@ -95,8 +95,8 @@ impl Default for PyBackpackQuota {
         }
     }
 }
-#[pymethods]
 #[pyo3_stub_gen::derive::gen_stub_pymethods]
+#[pymethods]
 impl PyBackpackQuota {
     #[new]
     #[pyo3(signature = (*, standard_period_ms=32, historical_period_ms=2100))]
@@ -136,9 +136,11 @@ impl PyBackpackQuota {
 #[derive(Clone, Debug)]
 pub struct PyBackpackExecutionClientConfig {
     pub(crate) inner: BackpackExecutionClientConfig,
+    identity_account: String,
+    subaccount: Option<String>,
 }
-#[pymethods]
 #[pyo3_stub_gen::derive::gen_stub_pymethods]
+#[pymethods]
 impl PyBackpackExecutionClientConfig {
     #[new]
     #[pyo3(signature = (symbols, credential, account_id, identity_account, identity_directory, *,
@@ -208,7 +210,19 @@ impl PyBackpackExecutionClientConfig {
             quota.inner,
         )
         .map_err(|_| to_pyvalue_err("invalid Backpack read-only account configuration"))?;
-        Ok(Self { inner })
+        Ok(Self {
+            inner,
+            identity_account: identity_account.to_string(),
+            subaccount: subaccount.map(str::to_string),
+        })
+    }
+    #[getter]
+    fn identity_account(&self) -> String {
+        self.identity_account.clone()
+    }
+    #[getter]
+    fn subaccount(&self) -> Option<String> {
+        self.subaccount.clone()
     }
     #[getter]
     fn symbols(&self) -> Vec<String> {
