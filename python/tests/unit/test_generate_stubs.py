@@ -1888,7 +1888,9 @@ ADAPTER_CONFIG_SECRET_FIELDS = {
     "passphrase",
     "private_key",
     "session_key",
+    "signer_private_key",
 }
+ADAPTER_CONFIG_OPAQUE_FIELDS = {"credential"}
 ADAPTER_CONFIG_READBACK_REPLACEMENTS = {
     "proxy_url": "has_proxy_url",
     "submitter_proxy_urls": "has_submitter_proxy_urls",
@@ -2959,7 +2961,7 @@ def _config_readback_name(field_key: object) -> object:
         return CONFIG_READBACK_REPLACEMENTS.get(field_key, field_name)
     if field_key in ADAPTER_CONFIG_CONSTRUCTOR_ONLY_FIELDS:
         return None
-    if field_name in ADAPTER_CONFIG_SECRET_FIELDS:
+    if field_name in ADAPTER_CONFIG_SECRET_FIELDS | ADAPTER_CONFIG_OPAQUE_FIELDS:
         return ADAPTER_CONFIG_FIELD_READBACK_REPLACEMENTS.get(field_key)
     return ADAPTER_CONFIG_FIELD_READBACK_REPLACEMENTS.get(
         field_key,
@@ -2985,7 +2987,7 @@ def _adapter_config_field_policy(
                 f"{module_name}.{class_name}.{field_name}: constructor-only field exposed",
             )
         readback_name = None
-    elif field_name in ADAPTER_CONFIG_SECRET_FIELDS:
+    elif field_name in ADAPTER_CONFIG_SECRET_FIELDS | ADAPTER_CONFIG_OPAQUE_FIELDS:
         if raw_property_exists:
             mismatches.append(
                 f"{module_name}.{class_name}.{field_name}: raw secret property exposed",
@@ -3023,61 +3025,758 @@ def _config_readback_descriptor_mismatches(
     return []
 
 
+def _stub_config_parameters(stub_class):
+    constructor = next(
+        node
+        for node in stub_class.body
+        if isinstance(node, ast.FunctionDef) and node.name in {"__new__", "__init__"}
+    )
+    args = constructor.args
+    positional = args.posonlyargs + args.args
+    defaults = [None] * (len(positional) - len(args.defaults)) + list(args.defaults)
+    result = []
+    for index, (argument, default) in enumerate(zip(positional, defaults, strict=True)):
+        if argument.arg in {"self", "cls"}:
+            continue
+        kind = "positional_only" if index < len(args.posonlyargs) else "positional_or_keyword"
+        result.append((argument, kind, default))
+    if args.vararg:
+        result.append((args.vararg, "var_positional", None))
+    result.extend(
+        (argument, "keyword_only", default)
+        for argument, default in zip(args.kwonlyargs, args.kw_defaults, strict=True)
+    )
+    if args.kwarg:
+        result.append((args.kwarg, "var_keyword", None))
+    return result
+
+
+def _config_type_key(annotation, names=None):  # noqa: PLR0911
+    # Each AST type form has a distinct normalized representation.
+    """Compare resolved public names and generic structure, independent of import aliases."""
+    names = names or {}
+    if isinstance(annotation, str):
+        annotation = ast.parse(annotation, mode="eval").body
+    if isinstance(annotation, ast.BinOp) and isinstance(annotation.op, ast.BitOr):
+        parts = (
+            _config_type_key(annotation.left, names),
+            _config_type_key(annotation.right, names),
+        )
+        return frozenset(
+            value for part in parts for value in (part if isinstance(part, frozenset) else (part,))
+        )
+    if isinstance(annotation, ast.Subscript):
+        name = _config_type_key(annotation.value, names)
+        arguments = (
+            annotation.slice.elts if isinstance(annotation.slice, ast.Tuple) else [annotation.slice]
+        )
+        if name == "Optional":
+            return frozenset((_config_type_key(arguments[0], names), "None"))
+        if name == "Union":
+            return frozenset(_config_type_key(arg, names) for arg in arguments)
+        return name, tuple(_config_type_key(arg, names) for arg in arguments)
+    if isinstance(annotation, ast.Attribute):
+        public_name = ast.unparse(annotation)
+        head, _, tail = public_name.partition(".")
+        public_name = names.get(head, head) + "." + tail
+        module, _, name = public_name.rpartition(".")
+        if module in {"typing", "decimal", "pathlib", "os"}:
+            return name
+        return public_name
+    if isinstance(annotation, ast.Name):
+        return names.get(annotation.id, annotation.id)
+    if isinstance(annotation, ast.Constant):
+        return "None" if annotation.value is None else repr(annotation.value)
+    return ast.dump(annotation)
+
+
+def _rust_config_type_key(rust_type, *, input_type=False, names=None):  # noqa: C901, PLR0911
+    # Normalize scalar/container/wrapper forms without conflating qualified domain types.
+    names = names or {}
+    rust_type = re.sub(r"&(?:'\w+\s+)?(?:mut\s+)?", "", rust_type).strip()
+    if rust_type.startswith("(") and rust_type.endswith(")"):
+        return "tuple", tuple(
+            _rust_config_type_key(arg, input_type=input_type, names=names)
+            for arg in generate_stubs._split_signature_params(rust_type[1:-1])
+        )
+    if rust_type == "PathBuf" and input_type:
+        return frozenset(("str", "PathLike", "Path"))
+    generic = re.fullmatch(r"([\w:]+)\s*<(.*)>", rust_type)
+    if generic:
+        name = generic.group(1).rsplit("::", 1)[-1]
+        args = generate_stubs._split_signature_params(generic.group(2))
+        if name in {"PyResult", "Py", "Arc", "Box"}:
+            return _rust_config_type_key(args[-1], input_type=input_type, names=names)
+        if name == "Option":
+            return frozenset(
+                (_rust_config_type_key(args[0], input_type=input_type, names=names), "None")
+            )
+        containers = {
+            "Vec": "Sequence" if input_type else "list",
+            "HashMap": "Mapping" if input_type else "dict",
+            "BTreeMap": "Mapping" if input_type else "dict",
+            "IndexMap": "Mapping" if input_type else "dict",
+            "HashSet": "set",
+        }
+        if name in containers:
+            return containers[name], tuple(
+                _rust_config_type_key(arg, input_type=input_type, names=names) for arg in args
+            )
+        if name in {"Bound", "PyRef", "PyRefMut"}:
+            return _rust_config_type_key(args[-1], input_type=input_type, names=names)
+    if rust_type.startswith("pyo3::types::"):
+        rust_type = rust_type.removeprefix("pyo3::types::")
+    if "::" in rust_type:
+        # Arbitrary Rust import paths need explicit type_repr; never collapse domain homonyms.
+        return "unresolved:" + rust_type
+    name = rust_type
+    scalar = {
+        "String": "str",
+        "str": "str",
+        "Ustr": "str",
+        "usize": "int",
+        "isize": "int",
+        "PathBuf": "Path",
+        "PyAny": "Any",
+        "PyDict": "dict",
+        "PyList": "list",
+        "Duration": "timedelta",
+    }
+    if re.fullmatch(r"[ui](?:8|16|32|64|128)", name):
+        return "int"
+    if name in {"f32", "f64"}:
+        return "float"
+    public_name = name.removeprefix("Py") if name.startswith("Py") else name
+    return scalar.get(name, names.get(public_name, public_name))
+
+
+def _config_public_type_context():
+    """Resolve stub imports and unique public domain names without discarding namespaces."""
+    definitions = {}
+    modules = {}
+    for path in STUB_ROOT.rglob("__init__.pyi"):
+        module = _module_name_from_stub_path(path.relative_to(STUB_ROOT).parent)
+        tree = ast.parse(path.read_text())
+        names = {}
+        for node in tree.body:
+            if isinstance(node, ast.ClassDef):
+                qualified = module + "." + node.name
+                names[node.name] = qualified
+                definitions.setdefault(node.name, set()).add(qualified)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                for alias in node.names:
+                    names[alias.asname or alias.name] = node.module + "." + alias.name
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    names[alias.asname or alias.name] = alias.name
+        modules[module] = names
+    unique = {name: next(iter(paths)) for name, paths in definitions.items() if len(paths) == 1}
+    return modules, unique
+
+
+def _config_source_contract_mismatches(  # noqa: C901, PLR0912
+    module_name, stub_class, source, renamed_enums=frozenset(), type_context=None
+):
+    # Report each independent constructor/getter obligation without stopping at the first drift.
+    label = f"{module_name}.{stub_class.name}"
+    stub_names, rust_names = {}, {}
+    if type_context is not None:
+        modules, unique = type_context
+        stub_names = modules[module_name]
+        rust_names = {
+            **unique,
+            **{
+                name: path
+                for name, path in stub_names.items()
+                if path.startswith(module_name + ".")
+            },
+        }
+    if source is None:
+        return [f"{label}: missing exported PyO3 config"]
+    if source.constructor is None:
+        return [f"{label}: missing PyO3 constructor"]
+    mismatches = []
+    parameters = _stub_config_parameters(stub_class)
+    stub_shape = [(argument.arg, kind) for argument, kind, _ in parameters]
+    source_shape = [(param.name, param.kind) for param in source.constructor]
+    if stub_shape != source_shape:
+        mismatches.append(
+            f"{label}: constructor order/kind drift stub={stub_shape}, source={source_shape}"
+        )
+    stub_by_name = {arg.arg: (arg, default) for arg, _, default in parameters}
+    properties = {
+        node.name: node
+        for node in stub_class.body
+        if isinstance(node, ast.FunctionDef)
+        and any(
+            isinstance(attr, ast.Name) and attr.id == "property" for attr in node.decorator_list
+        )
+    }
+    readbacks = 0
+    for param in source.constructor:
+        stub = stub_by_name.get(param.name)
+        if stub is None:
+            continue
+        argument, default = stub
+        if (param.default is None) != (default is None):
+            mismatches.append(f"{label}.{param.name}: constructor default presence drift")
+        elif default is not None and not (
+            isinstance(default, ast.Constant) and default.value is Ellipsis
+        ):
+            translated = generate_stubs._rust_default_to_python(param.default)
+            if translated is not None:
+                translated = generate_stubs.fix_enum_defaults_in_signatures(
+                    translated,
+                    renamed_enums,
+                )
+                translated = generate_stubs._qualify_enum_default(
+                    translated, ast.unparse(argument.annotation)
+                )
+            if translated is None or ast.dump(ast.parse(translated, mode="eval").body) != ast.dump(
+                default
+            ):
+                mismatches.append(f"{label}.{param.name}: constructor default value drift")
+        source_type = (
+            _config_type_key(param.python_type, stub_names)
+            if param.python_type
+            else _rust_config_type_key(param.rust_type, input_type=True, names=rust_names)
+        )
+        if (
+            argument.annotation is None
+            or _config_type_key(argument.annotation, stub_names) != source_type
+        ):
+            mismatches.append(
+                f"{label}.{param.name}: constructor type drift "
+                f"stub={ast.unparse(argument.annotation) if argument.annotation else None}, "
+                f"source={param.python_type or param.rust_type}"
+            )
+        if param.kind in {"var_positional", "var_keyword"}:
+            continue
+        readback = _config_readback_name((module_name, stub_class.name, param.name))
+        if readback is None:
+            if param.name in source.getters:
+                mismatches.append(
+                    f"{label}.{param.name}: confidential/constructor-only getter exposed"
+                )
+            continue
+        if readback not in source.getters:
+            mismatches.append(f"{label}.{param.name}: missing PyO3 getter {readback}")
+            continue
+        readbacks += 1
+    mismatches.extend(
+        f"{label}.{name}: stub property has no PyO3 getter"
+        for name in sorted(properties.keys() - source.getters.keys())
+    )
+    for name, getter in source.getters.items():
+        stub = properties.get(name)
+        if stub is None:
+            mismatches.append(f"{label}.{name}: missing stub property")
+            continue
+        source_type = (
+            _config_type_key(getter.removeprefix("@python:"), stub_names)
+            if getter.startswith("@python:")
+            else _rust_config_type_key(getter, names=rust_names)
+        )
+        if stub.returns is None or _config_type_key(stub.returns, stub_names) != source_type:
+            mismatches.append(
+                f"{label}.{name}: getter type drift "
+                f"stub={ast.unparse(stub.returns) if stub.returns else None}, source={getter}"
+            )
+    if source.constructor and not readbacks:
+        mismatches.append(
+            f"{label}: vacuous parity constructor={len(source.constructor)}, source readbacks=0"
+        )
+    return mismatches
+
+
 def test_supported_config_py_new_and_getters_match_rust_fields() -> None:
-    """
-    Test supported config py new and getters match rust fields.
-    """
+    """Keep genuine public contract gaps visible while inspecting actual thin wrappers."""
     configs = list(_iter_supported_stub_configs(adapter=None))
     assert {(module_name, stub_class.name) for module_name, stub_class in configs} == {
         (module_name, stub_class.name)
         for adapter in (False, True)
         for module_name, stub_class in _iter_supported_stub_configs(adapter)
     }
-    source_inventory = _rust_config_source_inventory(
-        {stub_class.name for _, stub_class in configs},
-    )
+    source_inventory = generate_stubs.collect_rust_config_exports(WORKSPACE_ROOT)
+    renamed_enums = generate_stubs.collect_renamed_enums(WORKSPACE_ROOT)
+    type_context = _config_public_type_context()
     mismatches = []
-
     for module_name, stub_class in configs:
-        label = f"{module_name}.{stub_class.name}"
-        source = source_inventory[stub_class.name]
-        stub_params = _stub_constructor_param_names(stub_class)
-        constructor_params = source["constructor_params"]
-        if source["struct_count"] != 1:
-            mismatches.append(f"{label}: Rust struct count {source['struct_count']}")
-            continue
-        if stub_params != constructor_params:
-            mismatches.append(
-                f"{label}: stub/PyO3 constructor mismatch "
-                f"stub={sorted(stub_params)}, source={sorted(constructor_params)}",
+        mismatches.extend(
+            _config_source_contract_mismatches(
+                module_name,
+                stub_class,
+                source_inventory.get((module_name, stub_class.name)),
+                renamed_enums,
+                type_context,
             )
-
-        source_readbacks = 0
-
-        for field_name in sorted(stub_params):
-            readback_name = _config_readback_name((module_name, stub_class.name, field_name))
-            if readback_name is None:
-                continue
-
-            if readback_name not in source["getters"]:
-                mismatches.append(f"{label}.{field_name}: missing PyO3 getter {readback_name}")
-            else:
-                source_readbacks += 1
-
-        if (
-            not source["struct_fields"]
-            or not stub_params
-            or not constructor_params
-            or not source["struct_fields"] & constructor_params
-            or source_readbacks == 0
-        ):
-            mismatches.append(
-                f"{label}: vacuous parity fields={len(source['struct_fields'])}, "
-                f"constructor={len(constructor_params)}, "
-                f"source readbacks={source_readbacks}",
-            )
-
+        )
     assert mismatches == [], "Rust/PyO3 config parity drift:\n" + "\n".join(mismatches)
+
+
+def _write_config_fixture(root, relative, source):
+    path = root / "crates" / "sample" / "src" / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(source)
+    return path
+
+
+def _config_stub_fixture(source):
+    return next(node for node in ast.parse(source).body if isinstance(node, ast.ClassDef))
+
+
+CONFIG_EXPORT_FIXTURE = """
+#[pyclass(module = "nautilus_trader.adapters.sample", name = "ExampleConfig")]
+pub struct PyExample {
+    inner: NativeConfig,
+}
+#[pymethods]
+impl PyExample {
+    #[new]
+    #[pyo3(signature = (name, *, count=7, label=None))]
+    fn py_new(name: String, count: u64, label: Option<String>) -> Self {
+        // Delimiters in comments must not end this block: } )
+        let raw = r##"a quoted \" } ) with raw text"##;
+        let text = "escaped \\\" } )";
+        /* ignored { ( } ) */
+        Self { inner: todo!() }
+    }
+    #[getter]
+    fn name(&self) -> String { todo!() }
+    #[getter]
+    fn count(&self) -> u64 { todo!() }
+    #[getter]
+    fn label(&self) -> Option<String> { todo!() }
+}
+"""
+CONFIG_STUB_FIXTURE = """
+class ExampleConfig:
+    def __new__(cls, name: str, *, count: int = 7, label: str | None = None) -> ExampleConfig: ...
+    @property
+    def name(self) -> str: ...
+    @property
+    def count(self) -> int: ...
+    @property
+    def label(self) -> str | None: ...
+"""
+
+
+def test_config_inventory_alias_inner_wrapper_and_private_homonym(tmp_path) -> None:
+    """Test alias inner wrapper and private homonym."""
+    _write_config_fixture(tmp_path, "python.rs", CONFIG_EXPORT_FIXTURE)
+    _write_config_fixture(
+        tmp_path,
+        "config.rs",
+        """
+        pub struct ExampleConfig {
+            secret_native_only: String,
+        }
+    """,
+    )
+    exports = generate_stubs.collect_rust_config_exports(tmp_path)
+    source = exports["nautilus_trader.adapters.sample", "ExampleConfig"]
+    assert source.rust_name == "PyExample"
+    assert set(source.fields) == {"inner"}
+    assert set(source.getters) == {"name", "count", "label"}
+    assert (
+        _config_source_contract_mismatches(
+            source.module, _config_stub_fixture(CONFIG_STUB_FIXTURE), source
+        )
+        == []
+    )
+
+
+@pytest.mark.parametrize("qualifier", ["crate::config::", "super::config::"])
+def test_config_inventory_qualified_impl_and_module_homonym(tmp_path, qualifier) -> None:
+    """Test qualified impl and module homonym."""
+    declaration, implementation = CONFIG_EXPORT_FIXTURE.split("#[pymethods]", 1)
+    _write_config_fixture(tmp_path, "config.rs", declaration)
+    _write_config_fixture(
+        tmp_path,
+        "python.rs",
+        "#[pymethods]" + implementation.replace("impl PyExample", f"impl {qualifier}PyExample"),
+    )
+    _write_config_fixture(
+        tmp_path, "other.rs", declaration.replace("adapters.sample", "adapters.other")
+    )
+    exports = generate_stubs.collect_rust_config_exports(tmp_path)
+    source = exports["nautilus_trader.adapters.sample", "ExampleConfig"]
+    assert source.constructor is not None
+    assert exports["nautilus_trader.adapters.other", "ExampleConfig"].constructor is None
+    assert (
+        _config_source_contract_mismatches(
+            source.module, _config_stub_fixture(CONFIG_STUB_FIXTURE), source
+        )
+        == []
+    )
+
+
+def test_config_inventory_self_qualified_impl(tmp_path) -> None:
+    """Test self qualified impl."""
+    _write_config_fixture(
+        tmp_path,
+        "python.rs",
+        CONFIG_EXPORT_FIXTURE.replace("impl PyExample", "impl self::PyExample"),
+    )
+    source = generate_stubs.collect_rust_config_exports(tmp_path)[
+        "nautilus_trader.adapters.sample", "ExampleConfig"
+    ]
+    assert source.constructor is not None
+
+
+@pytest.mark.parametrize("getter_form", ["get_all", "macro"])
+def test_config_inventory_explicit_field_getters(tmp_path, getter_form) -> None:
+    """Test explicit field getters."""
+    source = """
+        #[pyclass(module = "nautilus_trader.adapters.sample", name = "ExampleConfig"GET_ALL)]
+        pub struct PyExample {
+            count: u64,
+        }
+        #[pymethods]
+        impl PyExample {
+            #[new]
+            #[pyo3(signature = (count=7))]
+            fn py_new(count: u64) -> Self { Self { count } }
+        }
+    """.replace("GET_ALL", ", get_all" if getter_form == "get_all" else "")
+    if getter_form == "macro":
+        source += """
+        impl_pyo3_config_getters!(PyExample, {
+            count: u64,
+        });
+        """
+    _write_config_fixture(tmp_path, "config.rs", source)
+    export = generate_stubs.collect_rust_config_exports(tmp_path)[
+        "nautilus_trader.adapters.sample", "ExampleConfig"
+    ]
+    stub = _config_stub_fixture("""
+class ExampleConfig:
+    def __new__(cls, count: int = 7) -> ExampleConfig: ...
+    @property
+    def count(self) -> int: ...
+""")
+    assert _config_source_contract_mismatches(export.module, stub, export) == []
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "expected"),
+    [
+        ("name: str, *, count: int = 7", "*, count: int = 7, name: str", "order/kind drift"),
+        ("name: str, *, count: int = 7", "name: str, count: int = 7", "order/kind drift"),
+        ("count: int = 7", "count: int", "default presence drift"),
+        ("count: int = 7", "count: int = 8", "default value drift"),
+        ("name: str,", "name: int,", "constructor type drift"),
+        ("def count(self) -> int", "def count(self) -> str", "getter type drift"),
+        ("def name(self) -> str", "def name(self) -> other.str", "getter type drift"),
+        ("    @property\n    def label(self) -> str | None: ...", "", "missing stub property"),
+        (
+            "class ExampleConfig:",
+            "class ExampleConfig:\n    @property\n    def phantom(self) -> int: ...",
+            "no PyO3 getter",
+        ),
+    ],
+)
+def test_config_inventory_rejects_stub_contract_drift(tmp_path, old, new, expected) -> None:
+    """Test rejects stub contract drift."""
+    _write_config_fixture(tmp_path, "python.rs", CONFIG_EXPORT_FIXTURE)
+    export = generate_stubs.collect_rust_config_exports(tmp_path)[
+        "nautilus_trader.adapters.sample", "ExampleConfig"
+    ]
+    mismatches = _config_source_contract_mismatches(
+        export.module, _config_stub_fixture(CONFIG_STUB_FIXTURE.replace(old, new)), export
+    )
+    assert any(expected in mismatch for mismatch in mismatches), mismatches
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "expected"),
+    [
+        ("    #[new]", "    #[staticmethod]", "missing PyO3 constructor"),
+        ("    #[getter]\n    fn count", "    fn count", "missing PyO3 getter count"),
+        ("impl PyExample", "impl crate::missing::PyExample", "missing PyO3 constructor"),
+        ("(name, *, count=7, label=None)", "(name, *, count=7, label)", "default presence drift"),
+    ],
+)
+def test_config_inventory_rejects_missing_source_contract(tmp_path, old, new, expected) -> None:
+    """Test rejects missing source contract."""
+    _write_config_fixture(tmp_path, "python.rs", CONFIG_EXPORT_FIXTURE.replace(old, new))
+    export = generate_stubs.collect_rust_config_exports(tmp_path)[
+        "nautilus_trader.adapters.sample", "ExampleConfig"
+    ]
+    mismatches = _config_source_contract_mismatches(
+        export.module, _config_stub_fixture(CONFIG_STUB_FIXTURE), export
+    )
+    assert any(expected in mismatch for mismatch in mismatches), mismatches
+
+
+def test_config_inventory_required_optional_without_signature(tmp_path) -> None:
+    """Test required optional without signature."""
+    source = CONFIG_EXPORT_FIXTURE.replace(
+        "    #[pyo3(signature = (name, *, count=7, label=None))]\n", ""
+    )
+    _write_config_fixture(tmp_path, "python.rs", source)
+    export = generate_stubs.collect_rust_config_exports(tmp_path)[
+        "nautilus_trader.adapters.sample", "ExampleConfig"
+    ]
+    assert all(param.default is None for param in export.constructor)
+    mismatches = _config_source_contract_mismatches(
+        export.module, _config_stub_fixture(CONFIG_STUB_FIXTURE), export
+    )
+    assert any("label: constructor default presence drift" in mismatch for mismatch in mismatches)
+
+
+@pytest.mark.parametrize("ambiguity", ["export", "impl", "constructor", "getter"])
+def test_config_inventory_rejects_ambiguous_contract(tmp_path, ambiguity) -> None:
+    """Test rejects ambiguous contract."""
+    declaration, implementation = CONFIG_EXPORT_FIXTURE.split("#[pymethods]", 1)
+    if ambiguity == "export":
+        _write_config_fixture(tmp_path, "first.rs", CONFIG_EXPORT_FIXTURE)
+        _write_config_fixture(tmp_path, "second.rs", declaration)
+    elif ambiguity == "impl":
+        _write_config_fixture(tmp_path, "first.rs", declaration)
+        _write_config_fixture(
+            tmp_path, "second.rs", declaration.replace("adapters.sample", "adapters.other")
+        )
+        _write_config_fixture(tmp_path, "methods.rs", "#[pymethods]" + implementation)
+    else:
+        _write_config_fixture(tmp_path, "python.rs", CONFIG_EXPORT_FIXTURE)
+        method = (
+            "#[new]\n fn py_new(name: String) -> Self { todo!() }"
+            if ambiguity == "constructor"
+            else "#[getter]\n fn count(&self) -> u64 { 1 }"
+        )
+        _write_config_fixture(
+            tmp_path, "more.rs", "#[pymethods]\nimpl crate::python::PyExample {\n" + method + "\n}"
+        )
+    with pytest.raises(ValueError, match="Ambiguous"):
+        generate_stubs.collect_rust_config_exports(tmp_path)
+
+
+def test_config_inventory_varargs_keep_following_keyword_only() -> None:
+    """Test varargs keep following keyword only."""
+    parameters = generate_stubs._rust_config_constructor(
+        ["#[pyo3(signature = (name, *args, label=None, **kwargs))]"],
+        "name: String, args: Py<PyTuple>, label: Option<String>, kwargs: Option<Py<PyDict>>",
+    )
+    assert [(param.name, param.kind) for param in parameters] == [
+        ("name", "positional_or_keyword"),
+        ("args", "var_positional"),
+        ("label", "keyword_only"),
+        ("kwargs", "var_keyword"),
+    ]
+
+
+def _config_nondefault_readback_mismatches(instance, expected):
+    return [
+        f"{type(instance).__name__}.{name}: nondefault readback mismatch"
+        for name, value in expected.items()
+        if getattr(instance, name) != value
+    ]
+
+
+def test_config_inventory_public_import_aliases_and_domain_ambiguity(tmp_path, monkeypatch) -> None:
+    """Resolve actual module aliases while leaving duplicate public domain names ambiguous."""
+    for module, source in {
+        "common": "class SharedDomain: ...\nclass DuplicateDomain: ...\n",
+        "network": "class DuplicateDomain: ...\n",
+        "sample": "from nautilus_trader import common as shared\nclass ExampleConfig: ...\n",
+    }.items():
+        path = tmp_path / module / "__init__.pyi"
+        path.parent.mkdir(parents=True)
+        path.write_text(source)
+    monkeypatch.setattr(sys.modules[__name__], "STUB_ROOT", tmp_path)
+    modules, unique = _config_public_type_context()
+    assert _config_type_key("shared.SharedDomain", modules["nautilus_trader.sample"]) == (
+        _rust_config_type_key("SharedDomain", names=unique)
+    )
+    assert _config_type_key("shared.DuplicateDomain", modules["nautilus_trader.sample"]) != (
+        _rust_config_type_key("DuplicateDomain", names=unique)
+    )
+    assert "DuplicateDomain" not in unique
+
+
+def test_config_inventory_ellipsis_only_proves_default_presence(tmp_path) -> None:
+    """Generated Ellipsis defaults retain requiredness but make no literal-value claim."""
+    _write_config_fixture(tmp_path, "python.rs", CONFIG_EXPORT_FIXTURE)
+    export = generate_stubs.collect_rust_config_exports(tmp_path)[
+        "nautilus_trader.adapters.sample", "ExampleConfig"
+    ]
+    stub = _config_stub_fixture(CONFIG_STUB_FIXTURE.replace("count: int = 7", "count: int = ..."))
+    assert _config_source_contract_mismatches(export.module, stub, export) == []
+    export.constructor = tuple(
+        generate_stubs.RustConfigParameter(
+            p.name,
+            p.rust_type,
+            p.kind,
+            None if p.name == "count" else p.default,
+            p.python_type,
+        )
+        for p in export.constructor
+    )
+    assert any(
+        "default presence drift" in mismatch
+        for mismatch in _config_source_contract_mismatches(export.module, stub, export)
+    )
+
+
+@pytest.mark.parametrize("domain", ["crate::first::Domain", "crate::second::Domain"])
+def test_config_inventory_unresolved_qualified_domain_is_not_basename(domain) -> None:
+    """Unresolved Rust domain paths stay distinct instead of inventing import correspondence."""
+    key = _rust_config_type_key(domain)
+    assert key != _config_type_key("Domain")
+    assert key == "unresolved:" + domain
+
+
+def test_config_inventory_nondefault_readback_detects_constant_getter() -> None:
+    """Test nondefault readback detects constant getter."""
+
+    class BrokenConfig:
+        def __init__(self, count) -> None:
+            self.input_count = count
+
+        @property
+        def count(self):
+            return 7
+
+    assert _config_nondefault_readback_mismatches(BrokenConfig(11), {"count": 11}) == [
+        "BrokenConfig.count: nondefault readback mismatch",
+    ]
+
+
+def test_config_inventory_backpack_native_nondefault_readback(tmp_path) -> None:
+    """Prove composed native wrappers preserve explicit values without opening clients."""
+    import base64
+
+    from nautilus_trader.adapters import backpack
+
+    http, websocket = "http://127.0.0.1:39001", "ws://127.0.0.1:39002"
+    directory = tmp_path / "identity-not-opened"
+    seed = base64.b64encode(bytes([7]) * 32).decode()
+    credential = backpack.BackpackCredential(seed, base_url_http=http, base_url_ws=websocket)
+    quota = backpack.BackpackQuota(standard_period_ms=37, historical_period_ms=2300)
+    economics = backpack.BackpackInstrumentEconomics(
+        "0.17",
+        "0.09",
+        "-0.00013",
+        "0.00071",
+        "Synthetic",
+        "inventory nondefault fixture",
+    )
+    data_values = {
+        "base_url_http": http,
+        "base_url_ws": websocket,
+        "http_timeout_secs": 11,
+        "ws_connect_timeout_secs": 13,
+        "ws_heartbeat_secs": 17,
+        "ws_idle_timeout_secs": 43,
+        "reconnect_timeout_secs": 47,
+        "shutdown_timeout_secs": 7,
+        "quote_stale_after_ms": 2317,
+        "depth_snapshot_limit": 20,
+        "max_buffer_frames": 31,
+        "max_levels_per_side": 43,
+        "max_ws_message_bytes": 65537,
+    }
+    data = backpack.BackpackDataClientConfig(
+        ["BTC_USDC_PERP"],
+        {"BTC_USDC_PERP": economics},
+        **data_values,
+    )
+    execution_values = {
+        "subaccount": "synthetic-subaccount",
+        "base_url_http": http,
+        "base_url_ws": websocket,
+        "connect_timeout_ms": 1234,
+        "shutdown_timeout_ms": 2345,
+        "recovery_interval_ms": 3456,
+        "recovery_lookback_ms": 456789,
+        "input_capacity": 17,
+        "fill_capacity": 19,
+        "page_size": 23,
+        "max_pages": 7,
+        "max_items": 161,
+        "read_timeout_ms": 5432,
+    }
+    execution = backpack.BackpackExecutionClientConfig(
+        ["BTC_USDC_PERP"],
+        credential,
+        "BACKPACK-SYNTHETIC",
+        "synthetic-account",
+        str(directory),
+        quota=quota,
+        **execution_values,
+    )
+    authority = backpack.BackpackLoopbackExecutionAuthority(
+        expires_at_ms=2000000000000,
+        max_account_age_ms=12345,
+        max_market_age_ms=23456,
+        max_order_notional="0.0137",
+        max_reserved_notional="0.0291",
+        max_reserved_margin="1.37",
+        max_unsettled_orders=3,
+        allow_new_risk=True,
+        allow_reduction=False,
+        allow_owned_cancel=True,
+    )
+    loopback = backpack.BackpackLoopbackExecutionClientConfig(
+        execution,
+        data,
+        authority=authority,
+        mutation_budget_ms=4321,
+        receive_window_ms=6789,
+    )
+    for instance, expected in ((data, data_values), (execution, execution_values)):
+        normalized = {**expected, "base_url_http": http + "/", "base_url_ws": websocket + "/"}
+        assert _config_nondefault_readback_mismatches(instance, normalized) == []
+    assert data.symbols == execution.symbols == ["BTC_USDC_PERP"]
+    assert data.economics["BTC_USDC_PERP"].source_reference == economics.source_reference
+    assert execution.account_id == "BACKPACK-SYNTHETIC"
+    assert execution.identity_account == "synthetic-account"
+    assert execution.identity_directory == str(directory)
+    assert execution.quota.shares_scope(quota)
+    assert not execution.quota.shares_scope(backpack.BackpackQuota())
+    assert loopback.read_only_config.quota.shares_scope(quota)
+    assert loopback.read_only_config.page_size == 23
+    assert loopback.public_config.max_ws_message_bytes == 65537
+    assert loopback.authority.max_reserved_margin == "1.37"
+    assert loopback.mutation_budget_ms == 4321
+    assert loopback.receive_window_ms == 6789
+    assert isinstance(loopback.control, backpack.BackpackLoopbackControl)
+    with pytest.raises(RuntimeError):
+        loopback.control.begin_session()
+    assert not directory.exists()
+    assert not hasattr(execution, "credential")
+    assert not [
+        name
+        for name in dir(type(credential))
+        if not name.startswith("__")
+        and inspect.isdatadescriptor(inspect.getattr_static(type(credential), name))
+    ]
+    assert all(seed not in repr(instance) for instance in (credential, data, execution, loopback))
+
+    inventory = generate_stubs.collect_rust_config_exports(WORKSPACE_ROOT)
+    type_context = _config_public_type_context()
+    for module_name, stub in _iter_supported_stub_configs(adapter=True):
+        if module_name != backpack.__name__:
+            continue
+        source = inventory[module_name, stub.name]
+        assert (
+            _config_source_contract_mismatches(module_name, stub, source, type_context=type_context)
+            == []
+        )
+        signature = inspect.signature(getattr(backpack, stub.name))
+        # Ellipsis proves default presence in the stub. Source/runtime establish exact values.
+        assert [
+            (param.name, param.kind.name.lower()) for param in signature.parameters.values()
+        ] == [(param.name, param.kind) for param in source.constructor]
+        for parameter in source.constructor:
+            actual = signature.parameters[parameter.name].default
+            if parameter.default is None:
+                assert actual is inspect.Parameter.empty
+            else:
+                translated = generate_stubs._rust_default_to_python(parameter.default)
+                assert translated is not None
+                assert actual == ast.literal_eval(translated)
 
 
 def test_pyo3_constructor_params_stop_at_new_function() -> None:
@@ -3155,107 +3854,6 @@ def _config_constructor_fixups_for_stub(
         )
 
     return config_fixups
-
-
-def _rust_config_source_inventory(config_names: object) -> object:
-    (
-        struct_blocks,
-        impl_blocks,
-        getter_macro_blocks,
-        macro_blocks,
-        macro_invocations,
-    ) = _collect_rust_config_source_blocks(config_names)
-    inventory = {}
-
-    for class_name in config_names:
-        structs = struct_blocks.get(class_name, [])
-        rust_fields = set().union(
-            *(set(RUST_STRUCT_FIELD_RE.findall(block)) for block in structs),
-        )
-        class_impls = impl_blocks.get(class_name, [])
-        getters = set()
-
-        for block in class_impls:
-            getters.update(_pyo3_getter_names(block))
-        for block in getter_macro_blocks.get(class_name, []):
-            getters.update(RUST_STRUCT_FIELD_RE.findall(block))
-        for macro_key in macro_invocations.get(class_name, []):
-            macro_block = macro_blocks.get(macro_key)
-            if macro_block is not None:
-                getters.update(_pyo3_getter_names(macro_block))
-
-        inventory[class_name] = {
-            "struct_count": len(structs),
-            "struct_fields": rust_fields,
-            "constructor_params": _pyo3_constructor_param_names(class_impls),
-            "getters": getters,
-        }
-
-    return inventory
-
-
-# Each branch indexes a distinct Rust form during the same file pass
-def _collect_rust_config_source_blocks(config_names: object):  # noqa: C901
-    struct_blocks = {}
-    impl_blocks = {}
-    getter_macro_blocks = {}
-    macro_blocks = {}
-    macro_invocations = {}
-
-    for rust_file in sorted(WORKSPACE_ROOT.glob("crates/**/src/**/*.rs")):
-        content = rust_file.read_text(encoding="utf-8")
-        for match in RUST_CONFIG_STRUCT_RE.finditer(content):
-            class_name = match.group(1)
-            if class_name in config_names:
-                struct_blocks.setdefault(class_name, []).append(
-                    _rust_block_after_position(content, match.start()),
-                )
-        for match in RUST_CONFIG_IMPL_RE.finditer(content):
-            class_name = match.group(1)
-            if class_name in config_names:
-                impl_blocks.setdefault(class_name, []).append(
-                    _rust_block_after_position(content, match.start()),
-                )
-        for match in RUST_CONFIG_GETTER_MACRO_RE.finditer(content):
-            class_name = match.group(1)
-            if class_name in config_names:
-                getter_macro_blocks.setdefault(class_name, []).append(
-                    _rust_block_after_position(content, match.start()),
-                )
-        for match in RUST_MACRO_RE.finditer(content):
-            macro_blocks[(rust_file, match.group(1))] = _rust_block_after_position(
-                content,
-                match.start(),
-            )
-        for match in RUST_CONFIG_MACRO_INVOCATION_RE.finditer(content):
-            macro_name, class_name = match.groups()
-            if class_name in config_names:
-                macro_invocations.setdefault(class_name, []).append(
-                    (rust_file, macro_name),
-                )
-
-    return (
-        struct_blocks,
-        impl_blocks,
-        getter_macro_blocks,
-        macro_blocks,
-        macro_invocations,
-    )
-
-
-def _rust_block_after_position(content: object, start: object) -> object:
-    open_brace = content.index("{", start)
-    depth = 0
-
-    for pos in range(open_brace, len(content)):
-        if content[pos] == "{":
-            depth += 1
-        elif content[pos] == "}":
-            depth -= 1
-            if depth == 0:
-                return content[open_brace + 1 : pos]
-
-    raise AssertionError(f"Could not find Rust block after position {start}")
 
 
 def _pyo3_constructor_param_names(impl_blocks: object) -> object:
