@@ -1,7 +1,7 @@
 # Backpack Exchange adapter foundations
 
 This crate contains configuration, authentication and transport foundations, exact public market
-metadata, and durable local order identity for a phased Backpack Exchange integration. It validates
+metadata, bounded public stream/depth parsing, and durable local order identity for a phased Backpack Exchange integration. It validates
 product eligibility and complete provider refreshes, constructs Ed25519 authentication, and provides
 a restricted GET transport with typed account observations and bounded reconciliation.
 Engine data/account runtime clients, execution, factories, and Python
@@ -20,6 +20,7 @@ environment lookup.
 | REST signing and authenticated/public GET transport | Implemented with local transport tests         | Typed domain parsing and reconciliation         |
 | Account snapshot/history and fill reconciliation    | Read-only protocol and delivery contracts       | Runtime coverage and durable consumer ACK        |
 | Private WS subscription authentication              | Payload construction only                      | Connection lifecycle and account processing     |
+| Public stream parsing and depth synchronization    | Bounded continuous views with explicit coverage | Native data client and WebSocket lifecycle      |
 | Public market data and account runtime clients      | Explicit unsupported error                     | Instrument discovery, data, account state       |
 | Restricted execution                                | Explicit unsupported error                     | Guarded order surface after deterministic tests |
 
@@ -82,6 +83,56 @@ selected entries before publishing the replacement snapshot. A failed refresh in
 previous snapshot. `get(&InstrumentId)` and `all()` expose only the latest successful complete
 refresh. The future transport owner must call `invalidate()` on request or response-decoding failure.
 This provider owns no transport and does not fetch, cache indefinitely, or infer readiness.
+
+## Public stream parsing and depth synchronization
+
+`public::BackpackPublicStreamParser::new(metadata, generation)` scopes decoding to a validated
+instrument and a caller-assigned bootstrap token. `decode(generation, frame, received_at)` requires
+an exact `stream`/`data.e`/`data.s` match. It accepts `bookTicker`, `trade`, `markPrice`, realtime
+`depth`, and documented `depth.200ms`, `depth.600ms`, `depth.1000ms` topics. Subscription/control
+acknowledgements and errors belong to the transport owner and are not data decoder input.
+Malformed/oversized frames, unsupported topics, wrong symbols, old tokens, non-executable grids,
+and checked timestamp overflow return typed errors. Duplicate JSON fields are rejected for known
+wire fields. The caller must invalidate cached freshness and associated book state on decoder errors.
+
+Complete BBO and trades become native `QuoteTick` and `TradeTick`. Explicit paired null sides
+produce `QuoteUnavailable`, never a zero-filled quote; omitted or unpaired side fields fail.
+Quote/trade IDs deduplicate within one parser generation. Official book ticker documentation shows
+a string update ID; the captured native perpetual stream uses an integer. Both exact unsigned
+forms are accepted; fractional, signed, and overflowing values are rejected. Buyer-maker `m=true`
+maps to sell aggressor. `T` is used for event time and both `E`/`T` microsecond values are checked.
+
+Mark price becomes `MarkPriceUpdate`, retaining exact theoretical precision without rounding to
+an order-entry tick. Funding `f` is retained as `BackpackFundingEstimate.raw_rate: Decimal`.
+The official description does not establish a fraction/percent/bps denominator, so no native
+`FundingRateUpdate.rate` is manufactured. `n` is checked milliseconds converted to nanoseconds;
+metadata funding interval stays milliseconds. Funding estimates are distinct from settled funding.
+
+`depth::BackpackDepthSynchronizer::new_checked(metadata, generation, snapshot_limit,
+max_buffer_frames, max_levels_per_side)` begins buffering validated opaque depth updates from the
+parser. Allowed REST limits are 5, 10, 20, 50, 100, 500, 1000 per side. The owner routes the
+matching symbol/limit HTTP response to `install_snapshot(generation, body, received_at)`; the REST
+body itself contains no symbol. Buffered updates with `u <= snapshot_id` are discarded. As an
+explicit bootstrap inference, the first surviving `U..u` range must contain `snapshot_id+1`.
+Every later range, including live updates, requires `U=previous_u+1`; live partial overlap fails.
+Older duplicates are ignored. Quantities replace the entire level, and zero quantity deletes it.
+Snapshot plus replay is validated atomically and published as one native `OrderBookDeltas`
+CLEAR/rebuild batch, sorted by price. Only the last delta carries `F_LAST`; snapshot deltas carry
+`F_SNAPSHOT`. Subsequent nonempty frames each form one atomic batch. Empty frames still advance
+sequence continuity. All protocol buffers, frames, and stored sides have explicit bounds.
+
+Every synchronizer error clears levels, buffers, and coverage before returning `Stale`.
+Reconnect, malformed input, and transport faults require owner invalidation before recovery.
+`restart(new_generation)` requires a strictly greater token and a new parser, even when reusing
+the same socket. Old snapshot tasks must be cancelled or rejected by token. This module owns no
+connection, retry timing, freshness timer, snapshot request, or publication channel.
+
+`is_continuous()` establishes only a continuous bounded sequence view. Snapshot truncation does
+not establish complete depth or complete top N. `coverage()` retains the initial bid floor and ask
+ceiling after edge deletion. `best_covered_bid/ask()` refuse an apparent best level outside that
+original band; a newly observed outer level cannot fill an unknown gap. A missing initial side has
+unknown coverage. Consumers must separately establish covered sides and wall-clock freshness;
+continuity alone does not authorize execution or make emitted outer levels a trusted BBO.
 
 ## Endpoints and credentials
 
@@ -176,6 +227,9 @@ The following official sources establish the venue contract, not implemented run
 - [Introduction and production origins](https://docs.backpack.exchange/#section/Introduction).
 - [Market metadata](https://docs.backpack.exchange/#tag/Markets/operation/get_market): native symbols,
   `marketType`, `baseSymbol`, `quoteSymbol`, and decimal-valued filters.
+- [Public streams](https://docs.backpack.exchange/#tag/Streams) and
+  [depth snapshot](https://docs.backpack.exchange/#tag/Markets/operation/get_depth): envelope,
+  timestamp units, sequence ranges, and explicit snapshot limits.
 - [Order execution contract](https://docs.backpack.exchange/#tag/Order/operation/execute_order): venue
   order types and flags. No order payload or execution semantics are implemented here.
 - [Authentication](https://docs.backpack.exchange/#section/Authentication): sorted REST signing,
@@ -194,6 +248,10 @@ Tests cover official BTC/SOL market observations and explicitly synthetic advers
 decimal and unit boundaries, complete refreshes, economic provenance, configuration, and capability
 refusals. Identity tests cover durable restart/mapping, exhaustion, checksum/schema corruption,
 interrupted checkpoints, Windows replacement failure, and real multi-process ownership.
+
+Public stream tests replay captured BTC perpetual quotes, trades, marks and depth frames. They
+verify exact units/grids, nullable sides, atomic native book batches, initial overlap, gaps, bounded
+buffers, stale generations and truncated price-band coverage.
 
 Authentication tests cover scalar/wire canonicalization, an independent public RFC 8032 section
 [7.1 signature vector](https://www.rfc-editor.org/rfc/rfc8032#section-7.1), audience isolation, and

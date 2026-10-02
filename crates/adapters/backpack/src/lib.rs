@@ -17,7 +17,8 @@
 //!
 //! This crate validates an explicit USDC perpetual allowlist and endpoint selection.
 //! It provides audience-bound credentials, protocol signing, and a restricted GET transport.
-//! It parses exact public metadata and persists durable local order identity and unsigned intents.
+//! It parses exact public metadata and bounded public streams with depth synchronization.
+//! It persists durable local order identity and unsigned intents.
 //! It provides typed account reads, conservative coverage evidence and staged fill reconciliation.
 //! Engine market/account runtime clients and restricted execution remain unavailable in this phase.
 //! There are no Python bindings. The optional `high-precision` feature propagates
@@ -30,10 +31,12 @@
 pub mod account;
 pub mod common;
 pub mod config;
+pub mod depth;
 pub mod http;
 pub mod identity;
 pub mod instruments;
 pub mod models;
 pub mod parsing;
 pub mod provider;
+pub mod public;
 pub mod signing;
