@@ -1214,3 +1214,21 @@ fn test_first_fill_pending_attribution_can_be_qualified_by_later_command_ack() {
     );
     assert_eq!(reconciler.applied_records().count(), 0);
 }
+
+#[rstest]
+#[case("New", "0.00001")]
+#[case("PartiallyFilled", "0")]
+#[case("PartiallyFilled", "0.00002")]
+fn test_known_order_status_and_filled_quantity_must_agree(
+    #[case] status: &str,
+    #[case] filled: &str,
+) {
+    let scope = Scope::new();
+    let mut raw = fixture("resting_order");
+    raw["status"] = json!(status);
+    raw["executedQuantity"] = json!(filled);
+    assert!(matches!(
+        order_report(serde_json::from_value(raw).unwrap(), &scope.context()),
+        Err(BackpackAccountError::InvalidField("executedQuantity"))
+    ));
+}

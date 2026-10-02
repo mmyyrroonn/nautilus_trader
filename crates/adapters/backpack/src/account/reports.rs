@@ -392,7 +392,11 @@ pub fn order_report(
         {
             let qty = quantity(qty.0, metadata, true)?;
             let filled = quantity(filled.0, metadata, false)?;
-            if filled > qty || (status == OrderStatus::Filled && filled != qty) {
+            if filled > qty
+                || (status == OrderStatus::Filled && filled != qty)
+                || (status == OrderStatus::Accepted && !filled.is_zero())
+                || (status == OrderStatus::PartiallyFilled && (filled.is_zero() || filled == qty))
+            {
                 return Err(BackpackAccountError::InvalidField("executedQuantity"));
             }
             let limit = raw.price.map(|px| price(px.0, metadata)).transpose()?;
