@@ -11,19 +11,19 @@ perform no I/O or environment lookup.
 
 ## Current capability boundary
 
-| Surface                                             | Behavior                                       | Later scope                                     |
-| --------------------------------------------------- | ---------------------------------------------- | ----------------------------------------------- |
-| Symbol allowlist and market eligibility             | Implemented offline                            | Account-specific eligibility                    |
-| Public metadata and instrument conversion           | Implemented with explicit economic inputs      | Account verification                            |
-| Public native data client and factory               | Credential-free discovery and bounded streams  | Installed-wheel application acceptance          |
-| Public depth synchronization                        | Continuous bounded view with explicit coverage | Complete coverage is not inferred               |
-| Durable clientId and unsigned intent                | Local filesystem ownership and recovery tested | Venue uniqueness evidence                       |
-| Endpoint validation and credential audience         | Implemented offline                            | Private venue acceptance                        |
-| REST signing and authenticated/public GET transport | Implemented with local transport tests         | Account runtime lifecycle                       |
-| Account snapshot/history and fill reconciliation    | Read-only protocol and delivery contracts      | Runtime coverage and durable consumer ACK       |
-| Private WS subscription authentication              | Payload construction only                      | Connection lifecycle and account processing     |
-| Guarded loopback mutations                          | Single-attempt protocol owner                  | Native execution/cache integration              |
-| Engine execution and production writes              | Explicit unsupported error                     | Separately accepted private execution readiness |
+| Surface                                             | Behavior                                        | Later scope                                     |
+| --------------------------------------------------- | ----------------------------------------------- | ----------------------------------------------- |
+| Symbol allowlist and market eligibility             | Implemented offline                             | Account-specific eligibility                    |
+| Public metadata and instrument conversion           | Implemented with explicit economic inputs       | Account verification                            |
+| Public native data client and factory               | Credential-free discovery and bounded streams   | Installed-wheel application acceptance          |
+| Public depth synchronization                        | Continuous bounded view with explicit coverage  | Complete coverage is not inferred               |
+| Durable clientId and unsigned intent                | Local filesystem ownership and recovery tested  | Venue uniqueness evidence                       |
+| Endpoint validation and credential audience         | Implemented offline                             | Private venue acceptance                        |
+| REST signing and authenticated/public GET transport | Implemented with local transport tests          | Account runtime lifecycle                       |
+| Account snapshot/history and fill reconciliation    | Read-only protocol and delivery contracts       | Runtime coverage and durable consumer ACK       |
+| Native read-only account client and factory         | Bounded REST/private streams, degraded evidence | Verified subscription and account coverage      |
+| Guarded loopback mutations                          | Single-attempt protocol owner                   | Native execution/cache integration              |
+| Engine execution and production writes              | Explicit unsupported error                      | Separately accepted private execution readiness |
 
 `BackpackCapability::PublicMarketData` and `ReadOnlyAccount` have implemented runtimes. Restricted
 engine execution still returns `BackpackUnsupportedCapabilityError`. A static capability is
