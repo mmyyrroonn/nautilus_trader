@@ -22,9 +22,10 @@
 //! It persists durable local order identity and unsigned intents.
 //! It provides typed account reads, conservative coverage evidence and staged fill reconciliation.
 //! It provides a native read-only account client with bounded REST/private-stream lifecycle.
-//! Loopback-only guarded mutations are available; native engine mutation integration
+//! Loopback-only guarded protocol mutations are available; engine execution integration
 //! and production writes remain unsupported.
-//! There are no Python bindings. The optional `high-precision` feature propagates
+//! The optional `python` feature exposes public configuration and the native data factory.
+//! The optional `high-precision` feature propagates
 //! the Nautilus domain precision mode; default features remain empty.
 
 #![deny(unsafe_code)]
@@ -51,3 +52,6 @@ pub mod replay;
 mod runtime;
 pub mod signing;
 pub mod telemetry;
+
+#[cfg(feature = "python")]
+pub mod python;
