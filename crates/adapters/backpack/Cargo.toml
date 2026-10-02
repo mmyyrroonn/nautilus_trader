@@ -28,9 +28,11 @@ high-precision = ["nautilus-model/high-precision"]
 nautilus-core = { workspace = true }
 nautilus-model = { workspace = true }
 
+blake3 = { workspace = true }
 rust_decimal = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true, features = ["arbitrary_precision"] }
+tempfile = { workspace = true }
 thiserror = { workspace = true }
 url = { workspace = true }
 

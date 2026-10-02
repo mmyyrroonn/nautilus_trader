@@ -1,6 +1,6 @@
 # Backpack Exchange adapter foundations
 
-This crate contains the B0.1 configuration foundation and B1.1 public market metadata parser.
+This crate contains the B0.1 configuration foundation and B1.1 public market metadata parser, plus durable local order identity.
 It validates configuration, product eligibility, exact instrument fields, and complete provider refreshes. It has no HTTP or WebSocket client, live data or execution
 client, authentication, account access, factory, or Python bindings. It is not a production adapter.
 Constructing a configuration performs no I/O and reads no credentials or environment files.
@@ -13,6 +13,7 @@ Constructing a configuration performs no I/O and reads no credentials or environ
 | Public metadata and instrument conversion | Implemented, with explicit economic inputs     | Runtime discovery and account verification         |
 | Metadata provider                         | Complete refresh validation, without transport | A public data client supplies fresh responses      |
 | Endpoint validation                       | Implemented and tested offline                 | Public production or explicit local protocol peers |
+| Durable clientId and unsigned intent      | Local filesystem ownership and recovery tested | Native execution admission and reconciliation      |
 | Public market data                        | Explicit unsupported error                     | Instrument discovery and market data               |
 | Private account reads                     | Explicit unsupported error                     | Account state and reconciliation                   |
 | Restricted execution                      | Explicit unsupported error                     | A bounded order surface after deterministic tests  |
@@ -102,6 +103,40 @@ config.validate_market("BTC_USDC_PERP", "PERP", "USDC")?;
 # Ok::<(), nautilus_backpack::config::BackpackConfigError>(())
 ```
 
+## Durable local order identity
+
+`identity::BackpackClientIdStore` owns a configured local state directory for one exact environment,
+venue account and optional subaccount. It uses an OS `File::try_lock` held on a stable lock file for
+the owner's entire lifetime. A second handle or process is refused; dropping or killing the owner
+releases the OS lock without deleting its file. Namespace strings are explicit, never normalized,
+and checked against the stored namespace before any mapping is restored.
+
+`reserve_intent` commits the Nautilus `ClientOrderId`, monotonic Backpack uint32 `clientId`, and
+original unsigned submission encoding together before returning an ID. IDs start at one, with zero
+reserved conservatively, and are never reclaimed after cancellation, settlement, unknown outcome,
+or an intent that was never sent. The next counter is u64 and refuses allocation at u32::MAX + 1.
+Both lookup directions and `reserved_ids` survive restart. A duplicate creation intent is refused;
+lookup and enumeration are recovery facts and never authority to resend. The external-order
+sentinel and unknown venue IDs cannot be adopted as local ownership.
+
+The journal has a strict versioned schema, validates bijection/high-water invariants, and carries
+a BLAKE3 checksum over its complete state. The checksum detects accidental corruption, not
+malicious edits or a valid historic rollback. Checkpoints use exclusive sibling temporary files,
+file synchronization and atomic replacement, followed by synchronization of the replaced file.
+Unix also synchronizes the containing directory. Initialization writes a permanent marker first;
+a missing initialized journal, partial marker or interrupted initialization fails closed. Orphan
+temporary files are never guessed to be newer authoritative state. A commit error returns no ID
+and poisons the handle even when the disk outcome may be ambiguous; reopen and reconcile.
+
+Use one stable, private directory per authenticated namespace throughout its lifetime. Moving to
+a fresh directory, deleting all namespace state, externally replacing the lock file, whole-state
+rollback, and faulty hardware/filesystems are outside this local guarantee. First use and recovery
+must independently check venue-side external clientId collisions before execution is enabled.
+The Windows guarantee covers process termination on a functioning local filesystem with OS locks
+and atomic replacement; it does not claim power-loss durability without a directory metadata
+barrier. Namespace and intent Debug representations omit private identity and payload fields.
+Unsigned payloads must contain no credentials, authentication headers or signatures.
+
 ## Protocol references
 
 The following official sources establish the venue contract, not implemented runtime features:
@@ -112,7 +147,7 @@ The following official sources establish the venue contract, not implemented run
 - [Order execution contract](https://docs.backpack.exchange/#tag/Order/operation/execute_order): venue
   order types and flags. No order payload or execution semantics are implemented here.
 
-Authentication, signing, request canonicalization, client order identity, transport, and recovery
+Authentication, signing, request canonicalization, transport, and account recovery
 are separate subsequent changes. Metadata fixture provenance lives in `test_data/manifest.json`. Unknown protocol fields or behavior must
 be checked against official evidence before those changes expose capabilities.
 
@@ -122,5 +157,8 @@ Run `cargo test -p nautilus-backpack` and `cargo clippy -p nautilus-backpack --a
 Tests cover official BTC/SOL market observations and explicitly synthetic adverse metadata, exact
 decimal and unit boundaries, complete refreshes, economic provenance, allowlist errors, production
 defaults, loopback origin validation, and explicit refusals of planned runtime capabilities. They perform no network I/O or account operations.
+Identity tests additionally cover durable restart/mapping, exhaustion, checksum/schema corruption,
+interrupted checkpoints, Windows replacement failure, and real multi-process ownership.
+
 See the repository [adapter guide](../../../docs/developer_guide/adapters.md) for later transport,
 client, and acceptance tests.
