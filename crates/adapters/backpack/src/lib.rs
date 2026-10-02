@@ -32,6 +32,7 @@ pub mod account;
 pub mod common;
 pub mod config;
 pub mod depth;
+pub mod execution_client;
 pub mod http;
 pub mod identity;
 pub mod instruments;
