@@ -52,4 +52,4 @@ pub mod types;
 pub use client::{HttpClient, HttpRedirectPolicy, InnerHttpClient};
 pub use error::HttpClientError;
 pub use reqwest::{Error as ReqwestError, Method, Response, StatusCode, Url, header::USER_AGENT};
-pub use types::{HttpMethod, HttpResponse, HttpStatus};
+pub use types::{HttpMethod, HttpResponse, HttpStatus, PreparedHttpRequest};
