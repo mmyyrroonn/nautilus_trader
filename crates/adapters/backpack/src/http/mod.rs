@@ -13,8 +13,9 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-//! Venue endpoints and explicit implementation boundaries.
+//! Read-only transport and request evidence.
 
-pub mod capabilities;
-pub mod credential;
-pub mod endpoints;
+pub mod client;
+pub mod error;
+pub mod quota;
+pub mod request;

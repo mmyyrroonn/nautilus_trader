@@ -16,11 +16,11 @@
 //! Foundations for the Backpack Exchange adapter.
 //!
 //! This crate validates an explicit USDC perpetual allowlist and endpoint selection.
-//! It persists local client order identity and unsigned submission intents.
-//! It performs no network I/O and accepts no credentials. Public market data, private
-//! account reads, and restricted execution are planned but unavailable in this phase.
-//! There are no Python bindings. The optional `high-precision` feature
-//! propagates the Nautilus domain precision mode; default features remain empty.
+//! It provides audience-bound credentials, protocol signing, and a restricted GET transport.
+//! It parses exact public metadata and persists durable local order identity and unsigned intents.
+//! Domain market/account clients and restricted execution remain unavailable in this phase.
+//! There are no Python bindings. The optional `high-precision` feature propagates
+//! the Nautilus domain precision mode; default features remain empty.
 
 #![deny(unsafe_code)]
 #![deny(missing_debug_implementations)]
@@ -28,8 +28,10 @@
 
 pub mod common;
 pub mod config;
+pub mod http;
 pub mod identity;
 pub mod instruments;
 pub mod models;
 pub mod parsing;
 pub mod provider;
+pub mod signing;

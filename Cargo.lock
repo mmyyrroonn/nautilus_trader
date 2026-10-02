@@ -5501,17 +5501,26 @@ dependencies = [
 name = "nautilus-backpack"
 version = "0.63.0"
 dependencies = [
-
+ "axum",
+ "base64 0.23.1",
  "blake3",
+ "bytes",
+ "ed25519-dalek",
  "nautilus-core",
+ "nautilus-cryptography",
  "nautilus-model",
+ "nautilus-network",
  "rstest",
  "rust_decimal",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
  "url",
+ "ustr",
+ "zeroize",
 ]
 
 [[package]]
