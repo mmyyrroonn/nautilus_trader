@@ -19,9 +19,13 @@
     reason = "errors documented by checked native constructors"
 )]
 
+pub mod account;
 pub mod config;
+pub mod execution;
 
+use account::{PyBackpackCredential, PyBackpackExecutionClientConfig, PyBackpackQuota};
 use config::{PyBackpackDataClientConfig, PyBackpackInstrumentEconomics};
+use execution::{PyBackpackExecutionClientFactory, register_execution};
 use nautilus_common::factories::{ClientConfig, DataClientFactory};
 use nautilus_core::python::{to_pyruntime_err, to_pyvalue_err};
 use nautilus_system::get_global_pyo3_registry;
@@ -39,18 +43,26 @@ use crate::{
     from_py_object
 )]
 #[pyo3_stub_gen::derive::gen_stub_pyclass(module = "nautilus_trader.adapters.backpack")]
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct PyBackpackDataClientFactory {
     inner: BackpackDataClientFactory,
+    quota: PyBackpackQuota,
 }
 #[pymethods]
 #[pyo3_stub_gen::derive::gen_stub_pymethods]
 impl PyBackpackDataClientFactory {
     #[new]
-    fn py_new() -> Self {
+    #[pyo3(signature = (*, quota=None))]
+    fn py_new(quota: Option<PyBackpackQuota>) -> Self {
+        let quota = quota.unwrap_or_default();
         Self {
-            inner: BackpackDataClientFactory::new(),
+            inner: BackpackDataClientFactory::with_quota(quota.inner.clone()),
+            quota,
         }
+    }
+    #[getter]
+    fn quota(&self) -> PyBackpackQuota {
+        self.quota.clone()
     }
     fn name(&self) -> &'static str {
         "BACKPACK"
@@ -92,6 +104,11 @@ pub fn backpack(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PyBackpackInstrumentEconomics>()?;
     m.add_class::<PyBackpackDataClientConfig>()?;
     m.add_class::<PyBackpackDataClientFactory>()?;
+    m.add_class::<PyBackpackQuota>()?;
+    m.add_class::<PyBackpackCredential>()?;
+    m.add_class::<PyBackpackExecutionClientConfig>()?;
+    m.add_class::<PyBackpackExecutionClientFactory>()?;
+    register_execution()?;
     let registry = get_global_pyo3_registry();
     registry
         .register_factory_extractor("BACKPACK".to_string(), extract_data_factory)

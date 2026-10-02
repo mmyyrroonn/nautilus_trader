@@ -12,7 +12,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
-"""Backpack public data integration; account execution is not exposed here."""
+"""Backpack public data and native read-only account integration."""
 
 from nautilus_trader._fixup import fixup_module_names
 from nautilus_trader._libnautilus.backpack import *  # noqa: F403
@@ -25,6 +25,10 @@ __all__ = [
     "BackpackDataClientConfig",
     "BackpackDataClientFactory",
     "BackpackInstrumentEconomics",
+    "BackpackCredential",
+    "BackpackQuota",
+    "BackpackExecutionClientConfig",
+    "BackpackExecutionClientFactory",
 ]
 
 fixup_module_names(globals(), __name__)

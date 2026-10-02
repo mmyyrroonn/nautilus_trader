@@ -25,11 +25,11 @@ perform no I/O or environment lookup.
 | Guarded loopback mutations                          | Single-attempt protocol owner                  | Native execution/cache integration              |
 | Engine execution and production writes              | Explicit unsupported error                     | Separately accepted private execution readiness |
 
-`BackpackCapability::PublicMarketData.require_implemented()` succeeds. Account and execution
-runtime capabilities still return `BackpackUnsupportedCapabilityError`. A static capability is
+`BackpackCapability::PublicMarketData` and `ReadOnlyAccount` have implemented runtimes. Restricted
+engine execution still returns `BackpackUnsupportedCapabilityError`. A static capability is
 not live freshness or execution admission. The guarded mutation owner below is limited to explicit
 local protocol peers. Production submission/cancellation, modification, batches, borrowing,
-transfers, withdrawals and a dead man's switch remain unsupported. No engine execution client
+transfers, withdrawals and a dead man's switch remain unsupported. The read-only account client does not authorize mutations. No restricted engine execution client
 or Python write API is exposed.
 
 ## Native public owner

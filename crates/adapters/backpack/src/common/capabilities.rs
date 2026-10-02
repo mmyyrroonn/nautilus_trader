@@ -33,10 +33,11 @@ impl BackpackCapability {
     ///
     /// # Errors
     ///
-    /// Returns an unsupported error for account and execution runtimes.
+    /// Returns an unsupported error for restricted execution. Implementation presence is
+    /// independent of live transport health, account verification or execution admission.
     pub const fn require_implemented(self) -> Result<(), BackpackUnsupportedCapabilityError> {
         match self {
-            Self::PublicMarketData => Ok(()),
+            Self::PublicMarketData | Self::ReadOnlyAccount => Ok(()),
             _ => Err(BackpackUnsupportedCapabilityError { capability: self }),
         }
     }
@@ -57,7 +58,17 @@ mod tests {
     use super::*;
 
     #[rstest]
-    #[case(BackpackCapability::ReadOnlyAccount)]
+    fn test_read_only_implementation_does_not_claim_live_readiness() {
+        assert_eq!(
+            BackpackCapability::ReadOnlyAccount.require_implemented(),
+            Ok(())
+        );
+        let health = crate::execution_client::BackpackAccountTelemetry::default().snapshot();
+        assert!(!health.transport_connected);
+        assert!(!health.private_subscription_confirmed);
+        assert!(health.evidence_gaps.contains("AccountIdentityUnverified"));
+    }
+    #[rstest]
     #[case(BackpackCapability::RestrictedExecution)]
     fn test_unimplemented_capabilities_are_explicitly_refused(
         #[case] capability: BackpackCapability,

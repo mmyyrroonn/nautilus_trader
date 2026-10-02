@@ -317,7 +317,7 @@ fn test_python_registry_constructs_native_factory_with_shared_run_telemetry() {
                 .is_err()
         );
         drop(client);
-        assert!(!module.hasattr("BackpackExecutionClientFactory").unwrap());
+        assert!(module.hasattr("BackpackExecutionClientFactory").unwrap());
         assert!(!module.hasattr("BackpackHttpClient").unwrap());
     });
 }
