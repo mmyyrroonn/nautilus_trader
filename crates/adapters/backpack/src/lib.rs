@@ -20,7 +20,8 @@
 //! It parses exact public metadata and bounded public streams with depth synchronization.
 //! It persists durable local order identity and unsigned intents.
 //! It provides typed account reads, conservative coverage evidence and staged fill reconciliation.
-//! Engine market/account runtime clients and restricted execution remain unavailable in this phase.
+//! Loopback-only guarded mutations are available; engine execution integration and production writes
+//! remain unsupported.
 //! There are no Python bindings. The optional `high-precision` feature propagates
 //! the Nautilus domain precision mode; default features remain empty.
 
@@ -32,6 +33,7 @@ pub mod account;
 pub mod common;
 pub mod config;
 pub mod depth;
+pub mod execution;
 pub mod http;
 pub mod identity;
 pub mod instruments;

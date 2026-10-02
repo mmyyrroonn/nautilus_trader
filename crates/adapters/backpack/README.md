@@ -10,25 +10,26 @@ environment lookup.
 
 ## Current capability boundary
 
-| Surface                                             | Behavior                                       | Later scope                                     |
-| --------------------------------------------------- | ---------------------------------------------- | ----------------------------------------------- |
-| Symbol allowlist and market eligibility             | Implemented offline                            | Discovery and domain clients                    |
-| Public metadata and instrument conversion           | Implemented with explicit economic inputs      | Runtime discovery and account verification      |
-| Metadata provider                                   | Complete refresh validation without transport  | Data client supplies fresh responses            |
-| Durable clientId and unsigned intent                | Local filesystem ownership and recovery tested | Execution admission and reconciliation          |
-| Endpoint validation and credential audience         | Implemented offline                            | Production or explicit local protocol peers     |
-| REST signing and authenticated/public GET transport | Implemented with local transport tests         | Typed domain parsing and reconciliation         |
-| Account snapshot/history and fill reconciliation    | Read-only protocol and delivery contracts       | Runtime coverage and durable consumer ACK        |
-| Private WS subscription authentication              | Payload construction only                      | Connection lifecycle and account processing     |
-| Public stream parsing and depth synchronization    | Bounded continuous views with explicit coverage | Native data client and WebSocket lifecycle      |
-| Public market data and account runtime clients      | Explicit unsupported error                     | Instrument discovery, data, account state       |
-| Restricted execution                                | Explicit unsupported error                     | Guarded order surface after deterministic tests |
+| Surface                                             | Behavior                                        | Later scope                                     |
+| --------------------------------------------------- | ----------------------------------------------- | ----------------------------------------------- |
+| Symbol allowlist and market eligibility             | Implemented offline                             | Discovery and domain clients                    |
+| Public metadata and instrument conversion           | Implemented with explicit economic inputs       | Runtime discovery and account verification      |
+| Metadata provider                                   | Complete refresh validation without transport   | Data client supplies fresh responses            |
+| Durable clientId and unsigned intent                | Local filesystem ownership and recovery tested  | Execution admission and reconciliation          |
+| Endpoint validation and credential audience         | Implemented offline                             | Production or explicit local protocol peers     |
+| REST signing and authenticated/public GET transport | Implemented with local transport tests          | Typed domain parsing and reconciliation         |
+| Account snapshot/history and fill reconciliation    | Read-only protocol and delivery contracts       | Runtime coverage and durable consumer ACK       |
+| Private WS subscription authentication              | Payload construction only                       | Connection lifecycle and account processing     |
+| Public stream parsing and depth synchronization     | Bounded continuous views with explicit coverage | Native data client and WebSocket lifecycle      |
+| Public market data and account runtime clients      | Explicit unsupported error                      | Instrument discovery, data, account state       |
+| Guarded loopback mutations                          | Single-attempt protocol owner                   | Native execution/cache integration              |
+| Engine execution and production writes              | Explicit unsupported error                      | Separately accepted private execution readiness |
 
 `BackpackCapability::require_implemented` still returns `BackpackUnsupportedCapabilityError` for
 all engine runtime capabilities. Low-level GET transport does not establish a working account or
-data client. No mutation transport is exposed. Submission, cancellation, modification, batches,
-borrowing, transfers, withdrawals, and a dead man's switch are unavailable. Write retry and order
-recovery semantics require acceptance when a real guarded execution owner is introduced.
+data client. The guarded mutation owner below is limited to explicit local protocol peers.
+Production submission/cancellation, modification, batches, borrowing, transfers, withdrawals,
+and a dead man's switch remain unsupported. No engine execution client or Python write API is exposed.
 
 ## Product boundary
 
@@ -133,6 +134,84 @@ ceiling after edge deletion. `best_covered_bid/ask()` refuse an apparent best le
 original band; a newly observed outer level cannot fill an unknown gap. A missing initial side has
 unknown coverage. Consumers must separately establish covered sides and wall-clock freshness;
 continuity alone does not authorize execution or make emitted outer levels a trusted BBO.
+
+## Guarded loopback order owner
+
+`execution::owner::BackpackOrderOwner` is an independently testable protocol owner, without an
+`ExecutionClient`, engine events, cache/portfolio delivery, factory, or Python interface. It rejects
+production endpoints as an explicit runtime capability boundary. It requires exact agreement
+between configuration/transport endpoints, endpoint-bound local credentials, and
+`BackpackClientIdNamespace::loopback_peer(endpoints, account, subaccount)`. That namespace binds
+both normalized loopback origins, not a generic environment label. Local peer account facts are
+explicitly synthetic observations; account GETs with unknown identity/non-atomic coverage cannot
+be promoted into production readiness by this API.
+
+Supported commands use base quantity with exact metadata grids and bounds. Unsupported native
+order types and TIFs fail locally. New risk supports **Buy Limit only**, with GTC/IOC/FOK;
+post-only requires Limit/GTC. New-risk Market and Sell Limit are refused because their fill price
+has no established finite notional upper bound. Reductions support Buy/Sell Limit with GTC/IOC/FOK
+and Market with IOC/FOK, require `reduceOnly=true`, correct direction against a current signed net
+position, and reserve quantity so concurrent reductions cannot exceed it. Future position
+valuation, price movement and loss are not bounded by an entry-notional cap. Quote-sized,
+conditional, broker/strategy, borrow/lend flags, modifications, batches and cancel-all have no
+wire path. Advanced fields on a POST result cannot establish an independent owned binding.
+
+`BackpackOrderOwnerConfig` requires finite expiry, evidence ages, order/aggregate notional,
+margin, order count, and separate new-risk/reduction/owned-cancellation permissions. Accepted
+`BackpackLoopbackAccountFacts` require complete allowlist net positions, an explicit available
+USDC margin amount and explicit local margin/fee model provenance; wallet totals or public margin
+functions do not supply these values. Entry notional is quantity times Buy limit; margin and fee
+reserves use the explicitly supplied local peer model. Decimal arithmetic rejects overflow or
+unrepresentable precision rather than rounding. Existing held reserves subtract from both account
+capacity and authority limits, conservatively including already venue-locked amounts.
+
+`owner.guard()` accepts a strictly increasing session generation and explicit peer account/market
+facts. Both quote engine and receipt timestamps, metadata receipt, and account receipt must be
+current, and future timestamps are rejected with no positive skew allowance (millisecond clock
+precision). Authority expires at its exact millisecond boundary. Metadata is reparsed from retained
+venue facts before submission rather than trusting a mutated public metadata container. Final
+admission repeats after the shared quota and after durable attempt synchronization, including
+changed permissions/limits and unchanged original reservation costs. Credentials are freshly
+signed at that final boundary. `submit` and `cancel_owned` expose no raw URL, request body, or
+admission callback that can bypass these checks. The existing GET client remains read-only.
+
+Creation durably commits an immutable unsigned command/reservation and original uint32 clientId
+before any first byte. `execution.json`, protected by the retained identity-store lock, records
+attempts, independent venue bindings, held capacity and sticky shutdown evidence. Atomic
+replacement and file synchronization follow the identity store's filesystem contract; Windows
+process-termination guarantees do not establish power-loss or whole-directory rollback protection.
+Checksum validation detects accidental corruption, not malicious edits. Any commit failure poisons
+the owner. Missing execution state with existing identities restores original intents as Unknown,
+never a new create. The exact transport budget starts before intent persistence and includes quota;
+synchronous filesystem work cannot be preempted, but budget expiry refuses subsequent transport.
+
+Exactly one POST/DELETE attempt is possible for each recorded command. Timeout, cancellation after
+possible dispatch, 429, 5xx, malformed/mismatched response or resting-only 404 remain Unknown.
+Only the narrow documented failure-code classification provides definitive rejection. Unknown and
+unsent reservations retain capacity; unknown creates block additional new risk until independent
+reconciliation. A later call or process restart cannot allocate another ID for the same intent.
+Only a true POST response matching immutable standard-order fields independently binds a venue
+order ID. Numeric clientId lookup alone never adopts an external order. `cancel_owned` uses only
+that original bound venue ID and symbol; it requires current session/identity/cancel authority,
+but does not require fresh new-risk market/account facts. DELETE 202 remains `CancelPending`.
+HTTP 200 is response evidence requiring economic/lifecycle reconciliation, not a native terminal
+event or fabricated fill.
+
+`acknowledge_reconciled_terminal` is an explicit local peer integration boundary requiring the
+original binding/generation, exact cumulative quantity, already-applied true fill quantity, and
+an identified durable economic ACK. It cannot manufacture fees or fills; #53/native client delivery
+must establish that acknowledgement. Cumulative quantities cannot regress below an observed ACK.
+Terminal reconciliation can proceed after stop, and a late cancel 202 cannot undo it. Restored
+unreconciled observations retain capacity and require facts, not retries. `stop()` freezes writes
+and records unsent, unknown, observed/unreconciled, pending cancellation, and unknown/nonzero
+positions. An expired flat snapshot is unknown. Once dirty, repeated stop/recovery cannot erase
+the recorded dirty shutdown. Production private readiness, unknown-create lookup/binding recovery,
+full cumulative/fill/fee handling and engine cache/portfolio acceptance remain subsequent #19 work.
+
+All mutation fixtures are explicitly synthetic local peer payloads. Tests use real loopback HTTP
+for accepted-but-lost responses, pending cancellation/fill races, shared-quota delays longer than
+the signing window, stale/expired queued commands, durable checkpoint failure and restart.
+No private venue call or production mutation is performed.
 
 ## Endpoints and credentials
 
@@ -262,7 +341,6 @@ transport responses are public synthetic material, never captured account fixtur
 live venue requests or account mutations. Actual POST/DELETE paths are not implemented or tested.
 See the repository [adapter guide](../../../docs/developer_guide/adapters.md) for later transport,
 client, and acceptance tests.
-
 
 ## Account observations and reconciliation
 
