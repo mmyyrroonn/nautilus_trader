@@ -1091,3 +1091,45 @@ async fn loopback_closed_data_sink_closes_owning_public_socket() {
     );
     client.disconnect().await.unwrap();
 }
+
+#[tokio::test]
+async fn loopback_old_depth_event_cannot_become_fresh_by_arriving_now() {
+    let server = Server::start().await;
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    replace_data_event_sender(tx);
+    let mut client = BackpackDataClient::new(ClientId::from("BP"), server.config()).unwrap();
+    client
+        .subscribe_book_deltas(SubscribeBookDeltas::new(
+            id(),
+            BookType::L2_MBP,
+            Some(ClientId::from("BP")),
+            None,
+            UUID4::new(),
+            instant(),
+            None,
+            true,
+            None,
+            None,
+        ))
+        .unwrap();
+    client.connect().await.unwrap();
+    assert!(matches!(event(&mut rx).await, DataEvent::Instrument(_)));
+    assert!(matches!(
+        event(&mut rx).await,
+        DataEvent::Data(Data::Deltas(_))
+    ));
+    let mut delayed = update(101, 101);
+    delayed["data"]["T"] = json!(micros() - 120_000_000);
+    delayed["data"]["E"] = delayed["data"]["T"].clone();
+    server.send(delayed);
+    server
+        .wait_topic(1, "SUBSCRIBE", &format!("depth.{SYMBOL}"))
+        .await;
+    assert!(matches!(event(&mut rx).await, DataEvent::Instrument(_)));
+    let DataEvent::Data(Data::Deltas(batch)) = event(&mut rx).await else {
+        panic!("missing fresh replacement snapshot")
+    };
+    assert_eq!(batch.sequence, 100);
+    assert!(client.health().books_fresh[SYMBOL]);
+    client.disconnect().await.unwrap();
+}

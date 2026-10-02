@@ -79,7 +79,7 @@ pub struct BackpackPublicHealth {
     pub execution_ready: bool,
     /// Sequence continuity of each currently subscribed bounded book.
     pub books_continuous: BTreeMap<String, bool>,
-    /// Original receipt age of each bounded book is within the operational idle policy.
+    /// Both engine event and original receipt ages are within the operational idle policy.
     pub books_fresh: BTreeMap<String, bool>,
     /// Exact Unix nanoseconds of the latest valid BBO engine event.
     pub quote_event_ns: BTreeMap<String, String>,
@@ -746,11 +746,12 @@ impl PublicSession {
                 Data::MarkPrice(price),
             ),
             Ok(BackpackPublicEvent::Depth(update)) => {
-                if update.ts_event.as_u64() > now().as_u64() {
-                    self.fault(owner, epoch, "future depth event", ws);
+                if !self.fresh(update.ts_event) {
+                    self.fault(owner, epoch, "stale or future depth event", ws);
                     return;
                 }
                 let last = update.last;
+                let observed_at = update.ts_event.min(frame.received);
                 let advances = market.last_sequence.is_none_or(|previous| last > previous);
                 if let Some(book) = market.book.as_mut() {
                     match book.apply(update) {
@@ -762,7 +763,7 @@ impl PublicSession {
                                 symbol,
                                 frame.revision,
                                 book.coverage(),
-                                batch.ts_init,
+                                batch.ts_init.min(batch.ts_event),
                             );
                             self.publish(
                                 owner,
@@ -781,7 +782,7 @@ impl PublicSession {
                                     symbol,
                                     frame.revision,
                                     book.coverage(),
-                                    frame.received,
+                                    observed_at,
                                 );
                             }
                         }
@@ -852,7 +853,7 @@ impl PublicSession {
         if let Some(book) = market.book.as_mut() {
             match book.install_snapshot(snapshot.token, &body, snapshot.received) {
                 Ok(batch) => {
-                    if !self.fresh(batch.ts_init) || batch.ts_event.as_u64() > now().as_u64() {
+                    if !self.fresh(batch.ts_init) || !self.fresh(batch.ts_event) {
                         book.invalidate();
                         self.fault(owner, epoch, "stale or future depth replay", ws);
                     } else {
@@ -863,7 +864,7 @@ impl PublicSession {
                             &snapshot.symbol,
                             snapshot.revision,
                             book.coverage(),
-                            batch.ts_init,
+                            batch.ts_init.min(batch.ts_event),
                         );
                         self.publish(owner, epoch, &topic, snapshot.revision, Data::from(batch));
                     }
