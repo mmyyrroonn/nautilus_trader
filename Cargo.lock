@@ -5508,6 +5508,7 @@ dependencies = [
  "blake3",
  "bytes",
  "ed25519-dalek",
+ "futures-util",
  "jiff",
  "nautilus-common",
  "nautilus-core",
