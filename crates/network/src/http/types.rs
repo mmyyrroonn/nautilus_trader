@@ -21,6 +21,25 @@ use bytes::Bytes;
 use http::{StatusCode, status::InvalidStatusCode};
 use reqwest::Method;
 
+/// URL, headers, and body assembled together at the final HTTP send boundary.
+///
+/// Debug output omits all request values because any part can contain authentication data.
+pub struct PreparedHttpRequest {
+    /// The complete URL, including any canonical query string.
+    pub url: String,
+    /// Headers generated with the URL and body after quota admission.
+    pub headers: Option<HashMap<String, String>>,
+    /// The exact request body covered by any authentication signature.
+    pub body: Option<Vec<u8>>,
+}
+
+impl std::fmt::Debug for PreparedHttpRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PreparedHttpRequest")
+            .finish_non_exhaustive()
+    }
+}
+
 /// An HTTP status code.
 ///
 /// Wraps [`http::StatusCode`] to reuse its validation and convenience methods.

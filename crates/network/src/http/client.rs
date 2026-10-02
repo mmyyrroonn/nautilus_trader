@@ -26,7 +26,7 @@ use reqwest::{
 };
 use ustr::Ustr;
 
-use super::{HttpClientError, HttpResponse, HttpStatus};
+use super::{HttpClientError, HttpResponse, HttpStatus, PreparedHttpRequest};
 use crate::{
     dst::time::{Instant, timeout},
     ratelimiter::{RateLimiter, clock::MonotonicClock, quota::Quota},
@@ -319,6 +319,36 @@ impl HttpClient {
         F: FnOnce() -> Result<(String, Option<Vec<u8>>), E>,
         E: From<HttpClientError>,
     {
+        self.request_with_url_redacted_prepared_request(method, keys, deadline, || {
+            let (url, body) = prepare()?;
+            Ok(PreparedHttpRequest { url, headers, body })
+        })
+        .await
+    }
+
+    /// Prepares a complete redacted request after acquiring its rate-limit quota.
+    ///
+    /// URL, headers, and body are generated synchronously by `prepare` after all quota waits.
+    /// Timestamped authentication headers therefore cover the same fresh request as the body
+    /// and URL. No further quota is acquired between preparation and transport entry.
+    /// The optional deadline includes quota, preparation, and transport, with the same
+    /// pre-dispatch refusal and post-dispatch uncertainty as the URL/body-only entry point.
+    ///
+    /// # Errors
+    ///
+    /// Returns the preparation error, an admission refusal if the deadline expires before
+    /// dispatch, or a transport error after dispatch. The client does not retry a request.
+    pub async fn request_with_url_redacted_prepared_request<F, E>(
+        &self,
+        method: Method,
+        keys: Option<Vec<String>>,
+        deadline: Option<Instant>,
+        prepare: F,
+    ) -> Result<HttpResponse, E>
+    where
+        F: FnOnce() -> Result<PreparedHttpRequest, E>,
+        E: From<HttpClientError>,
+    {
         let keys = keys.map(into_ustr_vec);
         let queued_at = Instant::now();
         let wait = self.await_rate_limits(keys.as_deref());
@@ -352,7 +382,7 @@ impl HttpClient {
             )
             .into());
         }
-        let (url, body) = prepare()?;
+        let PreparedHttpRequest { url, headers, body } = prepare()?;
         if deadline.is_some_and(|deadline| deadline <= Instant::now()) {
             return Err(HttpClientError::AdmissionDenied(
                 "request deadline expired before dispatch".to_string(),
