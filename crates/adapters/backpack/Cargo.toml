@@ -22,25 +22,44 @@ crate-type = ["rlib"]
 
 [features]
 default = []
+extension-module = [
+  "nautilus-common/extension-module",
+  "nautilus-core/extension-module",
+  "nautilus-model/extension-module",
+  "nautilus-network/extension-module",
+  "pyo3/extension-module",
+  "python",
+]
+python = [
+  "dep:nautilus-system",
+  "nautilus-common/python",
+  "nautilus-core/python",
+  "nautilus-model/python",
+  "nautilus-network/python",
+  "nautilus-system/python",
+  "dep:pyo3",
+  "dep:pyo3-stub-gen",
+]
 high-precision = ["nautilus-model/high-precision"]
 
 [dependencies]
 nautilus-common = { workspace = true, features = ["live"] }
 nautilus-execution = { workspace = true }
-nautilus-live = { workspace = true }
 nautilus-core = { workspace = true }
 nautilus-cryptography = { workspace = true }
+nautilus-live = { workspace = true }
 nautilus-model = { workspace = true }
 nautilus-network = { workspace = true }
+nautilus-system = { workspace = true, optional = true }
 
 anyhow = { workspace = true }
 async-trait = { workspace = true }
-parking_lot = { workspace = true }
 base64 = { workspace = true }
 blake3 = { workspace = true }
 bytes = { workspace = true }
 ed25519-dalek = { workspace = true }
 jiff = { workspace = true }
+parking_lot = { workspace = true }
 rust_decimal = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true, features = ["arbitrary_precision"] }
@@ -52,6 +71,14 @@ url = { workspace = true }
 ustr = { workspace = true }
 zeroize = { workspace = true }
 
+pyo3 = { workspace = true, optional = true }
+pyo3-stub-gen = { workspace = true, optional = true }
+
 [dev-dependencies]
 axum = { workspace = true }
+futures-util = { workspace = true }
 rstest = { workspace = true }
+
+[[test]]
+name = "python"
+required-features = ["python"]

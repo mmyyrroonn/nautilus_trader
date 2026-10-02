@@ -3,6 +3,7 @@
 
 from . import architect_ax
 from . import aster
+from . import backpack
 from . import betfair
 from . import binance
 from . import bitmex
@@ -26,6 +27,7 @@ from . import tardis
 __all__ = [
     "architect_ax",
     "aster",
+    "backpack",
     "betfair",
     "binance",
     "bitmex",

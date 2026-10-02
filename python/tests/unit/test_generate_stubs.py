@@ -1552,6 +1552,45 @@ __all__ = [
     assert names == sorted(names)
 
 
+@pytest.mark.parametrize("existing_import", [False, True])
+def test_injected_model_constants_have_one_resolvable_import(
+    tmp_path: Path,
+    existing_import: bool,
+) -> None:
+    """
+    Keep constants resolvable when no method signature imports their module.
+    """
+    crate = tmp_path / "crates" / "adapters" / "example" / "src"
+    (crate / "python").mkdir(parents=True)
+    (crate / "python" / "mod.rs").write_text(
+        'm.add("EXAMPLE_VENUE", *EXAMPLE_VENUE)?;\n',
+        encoding="utf-8",
+    )
+    (crate / "consts.rs").write_text(
+        "pub static EXAMPLE_VENUE: LazyLock<Venue> = todo!();\n",
+        encoding="utf-8",
+    )
+    stub_root = tmp_path / "python" / "nautilus_trader"
+    stub = stub_root / "adapters" / "example" / "__init__.pyi"
+    stub.parent.mkdir(parents=True)
+    model_import = "from nautilus_trader import model"
+    stub.write_text(
+        (model_import + "\n\n" if existing_import else "") + "__all__ = []\n",
+        encoding="utf-8",
+    )
+
+    generate_stubs.inject_module_constants(stub_root, tmp_path)
+    first = stub.read_text(encoding="utf-8")
+    generate_stubs.inject_module_constants(stub_root, tmp_path)
+
+    assert stub.read_text(encoding="utf-8") == first
+    assert first.splitlines().count(model_import) == 1
+    tree = ast.parse(first)
+    constants = [node for node in tree.body if isinstance(node, ast.AnnAssign)]
+    assert len(constants) == 1
+    assert ast.unparse(constants[0].annotation) == "model.Venue"
+
+
 def test_insert_constants_after_all() -> None:
     """
     Test insert constants after all.

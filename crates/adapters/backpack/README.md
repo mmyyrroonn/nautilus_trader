@@ -1,35 +1,73 @@
 # Backpack Exchange adapter foundations
 
-This crate contains configuration, authentication and transport foundations, exact public market
-metadata, bounded public stream/depth parsing, and durable local order identity for a phased Backpack Exchange integration. It validates
-product eligibility and complete provider refreshes, constructs Ed25519 authentication, and provides
-a restricted GET transport with typed account observations and bounded reconciliation.
-A native read-only account client and factory provide bounded REST/private-stream lifecycle.
-Public data runtime, restricted execution and Python bindings remain later work. Constructing configuration and credentials performs no I/O or
-environment lookup.
+This crate provides a credential-free native public data client, checked instrument metadata,
+public stream decoding and bounded depth synchronization. It also provides audience-bound
+credentials, signed read transport, typed account observations, durable local order identity and a
+guarded mutation owner for explicit loopback protocol peers. A native read-only account client
+provides bounded REST/private-stream lifecycle. Native engine execution integration remains later work. Public Python config/factory bindings are available with the
+`python` feature. Configuration and credential construction
+perform no I/O or environment lookup.
 
 ## Current capability boundary
 
-| Surface                                             | Behavior                                       | Later scope                                     |
-| --------------------------------------------------- | ---------------------------------------------- | ----------------------------------------------- |
-| Symbol allowlist and market eligibility             | Implemented offline                            | Discovery and domain clients                    |
-| Public metadata and instrument conversion           | Implemented with explicit economic inputs      | Runtime discovery and account verification      |
-| Metadata provider                                   | Complete refresh validation without transport  | Data client supplies fresh responses            |
-| Durable clientId and unsigned intent                | Local filesystem ownership and recovery tested | Execution admission and reconciliation          |
-| Endpoint validation and credential audience         | Implemented offline                            | Production or explicit local protocol peers     |
-| REST signing and authenticated/public GET transport | Implemented with local transport tests         | Typed domain parsing and reconciliation         |
-| Account snapshot/history and fill reconciliation    | Read-only protocol and delivery contracts       | Runtime coverage and durable consumer ACK        |
-| Private WS subscription authentication              | Signed bounded read-only runtime                | Positive subscription ACK remains unverified    |
-| Public stream parsing and depth synchronization    | Bounded continuous views with explicit coverage | Native data client and WebSocket lifecycle      |
-| Native read-only account client and factory         | Implemented with explicit degraded evidence    | Durable consumer ACK and account verification   |
-| Public market data runtime                          | Explicit unsupported error                     | Data client and WebSocket lifecycle             |
-| Restricted execution                                | Explicit unsupported error                     | Guarded order surface after deterministic tests |
+| Surface                                             | Behavior                                        | Later scope                                     |
+| --------------------------------------------------- | ----------------------------------------------- | ----------------------------------------------- |
+| Symbol allowlist and market eligibility             | Implemented offline                             | Account-specific eligibility                    |
+| Public metadata and instrument conversion           | Implemented with explicit economic inputs       | Account verification                            |
+| Public native data client and factory               | Credential-free discovery and bounded streams   | Installed-wheel application acceptance          |
+| Public depth synchronization                        | Continuous bounded view with explicit coverage  | Complete coverage is not inferred               |
+| Durable clientId and unsigned intent                | Local filesystem ownership and recovery tested  | Venue uniqueness evidence                       |
+| Endpoint validation and credential audience         | Implemented offline                             | Private venue acceptance                        |
+| REST signing and authenticated/public GET transport | Implemented with local transport tests          | Account runtime lifecycle                       |
+| Account snapshot/history and fill reconciliation    | Read-only protocol and delivery contracts       | Runtime coverage and durable consumer ACK       |
+| Native read-only account client and factory         | Bounded REST/private streams, degraded evidence | Verified subscription and account coverage      |
+| Guarded loopback mutations                          | Single-attempt protocol owner                   | Native execution/cache integration              |
+| Engine execution and production writes              | Explicit unsupported error                      | Separately accepted private execution readiness |
 
-`BackpackCapability::require_implemented` still returns `BackpackUnsupportedCapabilityError` for
-all engine runtime capabilities. Low-level GET transport does not establish a working account or
-data client. No mutation transport is exposed. Submission, cancellation, modification, batches,
-borrowing, transfers, withdrawals, and a dead man's switch are unavailable. Write retry and order
-recovery semantics require acceptance when a real guarded execution owner is introduced.
+`BackpackCapability::PublicMarketData.require_implemented()` succeeds. Account and execution
+runtime capabilities still return `BackpackUnsupportedCapabilityError`. A static capability is
+not live freshness or execution admission. The guarded mutation owner below is limited to explicit
+local protocol peers. Production submission/cancellation, modification, batches, borrowing,
+transfers, withdrawals and a dead man's switch remain unsupported. The native account client rejects every mutation; no Python write API is exposed.
+
+## Native public owner
+
+`config::BackpackDataClientConfig::new_checked(scope, economics)` requires economics for exactly
+all allowlisted native symbols. `with_lifecycle_checked` checks bounded HTTP/handshake/heartbeat,
+idle and recovery/shutdown deadlines, quote age, snapshot depth and protocol buffers. The default
+BBO age limit is 3000 ms. `data::BackpackDataClient` implements the native `DataClient` and strict
+`InstrumentProvider`; `factories::BackpackDataClientFactory` supplies the native registry seam.
+An explicit `with_quota` constructor shares one caller-owned public/private REST scope. The trait
+provider store is a disconnected explicit-load snapshot and is cleared on connect. Live instrument
+requests and reconnect announcements always use the current run Gate, including changed precision.
+
+Connect and every shared WebSocket reconnect validate the entire metadata allowlist and economic
+conversion before publishing all instruments, then admit current-session data. Subscription intent
+uses the shared subscription tracker. Sends bind to the connection epoch; queued frames carry both
+that epoch and the subscription revision. Each depth bootstrap has an independent token and owned
+cancelable GET task. Receive-before-snapshot deltas are buffered and validated as one rebuild batch.
+Late epochs, canceled topics and old snapshot tokens are ignored before parser/synchronizer calls.
+Critical malformed/oversized messages and transport loss synchronously close the publication gate.
+Depth sequence gaps invalidate that book and bootstrap a new bounded snapshot. Shared live task
+ownership retains canceled tasks until bounded graceful/forced teardown observes their completion.
+
+`config.telemetry().snapshot()` observes the actual exclusively claimed client run. Each claim
+replaces the observation Gate with a fresh allocation, so old tasks cannot affect a replacement
+run. JSON schema version 1 exposes run/generation/epoch, metadata and transport readiness, BBO
+freshness and exact event/receipt nanosecond strings, and independent book continuity, freshness
+and truncated coverage. Age uses original packet timestamps; duplicates and mark updates do not
+renew a quote. Duplicate depth frames do not renew book freshness; valid empty sequence progress
+does. Future event/receipt timestamps do not establish freshness. Positive subscription
+ACK semantics remain unverified (`subscription_acknowledgements_verified=false`); a successful
+send is not a positive venue acknowledgment. `execution_ready` is always false.
+
+`examples/public_observe.rs` observes only public BTC BBO for an explicit 1..60 second duration.
+Its margin/fee inputs are explicitly Synthetic and never establish account economics.
+`replay::BackpackPublicReplay` streams bounded JSONL records with `kind=frame|snapshot|restart`,
+`generation`, `received_at_ns`, and optional raw JSON `payload`. It preserves original timestamps
+and known-field duplicate rejection, discards old generations before domain decoding, and does not
+claim live freshness. Unknown rate units, bars, index prices, depth10, historical data and custom
+subscriptions return explicit unsupported errors.
 
 ## Product boundary
 
@@ -135,6 +173,84 @@ original band; a newly observed outer level cannot fill an unknown gap. A missin
 unknown coverage. Consumers must separately establish covered sides and wall-clock freshness;
 continuity alone does not authorize execution or make emitted outer levels a trusted BBO.
 
+## Guarded loopback order owner
+
+`execution::owner::BackpackOrderOwner` is an independently testable protocol owner, without an
+`ExecutionClient`, engine events, cache/portfolio delivery, factory, or Python interface. It rejects
+production endpoints as an explicit runtime capability boundary. It requires exact agreement
+between configuration/transport endpoints, endpoint-bound local credentials, and
+`BackpackClientIdNamespace::loopback_peer(endpoints, account, subaccount)`. That namespace binds
+both normalized loopback origins, not a generic environment label. Local peer account facts are
+explicitly synthetic observations; account GETs with unknown identity/non-atomic coverage cannot
+be promoted into production readiness by this API.
+
+Supported commands use base quantity with exact metadata grids and bounds. Unsupported native
+order types and TIFs fail locally. New risk supports **Buy Limit only**, with GTC/IOC/FOK;
+post-only requires Limit/GTC. New-risk Market and Sell Limit are refused because their fill price
+has no established finite notional upper bound. Reductions support Buy/Sell Limit with GTC/IOC/FOK
+and Market with IOC/FOK, require `reduceOnly=true`, correct direction against a current signed net
+position, and reserve quantity so concurrent reductions cannot exceed it. Future position
+valuation, price movement and loss are not bounded by an entry-notional cap. Quote-sized,
+conditional, broker/strategy, borrow/lend flags, modifications, batches and cancel-all have no
+wire path. Advanced fields on a POST result cannot establish an independent owned binding.
+
+`BackpackOrderOwnerConfig` requires finite expiry, evidence ages, order/aggregate notional,
+margin, order count, and separate new-risk/reduction/owned-cancellation permissions. Accepted
+`BackpackLoopbackAccountFacts` require complete allowlist net positions, an explicit available
+USDC margin amount and explicit local margin/fee model provenance; wallet totals or public margin
+functions do not supply these values. Entry notional is quantity times Buy limit; margin and fee
+reserves use the explicitly supplied local peer model. Decimal arithmetic rejects overflow or
+unrepresentable precision rather than rounding. Existing held reserves subtract from both account
+capacity and authority limits, conservatively including already venue-locked amounts.
+
+`owner.guard()` accepts a strictly increasing session generation and explicit peer account/market
+facts. Both quote engine and receipt timestamps, metadata receipt, and account receipt must be
+current, and future timestamps are rejected with no positive skew allowance (millisecond clock
+precision). Authority expires at its exact millisecond boundary. Metadata is reparsed from retained
+venue facts before submission rather than trusting a mutated public metadata container. Final
+admission repeats after the shared quota and after durable attempt synchronization, including
+changed permissions/limits and unchanged original reservation costs. Credentials are freshly
+signed at that final boundary. `submit` and `cancel_owned` expose no raw URL, request body, or
+admission callback that can bypass these checks. The existing GET client remains read-only.
+
+Creation durably commits an immutable unsigned command/reservation and original uint32 clientId
+before any first byte. `execution.json`, protected by the retained identity-store lock, records
+attempts, independent venue bindings, held capacity and sticky shutdown evidence. Atomic
+replacement and file synchronization follow the identity store's filesystem contract; Windows
+process-termination guarantees do not establish power-loss or whole-directory rollback protection.
+Checksum validation detects accidental corruption, not malicious edits. Any commit failure poisons
+the owner. Missing execution state with existing identities restores original intents as Unknown,
+never a new create. The exact transport budget starts before intent persistence and includes quota;
+synchronous filesystem work cannot be preempted, but budget expiry refuses subsequent transport.
+
+Exactly one POST/DELETE attempt is possible for each recorded command. Timeout, cancellation after
+possible dispatch, 429, 5xx, malformed/mismatched response or resting-only 404 remain Unknown.
+Only the narrow documented failure-code classification provides definitive rejection. Unknown and
+unsent reservations retain capacity; unknown creates block additional new risk until independent
+reconciliation. A later call or process restart cannot allocate another ID for the same intent.
+Only a true POST response matching immutable standard-order fields independently binds a venue
+order ID. Numeric clientId lookup alone never adopts an external order. `cancel_owned` uses only
+that original bound venue ID and symbol; it requires current session/identity/cancel authority,
+but does not require fresh new-risk market/account facts. DELETE 202 remains `CancelPending`.
+HTTP 200 is response evidence requiring economic/lifecycle reconciliation, not a native terminal
+event or fabricated fill.
+
+`acknowledge_reconciled_terminal` is an explicit local peer integration boundary requiring the
+original binding/generation, exact cumulative quantity, already-applied true fill quantity, and
+an identified durable economic ACK. It cannot manufacture fees or fills; #53/native client delivery
+must establish that acknowledgement. Cumulative quantities cannot regress below an observed ACK.
+Terminal reconciliation can proceed after stop, and a late cancel 202 cannot undo it. Restored
+unreconciled observations retain capacity and require facts, not retries. `stop()` freezes writes
+and records unsent, unknown, observed/unreconciled, pending cancellation, and unknown/nonzero
+positions. An expired flat snapshot is unknown. Once dirty, repeated stop/recovery cannot erase
+the recorded dirty shutdown. Production private readiness, unknown-create lookup/binding recovery,
+full cumulative/fill/fee handling and engine cache/portfolio acceptance remain subsequent #19 work.
+
+All mutation fixtures are explicitly synthetic local peer payloads. Tests use real loopback HTTP
+for accepted-but-lost responses, pending cancellation/fill races, shared-quota delays longer than
+the signing window, stale/expired queued commands, durable checkpoint failure and restart.
+No private venue call or production mutation is performed.
+
 ## Endpoints and credentials
 
 The only venue environment recorded by this crate is Production:
@@ -223,7 +339,8 @@ Unsigned payloads must contain no credentials, authentication headers or signatu
 
 ## Protocol references
 
-The following official sources establish the venue contract, not implemented runtime features:
+The following official sources establish the venue contract; the capability table above describes
+the implemented scope:
 
 - [Introduction and production origins](https://docs.backpack.exchange/#section/Introduction).
 - [Market metadata](https://docs.backpack.exchange/#tag/Markets/operation/get_market): native symbols,
@@ -232,7 +349,8 @@ The following official sources establish the venue contract, not implemented run
   [depth snapshot](https://docs.backpack.exchange/#tag/Markets/operation/get_depth): envelope,
   timestamp units, sequence ranges, and explicit snapshot limits.
 - [Order execution contract](https://docs.backpack.exchange/#tag/Order/operation/execute_order): venue
-  order types and flags. No order payload or execution semantics are implemented here.
+  order types and flags. The guarded loopback owner implements only the standard command subset
+  described above; production writes remain unsupported.
 - [Authentication](https://docs.backpack.exchange/#section/Authentication): sorted REST signing,
   Ed25519/base64 headers, timestamp/window, and WS subscribe authentication.
 - [Order query](https://docs.backpack.exchange/#tag/Order/operation/get_order): exclusive
@@ -245,8 +363,14 @@ capabilities are exposed. No testnet, DMS, or clientId uniqueness guarantee is a
 ## Validation
 
 Run `cargo test -p nautilus-backpack` and `cargo clippy -p nautilus-backpack --all-targets -- -D warnings`.
+Native loopback tests exercise factory extraction, instruments before data, receive-before-snapshot
+bootstrap, depth gaps, cancellation/unsubscribe, idle/reconnect recovery, changed metadata precision,
+bounded recovery deadlines, malformed/duplicate/future observations and exclusive telemetry run
+isolation. Replay tests preserve exact original timestamps and bound raw records. These tests make
+no venue calls; the separate credential-free example observes public venue data only.
+
 Tests cover official BTC/SOL market observations and explicitly synthetic adverse metadata, exact
-decimal and unit boundaries, complete refreshes, economic provenance, configuration, and capability
+decimal and unit boundaries, public stream decoding, native depth replay and coverage faults, complete refreshes, economic provenance, configuration, and capability
 refusals. Identity tests cover durable restart/mapping, exhaustion, checksum/schema corruption,
 interrupted checkpoints, Windows replacement failure, and real multi-process ownership.
 
@@ -260,10 +384,10 @@ synthetic loopback transport. Transport probes verify fresh signatures after a q
 the default window, stale admission/deadlines, shared public/private quota, redaction, redirects,
 pagination, bounded retries, and cancellation before/after dispatch. Authentication test seeds and
 transport responses are public synthetic material, never captured account fixtures. Tests make no
-live venue requests or account mutations. Actual POST/DELETE paths are not implemented or tested.
+live venue requests or real account mutations. Authentication/read-transport tests do not exercise
+mutations; guarded loopback mutation validation is described above.
 See the repository [adapter guide](../../../docs/developer_guide/adapters.md) for later transport,
 client, and acceptance tests.
-
 
 ## Account observations and reconciliation
 
@@ -402,3 +526,58 @@ replay and REST dedup, missing positions, identity collisions, malformed/ambiguo
 bootstrap faults, concurrent ACK/health/recovery, wrong-venue requests before I/O and repeated bounded
 shutdown. These tests establish protocol/lifecycle behavior, not venue account verification or
 production economic acceptance.
+
+## Public Python configuration and factory
+
+The native Python module exports `BackpackInstrumentEconomics`, `BackpackDataClientConfig`,
+`BackpackDataClientFactory`, and the standard `BACKPACK`, `BACKPACK_CLIENT_ID`, `BACKPACK_VENUE`
+constants through `nautilus_trader.adapters.backpack`. The facade delegates protocol work to Rust;
+it has no Python REST/WebSocket implementation or credential discovery.
+
+Constructing economics, config and factory performs no filesystem, environment or network access.
+The factory registers the real native data client with the standard `LiveNode` builder. A client
+claims its config's telemetry at construction; a second live owner using the same config is refused.
+Connecting the node begins metadata and WebSocket work. Factory capabilities describe implemented
+surfaces; `config.telemetry_snapshot_json()` separately reports actual sanitized run observations.
+Neither a connected socket nor a successful factory call proves execution readiness.
+
+```python
+from nautilus_trader.adapters.backpack import BackpackDataClientConfig
+from nautilus_trader.adapters.backpack import BackpackDataClientFactory
+from nautilus_trader.adapters.backpack import BackpackInstrumentEconomics
+
+# Explicit synthetic values for a public-data or replay experiment only.
+economics = BackpackInstrumentEconomics(
+    margin_init="0.1",
+    margin_maint="0.05",
+    maker_fee="0.0002",
+    taker_fee="0.0005",
+    source="Synthetic",
+    source_reference="public-data experiment; no account verification",
+)
+config = BackpackDataClientConfig(
+    symbols=["BTC_USDC_PERP"],
+    economics={"BTC_USDC_PERP": economics},
+    quote_stale_after_ms=3000,
+)
+factory = BackpackDataClientFactory()
+# Existing LiveNodeBuilder: builder.add_data_client("BACKPACK", factory, config)
+```
+
+Economic arguments are exact decimal strings, never floats. The economics map must cover exactly
+the duplicate-free native-symbol allowlist. Source provenance is explicit caller evidence, not an
+adapter verification of fees, margin or identity. Properties are read-only. Defaults select public
+production origins; an explicit local protocol peer requires both `base_url_http` and `base_url_ws`
+with validated numeric loopback origins. Arbitrary remote overrides and partial endpoint pairs fail.
+
+All native lifecycle limits are available as checked keyword arguments: HTTP/WS connection,
+heartbeat, idle, reconnect and shutdown timeouts; quote staleness; snapshot depth; buffered frame,
+stored level and message byte bounds. Public telemetry includes per-symbol quote/book freshness,
+generation/connection epoch, metadata state, and the bounded book's coverage. Funding-rate units,
+full-book coverage and private subscription acknowledgement are not inferred. This Python slice
+exposes no execution factory, signer, raw authenticated client, account config or mutation API.
+
+The type stub is produced by the repository stub generator from the Rust binding declarations;
+it must not be edited by hand. Embedded Python tests exercise exact economics, native config
+extraction, actual data-factory construction and telemetry ownership. Installed-wheel node/runtime
+acceptance is a separate application task.
