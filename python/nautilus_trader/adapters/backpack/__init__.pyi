@@ -9,14 +9,25 @@ __all__ = [
     "BACKPACK",
     "BACKPACK_CLIENT_ID",
     "BACKPACK_VENUE",
+    "BackpackCredential",
     "BackpackDataClientConfig",
     "BackpackDataClientFactory",
+    "BackpackExecutionClientConfig",
+    "BackpackExecutionClientFactory",
     "BackpackInstrumentEconomics",
+    "BackpackPublicReplay",
+    "BackpackQuota",
 ]
 
 BACKPACK: str
 BACKPACK_CLIENT_ID: model.ClientId
 BACKPACK_VENUE: model.Venue
+
+@typing.final
+class BackpackCredential:
+    def __new__(
+        cls, seed_base64: str, *, base_url_http: str | None = None, base_url_ws: str | None = None
+    ) -> BackpackCredential: ...
 
 @typing.final
 class BackpackDataClientConfig:
@@ -73,10 +84,83 @@ class BackpackDataClientConfig:
 
 @typing.final
 class BackpackDataClientFactory:
-    def __init__(self) -> None: ...
-    def name(self) -> str: ...
+    @property
+    def quota(self) -> BackpackQuota: ...
     @property
     def config_type(self) -> str: ...
+    def __new__(cls, *, quota: BackpackQuota | None = None) -> BackpackDataClientFactory: ...
+    def name(self) -> str: ...
+    def capabilities_json(self) -> str: ...
+
+@typing.final
+class BackpackExecutionClientConfig:
+    @property
+    def identity_account(self) -> str: ...
+    @property
+    def subaccount(self) -> str | None: ...
+    @property
+    def symbols(self) -> list[str]: ...
+    @property
+    def account_id(self) -> str: ...
+    @property
+    def identity_directory(self) -> str: ...
+    @property
+    def quota(self) -> BackpackQuota: ...
+    @property
+    def base_url_http(self) -> str: ...
+    @property
+    def base_url_ws(self) -> str: ...
+    @property
+    def connect_timeout_ms(self) -> int: ...
+    @property
+    def shutdown_timeout_ms(self) -> int: ...
+    @property
+    def recovery_interval_ms(self) -> int: ...
+    @property
+    def recovery_lookback_ms(self) -> int: ...
+    @property
+    def input_capacity(self) -> int: ...
+    @property
+    def fill_capacity(self) -> int: ...
+    @property
+    def page_size(self) -> int: ...
+    @property
+    def max_pages(self) -> int: ...
+    @property
+    def max_items(self) -> int: ...
+    @property
+    def read_timeout_ms(self) -> int: ...
+    def __new__(
+        cls,
+        symbols: typing.Sequence[str],
+        credential: BackpackCredential,
+        account_id: str,
+        identity_account: str,
+        identity_directory: str,
+        *,
+        quota: BackpackQuota,
+        subaccount: str | None = None,
+        base_url_http: str | None = None,
+        base_url_ws: str | None = None,
+        connect_timeout_ms: int = ...,
+        shutdown_timeout_ms: int = ...,
+        recovery_interval_ms: int = ...,
+        recovery_lookback_ms: int = ...,
+        input_capacity: int = ...,
+        fill_capacity: int = ...,
+        page_size: int = ...,
+        max_pages: int = ...,
+        max_items: int = ...,
+        read_timeout_ms: int = ...,
+    ) -> BackpackExecutionClientConfig: ...
+    def telemetry_snapshot_json(self) -> str: ...
+
+@typing.final
+class BackpackExecutionClientFactory:
+    @property
+    def config_type(self) -> str: ...
+    def __new__(cls) -> BackpackExecutionClientFactory: ...
+    def name(self) -> str: ...
     def capabilities_json(self) -> str: ...
 
 @typing.final
@@ -102,3 +186,28 @@ class BackpackInstrumentEconomics:
         source: str,
         source_reference: str,
     ) -> BackpackInstrumentEconomics: ...
+
+@typing.final
+class BackpackPublicReplay:
+    @property
+    def instrument(self) -> model.CryptoPerpetual: ...
+    def __new__(
+        cls,
+        config: BackpackDataClientConfig,
+        market_json: str,
+        metadata_received_at_ns: int,
+        *,
+        generation: int = ...,
+    ) -> BackpackPublicReplay: ...
+    def apply_record(
+        self, record: bytes
+    ) -> (
+        model.QuoteTick | model.TradeTick | model.MarkPriceUpdate | model.OrderBookDeltas | None
+    ): ...
+
+@typing.final
+class BackpackQuota:
+    def __new__(
+        cls, *, standard_period_ms: int = ..., historical_period_ms: int = ...
+    ) -> BackpackQuota: ...
+    def shares_scope(self, other: BackpackQuota) -> bool: ...

@@ -24,7 +24,7 @@
 //! It provides a native read-only account client with bounded REST/private-stream lifecycle.
 //! Loopback-only guarded protocol mutations are available; engine execution integration
 //! and production writes remain unsupported.
-//! The optional `python` feature exposes public configuration and the native data factory.
+//! The optional `python` feature exposes public and read-only account configuration and factories.
 //! The optional `high-precision` feature propagates
 //! the Nautilus domain precision mode; default features remain empty.
 
