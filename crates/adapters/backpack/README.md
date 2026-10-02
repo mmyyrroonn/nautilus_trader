@@ -2,7 +2,7 @@
 
 This crate provides a credential-free native public data client, checked instrument metadata,
 public stream decoding and bounded depth synchronization. Authentication and restricted GET
-transport, durable local order identity and unsigned intents are separate foundations. Account
+transport, typed account observations and reconciliation, durable local order identity and unsigned intents are separate foundations. Account
 runtime, execution and Python bindings remain later work. Configuration and credential construction
 perform no I/O or environment lookup.
 
@@ -16,6 +16,7 @@ perform no I/O or environment lookup.
 | Durable clientId and unsigned intent                | Local filesystem ownership and recovery tested | Execution admission and reconciliation          |
 | Endpoint validation and credential audience         | Implemented offline                            | Production or explicit local protocol peers     |
 | REST signing and authenticated/public GET transport | Implemented with local transport tests         | Typed domain parsing and reconciliation         |
+| Account snapshot/history and fill reconciliation    | Read-only protocol and delivery contracts       | Runtime coverage and durable consumer ACK        |
 | Private WS subscription authentication              | Payload construction only                      | Connection lifecycle and account processing     |
 | Public stream parsing and depth replay              | Implemented without transport                  | Native data client lifecycle                    |
 | Native public data client and factory               | Public instruments, BBO, trades, mark and L2    | Python registry projection                      |
@@ -283,6 +284,10 @@ decimal and unit boundaries, public stream decoding, native depth replay and cov
 refusals. Identity tests cover durable restart/mapping, exhaustion, checksum/schema corruption,
 interrupted checkpoints, Windows replacement failure, and real multi-process ownership.
 
+Public stream tests replay captured BTC perpetual quotes, trades, marks and depth frames. They
+verify exact units/grids, nullable sides, atomic native book batches, initial overlap, gaps, bounded
+buffers, stale generations and truncated price-band coverage.
+
 Authentication tests cover scalar/wire canonicalization, an independent public RFC 8032 section
 [7.1 signature vector](https://www.rfc-editor.org/rfc/rfc8032#section-7.1), audience isolation, and
 synthetic loopback transport. Transport probes verify fresh signatures after a queue longer than
@@ -292,3 +297,69 @@ transport responses are public synthetic material, never captured account fixtur
 live venue requests or account mutations. Actual POST/DELETE paths are not implemented or tested.
 See the repository [adapter guide](../../../docs/developer_guide/adapters.md) for later transport,
 client, and acceptance tests.
+
+
+## Account observations and reconciliation
+
+`account::client::BackpackAccountReader` wraps the shared authenticated GET client and quota.
+`BackpackReadBudget::new(page_size, max_pages, max_items, timeout)` supplies a finite total deadline
+covering the whole snapshot or traversal, including all transport retries and quota waits. Snapshot
+reads use the documented account, balances, collateral, positions and resting orders endpoints.
+Missing/null responses and failed requests are errors; valid empty maps/arrays remain observed empty.
+An omitted position is unobserved and never manufactured as a flat position.
+
+`snapshot` preserves wallet available/locked/staked independently from collateral assets, equity,
+liabilities, exposure, margin fractions and PnL. `wallet_report` emits an exact native `AccountBalance`
+for available+locked trading funds and separate staked/wallet totals; it never labels staked as free
+or wallet balance as equity. Borrow/lend, liquidation, liabilities, collateral haircut/lending and
+unsettled-equity policies degrade evidence. Unknown policy/enum/system fields remain observable.
+No settings update or unsupported capability is emulated.
+
+The account settings endpoint does not attest account/user/subaccount identity. Position/funding
+rows may contain user/subaccount IDs, but no correlation to caller credentials or durable namespace
+is inferred, especially from an empty response. Every snapshot retains `AccountIdentityUnverified`
+and `NonAtomicSnapshot`. No generation, watermark, verified identity, freshness or execution-ready
+proof is minted; the future execution owner must establish its own admission evidence.
+
+History uses one fixed `[from_ms, to_ms)` window. Fills send both documented inclusive/exclusive UTC
+filters on every page, without filtering away system fills. Orders and funding have no documented
+server time filters; all observed rows are returned with `CutoffNotServerEnforced`, not falsely
+restricted to the requested interval. Order event time and funding currency/timezone remain unknown.
+All four required pagination headers are retained. Their total/count/size must stay consistent,
+rows must cover the declared total exactly, page indices must progress from one observed zero/one
+origin, and unique row identities must progress within page/item bounds. The reported page size must
+match the explicit limit. Ambiguous header conventions, repeated rows/pages, failed pages and budget
+exhaustion return errors. Header exhaustion still retains non-atomic and unknown retention/replication
+coverage; it never proves an unknown submission was rejected or never executed. Resting-order HTTP404
+is `UnknownNotResting`. Successful resting responses must match the exact requested symbol/selector.
+
+`BackpackReportContext` requires the already validated instrument provider and durable client-ID
+store. Only original persisted IDs supply candidate `Reserved` correlation with `OwnershipUnverified`;
+native reports keep `client_order_id=None` unless a separate `BackpackOrderBindings` map from the
+command owner establishes an acknowledged venueOrderId/instrument/native-ID link. Its explicit
+`confirm_acknowledged` validates consistency against durable reservations but never attests arbitrary
+caller claims. The owner must independently establish and persist that command evidence; observations
+never populate the bindings. Unknown and system orders
+remain external. This correlation is not venue idempotency or globally verified ownership. The
+execution owner must detect pre-existing venue clientId collisions before write admission.
+`fill_report`, `order_report` and `position_report` build actual native domain reports with exact
+Decimal/Price/Quantity/Money round-trip checks. Unknown engine timestamps are zero plus explicit
+coverage gaps, not guessed from integer magnitude or naive datetime. A missing true tradeId,
+unsupported lifecycle/conditional order or unknown order economics/flags does not receive an invented
+native report. True UTC fill timestamps, fee currency, exact rebates and quantities are preserved.
+Funding remains signed exact raw cashflow: positive received, negative paid. No payment Money or
+Unix event time is emitted without separate denomination/timezone proof.
+
+`BackpackFillReconciler::stage` returns pending economic delivery until `acknowledge_with` successfully
+commits the consumer's actual delivery acknowledgement and applied-fill record. A failed callback
+leaves pending work retryable. No irreversible dedup record precedes economic delivery ACK.
+The consumer must atomically persist application and its acknowledgement in its own journal and be
+idempotent by native symbol/true tradeId. Restore only such durable records with `from_applied`;
+unacknowledged crash windows redeliver at least once. Pending fills sort by event time and include
+first fills before order acknowledgement and terminal late fills. This library does not claim an
+atomic external-engine transaction or standalone durable economic journal.
+
+Account fixtures under `test_data/account` have explicit official-schema versus synthetic provenance.
+Tests issue signed, bodyless GETs only to audience-bound loopback listeners. They cover empty/missing,
+unknown identity/policy, exact economics, system fills, bounded traversal faults and delivery ACK
+crash windows; they do not demonstrate a live account or native ExecutionClient lifecycle.

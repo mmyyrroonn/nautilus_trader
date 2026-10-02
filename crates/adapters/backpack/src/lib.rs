@@ -19,6 +19,7 @@
 //! It provides audience-bound credentials, protocol signing, and a restricted GET transport.
 //! It parses exact public metadata and persists durable local order identity and unsigned intents.
 //! A native public data owner and factory manage instrument discovery and bounded public feeds.
+//! Typed account reads and bounded fill reconciliation are independent read-only foundations.
 //! Account runtime and restricted execution remain unavailable in this phase.
 //! There are no Python bindings. The optional `high-precision` feature propagates
 //! the Nautilus domain precision mode; default features remain empty.
@@ -27,6 +28,7 @@
 #![deny(missing_debug_implementations)]
 #![deny(rustdoc::broken_intra_doc_links)]
 
+pub mod account;
 pub mod common;
 pub mod config;
 pub mod data;

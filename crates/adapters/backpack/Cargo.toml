@@ -38,6 +38,7 @@ base64 = { workspace = true }
 blake3 = { workspace = true }
 bytes = { workspace = true }
 ed25519-dalek = { workspace = true }
+jiff = { workspace = true }
 parking_lot = { workspace = true }
 rust_decimal = { workspace = true }
 serde = { workspace = true }
