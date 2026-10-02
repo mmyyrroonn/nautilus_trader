@@ -4,8 +4,8 @@ This crate contains configuration, authentication and transport foundations, exa
 metadata, bounded public stream/depth parsing, and durable local order identity for a phased Backpack Exchange integration. It validates
 product eligibility and complete provider refreshes, constructs Ed25519 authentication, and provides
 a restricted GET transport with typed account observations and bounded reconciliation.
-Engine data/account runtime clients, execution, factories, and Python
-bindings remain later work. Constructing configuration and credentials performs no I/O or
+The guarded order owner supports explicit loopback protocol peers. Engine data/account runtime
+clients, execution integration, factories, and Python bindings remain later work. Constructing configuration and credentials performs no I/O or
 environment lookup.
 
 ## Current capability boundary
@@ -301,7 +301,8 @@ Unsigned payloads must contain no credentials, authentication headers or signatu
 
 ## Protocol references
 
-The following official sources establish the venue contract, not implemented runtime features:
+The following official sources establish the venue contract; the capability table above describes
+the implemented scope:
 
 - [Introduction and production origins](https://docs.backpack.exchange/#section/Introduction).
 - [Market metadata](https://docs.backpack.exchange/#tag/Markets/operation/get_market): native symbols,
@@ -310,7 +311,8 @@ The following official sources establish the venue contract, not implemented run
   [depth snapshot](https://docs.backpack.exchange/#tag/Markets/operation/get_depth): envelope,
   timestamp units, sequence ranges, and explicit snapshot limits.
 - [Order execution contract](https://docs.backpack.exchange/#tag/Order/operation/execute_order): venue
-  order types and flags. No order payload or execution semantics are implemented here.
+  order types and flags. The guarded loopback owner implements only the standard command subset
+  described above; production writes remain unsupported.
 - [Authentication](https://docs.backpack.exchange/#section/Authentication): sorted REST signing,
   Ed25519/base64 headers, timestamp/window, and WS subscribe authentication.
 - [Order query](https://docs.backpack.exchange/#tag/Order/operation/get_order): exclusive
@@ -338,7 +340,8 @@ synthetic loopback transport. Transport probes verify fresh signatures after a q
 the default window, stale admission/deadlines, shared public/private quota, redaction, redirects,
 pagination, bounded retries, and cancellation before/after dispatch. Authentication test seeds and
 transport responses are public synthetic material, never captured account fixtures. Tests make no
-live venue requests or account mutations. Actual POST/DELETE paths are not implemented or tested.
+live venue requests or real account mutations. Authentication/read-transport tests do not exercise
+mutations; guarded loopback mutation validation is described above.
 See the repository [adapter guide](../../../docs/developer_guide/adapters.md) for later transport,
 client, and acceptance tests.
 
