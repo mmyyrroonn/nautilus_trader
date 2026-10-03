@@ -19,7 +19,7 @@ use std::{collections::BTreeSet, sync::Arc, time::Duration};
 use async_trait::async_trait;
 use nautilus_common::{
     cache::CacheView,
-    clients::ExecutionClient,
+    clients::{ExecutionCacheRecovery, ExecutionClient},
     factories::{ClientConfig, ExecutionClientFactory, OrderEventFactory},
     messages::{ExecutionEvent, ExecutionReport, execution::*},
 };
@@ -882,6 +882,8 @@ pub(super) struct BackpackLoopbackControlRuntime {
     core: ExecutionClientCore,
     shared: std::sync::Weak<Shared>,
     control: std::cell::RefCell<Option<super::control::BackpackLoopbackControl>>,
+    economics: std::cell::RefCell<Option<super::economics::EconomicStore>>,
+    recovery_events: std::cell::RefCell<Vec<nautilus_model::events::OrderEventAny>>,
 }
 impl BackpackLoopbackControlRuntime {
     fn shared(&self) -> anyhow::Result<Arc<Shared>> {
@@ -992,6 +994,149 @@ impl BackpackLoopbackControlRuntime {
         Ok(())
     }
 
+    pub(super) fn reconcile_terminal_evidence(
+        &self,
+        token: BackpackLoopbackSession,
+    ) -> anyhow::Result<serde_json::Value> {
+        let shared = self.shared()?;
+        let control = self.loopback(token)?;
+        self.persist_economics()?;
+        let storage = self.economics.try_borrow()?;
+        let storage = storage
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("durable economic consumer is not configured"))?;
+        let reports = storage.state().reports();
+        let reference = storage.state().reference()?;
+        let provider = shared.provider.lock();
+        let context = ReportReader {
+            account_id: shared.config.account_id,
+            instruments: &provider,
+            identities: &shared.identities,
+            ts_init: now(),
+        };
+        let orders = control.orders.lock().values().cloned().collect::<Vec<_>>();
+        let mut evidence = vec![];
+        for raw in orders {
+            let Some(report) = context.order(raw)?.report else {
+                continue;
+            };
+            let Some(id) = report.client_order_id else {
+                continue;
+            };
+            let terminal = matches!(
+                report.order_status,
+                nautilus_model::enums::OrderStatus::Filled
+                    | nautilus_model::enums::OrderStatus::Canceled
+                    | nautilus_model::enums::OrderStatus::Expired
+            );
+            let quantity = reports
+                .iter()
+                .filter(|f| {
+                    f.client_order_id == Some(id)
+                        && f.venue_order_id == report.venue_order_id
+                        && f.instrument_id == report.instrument_id
+                })
+                .try_fold(rust_decimal::Decimal::ZERO, |sum, fill| {
+                    crate::execution::guard::add(sum, fill.last_qty.as_decimal())
+                })?;
+            let native_terminal = self.core.cache().order(&id).is_some_and(|order| {
+                order.status() == report.order_status && order.filled_qty() == report.filled_qty
+            });
+            let complete =
+                terminal && native_terminal && quantity == report.filled_qty.as_decimal();
+            let already = control
+                .owner
+                .guard()
+                .lock()?
+                .records
+                .get(&id)
+                .is_some_and(|record| !record.holds_capacity());
+            if complete && !already {
+                control.owner.acknowledge_reconciled_terminal(
+                    &crate::execution::owner::BackpackLoopbackTerminalEvidence {
+                        client_order_id: id,
+                        venue_order_id: report.venue_order_id,
+                        instrument_id: report.instrument_id,
+                        generation: token.generation(),
+                        cumulative_quantity: report.filled_qty.as_decimal(),
+                        applied_fill_quantity: quantity,
+                        economic_ack_reference: reference.clone(),
+                    },
+                )?;
+            }
+            evidence.push(serde_json::json!({"client_order_id":id,"terminal_observed":terminal,"durable_economic_complete":complete,"cumulative_quantity":report.filled_qty.to_string(),"durable_fill_quantity":quantity.to_string(),"reconciled":complete}));
+        }
+        let owner_guard = control.owner.guard();
+        let state = owner_guard.lock()?;
+        let stamp = now().as_u64() / 1_000_000;
+        let flat = state.account.as_ref().is_some_and(|facts| {
+            facts.generation == token.generation()
+                && stamp
+                    .checked_sub(facts.observed_at_ms)
+                    .is_some_and(|age| age <= state.authority.max_account_age_ms)
+                && facts
+                    .net_positions
+                    .values()
+                    .all(|q| *q == rust_decimal::Decimal::ZERO)
+        });
+        Ok(
+            serde_json::json!({"schema_version":1,"orders":evidence,"flat_snapshot_current":flat,"pending_fills":shared.fills.lock().pending_in_event_order().len()}),
+        )
+    }
+    pub(super) fn persist_economics(&self) -> anyhow::Result<serde_json::Value> {
+        let shared = self.shared()?;
+        let delivery = BackpackFillDelivery {
+            shared: shared.clone(),
+        };
+        let mut store = self.economics.try_borrow_mut()?;
+        let store = store
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("durable economic consumer is not configured"))?;
+        let pending = delivery.pending();
+        if self
+            .core
+            .cache()
+            .account(&shared.config.account_id)
+            .is_none()
+            && store.state().recovery().is_none()
+        {
+            return Ok(store.summary(0, pending.len()));
+        }
+        let records = {
+            let fills = shared.fills.lock();
+            pending
+                .into_iter()
+                .map(|report| {
+                    let key = BackpackFillKey {
+                        instrument_id: report.instrument_id,
+                        trade_id: report.trade_id,
+                    };
+                    Ok((report, fills.pending_acknowledgement(key)?))
+                })
+                .collect::<anyhow::Result<Vec<_>>>()?
+        };
+        let (snapshot, keys) = store.prepare(
+            &self.core.cache(),
+            records,
+            shared.config.policy.fill_capacity,
+            None,
+        )?;
+        // Commit actual native state and every consumed receipt in one durable transaction.
+        // A crash before the subsequent native ACK reloads those exact receipts on restart.
+        store.commit(snapshot)?;
+        let mut acknowledged = 0;
+        for key in keys {
+            if delivery.acknowledge_with(key, |receipt| {
+                store
+                    .confirm(receipt)
+                    .map_err(|_| BackpackAccountError::Acknowledgement)
+            })? == BackpackFillAcknowledgement::Applied
+            {
+                acknowledged += 1;
+            }
+        }
+        Ok(store.summary(acknowledged, delivery.pending().len()))
+    }
     pub(super) fn pending(&self) -> anyhow::Result<Vec<FillReport>> {
         let shared = self.shared()?;
         let reports = shared
@@ -1125,6 +1270,8 @@ impl BackpackExecutionClient {
                 core: core.clone(),
                 shared: Arc::downgrade(&shared),
                 control: std::cell::RefCell::new(None),
+                economics: std::cell::RefCell::new(None),
+                recovery_events: std::cell::RefCell::new(vec![]),
             });
             Ok(Self {
                 control_runtime,
@@ -1149,6 +1296,98 @@ impl BackpackExecutionClient {
     }
     fn loopback(&self, token: BackpackLoopbackSession) -> anyhow::Result<Arc<LoopbackExecution>> {
         self.control_runtime.loopback(token)
+    }
+    /// Opens an exclusively locked durable consumer for the configured synthetic peer.
+    /// Recovery is returned to the platform through the typed cache recovery boundary.
+    ///
+    /// # Errors
+    /// Returns an error after startup, in read-only/production mode, or for invalid storage/state.
+    pub fn configure_economic_consumer(
+        &mut self,
+        directory: &std::path::Path,
+    ) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            !self.core.is_started() && self.shared.config.scope.endpoints().is_loopback(),
+            "economic recovery must precede synthetic startup"
+        );
+        let control =
+            self.shared.restricted.as_ref().ok_or_else(|| {
+                anyhow::anyhow!("economic consumer requires restricted execution")
+            })?;
+        let economic = self.control_runtime.economics.try_borrow_mut()?;
+        anyhow::ensure!(economic.is_none(), "economic consumer already configured");
+        let store = super::economics::EconomicStore::open(
+            directory,
+            &self.shared.config.identity_directory,
+            &self.shared.config.namespace,
+            self.core.account_id,
+            self.core.trader_id,
+            self.shared.config.policy.fill_capacity,
+            &self
+                .shared
+                .config
+                .scope
+                .symbols()
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>(),
+            self.core.client_id,
+        )?;
+        for order in store.state().orders() {
+            if let Some(venue) = order.venue_order_id() {
+                control
+                    .owner
+                    .restore_native_binding(&super::commands::cached_spec(order)?, venue)?;
+                control.retain_native(order.client_order_id(), order.clone())?;
+                control.release(order.client_order_id());
+            } else {
+                anyhow::ensure!(
+                    order.trade_ids().is_empty(),
+                    "economic order binding missing"
+                );
+                if let Some((venue, instrument)) =
+                    control.owner.confirmed_binding(order.client_order_id())
+                {
+                    anyhow::ensure!(
+                        instrument == order.instrument_id(),
+                        "economic seed scope mismatch"
+                    );
+                    control
+                        .owner
+                        .restore_native_binding(&super::commands::cached_spec(order)?, venue)?;
+                    control.retain_native(order.client_order_id(), order.clone())?;
+                    control.release(order.client_order_id());
+                    if order.status() == nautilus_model::enums::OrderStatus::Initialized {
+                        let factory = OrderEventFactory::new(
+                            self.core.trader_id,
+                            self.core.account_id,
+                            AccountType::Margin,
+                            None,
+                        );
+                        let mut events = self.control_runtime.recovery_events.borrow_mut();
+                        events.push(factory.generate_order_submitted(order, now()));
+                        events.push(factory.generate_order_accepted(
+                            order,
+                            venue,
+                            UnixNanos::from(0),
+                            now(),
+                        ));
+                    }
+                }
+            }
+        }
+        let receipts = store.state().receipts();
+        drop(economic);
+        self.restore_applied_fills(receipts)?;
+        *self.control_runtime.economics.try_borrow_mut()? = Some(store);
+        Ok(())
+    }
+    /// Commits consumed native fills through the synthetic durable consumer.
+    ///
+    /// # Errors
+    /// Returns an error for absent consumer, inconsistent consumption or storage failure.
+    pub fn persist_economics(&self) -> anyhow::Result<serde_json::Value> {
+        self.control_runtime.persist_economics()
     }
     /// Attaches one weak owner-thread control without opening another identity store.
     ///
@@ -1581,6 +1820,14 @@ impl ExecutionClientFactory for BackpackExecutionClientFactory {
 }
 #[async_trait(?Send)]
 impl ExecutionClient for BackpackExecutionClient {
+    fn cache_recovery(&self) -> anyhow::Result<Option<ExecutionCacheRecovery>> {
+        Ok(self
+            .control_runtime
+            .economics
+            .try_borrow()?
+            .as_ref()
+            .and_then(|store| store.state().recovery()))
+    }
     fn is_connected(&self) -> bool {
         let h = self.health();
         h.transport_connected && h.state != BackpackAccountState::Stopped
@@ -1619,11 +1866,18 @@ impl ExecutionClient for BackpackExecutionClient {
         if self.core.is_started() {
             return Ok(());
         }
+        if let Some(storage) = self.control_runtime.economics.try_borrow()?.as_ref() {
+            storage.state().verify_cache(&self.core.cache())?;
+        }
         if !self.shared.emitter.is_initialized() {
             let sender = nautilus_common::live::runner::try_get_exec_event_sender()
                 .ok_or_else(|| anyhow::anyhow!("execution event sender is not installed"))?;
             self.set_event_sender(sender);
         }
+        for event in self.control_runtime.recovery_events.borrow().iter() {
+            self.shared.emitter.try_send_order_event(event.clone())?;
+        }
+        self.control_runtime.recovery_events.borrow_mut().clear();
         self.core.set_started();
         Ok(())
     }
@@ -1722,6 +1976,7 @@ impl ExecutionClient for BackpackExecutionClient {
             .restricted
             .clone()
             .ok_or_else(|| anyhow::anyhow!("Backpack native account client is read-only"))?;
+        let deadline = control.owner.begin_deadline()?;
         let token = control.token()?;
         self.loopback(token)?;
         let order = self
@@ -1747,11 +2002,46 @@ impl ExecutionClient for BackpackExecutionClient {
             .try_acquire_owned()
             .map_err(|_| anyhow::anyhow!("bounded mutation tasks exhausted"))?;
         control.retain_native(command.client_order_id, order.clone())?;
+        if self.control_runtime.economics.borrow().is_some() {
+            // Retain the original native replay seed before the mutation task can send bytes
+            let shared = self.shared.clone();
+            let delivery = BackpackFillDelivery {
+                shared: shared.clone(),
+            };
+            let pending = delivery.pending();
+            let records = {
+                let fills = shared.fills.lock();
+                pending
+                    .into_iter()
+                    .map(|report| {
+                        let key = BackpackFillKey {
+                            instrument_id: report.instrument_id,
+                            trade_id: report.trade_id,
+                        };
+                        Ok((report, fills.pending_acknowledgement(key)?))
+                    })
+                    .collect::<anyhow::Result<Vec<_>>>()?
+            };
+            let mut storage = self.control_runtime.economics.try_borrow_mut()?;
+            let storage = storage
+                .as_mut()
+                .ok_or_else(|| anyhow::anyhow!("economic consumer unavailable"))?;
+            let (snapshot, _) = storage.prepare(
+                &self.core.cache(),
+                records,
+                shared.config.policy.fill_capacity,
+                Some(command.client_order_id),
+            )?;
+            storage.commit(snapshot)?;
+        }
         let shared = self.shared.clone();
         let cancel = self.tasks.cancellation_token();
         self.tasks.spawn(async move {
             let _permit = permit;
-            let result = control.owner.submit(spec, &cancel).await;
+            let result = control
+                .owner
+                .submit_with_deadline(spec, &cancel, deadline)
+                .await;
             let mut gate = shared.gate.lock();
             if !gate.current(token.run, token.client_generation, token.private_epoch)
                 || control.current(token).is_err()

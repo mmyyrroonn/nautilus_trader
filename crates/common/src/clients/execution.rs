@@ -27,6 +27,8 @@ use nautilus_model::{
         AccountId, ClientId, ClientOrderId, InstrumentId, StrategyId, Venue, VenueOrderId,
     },
     instruments::InstrumentAny,
+    orders::OrderAny,
+    position::Position,
     reports::{ExecutionMassStatus, FillReport, OrderStatusReport, PositionStatusReport},
     types::{AccountBalance, MarginBalance, Money, Price, Quantity},
 };
@@ -45,6 +47,19 @@ use crate::messages::execution::{
 pub const DEFAULT_POSITION_RECONCILIATION_TOLERANCE: Decimal =
     Decimal::from_parts(1, 0, 0, false, 8);
 
+/// Durable native consumer state offered for restoration before a client connects.
+///
+/// The client verifies its storage integrity and journal binding. The node validates
+/// account, trader, venue and object references before installing this state in an
+/// empty account scope. Restored state is historical evidence, not current venue readiness.
+#[derive(Clone, Debug)]
+pub struct ExecutionCacheRecovery {
+    pub account: AccountAny,
+    pub instruments: Vec<InstrumentAny>,
+    pub orders: Vec<OrderAny>,
+    pub positions: Vec<Position>,
+}
+
 /// Defines the interface for an execution client managing order operations.
 ///
 /// # Thread Safety
@@ -59,6 +74,15 @@ pub trait ExecutionClient {
     fn venue(&self) -> Venue;
     fn oms_type(&self) -> OmsType;
     fn get_account(&self) -> Option<AccountAny>;
+
+    /// Returns verified durable consumer state for the node's initial cache restoration.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if durable state exists but cannot be safely recovered.
+    fn cache_recovery(&self) -> anyhow::Result<Option<ExecutionCacheRecovery>> {
+        Ok(None)
+    }
 
     /// Returns the maximum absolute position difference tolerated during reconciliation.
     fn position_reconciliation_tolerance(&self) -> Decimal {

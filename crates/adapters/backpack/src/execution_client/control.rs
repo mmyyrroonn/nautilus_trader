@@ -107,6 +107,25 @@ impl BackpackLoopbackControl {
     pub fn invalidate(&self, token: BackpackLoopbackSession) -> anyhow::Result<()> {
         self.runtime()?.invalidate(token)
     }
+    /// Reconciles retained native terminal evidence with independently durable true fills.
+    /// Explicit fresh synthetic account facts remain necessary to verify flat exposure.
+    ///
+    /// # Errors
+    /// Returns an error for stale sessions, absent durable consumer or conflicting economics.
+    pub fn reconcile_terminal_evidence(
+        &self,
+        token: BackpackLoopbackSession,
+    ) -> anyhow::Result<serde_json::Value> {
+        self.runtime()?.reconcile_terminal_evidence(token)
+    }
+    /// Persists actual native consumer state and immutable receipts before native ACK.
+    /// Caller payloads, trade IDs and acknowledgement callbacks are not accepted.
+    ///
+    /// # Errors
+    /// Returns an error without opt-in durable storage or for consumption/storage failures.
+    pub fn persist_economics(&self) -> anyhow::Result<serde_json::Value> {
+        self.runtime()?.persist_economics()
+    }
     /// Returns genuine pending reports without acknowledging economic application.
     ///
     /// # Errors

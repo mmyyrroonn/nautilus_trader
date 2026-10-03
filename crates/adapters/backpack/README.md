@@ -5,13 +5,16 @@ public stream decoding and bounded depth synchronization. It also provides audie
 credentials, signed read transport, typed account observations, durable local order identity and a
 guarded mutation owner for explicit loopback protocol peers. A native read-only account client
 provides bounded REST/private-stream lifecycle. Explicit guarded loopback configuration integrates
-native single-order commands with engine/cache/portfolio delivery. Public and read-only Python
-config/factory bindings are available with the
-`python` feature. Configuration and credential construction
-perform no I/O or environment lookup.
+native single-order commands with engine/cache/portfolio delivery and an opt-in native durable
+consumer. Public and read-only Python config/factory bindings are available with the `python`
+feature. Configuration and credential construction perform no I/O or environment lookup.
 
 The [send contract and evidence index](../../../docs/plans/backpack-send-contract.md) records
-accepted numeric-loopback boundaries, precise tests and remaining coverage.
+accepted numeric-loopback boundaries, precise tests and remaining coverage. The
+[durable economics design](../../../docs/plans/backpack-durable-economics.md) describes current
+synthetic consumer persistence and typed native recovery; the
+[protocol evidence](../../../docs/plans/backpack-protocol-evidence.md) separates official contracts
+from public observations and unknown venue facts.
 
 ## Current capability boundary
 
@@ -24,9 +27,9 @@ accepted numeric-loopback boundaries, precise tests and remaining coverage.
 | Durable clientId and unsigned intent                | Local filesystem ownership and recovery tested  | Venue uniqueness evidence                       |
 | Endpoint validation and credential audience         | Implemented offline                             | Private venue acceptance                        |
 | REST signing and authenticated/public GET transport | Implemented with local transport tests          | Account runtime lifecycle                       |
-| Account snapshot/history and fill reconciliation    | Read-only protocol and delivery contracts       | Runtime coverage and durable consumer ACK       |
+| Account snapshot/history and fill reconciliation    | Read-only protocol; opt-in synthetic consumer   | Verified production economic coverage           |
 | Native read-only account client and factory         | Bounded REST/private streams, degraded evidence | Verified subscription and account coverage      |
-| Guarded loopback mutations                          | Native single-order commands and true fills     | Durable production economic consumer contract   |
+| Guarded loopback mutations                          | Native commands, fills and opt-in persistence   | Durable production economic consumer contract   |
 | Production writes                                   | Explicit unsupported error                      | Separately accepted private execution readiness |
 
 `BackpackCapability::PublicMarketData`, `ReadOnlyAccount` and `RestrictedExecution` describe
@@ -34,7 +37,8 @@ implemented runtimes. Restricted execution is confined to an explicit loopback p
 not live freshness or execution admission. The guarded mutation owner below is limited to explicit
 local protocol peers. Production submission/cancellation, modification, batches, borrowing,
 transfers, withdrawals and a dead man's switch remain unsupported. The default read-only account
-configuration does not authorize mutations. No Python write API is exposed.
+configuration does not authorize mutations. Python writes use only the separately named guarded
+synthetic loopback configuration described below.
 
 ## Native public owner
 
@@ -640,10 +644,12 @@ first-fill-before-ACK attribution, exact quantities/fees/rebates and a Decimal r
 PnL of `0.000014 USDC`, duplicates, pending 202 cancellation, terminal ACK/late-fill risk reopening,
 lost POST acknowledgement, public-fault zero new POST with owned cancellation still allowed,
 and complete native order/position plus coupled receipt restoration followed by REST dedup.
-A local checkpoint test persists actual native state and its receipt together. This demonstrates an
-explicit consumer boundary; the framework offers no atomic cross-engine/cache/portfolio durable
-transaction through EventEmitter. Production identity, account coverage, private ACK verification,
-production readiness and a general durable economic consumer remain unverified/unsupported.
+The opt-in native consumer persists actual account, instrument, order and position state together
+with immutable true-fill receipts before acknowledging them. The platform restores its typed state
+before connection, then initializes Portfolio from the cache. EventEmitter delivery alone remains
+unacknowledged. See the [durable economics design](../../../docs/plans/backpack-durable-economics.md)
+for checkpoint, scope and crash limits. Production identity, account coverage, private ACK
+verification, production readiness and production economic consumer acceptance remain open.
 
 ## Python offline replay
 
@@ -704,7 +710,8 @@ identity directory and acquires its OS lock. Explicit node connection starts sig
 and private WebSocket work. Production plans are supported; this change's tests access local peers
 only. A local plan must supply both validated loopback origins to credential and config. A different
 origin, account or subaccount cannot reuse another persistent namespace. Query observation cannot
-adopt external orders. The read-only factory exposes no mutations; production writes and economic ACK remain unavailable in Python.
+adopt external orders. The read-only factory exposes no mutations or durable consumer ACK. The separately named synthetic
+loopback factory can opt into the native consumer; production writes remain unsupported.
 
 Read-only properties preserve exact symbols, labels, namespace components, audience, directory and
 finite native lifecycle/read limits. Millisecond defaults are 20000 connect, 3000 shutdown, 30000
@@ -746,13 +753,27 @@ public admission consumes its generation and can be retried after public recover
 cannot alter a replacement session.
 
 Supported submit/cancel commands use the existing native Strategy/order-factory/risk/execution
-route. The control handle exposes no raw transport, signer, direct order dispatcher, adoption or
-economic ACK. Real fills reach the native engine but remain staged pending; cache application,
-queue enqueue and a Python callback are not durable consumer application. `pending_fills_json()`,
-`telemetry_snapshot_json()` and `shutdown_report_json()` expose actual bounded observations;
-private subscription verification and durable economic ACK remain false. Reservations are not
-released from cached terminal quantities, and residual work remains explicitly dirty. Durable
-consumer persistence and clean economic recovery require a separately reviewed implementation.
+route. The control handle exposes no raw transport, signer, direct order dispatcher or adoption.
+Without an economic directory, fills remain pending after native engine delivery. Cache application,
+queue enqueue and Python callbacks alone never acknowledge durable economics.
+
+Set `economic_state_directory` on `BackpackLoopbackExecutionClientConfig` to opt into the native
+synthetic consumer. Construction still performs no I/O; actual native factory creation opens the
+exclusively locked consumer alongside the identity store. Call `config.control.persist_economics()`
+after engine consumption to persist actual native state and exact true-fill receipts before native
+ACK. It accepts no arguments, caller-created receipt, state JSON, trade selector or callback.
+`config.control.reconcile_terminal_evidence(session)` uses retained native terminal observations,
+original bindings, current native lifecycle/quantity and durable fill receipts; it accepts only the
+current session token. Neither method proves production identity or private subscription success.
+
+`pending_fills_json()`, `telemetry_snapshot_json()` and `shutdown_report_json()` expose actual
+bounded observations. Cached terminal quantities alone never free reservations. Terminal
+reconciliation, fresh complete synthetic flat facts and clean shutdown remain separate evidence;
+a late true fill reopens risk. Old flat snapshots and repeated stop cannot erase dirty state. The
+[durable economics design](../../../docs/plans/backpack-durable-economics.md) details typed native
+cache recovery, the default one-hour history window and unknown replication limits. Installed-wheel
+acceptance of these added APIs is a separate validation step; historical application PR 25 evidence
+continues to describe its original consumer-free runner.
 
 Retaining a control, session, config or telemetry observation does not retain the actual client or
 its identity lock. Controls use weak, single-use factory attachments; disposing the native client

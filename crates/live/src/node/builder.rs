@@ -52,6 +52,7 @@ use super::{
         LiveDataEngineConfig, LiveExecutionEngineConfig, LiveNodeConfig, LiveRiskEngineConfig,
         RoutingConfig, validate_live_environment,
     },
+    recovery::{RecoveryScope, restore_execution_cache},
 };
 use crate::{
     execution::{
@@ -679,6 +680,21 @@ impl LiveNodeBuilder {
                         kernel.cache(),
                     ),
                 })?;
+                if let Some(recovery) = client.cache_recovery()? {
+                    restore_execution_cache(
+                        &mut kernel.cache.borrow_mut(),
+                        recovery,
+                        RecoveryScope {
+                            account_id: client.account_id(),
+                            client_id: client.client_id(),
+                            trader_id: self.config.trader_id,
+                            venue: client.venue(),
+                            oms_type: client.oms_type(),
+                        },
+                    )?;
+                    kernel.portfolio.borrow_mut().initialize_orders();
+                    kernel.portfolio.borrow_mut().initialize_positions();
+                }
                 let client = LiveExecutionClient::new(client);
                 let client_id = client.client_id();
                 let venue = client.venue();

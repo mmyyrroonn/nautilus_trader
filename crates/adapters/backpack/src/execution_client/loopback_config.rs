@@ -14,7 +14,7 @@
 // -------------------------------------------------------------------------------------------------
 
 //! Static local-peer plans; native factory admission verifies actual public ownership later.
-use std::any::Any;
+use std::{any::Any, path::PathBuf};
 
 use nautilus_common::{
     cache::CacheView,
@@ -41,6 +41,7 @@ pub struct BackpackLoopbackExecutionClientConfig {
     pub(crate) authority: BackpackExecutionAuthority,
     pub(crate) mutation: BackpackMutationPolicy,
     pub(crate) control: BackpackLoopbackControl,
+    pub(crate) economic_state_directory: Option<PathBuf>,
 }
 impl BackpackLoopbackExecutionClientConfig {
     /// Validates exact numeric local origins, scope, finite authority and synthetic economics.
@@ -83,7 +84,20 @@ impl BackpackLoopbackExecutionClientConfig {
             authority,
             mutation,
             control: BackpackLoopbackControl::default(),
+            economic_state_directory: None,
         })
+    }
+    /// Opts into native durable consumption for this synthetic scope without filesystem I/O.
+    ///
+    /// # Errors
+    /// Returns an error for an empty consumer directory.
+    pub fn with_economic_state_directory(mut self, directory: PathBuf) -> anyhow::Result<Self> {
+        anyhow::ensure!(
+            !directory.as_os_str().is_empty(),
+            "economic directory is required"
+        );
+        self.economic_state_directory = Some(directory);
+        Ok(self)
     }
     /// Returns the weak owner-thread handle; this cannot manufacture an admitted session.
     #[must_use]
@@ -119,7 +133,10 @@ impl ExecutionClientFactory for BackpackLoopbackExecutionClientFactory {
             &plan.account.quota,
             plan.public.telemetry().clone(),
         )?;
-        let client = BackpackExecutionClient::new(trader, name, account, cache)?;
+        let mut client = BackpackExecutionClient::new(trader, name, account, cache)?;
+        if let Some(directory) = &plan.economic_state_directory {
+            client.configure_economic_consumer(directory)?;
+        }
         client.attach_loopback_control(&plan.control)?;
         Ok(Box::new(client))
     }

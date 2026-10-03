@@ -1,0 +1,50 @@
+{
+    "finished_at_utc":  "2026-10-03T16:01:04.4150779+00:00",
+    "started_at_utc":  "2026-10-03T16:00:56.9196697+00:00",
+    "request":  "{\"method\":\"SUBSCRIBE\",\"params\":[\"markPrice.BTC_USDC_PERP\",\"bookTicker.BTC_USDC_PERP\"]}",
+    "frame_limit":  8,
+    "frames":  [
+                   {
+                       "message_type":  "Text",
+                       "raw":  "{\"data\":{\"E\":1791043256641414,\"T\":1791043256640942,\"e\":\"markPrice\",\"f\":\"0.0000125\",\"i\":\"84856.2053036\",\"n\":1791046800000,\"p\":\"84827.2\",\"s\":\"BTC_USDC_PERP\"},\"stream\":\"markPrice.BTC_USDC_PERP\"}",
+                       "received_at_utc":  "2026-10-03T16:00:58.7085016+00:00"
+                   },
+                   {
+                       "message_type":  "Text",
+                       "raw":  "{\"data\":{\"A\":\"1.28080\",\"B\":\"3.08745\",\"E\":1791043257142632,\"T\":1791043257142284,\"a\":\"84827.0\",\"b\":\"84826.9\",\"e\":\"bookTicker\",\"s\":\"BTC_USDC_PERP\",\"u\":6932035996},\"stream\":\"bookTicker.BTC_USDC_PERP\"}",
+                       "received_at_utc":  "2026-10-03T16:00:59.2102246+00:00"
+                   },
+                   {
+                       "message_type":  "Text",
+                       "raw":  "{\"data\":{\"E\":1791043257642243,\"T\":1791043257641018,\"e\":\"markPrice\",\"f\":\"0.0000125\",\"i\":\"84856.23450667\",\"n\":1791046800000,\"p\":\"84827.8\",\"s\":\"BTC_USDC_PERP\"},\"stream\":\"markPrice.BTC_USDC_PERP\"}",
+                       "received_at_utc":  "2026-10-03T16:00:59.7134029+00:00"
+                   },
+                   {
+                       "message_type":  "Text",
+                       "raw":  "{\"data\":{\"E\":1791043258641050,\"T\":1791043258640265,\"e\":\"markPrice\",\"f\":\"0.0000125\",\"i\":\"84856.23367346\",\"n\":1791046800000,\"p\":\"84827.7\",\"s\":\"BTC_USDC_PERP\"},\"stream\":\"markPrice.BTC_USDC_PERP\"}",
+                       "received_at_utc":  "2026-10-03T16:01:00.7064860+00:00"
+                   },
+                   {
+                       "message_type":  "Text",
+                       "raw":  "{\"data\":{\"E\":1791043259640481,\"T\":1791043259639991,\"e\":\"markPrice\",\"f\":\"0.0000125\",\"i\":\"84856.22184\",\"n\":1791046800000,\"p\":\"84827.7\",\"s\":\"BTC_USDC_PERP\"},\"stream\":\"markPrice.BTC_USDC_PERP\"}",
+                       "received_at_utc":  "2026-10-03T16:01:01.7069126+00:00"
+                   },
+                   {
+                       "message_type":  "Text",
+                       "raw":  "{\"data\":{\"E\":1791043260641756,\"T\":1791043260640974,\"e\":\"markPrice\",\"f\":\"0.0000125\",\"i\":\"84856.32104262\",\"n\":1791046800000,\"p\":\"84827.7\",\"s\":\"BTC_USDC_PERP\"},\"stream\":\"markPrice.BTC_USDC_PERP\"}",
+                       "received_at_utc":  "2026-10-03T16:01:02.7194654+00:00"
+                   },
+                   {
+                       "message_type":  "Text",
+                       "raw":  "{\"data\":{\"E\":1791043261643788,\"T\":1791043261641280,\"e\":\"markPrice\",\"f\":\"0.0000125\",\"i\":\"84856.30084058\",\"n\":1791046800000,\"p\":\"84827.7\",\"s\":\"BTC_USDC_PERP\"},\"stream\":\"markPrice.BTC_USDC_PERP\"}",
+                       "received_at_utc":  "2026-10-03T16:01:03.7091728+00:00"
+                   },
+                   {
+                       "message_type":  "Text",
+                       "raw":  "{\"data\":{\"A\":\"1.00000\",\"B\":\"3.08745\",\"E\":1791043262345088,\"T\":1791043262344504,\"a\":\"84827.0\",\"b\":\"84826.9\",\"e\":\"bookTicker\",\"s\":\"BTC_USDC_PERP\",\"u\":6932036450},\"stream\":\"bookTicker.BTC_USDC_PERP\"}",
+                       "received_at_utc":  "2026-10-03T16:01:04.4130730+00:00"
+                   }
+               ],
+    "url":  "wss://ws.backpack.exchange/",
+    "timeout_ms":  8000
+}

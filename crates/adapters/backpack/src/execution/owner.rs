@@ -18,7 +18,7 @@
 use std::{
     collections::BTreeMap,
     fmt, fs,
-    io::Write,
+    io::{self, Write},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
     time::Duration,
@@ -41,8 +41,8 @@ use super::{
     BackpackMutationStatus,
     command::BackpackOrderSpec,
     guard::{
-        BackpackExecutionAuthority, BackpackExecutionGuard, BackpackLoopbackAccountFacts,
-        BackpackLoopbackMarketFacts,
+        AdmissionFence, BackpackExecutionAuthority, BackpackExecutionGuard,
+        BackpackLoopbackAccountFacts, BackpackLoopbackMarketFacts,
     },
 };
 use crate::{
@@ -76,6 +76,7 @@ pub struct BackpackOrderOwner {
     transport: HttpClient,
     clock: Arc<dyn BackpackClock>,
     policy: BackpackMutationPolicy,
+    quota: BackpackQuota,
 }
 impl fmt::Debug for BackpackOrderOwner {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -109,6 +110,12 @@ impl BackpackOrderOwner {
     /// Returns an explicit unsupported error for production, audience/namespace mismatch,
     /// invalid finite limits, changed/corrupt durable state, or transport configuration failure.
     pub fn new_checked(input: BackpackOrderOwnerConfig) -> Result<Self, BackpackExecutionError> {
+        Self::open_with_checkpoint(input, Arc::new(FileCheckpoint))
+    }
+    fn open_with_checkpoint(
+        input: BackpackOrderOwnerConfig,
+        checkpoint_store: Arc<dyn ExecutionCheckpoint>,
+    ) -> Result<Self, BackpackExecutionError> {
         if !input.endpoints.is_loopback() {
             return Err(BackpackExecutionErrorKind::UnsupportedProduction.into());
         }
@@ -126,7 +133,7 @@ impl BackpackOrderOwner {
             return Err(BackpackExecutionErrorKind::Validation.into());
         }
         let transport = HttpClient::builder()
-            .rate_limiters(vec![input.quota.into_limiter()])
+            .rate_limiters(vec![input.quota.clone().into_limiter()])
             .redirect_policy(HttpRedirectPolicy::Reject)
             .use_system_proxy(false)
             .build()
@@ -148,18 +155,21 @@ impl BackpackOrderOwner {
             records: BTreeMap::new(),
             checkpoint,
             checkpoint_bytes: None,
+            checkpoint_store,
         };
         state.restore()?;
         state.persist()?;
         Ok(Self {
             guard: BackpackExecutionGuard {
                 state: Arc::new(Mutex::new(state)),
+                fence: Arc::new(AdmissionFence::default()),
             },
             endpoints: input.endpoints,
             credential: input.credential,
             transport,
             clock: input.clock,
             policy: input.policy,
+            quota: input.quota,
         })
     }
     /// Returns the admission control handle for the native lifecycle owner.
@@ -203,14 +213,32 @@ impl BackpackOrderOwner {
         spec: BackpackOrderSpec,
         cancel: &CancellationToken,
     ) -> Result<BackpackMutationReceipt, BackpackExecutionError> {
-        let deadline = Instant::now()
+        self.submit_with_deadline(spec, cancel, self.begin_deadline()?)
+            .await
+    }
+
+    pub(crate) fn begin_deadline(&self) -> Result<Instant, BackpackExecutionError> {
+        Instant::now()
             .checked_add(self.policy.budget)
-            .ok_or(BackpackExecutionErrorKind::Validation)?;
+            .ok_or_else(|| BackpackExecutionErrorKind::Validation.into())
+    }
+
+    pub(crate) async fn submit_with_deadline(
+        &self,
+        spec: BackpackOrderSpec,
+        cancel: &CancellationToken,
+        deadline: Instant,
+    ) -> Result<BackpackMutationReceipt, BackpackExecutionError> {
+        if deadline <= Instant::now() {
+            return Err(BackpackHttpError::local(BackpackHttpErrorKind::Admission).into());
+        }
         let now = self.clock.timestamp_ms()?;
         let id = spec.client_order_id;
         let generation;
+        let revision;
         {
             let mut state = self.guard.lock()?;
+            revision = self.guard.fence.snapshot()?;
             if state.identities.venue_id(&id).is_some() {
                 return Err(BackpackExecutionErrorKind::Duplicate.into());
             }
@@ -262,6 +290,12 @@ impl BackpackOrderOwner {
                 },
             );
             state.persist()?;
+            if cancel.is_cancelled()
+                || deadline <= Instant::now()
+                || !self.guard.fence.matches(revision)
+            {
+                return Err(BackpackHttpError::local(BackpackHttpErrorKind::Admission).into());
+            }
         }
         self.dispatch(id, generation, false, cancel, deadline).await
     }
@@ -281,8 +315,10 @@ impl BackpackOrderOwner {
             .ok_or(BackpackExecutionErrorKind::Validation)?;
         let now = self.clock.timestamp_ms()?;
         let generation;
+        let revision;
         {
             let mut state = self.guard.lock()?;
+            revision = self.guard.fence.snapshot()?;
             state.check_cancel(id, now)?;
             if cancel.is_cancelled() {
                 return Err(BackpackHttpError::local(BackpackHttpErrorKind::Cancelled).into());
@@ -297,6 +333,12 @@ impl BackpackOrderOwner {
             record.cancel = CancelStatus::Unsent;
             generation = state.generation;
             state.persist()?;
+            if cancel.is_cancelled()
+                || deadline <= Instant::now()
+                || !self.guard.fence.matches(revision)
+            {
+                return Err(BackpackHttpError::local(BackpackHttpErrorKind::Admission).into());
+            }
         }
         self.dispatch(id, generation, true, cancel, deadline).await
     }
@@ -428,6 +470,7 @@ impl BackpackOrderOwner {
     /// # Errors
     /// Returns an error on checkpoint failure; the in-memory owner remains stopped and dirty.
     pub fn stop(&self) -> Result<BackpackShutdownReport, BackpackExecutionError> {
+        let _change = self.guard.fence.change();
         let now = self.clock.timestamp_ms().ok();
         let mut state = self.guard.lock()?;
         state.stopped = true;
@@ -447,6 +490,7 @@ impl BackpackOrderOwner {
         deadline: Instant,
     ) -> Result<BackpackMutationReceipt, BackpackExecutionError> {
         let transmitted = std::sync::atomic::AtomicBool::new(false);
+        let mut quota_wait = self.quota.start_wait();
         let operation = self.transport.request_with_url_redacted_prepared_request(
             if deleting {
                 Method::DELETE
@@ -456,13 +500,22 @@ impl BackpackOrderOwner {
             Some(BackpackQuota::keys(false)),
             Some(deadline),
             || {
+                quota_wait.admitted();
                 let timestamp = self.clock.timestamp_ms()?;
                 self.credential.check_audience(&self.endpoints)?;
                 let mut state = self
                     .guard
                     .lock()
                     .map_err(|_| BackpackHttpError::local(BackpackHttpErrorKind::Admission))?;
-                if cancel.is_cancelled() || state.generation != generation {
+                let revision = self
+                    .guard
+                    .fence
+                    .snapshot()
+                    .map_err(|_| BackpackHttpError::local(BackpackHttpErrorKind::Admission))?;
+                if cancel.is_cancelled()
+                    || state.generation != generation
+                    || !self.guard.fence.matches(revision)
+                {
                     return Err(BackpackHttpError::local(BackpackHttpErrorKind::Admission));
                 }
                 if deleting {
@@ -511,7 +564,10 @@ impl BackpackOrderOwner {
                     .map_err(|_| BackpackHttpError::local(BackpackHttpErrorKind::Validation))?;
                 // Disk synchronization may be slow: refresh clock and admission again after it.
                 let timestamp = self.clock.timestamp_ms()?;
-                if cancel.is_cancelled() || state.generation != generation {
+                if cancel.is_cancelled()
+                    || state.generation != generation
+                    || !self.guard.fence.matches(revision)
+                {
                     return Err(BackpackHttpError::local(BackpackHttpErrorKind::Admission));
                 }
                 if deleting {
@@ -530,6 +586,9 @@ impl BackpackOrderOwner {
                         return Err(BackpackHttpError::local(BackpackHttpErrorKind::Admission));
                     }
                 }
+                if deadline <= Instant::now() || !self.guard.fence.matches(revision) {
+                    return Err(BackpackHttpError::local(BackpackHttpErrorKind::Admission));
+                }
                 let canonical = canonical_rest(
                     if deleting {
                         "orderCancel"
@@ -546,6 +605,12 @@ impl BackpackOrderOwner {
                 headers.insert("Content-Type".into(), "application/json".into());
                 let body = serde_json::to_vec(&parameters.json_body())
                     .map_err(|_| BackpackHttpError::local(BackpackHttpErrorKind::Validation))?;
+                if cancel.is_cancelled()
+                    || deadline <= Instant::now()
+                    || !self.guard.fence.matches(revision)
+                {
+                    return Err(BackpackHttpError::local(BackpackHttpErrorKind::Admission));
+                }
                 transmitted.store(true, std::sync::atomic::Ordering::Release);
                 Ok(PreparedHttpRequest {
                     url: format!(
@@ -562,6 +627,7 @@ impl BackpackOrderOwner {
             () = cancel.cancelled() => Err(BackpackHttpError::local(BackpackHttpErrorKind::Cancelled)),
             result = operation => result,
         };
+        drop(quota_wait);
         // AdmissionDenied proves no transport entry, even if synchronous preparation completed.
         let result = result.map_err(|error| {
             if error.outcome() == BackpackRequestOutcome::NotSent
@@ -743,6 +809,7 @@ pub(crate) struct OwnerState {
     pub(crate) records: BTreeMap<ClientOrderId, OrderRecord>,
     checkpoint: PathBuf,
     checkpoint_bytes: Option<Vec<u8>>,
+    checkpoint_store: Arc<dyn ExecutionCheckpoint>,
 }
 impl OwnerState {
     fn check_cancel(&self, id: ClientOrderId, now: u64) -> Result<(), BackpackExecutionError> {
@@ -937,32 +1004,35 @@ impl OwnerState {
         if bytes.len() as u64 > MAX_CHECKPOINT_BYTES {
             return Err(BackpackExecutionErrorKind::Storage.into());
         }
-        let directory = self
-            .checkpoint
-            .parent()
-            .ok_or(BackpackExecutionErrorKind::Storage)?;
-        let mut temporary = tempfile::NamedTempFile::new_in(directory)
-            .map_err(|_| BackpackExecutionErrorKind::Storage)?;
-        temporary
-            .write_all(&bytes)
-            .map_err(|_| BackpackExecutionErrorKind::Storage)?;
-        temporary
-            .as_file()
-            .sync_all()
-            .map_err(|_| BackpackExecutionErrorKind::Storage)?;
-        let file = temporary
-            .persist(&self.checkpoint)
-            .map_err(|_| BackpackExecutionErrorKind::Storage)?;
-        file.sync_all()
-            .map_err(|_| BackpackExecutionErrorKind::Storage)?;
-        #[cfg(unix)]
-        fs::File::open(directory)
-            .and_then(|f| f.sync_all())
+        self.checkpoint_store
+            .replace(&self.checkpoint, &bytes)
             .map_err(|_| BackpackExecutionErrorKind::Storage)?;
         self.checkpoint_bytes = Some(bytes);
         Ok(())
     }
 }
+/// Durable replacement boundary; success includes file and directory synchronization.
+trait ExecutionCheckpoint: fmt::Debug + Send + Sync {
+    fn replace(&self, path: &Path, bytes: &[u8]) -> io::Result<()>;
+}
+#[derive(Debug)]
+struct FileCheckpoint;
+impl ExecutionCheckpoint for FileCheckpoint {
+    fn replace(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
+        let directory = path
+            .parent()
+            .ok_or_else(|| io::Error::other("missing checkpoint directory"))?;
+        let mut temporary = tempfile::NamedTempFile::new_in(directory)?;
+        temporary.write_all(bytes)?;
+        temporary.as_file().sync_all()?;
+        let file = temporary.persist(path).map_err(|e| e.error)?;
+        file.sync_all()?;
+        #[cfg(unix)]
+        fs::File::open(directory)?.sync_all()?;
+        Ok(())
+    }
+}
+
 #[derive(Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct Checkpoint {
@@ -1153,4 +1223,321 @@ fn parse_decimal(value: &str) -> Option<Decimal> {
         return None;
     }
     Decimal::from_str_exact(value).ok()
+}
+
+#[cfg(test)]
+mod checkpoint_tests {
+    use super::*;
+    use crate::{models::BackpackMarket, parsing::parse_market};
+    use axum::{
+        Router,
+        body::{Body, to_bytes},
+        extract::{Request, State},
+        response::Response,
+        routing::any,
+    };
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    use nautilus_core::UnixNanos;
+    use nautilus_model::{
+        data::QuoteTick,
+        enums::{OrderSide, OrderType, TimeInForce},
+        types::{Price, Quantity},
+    };
+    use rstest::rstest;
+    use serde_json::json;
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        mpsc,
+    };
+    use tokio::net::TcpListener;
+
+    #[derive(Debug)]
+    struct Clock(std::sync::atomic::AtomicU64);
+    impl BackpackClock for Clock {
+        fn timestamp_ms(&self) -> Result<u64, BackpackHttpError> {
+            Ok(self.0.load(Ordering::Acquire))
+        }
+    }
+    #[derive(Debug)]
+    struct BlockingCheckpoint {
+        calls: AtomicUsize,
+        block_call: usize,
+        arrived: mpsc::Sender<()>,
+        release: Mutex<mpsc::Receiver<()>>,
+    }
+    impl ExecutionCheckpoint for BlockingCheckpoint {
+        fn replace(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
+            FileCheckpoint.replace(path, bytes)?;
+            if self.calls.fetch_add(1, Ordering::AcqRel) == self.block_call {
+                self.arrived.send(()).map_err(io::Error::other)?;
+                self.release
+                    .lock()
+                    .unwrap()
+                    .recv_timeout(Duration::from_secs(5))
+                    .map_err(io::Error::other)?;
+            }
+            Ok(())
+        }
+    }
+    fn authority() -> BackpackExecutionAuthority {
+        BackpackExecutionAuthority {
+            expires_at_ms: 100_000,
+            max_account_age_ms: 10_000,
+            max_market_age_ms: 10_000,
+            max_order_notional: Decimal::from(1000),
+            max_reserved_notional: Decimal::from(2000),
+            max_reserved_margin: Decimal::from(500),
+            max_unsettled_orders: 4,
+            allow_new_risk: true,
+            allow_reduction: true,
+            allow_owned_cancel: true,
+        }
+    }
+    fn instrument() -> InstrumentId {
+        InstrumentId::from("BTC_USDC_PERP.BACKPACK")
+    }
+    fn account(namespace: &BackpackClientIdNamespace) -> BackpackLoopbackAccountFacts {
+        BackpackLoopbackAccountFacts {
+            namespace: namespace.clone(),
+            generation: 1,
+            observed_at_ms: 1000,
+            available_margin: Decimal::from(500),
+            margin_per_notional: Decimal::new(1, 1),
+            fee_buffer_per_notional: Decimal::new(1, 3),
+            economics_reference: "synthetic-peer".into(),
+            net_positions: BTreeMap::from([(instrument(), Decimal::ONE)]),
+            auto_borrow: false,
+            auto_lend: false,
+            auto_repay: false,
+            liquidating: false,
+            complete: true,
+        }
+    }
+    fn market(config: &BackpackConfig) -> BackpackLoopbackMarketFacts {
+        let raw: BackpackMarket =
+            serde_json::from_str(include_str!("../../test_data/btc_usdc_perp.json")).unwrap();
+        let time = UnixNanos::from(1_000_000_000);
+        BackpackLoopbackMarketFacts {
+            generation: 1,
+            metadata: parse_market(&raw, config, time).unwrap(),
+            quote: QuoteTick::new_checked(
+                instrument(),
+                Price::from("99.9"),
+                Price::from("100.1"),
+                Quantity::from("1"),
+                Quantity::from("1"),
+                time,
+                time,
+            )
+            .unwrap(),
+        }
+    }
+    fn spec() -> BackpackOrderSpec {
+        BackpackOrderSpec {
+            client_order_id: ClientOrderId::from("blocked-checkpoint"),
+            instrument_id: instrument(),
+            side: OrderSide::Buy,
+            order_type: OrderType::Limit,
+            time_in_force: TimeInForce::Gtc,
+            quantity: Decimal::new(1, 1),
+            price: Some(Decimal::from(100)),
+            post_only: false,
+            reduce_only: false,
+        }
+    }
+    async fn handler(State(bytes): State<Arc<AtomicUsize>>, request: Request) -> Response {
+        let body = to_bytes(request.into_body(), 8192).await.unwrap();
+        bytes.fetch_add(body.len(), Ordering::AcqRel);
+        let mut ack: Value = serde_json::from_slice(&body).unwrap();
+        ack["id"] = json!("venue-1");
+        ack["executedQuantity"] = json!("0");
+        ack["status"] = json!("New");
+        Response::builder()
+            .status(200)
+            .body(Body::from(ack.to_string()))
+            .unwrap()
+    }
+    #[rstest]
+    #[case("none")]
+    #[case("deadline")]
+    #[case("cancel")]
+    #[case("session")]
+    #[case("generation")]
+    #[case("stop")]
+    #[case("authority")]
+    #[case("readiness")]
+    #[case("freshness")]
+    #[case("expiry")]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn test_checkpoint_block_cannot_hide_deadline_or_admission_revocation(
+        #[case] change: &str,
+        #[values(1, 2)] checkpoint_call: usize,
+    ) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let bytes = Arc::new(AtomicUsize::new(0));
+        let app = Router::new()
+            .fallback(any(handler))
+            .with_state(bytes.clone());
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        });
+        let endpoints = BackpackEndpoints::loopback_override(
+            &format!("http://{address}"),
+            &format!("ws://{address}"),
+        )
+        .unwrap();
+        let namespace =
+            BackpackClientIdNamespace::loopback_peer(&endpoints, "synthetic-checkpoint", None)
+                .unwrap();
+        let config =
+            BackpackConfig::with_endpoints_checked(vec!["BTC_USDC_PERP".into()], endpoints.clone())
+                .unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let clock = Arc::new(Clock(std::sync::atomic::AtomicU64::new(1000)));
+        let (arrived_tx, arrived_rx) = mpsc::channel();
+        let (release_tx, release_rx) = mpsc::channel();
+        let checkpoint = Arc::new(BlockingCheckpoint {
+            calls: AtomicUsize::new(0),
+            block_call: checkpoint_call,
+            arrived: arrived_tx,
+            release: Mutex::new(release_rx),
+        });
+        let owner = Arc::new(
+            BackpackOrderOwner::open_with_checkpoint(
+                BackpackOrderOwnerConfig {
+                    config: config.clone(),
+                    endpoints: endpoints.clone(),
+                    credential: BackpackCredential::loopback_peer(
+                        &STANDARD.encode([7; 32]),
+                        &endpoints,
+                    )
+                    .unwrap(),
+                    quota: BackpackQuota::default(),
+                    clock: clock.clone(),
+                    policy: BackpackMutationPolicy {
+                        window: BackpackReceiveWindow::default(),
+                        budget: Duration::from_millis(500),
+                    },
+                    identities: BackpackClientIdStore::open(directory.path(), &namespace).unwrap(),
+                    namespace: namespace.clone(),
+                    authority: authority(),
+                },
+                checkpoint,
+            )
+            .unwrap(),
+        );
+        owner.guard.begin_session(&namespace, 1).unwrap();
+        owner
+            .guard
+            .update_account(account(&namespace), 1000)
+            .unwrap();
+        owner.guard.update_market(market(&config), 1000).unwrap();
+        let cancel = CancellationToken::new();
+        let task_owner = owner.clone();
+        let task_cancel = cancel.clone();
+        let submit = tokio::spawn(async move { task_owner.submit(spec(), &task_cancel).await });
+        tokio::task::spawn_blocking(move || {
+            arrived_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        })
+        .await
+        .unwrap();
+        assert_eq!(bytes.load(Ordering::Acquire), 0);
+        let updater = match change {
+            "session" | "generation" | "stop" | "authority" | "readiness" => {
+                let update_owner = owner.clone();
+                let update_namespace = namespace.clone();
+                let change = change.to_owned();
+                Some(std::thread::spawn(move || match change.as_str() {
+                    "session" => update_owner.guard.invalidate(),
+                    "generation" => update_owner
+                        .guard
+                        .begin_session(&update_namespace, 2)
+                        .unwrap(),
+                    "stop" => {
+                        update_owner.stop().unwrap();
+                    }
+                    "authority" => {
+                        let mut value = authority();
+                        value.allow_new_risk = false;
+                        update_owner.guard.update_authority(value).unwrap();
+                    }
+                    "readiness" => {
+                        let mut value = account(&update_namespace);
+                        value.complete = false;
+                        assert!(update_owner.guard.update_account(value, 1000).is_err());
+                    }
+                    _ => unreachable!(),
+                }))
+            }
+            "deadline" => {
+                tokio::time::sleep(Duration::from_millis(550)).await;
+                None
+            }
+            "cancel" => {
+                cancel.cancel();
+                None
+            }
+            "freshness" => {
+                clock.0.store(11_001, Ordering::Release);
+                None
+            }
+            "expiry" => {
+                clock.0.store(100_000, Ordering::Release);
+                None
+            }
+            "none" => None,
+            _ => unreachable!(),
+        };
+        if updater.is_some() {
+            tokio::time::timeout(Duration::from_secs(2), async {
+                while owner.guard.fence.snapshot().is_ok() {
+                    tokio::task::yield_now().await;
+                }
+            })
+            .await
+            .unwrap();
+        }
+        release_tx.send(()).unwrap();
+        let result = tokio::time::timeout(Duration::from_secs(5), submit)
+            .await
+            .unwrap()
+            .unwrap();
+        if let Some(updater) = updater {
+            updater.join().unwrap();
+        }
+        if change == "none" {
+            assert!(result.is_ok());
+            assert!(bytes.load(Ordering::Acquire) > 0);
+        } else {
+            match result.unwrap_err() {
+                BackpackExecutionError::Http(value) => {
+                    assert_eq!(value.outcome(), BackpackRequestOutcome::NotSent);
+                }
+                value => panic!("unexpected refusal: {value:?}"),
+            }
+            assert_eq!(bytes.load(Ordering::Acquire), 0);
+            assert_eq!(
+                owner
+                    .guard
+                    .lock()
+                    .unwrap()
+                    .identities
+                    .venue_id(&spec().client_order_id),
+                Some(1)
+            );
+            assert!(matches!(
+                owner.submit(spec(), &CancellationToken::new()).await,
+                Err(BackpackExecutionError::Local(
+                    BackpackExecutionErrorKind::Duplicate | BackpackExecutionErrorKind::Readiness
+                ))
+            ));
+        }
+        drop(owner);
+        let restored = BackpackClientIdStore::open(directory.path(), &namespace).unwrap();
+        assert_eq!(restored.venue_id(&spec().client_order_id), Some(1));
+        assert_eq!(restored.next_client_id(), 2);
+        assert!(restored.unsigned_intent(&spec().client_order_id).is_some());
+        server.abort();
+    }
 }

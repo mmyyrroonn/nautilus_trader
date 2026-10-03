@@ -3,6 +3,10 @@
 Status: accepted numeric-loopback tranche, checked on 2026-10-02 against native commit
 `caedfc2e21907cd7c61e3ef1ed651578a061c57f`. This indexes the existing implementation and
 its tests for [issue 81](https://github.com/mmyyrroonn/nautilus_trader/issues/81).
+Current issue 85 work adds an opt-in native synthetic durable consumer and typed platform cache
+recovery; see [durable economics](backpack-durable-economics.md) and
+[credential-free protocol evidence](backpack-protocol-evidence.md). This addition does not rewrite
+the accepted commit or application PR 25 evidence below.
 The broader [native execution contract](native-execution-contract.md) and
 [parent issue 13](https://github.com/mmyyrroonn/nautilus_trader/issues/13) remain open.
 
@@ -61,21 +65,33 @@ permission; the normal read-only factory exposes no mutation path.
 
 The loopback account facts are explicit synthetic caller assertions. They never verify production
 identity or private subscription ACK. Python control exposes no raw dispatcher, signing bypass,
-production proof or economic acknowledgement callback.
+production proof or economic acknowledgement callback. Its opt-in `persist_economics()` delegates
+to native verified consumption and storage; `reconcile_terminal_evidence(session)` reads native
+retained evidence. Neither accepts caller-created economic state or receipts.
 
 ## Economic delivery and shutdown
 
 True venue fills carry independent trade identity and exact quantity/price/fees. Duplicates do not
 apply economics twice. Native channel delivery, cache mutation and Portfolio application are
 observations, not durable consumer acknowledgements. The native acknowledgement boundary requires
-an independently durable consumer state/receipt; the installed application loopback runner supplies
-no such consumer. Its fills therefore remain pending.
+an independently durable consumer state/receipt. The current synthetic native consumer commits
+actual scoped cache state and exact receipts before ACK, and offers typed recovery through
+`ExecutionCacheRecovery` to LiveNodeBuilder. Without opt-in storage, fills remain pending. The
+archived application PR 25 runner below supplies no such consumer; its fills remain pending.
 
 Owned cancellation, terminal order evidence, economic completeness, flat verification and clean
 shutdown are distinct. A late true fill can reopen risk after terminal evidence. A sticky dirty
 shutdown report is not cleaned by repeated stop, an old flat snapshot or disposing local sockets.
 A scenario may complete its finite steps while a partial position, pending fill and cancellation
 remain unresolved. Missing shutdown or economic evidence never defaults to clean or zero.
+
+The current consumer binds the complete symbol allowlist, namespace, identity directory, account,
+trader and execution client. It rejects corrupt, missing initialized, conflicting or partially
+restored state. It also checkpoints terminal lifecycle changes without requiring a new fill.
+Historical receipts and cached state are not current readiness, subscription ACK or flat evidence.
+Default recovery reads only the preceding hour; a longer outage or unknown venue replication lag
+cannot establish completeness and must retain uncertainty. Windows process-kill evidence is not a
+power-loss durability guarantee. See [durable economics](backpack-durable-economics.md).
 
 ## Verified boundary index
 
@@ -128,6 +144,19 @@ This is a focused inventory, not a claim that every parent criterion or venue sc
   [`test_guarded_cancel_202_terminal_waits_for_durable_true_fill_ack_and_late_fill_reopens_risk`][client-tests],
   [`test_guarded_restart_rest_true_fill_dedup_couples_native_state_and_consumer_receipt`][client-tests],
   [`test_old_flat_snapshot_does_not_make_shutdown_clean`][exec].
+- **Opt-in native durable consumer and platform recovery (current issue 85 test inventory):**
+  [`test_durable_consumer_seed_isolated_from_other_native_client_and_denied_order`][client-tests],
+  [`test_durable_seed_storage_failure_prevents_native_dispatch`][client-tests],
+  [`test_durable_consumption_storage_failure_retains_pending_and_poison`][client-tests],
+  [`test_durable_consumer_persists_terminal_lifecycle_without_new_fill`][client-tests],
+  [`test_durable_consumer_restart_at_every_economic_boundary`][client-tests],
+  [`test_durable_consumer_preserves_zero_fee_rebate_and_fee_currency`][client-tests],
+  [`economic_checkpoint_binds_complete_allowlist_and_client`][economics],
+  [`initialized_economic_checkpoints_fail_closed`][economics],
+  [`invalid_recovery_is_refused_before_any_cache_write`][recovery],
+  [`recovery_never_overwrites_existing_account_state`][recovery].
+  This inventory describes source coverage, not an installed-wheel result. The restart helper uses
+  disconnect/drop; abrupt process-kill acceptance is distinct from those in-process tests.
 - **Cached terminal watchdog:**
   [`test_inflight_check_retires_direct_cached_terminal_without_observing_event`][manager],
   [`test_inflight_check_preserves_real_pending_retries_and_queries`][manager],
@@ -142,8 +171,9 @@ and exclusive run/generation observations. Public telemetry separates quote fres
 continuity, freshness and bounded coverage. Account telemetry separates transport, REST snapshot,
 private subscription confirmation, evidence gaps and pending fills. Factory `capabilities_json()`
 is static; it does not establish per-run readiness. The Python surface keeps public execution-ready,
-production writes, private subscription verification and durable economic ACK claims false where
-unsupported. Current-run freshness and isolation are covered by
+production writes and private subscription verification false. Synthetic durable ACK is supported
+only by the explicitly configured native consumer after verified consumption and persistence.
+Current-run freshness and isolation are covered by
 [`loopback_quote_freshness_null_side_old_event_and_malformed_duplicate`][data-tests],
 [`loopback_duplicate_depth_does_not_extend_book_freshness_but_empty_progress_does`][data-tests] and
 [`loopback_drop_inflight_old_run_cannot_pollute_reclaimed_telemetry`][data-tests].
@@ -199,9 +229,13 @@ summary/event hashes; the local original artifact path is not a public download 
   synchronization; existing failed-checkpoint tests do not prove this timing scenario.
 - **Open diagnostic coverage:** measured live quota queue delay and the proposed cross-adapter
   entry/close/flat diagnostic schema. Existing versioned snapshots do not fulfill that entire schema.
-- **Open external facts:** venue clientId uniqueness/reuse/retention scope, authenticated account and
-  subaccount identity, positive public/private subscription ACK semantics, funding estimate units
-  and complete collateral/margin/fee/history coverage. No DMS guarantee is accepted here.
+- **Open external facts:** venue clientId uniqueness/reuse/retention scope, actual authenticated
+  account/subaccount binding, positive public/private subscription ACK semantics, funding estimate
+  units and complete account-specific economic/history coverage. The
+  [protocol evidence](backpack-protocol-evidence.md) records what official documentation already
+  proves, including settled funding sign, fee units, subaccount isolation and paging limits; those
+  facts do not verify the intended live account or unknown replication bounds. No DMS guarantee is
+  accepted here.
 - **Open broader acceptance:** production mutation permission, production economic consumer
   durability, continuous reconciliation, long soak/journal growth and cross-venue acceptance.
   No RFQ, borrowing, transfers, complex/batch orders or modify capability is added by this index.
@@ -215,6 +249,8 @@ summary/event hashes; the local original artifact path is not a public download 
 [client-tests]: ../../crates/adapters/backpack/tests/execution_client.rs
 [identity]: ../../crates/adapters/backpack/src/identity.rs
 [identity-process]: ../../crates/adapters/backpack/tests/identity_process.rs
+[economics]: ../../crates/adapters/backpack/src/execution_client/economics.rs
+[recovery]: ../../crates/live/src/node/recovery.rs
 [manager]: ../../crates/live/src/execution/manager.rs
 [runtime]: ../../crates/adapters/backpack/src/runtime.rs
 [account-health]: ../../crates/adapters/backpack/src/execution_client/telemetry.rs

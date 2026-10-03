@@ -18,7 +18,10 @@
 use std::{
     collections::BTreeMap,
     fmt,
-    sync::{Arc, Mutex, MutexGuard},
+    sync::{
+        Arc, Mutex, MutexGuard,
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+    },
 };
 
 use nautilus_model::{
@@ -101,6 +104,72 @@ pub struct BackpackLoopbackMarketFacts {
 #[derive(Clone)]
 pub struct BackpackExecutionGuard {
     pub(crate) state: Arc<Mutex<OwnerState>>,
+    pub(crate) fence: Arc<AdmissionFence>,
+}
+// Trust updates fence admission before waiting for synchronous durable work.
+// Exhaustion permanently closes admission rather than permitting an ABA match.
+#[derive(Debug, Default)]
+pub(crate) struct AdmissionFence {
+    revision: AtomicU64,
+    pending: AtomicUsize,
+    exhausted: AtomicBool,
+}
+impl AdmissionFence {
+    fn advance(&self) {
+        if self
+            .revision
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |value| {
+                value.checked_add(1)
+            })
+            .is_err()
+        {
+            self.exhausted.store(true, Ordering::Release);
+        }
+    }
+    pub(crate) fn change(&self) -> AdmissionChange<'_> {
+        if self
+            .pending
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |value| {
+                value.checked_add(1)
+            })
+            .is_err()
+        {
+            self.exhausted.store(true, Ordering::Release);
+            return AdmissionChange {
+                fence: self,
+                counted: false,
+            };
+        }
+        self.advance();
+        AdmissionChange {
+            fence: self,
+            counted: true,
+        }
+    }
+    pub(crate) fn snapshot(&self) -> Result<u64, BackpackExecutionError> {
+        let revision = self.revision.load(Ordering::Acquire);
+        if !self.matches(revision) {
+            return Err(BackpackExecutionErrorKind::Readiness.into());
+        }
+        Ok(revision)
+    }
+    pub(crate) fn matches(&self, revision: u64) -> bool {
+        !self.exhausted.load(Ordering::Acquire)
+            && self.pending.load(Ordering::Acquire) == 0
+            && self.revision.load(Ordering::Acquire) == revision
+    }
+}
+pub(crate) struct AdmissionChange<'a> {
+    fence: &'a AdmissionFence,
+    counted: bool,
+}
+impl Drop for AdmissionChange<'_> {
+    fn drop(&mut self) {
+        self.fence.advance();
+        if self.counted {
+            self.fence.pending.fetch_sub(1, Ordering::AcqRel);
+        }
+    }
 }
 impl fmt::Debug for BackpackExecutionGuard {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -118,6 +187,7 @@ impl BackpackExecutionGuard {
         namespace: &BackpackClientIdNamespace,
         generation: u64,
     ) -> Result<(), BackpackExecutionError> {
+        let _change = self.fence.change();
         let mut state = self.lock()?;
         if state.stopped || state.poisoned {
             return Err(BackpackExecutionErrorKind::Stopped.into());
@@ -144,6 +214,7 @@ impl BackpackExecutionGuard {
         {
             return Err(BackpackExecutionErrorKind::Readiness.into());
         }
+        let _change = self.fence.change();
         let mut state = self.lock()?;
         state.public = Some(PublicAdmission { telemetry, token });
         Ok(())
@@ -159,6 +230,7 @@ impl BackpackExecutionGuard {
         facts: BackpackLoopbackAccountFacts,
         now_ms: u64,
     ) -> Result<(), BackpackExecutionError> {
+        let _change = self.fence.change();
         let mut state = self.lock()?;
         state.account = None;
         state.check_session(now_ms)?;
@@ -200,6 +272,7 @@ impl BackpackExecutionGuard {
         facts: BackpackLoopbackMarketFacts,
         now_ms: u64,
     ) -> Result<(), BackpackExecutionError> {
+        let _change = self.fence.change();
         let mut state = self.lock()?;
         state.markets.remove(&facts.metadata.instrument_id);
         state.check_session(now_ms)?;
@@ -244,6 +317,7 @@ impl BackpackExecutionGuard {
         Ok(())
     }
     pub(crate) fn invalidate_account(&self) {
+        let _change = self.fence.change();
         if let Ok(mut state) = self.state.lock() {
             state.account = None;
         }
@@ -257,6 +331,7 @@ impl BackpackExecutionGuard {
         authority: BackpackExecutionAuthority,
     ) -> Result<(), BackpackExecutionError> {
         authority.validate()?;
+        let _change = self.fence.change();
         let mut state = self.lock()?;
         if state.stopped || state.poisoned {
             return Err(BackpackExecutionErrorKind::Stopped.into());
@@ -267,6 +342,7 @@ impl BackpackExecutionGuard {
 
     /// Freezes session trust before reconnect/reconciliation. Queued final checks then refuse.
     pub fn invalidate(&self) {
+        let _change = self.fence.change();
         if let Ok(mut state) = self.state.lock() {
             state.session_active = false;
             state.account = None;
@@ -470,5 +546,41 @@ impl PublicAdmission {
             return Err(BackpackExecutionErrorKind::Readiness.into());
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod fence_tests {
+    use super::*;
+    use rstest::rstest;
+
+    #[rstest]
+    fn test_overlapping_control_changes_never_admit_between_updates() {
+        let fence = AdmissionFence::default();
+        let old = fence.snapshot().unwrap();
+        let first = fence.change();
+        let second = fence.change();
+        assert!(fence.snapshot().is_err());
+        drop(first);
+        assert!(fence.snapshot().is_err());
+        drop(second);
+        assert!(!fence.matches(old));
+        assert!(fence.snapshot().is_ok());
+    }
+
+    #[rstest]
+    fn test_revision_exhaustion_cannot_reauthorize_an_old_snapshot() {
+        let fence = AdmissionFence {
+            revision: AtomicU64::new(u64::MAX - 1),
+            ..AdmissionFence::default()
+        };
+        let old = fence.snapshot().unwrap();
+        let change = fence.change();
+        assert!(fence.snapshot().is_err());
+        drop(change);
+        assert!(!fence.matches(old));
+        assert!(fence.snapshot().is_err());
+        drop(fence.change());
+        assert!(fence.snapshot().is_err());
     }
 }

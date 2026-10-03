@@ -852,7 +852,7 @@ async fn test_shared_quota_longer_than_receive_window_signs_fresh_after_wait() {
         &server,
         &directory,
         clock.clone(),
-        quota,
+        quota.clone(),
         Duration::from_secs(7),
     ));
     prepare(&owner, &server, 1, 1000);
@@ -874,6 +874,13 @@ async fn test_shared_quota_longer_than_receive_window_signs_fresh_after_wait() {
     let request = &server.captured()[1];
     assert_eq!(request.headers["x-timestamp"], "7000");
     verify_signature(request, "orderExecute");
+    let diagnostic = quota.diagnostics();
+    assert_eq!(diagnostic.schema_version, 1);
+    assert_eq!(diagnostic.observed_waits, 2);
+    assert_eq!(diagnostic.admitted_waits, 2);
+    assert_eq!(diagnostic.refused_waits, 0);
+    assert!(diagnostic.last_queue_wait_ns >= 4_900_000_000);
+    assert_eq!(diagnostic.last_admitted, Some(true));
 }
 
 #[rstest]

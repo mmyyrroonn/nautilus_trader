@@ -15,7 +15,12 @@
 
 //! A caller-owned quota scope shared across public and private clients.
 
-use std::{sync::Arc, time::Duration};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
+
+use nautilus_network::dst::time::Instant;
 
 use nautilus_network::ratelimiter::{RateLimiter, clock::MonotonicClock, quota::Quota};
 use ustr::Ustr;
@@ -31,6 +36,7 @@ use super::error::{BackpackHttpError, BackpackHttpErrorKind};
 #[derive(Clone, Debug)]
 pub struct BackpackQuota {
     limiter: Arc<RateLimiter<Ustr, MonotonicClock>>,
+    diagnostics: Arc<Mutex<BackpackQuotaDiagnostics>>,
 }
 impl Default for BackpackQuota {
     fn default() -> Self {
@@ -56,6 +62,7 @@ impl BackpackQuota {
         let historical = Quota::with_period(historical_market)
             .ok_or_else(|| BackpackHttpError::local(BackpackHttpErrorKind::Validation))?;
         Ok(Self {
+            diagnostics: Arc::new(Mutex::new(BackpackQuotaDiagnostics::default())),
             limiter: Arc::new(RateLimiter::new_with_quota(
                 None,
                 vec![
@@ -70,6 +77,35 @@ impl BackpackQuota {
     pub fn shares_scope(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.limiter, &other.limiter)
     }
+    /// Returns measured in-process quota waits shared by every clone of this scope.
+    ///
+    /// Nanoseconds measure monotonic elapsed time from entering the shared HTTP primitive
+    /// until preparation starts, or until a queued attempt is refused/dropped. Disk,
+    /// signing, response time and retry backoff are excluded. Counters saturate.
+    #[must_use]
+    pub fn diagnostics(&self) -> BackpackQuotaDiagnostics {
+        *self.diagnostics.lock().unwrap_or_else(|e| e.into_inner())
+    }
+    pub(crate) fn start_wait(&self) -> BackpackQuotaWait {
+        BackpackQuotaWait {
+            quota: self.clone(),
+            started: Instant::now(),
+            completed: false,
+        }
+    }
+    fn record_wait(&self, elapsed: Duration, admitted: bool) {
+        let nanoseconds = u64::try_from(elapsed.as_nanos()).unwrap_or(u64::MAX);
+        let mut value = self.diagnostics.lock().unwrap_or_else(|e| e.into_inner());
+        value.observed_waits = value.observed_waits.saturating_add(1);
+        if admitted {
+            value.admitted_waits = value.admitted_waits.saturating_add(1);
+        } else {
+            value.refused_waits = value.refused_waits.saturating_add(1);
+        }
+        value.last_queue_wait_ns = nanoseconds;
+        value.total_queue_wait_ns = value.total_queue_wait_ns.saturating_add(nanoseconds);
+        value.last_admitted = Some(admitted);
+    }
     pub(crate) fn into_limiter(self) -> Arc<RateLimiter<Ustr, MonotonicClock>> {
         self.limiter
     }
@@ -79,5 +115,48 @@ impl BackpackQuota {
             keys.push("historical-market".into());
         }
         keys
+    }
+}
+
+/// Sanitized quota diagnostics for one caller-owned in-process limiter scope.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BackpackQuotaDiagnostics {
+    pub schema_version: u8,
+    pub observed_waits: u64,
+    pub admitted_waits: u64,
+    pub refused_waits: u64,
+    pub last_queue_wait_ns: u64,
+    pub total_queue_wait_ns: u64,
+    pub last_admitted: Option<bool>,
+}
+impl Default for BackpackQuotaDiagnostics {
+    fn default() -> Self {
+        Self {
+            schema_version: 1,
+            observed_waits: 0,
+            admitted_waits: 0,
+            refused_waits: 0,
+            last_queue_wait_ns: 0,
+            total_queue_wait_ns: 0,
+            last_admitted: None,
+        }
+    }
+}
+pub(crate) struct BackpackQuotaWait {
+    quota: BackpackQuota,
+    started: Instant,
+    completed: bool,
+}
+impl BackpackQuotaWait {
+    pub(crate) fn admitted(&mut self) {
+        self.quota.record_wait(self.started.elapsed(), true);
+        self.completed = true;
+    }
+}
+impl Drop for BackpackQuotaWait {
+    fn drop(&mut self) {
+        if !self.completed {
+            self.quota.record_wait(self.started.elapsed(), false);
+        }
     }
 }
