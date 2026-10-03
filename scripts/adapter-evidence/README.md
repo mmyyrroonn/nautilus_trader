@@ -16,7 +16,8 @@ file, toolchain, platform, features and artifact hash instead of to a version st
 python scripts/adapter-evidence/native_checks.py --output adapter-native-evidence.json
 ```
 
-The script runs the same commands CI runs, records each exit code, and writes every
+The default package list is Aster, Ondo and Backpack. The script runs the same commands
+CI runs, records each exit code, and writes every
 check's stdout and stderr to separate files under `adapter-native-evidence-logs/` (or
 `--logs`). The manifest carries each log's path, byte count, sha256 and a bounded tail,
 measured from the bytes on disk, so a text-mode newline translation cannot make the
@@ -51,10 +52,16 @@ the pre-existing lint debt below is open.
 
 | Check | Blocking | Command |
 |---|---|---|
-| `fmt` | yes | `cargo fmt -p nautilus-aster -p nautilus-ondo -- --check` |
-| `test` | yes | `cargo nextest run -p nautilus-aster -p nautilus-ondo --profile ci --retries 3 --no-fail-fast` |
-| `doctest` | yes | `cargo test --doc -p nautilus-aster -p nautilus-ondo` |
-| `clippy` | no | `cargo clippy -p nautilus-aster -p nautilus-ondo --all-targets -- -D warnings` |
+| `fmt` | yes | `cargo fmt -p nautilus-aster -p nautilus-ondo -p nautilus-backpack -- --check` |
+| `test` | yes | `cargo nextest run -p nautilus-aster -p nautilus-ondo -p nautilus-backpack --profile ci --retries 3 --no-fail-fast` |
+| `doctest` | yes | `cargo test --doc -p nautilus-aster -p nautilus-ondo -p nautilus-backpack` |
+| `python` | yes | `cargo check -p nautilus-aster -p nautilus-ondo -p nautilus-backpack --features python` |
+| `clippy` | no | `cargo clippy -p nautilus-aster -p nautilus-ondo -p nautilus-backpack --all-targets -- -D warnings` |
+
+The `python` row compiles the selected adapters with their Python feature enabled. It is
+a separate blocking check; default-feature tests do not validate the Python bindings.
+The row records and sets `PYO3_PYTHON` to the interpreter running this script, so an
+absolute Python invocation also works when that interpreter is absent from `PATH`.
 
 Options: `--crates` to override the package list, `--skip-clippy`, `--output`, `--logs`.
 
@@ -113,8 +120,9 @@ names this exception. The legacy `wheel_provenance.py` inventory still writes
 ## CI
 
 [`.github/workflows/nautilus-adapter-checks.yml`](../../.github/workflows/nautilus-adapter-checks.yml)
-runs the blocking checks on every pull request and `main` push that touches the Aster or
-Ondo adapters, installs `rustfmt`, `clippy` and the pinned `cargo-nextest` explicitly (the
+runs the blocking checks on every pull request and `main` push that touches Aster, Ondo
+or Backpack Rust adapters, Python facades, Backpack Python tests, shared PyO3 registration
+or evidence tooling. It installs `rustfmt`, `clippy` and the pinned `cargo-nextest` explicitly (the
 toolchain file names no components), and uploads the manifest and the per-check logs as an
 artifact. The upstream `test.yml` workflow is not usable here: it is pinned to upstream's
 self-hosted runners and does not attach results to fork pull requests.
@@ -122,6 +130,12 @@ self-hosted runners and does not attach results to fork pull requests.
 To reproduce the CI result locally, run `native_checks.py` - it is the same entry point.
 
 ## Known exceptions (explicit, not hidden)
+
+- **Windows MSVC import-library notice**: native check subprocesses scope
+  `CARGO_BUILD_WARNINGS=allow`, matching `build_native.py`, because the informational
+  linker notice otherwise fails Cargo's `build.warnings=deny` policy. Each row records
+  the override and reason. `RUSTFLAGS` and Clippy's `-D warnings` stay unchanged;
+  Clippy failures remain recorded under the existing non-blocking debt exception.
 
 - **Clippy in `nautilus-ondo`**: with the pinned toolchain, `cargo clippy -p nautilus-ondo
   --all-targets -- -D warnings` reports pre-existing lints (for example
