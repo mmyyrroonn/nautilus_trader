@@ -1920,6 +1920,35 @@ mod guarded {
             }
             fills
         }
+        async fn wait_order_status(&mut self, id: ClientOrderId, expected: OrderStatus) {
+            tokio::time::timeout(Duration::from_secs(3), async {
+                loop {
+                    if self.cache.borrow().order(&id).unwrap().status() == expected {
+                        return;
+                    }
+                    let event = self
+                        .rx
+                        .recv()
+                        .await
+                        .expect("native execution event stream closed");
+                    match event {
+                        ExecutionEvent::Order(event) => self.engine.process(&event),
+                        ExecutionEvent::Report(report) => {
+                            self.engine.reconcile_execution_report(&report);
+                        }
+                        _ => {}
+                    }
+                }
+            })
+            .await
+            .unwrap_or_else(|_| {
+                panic!(
+                    "native order {id} did not reach {expected:?}; actual={:?}; health={:?}",
+                    self.cache.borrow().order(&id).unwrap().status(),
+                    self.client.health()
+                )
+            });
+        }
         async fn stop(&mut self) {
             self.client.disconnect().await.unwrap();
             self.public.disconnect().await.unwrap();
@@ -2857,8 +2886,8 @@ mod guarded {
             terminal["data"].as_object_mut().unwrap().remove(key);
         }
         h.peer.send(&terminal);
-        tokio::time::sleep(Duration::from_millis(30)).await;
-        h.apply_events();
+        h.wait_order_status(order.client_order_id(), OrderStatus::Canceled)
+            .await;
         let actual = h
             .cache
             .borrow()
@@ -3075,8 +3104,8 @@ mod guarded {
             terminal["data"].as_object_mut().unwrap().remove(key);
         }
         h.peer.send(&terminal);
-        tokio::time::sleep(Duration::from_millis(30)).await;
-        h.apply_events();
+        h.wait_order_status(entry.client_order_id(), OrderStatus::Canceled)
+            .await;
         assert_eq!(
             h.cache
                 .borrow()
