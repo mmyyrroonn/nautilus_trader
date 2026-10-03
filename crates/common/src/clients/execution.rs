@@ -27,23 +27,42 @@ use nautilus_model::{
         AccountId, ClientId, ClientOrderId, InstrumentId, StrategyId, Venue, VenueOrderId,
     },
     instruments::InstrumentAny,
+    orders::OrderAny,
+    position::Position,
     reports::{ExecutionMassStatus, FillReport, OrderStatusReport, PositionStatusReport},
     types::{AccountBalance, MarginBalance, Money, Price, Quantity},
 };
 use rust_decimal::Decimal;
 
 use super::log_not_implemented;
-use crate::messages::execution::{
-    BatchCancelOrders, BatchModifyOrders, CancelAllOrders, CancelOrder, GenerateFillReports,
-    GenerateFillReportsBuilder, GenerateOrderStatusReport, GenerateOrderStatusReports,
-    GenerateOrderStatusReportsBuilder, GeneratePositionStatusReports,
-    GeneratePositionStatusReportsBuilder, ModifyOrder, QueryAccount, QueryOrder, SubmitOrder,
-    SubmitOrderList,
+use crate::{
+    cache::CacheSnapshotRef,
+    messages::execution::{
+        BatchCancelOrders, BatchModifyOrders, CancelAllOrders, CancelOrder, GenerateFillReports,
+        GenerateFillReportsBuilder, GenerateOrderStatusReport, GenerateOrderStatusReports,
+        GenerateOrderStatusReportsBuilder, GeneratePositionStatusReports,
+        GeneratePositionStatusReportsBuilder, ModifyOrder, QueryAccount, QueryOrder, SubmitOrder,
+        SubmitOrderList,
+    },
 };
 
 /// Default maximum absolute position difference tolerated during reconciliation.
 pub const DEFAULT_POSITION_RECONCILIATION_TOLERANCE: Decimal =
     Decimal::from_parts(1, 0, 0, false, 8);
+
+/// Durable native consumer state offered for restoration before a client connects.
+///
+/// The client verifies its storage integrity and journal binding. The node validates
+/// account, trader, venue and object references before installing this state in an
+/// empty account scope. Restored state is historical evidence, not current venue readiness.
+#[derive(Clone, Debug)]
+pub struct ExecutionCacheRecovery {
+    pub account: AccountAny,
+    pub instruments: Vec<InstrumentAny>,
+    pub orders: Vec<OrderAny>,
+    pub positions: Vec<Position>,
+    pub position_snapshot_blobs: Vec<CacheSnapshotRef>,
+}
 
 /// Defines the interface for an execution client managing order operations.
 ///
@@ -59,6 +78,24 @@ pub trait ExecutionClient {
     fn venue(&self) -> Venue;
     fn oms_type(&self) -> OmsType;
     fn get_account(&self) -> Option<AccountAny>;
+
+    /// Returns verified durable consumer state for the node's initial cache restoration.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if durable state exists but cannot be safely recovered.
+    fn cache_recovery(&self) -> anyhow::Result<Option<ExecutionCacheRecovery>> {
+        Ok(None)
+    }
+
+    /// Verifies the installed recovery before derived portfolio state is initialized.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the native cache does not match the client's durable state.
+    fn cache_recovery_restored(&mut self) -> anyhow::Result<()> {
+        Ok(())
+    }
 
     /// Returns the maximum absolute position difference tolerated during reconciliation.
     fn position_reconciliation_tolerance(&self) -> Decimal {

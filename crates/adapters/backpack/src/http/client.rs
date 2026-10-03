@@ -147,6 +147,7 @@ pub struct BackpackHttpClient {
     transport: HttpClient,
     policy: BackpackHttpPolicy,
     clock: Arc<dyn BackpackClock>,
+    quota: BackpackQuota,
 }
 impl fmt::Debug for BackpackHttpClient {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -179,7 +180,7 @@ impl BackpackHttpClient {
                     .map(|key| (*key).to_string())
                     .collect(),
             )
-            .rate_limiters(vec![quota.into_limiter()])
+            .rate_limiters(vec![quota.clone().into_limiter()])
             .redirect_policy(HttpRedirectPolicy::Reject)
             .use_system_proxy(false)
             .build()?;
@@ -189,6 +190,7 @@ impl BackpackHttpClient {
             transport,
             policy,
             clock,
+            quota,
         })
     }
 
@@ -291,6 +293,7 @@ impl BackpackHttpClient {
         transmitted: &AtomicBool,
     ) -> Result<BackpackHttpResponse, BackpackHttpError> {
         let previously_transmitted = transmitted.load(Ordering::Acquire);
+        let mut quota_wait = self.quota.start_wait();
         let response = self
             .transport
             .request_with_url_redacted_prepared_request(
@@ -298,6 +301,7 @@ impl BackpackHttpClient {
                 Some(BackpackQuota::keys(request.operation.historical_market())),
                 Some(deadline),
                 || {
+                    quota_wait.admitted();
                     if admission.is_some_and(|admission| !admission()) {
                         return Err(BackpackHttpError::local(BackpackHttpErrorKind::Admission));
                     }

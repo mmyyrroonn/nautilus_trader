@@ -123,6 +123,25 @@ impl PyBackpackLoopbackControl {
             .invalidate(session.inner)
             .map_err(|_| to_pyruntime_err("loopback session invalidation refused"))
     }
+    /// Uses native retained terminal observations and durable receipts; accepts no caller evidence.
+    fn reconcile_terminal_evidence(&self, session: &PyBackpackLoopbackSession) -> PyResult<String> {
+        let result = self
+            .inner
+            .reconcile_terminal_evidence(session.inner)
+            .map_err(|_| to_pyruntime_err("native terminal reconciliation refused"))?;
+        serde_json::to_string(&result)
+            .map_err(|_| to_pyruntime_err("terminal snapshot serialization failed"))
+    }
+    /// Persists actual native consumer state and receipt before economic ACK.
+    /// No caller-created state, trade selector or acknowledgement callback is accepted.
+    fn persist_economics(&self) -> PyResult<String> {
+        let result = self
+            .inner
+            .persist_economics()
+            .map_err(|_| to_pyruntime_err("native economic checkpoint refused"))?;
+        serde_json::to_string(&result)
+            .map_err(|_| to_pyruntime_err("economic snapshot serialization failed"))
+    }
     /// Returns actual staged economics. Observation never advances dedup or releases order capacity.
     fn pending_fills_json(&self) -> PyResult<String> {
         let pending = self
@@ -177,13 +196,14 @@ pub struct PyBackpackLoopbackExecutionClientConfig {
 #[pymethods]
 impl PyBackpackLoopbackExecutionClientConfig {
     #[new]
-    #[pyo3(signature = (read_only_config, public_config, *, authority, mutation_budget_ms, receive_window_ms))]
+    #[pyo3(signature = (read_only_config, public_config, *, authority, mutation_budget_ms, receive_window_ms, economic_state_directory=None))]
     fn py_new(
         read_only_config: PyBackpackExecutionClientConfig,
         public_config: PyBackpackDataClientConfig,
         authority: PyBackpackLoopbackExecutionAuthority,
         mutation_budget_ms: u64,
         receive_window_ms: u64,
+        economic_state_directory: Option<String>,
     ) -> PyResult<Self> {
         let window = BackpackReceiveWindow::new(receive_window_ms)
             .map_err(|_| to_pyvalue_err("invalid loopback receive window"))?;
@@ -198,6 +218,12 @@ impl PyBackpackLoopbackExecutionClientConfig {
             mutation,
         )
         .map_err(|_| to_pyvalue_err("invalid synthetic loopback execution configuration"))?;
+        let inner = match economic_state_directory {
+            Some(directory) => inner
+                .with_economic_state_directory(directory.into())
+                .map_err(|_| to_pyvalue_err("invalid economic consumer directory"))?,
+            None => inner,
+        };
         Ok(Self {
             inner,
             account: read_only_config,

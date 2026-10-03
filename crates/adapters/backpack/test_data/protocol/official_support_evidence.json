@@ -1,0 +1,33 @@
+[
+  {
+    "source_url": "https://support.backpack.exchange/exchange/exchange-account/account-functions/sub-accounts",
+    "observed_on_utc": "2026-10-03",
+    "collection_method": "web tool official page; original body hash not retained",
+    "facts": [
+      "Subaccounts can manage separate API keys and transaction history.",
+      "Subaccount trading volume contributes to overall fee-tier benefits."
+    ]
+  },
+  {
+    "source_url": "https://support.backpack.exchange/technical-docs/trading/futures-specs",
+    "observed_on_utc": "2026-10-03",
+    "collection_method": "web tool official page; original body hash not retained",
+    "facts": [
+      "Subaccounts are cross-margined and margin is isolated per subaccount.",
+      "Current markets are denominated and settled in USDC.",
+      "Funding payment equals funding rate times position quantity times mark price.",
+      "Collateral has asset weights/haircuts. Net equity available excludes locked equity.",
+      "Lent assets can provide collateral. Continuous PnL realization is enabled by default.",
+      "The hourly funding change note names August 20 at 08:00 UTC without a year; it does not specify the stream f denominator."
+    ]
+  },
+  {
+    "source_url": "https://support.backpack.exchange/exchange/trading/futures/fees",
+    "observed_on_utc": "2026-10-03",
+    "collection_method": "web tool official page; original body hash not retained",
+    "facts": [
+      "Positive funding makes longs pay shorts; negative funding reverses payer direction.",
+      "The settlement cycle may vary by pair; most pairs settle hourly, so check per-pair metadata."
+    ]
+  }
+]

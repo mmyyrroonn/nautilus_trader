@@ -222,6 +222,7 @@ fn static_loopback_construction_is_no_io_and_refuses_production_and_non_syntheti
         py.run(c"
 import inspect
 import ast
+import os
 stub = ast.parse(stub_source)
 facade = ast.parse(facade_source)
 def exports(tree):
@@ -241,7 +242,7 @@ for name in [name for name in exports(stub) if name.startswith('BackpackLoopback
         assert list(actual) == positional + keyword, (name, method.name)
         assert all(actual[n].kind is inspect.Parameter.KEYWORD_ONLY for n in keyword)
         assert all(actual[n].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD for n in positional)
-        assert all(p.default is inspect.Parameter.empty for p in actual.values())
+        assert all(p.default is None if n == 'economic_state_directory' else p.default is inspect.Parameter.empty for n, p in actual.items())
 assert config.mutation_budget_ms == 1000 and config.receive_window_ms == 5000
 assert config.authority.max_order_notional == '10'
 assert config.read_only_config.quota.shares_scope(quota)
@@ -249,6 +250,24 @@ assert config.public_config.symbols == ['BTC_USDC_PERP']
 assert all(not hasattr(control, name) for name in ['acknowledge', 'acknowledge_with', 'submit', 'cancel', 'sign', 'restore_applied_fills'])
 assert json.loads(factory.capabilities_json())['durable_economic_ack'] is False
 assert json.loads(factory.capabilities_json())['production_writes'] is False
+assert list(inspect.signature(control.persist_economics).parameters) == []
+assert list(inspect.signature(control.reconcile_terminal_evidence).parameters) == ['session']
+for payload in [{'fake_receipt': True}, lambda: True, '77']:
+    try:
+        control.persist_economics(payload)
+    except TypeError:
+        pass
+    else:
+        raise AssertionError('caller economic payload accepted')
+kwargs_with_store = dict(kwargs, economic_state_directory=directory + '-economics')
+durable_plan = m.BackpackLoopbackExecutionClientConfig(config.read_only_config, config.public_config, **kwargs_with_store)
+assert not os.path.exists(directory + '-economics')
+try:
+    durable_plan.control.persist_economics()
+except RuntimeError:
+    pass
+else:
+    raise AssertionError('unattached durable consumer accepted')
 for cls in [m.BackpackLoopbackSession, m.BackpackLoopbackControl]:
     try:
         cls()

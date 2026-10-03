@@ -1,0 +1,91 @@
+{
+  "schema_version": 1,
+  "private_account_observations": false,
+  "files": [
+    {
+      "file": "collection.json",
+      "kind": "collection-metadata",
+      "source_url": "https://docs.backpack.exchange/",
+      "collected_at_utc": "2026-10-03T15:58:25.746943+00:00",
+      "api_version": "OpenAPI 3.0.0 / Backpack API info.version 1.0, unversioned production deployment",
+      "sha256": "52cc0c1383d464e3b1793705c263e22d133293757b7d7de267a5195d05a2d9af",
+      "extraction": "Collector metadata, including original HTTP body SHA-256."
+    },
+    {
+      "file": "official_balance_update.json",
+      "kind": "official-example",
+      "source_url": "https://docs.backpack.exchange/#tag/Streams",
+      "collected_at_utc": "2026-10-03T15:58:25.746943+00:00",
+      "api_version": "OpenAPI 3.0.0 / Backpack API info.version 1.0, unversioned production deployment",
+      "sha256": "78e87f550c597c54e14c14765a852016e067ac37cd4461c131b3ff5c5b65e1f8",
+      "extraction": "Published JSON payload block; comments removed and JSON formatted; original values retained, no envelope invented in fixture."
+    },
+    {
+      "file": "official_mark_price.json",
+      "kind": "official-example",
+      "source_url": "https://docs.backpack.exchange/#tag/Streams",
+      "collected_at_utc": "2026-10-03T15:58:25.746943+00:00",
+      "api_version": "OpenAPI 3.0.0 / Backpack API info.version 1.0, unversioned production deployment",
+      "sha256": "d5eb50c0097c70847770589b5c3eea93872ca720c9e381f3e977c98c17c1d026",
+      "extraction": "Published JSON payload block; comments removed and JSON formatted; original values retained, no envelope invented in fixture."
+    },
+    {
+      "file": "official_openapi.json",
+      "kind": "official-schema",
+      "source_url": "https://docs.backpack.exchange/",
+      "collected_at_utc": "2026-10-03T15:58:25.746943+00:00",
+      "api_version": "OpenAPI 3.0.0 / Backpack API info.version 1.0, unversioned production deployment",
+      "sha256": "48287e1bec2cfae87c58b38c1a9e6378f56b9fea2e0d836a0f857c7648510c8e",
+      "extraction": "Selected unmodified embedded OpenAPI operations and transitive named schemas; JSON formatting only."
+    },
+    {
+      "file": "official_streams.json",
+      "kind": "official-schema",
+      "source_url": "https://docs.backpack.exchange/",
+      "collected_at_utc": "2026-10-03T15:58:25.746943+00:00",
+      "api_version": "OpenAPI 3.0.0 / Backpack API info.version 1.0, unversioned production deployment",
+      "sha256": "be843fa1dd5a817b71a686ede0af96434f9de922876f4e54bbf888197dbc022d",
+      "extraction": "Selected unchanged embedded OpenAPI Streams description sections, encoded as JSON strings."
+    },
+    {
+      "file": "official_support_evidence.json",
+      "kind": "official-summary",
+      "source_url": [
+        "https://support.backpack.exchange/exchange/exchange-account/account-functions/sub-accounts",
+        "https://support.backpack.exchange/technical-docs/trading/futures-specs",
+        "https://support.backpack.exchange/exchange/trading/futures/fees"
+      ],
+      "collected_at_utc": "2026-10-03",
+      "api_version": "Unversioned official support pages reviewed 2026-10-03; product claims, not deployment guarantees.",
+      "sha256": "c4afc00afece99aeb9085840dfbbf0ae467de22bc92947c70e155fd7c61ec3a3",
+      "extraction": "Paraphrased facts checked with the web tool; original remote body hashes are unavailable. This hash identifies the stored summary only."
+    },
+    {
+      "file": "public_mark_price.json",
+      "kind": "public-observed",
+      "source_url": "wss://ws.backpack.exchange/",
+      "collected_at_utc": "2026-10-03T16:00:56.9196697+00:00",
+      "api_version": "OpenAPI 3.0.0 / Backpack API info.version 1.0, unversioned production deployment",
+      "sha256": "0fed3ee28e522c47c845f21f0ead193abb8103a21c85937182ee935a7b4042ff",
+      "extraction": "First markPrice.BTC_USDC_PERP raw text frame extracted unchanged from public_subscription.json; final newline added."
+    },
+    {
+      "file": "public_subscription.json",
+      "kind": "public-observed",
+      "source_url": "wss://ws.backpack.exchange/",
+      "collected_at_utc": "2026-10-03T16:00:56.9196697+00:00",
+      "api_version": "OpenAPI 3.0.0 / Backpack API info.version 1.0, unversioned production deployment",
+      "sha256": "0ec49ad446b64dc4ca6591930867ef2a0ae2fc3ea6dbd3c221d657ae02722ac0",
+      "extraction": "Bounded unsigned public market text frames and collector timestamps; original text preserved."
+    },
+    {
+      "file": "synthetic_cases.json",
+      "kind": "synthetic",
+      "source_url": "local:../account/synthetic.json",
+      "collected_at_utc": "2026-10-03T16:11:18.461740+00:00",
+      "api_version": "OpenAPI 3.0.0 / Backpack API info.version 1.0, unversioned production deployment",
+      "sha256": "f60a8ddf7d1f6f083761570c5eff8142e2781dab7ea329a39cdcccd55c0e2fc2",
+      "extraction": "Existing explicitly synthetic account examples plus adverse controls, negative fill fee, system/future system types and page headers. Fictional identities only."
+    }
+  ]
+}

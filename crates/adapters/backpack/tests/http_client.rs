@@ -614,7 +614,7 @@ async fn test_public_and_private_reads_share_quota_and_queued_cancellation_is_no
     let server = Server::start(vec![]).await;
     let quota =
         BackpackQuota::with_periods(Duration::from_millis(150), Duration::from_secs(2)).unwrap();
-    let client = server.client(quota, Duration::from_secs(2), 0, true);
+    let client = server.client(quota.clone(), Duration::from_secs(2), 0, true);
     let public = BackpackReadRequest::new(
         BackpackReadOperation::Markets,
         BackpackParameters::default(),
@@ -649,4 +649,82 @@ async fn test_public_and_private_reads_share_quota_and_queued_cancellation_is_no
     assert_eq!(e.kind(), BackpackHttpErrorKind::Cancelled);
     assert_eq!(e.outcome(), BackpackRequestOutcome::NotSent);
     assert_eq!(server.captured().len(), 2);
+    let measured = quota.diagnostics();
+    assert_eq!(measured.observed_waits, 3);
+    assert_eq!(measured.admitted_waits, 2);
+    assert_eq!(measured.refused_waits, 1);
+    assert_eq!(measured.last_admitted, Some(false));
+    assert!(measured.total_queue_wait_ns >= 100_000_000);
+}
+
+#[tokio::test]
+async fn test_quota_diagnostics_measure_refused_wait_without_dispatch() {
+    let server = Server::start(vec![]).await;
+    let quota =
+        BackpackQuota::with_periods(Duration::from_millis(500), Duration::from_secs(2)).unwrap();
+    let first = server.client(quota.clone(), Duration::from_secs(2), 0, true);
+    first
+        .read(&balances(), None, None, &CancellationToken::new())
+        .await
+        .unwrap();
+    let queued = server.client(quota.clone(), Duration::from_millis(100), 0, true);
+    let started = Instant::now();
+    let error = queued
+        .read(&balances(), None, None, &CancellationToken::new())
+        .await
+        .unwrap_err();
+    assert_eq!(error.outcome(), BackpackRequestOutcome::NotSent);
+    assert_eq!(server.captured().len(), 1);
+    let measured = quota.diagnostics();
+    assert_eq!(measured.schema_version, 1);
+    assert_eq!(measured.observed_waits, 2);
+    assert_eq!(measured.admitted_waits, 1);
+    assert_eq!(measured.refused_waits, 1);
+    assert_eq!(measured.last_admitted, Some(false));
+    assert!(measured.last_queue_wait_ns >= 80_000_000);
+    assert!(Duration::from_nanos(measured.last_queue_wait_ns) <= started.elapsed());
+}
+
+#[tokio::test]
+async fn test_quota_diagnostics_exclude_slow_signing_and_transport_unknown() {
+    let server = Server::start(vec![Reply {
+        delay: Duration::from_secs(2),
+        ..Reply::json(200, "{}")
+    }])
+    .await;
+    let quota = BackpackQuota::default();
+    let client = BackpackHttpClient::new(
+        server.endpoints.clone(),
+        Some(
+            BackpackCredential::loopback_peer(&STANDARD.encode([7; 32]), &server.endpoints)
+                .unwrap(),
+        ),
+        quota.clone(),
+        BackpackHttpPolicy::new(
+            BackpackReceiveWindow::default(),
+            Duration::from_millis(250),
+            0,
+        )
+        .unwrap(),
+        Arc::new(SlowClock),
+    )
+    .unwrap();
+    let started = Instant::now();
+    let error = client
+        .read(&balances(), None, None, &CancellationToken::new())
+        .await
+        .unwrap_err();
+    assert_eq!(error.outcome(), BackpackRequestOutcome::Unknown);
+    assert_eq!(server.captured().len(), 1);
+    let measured = quota.diagnostics();
+    assert_eq!(measured.observed_waits, 1);
+    assert_eq!(measured.admitted_waits, 1);
+    assert_eq!(measured.refused_waits, 0);
+    assert_eq!(measured.last_admitted, Some(true));
+    assert!(
+        started
+            .elapsed()
+            .saturating_sub(Duration::from_nanos(measured.last_queue_wait_ns))
+            >= Duration::from_millis(200)
+    );
 }

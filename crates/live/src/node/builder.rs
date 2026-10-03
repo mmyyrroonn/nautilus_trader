@@ -52,6 +52,7 @@ use super::{
         LiveDataEngineConfig, LiveExecutionEngineConfig, LiveNodeConfig, LiveRiskEngineConfig,
         RoutingConfig, validate_live_environment,
     },
+    recovery::{RecoveryScope, restore_execution_cache},
 };
 use crate::{
     execution::{
@@ -665,7 +666,7 @@ impl LiveNodeBuilder {
             if let Some(config) = self.exec_client_configs.remove(&name) {
                 log::debug!("Creating execution client {name}");
 
-                let client = socket_registry.scope(|| match factory {
+                let mut client = socket_registry.scope(|| match factory {
                     ExecutionClientFactoryEntry::Adapter(factory) => factory.create(
                         self.config.trader_id,
                         &name,
@@ -679,6 +680,22 @@ impl LiveNodeBuilder {
                         kernel.cache(),
                     ),
                 })?;
+                if let Some(recovery) = client.cache_recovery()? {
+                    restore_execution_cache(
+                        &mut kernel.cache.borrow_mut(),
+                        recovery,
+                        RecoveryScope {
+                            account_id: client.account_id(),
+                            client_id: client.client_id(),
+                            trader_id: self.config.trader_id,
+                            venue: client.venue(),
+                            oms_type: client.oms_type(),
+                        },
+                    )?;
+                    client.cache_recovery_restored()?;
+                    kernel.portfolio.borrow_mut().initialize_orders();
+                    kernel.portfolio.borrow_mut().initialize_positions();
+                }
                 let client = LiveExecutionClient::new(client);
                 let client_id = client.client_id();
                 let venue = client.venue();

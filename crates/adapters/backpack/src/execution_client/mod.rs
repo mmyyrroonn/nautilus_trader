@@ -18,6 +18,7 @@ pub mod client;
 mod commands;
 pub mod config;
 pub mod control;
+mod economics;
 mod identity;
 pub mod loopback_config;
 pub mod private;

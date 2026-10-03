@@ -140,6 +140,7 @@ use crate::{
 
 pub mod builder;
 pub mod config;
+mod recovery;
 
 #[cfg(feature = "plugin")]
 pub mod plugin;

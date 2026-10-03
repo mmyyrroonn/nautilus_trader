@@ -1,0 +1,185 @@
+{
+  "policy": {
+    "autoBorrowSettlements": false,
+    "autoLend": false,
+    "autoRealizePnl": false,
+    "autoRepayBorrows": false,
+    "borrowLimit": "0",
+    "futuresMakerFee": "-0.1",
+    "futuresTakerFee": "2",
+    "leverageLimit": "10",
+    "limitOrders": 1,
+    "liquidating": false,
+    "positionLimit": "100000",
+    "spotMakerFee": "0",
+    "spotTakerFee": "0",
+    "triggerOrders": 0
+  },
+  "balances": {
+    "USDC": {
+      "available": "100",
+      "locked": "10",
+      "staked": "5"
+    }
+  },
+  "collateral": {
+    "assetsValue": "115",
+    "borrowLiability": "0",
+    "collateral": [
+      {
+        "symbol": "USDC",
+        "assetMarkPrice": "1",
+        "totalQuantity": "115",
+        "balanceNotional": "115",
+        "collateralWeight": "1",
+        "collateralValue": "115",
+        "openOrderQuantity": "10",
+        "lendQuantity": "0",
+        "availableQuantity": "100"
+      }
+    ],
+    "imf": "0.1",
+    "unsettledEquity": "0",
+    "liabilitiesValue": "0",
+    "marginFraction": "0.5",
+    "mmf": "0.05",
+    "netEquity": "120",
+    "netEquityAvailable": "105",
+    "netEquityLocked": "15",
+    "netExposureFutures": "0.001001",
+    "pnlUnrealized": "5"
+  },
+  "position": {
+    "breakEvenPrice": "100.1",
+    "entryPrice": "100.1",
+    "estLiquidationPrice": "1000",
+    "imf": "0.1",
+    "imfFunction": {
+      "type": "sqrt",
+      "base": "0.1",
+      "factor": "0.01"
+    },
+    "markPrice": "100",
+    "mmf": "0.05",
+    "mmfFunction": {
+      "type": "sqrt",
+      "base": "0.05",
+      "factor": "0.01"
+    },
+    "netCost": "-0.001001",
+    "netQuantity": "-0.00001",
+    "netExposureQuantity": "0.00001",
+    "netExposureNotional": "0.001001",
+    "pnlRealized": "0",
+    "pnlUnrealized": "0.000001",
+    "cumulativeFundingPayment": "-0.000001",
+    "subaccountId": 2,
+    "symbol": "BTC_USDC_PERP",
+    "userId": 101,
+    "positionId": "synthetic-position-A",
+    "cumulativeInterest": "0"
+  },
+  "resting_order": {
+    "id": "synthetic-order-A",
+    "clientId": 1,
+    "createdAt": 1790899200000000,
+    "executedQuantity": "0.00001",
+    "executedQuoteQuantity": "0.001001",
+    "orderType": "Limit",
+    "postOnly": true,
+    "price": "100.1",
+    "quantity": "0.00002",
+    "reduceOnly": false,
+    "selfTradePrevention": "RejectTaker",
+    "status": "PartiallyFilled",
+    "side": "Bid",
+    "symbol": "BTC_USDC_PERP",
+    "timeInForce": "GTC"
+  },
+  "history_order": {
+    "id": "synthetic-order-A",
+    "clientId": 1,
+    "createdAt": "2026-10-02T00:00:00",
+    "executedQuantity": "0.00001",
+    "executedQuoteQuantity": "0.001001",
+    "orderType": "Limit",
+    "postOnly": true,
+    "price": "100.1",
+    "quantity": "0.00002",
+    "selfTradePrevention": "RejectTaker",
+    "status": "PartiallyFilled",
+    "side": "Bid",
+    "symbol": "BTC_USDC_PERP",
+    "timeInForce": "GTC"
+  },
+  "fill": {
+    "clientId": "1",
+    "fee": "-0.000001",
+    "feeSymbol": "USDC",
+    "isMaker": true,
+    "orderId": "synthetic-order-A",
+    "price": "100.1",
+    "quantity": "0.00001",
+    "side": "Bid",
+    "symbol": "BTC_USDC_PERP",
+    "timestamp": "2026-10-02T00:00:00.123456",
+    "tradeId": 9007199254740993
+  },
+  "funding": {
+    "userId": 101,
+    "subaccountId": 2,
+    "symbol": "BTC_USDC_PERP",
+    "quantity": "-0.000001",
+    "intervalEndTimestamp": "2026-10-02T00:00:00",
+    "fundingRate": "0.0001"
+  },
+  "controls": [
+    {
+      "result": null,
+      "id": 85
+    },
+    {
+      "success": true
+    },
+    {
+      "method": "SUBSCRIBE",
+      "params": [
+        "account.orderUpdate"
+      ]
+    }
+  ],
+  "system_fill": {
+    "clientId": "1",
+    "fee": "-0.000001",
+    "feeSymbol": "USDC",
+    "isMaker": true,
+    "orderId": "synthetic-order-A",
+    "price": "100.1",
+    "quantity": "0.00001",
+    "side": "Bid",
+    "symbol": "BTC_USDC_PERP",
+    "timestamp": "2026-10-02T00:00:00.123456",
+    "tradeId": 9007199254740993,
+    "systemOrderType": "LiquidatePositionOnAdl"
+  },
+  "future_system_fill": {
+    "clientId": "1",
+    "fee": "-0.000001",
+    "feeSymbol": "USDC",
+    "isMaker": true,
+    "orderId": "synthetic-order-A",
+    "price": "100.1",
+    "quantity": "0.00001",
+    "side": "Bid",
+    "symbol": "BTC_USDC_PERP",
+    "timestamp": "2026-10-02T00:00:00.123456",
+    "tradeId": 9007199254740993,
+    "systemOrderType": "SyntheticFutureSystemType"
+  },
+  "page_headers": {
+    "x-page-count": "2",
+    "x-current-page": "0",
+    "x-page-size": "2",
+    "x-total": "3"
+  }
+}
