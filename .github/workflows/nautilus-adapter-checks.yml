@@ -1,7 +1,7 @@
 name: adapter checks
 
 # The upstream workflows are pinned to self-hosted runners and do not attach results to
-# fork pull requests, so the Aster and Ondo adapters get their own no-secrets entry here.
+# fork pull requests, so Aster, Ondo and Backpack use this no-secrets entry.
 # `scripts/adapter-evidence/native_checks.py` is the single source of the commands; this
 # workflow only runs it on a hosted runner and publishes what it wrote.
 
@@ -13,22 +13,42 @@ on:
     paths:
       - crates/adapters/aster/**
       - crates/adapters/ondo/**
+      - crates/adapters/backpack/**
+      - python/nautilus_trader/adapters/aster/**
+      - python/nautilus_trader/adapters/ondo/**
+      - python/nautilus_trader/adapters/backpack/**
+      - python/tests/unit/adapters/**
+      - crates/pyo3/**
+      - python/pyproject.toml
+      - python/uv.lock
+      - python/generate_stubs.py
       - scripts/adapter-evidence/**
       - .github/workflows/nautilus-adapter-checks.yml
       - Cargo.toml
       - Cargo.lock
       - rust-toolchain.toml
+      - .config/nextest.toml
   push:
     branches:
       - main
     paths:
       - crates/adapters/aster/**
       - crates/adapters/ondo/**
+      - crates/adapters/backpack/**
+      - python/nautilus_trader/adapters/aster/**
+      - python/nautilus_trader/adapters/ondo/**
+      - python/nautilus_trader/adapters/backpack/**
+      - python/tests/unit/adapters/**
+      - crates/pyo3/**
+      - python/pyproject.toml
+      - python/uv.lock
+      - python/generate_stubs.py
       - scripts/adapter-evidence/**
       - .github/workflows/nautilus-adapter-checks.yml
       - Cargo.toml
       - Cargo.lock
       - rust-toolchain.toml
+      - .config/nextest.toml
   workflow_dispatch:
 
 concurrency:
@@ -37,7 +57,7 @@ concurrency:
 
 jobs:
   native:
-    name: native checks (aster, ondo)
+    name: native checks (aster, ondo, backpack)
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:
@@ -46,6 +66,16 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Set up pinned uv
+        # https://github.com/astral-sh/setup-uv
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: 0.12.6
+          enable-cache: false
+
+      - name: Install pinned Python
+        run: uv python install 3.12.9
 
       - name: Set up Rust toolchain
         # Reads rust-toolchain.toml, so CI and a local build share the pinned toolchain. The
@@ -79,10 +109,10 @@ jobs:
           tool: nextest@${{ env.CARGO_NEXTEST_VERSION }}
 
       - name: Run evidence tooling regression
-        run: python3 scripts/adapter-evidence/test_native_checks.py
+        run: uv run --no-project --managed-python --python 3.12.9 scripts/adapter-evidence/test_native_checks.py
 
       - name: Run native checks and write evidence
-        run: python3 scripts/adapter-evidence/native_checks.py --output adapter-native-evidence.json
+        run: uv run --no-project --managed-python --python 3.12.9 scripts/adapter-evidence/native_checks.py --output adapter-native-evidence.json
 
       - name: Upload evidence
         if: always()

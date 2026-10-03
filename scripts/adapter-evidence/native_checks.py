@@ -15,7 +15,7 @@
 
 """Runs the native adapter checks and writes one evidence manifest (issue #11).
 
-This is the fork's no-secrets entry point for the Aster and Ondo adapters: the same
+This is the fork's no-secrets entry point for the Aster, Ondo and Backpack adapters: the same
 commands the adapter CI workflow runs, recorded together with the repository identity
 they ran against. A claim about an adapter change that is not backed by a manifest from
 this script is a claim about a checkout nobody can name.
@@ -24,7 +24,7 @@ Every check's stdout and stderr are written to separate log files next to the ma
 and the manifest carries their hashes and tails. Merging the two streams into one tail
 loses whichever stream was not last, which is usually the one carrying the failure.
 
-Blocking checks: ``fmt`` and ``test``. Their failure fails this script. ``clippy`` is
+Blocking checks: ``fmt``, ``test``, ``doctest`` and ``python``. Their failure fails this script. ``clippy`` is
 recorded but not blocking while the pre-existing lint debt tracked under #11 is open;
 see ``README.md`` for the exact exception.
 """
@@ -34,6 +34,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import platform
 import subprocess
 import sys
@@ -44,18 +45,28 @@ from typing import Any
 
 from _identity import EVIDENCE_SCHEMA_VERSION, capture_identity, fingerprint, repo_root
 
-DEFAULT_CRATES = ("nautilus-aster", "nautilus-ondo")
+DEFAULT_CRATES = ("nautilus-aster", "nautilus-ondo", "nautilus-backpack")
 TAIL_CHARS = 2_000
 
 
 def _toolchain(root: Path) -> dict[str, Any]:
     def version(args: list[str]) -> str:
-        result = subprocess.run(args, cwd=root, capture_output=True, text=True, check=False)
+        result = subprocess.run(
+            args,
+            cwd=root,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
         return result.stdout.strip() if result.returncode == 0 else "unavailable"
 
     return {
         "rustc": version(["rustc", "-Vv"]),
         "cargo": version(["cargo", "-V"]),
+        "python": sys.version,
+        "python_executable": sys.executable,
         "os": platform.system(),
         "release": platform.release(),
         "machine": platform.machine(),
@@ -89,15 +100,36 @@ def _run_check(
     command: list[str],
     *,
     blocking: bool,
+    environment: dict[str, str] | None = None,
 ) -> dict[str, Any]:
+    environment = dict(environment or {})
+    environment_exceptions = []
+    if platform.system() == "Windows":
+        # Match the controlled builder's scoped MSVC import-library notice exception
+        environment["CARGO_BUILD_WARNINGS"] = "allow"
+        environment_exceptions.append(
+            "MSVC import-library linker notice; Clippy -D warnings retained"
+        )
+
     started = time.monotonic()
-    result = subprocess.run(command, cwd=root, capture_output=True, text=True, check=False)
+    result = subprocess.run(
+        command,
+        cwd=root,
+        env={**os.environ, **(environment or {})},
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
     duration_ms = int((time.monotonic() - started) * 1_000)
 
     return {
         "name": name,
         "command": command,
         "blocking": blocking,
+        "environment": environment,
+        "environment_exceptions": environment_exceptions,
         "exit_code": result.returncode,
         "duration_ms": duration_ms,
         "stdout": _write_log(logs_dir, name, "stdout", result.stdout or ""),
@@ -120,7 +152,7 @@ def main(argv: list[str] | None = None) -> int:
         "--crates",
         nargs="+",
         default=list(DEFAULT_CRATES),
-        help="cargo package names to check (default: nautilus-aster nautilus-ondo)",
+        help=f"cargo package names to check (default: {' '.join(DEFAULT_CRATES)})",
     )
     parser.add_argument(
         "--skip-clippy",
@@ -137,7 +169,11 @@ def main(argv: list[str] | None = None) -> int:
     output_path = Path(args.output)
     if not output_path.is_absolute():
         output_path = Path.cwd() / output_path
-    logs_dir = Path(args.logs) if args.logs else output_path.with_name(output_path.stem + "-logs")
+    logs_dir = (
+        Path(args.logs)
+        if args.logs
+        else output_path.with_name(output_path.stem + "-logs")
+    )
     if not logs_dir.is_absolute():
         logs_dir = Path.cwd() / logs_dir
     logs_dir.mkdir(parents=True, exist_ok=True)
@@ -179,6 +215,14 @@ def main(argv: list[str] | None = None) -> int:
             ["cargo", "test", "--doc", *package_args],
             blocking=True,
         ),
+        _run_check(
+            root,
+            logs_dir,
+            "python",
+            ["cargo", "check", *package_args, "--features", "python"],
+            blocking=True,
+            environment={"PYO3_PYTHON": sys.executable},
+        ),
     ]
     if not args.skip_clippy:
         checks.append(
@@ -186,7 +230,15 @@ def main(argv: list[str] | None = None) -> int:
                 root,
                 logs_dir,
                 "clippy",
-                ["cargo", "clippy", *package_args, "--all-targets", "--", "-D", "warnings"],
+                [
+                    "cargo",
+                    "clippy",
+                    *package_args,
+                    "--all-targets",
+                    "--",
+                    "-D",
+                    "warnings",
+                ],
                 blocking=False,
             )
         )
@@ -210,7 +262,11 @@ def main(argv: list[str] | None = None) -> int:
     print(f"wrote {output_path}")
     print(f"wrote logs to {logs_dir}")
 
-    failed = [check["name"] for check in checks if check["blocking"] and check["exit_code"] != 0]
+    failed = [
+        check["name"]
+        for check in checks
+        if check["blocking"] and check["exit_code"] != 0
+    ]
     if failed:
         print(f"blocking checks failed: {', '.join(failed)}", file=sys.stderr)
         return 1
