@@ -20,9 +20,10 @@ use std::collections::{HashMap, HashSet};
 use nautilus_common::{cache::Cache, clients::ExecutionCacheRecovery};
 use nautilus_model::{
     enums::{OmsType, OrderStatus},
-    identifiers::{AccountId, ClientId, TraderId, Venue},
+    identifiers::{AccountId, ClientId, PositionId, TraderId, Venue},
     instruments::Instrument,
     orders::Order,
+    position::{Position, PositionReplayEvent},
 };
 
 #[derive(Clone, Copy)]
@@ -50,6 +51,9 @@ pub(super) fn restore_execution_cache(
                 .is_empty()
             && cache
                 .positions(None, None, None, Some(&scope.account_id), None)
+                .is_empty()
+            && cache
+                .position_snapshots(None, Some(&scope.account_id))
                 .is_empty(),
         "durable execution recovery requires an empty account scope"
     );
@@ -116,13 +120,82 @@ pub(super) fn restore_execution_cache(
             positions.insert(position.id) && !cache.position_exists(&position.id),
             "durable execution position conflicts with an existing identity"
         );
-        for fill in &position.events {
+        for fill in position
+            .events
+            .iter()
+            .chain(
+                position
+                    .replay_events
+                    .iter()
+                    .filter_map(|event| match event {
+                        PositionReplayEvent::Filled(fill) => Some(fill),
+                        PositionReplayEvent::Adjusted(_) => None,
+                    }),
+            )
+        {
             anyhow::ensure!(
                 fill.account_id == scope.account_id
                     && fill.trader_id == scope.trader_id
                     && fill.instrument_id == position.instrument_id
                     && orders.contains(&fill.client_order_id),
                 "durable position fill is outside recovered execution scope"
+            );
+        }
+    }
+    let mut archive_check = Cache::default();
+    let mut archive_refs = HashSet::new();
+    for frame in &recovery.position_snapshot_blobs {
+        let (parent, _) = frame
+            .blob_ref
+            .strip_prefix("cache://position-snapshots/")
+            .and_then(|value| value.rsplit_once('/'))
+            .ok_or_else(|| anyhow::anyhow!("invalid durable position archive reference"))?;
+        let parent = PositionId::from(parent);
+        anyhow::ensure!(
+            positions.contains(&parent)
+                && cache.position_snapshot_count(&parent) == 0
+                && archive_refs.insert(&frame.blob_ref),
+            "durable position archive references a missing or existing position"
+        );
+        // The cache validates the native frame name, encoded position ID and contiguous index.
+        archive_check.restore_snapshot_blob(&frame.blob_ref, frame.blob.clone())?;
+        let archived: Position = serde_json::from_slice(&frame.blob)?;
+        let parent_position = recovery
+            .positions
+            .iter()
+            .find(|p| p.id == parent)
+            .ok_or_else(|| anyhow::anyhow!("durable archive parent missing"))?;
+        anyhow::ensure!(
+            archived.instrument_id == parent_position.instrument_id
+                && archived.strategy_id == parent_position.strategy_id
+                && archived.account_id == scope.account_id
+                && archived.trader_id == scope.trader_id
+                && instruments.contains(&archived.instrument_id)
+                && orders.contains(&archived.opening_order_id)
+                && archived
+                    .closing_order_id
+                    .is_none_or(|id| orders.contains(&id)),
+            "durable position archive is outside recovered execution scope"
+        );
+        for fill in archived
+            .events
+            .iter()
+            .chain(
+                archived
+                    .replay_events
+                    .iter()
+                    .filter_map(|event| match event {
+                        PositionReplayEvent::Filled(fill) => Some(fill),
+                        PositionReplayEvent::Adjusted(_) => None,
+                    }),
+            )
+        {
+            anyhow::ensure!(
+                fill.account_id == scope.account_id
+                    && fill.trader_id == scope.trader_id
+                    && fill.instrument_id == archived.instrument_id
+                    && orders.contains(&fill.client_order_id),
+                "durable archived fill is outside recovered execution scope"
             );
         }
     }
@@ -161,6 +234,9 @@ pub(super) fn restore_execution_cache(
         if position.is_closed() {
             cache.update_position(&position)?;
         }
+    }
+    for frame in recovery.position_snapshot_blobs {
+        cache.restore_snapshot_blob(&frame.blob_ref, frame.blob)?;
     }
     cache.build_index();
     anyhow::ensure!(
@@ -230,6 +306,7 @@ mod tests {
                 instruments: vec![instrument],
                 orders: vec![order],
                 positions: vec![position],
+                position_snapshot_blobs: vec![],
             },
             scope,
         )
@@ -281,6 +358,40 @@ mod tests {
         assert!(cache.account(&account_id).is_none());
         assert!(cache.orders(None, None, None, None, None).is_empty());
         assert!(cache.positions(None, None, None, None, None).is_empty());
+    }
+
+    #[rstest]
+    #[case("valid")]
+    #[case("owner")]
+    #[case("strategy")]
+    fn archived_position_cycles_preserve_native_bytes_and_scope(#[case] fault: &str) {
+        let (mut state, scope) = fixture();
+        let position_id = state.positions[0].id;
+        let mut archived = state.positions[0].clone();
+        if fault == "strategy" {
+            archived.strategy_id = nautilus_model::identifiers::StrategyId::from("OTHER-001");
+        }
+        if fault == "owner" {
+            archived.account_id = AccountId::from("SIM-OTHER");
+        }
+        let mut source = Cache::default();
+        let frame = source.snapshot_position_encoded(&archived).unwrap();
+        let bytes = frame.blob.to_vec();
+        state.position_snapshot_blobs.push(frame);
+        let mut cache = Cache::default();
+        let result = restore_execution_cache(&mut cache, state, scope);
+        if fault != "valid" {
+            assert!(result.is_err());
+            assert!(cache.account(&scope.account_id).is_none());
+            assert_eq!(cache.position_snapshot_count(&position_id), 0);
+        } else {
+            result.unwrap();
+            assert_eq!(
+                cache.position_snapshot_bytes(&position_id).unwrap(),
+                vec![bytes]
+            );
+            assert!(cache.check_integrity());
+        }
     }
 
     #[rstest]

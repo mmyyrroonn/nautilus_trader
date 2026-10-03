@@ -21,14 +21,17 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use nautilus_common::{cache::Cache, clients::ExecutionCacheRecovery};
+use nautilus_common::{
+    cache::{Cache, CacheSnapshotRef},
+    clients::ExecutionCacheRecovery,
+};
 use nautilus_model::{
     accounts::AccountAny,
     events::{OrderEventAny, OrderFilled},
-    identifiers::{AccountId, ClientId, ClientOrderId, InstrumentId, TraderId, Venue},
+    identifiers::{AccountId, ClientId, ClientOrderId, InstrumentId, PositionId, TraderId, Venue},
     instruments::{Instrument, InstrumentAny},
     orders::{Order, OrderAny},
-    position::Position,
+    position::{Position, PositionReplayEvent},
     reports::FillReport,
 };
 use serde::{Deserialize, Serialize};
@@ -52,6 +55,13 @@ struct EconomicFill {
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
+struct EconomicPositionArchive {
+    position_id: PositionId,
+    blobs: Vec<Vec<u8>>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct EconomicSnapshot {
     symbols: Vec<String>,
     namespace: BackpackClientIdNamespace,
@@ -64,6 +74,8 @@ pub(super) struct EconomicSnapshot {
     instruments: Vec<InstrumentAny>,
     orders: Vec<OrderAny>,
     positions: Vec<Position>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    position_archives: Vec<EconomicPositionArchive>,
     fills: Vec<EconomicFill>,
 }
 
@@ -117,6 +129,14 @@ impl EconomicSnapshot {
                 "durable order was not restored"
             );
         }
+        for archive in &self.position_archives {
+            anyhow::ensure!(
+                cache.position_snapshot_count(&archive.position_id) == archive.blobs.len()
+                    && cache.position_snapshot_bytes(&archive.position_id).as_ref()
+                        == Some(&archive.blobs),
+                "durable position archives were not restored"
+            );
+        }
         for position in &self.positions {
             let restored = cache
                 .position(&position.id)
@@ -137,6 +157,18 @@ impl EconomicSnapshot {
             instruments: self.instruments.clone(),
             orders: self.orders.clone(),
             positions: self.positions.clone(),
+            position_snapshot_blobs: self
+                .position_archives
+                .iter()
+                .flat_map(|archive| {
+                    archive.blobs.iter().enumerate().map(move |(index, blob)| {
+                        CacheSnapshotRef::new(
+                            format!("cache://position-snapshots/{}/{index}", archive.position_id),
+                            blob.clone(),
+                        )
+                    })
+                })
+                .collect(),
         })
     }
     fn validate(&self, capacity: usize) -> anyhow::Result<()> {
@@ -224,11 +256,55 @@ impl EconomicSnapshot {
                     && position.instrument_id.venue == Venue::from("BACKPACK"),
                 "economic position scope mismatch"
             );
-            for fill in &position.events {
+            for fill in position_fills(position) {
                 anyhow::ensure!(
                     self.fills.iter().any(|f| matches_fill(fill, &f.report)),
                     "unreceipted native position economics"
                 );
+            }
+        }
+        let mut archive_ids = std::collections::BTreeSet::new();
+        for archive in &self.position_archives {
+            anyhow::ensure!(
+                archive_ids.insert(archive.position_id),
+                "duplicate economic archive position"
+            );
+            let parent = self
+                .positions
+                .iter()
+                .find(|position| position.id == archive.position_id)
+                .ok_or_else(|| anyhow::anyhow!("economic archive position scope mismatch"))?;
+            let mut validation_cache = Cache::default();
+            for (index, blob) in archive.blobs.iter().enumerate() {
+                validation_cache.restore_snapshot_blob(
+                    &format!("cache://position-snapshots/{}/{index}", archive.position_id),
+                    blob.clone().into(),
+                )?;
+                let position: Position = serde_json::from_slice(blob)?;
+                anyhow::ensure!(
+                    position.instrument_id == parent.instrument_id
+                        && position.strategy_id == parent.strategy_id
+                        && position.account_id == self.account_id
+                        && position.trader_id == self.trader_id
+                        && instrument_ids.contains(&position.instrument_id)
+                        && self
+                            .orders
+                            .iter()
+                            .any(|order| order.client_order_id() == position.opening_order_id)
+                        && position.closing_order_id.is_none_or(|id| self
+                            .orders
+                            .iter()
+                            .any(|order| order.client_order_id() == id)),
+                    "economic archive scope mismatch"
+                );
+                for fill in position_fills(&position) {
+                    anyhow::ensure!(
+                        self.fills
+                            .iter()
+                            .any(|record| matches_fill(fill, &record.report)),
+                        "unreceipted native archived economics"
+                    );
+                }
             }
         }
         Ok(())
@@ -255,21 +331,52 @@ impl EconomicSnapshot {
             matches_fill(fill, report),
             "native order fill economics conflict"
         );
-        let Some(fill) = self
+        let current = self
             .positions
             .iter()
-            .flat_map(|p| &p.events)
-            .find(|f| f.client_order_id == id && f.trade_id == report.trade_id)
-        else {
-            return Ok(false);
-        };
-        anyhow::ensure!(
-            matches_fill(fill, report),
-            "native position fill economics conflict"
-        );
-        Ok(true)
+            .flat_map(position_fills)
+            .find(|fill| fill.client_order_id == id && fill.trade_id == report.trade_id);
+        if let Some(fill) = current {
+            anyhow::ensure!(
+                matches_fill(fill, report),
+                "native position fill economics conflict"
+            );
+            return Ok(true);
+        }
+        for archive in &self.position_archives {
+            for blob in &archive.blobs {
+                let position: Position = serde_json::from_slice(blob)?;
+                if let Some(fill) = position_fills(&position)
+                    .into_iter()
+                    .find(|fill| fill.client_order_id == id && fill.trade_id == report.trade_id)
+                {
+                    anyhow::ensure!(
+                        matches_fill(fill, report),
+                        "native archived position fill economics conflict"
+                    );
+                    return Ok(true);
+                }
+            }
+        }
+        Ok(false)
     }
 }
+fn position_fills(position: &Position) -> Vec<&OrderFilled> {
+    position
+        .events
+        .iter()
+        .chain(
+            position
+                .replay_events
+                .iter()
+                .filter_map(|event| match event {
+                    PositionReplayEvent::Filled(fill) => Some(fill),
+                    PositionReplayEvent::Adjusted(_) => None,
+                }),
+        )
+        .collect()
+}
+
 fn matches_fill(fill: &OrderFilled, report: &FillReport) -> bool {
     report.client_order_id == Some(fill.client_order_id)
         && fill.account_id == report.account_id
@@ -349,6 +456,7 @@ impl EconomicStore {
                 instruments: vec![],
                 orders: vec![],
                 positions: vec![],
+                position_archives: vec![],
                 fills: vec![],
             }
         };
@@ -443,6 +551,32 @@ impl EconomicStore {
             .into_iter()
             .map(|p| (*p).clone())
             .collect();
+        state.position_archives = state
+            .positions
+            .iter()
+            .filter_map(|position| {
+                let count = cache.position_snapshot_count(&position.id);
+                if count == 0 {
+                    return None;
+                }
+                Some((|| {
+                    let blobs = cache
+                        .position_snapshot_bytes(&position.id)
+                        .ok_or_else(|| anyhow::anyhow!("native position archive missing"))?;
+                    anyhow::ensure!(
+                        blobs.len() == count,
+                        "native position archive encoding incomplete"
+                    );
+                    Ok(EconomicPositionArchive {
+                        position_id: position.id,
+                        blobs,
+                    })
+                })())
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+        state
+            .position_archives
+            .sort_by_key(|archive| archive.position_id);
         state.orders.sort_by_key(|order| order.client_order_id());
         state.positions.sort_by_key(|position| position.id);
         let ids: std::collections::BTreeSet<InstrumentId> = state

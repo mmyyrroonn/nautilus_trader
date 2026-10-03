@@ -39,8 +39,8 @@ liquidity and event timestamp. Negative fee rebates, zero fees and distinct fee 
 amounts rather than inferred basis-point rates. Receipt fingerprints are rebuilt and checked.
 The dedup key remains instrument plus real trade identity; cumulative quantities create no fill.
 
-The snapshot contains native account, used instruments, orders, positions and immutable applied-fill
-receipts. It binds the complete sorted symbol allowlist, identity namespace and canonical identity
+The snapshot contains native account, used instruments, orders, positions, cache-owned position
+archive frames and immutable applied-fill receipts. It binds the complete sorted symbol allowlist, identity namespace and canonical identity
 directory, engine account, trader and execution client. Changing or shrinking the allowlist, or
 changing the execution client, cannot silently hide residual positions during recovery. Order
 selection follows actual cache client routing. The sole unrouted Initialized-order exception is the
@@ -65,8 +65,8 @@ mutation task from being dispatched.
 ## Native platform recovery
 
 [`ExecutionCacheRecovery`](../../crates/common/src/clients/execution.rs) is a shared typed native
-boundary containing `AccountAny`, `InstrumentAny`, `OrderAny` and `Position`. Other clients default
-to no recovery. It adds no Python arbitrary-payload restore or adapter-specific cache injection.
+boundary containing `AccountAny`, `InstrumentAny`, `OrderAny`, `Position` and cache-owned
+`position_snapshot_blobs` references with their bytes. Other clients default to no recovery. It adds no Python arbitrary-payload restore or adapter-specific cache injection.
 Backpack verifies its scoped checkpoint, native consumption and receipt fingerprints before
 returning this recovery value.
 
@@ -76,9 +76,28 @@ requires an empty account scope, exact account/trader/venue ownership, compatibl
 unique order/position and venue aliases, and complete order/position references. It validates the
 entire scope before inserting objects. Restored orders receive the actual execution client routing;
 cache indices are rebuilt and checked, and Portfolio initializes orders and positions from that
-cache. Construction fails if restoration conflicts or a backing-store operation fails. Backpack
-startup independently compares the installed native cache with its durable snapshot, so receipts
-cannot start without their matching native order/position state.
+cache. Construction fails if restoration conflicts or a backing-store operation fails.
+
+Recovery validation has two phases. The platform first validates and installs the typed native
+objects. Before Portfolio initialization, `cache_recovery_restored()` independently compares the
+installed cache with the adapter's exact durable snapshot, including account balances, routing,
+orders, positions and archive bytes. Only a successful strict comparison marks that consumer
+instance as initially restored. Portfolio can then legitimately recalculate account state from the
+restored positions. First startup without the builder hook still performs the same strict check;
+subsequent startup/reconnect does not compare a legally evolved account against the old snapshot.
+This marker attests initial restoration only; new fill receipts retain their own consumption and
+persistence checks. It adds no Python setter or payload interface.
+
+NETTING can reuse a position ID after a closed cycle. Durable recovery therefore preserves the
+native cache's archived cycle frames, not only the current position. True fill consumption can be
+proved by current/replay history or a preserved archived cycle together with its native order and
+exact receipt. The platform validates archive references, encoded parent identity and contiguous
+frame indices using a temporary Cache before writing any recovered object into the real cache.
+Archive account/trader/instrument/order and fill ownership are also checked. Installation uses
+`Cache::restore_snapshot_blob`, which retains the original native frame bytes rather than
+re-serializing the decoded position. The adapter's strict initial verification checks those exact
+bytes. Closed-cycle quantity, fee/rebate and realized economics therefore remain available when a
+later cycle or late fill is recovered under the reused native position ID.
 
 Recovery is historical evidence. It does not restore current public/private transport generations,
 new-risk authority, a fresh account snapshot, positive private subscription ACK or verified flatness.

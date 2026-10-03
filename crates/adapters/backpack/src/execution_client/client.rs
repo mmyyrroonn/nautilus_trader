@@ -1170,6 +1170,7 @@ impl Drop for BackpackLoopbackControlRuntime {
 /// Production execution readiness remains explicitly degraded.
 #[derive(Debug)]
 pub struct BackpackExecutionClient {
+    cache_recovery_verified: bool,
     control_runtime: std::rc::Rc<BackpackLoopbackControlRuntime>,
     core: ExecutionClientCore,
     shared: Arc<Shared>,
@@ -1274,6 +1275,7 @@ impl BackpackExecutionClient {
                 recovery_events: std::cell::RefCell::new(vec![]),
             });
             Ok(Self {
+                cache_recovery_verified: false,
                 control_runtime,
                 core,
                 shared,
@@ -1316,6 +1318,7 @@ impl BackpackExecutionClient {
             })?;
         let economic = self.control_runtime.economics.try_borrow_mut()?;
         anyhow::ensure!(economic.is_none(), "economic consumer already configured");
+        self.cache_recovery_verified = false;
         let store = super::economics::EconomicStore::open(
             directory,
             &self.shared.config.identity_directory,
@@ -1862,13 +1865,21 @@ impl ExecutionClient for BackpackExecutionClient {
             .emitter
             .try_emit_account_state(balances, margins, reported, ts_event, info)
     }
+    fn cache_recovery_restored(&mut self) -> anyhow::Result<()> {
+        if !self.cache_recovery_verified {
+            if let Some(storage) = self.control_runtime.economics.try_borrow()?.as_ref() {
+                storage.state().verify_cache(&self.core.cache())?;
+            }
+            self.cache_recovery_verified = true;
+        }
+        Ok(())
+    }
+
     fn start(&mut self) -> anyhow::Result<()> {
         if self.core.is_started() {
             return Ok(());
         }
-        if let Some(storage) = self.control_runtime.economics.try_borrow()?.as_ref() {
-            storage.state().verify_cache(&self.core.cache())?;
-        }
+        self.cache_recovery_restored()?;
         if !self.shared.emitter.is_initialized() {
             let sender = nautilus_common::live::runner::try_get_exec_event_sender()
                 .ok_or_else(|| anyhow::anyhow!("execution event sender is not installed"))?;

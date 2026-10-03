@@ -2964,6 +2964,7 @@ mod guarded {
             client.start().is_err(),
             "durable dedup without restored native state must refuse startup"
         );
+        assert!(client.cache_recovery_restored().is_err());
         let restored = client.cache_recovery().unwrap().unwrap();
         for instrument in restored.instruments {
             cache.borrow_mut().add_instrument(instrument).unwrap();
@@ -2981,7 +2982,15 @@ mod guarded {
                 .add_position(position, OmsType::Netting)
                 .unwrap();
         }
+        for frame in restored.position_snapshot_blobs {
+            cache
+                .borrow_mut()
+                .restore_snapshot_blob(&frame.blob_ref, frame.blob)
+                .unwrap();
+        }
         cache.borrow_mut().build_index();
+        client.cache_recovery_restored().unwrap();
+        client.cache_recovery_restored().unwrap();
         let clock: Rc<RefCell<dyn Clock>> = Rc::new(RefCell::new(TestClock::new()));
         let mut portfolio = Portfolio::new(clock.clone(), cache.clone(), None);
         portfolio.initialize_orders();
@@ -3045,6 +3054,227 @@ mod guarded {
         client.disconnect().await.unwrap();
         public.disconnect().await.unwrap();
     }
+    #[tokio::test]
+    async fn test_durable_late_fill_reopens_netting_cycle_and_restores_archived_pnl() {
+        let mut h = Harness::new_with_consumer(true).await;
+        let entry = h.order("LATE-ENTRY", OrderSide::Buy, false);
+        h.submit(&entry).unwrap();
+        until(|| h.peer.state.post_bodies.lock().unwrap().len() == 1).await;
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        h.apply_events();
+        let first = h.fill(901, "0.00001", "-0.000001");
+        h.peer.send(&first);
+        until(|| h.client.health().pending_fills == 1).await;
+        h.apply_events();
+        assert_eq!(h.client.persist_economics().unwrap()["durable_receipts"], 1);
+        let mut terminal = first.clone();
+        terminal["data"]["e"] = json!("orderCancelled");
+        terminal["data"]["X"] = json!("Cancelled");
+        terminal["data"]["t"] = Value::Null;
+        for key in ["l", "L", "m", "n", "N"] {
+            terminal["data"].as_object_mut().unwrap().remove(key);
+        }
+        h.peer.send(&terminal);
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        h.apply_events();
+        assert_eq!(
+            h.cache
+                .borrow()
+                .order(&entry.client_order_id())
+                .unwrap()
+                .status(),
+            OrderStatus::Canceled
+        );
+        h.client.persist_economics().unwrap();
+        h.client
+            .accept_loopback_terminal(
+                h.session,
+                &nautilus_backpack::execution::owner::BackpackLoopbackTerminalEvidence {
+                    client_order_id: entry.client_order_id(),
+                    venue_order_id: VenueOrderId::from("synthetic-order-A"),
+                    instrument_id: instrument(),
+                    generation: h.session.generation(),
+                    cumulative_quantity: decimal("0.00001"),
+                    applied_fill_quantity: decimal("0.00001"),
+                    economic_ack_reference: "native durable synthetic fill receipt".into(),
+                },
+            )
+            .unwrap();
+        h.account(decimal("0.00001"));
+        h.quote(2).await;
+        let exit = OrderTestBuilder::new(OrderType::Limit)
+            .trader_id(trader())
+            .strategy_id(StrategyId::from("S-001"))
+            .instrument_id(instrument())
+            .client_order_id(ClientOrderId::from("LATE-EXIT"))
+            .side(OrderSide::Sell)
+            .quantity(Quantity::from("0.00001"))
+            .price(Price::from("100.5"))
+            .post_only(false)
+            .reduce_only(true)
+            .ts_init(now_ns())
+            .build();
+        h.submit(&exit).unwrap();
+        until(|| h.peer.state.post_bodies.lock().unwrap().len() == 2).await;
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        h.apply_events();
+        let mut close = h.fill(902, "0.00001", "0.000003");
+        close["data"]["q"] = json!("0.00001");
+        close["data"]["X"] = json!("Filled");
+        h.peer.send(&close);
+        until(|| h.client.health().pending_fills == 1).await;
+        h.apply_events();
+        assert_eq!(h.portfolio.net_position(&instrument()), Decimal::ZERO);
+        assert_eq!(h.client.persist_economics().unwrap()["durable_receipts"], 2);
+        h.client
+            .accept_loopback_terminal(
+                h.session,
+                &nautilus_backpack::execution::owner::BackpackLoopbackTerminalEvidence {
+                    client_order_id: exit.client_order_id(),
+                    venue_order_id: VenueOrderId::from("synthetic-order-B"),
+                    instrument_id: instrument(),
+                    generation: h.session.generation(),
+                    cumulative_quantity: decimal("0.00001"),
+                    applied_fill_quantity: decimal("0.00001"),
+                    economic_ack_reference: "native durable synthetic fill receipt".into(),
+                },
+            )
+            .unwrap();
+        h.account(Decimal::ZERO);
+        let mut late = first.clone();
+        late["data"]["t"] = json!(903);
+        late["data"]["z"] = json!("0.00002");
+        late["data"]["Z"] = json!("0.002002");
+        late["data"]["X"] = json!("Filled");
+        late["data"]["n"] = json!("0.000001");
+        late["data"]["E"] = json!(timestamp());
+        late["data"]["T"] = late["data"]["E"].clone();
+        h.peer.send(&late);
+        until(|| h.client.health().pending_fills == 1).await;
+        h.apply_events();
+        assert_eq!(h.portfolio.net_position(&instrument()), decimal("0.00001"));
+        let position_id = h.cache.borrow().positions(None, None, None, None, None)[0].id;
+        assert_eq!(h.cache.borrow().position_snapshot_count(&position_id), 1);
+        let archives = h
+            .cache
+            .borrow()
+            .position_snapshot_bytes(&position_id)
+            .unwrap();
+        let realized = h.portfolio.realized_pnl(&instrument()).unwrap();
+        assert_eq!(h.client.persist_economics().unwrap()["durable_receipts"], 3);
+        assert_eq!(h.client.health().pending_fills, 0);
+        let config = h.config.clone();
+        h.client.disconnect().await.unwrap();
+        let Harness {
+            peer,
+            directory,
+            mut public,
+            client,
+            engine,
+            portfolio,
+            ..
+        } = h;
+        drop(client);
+        drop(engine);
+        drop(portfolio);
+        let cache = Rc::new(RefCell::new(Cache::default()));
+        let mut client = BackpackExecutionClient::new(
+            trader(),
+            "BACKPACK",
+            config,
+            CacheView::new(cache.clone()),
+        )
+        .unwrap();
+        client
+            .configure_economic_consumer(&directory.path().join("economics"))
+            .unwrap();
+        let restored = client.cache_recovery().unwrap().unwrap();
+        assert_eq!(restored.position_snapshot_blobs.len(), 1);
+        for instrument in restored.instruments {
+            cache.borrow_mut().add_instrument(instrument).unwrap();
+        }
+        cache.borrow_mut().add_account(restored.account).unwrap();
+        for order in restored.orders {
+            cache
+                .borrow_mut()
+                .add_order(order, None, Some(ClientId::from("BACKPACK")), false)
+                .unwrap();
+        }
+        for position in &restored.positions {
+            cache
+                .borrow_mut()
+                .add_position(position, OmsType::Netting)
+                .unwrap();
+        }
+        cache.borrow_mut().build_index();
+        assert!(
+            client.cache_recovery_restored().is_err(),
+            "missing archives must fail closed"
+        );
+        for frame in restored.position_snapshot_blobs {
+            cache
+                .borrow_mut()
+                .restore_snapshot_blob(&frame.blob_ref, frame.blob)
+                .unwrap();
+        }
+        client.cache_recovery_restored().unwrap();
+        let clock: Rc<RefCell<dyn Clock>> = Rc::new(RefCell::new(TestClock::new()));
+        let mut portfolio = Portfolio::new(clock.clone(), cache.clone(), None);
+        portfolio.initialize_orders();
+        portfolio.initialize_positions();
+        let mut engine = ExecutionEngine::new(clock, cache.clone(), None);
+        engine.register_oms_type(StrategyId::from("S-001"), OmsType::Netting);
+        assert_eq!(portfolio.net_position(&instrument()), decimal("0.00001"));
+        assert_eq!(portfolio.realized_pnl(&instrument()).unwrap(), realized);
+        assert_eq!(
+            cache
+                .borrow()
+                .position_snapshot_bytes(&position_id)
+                .unwrap(),
+            archives
+        );
+        assert_eq!(
+            cache
+                .borrow()
+                .order(&entry.client_order_id())
+                .unwrap()
+                .trade_ids()
+                .len(),
+            2
+        );
+        assert_eq!(
+            cache
+                .borrow()
+                .order(&exit.client_order_id())
+                .unwrap()
+                .trade_ids()
+                .len(),
+            1
+        );
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        client.set_event_sender(tx);
+        client.connect().await.unwrap();
+        for frame in [&first, &close, &late] {
+            peer.send(frame);
+        }
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        for event in drain(&mut rx) {
+            match event {
+                ExecutionEvent::Order(event) => engine.process(&event),
+                ExecutionEvent::Report(report) => {
+                    engine.reconcile_execution_report(&report);
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(client.health().pending_fills, 0);
+        assert_eq!(client.persist_economics().unwrap()["durable_receipts"], 3);
+        assert_eq!(portfolio.realized_pnl(&instrument()).unwrap(), realized);
+        assert_eq!(peer.state.post_bodies.lock().unwrap().len(), 2);
+        client.disconnect().await.unwrap();
+        public.disconnect().await.unwrap();
+    }
+
     #[tokio::test]
     async fn test_durable_consumer_restart_at_every_economic_boundary() {
         for boundary in [

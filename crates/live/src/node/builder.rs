@@ -666,7 +666,7 @@ impl LiveNodeBuilder {
             if let Some(config) = self.exec_client_configs.remove(&name) {
                 log::debug!("Creating execution client {name}");
 
-                let client = socket_registry.scope(|| match factory {
+                let mut client = socket_registry.scope(|| match factory {
                     ExecutionClientFactoryEntry::Adapter(factory) => factory.create(
                         self.config.trader_id,
                         &name,
@@ -692,6 +692,7 @@ impl LiveNodeBuilder {
                             oms_type: client.oms_type(),
                         },
                     )?;
+                    client.cache_recovery_restored()?;
                     kernel.portfolio.borrow_mut().initialize_orders();
                     kernel.portfolio.borrow_mut().initialize_positions();
                 }

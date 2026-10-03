@@ -35,12 +35,15 @@ use nautilus_model::{
 use rust_decimal::Decimal;
 
 use super::log_not_implemented;
-use crate::messages::execution::{
-    BatchCancelOrders, BatchModifyOrders, CancelAllOrders, CancelOrder, GenerateFillReports,
-    GenerateFillReportsBuilder, GenerateOrderStatusReport, GenerateOrderStatusReports,
-    GenerateOrderStatusReportsBuilder, GeneratePositionStatusReports,
-    GeneratePositionStatusReportsBuilder, ModifyOrder, QueryAccount, QueryOrder, SubmitOrder,
-    SubmitOrderList,
+use crate::{
+    cache::CacheSnapshotRef,
+    messages::execution::{
+        BatchCancelOrders, BatchModifyOrders, CancelAllOrders, CancelOrder, GenerateFillReports,
+        GenerateFillReportsBuilder, GenerateOrderStatusReport, GenerateOrderStatusReports,
+        GenerateOrderStatusReportsBuilder, GeneratePositionStatusReports,
+        GeneratePositionStatusReportsBuilder, ModifyOrder, QueryAccount, QueryOrder, SubmitOrder,
+        SubmitOrderList,
+    },
 };
 
 /// Default maximum absolute position difference tolerated during reconciliation.
@@ -58,6 +61,7 @@ pub struct ExecutionCacheRecovery {
     pub instruments: Vec<InstrumentAny>,
     pub orders: Vec<OrderAny>,
     pub positions: Vec<Position>,
+    pub position_snapshot_blobs: Vec<CacheSnapshotRef>,
 }
 
 /// Defines the interface for an execution client managing order operations.
@@ -82,6 +86,15 @@ pub trait ExecutionClient {
     /// Returns an error if durable state exists but cannot be safely recovered.
     fn cache_recovery(&self) -> anyhow::Result<Option<ExecutionCacheRecovery>> {
         Ok(None)
+    }
+
+    /// Verifies the installed recovery before derived portfolio state is initialized.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the native cache does not match the client's durable state.
+    fn cache_recovery_restored(&mut self) -> anyhow::Result<()> {
+        Ok(())
     }
 
     /// Returns the maximum absolute position difference tolerated during reconciliation.
