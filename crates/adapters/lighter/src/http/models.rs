@@ -663,6 +663,34 @@ mod tests {
     }
 
     #[rstest]
+    #[case("1.5e-8", "0.000000015")]
+    #[case(r#""1.5e-8""#, "0.000000015")]
+    #[case(
+        r#"{"$serde_json::private::Number": "123456789.123456789012345678"}"#,
+        "123456789.123456789012345678"
+    )]
+    fn test_order_book_details_decimal_representations(
+        #[case] number: &str,
+        #[case] expected: &str,
+    ) {
+        let mut json: serde_json::Value = serde_json::from_str(HTTP_ORDER_BOOK_DETAILS).unwrap();
+        let number: serde_json::Value = serde_json::from_str(number).unwrap();
+        let detail = &mut json["order_book_details"][0];
+        detail["last_trade_price"] = number.clone();
+        detail["open_interest"] = number.clone();
+        detail["daily_chart"] = serde_json::json!({"sample": number});
+
+        let bytes = serde_json::to_vec(&json).unwrap();
+        let details: LighterOrderBookDetails = serde_json::from_slice(&bytes).unwrap();
+        let expected = Decimal::from_str(expected).unwrap();
+        let detail = &details.order_book_details[0];
+        assert_eq!(detail.order_book.symbol, Ustr::from("ETH"));
+        assert_eq!(detail.last_trade_price, expected);
+        assert_eq!(detail.open_interest, expected);
+        assert_eq!(detail.daily_chart["sample"], expected);
+    }
+
+    #[rstest]
     fn test_recent_trades_allow_omitted_fee_fields() {
         let trades: LighterTrades = serde_json::from_str(HTTP_RECENT_TRADES).unwrap();
 
