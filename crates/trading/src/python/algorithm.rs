@@ -1330,6 +1330,7 @@ impl ExecutionAlgorithmConfig {
         exec_algorithm_id: Option<&Bound<'_, PyAny>>,
         log_events: bool,
         log_commands: bool,
+        #[gen_stub(override_type(type_repr = "typing.Any", imports = ("typing",))) ]
         _kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Self> {
         let exec_algorithm_id = exec_algorithm_id

@@ -97,6 +97,7 @@ impl DataActorConfig {
         actor_id: Option<ActorId>,
         log_events: bool,
         log_commands: bool,
+        #[gen_stub(override_type(type_repr = "typing.Any", imports = ("typing",))) ]
         _kwargs: Option<&Bound<'_, PyDict>>,
     ) -> Self {
         Self {

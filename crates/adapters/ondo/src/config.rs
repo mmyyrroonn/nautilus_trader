@@ -29,11 +29,14 @@ use nautilus_core::string::secret::REDACTED;
 use nautilus_model::identifiers::{AccountId, InstrumentId};
 use serde::{Deserialize, Serialize};
 
-use crate::common::{
-    consts::{
-        ONDO_BOOK_LIMIT, ONDO_HTTP_TIMEOUT_SECS, ONDO_WS_HEARTBEAT_SECS, http_base_url, ws_url,
+use crate::{
+    common::{
+        consts::{
+            ONDO_BOOK_LIMIT, ONDO_HTTP_TIMEOUT_SECS, ONDO_WS_HEARTBEAT_SECS, http_base_url, ws_url,
+        },
+        enums::{OndoAuthenticationScope, OndoEnvironment},
     },
-    enums::{OndoAuthenticationScope, OndoEnvironment},
+    production::OndoExecutionEnvelopeConfig,
 };
 
 /// Default dead man's switch timeout, in seconds (plan §6.4).
@@ -323,7 +326,7 @@ pub struct OndoExecutionClientConfig {
     #[builder(default)]
     pub allow_production_orders: bool,
     /// The separately approved immutable production execution limits.
-    pub execution_envelope: Option<crate::production::OndoExecutionEnvelopeConfig>,
+    pub execution_envelope: Option<OndoExecutionEnvelopeConfig>,
 }
 
 impl Default for OndoExecutionClientConfig {
@@ -350,6 +353,7 @@ nautilus_core::impl_pyo3_config_getters!(OndoExecutionClientConfig {
     reconcile_interval_secs: u64,
     journal_path: Option<String>,
     allow_production_orders: bool,
+    execution_envelope: Option<OndoExecutionEnvelopeConfig>,
 });
 
 impl std::fmt::Debug for OndoExecutionClientConfig {

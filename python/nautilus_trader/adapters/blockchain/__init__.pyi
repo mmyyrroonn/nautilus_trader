@@ -166,6 +166,7 @@ class BlockchainExecutionClientConfig:
         unlimited_approval: bool = False,
         postgres_cache_database_config: infrastructure.PostgresConnectOptions | None = None,
         transport_backend: network.TransportBackend | None = None,
+        *,
         allowed_token_pairs: typing.Sequence[tuple[str, str]] | None = None,
         quote_spend_limits: typing.Sequence[QuoteSpendLimit] | None = None,
         slippage_bps: int | None = None,

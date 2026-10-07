@@ -72,6 +72,11 @@ impl AsterDataClientConfig {
         Ok(config)
     }
 
+    #[getter]
+    const fn has_proxy_url(&self) -> bool {
+        self.proxy_url.is_some()
+    }
+
     fn __repr__(&self) -> String {
         stringify!(AsterDataClientConfig).to_string()
     }
@@ -156,6 +161,11 @@ impl AsterExecutionClientConfig {
     #[pyo3(name = "has_explicit_credentials")]
     fn py_has_explicit_credentials(&self) -> bool {
         self.has_explicit_credentials()
+    }
+
+    #[getter]
+    const fn has_proxy_url(&self) -> bool {
+        self.proxy_url.is_some()
     }
 
     /// Never renders the signer private key.

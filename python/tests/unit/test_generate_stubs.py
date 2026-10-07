@@ -463,7 +463,61 @@ class DataActorConfig:
     assert "actor_id: model.ActorId | None = None" in updated
     assert "log_events: bool = True" in updated
     assert "log_commands: bool = True" in updated
-    assert "_kwargs: dict | None = ..." in updated
+    assert "**_kwargs: dict | None" in updated
+    assert "_kwargs: dict | None =" not in updated
+
+
+def test_signature_parameters_restore_order_kinds_and_defaults(tmp_path: Path) -> None:
+    """Restore keyword boundaries and variadic defaults from source, retaining annotations."""
+    _write_config_fixture(
+        tmp_path,
+        "python/config.rs",
+        """
+#[pymethods]
+impl ExampleConfig {
+    #[new]
+    #[pyo3(signature = (name=None, /, count=7, *args, required, enabled=true, **kwargs))]
+    fn py_new(name: Option<String>, count: u64, args: Py<PyTuple>, required: String,
+              enabled: bool, kwargs: Option<Py<PyDict>>) -> Self { todo!() }
+}
+""",
+    )
+    content = """
+class ExampleConfig:
+    def __init__(self, name: str | None, count: int, args: typing.Any = ...,
+                 enabled: bool, required: str, kwargs: typing.Any = ...) -> None: ...
+""".strip()
+    fixups = generate_stubs.collect_rust_class_fixups(tmp_path)
+    updated = generate_stubs.apply_signature_defaults(content, fixups)
+    constructor = _config_stub_fixture(updated)
+    assert [(arg.arg, kind) for arg, kind, _ in _stub_config_parameters(constructor)] == [
+        ("name", "positional_only"),
+        ("count", "positional_or_keyword"),
+        ("args", "var_positional"),
+        ("required", "keyword_only"),
+        ("enabled", "keyword_only"),
+        ("kwargs", "var_keyword"),
+    ]
+    defaults = {arg.arg: default for arg, _, default in _stub_config_parameters(constructor)}
+    assert ast.literal_eval(defaults["name"]) is None
+    assert ast.literal_eval(defaults["count"]) == 7
+    assert ast.literal_eval(defaults["enabled"]) is True
+    assert defaults["required"] is defaults["args"] is defaults["kwargs"] is None
+    assert generate_stubs.apply_signature_defaults(updated, fixups) == updated
+
+
+@pytest.mark.parametrize(
+    "signature",
+    [
+        "def __init__(self, count: int) -> None: ...",
+        "def __init__(self, count: int, label: str, extra: str) -> None: ...",
+        "def __init__(self, count: int, label: str, label: str) -> None: ...",
+    ],
+)
+def test_signature_parameters_reject_missing_extra_and_duplicate_inputs(signature) -> None:
+    """Never synthesize or hide missing source/stub parameters when restoring kinds."""
+    with pytest.raises(ValueError, match="signature parameter"):
+        generate_stubs._restore_signature_parameters(signature, ("count", "*", "label"))
 
 
 def test_signature_defaults_replace_stale_stub_defaults(tmp_path: Path) -> None:
@@ -3126,6 +3180,8 @@ def _rust_config_type_key(rust_type, *, input_type=False, names=None):  # noqa: 
             return _rust_config_type_key(args[-1], input_type=input_type, names=names)
     if rust_type.startswith("pyo3::types::"):
         rust_type = rust_type.removeprefix("pyo3::types::")
+    if rust_type == "rust_decimal::Decimal":
+        return "Decimal"
     if "::" in rust_type:
         # Arbitrary Rust import paths need explicit type_repr; never collapse domain homonyms.
         return "unresolved:" + rust_type
@@ -3627,6 +3683,17 @@ def test_config_inventory_unresolved_qualified_domain_is_not_basename(domain) ->
     assert key == "unresolved:" + domain
 
 
+def test_config_inventory_decimal_correspondence_keeps_other_namespaces_unresolved() -> None:
+    """Recognize the actual Decimal binding without conflating arbitrary qualified homonyms."""
+    assert _rust_config_type_key("Option<rust_decimal::Decimal>") == _config_type_key(
+        "decimal.Decimal | None"
+    )
+    assert _rust_config_type_key("other::Decimal") == "unresolved:other::Decimal"
+    assert _rust_config_type_key("crate::other::SymbologyMethod") == (
+        "unresolved:crate::other::SymbologyMethod"
+    )
+
+
 def test_config_inventory_nondefault_readback_detects_constant_getter() -> None:
     """Test nondefault readback detects constant getter."""
 
@@ -3724,6 +3791,7 @@ def test_config_inventory_backpack_native_nondefault_readback(tmp_path) -> None:
         authority=authority,
         mutation_budget_ms=4321,
         receive_window_ms=6789,
+        economic_state_directory=str(tmp_path / "economic-not-opened"),
     )
     for instance, expected in ((data, data_values), (execution, execution_values)):
         normalized = {**expected, "base_url_http": http + "/", "base_url_ws": websocket + "/"}
@@ -3741,6 +3809,10 @@ def test_config_inventory_backpack_native_nondefault_readback(tmp_path) -> None:
     assert loopback.authority.max_reserved_margin == "1.37"
     assert loopback.mutation_budget_ms == 4321
     assert loopback.receive_window_ms == 6789
+    assert loopback.economic_state_directory == str(tmp_path / "economic-not-opened")
+    assert not (tmp_path / "economic-not-opened").exists()
+    with pytest.raises(AttributeError):
+        loopback.economic_state_directory = None
     assert isinstance(loopback.control, backpack.BackpackLoopbackControl)
     with pytest.raises(RuntimeError):
         loopback.control.begin_session()
@@ -3851,6 +3923,9 @@ def _config_constructor_fixups_for_stub(
         config_fixups[rust_class] = generate_stubs.ClassMethodFixup(
             python_name=fixup.python_name,
             signature_defaults={"__init__": init_defaults},
+            signature_parameters={"__init__": fixup.signature_parameters["__init__"]}
+            if "__init__" in fixup.signature_parameters
+            else {},
         )
 
     return config_fixups

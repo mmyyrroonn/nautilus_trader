@@ -258,6 +258,13 @@ impl PyBackpackLoopbackExecutionClientConfig {
         self.inner.mutation.window.milliseconds()
     }
     #[getter]
+    fn economic_state_directory(&self) -> Option<String> {
+        self.inner
+            .economic_state_directory
+            .as_ref()
+            .map(|path| path.to_string_lossy().into_owned())
+    }
+    #[getter]
     fn control(&self) -> PyBackpackLoopbackControl {
         PyBackpackLoopbackControl {
             inner: self.inner.control(),

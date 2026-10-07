@@ -133,7 +133,7 @@ class DataActorConfig:
         actor_id: model.ActorId | None = None,
         log_events: bool = True,
         log_commands: bool = True,
-        _kwargs: dict | None = ...,
+        **_kwargs: typing.Any,
     ) -> None: ...
     @property
     def actor_id(self) -> model.ActorId | None: ...

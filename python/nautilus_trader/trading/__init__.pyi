@@ -199,7 +199,7 @@ class ExecutionAlgorithmConfig:
         exec_algorithm_id: model.ExecAlgorithmId | str | None = None,
         log_events: bool = True,
         log_commands: bool = True,
-        _kwargs: dict | None = ...,
+        **_kwargs: typing.Any,
     ) -> None: ...
     @property
     def exec_algorithm_id(self) -> model.ExecAlgorithmId | None: ...
@@ -979,7 +979,7 @@ class StrategyConfig:
         log_events: bool = True,
         log_commands: bool = True,
         log_rejected_due_post_only_as_warning: bool = True,
-        _kwargs: dict | None = ...,
+        **_kwargs: typing.Any,
     ) -> None: ...
     @property
     def strategy_id(self) -> model.StrategyId | None: ...

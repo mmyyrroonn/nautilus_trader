@@ -22,7 +22,7 @@ use pyo3::prelude::*;
 use crate::config::{
     DockerizedIBGatewayConfig, InteractiveBrokersDataClientConfig,
     InteractiveBrokersExecutionClientConfig, InteractiveBrokersInstrumentProviderConfig,
-    MarketDataType, TradingMode,
+    MarketDataType, SymbologyMethod, TradingMode,
 };
 
 fn validate_order_id_client_slot(client_id: i32) -> PyResult<()> {
@@ -276,7 +276,7 @@ impl InteractiveBrokersInstrumentProviderConfig {
     #[allow(clippy::too_many_arguments)]
     fn py_new(
         py: Python<'_>,
-        symbology_method: Option<crate::config::SymbologyMethod>,
+        symbology_method: Option<SymbologyMethod>,
         load_ids: Option<std::collections::HashSet<InstrumentId>>,
         load_contracts: Option<Py<pyo3::types::PyList>>,
         min_expiry_days: Option<u32>,
@@ -313,7 +313,7 @@ impl InteractiveBrokersInstrumentProviderConfig {
 
     /// Returns the symbology method.
     #[getter]
-    fn symbology_method(&self) -> crate::config::SymbologyMethod {
+    fn symbology_method(&self) -> SymbologyMethod {
         self.symbology_method
     }
 
