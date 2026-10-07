@@ -1620,13 +1620,21 @@ mod tests {
                 assert_eq!(candle.h, Decimal::from_str("2264.34").unwrap());
                 assert_eq!(candle.l, Decimal::from_str("2263.36").unwrap());
                 assert_eq!(candle.c, Decimal::from_str("2263.97").unwrap());
-                // f64 JSON numbers round-trip through `deserialize_decimal::visit_f64`
-                // which converts via `Decimal::try_from(f64)`; the resulting value is the
-                // nearest representable decimal to the float, not the JSON literal text.
-                assert_eq!(candle.v, Decimal::from_str("13.2237").unwrap());
+                // Arbitrary precision preserves the venue's exact numeric tokens;
+                // the ordinary feature set keeps the existing f64 conversion.
+                let preserves_number_text = serde_json::from_str::<serde_json::Number>("1.00")
+                    .unwrap()
+                    .to_string()
+                    == "1.00";
+                let (volume, quote_volume) = if preserves_number_text {
+                    ("13.223699999999997", "29934.600011999984")
+                } else {
+                    ("13.2237", "29934.60001199998")
+                };
+                assert_eq!(candle.v, Decimal::from_str(volume).unwrap());
                 assert_eq!(
                     candle.quote_volume,
-                    Decimal::from_str("29934.60001199998").unwrap(),
+                    Decimal::from_str(quote_volume).unwrap()
                 );
                 assert_eq!(candle.i, 19_993_571_166);
             }

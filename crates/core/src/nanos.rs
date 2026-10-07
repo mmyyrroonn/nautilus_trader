@@ -58,12 +58,15 @@ use std::{
 use jiff::{Timestamp, civil::Date, tz::Offset};
 use serde::{
     Deserialize, Deserializer, Serialize,
-    de::{self, Visitor},
+    de::{self, MapAccess, Visitor},
 };
 
-use crate::datetime::{
-    NANOSECONDS_IN_MICROSECOND, NANOSECONDS_IN_MILLISECOND, NANOSECONDS_IN_SECOND,
-    U64_UPPER_BOUND_F64,
+use crate::{
+    datetime::{
+        NANOSECONDS_IN_MICROSECOND, NANOSECONDS_IN_MILLISECOND, NANOSECONDS_IN_SECOND,
+        U64_UPPER_BOUND_F64,
+    },
+    serialization::deserialize_json_number_map,
 };
 
 /// Represents a duration in nanoseconds.
@@ -594,7 +597,7 @@ impl<'de> Deserialize<'de> for UnixNanos {
     {
         struct UnixNanosVisitor;
 
-        impl Visitor<'_> for UnixNanosVisitor {
+        impl<'de> Visitor<'de> for UnixNanosVisitor {
             type Value = UnixNanos;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -624,6 +627,23 @@ impl<'de> Deserialize<'de> for UnixNanos {
                 f64_seconds_to_nanos(value)
                     .map(UnixNanos)
                     .map_err(E::custom)
+            }
+
+            fn visit_map<M: MapAccess<'de>>(self, map: M) -> Result<Self::Value, M::Error> {
+                let text = deserialize_json_number_map(map)?;
+                let number = serde_json::Number::from_str(&text).map_err(de::Error::custom)?;
+                if let Some(value) = number.as_u64() {
+                    return self.visit_u64(value);
+                }
+                if let Some(value) = number.as_i64() {
+                    return self.visit_i64(value);
+                }
+
+                // Preserve the existing fractional-seconds conversion and truncation
+                let value = number
+                    .as_f64()
+                    .ok_or_else(|| de::Error::custom("Unix timestamp out of range"))?;
+                self.visit_f64(value)
             }
 
             fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -1067,6 +1087,34 @@ mod tests {
         let json = "0.9999999999";
         let deserialized: UnixNanos = serde_json::from_str(json).unwrap();
         assert_eq!(deserialized.as_u64(), 999_999_999); // Truncated, not rounded to 1B
+    }
+
+    #[rstest]
+    #[case("123456789", 123_456_789)]
+    #[case("18446744073709551615", u64::MAX)]
+    #[case("1234.567", 1_234_567_000_000)]
+    #[case("0.9999999999", 999_999_999)]
+    #[case("1.5e-8", 14)] // Existing f64 seconds conversion truncates this value
+    fn test_deserialize_reserved_number(#[case] number: &str, #[case] expected: u64) {
+        let json = format!(r#"{{"$serde_json::private::Number": "{number}"}}"#);
+        let deserialized: UnixNanos = serde_json::from_str(&json).unwrap();
+        assert_eq!(deserialized.as_u64(), expected);
+    }
+
+    #[rstest]
+    #[case("{}")]
+    #[case(r#"{"other": "123"}"#)]
+    #[case(r#"{"$serde_json::private::Number": "1.5", "extra": null}"#)]
+    #[case(r#"{"$serde_json::private::Number": "1.5", "$serde_json::private::Number": "2"}"#)]
+    #[case(r#"{"$serde_json::private::Number": ""}"#)]
+    #[case(r#"{"$serde_json::private::Number": "NaN"}"#)]
+    #[case(r#"{"$serde_json::private::Number": "-1.5"}"#)]
+    #[case(r#"{"$serde_json::private::Number": "18446744073709551616"}"#)]
+    #[case(r#"{"$serde_json::private::Number": "1e99999"}"#)]
+    #[case(r#"{"$serde_json::private::Number": "2024-02-10T14:58:43Z"}"#)]
+    #[case(r#"{"$serde_json::private::Number": null}"#)]
+    fn test_deserialize_invalid_number_maps(#[case] json: &str) {
+        assert!(serde_json::from_str::<UnixNanos>(json).is_err());
     }
 
     #[rstest]

@@ -28,7 +28,7 @@ use bytes::Bytes;
 use rust_decimal::Decimal;
 use serde::{
     Deserialize, Deserializer, Serialize, Serializer,
-    de::{Error, Unexpected, Visitor},
+    de::{Error, IgnoredAny, MapAccess, Unexpected, Visitor},
     ser::SerializeSeq,
 };
 use ustr::Ustr;
@@ -72,13 +72,13 @@ pub mod sorted_hashset {
     }
 }
 
-/// Zero-allocation decimal visitor for maximum deserialization performance.
+/// Decimal visitor without intermediate `serde_json::Value` allocation.
 ///
 /// Directly visits JSON tokens without intermediate `serde_json::Value` allocation.
 /// Handles all JSON numeric representations: strings, integers, floats, and null.
 struct DecimalVisitor;
 
-impl Visitor<'_> for DecimalVisitor {
+impl<'de> Visitor<'de> for DecimalVisitor {
     type Value = Decimal;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -123,6 +123,13 @@ impl Visitor<'_> for DecimalVisitor {
         Decimal::try_from(v).map_err(E::custom)
     }
 
+    fn visit_map<M: MapAccess<'de>>(self, map: M) -> Result<Self::Value, M::Error> {
+        let number = deserialize_json_number_map(map)?;
+
+        // Parse directly so an empty reserved value cannot become zero
+        parse_decimal_str(&number).map_err(M::Error::custom)
+    }
+
     // Null → zero (matches existing behavior)
     fn visit_unit<E: Error>(self) -> Result<Self::Value, E> {
         Ok(Decimal::ZERO)
@@ -133,13 +140,13 @@ impl Visitor<'_> for DecimalVisitor {
     }
 }
 
-/// Zero-allocation optional decimal visitor for maximum deserialization performance.
+/// Optional decimal visitor without intermediate `serde_json::Value` allocation.
 ///
 /// Handles null values as `None` and empty strings as `None`.
 /// Uses `deserialize_any` approach to handle all JSON value types uniformly.
 struct OptionalDecimalVisitor;
 
-impl Visitor<'_> for OptionalDecimalVisitor {
+impl<'de> Visitor<'de> for OptionalDecimalVisitor {
     type Value = Option<Decimal>;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -179,6 +186,10 @@ impl Visitor<'_> for OptionalDecimalVisitor {
         DecimalVisitor.visit_f64(v).map(Some)
     }
 
+    fn visit_map<M: MapAccess<'de>>(self, map: M) -> Result<Self::Value, M::Error> {
+        DecimalVisitor.visit_map(map).map(Some)
+    }
+
     // Null → None
     fn visit_unit<E: Error>(self) -> Result<Self::Value, E> {
         Ok(None)
@@ -187,6 +198,39 @@ impl Visitor<'_> for OptionalDecimalVisitor {
     fn visit_none<E: Error>(self) -> Result<Self::Value, E> {
         Ok(None)
     }
+}
+
+/// Deserializes `serde_json`'s single-field arbitrary-precision number representation.
+///
+/// # Errors
+///
+/// Returns an error for any other map shape or an invalid JSON numeric token.
+pub(crate) fn deserialize_json_number_map<'de, M: MapAccess<'de>>(
+    mut map: M,
+) -> Result<String, M::Error> {
+    // This representation also survives serde's flattened content buffering
+    if map.next_key::<String>()?.as_deref() != Some("$serde_json::private::Number") {
+        return Err(M::Error::custom(
+            "expected a serde_json arbitrary-precision number",
+        ));
+    }
+
+    let number = map.next_value::<String>()?;
+    if map.next_key::<IgnoredAny>()?.is_some() {
+        return Err(M::Error::custom(
+            "unexpected field in arbitrary-precision number",
+        ));
+    }
+
+    if !matches!(number.as_bytes().first(), Some(b'-' | b'0'..=b'9'))
+        || number.bytes().any(|byte| byte.is_ascii_whitespace())
+    {
+        return Err(M::Error::custom("expected a JSON numeric token"));
+    }
+
+    // IgnoredAny validates syntax without converting through binary floats
+    serde_json::from_str::<IgnoredAny>(&number).map_err(M::Error::custom)?;
+    Ok(number)
 }
 
 fn parse_decimal_str(value: &str) -> Result<Decimal, String> {
@@ -452,6 +496,7 @@ pub const fn default_false() -> bool {
 /// - JSON string: `"123.456"` → Decimal (zero-copy for borrowed strings)
 /// - JSON integer: `123` → Decimal (direct conversion, no string allocation)
 /// - JSON float: `123.456` → Decimal
+/// - Arbitrary-precision JSON number: parsed from its exact decimal text
 /// - JSON null: → `Decimal::ZERO`
 /// - Scientific notation: `"1.5e-8"` → Decimal
 /// - Fractional digits beyond `Decimal`'s maximum scale (28) are rounded
@@ -481,6 +526,7 @@ where
 /// - JSON string: `"123.456"` → Some(Decimal) (zero-copy for borrowed strings)
 /// - JSON integer: `123` → Some(Decimal) (direct conversion)
 /// - JSON float: `123.456` → Some(Decimal)
+/// - Arbitrary-precision JSON number: parsed from its exact decimal text
 /// - JSON null: → `None`
 /// - Empty string: `""` → `None`
 /// - Scientific notation: `"1.5e-8"` → Some(Decimal)
@@ -1313,6 +1359,114 @@ mod tests {
     struct TestOptionalDecimalOnly {
         #[serde(deserialize_with = "deserialize_optional_decimal")]
         value: Option<Decimal>,
+    }
+
+    #[rstest]
+    #[case("123456789.123456789012345678", dec!(123456789.123456789012345678))]
+    #[case("18446744073709551616", dec!(18446744073709551616))]
+    #[case("-1.5E-8", dec!(-0.000000015))]
+    #[case("0.1234567890123456789012345678912345", dec!(0.1234567890123456789012345679))]
+    #[case("999999999999999999999999999995e-29", dec!(10))]
+    #[case("-4e-29", Decimal::ZERO)]
+    #[case("1.5e-999999", Decimal::ZERO)]
+    #[case("0e2000000000", Decimal::ZERO)]
+    #[case("79228162514264337593543950335", Decimal::MAX)]
+    #[case("-79228162514264337593543950335", Decimal::MIN)]
+    fn test_deserialize_decimal_reserved_number(#[case] number: &str, #[case] expected: Decimal) {
+        let json = format!(r#"{{"value": {{"$serde_json::private::Number": "{number}"}}}}"#);
+        let required: TestDecimalOnly = serde_json::from_str(&json).unwrap();
+        let optional: TestOptionalDecimalOnly = serde_json::from_str(&json).unwrap();
+        assert_eq!(required.value, expected);
+        assert_eq!(optional.value, Some(expected));
+    }
+
+    #[rstest]
+    #[case("{}")]
+    #[case(r#"{"value": "1.5"}"#)]
+    #[case(r#"{"wrong": "1.5", "$serde_json::private::Number": "1.5"}"#)]
+    #[case(r#"{"$serde_json::private::Number": "1.5", "extra": null}"#)]
+    #[case(r#"{"$serde_json::private::Number": "1.5", "$serde_json::private::Number": "2"}"#)]
+    #[case(r#"{"$serde_json::private::Number": ""}"#)]
+    #[case(r#"{"$serde_json::private::Number": "NaN"}"#)]
+    #[case(r#"{"$serde_json::private::Number": "Infinity"}"#)]
+    #[case(r#"{"$serde_json::private::Number": "1.2.3"}"#)]
+    #[case(r#"{"$serde_json::private::Number": "+1"}"#)]
+    #[case(r#"{"$serde_json::private::Number": "01"}"#)]
+    #[case(r#"{"$serde_json::private::Number": ".5"}"#)]
+    #[case(r#"{"$serde_json::private::Number": "1."}"#)]
+    #[case(r#"{"$serde_json::private::Number": "1_0"}"#)]
+    #[case(r#"{"$serde_json::private::Number": "1e"}"#)]
+    #[case(r#"{"$serde_json::private::Number": " 1"}"#)]
+    #[case(r#"{"$serde_json::private::Number": "1 "}"#)]
+    #[case(r#"{"$serde_json::private::Number": "8e28"}"#)]
+    #[case(r#"{"$serde_json::private::Number": "79228162514264337593543950336"}"#)]
+    #[case(r#"{"$serde_json::private::Number": "1e1000000000"}"#)]
+    #[case(r#"{"$serde_json::private::Number": null}"#)]
+    #[case(r#"{"$serde_json::private::Number": true}"#)]
+    #[case(r#"{"$serde_json::private::Number": 1.5}"#)]
+    #[case(r#"{"$serde_json::private::Number": []}"#)]
+    #[case(r#"{"$serde_json::private::Number": {"$serde_json::private::Number": "1.5"}}"#)]
+    fn test_deserialize_decimal_rejects_invalid_number_maps(#[case] value: &str) {
+        let json = format!(r#"{{"value": {value}}}"#);
+        assert!(serde_json::from_str::<TestDecimalOnly>(&json).is_err());
+        assert!(serde_json::from_str::<TestOptionalDecimalOnly>(&json).is_err());
+
+        let json = format!(r#"{{"id": 7, "value": {value}, "optional_value": {value}}}"#);
+        assert!(serde_json::from_str::<TestFlattenedDecimal>(&json).is_err());
+    }
+
+    #[derive(Debug, Deserialize)]
+    struct TestFlattenedDecimal {
+        id: u64,
+        #[serde(flatten)]
+        decimals: TestFlexibleDecimal,
+    }
+
+    #[rstest]
+    #[case("123.456", dec!(123.456), Some(dec!(123.456)))]
+    #[case("-1.5e-8", dec!(-0.000000015), Some(dec!(-0.000000015)))]
+    #[case("42", dec!(42), Some(dec!(42)))]
+    #[case(r#""123.456""#, dec!(123.456), Some(dec!(123.456)))]
+    #[case("null", Decimal::ZERO, None)]
+    #[case(r#""""#, Decimal::ZERO, None)]
+    #[case(r#"{"$serde_json::private::Number": "123456789.123456789012345678"}"#,
+        dec!(123456789.123456789012345678), Some(dec!(123456789.123456789012345678)))]
+    fn test_deserialize_decimal_flattened_metadata(
+        #[case] number: &str,
+        #[case] expected: Decimal,
+        #[case] expected_optional: Option<Decimal>,
+    ) {
+        let json = format!(r#"{{"id": 7, "value": {number}, "optional_value": {number}}}"#);
+        let direct: TestFlexibleDecimal = serde_json::from_str(&json).unwrap();
+        let flattened: TestFlattenedDecimal = serde_json::from_slice(json.as_bytes()).unwrap();
+        let buffered: TestFlattenedDecimal =
+            serde_json::from_value(serde_json::from_str(&json).unwrap()).unwrap();
+        assert_eq!(direct.value, expected);
+        assert_eq!(direct.optional_value, expected_optional);
+        assert_eq!(flattened.id, 7);
+        assert_eq!(flattened.decimals, direct);
+        assert_eq!(buffered.id, 7);
+        assert_eq!(buffered.decimals, direct);
+    }
+
+    #[rstest]
+    #[case("0.1000000000000000000000000001", dec!(0.1000000000000000000000000001), dec!(0.1))]
+    #[case("1.0000000000000000000000000001", dec!(1.0000000000000000000000000001), dec!(1))]
+    fn test_deserialize_decimal_numeric_precision(
+        #[case] number: &str,
+        #[case] exact: Decimal,
+        #[case] float: Decimal,
+    ) {
+        // Dependency feature unification is observable through lexical preservation
+        let preserves_number_text = serde_json::from_str::<serde_json::Number>("1.00")
+            .unwrap()
+            .to_string()
+            == "1.00";
+        let expected = if preserves_number_text { exact } else { float };
+        let json = format!(r#"{{"id": 7, "value": {number}, "optional_value": {number}}}"#);
+        let parsed: TestFlattenedDecimal = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.decimals.value, expected);
+        assert_eq!(parsed.decimals.optional_value, Some(expected));
     }
 
     #[rstest]
