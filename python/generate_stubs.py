@@ -130,6 +130,7 @@ class ClassMethodFixup:
     injected_staticmethods: dict[str, str] = field(default_factory=dict)
     injected_classmethods: dict[str, str] = field(default_factory=dict)
     signature_defaults: dict[str, dict[str, str]] = field(default_factory=dict)
+    signature_parameters: dict[str, tuple[str, ...]] = field(default_factory=dict)
 
 
 # Classes to relocate from _libnautilus to their target modules
@@ -688,14 +689,17 @@ def _resolve_signature_params(
     """
     Parse a pyo3 signature string and translate defaults to Python.
 
-    The ``*`` separator is dropped because pyo3-stub-gen does not emit it in stubs.
+    Retain the keyword-only boundary so required keywords cannot suppress positional defaults.
 
     """
     params: list[tuple[str, str | None]] = []
 
     for raw_param in _split_signature_params(params_str):
         param = raw_param.strip()
-        if not param or param.startswith("*"):
+        if not param or param == "/" or param.startswith("**"):
+            continue
+        if param.startswith("*"):
+            params.append(("*", None))
             continue
         if "=" not in param:
             params.append((param, None))
@@ -711,14 +715,24 @@ def _filter_safe_defaults(
     params: list[tuple[str, str | None]],
 ) -> dict[str, str] | None:
     """
-    Suppress defaults that would precede a required parameter, walking right-to-left.
+    Suppress defaults preceding required positional parameters, preserving keyword defaults.
 
     A required parameter is one with no translatable default.
 
     """
     safe: dict[str, str] = {}
+    positional = []
+    keyword_only = False
+    for name, py_default in params:
+        if name == "*":
+            keyword_only = True
+        elif keyword_only:
+            if py_default is not None:
+                safe[name] = py_default
+        else:
+            positional.append((name, py_default))
     saw_required = False
-    for name, py_default in reversed(params):
+    for name, py_default in reversed(positional):
         if py_default is not None and not saw_required:
             safe[name] = py_default
         elif py_default is None:
@@ -1937,6 +1951,17 @@ def _extract_method_signature_defaults(
     Extract parameter defaults from the first ``#[pyo3(signature)]`` attribute.
     """
     for attr in attrs:
+        signature = PYO3_SIGNATURE_RE.search(attr)
+        if signature is not None:
+            parameters = tuple(
+                param.strip().partition("=")[0].strip()
+                for param in _split_signature_params(
+                    _extract_signature_params_str(attr, signature.end() - 1)
+                )
+                if param.strip()
+            )
+            if any(param.startswith("*") or param == "/" for param in parameters):
+                fixup.signature_parameters[python_name] = parameters
         sig_defaults = _extract_pyo3_signature_defaults(attr)
         if sig_defaults:
             fixup.signature_defaults[python_name] = sig_defaults
@@ -2948,8 +2973,9 @@ def apply_signature_defaults(
     class_fixups: dict[str, ClassMethodFixup],
 ) -> str:
     """
-    Replace ``= ...`` placeholders and add missing ``#[pyo3(signature)]`` defaults.
+    Restore parameter kinds and defaults from ``#[pyo3(signature)]`` metadata.
     """
+    content = apply_signature_parameters(content, class_fixups)
     all_defaults = _build_defaults_lookup(class_fixups)
     if not all_defaults:
         return content
@@ -2996,6 +3022,82 @@ def apply_signature_defaults(
             result.append(line)
 
     return "\n".join(result)
+
+
+def apply_signature_parameters(
+    content: str,
+    class_fixups: dict[str, ClassMethodFixup],
+) -> str:
+    """Restore separators and variadic parameters while preserving generated type annotations."""
+    signatures = {
+        (class_name, method): parameters
+        for rust_name, fixup in class_fixups.items()
+        for class_name in {rust_name, fixup.python_name or rust_name}
+        for method, parameters in fixup.signature_parameters.items()
+    }
+    lines = content.split("\n")
+    result = []
+    current_class = None
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if class_match := STUB_CLASS_RE.match(line.strip()):
+            current_class = class_match.group(1)
+        elif line.strip() and not line.startswith((" ", "\t")):
+            current_class = None
+        method = STUB_DEF_RE.match(line)
+        parameters = signatures.get((current_class, method.group(1))) if method else None
+        if parameters is None:
+            result.append(line)
+            index += 1
+            continue
+        signature_lines, index = consume_stub_signature(lines, index)
+        result.append(_restore_signature_parameters("\n".join(signature_lines), parameters))
+    return "\n".join(result)
+
+
+def _restore_signature_parameters(signature: str, parameters: tuple[str, ...]) -> str:
+    """Fail on missing parameters rather than inventing annotations or dropping source inputs."""
+    opening = signature.index("(")
+    arguments = _extract_signature_params_str(signature, opening)
+    closing = opening + len(arguments) + 1
+    declarations = {}
+    receiver = []
+    for raw in _split_signature_params(arguments):
+        declaration = raw.strip()
+        if not declaration or declaration in {"*", "/"}:
+            continue
+        name = declaration.partition(":")[0].lstrip("*").strip()
+        if name in {"self", "cls"}:
+            receiver.append(declaration)
+        else:
+            if name in declarations:
+                raise ValueError(f"Duplicate generated signature parameter {name}")
+            declarations[name] = declaration
+    source_names = {name.lstrip("*") for name in parameters if name not in {"*", "/"}}
+    if source_names != declarations.keys():
+        raise ValueError(f"Generated signature parameters disagree with PyO3 metadata: {signature}")
+    generated_parameters = tuple(
+        raw.strip().partition(":")[0].strip()
+        for raw in _split_signature_params(arguments)
+        if raw.strip() and raw.strip() not in receiver
+    )
+    if generated_parameters == parameters and not any(
+        raw.strip().startswith("*") and "=" in raw for raw in _split_signature_params(arguments)
+    ):
+        return signature
+    restored = receiver.copy()
+    for name in parameters:
+        if name in {"*", "/"}:
+            restored.append(name)
+        elif name.startswith("*"):
+            declaration = declarations[name.lstrip("*")].lstrip("*")
+            declaration = declaration.partition("=")[0].rstrip()
+            prefix = "**" if name.startswith("**") else "*"
+            restored.append(prefix + declaration)
+        else:
+            restored.append(declarations[name])
+    return signature[: opening + 1] + ", ".join(restored) + signature[closing:]
 
 
 def _build_defaults_lookup(

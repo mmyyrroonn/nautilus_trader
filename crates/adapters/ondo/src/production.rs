@@ -92,6 +92,28 @@ pub struct OndoExecutionEnvelopeConfig {
     pub require_flat_start: bool,
 }
 
+#[cfg(feature = "python")]
+nautilus_core::impl_pyo3_config_getters!(OndoExecutionEnvelopeConfig {
+    instrument_id: InstrumentId,
+    entry_side: String,
+    entry_max_quantity: Decimal,
+    entry_worst_price: Decimal,
+    entry_max_notional_usd: Decimal,
+    close_side: String,
+    close_max_quantity: Decimal,
+    close_worst_price: Decimal,
+    max_close_attempts: u32,
+    max_notional_per_order_usd: Decimal,
+    max_gross_exposure_usd: Decimal,
+    min_available_margin_usdc: Decimal,
+    max_orders: u32,
+    max_new_risk_requests: u32,
+    max_app_requests: u32,
+    entry_deadline_unix_nanos: u64,
+    cleanup_deadline_unix_nanos: u64,
+    require_flat_start: bool,
+});
+
 fn deserialize_exact_decimal<'de, D: serde::Deserializer<'de>>(
     deserializer: D,
 ) -> Result<Decimal, D::Error> {

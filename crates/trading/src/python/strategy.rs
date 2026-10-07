@@ -144,6 +144,7 @@ impl StrategyConfig {
         log_events: bool,
         log_commands: bool,
         log_rejected_due_post_only_as_warning: bool,
+        #[gen_stub(override_type(type_repr = "typing.Any", imports = ("typing",))) ]
         _kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Self> {
         let config = Self {

@@ -21,6 +21,7 @@ use pyo3::{prelude::*, pymethods};
 use crate::{
     common::enums::OndoEnvironment,
     config::{OndoDataClientConfig, OndoExecutionClientConfig},
+    production::OndoExecutionEnvelopeConfig,
 };
 
 #[pymethods]
@@ -185,7 +186,7 @@ impl OndoExecutionClientConfig {
         reconcile_interval_secs: Option<u64>,
         journal_path: Option<String>,
         allow_production_orders: Option<bool>,
-        execution_envelope: Option<crate::production::OndoExecutionEnvelopeConfig>,
+        execution_envelope: Option<OndoExecutionEnvelopeConfig>,
     ) -> Self {
         let defaults = Self::default();
 

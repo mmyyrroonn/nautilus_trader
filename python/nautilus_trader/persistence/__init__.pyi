@@ -171,7 +171,7 @@ class ParquetDataCatalog:
         end: int | None = None,
     ) -> list[typing.Any]: ...
     def extend_file_name(
-        self, data_cls: str, instrument_id: str | None, start: int, end: int
+        self, data_cls: str, instrument_id: str | None = None, *, start: int, end: int
     ) -> None: ...
     def consolidate_catalog(
         self,

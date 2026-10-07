@@ -36,7 +36,7 @@ use crate::common::{
 /// Aster's Futures API is Binance-USD-M compatible, so this configuration is translated
 /// into a [`BinanceDataClientConfig`] pinned to `UsdM`, Aster's endpoints, and the `ASTER`
 /// venue. Execution is not supported.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 #[cfg_attr(
     feature = "python",
@@ -81,9 +81,29 @@ nautilus_core::impl_pyo3_config_getters!(AsterDataClientConfig {
     instrument_provider: BinanceInstrumentProviderConfig,
     instrument_refresh_interval_secs: u64,
     instrument_status_poll_secs: u64,
-    proxy_url: Option<String>,
     venue: Option<Venue>,
 });
+
+impl std::fmt::Debug for AsterDataClientConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct(stringify!(AsterDataClientConfig))
+            .field("environment", &self.environment)
+            .field("base_url_http", &self.base_url_http)
+            .field("base_url_ws", &self.base_url_ws)
+            .field("instrument_provider", &self.instrument_provider)
+            .field(
+                "instrument_refresh_interval_secs",
+                &self.instrument_refresh_interval_secs,
+            )
+            .field(
+                "instrument_status_poll_secs",
+                &self.instrument_status_poll_secs,
+            )
+            .field("proxy_url", &self.proxy_url.as_ref().map(|_| REDACTED))
+            .field("venue", &self.venue)
+            .finish()
+    }
+}
 
 impl Default for AsterDataClientConfig {
     fn default() -> Self {
@@ -260,7 +280,7 @@ impl std::fmt::Debug for AsterExecutionClientConfig {
             .field("http_timeout_secs", &self.http_timeout_secs)
             .field("ws_heartbeat_secs", &self.ws_heartbeat_secs)
             .field("ws_connect_timeout_secs", &self.ws_connect_timeout_secs)
-            .field("proxy_url", &self.proxy_url)
+            .field("proxy_url", &self.proxy_url.as_ref().map(|_| REDACTED))
             .field("treat_expired_as_canceled", &self.treat_expired_as_canceled)
             .field(
                 "assume_one_way_mode_when_unconfirmed",
@@ -283,7 +303,6 @@ nautilus_core::impl_pyo3_config_getters!(AsterExecutionClientConfig {
     http_timeout_secs: Option<u64>,
     ws_heartbeat_secs: Option<u64>,
     ws_connect_timeout_secs: Option<u64>,
-    proxy_url: Option<String>,
     treat_expired_as_canceled: bool,
     assume_one_way_mode_when_unconfirmed: bool,
     venue: Option<Venue>,
@@ -370,6 +389,27 @@ mod tests {
     use crate::common::consts::{
         ASTER_HTTP_URL, ASTER_TESTNET_HTTP_URL, ASTER_TESTNET_WS_URL, ASTER_WS_URL,
     };
+
+    #[rstest]
+    fn test_config_debug_redacts_authenticated_proxy_urls() {
+        let proxy = "http://synthetic-user:synthetic-password@127.0.0.1:8888";
+        let data = AsterDataClientConfig {
+            proxy_url: Some(proxy.to_string()),
+            ..Default::default()
+        };
+        let execution = AsterExecutionClientConfig {
+            proxy_url: Some(proxy.to_string()),
+            signer_private_key: Some("synthetic-signing-key".to_string()),
+            ..Default::default()
+        };
+        for debug in [format!("{data:?}"), format!("{execution:?}")] {
+            assert!(debug.contains(REDACTED));
+            assert!(!debug.contains("synthetic-user"));
+            assert!(!debug.contains("synthetic-password"));
+            assert!(!debug.contains("synthetic-signing-key"));
+        }
+        assert_eq!(data.to_binance().proxy_url.as_deref(), Some(proxy));
+    }
 
     #[rstest]
     fn test_to_binance_defaults_to_mainnet_usdm_on_aster_venue() {
