@@ -176,10 +176,26 @@ pub struct FundingHistoryParams {
     pub end_time: Option<u64>,
 }
 
+/// Explicit account-bound user asset request parameters.
+#[derive(Debug, Clone, Serialize)]
+pub struct UserCoinParams {
+    pub user: String,
+    pub coin: String,
+}
+
+/// Order status query preserving the originally owned CLOID.
+#[derive(Debug, Clone, Serialize)]
+pub struct OrderStatusCloidParams {
+    pub user: String,
+    pub oid: String,
+}
+
 /// Info request parameters.
 #[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 pub enum InfoRequestParams {
+    UserCoin(UserCoinParams),
+    OrderStatusCloid(OrderStatusCloidParams),
     PerpDex(PerpDexParams),
     L2Book(L2BookParams),
     RecentTrades(RecentTradesParams),
@@ -203,6 +219,25 @@ pub struct InfoRequest {
 }
 
 impl InfoRequest {
+    pub(crate) fn active_asset_data(user: &str, coin: &str) -> Self {
+        Self {
+            request_type: HyperliquidInfoRequestType::ActiveAssetData,
+            params: InfoRequestParams::UserCoin(UserCoinParams {
+                user: user.into(),
+                coin: coin.into(),
+            }),
+        }
+    }
+    pub(crate) fn order_status_cloid(user: &str, cloid: &str) -> Self {
+        Self {
+            request_type: HyperliquidInfoRequestType::OrderStatus,
+            params: InfoRequestParams::OrderStatusCloid(OrderStatusCloidParams {
+                user: user.into(),
+                oid: cloid.into(),
+            }),
+        }
+    }
+
     pub(crate) fn account_mode(user: &str, request_type: HyperliquidInfoRequestType) -> Self {
         Self {
             request_type,

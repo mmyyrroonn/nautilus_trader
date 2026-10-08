@@ -77,6 +77,9 @@ const USER: &str = "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d";
 const KEY: &str = "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef";
 const USDC_ID: &str = "0x6d1e7cde53ba9467b783cb7c530ce054";
 
+#[path = "entropy_account/execution.rs"]
+mod execution;
+
 #[derive(Clone, Debug)]
 enum PeerInstruction {
     Close,
@@ -102,6 +105,7 @@ struct PeerData {
     acknowledge: bool,
     requests: Vec<Value>,
     subscriptions: Vec<Value>,
+    execution: Option<execution::PeerExecution>,
 }
 
 #[derive(Clone)]
@@ -138,6 +142,7 @@ impl PeerState {
                 acknowledge: true,
                 requests: Vec::new(),
                 subscriptions: Vec::new(),
+                execution: None,
             })),
             instructions,
             connections: Arc::new(AtomicUsize::new(0)),
@@ -273,8 +278,16 @@ async fn info(State(state): State<PeerState>, Json(request): Json<Value>) -> Res
         }
         "spotClearinghouseState" => state.data.lock().spot.clone(),
         "userFees" => json!({"userCrossRate":"0.00045", "userAddRate":"0.00015"}),
-        "userFills" | "historicalOrders" | "openOrders" | "frontendOpenOrders" => json!([]),
-        _ => return (axum::http::StatusCode::BAD_REQUEST, "unexpected info type").into_response(),
+        "userFills" | "historicalOrders" | "openOrders" | "frontendOpenOrders" => {
+            execution::info_response(&state, &request).unwrap_or_else(|| json!([]))
+        }
+        _ => match execution::info_response(&state, &request) {
+            Some(response) => response,
+            None => {
+                return (axum::http::StatusCode::BAD_REQUEST, "unexpected info type")
+                    .into_response();
+            }
+        },
     };
     Json(response).into_response()
 }
@@ -305,7 +318,15 @@ async fn stream(mut socket: WebSocket, state: PeerState) {
     let _active = ActiveSocket(state.active.clone());
     let mut instructions = state.instructions.subscribe();
     let mut subscribed = false;
-    let mut interval = tokio::time::interval(Duration::from_millis(60));
+    // Execution workflows explicitly publish each changed private fact and pace
+    // heavy REST verification under the real limiter. Keep the original account
+    // fixtures' 60ms stream, with a slower heartbeat for these finite workflows.
+    let heartbeat = if state.data.lock().execution.is_some() {
+        Duration::from_secs(5)
+    } else {
+        Duration::from_millis(60)
+    };
+    let mut interval = tokio::time::interval(heartbeat);
     loop {
         let outgoing = tokio::select! {
             incoming = socket.recv() => {
@@ -317,6 +338,9 @@ async fn stream(mut socket: WebSocket, state: PeerState) {
                             Some("subscribe") => {
                                 let subscription = value["subscription"].clone();
                                 subscribed |= subscription["type"] == "clearinghouseState";
+                                if subscription["type"] == "clearinghouseState" {
+                                    interval.reset_immediately();
+                                }
                                 state.data.lock().subscriptions.push(subscription.clone());
                                 if state.data.lock().acknowledge {
                                     Some(Message::Text(json!({"channel":"subscriptionResponse", "data":{
@@ -326,7 +350,11 @@ async fn stream(mut socket: WebSocket, state: PeerState) {
                             }
                             Some("ping") => Some(Message::Text(json!({"channel":"pong"}).to_string().into())),
                             Some("unsubscribe") => None,
-                            Some("post") => { state.writes.fetch_add(1, Ordering::SeqCst); None }
+                            Some("post") => {
+                                state.writes.fetch_add(1, Ordering::SeqCst);
+                                execution::post_response(&state, &value)
+                                    .map(|reply| Message::Text(reply.to_string().into()))
+                            }
                             _ => None,
                         }
                     }

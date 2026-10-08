@@ -56,6 +56,7 @@ pub mod config;
 pub mod data;
 pub mod data_types;
 pub mod execution;
+mod execution_scope;
 pub mod factories;
 pub mod http;
 pub mod outcome_settlement;

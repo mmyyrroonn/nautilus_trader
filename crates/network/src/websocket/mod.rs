@@ -73,6 +73,7 @@ pub mod auth;
 pub mod client;
 pub mod config;
 pub mod consts;
+pub mod prepared;
 pub mod proxy;
 pub mod subscription;
 pub mod types;
@@ -84,6 +85,10 @@ pub use client::{
 };
 pub use config::{InitialConnectRetryPolicy, TransportBackend, WebSocketConfig};
 pub use consts::{AUTHENTICATION_TIMEOUT_SECS, TEXT_PING, TEXT_PONG};
+pub use prepared::{
+    MessageWriter, PreparedWriteAdmission, PreparedWriteContinuation, PreparedWriteControl,
+    PreparedWriteOutcome,
+};
 pub use subscription::{SubscriptionSnapshot, SubscriptionState, split_topic};
 pub use types::{
     EpochMessageHandler, EpochPingHandler, MessageHandler, MessageReader, PingHandler,

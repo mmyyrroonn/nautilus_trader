@@ -1328,6 +1328,10 @@ impl HyperliquidHttpClient {
         }
     }
 
+    pub(crate) fn io_cached_instrument(&self, coin: &str) -> Option<InstrumentAny> {
+        self.get_or_create_instrument(&Ustr::from(coin), None)
+    }
+
     fn get_or_create_instrument(
         &self,
         coin: &Ustr,

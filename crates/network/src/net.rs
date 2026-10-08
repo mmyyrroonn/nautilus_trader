@@ -156,6 +156,13 @@ mod tests {
 
         assert!(stream.nodelay().unwrap());
         assert!(socket.keepalive().unwrap());
+        // Match socket2's getter availability; the setter and enabled check also run on Windows.
+        #[cfg(not(any(
+            windows,
+            target_os = "haiku",
+            target_os = "openbsd",
+            target_os = "vita"
+        )))]
         assert_eq!(socket.tcp_keepalive_time().unwrap(), KEEPALIVE_TIME);
 
         #[cfg(target_os = "linux")]

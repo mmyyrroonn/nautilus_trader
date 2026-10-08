@@ -1296,11 +1296,11 @@ staleness, and transport replacement revoke trust. Previous facts may remain vis
 explicit fresh `QueryAccount`; reconnecting a socket alone cannot restore it. Observed flat
 positions do not prove there are no pending orders, available funds, or trading permission.
 
-This revision provides a **read-only io account view**. All io submit/modify/cancel/batch
-actions, staged execution, and legacy order/fill/position/mass reconciliation are refused.
-Global order/fill stream reports are not forwarded into the dedicated io account. Bounded
-execution and scoped recovery are tracked in native issue 101; economic receipts are tracked
-in issue 102. The default account view also refuses io order submission without explicit scope.
+The io account view defaults to **read-only**. An explicit `io_execution_policy_json` enables
+the finite execution scope described below. Without that policy, all io execution actions
+are refused. Global order/fill stream reports and legacy unscoped reconciliation cannot
+populate the dedicated io account. The default account view also refuses io submission
+without explicit scope. Economic receipts are tracked in native issue 102.
 
 `HyperliquidExecutionClientFactory.account_scope_snapshot_json()` returns a detached snapshot
 with decimal strings, `trusted`, `flat`, timestamps, epoch, and provenance, or `None` before a
@@ -1310,6 +1310,70 @@ exposes the same snapshot. See the [frozen contract and observation limits](../v
 
 For Rust callers, construct the stateful execution factory with `::new()` or `::default()`;
 the former unit-struct literal and const construction no longer apply. Python construction is unchanged.
+
+### Bounded io execution
+
+`io_execution_policy_json` requires `account_dex="io"` and the verified direct account above.
+The normal execution factory parses this JSON before connecting. Monetary values are exact
+decimal strings. Unknown keys and invalid bounds fail construction. The policy fixes one
+strategy, an explicit io instrument set, an absolute ownership journal path, order/gross
+notional estimates, quantity/price bounds, action and open-order counts, leverage, fee/margin
+buffers, metadata age, and finite action/recovery deadlines. See the
+[contract research](../verification/entropy-execution-contract-20261008.md) for protocol limits.
+
+The supported commands are single `Limit` orders with `Gtc` or `Ioc`, single cancellation
+of a durably owned CLOID, and owned reduce-only `Ioc` close. An IOC uses the caller's exact
+limit cap/floor. Invalid wire precision is rejected before writing; prices are never rounded
+to widen that bound. Lists, brackets, modification, batch/cancel-all, naked market orders,
+external order adoption, and automatic resend remain unsupported in this scope.
+
+New risk requires complete scoped recovery, fresh verified account and metadata facts,
+current isolated user leverage, and conservative funds/reservation checks. The available
+budget uses the minimum of REST and latest complete private-stream `free` and `withdrawable`,
+then subtracts unresolved reservations and the policy margin buffer. Each source retains its
+own exact values and timestamps; non-atomic financial observations need not match. Both exact
+`activeAssetData` capacity arrays are retained; zero capacity blocks new risk without guessing
+their side or currency units. Metadata `maxLeverage` is not the user's current leverage.
+Reduce-only additionally requires actual owned exposure in the correct direction and cannot
+exceed that exposure after other pending closes. A sell floor and the local full-notional
+reserve do not guarantee a maximum fill notional after a favorable market gap.
+
+Ownership and the immutable signed nonce, expiration and payload/frame digests are persisted
+before enqueueing. The shared network writer checks admission after backend readiness,
+immediately around `start_send`, against the connection epoch, receive/applied private-frame
+fence, current proofs, cancellation and absolute deadline. Before this boundary the result
+is `NotWritten`; afterward a flush, ACK or transport failure can only establish a possible
+write. Signed expiration bounds venue validity, while delivery and execution still require
+reconciliation. Queued actions are never replayed on a replacement connection.
+
+Only actual individual fills update native fill events and positions. Filled statuses and
+aggregate ACK quantities cannot invent fills or fees. Raw venue trade identities are compared
+before dispatch, including after terminal order states; conflicts revoke recovery. Exact
+representable negative fee rebates are preserved and `builderFee` is not added a second time.
+Financial values that cannot be represented exactly in native quantity, price or Money remain
+unsupported and block recovery rather than being rounded.
+
+`QueryOrder` resolves the original owned CLOID and `QueryAccount` refreshes the explicit io
+account, metadata and finite recovery. Missing ACKs, `unknownOid`, capped or ambiguous history,
+foreign io activity and insufficient ownership evidence preserve Unknown and its reservations.
+They do not establish rejection or flatness. Recovery queries enabled io even when recent
+activity is empty. Independent REST and WS observations do not form an atomic venue snapshot
+or a guaranteed gap-free historical cursor.
+
+The journal uses a single-writer file lease and synchronized appends, with finite byte/fill
+bounds and strict restart validation. Torn records, conflicting history and a lost journal
+cannot confer ownership. Process restart durability is covered; persistence of a newly created
+directory entry across power loss is not guaranteed. A fresh factory with durable fills or
+active prior intents requires independent native cache/position restoration. This version has
+no verifiable restoration acknowledgement, so such a restart remains incomplete and refuses
+new risk and automatic close. Queries and existing ownership facts remain available.
+
+`HyperliquidExecutionClientFactory.execution_scope_snapshot_json()` returns detached diagnostics
+for the latest created client: exact policy/intent/reservation/fill facts, metadata, account
+and separate latest private funds
+proofs, recovery state, and the native projection recovery barrier. It returns `None` when the
+finite execution scope is disabled. Retain one factory per client. These diagnostics establish
+local observations; offline peers and an installed wheel do not establish live venue acceptance.
 
 ## Liquidation and ADL handling
 

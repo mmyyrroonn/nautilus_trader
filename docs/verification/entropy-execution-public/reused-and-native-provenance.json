@@ -1,0 +1,251 @@
+{
+  "scope": "Read only official protocol and existing native code research, no account queries or exchange actions",
+  "reused_official_sources": [
+    {
+      "file": "exchange.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/exchange-endpoint.md",
+      "capture_start_utc": "2026-10-08T10:00:50.316724+00:00",
+      "capture_end_utc": "2026-10-08T10:00:50.693230+00:00",
+      "bytes": 119366,
+      "sha256": "6df658a502e587db9cd5ae4bbe30c4e7cfde8e8a96cd5b11d6ca1ea39928c687",
+      "raw_absolute_path": "E:\\persarb\\_tmp\\issue100-official-contract-20261008\\exchange.md",
+      "reused_without_download": true
+    },
+    {
+      "file": "info.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint.md",
+      "capture_start_utc": "2026-10-08T10:00:44.634563+00:00",
+      "capture_end_utc": "2026-10-08T10:00:45.011585+00:00",
+      "bytes": 55013,
+      "sha256": "f4228fc7734af5dbf420e5bdf2b25c248a5b5287035ab2d8a645dc14ce64f0bd",
+      "raw_absolute_path": "E:\\persarb\\_tmp\\issue100-official-contract-20261008\\info.md",
+      "reused_without_download": true
+    },
+    {
+      "file": "perpetuals.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/perpetuals.md",
+      "capture_start_utc": "2026-10-08T10:00:44.980582+00:00",
+      "capture_end_utc": "2026-10-08T10:00:45.297383+00:00",
+      "bytes": 32182,
+      "sha256": "1b9d14665c030b68d257a29f365489be3074bb3a0e57a83069966174cbe790ae",
+      "raw_absolute_path": "E:\\persarb\\_tmp\\issue100-official-contract-20261008\\perpetuals.md",
+      "reused_without_download": true
+    },
+    {
+      "file": "spot.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/spot.md",
+      "capture_start_utc": "2026-10-08T10:00:45.011585+00:00",
+      "capture_end_utc": "2026-10-08T10:00:45.396891+00:00",
+      "bytes": 13114,
+      "sha256": "2790494f02e91dea175643bc803d8659406c5aea213c6382e9a2bb8090c9a679",
+      "raw_absolute_path": "E:\\persarb\\_tmp\\issue100-official-contract-20261008\\spot.md",
+      "reused_without_download": true
+    },
+    {
+      "file": "subscriptions.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/subscriptions.md",
+      "capture_start_utc": "2026-10-08T10:00:45.396891+00:00",
+      "capture_end_utc": "2026-10-08T10:00:45.725891+00:00",
+      "bytes": 18564,
+      "sha256": "761f00c20ba21c0396621d6271a1c62405489b5e5400e60088c5fe93befd9a2c",
+      "raw_absolute_path": "E:\\persarb\\_tmp\\issue100-official-contract-20261008\\subscriptions.md",
+      "reused_without_download": true
+    },
+    {
+      "file": "ws.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket.md",
+      "capture_start_utc": "2026-10-08T10:05:31.485706+00:00",
+      "bytes": 1847,
+      "sha256": "de15e7d302cbd2be16c18a659a07f419a4819e837832f3140bf206a8e400a01a",
+      "capture_end_utc": "2026-10-08T10:05:31.836305+00:00",
+      "raw_absolute_path": "E:\\persarb\\_tmp\\issue100-official-contract-20261008\\ws.md",
+      "reused_without_download": true
+    },
+    {
+      "file": "sdk-exchange.py",
+      "url": "https://raw.githubusercontent.com/hyperliquid-dex/hyperliquid-python-sdk/2fdb18f9517675ea03695a0962bd19eece9c83f0/hyperliquid/exchange.py",
+      "capture_start_utc": "2026-10-08T10:00:50.742230+00:00",
+      "capture_end_utc": "2026-10-08T10:00:51.233874+00:00",
+      "bytes": 38359,
+      "sha256": "0bd885c5b64fd77893db58d4982b0d24e92b5be5036d0e9d6d05c40a1812d432",
+      "raw_absolute_path": "E:\\persarb\\_tmp\\issue100-official-contract-20261008\\sdk-exchange.py",
+      "reused_without_download": true
+    },
+    {
+      "file": "sdk-info.py",
+      "url": "https://raw.githubusercontent.com/hyperliquid-dex/hyperliquid-python-sdk/2fdb18f9517675ea03695a0962bd19eece9c83f0/hyperliquid/info.py",
+      "capture_start_utc": "2026-10-08T10:00:50.693230+00:00",
+      "capture_end_utc": "2026-10-08T10:00:51.186875+00:00",
+      "bytes": 27783,
+      "sha256": "fc36d225a2b865d474e5682ad4f095d9917e84ef5dba9c80de3d4600467f4882",
+      "raw_absolute_path": "E:\\persarb\\_tmp\\issue100-official-contract-20261008\\sdk-info.py",
+      "reused_without_download": true
+    },
+    {
+      "file": "sdk-websocket_manager.py",
+      "url": "https://raw.githubusercontent.com/hyperliquid-dex/hyperliquid-python-sdk/2fdb18f9517675ea03695a0962bd19eece9c83f0/hyperliquid/websocket_manager.py",
+      "capture_start_utc": "2026-10-08T10:05:31.836305+00:00",
+      "bytes": 7546,
+      "sha256": "1382a63068488932a1b9e4995e3a9807f3bf0e68ac71c7cd022edb3fea126b87",
+      "capture_end_utc": "2026-10-08T10:05:32.293812+00:00",
+      "raw_absolute_path": "E:\\persarb\\_tmp\\issue100-official-contract-20261008\\sdk-websocket_manager.py",
+      "reused_without_download": true
+    },
+    {
+      "file": "sdk-utils-types.py",
+      "url": "https://raw.githubusercontent.com/hyperliquid-dex/hyperliquid-python-sdk/2fdb18f9517675ea03695a0962bd19eece9c83f0/hyperliquid/utils/types.py",
+      "capture_start_utc": "2026-10-08T10:00:51.233874+00:00",
+      "capture_end_utc": "2026-10-08T10:00:51.686385+00:00",
+      "bytes": 7944,
+      "sha256": "5161dfcfc5ea39f1540d4e68ffd79520b9f5ab7aff9ce88a8440d6e6dabb88ba",
+      "raw_absolute_path": "E:\\persarb\\_tmp\\issue100-official-contract-20261008\\sdk-utils-types.py",
+      "reused_without_download": true
+    }
+  ],
+  "new_official_sources": [
+    {
+      "file": "tick-and-lot-size.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/tick-and-lot-size.md",
+      "capture_start_utc": "2026-10-08T10:32:54.982527+00:00",
+      "bytes": 1561,
+      "sha256": "1114a12bc134c7d0e004002e67a3103bb7835f13ec34329d5409c1f895830a10",
+      "capture_end_utc": "2026-10-08T10:32:55.374407+00:00"
+    },
+    {
+      "file": "error-responses.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/error-responses.md",
+      "capture_start_utc": "2026-10-08T10:32:54.982527+00:00",
+      "bytes": 4080,
+      "sha256": "f094b0d8eb40cee3c0ef8d22fbb60032e82382bd7d641bd2d144186af6d92595",
+      "capture_end_utc": "2026-10-08T10:32:55.365406+00:00"
+    },
+    {
+      "file": "margining.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/margining.md",
+      "capture_start_utc": "2026-10-08T10:32:55.365406+00:00",
+      "bytes": 3823,
+      "sha256": "95891a47102caca3171f406873178efc0d456ecda5636ed89fd5dc797f6c90a7",
+      "capture_end_utc": "2026-10-08T10:32:55.694915+00:00"
+    },
+    {
+      "file": "ws-post-requests.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/post-requests.md",
+      "capture_start_utc": "2026-10-08T10:32:55.374407+00:00",
+      "bytes": 3305,
+      "sha256": "b31f1375f60368e3ea9200a83467bb179cb44384b1abfe3d460a04bad533876a",
+      "capture_end_utc": "2026-10-08T10:32:55.717915+00:00"
+    },
+    {
+      "file": "asset-ids.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/asset-ids.md",
+      "capture_start_utc": "2026-10-08T10:32:55.694915+00:00",
+      "bytes": 2265,
+      "sha256": "eec6b95ef1bf184fef4e29effb3f23e6297757c899aa77110d108686011ae0ae",
+      "capture_end_utc": "2026-10-08T10:32:56.034916+00:00"
+    },
+    {
+      "file": "sdk-signing.py",
+      "url": "https://raw.githubusercontent.com/hyperliquid-dex/hyperliquid-python-sdk/2fdb18f9517675ea03695a0962bd19eece9c83f0/hyperliquid/utils/signing.py",
+      "capture_start_utc": "2026-10-08T10:32:55.871915+00:00",
+      "bytes": 16099,
+      "sha256": "938ec0a1f9611874b423ca946696e19a71d32d14709f521ea5d526f4398c0b85",
+      "capture_end_utc": "2026-10-08T10:32:56.327979+00:00"
+    },
+    {
+      "file": "order-types.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/order-types.md",
+      "capture_start_utc": "2026-10-08T10:34:52.498851+00:00",
+      "bytes": 4926,
+      "sha256": "9153f790a0d45f6de7334bad6c98f880241577c4168b66d661d6204dafae3512",
+      "capture_end_utc": "2026-10-08T10:34:52.844539+00:00"
+    }
+  ],
+  "native_head": "5dca5481db9d602ec4f250696830e7173f00dd31",
+  "native_source_hashes": [
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-account\\crates\\adapters\\hyperliquid\\src\\http\\models.rs",
+      "source_kind": "Native working tree read; concurrent uncommitted issue 100 changes may be present",
+      "observed_utc": "2026-10-08T10:38:27.696468+00:00",
+      "bytes": 77951,
+      "sha256": "6544f60cf2c5333aa66494115e84c5644dc9e1b4ff2450e4e4f5e6cfee04e983"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-account\\crates\\adapters\\hyperliquid\\src\\http\\parse.rs",
+      "source_kind": "Native working tree read; concurrent uncommitted issue 100 changes may be present",
+      "observed_utc": "2026-10-08T10:38:27.696468+00:00",
+      "bytes": 92561,
+      "sha256": "9263defe10cb2a2ac5eab7d6689097bc24992ffb067dacbddc14208e4b5af1ee"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-account\\crates\\adapters\\hyperliquid\\src\\http\\client.rs",
+      "source_kind": "Native working tree read; concurrent uncommitted issue 100 changes may be present",
+      "observed_utc": "2026-10-08T10:38:27.696468+00:00",
+      "bytes": 171957,
+      "sha256": "4bfc6ed780dc03833bdd47a8f1fd284801f6e463cc997d816b9b5e90033dc956"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-account\\crates\\adapters\\hyperliquid\\src\\http\\error.rs",
+      "source_kind": "Native working tree read; concurrent uncommitted issue 100 changes may be present",
+      "observed_utc": "2026-10-08T10:38:27.696468+00:00",
+      "bytes": 9908,
+      "sha256": "4e58fa39a7c80e37968bfad0ab881abd382ab87b8875544ca948ae37df983b84"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-account\\crates\\adapters\\hyperliquid\\src\\common\\parse.rs",
+      "source_kind": "Native working tree read; concurrent uncommitted issue 100 changes may be present",
+      "observed_utc": "2026-10-08T10:38:27.696468+00:00",
+      "bytes": 89165,
+      "sha256": "f8b5d0372a7ffc3b964dc772584d29a38de3f1e074b35165f0e336af9b622bb2"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-account\\crates\\adapters\\hyperliquid\\src\\common\\types.rs",
+      "source_kind": "Native working tree read; concurrent uncommitted issue 100 changes may be present",
+      "observed_utc": "2026-10-08T10:38:27.696468+00:00",
+      "bytes": 9894,
+      "sha256": "546660586ebb2b52c739700b96a3ebaabefa91ed1f93eb2a571fc9d4857dbd14"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-account\\crates\\adapters\\hyperliquid\\src\\websocket\\parse.rs",
+      "source_kind": "Native working tree read; concurrent uncommitted issue 100 changes may be present",
+      "observed_utc": "2026-10-08T10:38:27.696468+00:00",
+      "bytes": 44870,
+      "sha256": "5cafd67ff18747bf26d04971f726b1c33ed26b5a301fefd56550debae1260c20"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-account\\crates\\adapters\\hyperliquid\\src\\websocket\\dispatch.rs",
+      "source_kind": "Native working tree read; concurrent uncommitted issue 100 changes may be present",
+      "observed_utc": "2026-10-08T10:38:27.696468+00:00",
+      "bytes": 64233,
+      "sha256": "89b935086819c336b7d174210daa0f0c50066ecd8a5f7f39a724a810e0f34ddb"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-account\\crates\\adapters\\hyperliquid\\src\\websocket\\client.rs",
+      "source_kind": "Native working tree read; concurrent uncommitted issue 100 changes may be present",
+      "observed_utc": "2026-10-08T10:38:27.696468+00:00",
+      "bytes": 103483,
+      "sha256": "f46ab48237581517fd942299f66d8fd911287059472fef1705c194e7896d09e8"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-account\\crates\\adapters\\hyperliquid\\src\\websocket\\post.rs",
+      "source_kind": "Native working tree read; concurrent uncommitted issue 100 changes may be present",
+      "observed_utc": "2026-10-08T10:38:27.696468+00:00",
+      "bytes": 34436,
+      "sha256": "a7fcfc762260a8fc7d3fd9068d88cfda5f09ee22f6f469451d54f72fc07406fc"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-account\\crates\\adapters\\hyperliquid\\src\\websocket\\handler.rs",
+      "source_kind": "Native working tree read; concurrent uncommitted issue 100 changes may be present",
+      "observed_utc": "2026-10-08T10:38:27.706468+00:00",
+      "bytes": 82286,
+      "sha256": "e57c25894508b969aca2fb0c571b0d289d4abec90c32124da2dc7da7666eccd1"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-account\\crates\\adapters\\hyperliquid\\src\\execution.rs",
+      "source_kind": "Native working tree read; concurrent uncommitted issue 100 changes may be present",
+      "observed_utc": "2026-10-08T10:38:27.706468+00:00",
+      "bytes": 205873,
+      "sha256": "8f526d2fd96d05a22317863634c3af0d63aafaf15a3fb9202c8cc9eb682a5f06"
+    }
+  ],
+  "notes": "Native source paths are existing worktree files, not archived copies; refresh against issue 101 checkout before implementation"
+}

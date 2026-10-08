@@ -1,0 +1,2851 @@
+// -------------------------------------------------------------------------------------------------
+//  Copyright (C) 2015-2026 Nautech Systems Pty Ltd. All rights reserved.
+//  https://nautechsystems.io
+//
+//  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+//  You may not use this file except in compliance with the License.
+//  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
+// -------------------------------------------------------------------------------------------------
+
+//! Bounded io execution policy, durable ownership, and conservative reservations.
+
+use std::{
+    collections::BTreeMap,
+    fs::{File, OpenOptions},
+    io::{BufRead, BufReader, Seek, Write},
+    path::PathBuf,
+    sync::Arc,
+};
+
+use anyhow::Context;
+use nautilus_core::serialization::{deserialize_decimal_from_str, serialize_decimal_as_str};
+use nautilus_model::{
+    enums::{OrderSide, OrderType, TimeInForce},
+    identifiers::{AccountId, ClientOrderId, InstrumentId, StrategyId},
+    orders::{Order, OrderAny},
+};
+use parking_lot::Mutex;
+use rust_decimal::Decimal;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+
+use crate::{
+    account_scope::{
+        AccountScopeDiagnostics, HyperliquidAccountScopeSnapshot, PrivateFundsWitness, now_ms,
+    },
+    http::{
+        client::HyperliquidHttpClient,
+        models::{
+            Cloid, HyperliquidExchangeAction, HyperliquidExchangeGrouping,
+            HyperliquidExchangeLimitParams, HyperliquidExchangeOrderKind,
+            HyperliquidExchangePlaceOrderRequest, HyperliquidExchangeTif,
+        },
+        query::InfoRequest,
+    },
+};
+
+/// Explicit bounded policy. Decimal inputs must be strings, never binary floats.
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct IoExecutionPolicy {
+    pub schema_version: u32,
+    pub strategy_id: String,
+    pub journal_path: PathBuf,
+    #[serde(
+        deserialize_with = "deserialize_decimal_from_str",
+        serialize_with = "serialize_decimal_as_str"
+    )]
+    pub max_order_notional: Decimal,
+    #[serde(
+        deserialize_with = "deserialize_decimal_from_str",
+        serialize_with = "serialize_decimal_as_str"
+    )]
+    pub max_gross_notional: Decimal,
+    pub max_open_orders: usize,
+    pub max_actions: usize,
+    pub max_leverage: u64,
+    #[serde(
+        deserialize_with = "deserialize_decimal_from_str",
+        serialize_with = "serialize_decimal_as_str"
+    )]
+    pub margin_buffer: Decimal,
+    #[serde(
+        deserialize_with = "deserialize_decimal_from_str",
+        serialize_with = "serialize_decimal_as_str"
+    )]
+    pub fee_buffer_bps: Decimal,
+    pub action_timeout_ms: u64,
+    pub recovery_timeout_ms: u64,
+    pub recovery_max_attempts: u32,
+    pub recovery_retry_delay_ms: u64,
+    pub metadata_max_age_ms: u64,
+    pub symbols: Vec<IoSymbolPolicy>,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct IoSymbolPolicy {
+    pub instrument_id: String,
+    #[serde(
+        deserialize_with = "deserialize_decimal_from_str",
+        serialize_with = "serialize_decimal_as_str"
+    )]
+    pub max_quantity: Decimal,
+    #[serde(
+        deserialize_with = "deserialize_decimal_from_str",
+        serialize_with = "serialize_decimal_as_str"
+    )]
+    pub min_price: Decimal,
+    #[serde(
+        deserialize_with = "deserialize_decimal_from_str",
+        serialize_with = "serialize_decimal_as_str"
+    )]
+    pub max_price: Decimal,
+}
+
+impl IoExecutionPolicy {
+    pub(crate) fn parse(raw: &str) -> anyhow::Result<Self> {
+        let policy: Self = serde_json::from_str(raw).context("Invalid io execution policy")?;
+        anyhow::ensure!(
+            policy.schema_version == 1 && !policy.strategy_id.trim().is_empty(),
+            "Unsupported io policy schema or strategy"
+        );
+        anyhow::ensure!(
+            policy.journal_path.is_absolute()
+                && policy
+                    .journal_path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| !name.to_ascii_lowercase().starts_with(".env")),
+            "io journal requires an explicit absolute non-secret file path"
+        );
+        anyhow::ensure!(
+            policy.max_order_notional > Decimal::ZERO
+                && policy.max_gross_notional >= policy.max_order_notional
+                && policy.margin_buffer >= Decimal::ZERO
+                && policy.fee_buffer_bps >= Decimal::ZERO
+                && policy.fee_buffer_bps <= Decimal::from(10000),
+            "Invalid io monetary bounds"
+        );
+        anyhow::ensure!(
+            (1..=64).contains(&policy.max_open_orders)
+                && (1..=1024).contains(&policy.max_actions)
+                && (1..=50).contains(&policy.max_leverage),
+            "Invalid io count/leverage bounds"
+        );
+        for duration in [
+            policy.action_timeout_ms,
+            policy.recovery_timeout_ms,
+            policy.metadata_max_age_ms,
+        ] {
+            anyhow::ensure!(
+                (1..=30000).contains(&duration),
+                "io deadlines must be 1..=30000ms"
+            );
+        }
+        anyhow::ensure!(
+            (1..=10).contains(&policy.recovery_max_attempts)
+                && (1..=1000).contains(&policy.recovery_retry_delay_ms),
+            "Invalid bounded recovery policy"
+        );
+        let mut symbols = BTreeMap::new();
+        for symbol in &policy.symbols {
+            let coin = coin_from_instrument(&symbol.instrument_id)?;
+            anyhow::ensure!(
+                symbols.insert(coin, ()).is_none()
+                    && symbol.max_quantity > Decimal::ZERO
+                    && symbol.min_price > Decimal::ZERO
+                    && symbol.max_price >= symbol.min_price,
+                "Invalid or duplicate io symbol policy"
+            );
+        }
+        anyhow::ensure!(
+            !symbols.is_empty() && symbols.len() <= 32,
+            "io policy requires a finite explicit symbol set"
+        );
+        Ok(policy)
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct IoInstrumentProof {
+    pub instrument_id: String,
+    pub coin: String,
+    pub asset: u32,
+    pub dex_index: usize,
+    pub universe_index: usize,
+    pub size_decimals: u32,
+    pub margin_mode: String,
+    pub actual_leverage: u64,
+    pub received_ms: u64,
+    pub verification_started_ms: u64,
+    pub user_asset_source_time_ms: Option<u64>,
+    #[serde(serialize_with = "serialize_decimal_pair")]
+    pub max_trade_sizes: [Decimal; 2],
+    #[serde(serialize_with = "serialize_decimal_pair")]
+    pub available_to_trade: [Decimal; 2],
+    #[serde(serialize_with = "serialize_decimal_as_str")]
+    pub mark_price: Decimal,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum IoIntentPhase {
+    Prepared,
+    Unknown,
+    Open,
+    TerminalPending,
+    Terminal,
+    NotWritten,
+    Rejected,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct IoOwnedIntent {
+    pub client_order_id: String,
+    pub instrument_id: String,
+    pub coin: String,
+    pub cloid: String,
+    pub oid: Option<u64>,
+    pub is_buy: bool,
+    pub reduce_only: bool,
+    pub tif: String,
+    #[serde(
+        deserialize_with = "deserialize_decimal_from_str",
+        serialize_with = "serialize_decimal_as_str"
+    )]
+    pub quantity: Decimal,
+    #[serde(
+        deserialize_with = "deserialize_decimal_from_str",
+        serialize_with = "serialize_decimal_as_str"
+    )]
+    pub price: Decimal,
+    #[serde(
+        deserialize_with = "deserialize_decimal_from_str",
+        serialize_with = "serialize_decimal_as_str"
+    )]
+    pub filled: Decimal,
+    #[serde(
+        deserialize_with = "deserialize_decimal_from_str",
+        serialize_with = "serialize_decimal_as_str"
+    )]
+    pub reservation: Decimal,
+    pub phase: IoIntentPhase,
+    pub created_ms: u64,
+    pub terminal_time_ms: Option<u64>,
+    pub cancel_pending: bool,
+    pub cancel_action_token: Option<usize>,
+    pub signed_binding: Option<IoSignedBindingFacts>,
+    pub diagnostic: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct IoSignedBindingFacts {
+    pub action_token: usize,
+    pub post_id: u64,
+    pub epoch: u64,
+    pub connection_generation: u64,
+    pub nonce: u64,
+    pub expires_after: u64,
+    pub signed_at_ms: u64,
+    pub action_digest: String,
+    pub signed_payload_digest: String,
+    pub frame_digest: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct IoFillFacts {
+    pub coin: String,
+    pub oid: u64,
+    pub tid: u64,
+    pub time: u64,
+    pub is_buy: bool,
+    #[serde(
+        deserialize_with = "deserialize_decimal_from_str",
+        serialize_with = "serialize_decimal_as_str"
+    )]
+    pub quantity: Decimal,
+    #[serde(
+        deserialize_with = "deserialize_decimal_from_str",
+        serialize_with = "serialize_decimal_as_str"
+    )]
+    pub price: Decimal,
+    #[serde(
+        deserialize_with = "deserialize_decimal_from_str",
+        serialize_with = "serialize_decimal_as_str"
+    )]
+    pub fee: Decimal,
+    pub fee_token: String,
+    #[serde(
+        deserialize_with = "deserialize_decimal_from_str",
+        serialize_with = "serialize_decimal_as_str"
+    )]
+    pub start_position: Decimal,
+    #[serde(
+        deserialize_with = "deserialize_decimal_from_str",
+        serialize_with = "serialize_decimal_as_str"
+    )]
+    pub closed_pnl: Decimal,
+    pub hash: String,
+    pub builder_fee: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct JournalFacts {
+    schema_version: u32,
+    address: String,
+    account_id: String,
+    strategy_id: String,
+    actions: usize,
+    intents: BTreeMap<String, IoOwnedIntent>,
+    fills: BTreeMap<String, IoFillFacts>,
+}
+
+#[derive(Debug)]
+pub(crate) struct IoExecutionState {
+    facts: JournalFacts,
+    metadata: BTreeMap<String, IoInstrumentProof>,
+    revision: u64,
+    recovery_complete: bool,
+    recovered_epoch: Option<u64>,
+    diagnostic: String,
+    journal: File,
+    journal_tainted: bool,
+    native_projection_recovery_required: bool,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct IoExecutionRuntime {
+    pub(crate) policy: Arc<IoExecutionPolicy>,
+    pub(crate) state: Arc<Mutex<IoExecutionState>>,
+    pub(crate) account: AccountScopeDiagnostics,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct IoExecutionDiagnostics {
+    policy: Arc<IoExecutionPolicy>,
+    state: std::sync::Weak<Mutex<IoExecutionState>>,
+    account: AccountScopeDiagnostics,
+}
+impl IoExecutionDiagnostics {
+    pub(crate) fn snapshot_json(&self) -> anyhow::Result<Option<String>> {
+        let Some(state) = self.state.upgrade() else {
+            return Ok(None);
+        };
+        IoExecutionRuntime {
+            policy: self.policy.clone(),
+            state,
+            account: self.account.clone(),
+        }
+        .snapshot_json()
+        .map(Some)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct IoPreparedAction {
+    pub runtime: IoExecutionRuntime,
+    pub client_order_id: String,
+    pub action: HyperliquidExchangeAction,
+    pub epoch: u64,
+    pub account_revision: u64,
+    pub execution_revision: u64,
+    pub created_ms: u64,
+    pub is_cancel: bool,
+    pub action_token: usize,
+}
+
+impl IoExecutionRuntime {
+    pub(crate) fn diagnostics(&self) -> IoExecutionDiagnostics {
+        IoExecutionDiagnostics {
+            policy: self.policy.clone(),
+            state: Arc::downgrade(&self.state),
+            account: self.account.clone(),
+        }
+    }
+    pub(crate) fn new(
+        policy: IoExecutionPolicy,
+        account: AccountScopeDiagnostics,
+        address: &str,
+        account_id: AccountId,
+    ) -> anyhow::Result<Self> {
+        let journal = OpenOptions::new()
+            .create(true)
+            .read(true)
+            .append(true)
+            .open(&policy.journal_path)
+            .context("Cannot open durable io intent journal")?;
+        journal.try_lock().map_err(|error| {
+            anyhow::anyhow!("io journal is already owned by another writer: {error}")
+        })?;
+        let mut facts = JournalFacts {
+            schema_version: 1,
+            address: address.to_string(),
+            account_id: account_id.to_string(),
+            strategy_id: policy.strategy_id.clone(),
+            actions: 0,
+            intents: BTreeMap::new(),
+            fills: BTreeMap::new(),
+        };
+        let mut tainted = false;
+        if policy.journal_path.exists() {
+            anyhow::ensure!(
+                policy.journal_path.metadata()?.len() <= 16 * 1024 * 1024,
+                "io journal exceeds finite recovery bound"
+            );
+            let mut replay = journal.try_clone()?;
+            replay.rewind()?;
+            let mut replay = BufReader::new(replay);
+            let mut line = Vec::new();
+            loop {
+                line.clear();
+                if replay.read_until(b'\n', &mut line)? == 0 {
+                    break;
+                }
+                if line.last() != Some(&b'\n') {
+                    tainted = true;
+                }
+                let line = std::str::from_utf8(&line).context("Invalid io journal UTF-8")?;
+                match serde_json::from_str::<JournalFacts>(line) {
+                    Ok(record) => {
+                        anyhow::ensure!(
+                            record.schema_version == 1
+                                && record.address == address
+                                && record.account_id == account_id.to_string()
+                                && record.strategy_id == policy.strategy_id,
+                            "io journal identity conflict"
+                        );
+                        validate_journal(&record, &facts, &policy)?;
+                        facts = record;
+                    }
+                    Err(_) => {
+                        tainted = true;
+                        break;
+                    }
+                }
+            }
+        }
+        anyhow::ensure!(
+            facts.actions <= policy.max_actions
+                && facts.intents.len() <= policy.max_actions
+                && facts.fills.len() <= 10000,
+            "io journal exceeds configured finite ownership bounds"
+        );
+        let native_projection_recovery_required =
+            !facts.fills.is_empty() || facts.intents.values().any(active);
+        for intent in facts.intents.values_mut() {
+            coin_from_instrument(&intent.instrument_id)?;
+            if !matches!(
+                intent.phase,
+                IoIntentPhase::Terminal | IoIntentPhase::NotWritten | IoIntentPhase::Rejected
+            ) {
+                intent.phase = IoIntentPhase::Unknown;
+                intent.diagnostic =
+                    "Restart requires reconciliation of the original CLOID; never resend".into();
+            }
+        }
+        account.ws.install_io_private_ingress()?;
+        Ok(Self {
+            policy: Arc::new(policy),
+            state: Arc::new(Mutex::new(IoExecutionState {
+                facts,
+                metadata: BTreeMap::new(),
+                revision: 0,
+                recovery_complete: false,
+                recovered_epoch: None,
+                diagnostic: "io execution recovery has not completed".into(),
+                journal,
+                journal_tainted: tainted,
+                native_projection_recovery_required,
+            })),
+            account,
+        })
+    }
+
+    pub(crate) fn snapshot_json(&self) -> anyhow::Result<String> {
+        // Match final writer lock order: account proof before execution state.
+        let account_guard = self.account.state.lock();
+        let account = account_guard.snapshot(
+            now_ms(),
+            self.account.ws.is_active(),
+            self.account.ws.connection_epoch(),
+        );
+        let latest_private_funds = account_guard.private_funds_witness();
+        let state = self.state.lock();
+        serde_json::to_string(&json!({"policy":*self.policy,"account":account,"latest_private_funds":latest_private_funds,"metadata":state.metadata,"recovery_complete":state.recovery_complete,"recovered_epoch":state.recovered_epoch,"diagnostic":state.diagnostic,"journal_tainted":state.journal_tainted,"native_projection_recovery_required":state.native_projection_recovery_required,"actions":state.facts.actions,"owned_intents":state.facts.intents,"actual_fills":state.facts.fills,"margin_basis":"conservative full-notional entry estimate using minimum HTTP/private free and withdrawable; isolated total maintenance unknown; non-atomic source observations","user_asset_source_time_ms":null})).map_err(Into::into)
+    }
+
+    pub(crate) fn invalidate(&self, reason: &str) {
+        let mut state = self.state.lock();
+        state.revision = state.revision.wrapping_add(1);
+        state.recovery_complete = false;
+        state.diagnostic = reason.into();
+    }
+
+    pub(crate) fn validate_order(&self, order: &OrderAny) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            order.strategy_id().to_string() == self.policy.strategy_id
+                && self
+                    .policy
+                    .symbols
+                    .iter()
+                    .any(|item| item.instrument_id == order.instrument_id().to_string()),
+            "io strategy/instrument is outside explicit ownership policy"
+        );
+        anyhow::ensure!(
+            order.order_type() == OrderType::Limit
+                && matches!(order.time_in_force(), TimeInForce::Gtc | TimeInForce::Ioc)
+                && !order.is_post_only()
+                && order.parent_order_id().is_none()
+                && order.linked_order_ids().is_none()
+                && order.contingency_type().is_none(),
+            "Only independent bounded io GTC/IOC limit orders are supported"
+        );
+        anyhow::ensure!(
+            !order.is_reduce_only() || order.time_in_force() == TimeInForce::Ioc,
+            "io close requires reduce-only IOC"
+        );
+        Ok(())
+    }
+
+    pub(crate) fn prepare_order(&self, order: &OrderAny) -> anyhow::Result<IoPreparedAction> {
+        self.validate_order(order)?;
+        let proof_guard = self.account.state.lock();
+        let snapshot = proof_guard
+            .snapshot(
+                now_ms(),
+                self.account.ws.is_active(),
+                self.account.ws.connection_epoch(),
+            )
+            .context("No complete io account proof")?;
+        let account_revision = proof_guard.revision();
+        anyhow::ensure!(
+            snapshot.trusted,
+            "io account proof is untrusted: {}",
+            snapshot.diagnostic
+        );
+        let private_funds = proof_guard.private_funds_witness();
+        let available_funds = conservative_funds(&snapshot, private_funds.as_ref())?;
+        let mut state = self.state.lock();
+        let now = now_ms();
+        let id = order.client_order_id().to_string();
+        anyhow::ensure!(
+            !state.facts.intents.contains_key(&id),
+            "An owned io intent already exists; reconcile instead of resubmitting"
+        );
+        let meta = state
+            .metadata
+            .get(&order.instrument_id().to_string())
+            .context("Missing explicit io metadata proof")?
+            .clone();
+        let price = order
+            .price()
+            .context("io limit price is required")?
+            .as_decimal();
+        let quantity = order.quantity().as_decimal();
+        validate_wire(&meta, quantity, price)?;
+        let symbol = self
+            .policy
+            .symbols
+            .iter()
+            .find(|item| item.instrument_id == meta.instrument_id)
+            .context("Missing io symbol policy")?;
+        anyhow::ensure!(
+            quantity <= symbol.max_quantity
+                && price >= symbol.min_price
+                && price <= symbol.max_price,
+            "io quantity/price exceeds explicit policy bounds"
+        );
+        let notional = quantity
+            .checked_mul(symbol.max_price.max(meta.mark_price))
+            .context("io notional overflow")?;
+        anyhow::ensure!(
+            notional <= self.policy.max_order_notional,
+            "io conservative order notional exceeds policy"
+        );
+        let fee = notional
+            .checked_mul(self.policy.fee_buffer_bps)
+            .and_then(|value| value.checked_div(Decimal::from(10000)))
+            .context("io fee estimate overflow")?;
+        let reservation = if order.is_reduce_only() {
+            Decimal::ZERO
+        } else {
+            notional
+                .checked_add(fee)
+                .context("io reservation overflow")?
+        };
+        let cloid = Cloid::from_client_order_id(order.client_order_id());
+        let intent = IoOwnedIntent {
+            client_order_id: id.clone(),
+            instrument_id: meta.instrument_id.clone(),
+            coin: meta.coin.clone(),
+            cloid: cloid.to_hex(),
+            oid: None,
+            is_buy: order.order_side() == OrderSide::Buy,
+            reduce_only: order.is_reduce_only(),
+            tif: if order.time_in_force() == TimeInForce::Ioc {
+                "Ioc".into()
+            } else {
+                "Gtc".into()
+            },
+            quantity,
+            price,
+            filled: Decimal::ZERO,
+            reservation,
+            phase: IoIntentPhase::Prepared,
+            created_ms: now,
+            terminal_time_ms: None,
+            cancel_pending: false,
+            cancel_action_token: None,
+            signed_binding: None,
+            diagnostic: "Durable prepared intent; write not started".into(),
+        };
+        validate_admission(
+            &self.policy,
+            &state,
+            &snapshot,
+            &intent,
+            &meta,
+            IoAdmissionContext {
+                now,
+                already_registered: false,
+                available_funds,
+            },
+        )?;
+        anyhow::ensure!(
+            state.facts.actions < self.policy.max_actions,
+            "io lifetime action budget exhausted"
+        );
+        state.facts.actions += 1;
+        state.facts.intents.insert(id.clone(), intent);
+        state.persist()?;
+        let action = HyperliquidExchangeAction::Order {
+            orders: vec![HyperliquidExchangePlaceOrderRequest {
+                asset: meta.asset,
+                is_buy: order.order_side() == OrderSide::Buy,
+                price: price.normalize(),
+                size: quantity.normalize(),
+                reduce_only: order.is_reduce_only(),
+                kind: HyperliquidExchangeOrderKind::Limit {
+                    limit: HyperliquidExchangeLimitParams {
+                        tif: if order.time_in_force() == TimeInForce::Ioc {
+                            HyperliquidExchangeTif::Ioc
+                        } else {
+                            HyperliquidExchangeTif::Gtc
+                        },
+                    },
+                },
+                cloid: Some(cloid),
+            }],
+            grouping: HyperliquidExchangeGrouping::Na,
+            builder: None,
+        };
+        Ok(IoPreparedAction {
+            runtime: self.clone(),
+            client_order_id: id,
+            action,
+            epoch: snapshot.private_stream_epoch,
+            account_revision,
+            execution_revision: state.revision,
+            created_ms: now,
+            is_cancel: false,
+            action_token: state.facts.actions,
+        })
+    }
+}
+
+impl IoExecutionState {
+    fn persist(&mut self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            !self.journal_tainted,
+            "A partial/conflicting io journal prohibits new writes"
+        );
+        let mut record = serde_json::to_vec(&self.facts)?;
+        record.push(b'\n');
+        let append_size = self
+            .journal
+            .metadata()
+            .ok()
+            .and_then(|metadata| metadata.len().checked_add(record.len() as u64));
+        if self.facts.fills.len() > 10000 || append_size.is_none_or(|size| size > 16 * 1024 * 1024)
+        {
+            self.journal_tainted = true;
+            self.recovery_complete = false;
+            self.diagnostic = "io running journal exceeds finite durable recovery bounds".into();
+            anyhow::bail!("io running journal exceeds finite durable recovery bounds");
+        }
+        if let Err(error) = self
+            .journal
+            .write_all(&record)
+            .and_then(|()| self.journal.sync_data())
+        {
+            self.journal_tainted = true;
+            self.recovery_complete = false;
+            self.diagnostic = format!("io journal durability failed: {error}");
+            return Err(error.into());
+        }
+        Ok(())
+    }
+}
+
+fn active(intent: &IoOwnedIntent) -> bool {
+    !matches!(
+        intent.phase,
+        IoIntentPhase::Terminal | IoIntentPhase::Rejected | IoIntentPhase::NotWritten
+    )
+}
+fn owned_position(state: &IoExecutionState, coin: &str) -> anyhow::Result<Decimal> {
+    state
+        .facts
+        .fills
+        .values()
+        .filter(|fill| fill.coin == coin)
+        .try_fold(Decimal::ZERO, |total, fill| {
+            if fill.is_buy {
+                total.checked_add(fill.quantity)
+            } else {
+                total.checked_sub(fill.quantity)
+            }
+            .context("io owned position overflow")
+        })
+}
+fn coin_from_instrument(id: &str) -> anyhow::Result<String> {
+    let coin = id
+        .strip_suffix("-USD-PERP.HYPERLIQUID")
+        .context("io requires an exact perpetual InstrumentId")?;
+    anyhow::ensure!(
+        coin.starts_with("io:")
+            && coin.len() > 3
+            && coin[3..]
+                .bytes()
+                .all(|value| value.is_ascii_alphanumeric() || matches!(value, b'_' | b'-')),
+        "Invalid explicit io instrument identity"
+    );
+    Ok(coin.to_string())
+}
+fn validate_wire(
+    meta: &IoInstrumentProof,
+    quantity: Decimal,
+    price: Decimal,
+) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        quantity > Decimal::ZERO
+            && price > Decimal::ZERO
+            && meta.size_decimals <= 6
+            && quantity.normalize().scale() <= meta.size_decimals,
+        "Invalid io exact quantity precision"
+    );
+    let price = price.normalize();
+    anyhow::ensure!(
+        price.scale() <= 6 - meta.size_decimals,
+        "Invalid io exact price decimals"
+    );
+    if price.scale() > 0 {
+        let digits = price
+            .mantissa()
+            .unsigned_abs()
+            .to_string()
+            .trim_start_matches('0')
+            .len();
+        anyhow::ensure!(digits <= 5, "Invalid io price significant figures");
+    }
+    Ok(())
+}
+
+fn conservative_funds(
+    snapshot: &HyperliquidAccountScopeSnapshot,
+    private: Option<&PrivateFundsWitness>,
+) -> anyhow::Result<Decimal> {
+    let private = private.context("Missing latest complete io private financial witness")?;
+    Ok(snapshot
+        .free
+        .min(snapshot.withdrawable)
+        .min(private.free)
+        .min(private.withdrawable))
+}
+
+#[derive(Clone, Copy)]
+struct IoAdmissionContext {
+    now: u64,
+    already_registered: bool,
+    available_funds: Decimal,
+}
+
+fn validate_admission(
+    policy: &IoExecutionPolicy,
+    state: &IoExecutionState,
+    snapshot: &HyperliquidAccountScopeSnapshot,
+    intent: &IoOwnedIntent,
+    meta: &IoInstrumentProof,
+    context: IoAdmissionContext,
+) -> anyhow::Result<()> {
+    let IoAdmissionContext {
+        now,
+        already_registered,
+        available_funds,
+    } = context;
+    anyhow::ensure!(
+        snapshot.trusted
+            && state.recovery_complete
+            && state.recovered_epoch == Some(snapshot.private_stream_epoch)
+            && !state.journal_tainted,
+        "io account/recovery proof is unknown"
+    );
+    anyhow::ensure!(
+        meta.received_ms <= now
+            && now - meta.received_ms <= policy.metadata_max_age_ms
+            && meta.verification_started_ms <= now
+            && now - meta.verification_started_ms <= policy.metadata_max_age_ms
+            && meta.actual_leverage > 0
+            && meta.actual_leverage <= policy.max_leverage,
+        "io metadata/user leverage proof is stale or outside policy"
+    );
+    let count = state
+        .facts
+        .intents
+        .values()
+        .filter(|value| {
+            active(value)
+                && (!already_registered || value.client_order_id != intent.client_order_id)
+        })
+        .count();
+    anyhow::ensure!(
+        count < policy.max_open_orders,
+        "io open intent limit exceeded"
+    );
+    let position = snapshot
+        .positions
+        .iter()
+        .find(|position| position.coin == intent.coin)
+        .map_or(Decimal::ZERO, |position| position.signed_size);
+    anyhow::ensure!(
+        owned_position(state, &intent.coin)? == position,
+        "io position ownership is incomplete; external exposure cannot be adopted"
+    );
+    if intent.reduce_only {
+        let pending = state
+            .facts
+            .intents
+            .values()
+            .filter(|value| {
+                active(value)
+                    && value.reduce_only
+                    && value.coin == intent.coin
+                    && value.client_order_id != intent.client_order_id
+            })
+            .try_fold(Decimal::ZERO, |total, value| {
+                value
+                    .quantity
+                    .checked_sub(value.filled)
+                    .and_then(|remaining| total.checked_add(remaining))
+                    .context("io pending close size overflow")
+            })?;
+        anyhow::ensure!(
+            !position.is_zero()
+                && intent.is_buy == (position < Decimal::ZERO)
+                && intent.quantity
+                    <= position
+                        .abs()
+                        .checked_sub(pending)
+                        .context("io available close size overflow")?,
+            "io reduce-only must lower confirmed owned position without flipping"
+        );
+    } else {
+        anyhow::ensure!(
+            meta.max_trade_sizes
+                .iter()
+                .chain(meta.available_to_trade.iter())
+                .all(|value| *value > Decimal::ZERO),
+            "io user capacity is zero/unknown; units and side order are unverified, so both sides must be positive"
+        );
+        anyhow::ensure!(
+            !state
+                .facts
+                .intents
+                .values()
+                .any(|value| value.phase == IoIntentPhase::Unknown
+                    || value.phase == IoIntentPhase::TerminalPending),
+            "Unknown io intents prohibit new risk"
+        );
+        let reserved = state
+            .facts
+            .intents
+            .values()
+            .filter(|value| active(value) && value.client_order_id != intent.client_order_id)
+            .try_fold(Decimal::ZERO, |total, value| {
+                total
+                    .checked_add(value.reservation)
+                    .context("io reservation total overflow")
+            })?;
+        let gross = snapshot
+            .positions
+            .iter()
+            .filter(|position| !position.signed_size.is_zero())
+            .try_fold(Decimal::ZERO, |total, position| {
+                let metadata = state
+                    .metadata
+                    .values()
+                    .find(|meta| meta.coin == position.coin)
+                    .context("Unknown io gross exposure metadata")?;
+                anyhow::ensure!(
+                    metadata.received_ms <= now
+                        && now - metadata.received_ms <= policy.metadata_max_age_ms
+                        && metadata.verification_started_ms <= now
+                        && now - metadata.verification_started_ms <= policy.metadata_max_age_ms,
+                    "io gross exposure metadata is stale"
+                );
+                let symbol = policy
+                    .symbols
+                    .iter()
+                    .find(|symbol| symbol.instrument_id == metadata.instrument_id)
+                    .context("Unowned io gross exposure")?;
+                position
+                    .signed_size
+                    .abs()
+                    .checked_mul(metadata.mark_price.max(symbol.max_price))
+                    .and_then(|amount| total.checked_add(amount))
+                    .context("io gross exposure overflow")
+            })?;
+        anyhow::ensure!(
+            reserved
+                .checked_add(intent.reservation)
+                .and_then(|amount| amount.checked_add(gross))
+                .context("io gross budget overflow")?
+                <= policy.max_gross_notional,
+            "io gross reservation/exposure limit exceeded"
+        );
+        anyhow::ensure!(
+            available_funds
+                .checked_sub(reserved)
+                .and_then(|amount| amount.checked_sub(policy.margin_buffer))
+                .context("io available fund estimate overflow")?
+                >= intent.reservation,
+            "Insufficient conservative io funds after unresolved reservations"
+        );
+    }
+    Ok(())
+}
+
+impl IoExecutionRuntime {
+    pub(crate) async fn refresh_metadata(
+        &self,
+        http: &HyperliquidHttpClient,
+    ) -> anyhow::Result<()> {
+        self.invalidate("io metadata/recovery refresh is pending");
+        let generation = self.state.lock().revision;
+        let result = self.verify_metadata(http).await;
+        if let Err(error) = &result {
+            let mut state = self.state.lock();
+            if state.revision == generation {
+                state.recovery_complete = false;
+                state.diagnostic = format!("io metadata verification failed: {error}");
+            }
+        }
+        result
+    }
+
+    async fn verify_metadata(&self, http: &HyperliquidHttpClient) -> anyhow::Result<()> {
+        let started = now_ms();
+        let (snapshot, account_revision) = {
+            let guard = self.account.state.lock();
+            (
+                guard
+                    .snapshot(
+                        started,
+                        self.account.ws.is_active(),
+                        self.account.ws.connection_epoch(),
+                    )
+                    .context("Missing io account proof")?,
+                guard.revision(),
+            )
+        };
+        let execution_revision = self.state.lock().revision;
+        let dexes = http.account_scope_info(&InfoRequest::perp_dexs()).await?;
+        let meta = http
+            .account_scope_info(&InfoRequest::meta_for_dex("io"))
+            .await?;
+        let rows = meta
+            .get("universe")
+            .and_then(Value::as_array)
+            .context("Missing complete io metadata universe")?;
+        let spot = http.account_scope_info(&InfoRequest::spot_meta()).await?;
+        crate::account_scope::validate_collateral(&meta, &spot)?;
+        let array = dexes.as_array().context("Missing raw perpDexs slots")?;
+        let indices = array
+            .iter()
+            .enumerate()
+            .filter(|(_, value)| value.get("name").and_then(Value::as_str) == Some("io"))
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        anyhow::ensure!(indices.len() == 1, "Missing or ambiguous io dex slot");
+        let dex_index = indices[0];
+        let mut proofs = BTreeMap::new();
+        for symbol in &self.policy.symbols {
+            let coin = coin_from_instrument(&symbol.instrument_id)?;
+            let matches = rows
+                .iter()
+                .enumerate()
+                .filter(|(_, value)| {
+                    value.get("name").and_then(Value::as_str) == Some(coin.as_str())
+                })
+                .collect::<Vec<_>>();
+            anyhow::ensure!(
+                matches.len() == 1,
+                "Missing or duplicate explicit io native coin"
+            );
+            let (universe_index, row) = matches[0];
+            anyhow::ensure!(
+                row.get("isDelisted")
+                    .is_none_or(|value| value.as_bool() == Some(false)),
+                "Delisted or unknown io instrument status"
+            );
+            anyhow::ensure!(
+                row.get("marginMode").and_then(Value::as_str) == Some("strictIsolated"),
+                "io bounded execution requires explicit strictIsolated metadata"
+            );
+            let decimals = row
+                .get("szDecimals")
+                .and_then(Value::as_u64)
+                .filter(|value| *value <= 6)
+                .context("Invalid io precision metadata")? as u32;
+            let user_data = http
+                .account_scope_info(&InfoRequest::active_asset_data(&snapshot.address, &coin))
+                .await?;
+            let leverage = validate_user_asset(
+                &user_data,
+                &snapshot.address,
+                &coin,
+                self.policy.max_leverage,
+            )?;
+            let second = http
+                .account_scope_info(&InfoRequest::active_asset_data(&snapshot.address, &coin))
+                .await?;
+            let repeated =
+                validate_user_asset(&second, &snapshot.address, &coin, self.policy.max_leverage)?;
+            anyhow::ensure!(
+                leverage == repeated,
+                "io actual leverage changed during verification"
+            );
+            let received = now_ms();
+            anyhow::ensure!(
+                received >= started && received - started <= self.policy.metadata_max_age_ms,
+                "io metadata/user proof verification interval expired"
+            );
+            let asset = 100000usize
+                .checked_add(
+                    dex_index
+                        .checked_mul(10000)
+                        .context("io dex index overflow")?,
+                )
+                .and_then(|base| base.checked_add(universe_index))
+                .and_then(|value| u32::try_from(value).ok())
+                .context("io native action ID overflow")?;
+            proofs.insert(
+                symbol.instrument_id.clone(),
+                IoInstrumentProof {
+                    instrument_id: symbol.instrument_id.clone(),
+                    coin,
+                    asset,
+                    dex_index,
+                    universe_index,
+                    size_decimals: decimals,
+                    margin_mode: "strictIsolated".into(),
+                    actual_leverage: leverage,
+                    received_ms: received,
+                    verification_started_ms: started,
+                    user_asset_source_time_ms: None,
+                    max_trade_sizes: decimal_pair(&second, "maxTradeSzs")?,
+                    available_to_trade: decimal_pair(&second, "availableToTrade")?,
+                    mark_price: decimal(&second, "markPx")?,
+                },
+            );
+        }
+        let proof_guard = self.account.state.lock();
+        let current = proof_guard
+            .snapshot(
+                now_ms(),
+                self.account.ws.is_active(),
+                self.account.ws.connection_epoch(),
+            )
+            .context("io account proof disappeared")?;
+        anyhow::ensure!(
+            proof_guard.revision() == account_revision
+                && current.private_stream_epoch == snapshot.private_stream_epoch
+                && current.trusted,
+            "io metadata refresh account generation changed"
+        );
+        let mut state = self.state.lock();
+        anyhow::ensure!(
+            state.revision == execution_revision,
+            "io metadata refresh superseded"
+        );
+        state.metadata = proofs;
+        state.diagnostic =
+            "io metadata is complete; owned order/fill/position recovery required".into();
+        Ok(())
+    }
+
+    pub(crate) fn prepare_cancel(
+        &self,
+        instrument_id: InstrumentId,
+        client_order_id: ClientOrderId,
+        strategy_id: StrategyId,
+        venue_order_id: Option<u64>,
+    ) -> anyhow::Result<IoPreparedAction> {
+        anyhow::ensure!(
+            strategy_id.to_string() == self.policy.strategy_id,
+            "io cancel strategy ownership mismatch"
+        );
+        let proof_guard = self.account.state.lock();
+        let now = now_ms();
+        let snapshot = proof_guard
+            .snapshot(
+                now,
+                self.account.ws.is_active(),
+                self.account.ws.connection_epoch(),
+            )
+            .context("Missing io account proof")?;
+        anyhow::ensure!(
+            snapshot.trusted,
+            "io cancel requires complete account identity/positions proof"
+        );
+        let mut state = self.state.lock();
+        let id = client_order_id.to_string();
+        anyhow::ensure!(
+            state.recovery_complete && state.recovered_epoch == Some(snapshot.private_stream_epoch),
+            "io cancel requires complete scoped recovery"
+        );
+        let meta = state
+            .metadata
+            .get(&instrument_id.to_string())
+            .context("Missing io cancel metadata")?
+            .clone();
+        anyhow::ensure!(
+            now >= meta.received_ms && now - meta.received_ms <= self.policy.metadata_max_age_ms,
+            "io cancel metadata proof expired"
+        );
+        anyhow::ensure!(
+            state.facts.actions < self.policy.max_actions,
+            "io action limit exhausted"
+        );
+        let action_token = state.facts.actions + 1;
+        let intent = state
+            .facts
+            .intents
+            .get_mut(&id)
+            .context("Cannot cancel an unowned io order")?;
+        anyhow::ensure!(
+            intent.instrument_id == instrument_id.to_string()
+                && intent.coin == meta.coin
+                && intent.phase == IoIntentPhase::Open
+                && !intent.cancel_pending,
+            "io cancel scope/remaining order facts are incomplete"
+        );
+        if let Some(oid) = venue_order_id {
+            anyhow::ensure!(
+                intent.oid == Some(oid),
+                "io cancel OID does not belong to the original CLOID"
+            );
+        }
+        let cloid = Cloid::from_hex(&intent.cloid).map_err(anyhow::Error::msg)?;
+        intent.cancel_pending = true;
+        intent.cancel_action_token = Some(action_token);
+        intent.diagnostic = "Durable owned cancel intent; outcome unconfirmed".into();
+        state.facts.actions = action_token;
+        state.persist()?;
+        Ok(IoPreparedAction {
+            runtime: self.clone(),
+            client_order_id: id,
+            action: HyperliquidExchangeAction::CancelByCloid {
+                fast: None,
+                cancels: vec![
+                    crate::http::models::HyperliquidExchangeCancelByCloidRequest {
+                        asset: meta.asset,
+                        cloid,
+                    },
+                ],
+            },
+            epoch: snapshot.private_stream_epoch,
+            account_revision: proof_guard.revision(),
+            execution_revision: state.revision,
+            created_ms: now,
+            is_cancel: true,
+            action_token,
+        })
+    }
+
+    pub(crate) fn finish_not_written(
+        &self,
+        id: &str,
+        is_cancel: bool,
+        reason: &str,
+    ) -> anyhow::Result<()> {
+        let mut state = self.state.lock();
+        let intent = state
+            .facts
+            .intents
+            .get_mut(id)
+            .context("Missing prepared io ownership")?;
+        if is_cancel {
+            intent.cancel_pending = false;
+            intent.cancel_action_token = None;
+        } else {
+            intent.phase = IoIntentPhase::NotWritten;
+            intent.reservation = Decimal::ZERO;
+        }
+        intent.diagnostic = format!("Native writer proved NotWritten: {reason}");
+        state.persist()
+    }
+
+    pub(crate) fn mark_unknown(&self, id: &str, reason: &str) -> anyhow::Result<()> {
+        let mut state = self.state.lock();
+        let intent = state
+            .facts
+            .intents
+            .get_mut(id)
+            .context("Missing possibly written io ownership")?;
+        intent.phase = IoIntentPhase::Unknown;
+        intent.diagnostic = reason.into();
+        state.recovery_complete = false;
+        state.diagnostic = reason.into();
+        state.persist()
+    }
+
+    pub(crate) fn observe_ack(
+        &self,
+        prepared: &IoPreparedAction,
+        response: &crate::http::models::HyperliquidExchangeResponse,
+    ) -> anyhow::Result<()> {
+        let id = prepared.client_order_id.as_str();
+        let is_cancel = prepared.is_cancel;
+        let mut state = self.state.lock();
+        let outcome = (|| {
+            let crate::http::models::HyperliquidExchangeResponse::Status { status, response } =
+                response
+            else {
+                anyhow::bail!("Unconfirmed io exchange response type")
+            };
+            anyhow::ensure!(
+                status == "ok",
+                "io outer error does not prove execution finality"
+            );
+            let expected = if is_cancel { "cancel" } else { "order" };
+            anyhow::ensure!(
+                response.get("type").and_then(Value::as_str) == Some(expected),
+                "io response action type mismatch"
+            );
+            let statuses = response
+                .pointer("/data/statuses")
+                .and_then(Value::as_array)
+                .context("Missing io action statuses")?;
+            anyhow::ensure!(statuses.len() == 1, "io response cardinality mismatch");
+            let intent = state
+                .facts
+                .intents
+                .get(id)
+                .context("Missing io owned action")?;
+            let mut intent = intent.clone();
+            if is_cancel {
+                anyhow::ensure!(
+                    intent.cancel_pending
+                        && intent.cancel_action_token == Some(prepared.action_token),
+                    "Late cancel acknowledgement has no current owned action token"
+                );
+                anyhow::ensure!(
+                    statuses[0].as_str() == Some("success"),
+                    "Ambiguous io cancellation; reconcile original CLOID"
+                );
+                intent.phase = IoIntentPhase::TerminalPending;
+                intent.diagnostic =
+                    "Cancel acknowledgement; actual fill/account absorption still required".into();
+            } else {
+                let object = statuses[0]
+                    .as_object()
+                    .context("Invalid io order acknowledgement status")?;
+                anyhow::ensure!(
+                    object.len() == 1
+                        && ["resting", "filled", "error"]
+                            .iter()
+                            .filter(|key| object.contains_key(**key))
+                            .count()
+                            == 1,
+                    "Ambiguous io order acknowledgement variants"
+                );
+                if let Some(resting) = statuses[0].get("resting") {
+                    let oid = resting
+                        .get("oid")
+                        .and_then(Value::as_u64)
+                        .context("Missing io resting OID")?;
+                    anyhow::ensure!(
+                        intent.oid.is_none_or(|previous| previous == oid),
+                        "Conflicting io order OID"
+                    );
+                    intent.oid = Some(oid);
+                    if !matches!(
+                        intent.phase,
+                        IoIntentPhase::Terminal | IoIntentPhase::TerminalPending
+                    ) {
+                        intent.phase = IoIntentPhase::Open;
+                        intent.diagnostic =
+                            "Resting placement acknowledgement; reservation retained".into();
+                    }
+                } else if let Some(filled) = statuses[0].get("filled") {
+                    let oid = filled
+                        .get("oid")
+                        .and_then(Value::as_u64)
+                        .context("Missing io aggregate OID")?;
+                    let size = decimal(filled, "totalSz")?;
+                    let price = decimal(filled, "avgPx")?;
+                    anyhow::ensure!(
+                        size > Decimal::ZERO
+                            && size <= intent.quantity
+                            && price > Decimal::ZERO
+                            && intent.oid.is_none_or(|previous| previous == oid),
+                        "Invalid io aggregate fill facts"
+                    );
+                    intent.oid = Some(oid);
+                    if intent.phase != IoIntentPhase::Terminal {
+                        intent.phase = IoIntentPhase::TerminalPending;
+                        intent.diagnostic="Aggregate placement evidence lacks actual trade IDs/fees; do not manufacture fills".into();
+                    }
+                } else if let Some(error) = statuses[0].get("error").and_then(Value::as_str) {
+                    anyhow::ensure!(
+                        intent.filled.is_zero() && intent.oid.is_none(),
+                        "Conflicting rejection after actual order activity"
+                    );
+                    intent.phase = IoIntentPhase::Rejected;
+                    intent.reservation = Decimal::ZERO;
+                    intent.diagnostic = format!("Explicit single-order venue rejection: {error}");
+                } else {
+                    anyhow::bail!("Unknown io single-order status");
+                }
+            }
+            state.facts.intents.insert(id.into(), intent);
+            Ok::<_, anyhow::Error>(())
+        })();
+        if let Err(error) = &outcome {
+            state.recovery_complete = false;
+            state.diagnostic = format!("io action confirmation is unknown: {error}");
+        }
+        state.persist()?;
+        outcome
+    }
+}
+
+fn validate_user_asset(
+    raw: &Value,
+    address: &str,
+    coin: &str,
+    max_leverage: u64,
+) -> anyhow::Result<u64> {
+    anyhow::ensure!(
+        raw.get("user").and_then(Value::as_str) == Some(address)
+            && raw.get("coin").and_then(Value::as_str) == Some(coin),
+        "io actual user/asset proof identity mismatch"
+    );
+    let leverage = raw
+        .get("leverage")
+        .context("Missing actual user leverage")?;
+    anyhow::ensure!(
+        leverage.get("type").and_then(Value::as_str) == Some("isolated"),
+        "Unsupported actual user margin mode"
+    );
+    let value = leverage
+        .get("value")
+        .and_then(Value::as_u64)
+        .filter(|value| *value > 0 && *value <= max_leverage)
+        .context("Unknown/out-of-policy actual leverage")?;
+    anyhow::ensure!(
+        decimal(raw, "markPx")? > Decimal::ZERO,
+        "Invalid io user asset reference price"
+    );
+    for field in ["maxTradeSzs", "availableToTrade"] {
+        let values = raw
+            .get(field)
+            .and_then(Value::as_array)
+            .context("Missing complete io user asset capacity")?;
+        anyhow::ensure!(
+            values.len() == 2,
+            "Invalid io user asset capacity cardinality"
+        );
+        for value in values {
+            anyhow::ensure!(
+                Decimal::from_str_exact(
+                    value
+                        .as_str()
+                        .context("io capacity must be exact decimal strings")?
+                )? >= Decimal::ZERO,
+                "Negative io user asset capacity"
+            );
+        }
+    }
+    Ok(value)
+}
+
+fn decimal(raw: &Value, key: &str) -> anyhow::Result<Decimal> {
+    Decimal::from_str_exact(
+        raw.get(key)
+            .and_then(Value::as_str)
+            .with_context(|| format!("Missing exact io decimal {key}"))?,
+    )
+    .map_err(Into::into)
+}
+
+fn decimal_pair(raw: &Value, key: &str) -> anyhow::Result<[Decimal; 2]> {
+    let values = raw
+        .get(key)
+        .and_then(Value::as_array)
+        .context("Missing complete exact io capacity pair")?;
+    anyhow::ensure!(values.len() == 2, "Invalid io capacity cardinality");
+    let parse = |index: usize| -> anyhow::Result<Decimal> {
+        let value = Decimal::from_str_exact(
+            values[index]
+                .as_str()
+                .context("io capacity must be decimal strings")?,
+        )?;
+        anyhow::ensure!(value >= Decimal::ZERO, "Negative io user capacity");
+        Ok(value)
+    };
+    Ok([parse(0)?, parse(1)?])
+}
+
+fn serialize_decimal_pair<S: serde::Serializer>(
+    values: &[Decimal; 2],
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    [values[0].to_string(), values[1].to_string()].serialize(serializer)
+}
+
+fn validate_journal(
+    record: &JournalFacts,
+    previous: &JournalFacts,
+    policy: &IoExecutionPolicy,
+) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        record.actions >= previous.actions
+            && record.actions <= policy.max_actions
+            && record.intents.len() <= policy.max_actions
+            && record.fills.len() <= 10000,
+        "io journal ownership/action bounds regressed"
+    );
+    let mut owned_oids = BTreeMap::new();
+    let mut owned_cloids = BTreeMap::new();
+    for (key, intent) in &record.intents {
+        anyhow::ensure!(
+            owned_cloids.insert(&intent.cloid, key).is_none(),
+            "Duplicate durable io CLOID ownership"
+        );
+        if let Some(oid) = intent.oid {
+            anyhow::ensure!(
+                oid > 0 && owned_oids.insert((&intent.coin, oid), key).is_none(),
+                "Duplicate durable io OID ownership"
+            );
+        }
+        let client = ClientOrderId::new_checked(&intent.client_order_id)?;
+        anyhow::ensure!(
+            key == &intent.client_order_id
+                && coin_from_instrument(&intent.instrument_id)? == intent.coin
+                && Cloid::from_client_order_id(client).to_hex() == intent.cloid
+                && intent.quantity > Decimal::ZERO
+                && intent.price > Decimal::ZERO
+                && intent.filled >= Decimal::ZERO
+                && intent.filled <= intent.quantity
+                && intent.reservation >= Decimal::ZERO
+                && matches!(intent.tif.as_str(), "Gtc" | "Ioc")
+                && (!intent.reduce_only || intent.tif == "Ioc")
+                && intent.created_ms > 0
+                && intent.cancel_pending == intent.cancel_action_token.is_some()
+                && intent
+                    .cancel_action_token
+                    .is_none_or(|token| token > 0 && token <= record.actions),
+            "Invalid durable io intent ownership/quantity facts"
+        );
+        anyhow::ensure!(
+            (intent.phase != IoIntentPhase::Terminal
+                || (intent.reservation.is_zero()
+                    && intent
+                        .terminal_time_ms
+                        .is_some_and(|time| time >= intent.created_ms)))
+                && (!matches!(
+                    intent.phase,
+                    IoIntentPhase::NotWritten | IoIntentPhase::Rejected
+                ) || (intent.reservation.is_zero()
+                    && intent.filled.is_zero()
+                    && !intent.cancel_pending)),
+            "Invalid durable io terminal/write classification"
+        );
+        anyhow::ensure!(
+            policy
+                .symbols
+                .iter()
+                .any(|symbol| symbol.instrument_id == intent.instrument_id),
+            "io journal belongs to an unconfigured native instrument"
+        );
+        if let Some(binding) = &intent.signed_binding {
+            anyhow::ensure!(
+                binding.action_token > 0
+                    && binding.action_token <= record.actions
+                    && binding.post_id > 0
+                    && binding.nonce >= intent.created_ms
+                    && binding.nonce < binding.expires_after
+                    && binding.signed_at_ms >= intent.created_ms
+                    && binding.signed_at_ms < binding.expires_after
+                    && binding.expires_after
+                        <= binding
+                            .signed_at_ms
+                            .checked_add(policy.action_timeout_ms)
+                            .context("Journal expiry overflow")?
+                    && [
+                        &binding.action_digest,
+                        &binding.signed_payload_digest,
+                        &binding.frame_digest
+                    ]
+                    .iter()
+                    .all(|digest| digest.len() == 66
+                        && digest.starts_with("0x")
+                        && digest[2..].bytes().all(|value| value.is_ascii_hexdigit())),
+                "Invalid durable io signed action binding"
+            );
+        }
+        if let Some(old) = previous.intents.get(key) {
+            anyhow::ensure!(
+                old.cloid == intent.cloid
+                    && old.coin == intent.coin
+                    && old.instrument_id == intent.instrument_id
+                    && old.quantity == intent.quantity
+                    && old.price == intent.price
+                    && old.is_buy == intent.is_buy
+                    && old.reduce_only == intent.reduce_only
+                    && old.tif == intent.tif
+                    && old.created_ms == intent.created_ms
+                    && old.filled <= intent.filled
+                    && old.oid.is_none_or(|oid| intent.oid == Some(oid)),
+                "io journal immutable ownership or fill facts changed"
+            );
+            if let Some(old_binding) = &old.signed_binding {
+                anyhow::ensure!(
+                    intent
+                        .signed_binding
+                        .as_ref()
+                        .is_some_and(|binding| binding.action_token > old_binding.action_token
+                            || binding == old_binding),
+                    "io journal signed action binding regressed or changed within one token"
+                );
+            }
+        }
+        let filled = record
+            .fills
+            .values()
+            .filter(|fill| Some(fill.oid) == intent.oid && fill.coin == intent.coin)
+            .try_fold(Decimal::ZERO, |total, fill| {
+                total
+                    .checked_add(fill.quantity)
+                    .context("io journal fill quantity overflow")
+            })?;
+        anyhow::ensure!(
+            filled == intent.filled,
+            "io journal actual fills disagree with owned cumulative quantity"
+        );
+    }
+    anyhow::ensure!(
+        previous
+            .intents
+            .keys()
+            .all(|key| record.intents.contains_key(key))
+            && previous
+                .fills
+                .iter()
+                .all(|(key, value)| record.fills.get(key) == Some(value)),
+        "io journal discarded or changed durable ownership/fills"
+    );
+    for (key, fill) in &record.fills {
+        anyhow::ensure!(
+            key == &format!("{}:{}:{}", fill.coin, fill.oid, fill.tid)
+                && fill.tid > 0
+                && fill.time > 0
+                && fill.quantity > Decimal::ZERO
+                && fill.price > Decimal::ZERO
+                && fill.fee_token == "USDC",
+            "Invalid durable io actual fill identity"
+        );
+        anyhow::ensure!(
+            record
+                .intents
+                .values()
+                .any(|intent| intent.coin == fill.coin
+                    && intent.oid == Some(fill.oid)
+                    && intent.is_buy == fill.is_buy
+                    && fill.time >= intent.created_ms),
+            "io journal fill has no owned order"
+        );
+        validate_fill_replay(&record.fills, fill)?;
+        if let Some(fee) = &fill.builder_fee {
+            Decimal::from_str_exact(fee)?;
+        }
+    }
+    Ok(())
+}
+
+impl IoExecutionRuntime {
+    /// Reconciles finite durable intents; an unknown/truncated window remains closed to new risk.
+    pub(crate) async fn recover(
+        &self,
+        http: &HyperliquidHttpClient,
+        emitter: &nautilus_live::ExecutionEventEmitter,
+    ) -> anyhow::Result<()> {
+        self.invalidate("io scoped recovery is pending");
+        let deadline = tokio::time::Instant::now()
+            + std::time::Duration::from_millis(self.policy.recovery_timeout_ms);
+        let mut last = "No io recovery attempt completed".to_string();
+        for _ in 0..self.policy.recovery_max_attempts {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            match tokio::time::timeout(remaining, self.recover_once(http, emitter)).await {
+                Ok(Ok(())) => return Ok(()),
+                Ok(Err(error)) => last = error.to_string(),
+                Err(_) => {
+                    last = "io scoped recovery deadline exhausted".into();
+                    break;
+                }
+            }
+            if tokio::time::Instant::now() >= deadline {
+                break;
+            }
+            tokio::time::sleep(
+                std::time::Duration::from_millis(self.policy.recovery_retry_delay_ms)
+                    .min(deadline.saturating_duration_since(tokio::time::Instant::now())),
+            )
+            .await;
+        }
+        self.invalidate(&format!("io RecoveryIncomplete: {last}"));
+        anyhow::bail!("io RecoveryIncomplete: {last}")
+    }
+
+    async fn recover_once(
+        &self,
+        http: &HyperliquidHttpClient,
+        emitter: &nautilus_live::ExecutionEventEmitter,
+    ) -> anyhow::Result<()> {
+        let (address, epoch, account_id, revision, cloids) = {
+            let snapshot = self
+                .account
+                .snapshot()
+                .context("Missing io scope for recovery")?;
+            let state = self.state.lock();
+            (
+                snapshot.address,
+                snapshot.private_stream_epoch,
+                state.facts.account_id.clone(),
+                state.revision,
+                state
+                    .facts
+                    .intents
+                    .values()
+                    .filter(|intent| active(intent))
+                    .map(|intent| (intent.client_order_id.clone(), intent.cloid.clone()))
+                    .collect::<Vec<_>>(),
+            )
+        };
+        let open = http
+            .account_scope_info(&InfoRequest::frontend_open_orders_for_dex(
+                &address,
+                Some("io"),
+            ))
+            .await?;
+        let open = open
+            .as_array()
+            .context("Missing complete explicit io open orders")?;
+        let fills = http
+            .account_scope_info(&InfoRequest::user_fills(&address))
+            .await?;
+        let fills = fills
+            .as_array()
+            .context("Missing actual user fills recovery array")?;
+        anyhow::ensure!(
+            fills.len() < 2000,
+            "Retained actual-fill history is truncated; recovery window is unknown"
+        );
+        let mut owned_statuses = Vec::with_capacity(cloids.len());
+        for (id, cloid) in cloids {
+            let result = http
+                .account_scope_info(&InfoRequest::order_status_cloid(&address, &cloid))
+                .await?;
+            anyhow::ensure!(
+                result.get("status").and_then(Value::as_str) == Some("order"),
+                "Owned io CLOID remains unknown; unknownOid is not finality"
+            );
+            let entry = result
+                .get("order")
+                .context("Missing owned io order status")?;
+            // Bind the original durable CLOID to its venue OID before consuming fills
+            // which do not themselves include a CLOID. No status manufactures a fill.
+            self.bind_recovery_order(entry, &id, epoch, revision)?;
+            owned_statuses.push((id, entry.clone()));
+        }
+        for fill in fills {
+            self.observe_fill(fill, epoch, http, emitter)?;
+        }
+        for (id, entry) in owned_statuses {
+            self.observe_order_entry(&entry, Some(&id), Some((epoch, revision)), http, emitter)?;
+        }
+        crate::account_scope::refresh_account_scope(
+            &self.account.state,
+            http,
+            &self.account.ws,
+            emitter,
+        )
+        .await?;
+        let account_guard = self.account.state.lock();
+        let snapshot = account_guard
+            .snapshot(
+                now_ms(),
+                self.account.ws.is_active(),
+                self.account.ws.connection_epoch(),
+            )
+            .context("Missing refreshed io positions")?;
+        anyhow::ensure!(
+            snapshot.trusted && snapshot.private_stream_epoch == epoch,
+            "io recovery account proof/epoch changed"
+        );
+        let mut state = self.state.lock();
+        anyhow::ensure!(
+            state.revision == revision && !state.journal_tainted,
+            "io recovery was superseded or journal is tainted"
+        );
+        anyhow::ensure!(
+            !state.native_projection_recovery_required,
+            "Restart native cache projection has no recovery witness; owned facts remain read-only/RecoveryIncomplete"
+        );
+        for row in open {
+            let coin = row
+                .get("coin")
+                .and_then(Value::as_str)
+                .context("Missing explicit io open order coin")?;
+            anyhow::ensure!(
+                coin.starts_with("io:"),
+                "Wrong dex in explicit io open-order response"
+            );
+            let oid = row
+                .get("oid")
+                .and_then(Value::as_u64)
+                .context("Missing io open OID")?;
+            let cloid = row
+                .get("cloid")
+                .and_then(Value::as_str)
+                .context("Unowned/external io open order blocks new risk")?;
+            anyhow::ensure!(
+                state
+                    .facts
+                    .intents
+                    .values()
+                    .any(|intent| intent.coin == coin
+                        && intent.cloid == cloid
+                        && intent.oid == Some(oid)
+                        && active(intent)),
+                "Unowned/external io open order cannot be adopted"
+            );
+        }
+        for position in &snapshot.positions {
+            anyhow::ensure!(
+                owned_position(&state, &position.coin)? == position.signed_size,
+                "io account position does not match the complete owned actual-fill ledger"
+            );
+        }
+        for coin in state.facts.fills.values().map(|fill| &fill.coin) {
+            let actual = snapshot
+                .positions
+                .iter()
+                .find(|position| &position.coin == coin)
+                .map_or(Decimal::ZERO, |position| position.signed_size);
+            anyhow::ensure!(
+                owned_position(&state, coin)? == actual,
+                "io actual-fill ledger exposure is absent from the account proof"
+            );
+        }
+        let mut pending = false;
+        for intent in state.facts.intents.values_mut() {
+            if intent.phase == IoIntentPhase::TerminalPending {
+                // A complete scoped source after the terminal event absorbs the reserved account funds.
+                if intent
+                    .terminal_time_ms
+                    .is_some_and(|time| snapshot.http_source_time_ms >= time)
+                {
+                    intent.phase = IoIntentPhase::Terminal;
+                    intent.reservation = Decimal::ZERO;
+                    intent.cancel_pending = false;
+                    intent.cancel_action_token = None;
+                    intent.diagnostic="Owned terminal size and actual fills absorbed by complete scoped account proof".into();
+                } else {
+                    pending = true;
+                }
+            }
+            if intent.phase == IoIntentPhase::Unknown || intent.phase == IoIntentPhase::Prepared {
+                pending = true;
+            }
+        }
+        anyhow::ensure!(
+            !pending,
+            "io owned intent/actual fill finality remains unknown"
+        );
+        state.recovery_complete = true;
+        state.recovered_epoch = Some(epoch);
+        state.diagnostic = format!(
+            "Complete bounded owned io recovery for {account_id}; REST requests are non-atomic; leverage proof source time unknown"
+        );
+        state.persist()?;
+        Ok(())
+    }
+
+    fn bind_recovery_order(
+        &self,
+        entry: &Value,
+        id: &str,
+        epoch: u64,
+        revision: u64,
+    ) -> anyhow::Result<()> {
+        let raw = entry
+            .get("order")
+            .context("Missing owned io order identity")?;
+        let oid = raw
+            .get("oid")
+            .and_then(Value::as_u64)
+            .filter(|oid| *oid > 0)
+            .context("Missing positive owned io OID")?;
+        let side = raw
+            .get("side")
+            .and_then(Value::as_str)
+            .context("Missing owned io direction")?;
+        let mut state = self.state.lock();
+        ensure_recovery_generation(&state, &self.account.ws, epoch, revision)?;
+        let intent = state
+            .facts
+            .intents
+            .get_mut(id)
+            .context("Missing original durable io CLOID")?;
+        anyhow::ensure!(
+            raw.get("coin").and_then(Value::as_str) == Some(intent.coin.as_str())
+                && raw.get("cloid").and_then(Value::as_str) == Some(intent.cloid.as_str())
+                && decimal(raw, "origSz")? == intent.quantity
+                && decimal(raw, "limitPx")? == intent.price
+                && matches!(side, "B" | "A")
+                && intent.is_buy == (side == "B")
+                && intent.oid.is_none_or(|known| known == oid),
+            "Owned io recovery order identity conflicts with durable intent"
+        );
+        let remaining = decimal(raw, "sz")?;
+        anyhow::ensure!(
+            remaining >= Decimal::ZERO && remaining <= intent.quantity,
+            "Invalid owned io remaining quantity"
+        );
+        intent.oid = Some(oid);
+        state.persist()
+    }
+
+    pub(crate) fn observe_order_entry(
+        &self,
+        entry: &Value,
+        expected_id: Option<&str>,
+        recovery_proof: Option<(u64, u64)>,
+        http: &HyperliquidHttpClient,
+        emitter: &nautilus_live::ExecutionEventEmitter,
+    ) -> anyhow::Result<()> {
+        let raw = entry
+            .get("order")
+            .context("Missing raw io order status identity")?;
+        let coin = raw
+            .get("coin")
+            .and_then(Value::as_str)
+            .context("Missing io order coin")?;
+        if !coin.starts_with("io:") {
+            anyhow::ensure!(
+                expected_id.is_none(),
+                "Wrong dex in owned io order status response"
+            );
+            return Ok(());
+        }
+        let cloid = raw
+            .get("cloid")
+            .and_then(Value::as_str)
+            .context("io order status lacks strong CLOID ownership")?;
+        let status = entry
+            .get("status")
+            .and_then(Value::as_str)
+            .context("Missing io order status")?;
+        let time = entry
+            .get("statusTimestamp")
+            .and_then(Value::as_u64)
+            .filter(|time| *time > 0 && *time <= now_ms())
+            .context("Missing io order source time")?;
+        let oid = raw
+            .get("oid")
+            .and_then(Value::as_u64)
+            .filter(|oid| *oid > 0)
+            .context("Missing io order OID")?;
+        let original = decimal(raw, "origSz")?;
+        let remaining = decimal(raw, "sz")?;
+        let limit = decimal(raw, "limitPx")?;
+        let side = raw
+            .get("side")
+            .and_then(Value::as_str)
+            .context("Missing io order side")?;
+        let mut state = self.state.lock();
+        if let Some((epoch, revision)) = recovery_proof {
+            ensure_recovery_generation(&state, &self.account.ws, epoch, revision)?;
+        }
+        let Some(intent) = state
+            .facts
+            .intents
+            .values()
+            .find(|intent| intent.cloid == cloid)
+        else {
+            anyhow::bail!("Observed io order has no durable owned CLOID; scoped recovery required");
+        };
+        let mut intent = intent.clone();
+        anyhow::ensure!(
+            expected_id.is_none_or(|id| intent.client_order_id == id)
+                && intent.coin == coin
+                && original == intent.quantity
+                && limit == intent.price
+                && matches!(side, "B" | "A")
+                && intent.is_buy == (side == "B")
+                && remaining >= Decimal::ZERO
+                && remaining <= original
+                && time >= intent.created_ms
+                && intent.oid.is_none_or(|known| known == oid),
+            "io order status conflicts with immutable owned intent"
+        );
+        intent.oid = Some(oid);
+        match status {
+            "open" => {
+                anyhow::ensure!(
+                    original
+                        .checked_sub(remaining)
+                        .context("io open filled-size overflow")?
+                        == intent.filled,
+                    "io open size lacks complete actual-fill history"
+                );
+                anyhow::ensure!(
+                    !matches!(
+                        intent.phase,
+                        IoIntentPhase::Terminal | IoIntentPhase::TerminalPending
+                    ),
+                    "Old io open status cannot regress terminal proof"
+                );
+                if !intent.cancel_pending {
+                    intent.phase = IoIntentPhase::Open;
+                }
+            }
+            "filled" => {
+                anyhow::ensure!(
+                    intent.filled == intent.quantity,
+                    "Filled marker lacks complete actual fills; do not manufacture them"
+                );
+                intent.phase = IoIntentPhase::TerminalPending;
+                intent.terminal_time_ms = Some(time);
+            }
+            "canceled" | "marginCanceled" | "iocCancel" => {
+                anyhow::ensure!(
+                    intent
+                        .quantity
+                        .checked_sub(remaining)
+                        .context("io terminal quantity overflow")?
+                        == intent.filled,
+                    "io canceled size does not match actual fills; history coverage unknown"
+                );
+                intent.phase = IoIntentPhase::TerminalPending;
+                intent.terminal_time_ms = Some(time);
+            }
+            "rejected" => {
+                anyhow::ensure!(
+                    intent.filled.is_zero(),
+                    "io rejection conflicts with actual fills"
+                );
+                intent.phase = IoIntentPhase::Rejected;
+                intent.reservation = Decimal::ZERO;
+            }
+            _ => anyhow::bail!("Unknown io order status; scoped recovery incomplete"),
+        }
+        let client_id = ClientOrderId::new_checked(&intent.client_order_id)?;
+        let native =
+            serde_json::from_value::<crate::websocket::messages::WsOrderData>(entry.clone())?;
+        let instrument = http
+            .io_cached_instrument(coin)
+            .context("Missing io native instrument for owned status projection")?;
+        let mut report = crate::websocket::parse::parse_ws_order_status_report(
+            &native,
+            &instrument,
+            AccountId::new_checked(&state.facts.account_id)?,
+            (now_ms() * 1_000_000).into(),
+        )?;
+        report.client_order_id = Some(client_id);
+        if matches!(
+            report.order_status,
+            nautilus_model::enums::OrderStatus::Filled
+                | nautilus_model::enums::OrderStatus::PartiallyFilled
+        ) {
+            report.price = None;
+            report.avg_px = None;
+        }
+        // Filled status is a marker; legacy dispatch never fabricates a fee-free trade.
+        state
+            .facts
+            .intents
+            .insert(intent.client_order_id.clone(), intent);
+        state.persist()?;
+        let publish = !state.native_projection_recovery_required;
+        drop(state);
+        if publish {
+            emitter.send_order_status_report(report);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn observe_fill(
+        &self,
+        raw: &Value,
+        epoch: u64,
+        http: &HyperliquidHttpClient,
+        emitter: &nautilus_live::ExecutionEventEmitter,
+    ) -> anyhow::Result<()> {
+        let coin = raw
+            .get("coin")
+            .and_then(Value::as_str)
+            .context("Missing actual fill native coin")?;
+        if !coin.starts_with("io:") {
+            return Ok(());
+        }
+        let facts = fill_facts(raw)?;
+        let key = format!("{}:{}:{}", facts.coin, facts.oid, facts.tid);
+        let mut state = self.state.lock();
+        anyhow::ensure!(
+            epoch == self.account.ws.connection_epoch() && self.account.ws.is_active(),
+            "Stale io actual-fill epoch/transport"
+        );
+        validate_fill_replay(&state.facts.fills, &facts)?;
+        if let Some(previous) = state.facts.fills.get(&key) {
+            anyhow::ensure!(
+                previous == &facts,
+                "Conflicting duplicate io venue trade ID financial payload"
+            );
+            return Ok(());
+        }
+        let known_cloid = raw.get("cloid").and_then(Value::as_str);
+        let Some(id) = state
+            .facts
+            .intents
+            .iter()
+            .find(|(_, intent)| {
+                intent.coin == facts.coin
+                    && (intent.oid == Some(facts.oid) || known_cloid == Some(intent.cloid.as_str()))
+            })
+            .map(|(id, _)| id.clone())
+        else {
+            anyhow::bail!(
+                "Observed io fill has no durable owned OID/CLOID; scoped recovery required"
+            );
+        };
+        anyhow::ensure!(
+            epoch == self.account.ws.connection_epoch(),
+            "Stale io actual-fill epoch"
+        );
+        let intent = state
+            .facts
+            .intents
+            .get(&id)
+            .context("Missing owned fill intent")?;
+        let mut intent = intent.clone();
+        anyhow::ensure!(
+            intent.is_buy == facts.is_buy
+                && ((intent.is_buy && facts.price <= intent.price)
+                    || (!intent.is_buy && facts.price >= intent.price))
+                && intent.oid.is_none_or(|oid| oid == facts.oid)
+                && known_cloid.is_none_or(|cloid| cloid == intent.cloid)
+                && !matches!(
+                    intent.phase,
+                    IoIntentPhase::NotWritten | IoIntentPhase::Rejected | IoIntentPhase::Terminal
+                )
+                && facts.time >= intent.created_ms
+                && facts.time <= now_ms(),
+            "io fill native identity/direction conflicts with ownership"
+        );
+        let cumulative = intent
+            .filled
+            .checked_add(facts.quantity)
+            .context("io cumulative fill overflow")?;
+        anyhow::ensure!(
+            cumulative <= intent.quantity,
+            "io actual fills exceed immutable owned quantity"
+        );
+        intent.oid = Some(facts.oid);
+        intent.filled = cumulative;
+        if cumulative == intent.quantity {
+            intent.phase = IoIntentPhase::TerminalPending;
+            intent.terminal_time_ms = Some(facts.time);
+        }
+        let client = ClientOrderId::new_checked(&id)?;
+        let instrument = http
+            .io_cached_instrument(coin)
+            .context("Missing io actual fill instrument")?;
+        let mut native: crate::websocket::messages::WsFillData =
+            serde_json::from_value(raw.clone())?;
+        native.cloid = Some(intent.cloid.clone());
+        let mut report = crate::websocket::parse::parse_ws_fill_report(
+            &native,
+            &instrument,
+            AccountId::new_checked(&state.facts.account_id)?,
+            (now_ms() * 1_000_000).into(),
+        )?;
+        anyhow::ensure!(
+            report.commission.as_decimal() == facts.fee
+                && report.last_qty.as_decimal() == facts.quantity
+                && report.last_px.as_decimal() == facts.price,
+            "io actual financial facts exceed native precision; retain unknown rather than quantize a trade"
+        );
+        report.client_order_id = Some(client);
+        report.trade_id = nautilus_model::identifiers::TradeId::new(format!(
+            "io:{}:{}:{}",
+            facts.coin, facts.oid, facts.tid
+        ));
+        state.facts.intents.insert(id, intent);
+        state.facts.fills.insert(key, facts);
+        state.recovery_complete = false;
+        state.diagnostic = "Actual io fill requires new complete scoped account absorption".into();
+        state.persist()?;
+        let publish = !state.native_projection_recovery_required;
+        drop(state);
+        if publish {
+            emitter.send_fill_report(report);
+        }
+        Ok(())
+    }
+}
+
+fn fill_facts(raw: &Value) -> anyhow::Result<IoFillFacts> {
+    let side = raw
+        .get("side")
+        .and_then(Value::as_str)
+        .context("Missing actual fill side")?;
+    anyhow::ensure!(matches!(side, "B" | "A"), "Unknown actual fill side");
+    let facts = IoFillFacts {
+        coin: raw
+            .get("coin")
+            .and_then(Value::as_str)
+            .context("Missing actual coin")?
+            .into(),
+        oid: raw
+            .get("oid")
+            .and_then(Value::as_u64)
+            .context("Missing actual OID")?,
+        tid: raw
+            .get("tid")
+            .and_then(Value::as_u64)
+            .filter(|value| *value > 0)
+            .context("Missing real venue trade ID")?,
+        time: raw
+            .get("time")
+            .and_then(Value::as_u64)
+            .filter(|value| *value > 0)
+            .context("Missing actual trade source time")?,
+        is_buy: side == "B",
+        quantity: decimal(raw, "sz")?,
+        price: decimal(raw, "px")?,
+        fee: decimal(raw, "fee")?,
+        fee_token: raw
+            .get("feeToken")
+            .and_then(Value::as_str)
+            .context("Missing actual fee token")?
+            .into(),
+        start_position: decimal(raw, "startPosition")?,
+        closed_pnl: decimal(raw, "closedPnl")?,
+        hash: raw
+            .get("hash")
+            .and_then(Value::as_str)
+            .context("Missing actual fill hash")?
+            .into(),
+        builder_fee: raw
+            .get("builderFee")
+            .filter(|value| !value.is_null())
+            .map(|value| {
+                Decimal::from_str_exact(
+                    value
+                        .as_str()
+                        .context("Actual builder fee requires an exact decimal string")?,
+                )
+                .map(|amount| amount.normalize().to_string())
+                .map_err(anyhow::Error::from)
+            })
+            .transpose()?,
+    };
+    anyhow::ensure!(
+        facts.quantity > Decimal::ZERO && facts.price > Decimal::ZERO && facts.fee_token == "USDC",
+        "Invalid io trade/fee currency facts"
+    );
+    Ok(facts)
+}
+
+fn signed_binding_facts(
+    prepared: &IoPreparedAction,
+    binding: &crate::websocket::client::PreparedSignedActionBinding,
+) -> IoSignedBindingFacts {
+    IoSignedBindingFacts {
+        action_token: prepared.action_token,
+        post_id: binding.post_id,
+        epoch: binding.connection_epoch,
+        connection_generation: binding.connection_generation,
+        nonce: binding.nonce,
+        expires_after: binding.expires_after,
+        signed_at_ms: binding.signed_at_ms,
+        action_digest: binding.action_digest.to_string(),
+        signed_payload_digest: binding.signed_payload_digest.to_string(),
+        frame_digest: binding.frame_digest.to_string(),
+    }
+}
+
+fn validate_signed_binding(
+    prepared: &IoPreparedAction,
+    binding: &crate::websocket::client::PreparedSignedActionBinding,
+) -> anyhow::Result<()> {
+    let now = now_ms();
+    let latest_expiry = prepared
+        .created_ms
+        .checked_add(prepared.runtime.policy.action_timeout_ms)
+        .context("io signing expiry overflow")?;
+    anyhow::ensure!(
+        binding.connection_epoch == prepared.epoch
+            && binding.post_id > 0
+            && binding.signed_payload.vault_address.is_none()
+            && binding.signed_payload.nonce == binding.nonce
+            && binding.signed_payload.expires_after == Some(binding.expires_after)
+            && binding.nonce >= prepared.created_ms
+            && binding.nonce < binding.expires_after
+            && binding.signed_at_ms >= prepared.created_ms
+            && binding.signed_at_ms <= now
+            && binding.expires_after > now
+            && binding.expires_after <= latest_expiry
+            && binding.deadline > nautilus_network::dst::time::Instant::now(),
+        "Actual signed io nonce/expiry/vault/epoch/local deadline does not match bounded intent"
+    );
+    Ok(())
+}
+
+fn ensure_recovery_generation(
+    state: &IoExecutionState,
+    ws: &crate::websocket::client::HyperliquidWebSocketClient,
+    epoch: u64,
+    revision: u64,
+) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        ws.is_active()
+            && ws.connection_epoch() == epoch
+            && state.revision == revision
+            && !state.journal_tainted,
+        "Stale/superseded io recovery response cannot apply owned facts"
+    );
+    Ok(())
+}
+
+fn validate_fill_replay(
+    fills: &BTreeMap<String, IoFillFacts>,
+    facts: &IoFillFacts,
+) -> anyhow::Result<()> {
+    for previous in fills
+        .values()
+        .filter(|previous| previous.coin == facts.coin && previous.tid == facts.tid)
+    {
+        anyhow::ensure!(
+            previous == facts,
+            "Conflicting io venue trade ID ownership/financial payload"
+        );
+    }
+    Ok(())
+}
+
+impl IoPreparedAction {
+    pub(crate) fn deadline(&self) -> nautilus_network::dst::time::Instant {
+        let expires = self
+            .created_ms
+            .saturating_add(self.runtime.policy.action_timeout_ms);
+        nautilus_network::dst::time::Instant::now()
+            + std::time::Duration::from_millis(expires.saturating_sub(now_ms()))
+    }
+
+    pub(crate) fn preparation(&self) -> crate::websocket::client::PreparedActionPreparation {
+        let prepared = self.clone();
+        Box::new(move |binding| {
+            let check = (|| {
+                validate_signed_binding(&prepared, binding)?;
+                {
+                    let ingress = prepared.runtime.account.ws.private_ingress_guard();
+                    anyhow::ensure!(
+                        binding.connection_generation == ingress.generation()
+                            && ingress.is_applied(prepared.epoch),
+                        "Signed io ingress generation/facts are not current"
+                    );
+                }
+                let expected = alloy_primitives::keccak256(serde_json::to_vec(&prepared.action)?);
+                let actual = alloy_primitives::keccak256(serde_json::to_vec(
+                    &binding.signed_payload.action,
+                )?);
+                let frame = crate::websocket::messages::HyperliquidWsRequest::Post {
+                    id: binding.post_id,
+                    request: crate::websocket::messages::PostRequest::Action {
+                        payload: binding.signed_payload.clone(),
+                    },
+                };
+                anyhow::ensure!(
+                    expected == actual
+                        && actual == binding.action_digest
+                        && alloy_primitives::keccak256(serde_json::to_vec(
+                            &binding.signed_payload
+                        )?) == binding.signed_payload_digest
+                        && alloy_primitives::keccak256(serde_json::to_vec(&frame)?)
+                            == binding.frame_digest,
+                    "Signed io action/payload digest differs from prepared owned intent"
+                );
+                let account = prepared.runtime.account.state.lock();
+                anyhow::ensure!(
+                    account.revision() == prepared.account_revision,
+                    "Signed io account proof was superseded"
+                );
+                let mut state = prepared.runtime.state.lock();
+                anyhow::ensure!(
+                    state.revision == prepared.execution_revision && !state.journal_tainted,
+                    "Signed io execution proof was superseded"
+                );
+                let intent = state
+                    .facts
+                    .intents
+                    .get_mut(&prepared.client_order_id)
+                    .context("Missing durable signed io intent")?;
+                anyhow::ensure!(
+                    (prepared.is_cancel
+                        && intent.cancel_pending
+                        && intent.cancel_action_token == Some(prepared.action_token))
+                        || (!prepared.is_cancel
+                            && intent.phase == IoIntentPhase::Prepared
+                            && intent.signed_binding.is_none()),
+                    "Signed io action token was already used or changed"
+                );
+                intent.signed_binding = Some(signed_binding_facts(&prepared, binding));
+                state.persist()
+            })();
+            check.map_err(|error: anyhow::Error| error.to_string())
+        })
+    }
+
+    pub(crate) fn admission(&self) -> crate::websocket::client::PreparedActionAdmission {
+        let prepared = self.clone();
+        Box::new(move |binding, continuation| {
+            // Network lifecycle -> raw ingress -> scope proof -> intent -> control.
+            let ingress = prepared.runtime.account.ws.private_ingress_guard();
+            if binding.connection_generation != ingress.generation()
+                || !ingress.is_applied(prepared.epoch)
+            {
+                return Err("Observed io private facts have not been completely processed".into());
+            }
+            let account = prepared.runtime.account.state.lock();
+            let mut state = prepared.runtime.state.lock();
+            // Sample freshness only after every proof lock wait has completed.
+            let now = now_ms();
+            let snapshot = account
+                .snapshot(
+                    now,
+                    prepared.runtime.account.ws.is_active(),
+                    prepared.runtime.account.ws.connection_epoch(),
+                )
+                .ok_or_else(|| "Missing final io account proof".to_string())?;
+            if account.revision() != prepared.account_revision
+                || snapshot.private_stream_epoch != prepared.epoch
+                || !snapshot.trusted
+            {
+                return Err("Final io account proof/epoch changed".into());
+            }
+            if state.revision != prepared.execution_revision {
+                return Err("Final io recovery/metadata generation changed".into());
+            }
+            let intent = state
+                .facts
+                .intents
+                .get(&prepared.client_order_id)
+                .ok_or_else(|| "Missing durable io ownership".to_string())?
+                .clone();
+            let meta = state
+                .metadata
+                .get(&intent.instrument_id)
+                .ok_or_else(|| "Missing final io metadata".to_string())?
+                .clone();
+            let validate = (|| {
+                validate_signed_binding(&prepared, &binding)?;
+                anyhow::ensure!(
+                    intent.signed_binding.as_ref()
+                        == Some(&signed_binding_facts(&prepared, &binding)),
+                    "Actual io signed payload is not the durable admitted action binding"
+                );
+                if prepared.is_cancel {
+                    anyhow::ensure!(
+                        intent.cancel_pending
+                            && intent.cancel_action_token == Some(prepared.action_token)
+                            && intent.phase == IoIntentPhase::Open
+                            && state.recovery_complete,
+                        "Owned io cancel proof changed"
+                    );
+                    anyhow::ensure!(
+                        now >= meta.received_ms
+                            && now - meta.received_ms
+                                <= prepared.runtime.policy.metadata_max_age_ms,
+                        "Owned io cancel metadata expired"
+                    );
+                    let HyperliquidExchangeAction::CancelByCloid { cancels, fast } =
+                        &binding.signed_payload.action
+                    else {
+                        anyhow::bail!("Prepared cancel action type changed")
+                    };
+                    anyhow::ensure!(
+                        fast.is_none()
+                            && cancels.len() == 1
+                            && cancels[0].asset == meta.asset
+                            && cancels[0].cloid.to_hex() == intent.cloid,
+                        "Prepared cancel wire ownership changed"
+                    );
+                } else {
+                    anyhow::ensure!(
+                        intent.phase == IoIntentPhase::Prepared,
+                        "io prepared intent was already attempted"
+                    );
+                    validate_admission(
+                        &prepared.runtime.policy,
+                        &state,
+                        &snapshot,
+                        &intent,
+                        &meta,
+                        IoAdmissionContext {
+                            now,
+                            already_registered: true,
+                            available_funds: conservative_funds(
+                                &snapshot,
+                                account.private_funds_witness().as_ref(),
+                            )?,
+                        },
+                    )?;
+                    validate_wire(&meta, intent.quantity, intent.price)?;
+                    let HyperliquidExchangeAction::Order {
+                        orders,
+                        grouping,
+                        builder,
+                    } = &binding.signed_payload.action
+                    else {
+                        anyhow::bail!("Prepared order action type changed")
+                    };
+                    anyhow::ensure!(
+                        orders.len() == 1
+                            && *grouping == HyperliquidExchangeGrouping::Na
+                            && builder.is_none(),
+                        "Prepared io action scope changed"
+                    );
+                    let order = &orders[0];
+                    anyhow::ensure!(
+                        order.asset == meta.asset
+                            && order
+                                .cloid
+                                .is_some_and(|cloid| cloid.to_hex() == intent.cloid)
+                            && order.size == intent.quantity
+                            && order.price == intent.price
+                            && order.is_buy == intent.is_buy
+                            && order.reduce_only == intent.reduce_only,
+                        "Prepared signed action differs from durable budget/ownership facts"
+                    );
+                    let HyperliquidExchangeOrderKind::Limit { limit } = &order.kind else {
+                        anyhow::bail!("Prepared io action is not bounded limit")
+                    };
+                    anyhow::ensure!(
+                        (intent.tif == "Ioc" && limit.tif == HyperliquidExchangeTif::Ioc)
+                            || (intent.tif == "Gtc" && limit.tif == HyperliquidExchangeTif::Gtc),
+                        "Prepared io TIF changed"
+                    );
+                }
+                anyhow::ensure!(
+                    now >= prepared.created_ms
+                        && now - prepared.created_ms <= prepared.runtime.policy.action_timeout_ms,
+                    "Prepared io action deadline expired"
+                );
+                Ok::<_, anyhow::Error>(())
+            })();
+            validate.map_err(|error| error.to_string())?;
+            if let Some(intent) = state.facts.intents.get_mut(&prepared.client_order_id) {
+                if !prepared.is_cancel {
+                    intent.phase = IoIntentPhase::Unknown;
+                }
+                intent.diagnostic =
+                    "Actual backend write admission; confirmation remains pending".into();
+            }
+            // The durable Prepared record already exists. No filesystem work or callback emission here.
+            continuation.start_send().map_err(|error| error.to_string())
+        })
+    }
+}
+
+impl IoExecutionRuntime {
+    pub(crate) fn validate_private_account_leverage(&self, data: &Value) -> anyhow::Result<()> {
+        let rows = data
+            .pointer("/clearinghouseState/assetPositions")
+            .and_then(Value::as_array)
+            .context("Missing complete io private positions for actual leverage witness")?;
+        let state = self.state.lock();
+        for row in rows {
+            let position = row
+                .get("position")
+                .context("Missing io private position leverage identity")?;
+            let coin = position
+                .get("coin")
+                .and_then(Value::as_str)
+                .context("Missing io private leverage coin")?;
+            let Some(meta) = state.metadata.values().find(|meta| meta.coin == coin) else {
+                // Ownership and unknown assets are checked by scoped recovery.
+                // Compare only independently obtained actual leverage proofs here.
+                continue;
+            };
+            let leverage = position
+                .get("leverage")
+                .context("Missing io private actual leverage")?;
+            anyhow::ensure!(
+                leverage.get("type").and_then(Value::as_str) == Some("isolated")
+                    && leverage.get("value").and_then(Value::as_u64) == Some(meta.actual_leverage),
+                "Observed io private actual leverage changed from receive-bounded metadata proof"
+            );
+        }
+        Ok(())
+    }
+
+    pub(crate) fn validate_owned_command(
+        &self,
+        id: ClientOrderId,
+        instrument: InstrumentId,
+        strategy: StrategyId,
+    ) -> anyhow::Result<()> {
+        let state = self.state.lock();
+        let intent = state
+            .facts
+            .intents
+            .get(id.as_str())
+            .context("io command has no durable ownership")?;
+        anyhow::ensure!(
+            intent.instrument_id == instrument.to_string()
+                && strategy.to_string() == self.policy.strategy_id,
+            "io command native strategy/instrument ownership mismatch"
+        );
+        Ok(())
+    }
+    pub(crate) fn observe_frame(
+        &self,
+        channel: &str,
+        data: &Value,
+        epoch: u64,
+        http: &HyperliquidHttpClient,
+        emitter: &nautilus_live::ExecutionEventEmitter,
+    ) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            epoch == self.account.ws.connection_epoch(),
+            "Old io private ledger epoch"
+        );
+        match channel {
+            "user" => {
+                let object = data
+                    .as_object()
+                    .context("Unknown io private user event envelope")?;
+                anyhow::ensure!(
+                    object.len() == 1 && object.contains_key("fills"),
+                    "Unsupported io funding/liquidation/cancellation user event requires issue #102; facts are unknown"
+                );
+                let fills = object
+                    .get("fills")
+                    .and_then(Value::as_array)
+                    .context("Missing complete io actual fills array")?;
+                for fill in fills {
+                    self.observe_fill(fill, epoch, http, emitter)?;
+                }
+            }
+            "orderUpdates" => {
+                for entry in data
+                    .as_array()
+                    .context("Partial order-update stream payload")?
+                {
+                    self.observe_order_entry(entry, None, None, http, emitter)?;
+                }
+            }
+            _ => anyhow::bail!("Unknown io private ledger channel"),
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use super::*;
+
+    fn policy_value() -> Value {
+        json!({"schema_version":1,"strategy_id":"ENTROPY-001",
+            "journal_path":std::env::temp_dir().join("entropy-owned-unit.ndjson"),
+            "max_order_notional":"100","max_gross_notional":"100","max_open_orders":4,
+            "max_actions":10,"max_leverage":1,"margin_buffer":"1","fee_buffer_bps":"5",
+            "action_timeout_ms":1000,"recovery_timeout_ms":1000,"recovery_max_attempts":2,
+            "recovery_retry_delay_ms":1,"metadata_max_age_ms":1000,
+            "symbols":[{"instrument_id":"io:SNDK-USD-PERP.HYPERLIQUID","max_quantity":"1","min_price":"90","max_price":"100"}]})
+    }
+
+    fn policy() -> IoExecutionPolicy {
+        IoExecutionPolicy::parse(&policy_value().to_string()).unwrap()
+    }
+
+    fn intent() -> IoOwnedIntent {
+        let id = ClientOrderId::new("ENTROPY-OWNED-1");
+        IoOwnedIntent {
+            client_order_id: id.to_string(),
+            instrument_id: "io:SNDK-USD-PERP.HYPERLIQUID".into(),
+            coin: "io:SNDK".into(),
+            cloid: Cloid::from_client_order_id(id).to_hex(),
+            oid: None,
+            is_buy: true,
+            reduce_only: false,
+            tif: "Gtc".into(),
+            quantity: Decimal::ONE,
+            price: Decimal::from(100),
+            filled: Decimal::ZERO,
+            reservation: Decimal::from(100),
+            phase: IoIntentPhase::Prepared,
+            created_ms: 1000,
+            terminal_time_ms: None,
+            cancel_pending: false,
+            cancel_action_token: None,
+            signed_binding: None,
+            diagnostic: String::new(),
+        }
+    }
+
+    fn journal() -> JournalFacts {
+        JournalFacts {
+            schema_version: 1,
+            address: "0x0000000000000000000000000000000000000001".into(),
+            account_id: "HYPERLIQUID-ENTROPY".into(),
+            strategy_id: "ENTROPY-001".into(),
+            actions: 0,
+            intents: BTreeMap::new(),
+            fills: BTreeMap::new(),
+        }
+    }
+
+    fn proof() -> IoInstrumentProof {
+        IoInstrumentProof {
+            instrument_id: "io:SNDK-USD-PERP.HYPERLIQUID".into(),
+            coin: "io:SNDK".into(),
+            asset: 110000,
+            dex_index: 1,
+            universe_index: 0,
+            size_decimals: 4,
+            margin_mode: "strictIsolated".into(),
+            actual_leverage: 1,
+            received_ms: 1000,
+            verification_started_ms: 1000,
+            user_asset_source_time_ms: None,
+            max_trade_sizes: [Decimal::ONE; 2],
+            available_to_trade: [Decimal::from(100); 2],
+            mark_price: Decimal::from(100),
+        }
+    }
+
+    fn raw_fill() -> Value {
+        json!({"coin":"io:SNDK","oid":10,"tid":20,"time":1000,"side":"B","sz":"0.2","px":"100",
+            "fee":"-0.000001","feeToken":"USDC","startPosition":"0","closedPnl":"0",
+            "hash":"0xsynthetic","builderFee":"0.0000001"})
+    }
+
+    #[rstest]
+    #[case(1, 1, 1)]
+    #[case(200, 200, 80)]
+    #[case(50, 20, 20)]
+    #[case(-1, 1, -1)]
+    fn entry_budget_uses_minimum_http_and_latest_private_funds(
+        #[case] private_free: i64,
+        #[case] private_withdrawable: i64,
+        #[case] expected: i64,
+    ) {
+        let snapshot = HyperliquidAccountScopeSnapshot {
+            dex: "io".into(),
+            address: "user".into(),
+            account_mode: "standard_disabled_inferred".into(),
+            collateral_token_id: "USDC".into(),
+            balance: Decimal::from(100),
+            equity: Decimal::from(100),
+            withdrawable: Decimal::from(80),
+            used: Decimal::ZERO,
+            free: Decimal::from(100),
+            total_maintenance: None,
+            positions: Vec::new(),
+            http_source_time_ms: 1000,
+            http_received_time_ms: 1000,
+            http_verification_started_time_ms: 1000,
+            private_stream_epoch: 7,
+            ws_received_time_ms: Some(1001),
+            ws_source_time_ms: None,
+            trusted: true,
+            flat: Some(true),
+            diagnostic: String::new(),
+            provenance: String::new(),
+        };
+        let private = PrivateFundsWitness {
+            free: Decimal::from(private_free),
+            withdrawable: Decimal::from(private_withdrawable),
+            received_time_ms: 1001,
+            source_time_ms: None,
+        };
+        assert_eq!(
+            conservative_funds(&snapshot, Some(&private)).unwrap(),
+            Decimal::from(expected)
+        );
+        assert!(conservative_funds(&snapshot, None).is_err());
+        assert_eq!(snapshot.free, Decimal::from(100));
+    }
+
+    #[rstest]
+    #[case("max_order_notional",json!(100))]
+    #[case("max_gross_notional",json!("NaN"))]
+    #[case("action_timeout_ms",json!(30001))]
+    #[case("metadata_max_age_ms",json!(0))]
+    #[case("max_leverage",json!(0))]
+    #[case("unexpected",json!(true))]
+    fn explicit_policy_rejects_unknown_nonexact_or_unbounded_fields(
+        #[case] field: &str,
+        #[case] value: Value,
+    ) {
+        let mut raw = policy_value();
+        raw[field] = value;
+        assert!(IoExecutionPolicy::parse(&raw.to_string()).is_err());
+    }
+
+    #[rstest]
+    #[case("SNDK-USD-PERP.HYPERLIQUID")]
+    #[case("xyz:SNDK-USD-PERP.HYPERLIQUID")]
+    #[case("io:SNDK-USDC-PERP.HYPERLIQUID")]
+    fn native_instrument_identity_never_uses_ticker_equivalence(#[case] id: &str) {
+        assert!(coin_from_instrument(id).is_err());
+    }
+
+    #[rstest]
+    #[case("1", "123456", true)]
+    #[case("0.0001", "100.01", true)]
+    #[case("0.00001", "100", false)]
+    #[case("1", "100.001", false)]
+    #[case("1", "1234.56", false)]
+    fn wire_precision_respects_quantity_and_integer_price_exception(
+        #[case] qty: &str,
+        #[case] px: &str,
+        #[case] expected: bool,
+    ) {
+        assert_eq!(
+            validate_wire(
+                &proof(),
+                Decimal::from_str_exact(qty).unwrap(),
+                Decimal::from_str_exact(px).unwrap()
+            )
+            .is_ok(),
+            expected
+        );
+        let mut invalid = proof();
+        invalid.size_decimals = 7;
+        assert!(validate_wire(&invalid, Decimal::ONE, Decimal::ONE).is_err());
+    }
+
+    #[rstest]
+    fn raw_financial_facts_preserve_rebate_and_do_not_add_builder_fee_twice() {
+        let facts = fill_facts(&raw_fill()).unwrap();
+        assert_eq!(facts.fee, Decimal::from_str_exact("-0.000001").unwrap());
+        assert_eq!(facts.builder_fee.as_deref(), Some("0.0000001"));
+    }
+
+    #[rstest]
+    #[case("px",json!("100.01"))]
+    #[case("sz",json!("0.1"))]
+    #[case("fee",json!("0"))]
+    #[case("oid",json!(11))]
+    fn raw_trade_identity_detects_financial_and_owned_oid_conflicts(
+        #[case] field: &str,
+        #[case] value: Value,
+    ) {
+        let facts = fill_facts(&raw_fill()).unwrap();
+        let mut fills = BTreeMap::new();
+        fills.insert("io:SNDK:10:20".into(), facts.clone());
+        assert!(validate_fill_replay(&fills, &facts).is_ok());
+        let mut changed = raw_fill();
+        changed[field] = value;
+        assert!(validate_fill_replay(&fills, &fill_facts(&changed).unwrap()).is_err());
+    }
+
+    #[rstest]
+    #[case("tid")]
+    #[case("feeToken")]
+    #[case("time")]
+    fn missing_real_trade_facts_are_never_manufactured(#[case] field: &str) {
+        let mut raw = raw_fill();
+        raw.as_object_mut().unwrap().remove(field);
+        assert!(fill_facts(&raw).is_err());
+    }
+
+    #[rstest]
+    fn durable_journal_rejects_changed_tif_and_forged_reservation() {
+        let empty = journal();
+        let mut valid = empty.clone();
+        let original = intent();
+        valid.actions = 1;
+        valid
+            .intents
+            .insert(original.client_order_id.clone(), original);
+        assert!(validate_journal(&valid, &empty, &policy()).is_ok());
+        let mut changed = valid.clone();
+        changed.intents.values_mut().next().unwrap().tif = "Ioc".into();
+        assert!(validate_journal(&changed, &valid, &policy()).is_err());
+        let mut changed = valid.clone();
+        changed.intents.values_mut().next().unwrap().reservation = -Decimal::ONE;
+        assert!(validate_journal(&changed, &empty, &policy()).is_err());
+        let mut changed = valid.clone();
+        changed.intents.values_mut().next().unwrap().phase = IoIntentPhase::Terminal;
+        assert!(validate_journal(&changed, &empty, &policy()).is_err());
+        let mut changed = valid.clone();
+        let value = changed.intents.pop_first().unwrap().1;
+        changed.intents.insert("FORGED-KEY".into(), value);
+        assert!(validate_journal(&changed, &empty, &policy()).is_err());
+    }
+
+    #[rstest]
+    fn running_journal_byte_bound_closes_before_an_unbounded_append() {
+        let file = tempfile::tempfile().unwrap();
+        file.set_len(16 * 1024 * 1024).unwrap();
+        let mut state = IoExecutionState {
+            facts: journal(),
+            metadata: BTreeMap::new(),
+            revision: 0,
+            recovery_complete: true,
+            recovered_epoch: Some(1),
+            diagnostic: String::new(),
+            journal: file,
+            journal_tainted: false,
+            native_projection_recovery_required: false,
+        };
+        assert!(state.persist().is_err());
+        assert!(state.journal_tainted);
+        assert!(!state.recovery_complete);
+        assert_eq!(state.journal.metadata().unwrap().len(), 16 * 1024 * 1024);
+    }
+}

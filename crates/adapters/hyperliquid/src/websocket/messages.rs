@@ -1220,6 +1220,19 @@ pub enum NautilusWsMessage {
         data: serde_json::Value,
         ts_init: UnixNanos,
     },
+    /// Original private io ledger frame, bound to its actual reader epoch and receive time.
+    IoExecutionFrame {
+        channel: String,
+        data: serde_json::Value,
+        epoch: u64,
+        received: UnixNanos,
+    },
+    /// All actor outputs preceding this private raw frame marker have been handled.
+    PrivateIngressApplied {
+        generation: u64,
+        epoch: u64,
+        sequence: u64,
+    },
     /// Execution reports (order status and fills).
     ExecutionReports(Vec<ExecutionReport>),
     /// Parsed trade ticks.
