@@ -1,0 +1,60 @@
+{
+  "scope": "Official public document/SDK reads only; no exchange actions or account queries",
+  "sdk_revision": "2fdb18f9517675ea03695a0962bd19eece9c83f0",
+  "sources": [
+    {
+      "file": "tick-and-lot-size.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/tick-and-lot-size.md",
+      "capture_start_utc": "2026-10-08T10:32:54.982527+00:00",
+      "bytes": 1561,
+      "sha256": "1114a12bc134c7d0e004002e67a3103bb7835f13ec34329d5409c1f895830a10",
+      "capture_end_utc": "2026-10-08T10:32:55.374407+00:00"
+    },
+    {
+      "file": "error-responses.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/error-responses.md",
+      "capture_start_utc": "2026-10-08T10:32:54.982527+00:00",
+      "bytes": 4080,
+      "sha256": "f094b0d8eb40cee3c0ef8d22fbb60032e82382bd7d641bd2d144186af6d92595",
+      "capture_end_utc": "2026-10-08T10:32:55.365406+00:00"
+    },
+    {
+      "file": "margining.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/margining.md",
+      "capture_start_utc": "2026-10-08T10:32:55.365406+00:00",
+      "bytes": 3823,
+      "sha256": "95891a47102caca3171f406873178efc0d456ecda5636ed89fd5dc797f6c90a7",
+      "capture_end_utc": "2026-10-08T10:32:55.694915+00:00"
+    },
+    {
+      "file": "ws-post-requests.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/post-requests.md",
+      "capture_start_utc": "2026-10-08T10:32:55.374407+00:00",
+      "bytes": 3305,
+      "sha256": "b31f1375f60368e3ea9200a83467bb179cb44384b1abfe3d460a04bad533876a",
+      "capture_end_utc": "2026-10-08T10:32:55.717915+00:00"
+    },
+    {
+      "file": "asset-ids.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/asset-ids.md",
+      "capture_start_utc": "2026-10-08T10:32:55.694915+00:00",
+      "bytes": 2265,
+      "sha256": "eec6b95ef1bf184fef4e29effb3f23e6297757c899aa77110d108686011ae0ae",
+      "capture_end_utc": "2026-10-08T10:32:56.034916+00:00"
+    },
+    {
+      "file": "order-types.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/order-types.md",
+      "capture_start_utc": "2026-10-08T10:32:55.717915+00:00",
+      "error": "URLError: <urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1010)>"
+    },
+    {
+      "file": "sdk-signing.py",
+      "url": "https://raw.githubusercontent.com/hyperliquid-dex/hyperliquid-python-sdk/2fdb18f9517675ea03695a0962bd19eece9c83f0/hyperliquid/utils/signing.py",
+      "capture_start_utc": "2026-10-08T10:32:55.871915+00:00",
+      "bytes": 16099,
+      "sha256": "938ec0a1f9611874b423ca946696e19a71d32d14709f521ea5d526f4398c0b85",
+      "capture_end_utc": "2026-10-08T10:32:56.327979+00:00"
+    }
+  ]
+}

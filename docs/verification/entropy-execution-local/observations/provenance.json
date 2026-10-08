@@ -1,0 +1,19 @@
+{
+  "kind": "local_native_test_failure_evidence",
+  "observations": [
+    {
+      "file": "windows-peer-recvbuf-only-backpressure-failed.log",
+      "source": "E:/persarb/_tmp/entropy101-validation/network-prepared-tcp.log",
+      "sha256": "0962defe8c10edaf753461238c6c85d7c8db2ec86e10b63b6e485609b96c885d",
+      "copied_utc": "2026-10-08T12:24:49.069176+00:00",
+      "source_mtime_utc": "2026-10-08T12:17:12.895145+00:00"
+    },
+    {
+      "file": "windows-owned-send-recvbuf-backpressure-failed.log",
+      "source": "E:/persarb/_tmp/entropy101-validation/network-prepared-turmoil.log",
+      "sha256": "c45f151fe08b4b102a22b05602b35b06601bbc1be099ace77a58976eeb7ae18e",
+      "copied_utc": "2026-10-08T12:24:49.076176+00:00",
+      "source_mtime_utc": "2026-10-08T12:22:29.510201+00:00"
+    }
+  ]
+}

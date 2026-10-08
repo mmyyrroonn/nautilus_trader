@@ -118,7 +118,32 @@ pub(crate) struct AccountScopeState {
     stream_epoch: Option<u64>,
 }
 
+/// Detached latest private financial facts; source time is never synthesized.
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct PrivateFundsWitness {
+    #[serde(serialize_with = "serialize_decimal_as_str")]
+    pub(crate) free: Decimal,
+    #[serde(serialize_with = "serialize_decimal_as_str")]
+    pub(crate) withdrawable: Decimal,
+    pub(crate) received_time_ms: u64,
+    pub(crate) source_time_ms: Option<u64>,
+}
+
 impl AccountScopeState {
+    pub(crate) fn revision(&self) -> u64 {
+        self.version
+    }
+
+    pub(crate) fn private_funds_witness(&self) -> Option<PrivateFundsWitness> {
+        let facts = self.ws_facts.as_ref()?;
+        Some(PrivateFundsWitness {
+            free: facts.free,
+            withdrawable: facts.withdrawable,
+            received_time_ms: self.ws_received_time_ms?,
+            source_time_ms: self.ws_source_time_ms,
+        })
+    }
+
     pub(crate) fn new(address: String, max_age_ms: u64) -> Self {
         Self {
             address,
@@ -411,7 +436,7 @@ fn validate_role(role: &Value) -> anyhow::Result<()> {
     }
 }
 
-fn validate_collateral(meta: &Value, spot: &Value) -> anyhow::Result<BTreeSet<String>> {
+pub(crate) fn validate_collateral(meta: &Value, spot: &Value) -> anyhow::Result<BTreeSet<String>> {
     let index = meta
         .get("collateralToken")
         .and_then(Value::as_u64)
@@ -741,6 +766,37 @@ mod tests {
         assert!(snapshot.trusted);
         assert_eq!(snapshot.ws_source_time_ms, None);
         assert_eq!(snapshot.equity.to_string(), "5.125001");
+    }
+
+    #[rstest]
+    fn latest_private_funds_are_separate_from_http_provenance() {
+        let mut state = ready_state();
+        assert!(state.private_funds_witness().is_none());
+        let mut value = raw();
+        value.as_object_mut().unwrap().remove("time");
+        value["marginSummary"]["accountValue"] = json!("1");
+        value["marginSummary"]["totalMarginUsed"] = json!("0");
+        value["withdrawable"] = json!("1");
+        state
+            .observe_ws(
+                &json!({"user":"user","dex":"io","clearinghouseState":value}),
+                1001,
+            )
+            .unwrap();
+        let witness = state.private_funds_witness().unwrap();
+        assert_eq!(witness.free, Decimal::ONE);
+        assert_eq!(witness.withdrawable, Decimal::ONE);
+        assert_eq!(witness.received_time_ms, 1001);
+        assert_eq!(witness.source_time_ms, None);
+        let http = state.snapshot(1001, true, 7).unwrap();
+        assert!(http.trusted);
+        assert_eq!(http.free.to_string(), "-4.124999");
+        assert_eq!(http.http_source_time_ms, 1000);
+        let json = serde_json::to_value(witness).unwrap();
+        assert_eq!(json["free"], "1");
+        assert!(json["source_time_ms"].is_null());
+        state.invalidate("Private transport lost", true);
+        assert!(state.private_funds_witness().is_none());
     }
 
     #[rstest]

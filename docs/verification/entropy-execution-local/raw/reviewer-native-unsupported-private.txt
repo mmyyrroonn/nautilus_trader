@@ -1,0 +1,8 @@
+
+running 3 tests
+test execution::unsupported_private_economic_frames_revoke_trust_before_new_risk::case_1 ... ok
+test execution::unsupported_private_economic_frames_revoke_trust_before_new_risk::case_2 ... ok
+test execution::unsupported_private_economic_frames_revoke_trust_before_new_risk::case_3 ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 67 filtered out; finished in 0.52s
+

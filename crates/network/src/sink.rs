@@ -144,6 +144,55 @@ impl SocketStateSink {
         true
     }
 
+    /// Serializes availability edges while keeping synchronous write admission out of callbacks.
+    pub(crate) fn transition_with_admission(
+        &self,
+        value: &AtomicU8,
+        current: ConnectionMode,
+        next: ConnectionMode,
+        state: SocketState,
+        admission: &Mutex<()>,
+    ) -> bool {
+        let _transition = self.transition_lock.lock();
+        let changed = {
+            let _admission = admission.lock();
+            value
+                .compare_exchange(
+                    current.as_u8(),
+                    next.as_u8(),
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                )
+                .is_ok()
+        };
+        if changed {
+            self.notify(state);
+        }
+        changed
+    }
+
+    pub(crate) fn close_with_admission(&self, value: &AtomicU8, admission: &Mutex<()>) -> bool {
+        let _transition = self.transition_lock.lock();
+        let (changed, was_active) = {
+            let _admission = admission.lock();
+            let current = ConnectionMode::from_atomic(value);
+            let changed = matches!(current, ConnectionMode::Active | ConnectionMode::Reconnect)
+                && value
+                    .compare_exchange(
+                        current.as_u8(),
+                        ConnectionMode::Closed.as_u8(),
+                        Ordering::SeqCst,
+                        Ordering::SeqCst,
+                    )
+                    .is_ok();
+            (changed, current.is_active())
+        };
+        if changed && was_active {
+            self.notify(SocketState::Disconnected);
+        }
+        changed
+    }
+
     fn notify(&self, state: SocketState) {
         if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (self.callback)(state)))
             .is_err()
@@ -376,5 +425,60 @@ mod tests {
 
         assert_eq!(ConnectionMode::from_atomic(&mode), ConnectionMode::Closed);
         assert_eq!(*states.lock(), Vec::new());
+    }
+
+    #[rstest]
+    fn prepared_sink_callbacks_observe_transition_after_admission_gate_is_released() {
+        let admission = Arc::new(Mutex::new(()));
+        let callback_admission = Arc::clone(&admission);
+        let states = Arc::new(Mutex::new(Vec::new()));
+        let callback_states = Arc::clone(&states);
+        let mode = Arc::new(AtomicU8::new(ConnectionMode::Reconnect.as_u8()));
+        let callback_mode = Arc::clone(&mode);
+        let sink = SocketStateSink::new(move |state| {
+            let _admission = callback_admission
+                .try_lock()
+                .expect("state callback must not hold the prepared admission gate");
+            callback_states
+                .lock()
+                .push((state, ConnectionMode::from_atomic(&callback_mode)));
+        });
+        assert!(sink.transition_with_admission(
+            &mode,
+            ConnectionMode::Reconnect,
+            ConnectionMode::Active,
+            SocketState::Connected,
+            &admission
+        ));
+        assert!(sink.close_with_admission(&mode, &admission));
+        assert_eq!(
+            *states.lock(),
+            vec![
+                (SocketState::Connected, ConnectionMode::Active),
+                (SocketState::Disconnected, ConnectionMode::Closed)
+            ]
+        );
+    }
+
+    #[rstest]
+    fn prepared_sink_rejected_transition_preserves_terminal_mode_without_callbacks() {
+        let admission = Mutex::new(());
+        let states = Arc::new(Mutex::new(Vec::new()));
+        let callback_states = Arc::clone(&states);
+        let sink = SocketStateSink::new(move |state| {
+            callback_states.lock().push(state);
+        });
+        let mode = AtomicU8::new(ConnectionMode::Closed.as_u8());
+        assert!(!sink.transition_with_admission(
+            &mode,
+            ConnectionMode::Reconnect,
+            ConnectionMode::Active,
+            SocketState::Connected,
+            &admission
+        ));
+        assert!(!sink.close_with_admission(&mode, &admission));
+        assert_eq!(ConnectionMode::from_atomic(&mode), ConnectionMode::Closed);
+        assert!(states.lock().is_empty());
+        assert!(admission.try_lock().is_some());
     }
 }

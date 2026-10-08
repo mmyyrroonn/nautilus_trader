@@ -522,6 +522,8 @@ impl HyperliquidDataClient {
                                 NautilusWsMessage::ExecutionReports(_)
                                 | NautilusWsMessage::AccountScopeSubscriptionResponse { .. }
                                 | NautilusWsMessage::AccountScopeStreamEpoch { .. }
+                                | NautilusWsMessage::IoExecutionFrame { .. }
+                                | NautilusWsMessage::PrivateIngressApplied { .. }
                                 | NautilusWsMessage::AccountScopeClearinghouseState { .. } => {
                                     // Handled by execution client
                                 }

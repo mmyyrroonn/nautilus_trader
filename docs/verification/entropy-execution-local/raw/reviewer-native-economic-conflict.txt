@@ -1,0 +1,8 @@
+
+running 3 tests
+test execution::same_raw_trade_identity_with_changed_economics_is_a_conflict_even_after_terminal::case_1 ... ok
+test execution::same_raw_trade_identity_with_changed_economics_is_a_conflict_even_after_terminal::case_2 ... ok
+test execution::same_raw_trade_identity_with_changed_economics_is_a_conflict_even_after_terminal::case_3 ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 67 filtered out; finished in 0.65s
+

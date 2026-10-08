@@ -26,18 +26,14 @@
 
 use std::{fmt::Debug, sync::Arc};
 
-use futures_util::stream::{SplitSink, SplitStream};
+use futures_util::stream::SplitStream;
 
+pub(crate) use super::prepared::MessageWriter;
+use super::prepared::{PreparedWriteAdmission, PreparedWriteControl, PreparedWriteOutcome};
 use crate::{
     error::SendError,
     transport::{BoxedWsTransport, Message},
 };
-
-/// Sink half of the active WebSocket transport.
-///
-/// Backed by [`BoxedWsTransport`], so the writer is decoupled from the concrete
-/// backend stream type. Sends are keyed off the neutral [`Message`] enum.
-pub(crate) type MessageWriter = SplitSink<BoxedWsTransport, Message>;
 
 /// Stream half of the active WebSocket transport.
 ///
@@ -126,6 +122,14 @@ pub(crate) enum WriterCommand {
         connection_epoch: u64,
         response_tx: tokio::sync::oneshot::Sender<Result<(), SendError>>,
     },
+    /// Defers admission until the actual backend sink is ready. Never buffered or replayed.
+    SendPreparedOnConnection {
+        message: Message,
+        connection_epoch: u64,
+        control: PreparedWriteControl,
+        admission: PreparedWriteAdmission,
+        response_tx: tokio::sync::oneshot::Sender<PreparedWriteOutcome>,
+    },
     /// Sends a pong if the active connection still owns the ping that caused it.
     SendPongOnConnection {
         data: Vec<u8>,
@@ -142,6 +146,12 @@ impl Debug for WriterCommand {
             Self::SendOnConnection { message, .. } => {
                 f.debug_tuple("SendOnConnection").field(message).finish()
             }
+            Self::SendPreparedOnConnection {
+                connection_epoch, ..
+            } => f
+                .debug_struct("SendPreparedOnConnection")
+                .field("connection_epoch", connection_epoch)
+                .finish_non_exhaustive(),
             Self::SendPongOnConnection { data, .. } => {
                 f.debug_tuple("SendPongOnConnection").field(data).finish()
             }

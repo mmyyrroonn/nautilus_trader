@@ -1,0 +1,6 @@
+
+running 1 test
+test execution::factory_actual_partial_fills_fees_and_owned_ioc_close_update_engine_and_portfolio ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 69 filtered out; finished in 40.35s
+

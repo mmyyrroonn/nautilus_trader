@@ -886,6 +886,8 @@ pub enum HyperliquidInfoRequestType {
     UserFills,
     /// Get user fills by time range.
     UserFillsByTime,
+    /// Get actual user leverage and available size for one asset.
+    ActiveAssetData,
     /// Get order status for a user.
     OrderStatus,
     /// Get all open orders for a user.
@@ -951,6 +953,7 @@ impl HyperliquidInfoRequestType {
             Self::RecentTrades => "recentTrades",
             Self::UserFills => "userFills",
             Self::UserFillsByTime => "userFillsByTime",
+            Self::ActiveAssetData => "activeAssetData",
             Self::OrderStatus => "orderStatus",
             Self::OpenOrders => "openOrders",
             Self::FrontendOpenOrders => "frontendOpenOrders",

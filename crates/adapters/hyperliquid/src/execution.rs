@@ -176,6 +176,7 @@ use crate::{
         },
     },
     config::HyperliquidExecutionClientConfig,
+    execution_scope::{IoExecutionPolicy, IoExecutionRuntime},
     http::{
         client::HyperliquidHttpClient,
         models::{
@@ -215,6 +216,7 @@ pub struct HyperliquidExecutionClient {
     staged_brackets: Arc<Mutex<StagedBracketState>>,
     outcome_settlement_tracker: Arc<Mutex<OutcomeSettlementTracker>>,
     account_scope: Option<AccountScopeDiagnostics>,
+    io_execution: Option<IoExecutionRuntime>,
 }
 
 impl HyperliquidExecutionClient {
@@ -237,6 +239,20 @@ impl HyperliquidExecutionClient {
     pub(crate) fn account_scope_diagnostics(&self) -> Option<AccountScopeDiagnostics> {
         self.account_scope.clone()
     }
+    pub fn execution_scope_snapshot_json(&self) -> anyhow::Result<Option<String>> {
+        self.io_execution
+            .as_ref()
+            .map(IoExecutionRuntime::snapshot_json)
+            .transpose()
+    }
+    pub(crate) fn io_execution_runtime(
+        &self,
+    ) -> Option<crate::execution_scope::IoExecutionDiagnostics> {
+        self.io_execution
+            .as_ref()
+            .map(IoExecutionRuntime::diagnostics)
+    }
+
     /// Returns a reference to the configuration.
     pub fn config(&self) -> &HyperliquidExecutionClientConfig {
         &self.config
@@ -272,6 +288,10 @@ impl HyperliquidExecutionClient {
     }
 
     fn validate_order_submission(&self, order: &OrderAny) -> anyhow::Result<()> {
+        if let Some(runtime) = &self.io_execution {
+            runtime.validate_order(order)?;
+            return validate_order_for_hyperliquid(order);
+        }
         anyhow::ensure!(
             self.account_scope.is_none() && !is_io_instrument(order.instrument_id()),
             "io execution is read-only; bounded submission and recovery require issue #101"
@@ -323,6 +343,157 @@ impl HyperliquidExecutionClient {
         }
 
         Ok(request)
+    }
+
+    fn submit_io_order(&self, order: OrderAny) -> anyhow::Result<()> {
+        let runtime = self
+            .io_execution
+            .clone()
+            .context("io execution remains read-only without explicit policy")?;
+        let prepared = match runtime.prepare_order(&order) {
+            Ok(prepared) => prepared,
+            Err(error) => {
+                self.emitter
+                    .emit_order_denied(&order, &format!("io bounded admission denied: {error}"));
+                return Err(error);
+            }
+        };
+        let emitter = self.emitter.clone();
+        let http = self.http_client.clone();
+        let ws = self.ws_client.clone();
+        let denied = order.clone();
+        let undo = prepared.clone();
+        let result = self.pending_tasks.spawn(async move {
+            let cloid = Cloid::from_client_order_id(order.client_order_id());
+            http.cache_client_order_id_cloid(order.client_order_id(), cloid);
+            ws.cache_cloid_mapping(Ustr::from(&cloid.to_hex()), order.client_order_id());
+            emitter.emit_order_submitted(&order);
+            let result = ws.post_prepared_action(
+                &http, &prepared.action, prepared.epoch, prepared.deadline(),
+                prepared.preparation(), prepared.admission(),
+            ).await;
+            match result.outcome {
+                nautilus_network::websocket::PreparedWriteOutcome::NotWritten { reason } => {
+                    if let Err(error) = runtime.finish_not_written(&prepared.client_order_id, false, &reason) {
+                        runtime.invalidate(&error.to_string());
+                    }
+                    emitter.emit_order_rejected(
+                        &order, &format!("Local io writer NotWritten: {reason}"),
+                        (crate::account_scope::now_ms() * 1_000_000).into(), false,
+                    );
+                }
+                nautilus_network::websocket::PreparedWriteOutcome::MayHaveWritten { .. } => {
+                    match result.response {
+                        Some(Ok(response)) => {
+                            if let Err(error) = runtime.observe_ack(&prepared, &response) {
+                                let _ = runtime.mark_unknown(&prepared.client_order_id, &error.to_string());
+                            } else if let crate::http::models::HyperliquidExchangeResponse::Status { response, .. } = &response {
+                                let oid = response.pointer("/data/statuses/0/resting/oid")
+                                    .or_else(|| response.pointer("/data/statuses/0/filled/oid"))
+                                    .and_then(serde_json::Value::as_u64);
+                                if let Some(oid) = oid {
+                                    emitter.emit_order_accepted(
+                                        &order, VenueOrderId::new(oid.to_string()),
+                                        (crate::account_scope::now_ms() * 1_000_000).into(),
+                                    );
+                                } else if let Some(error) = response.pointer("/data/statuses/0/error").and_then(serde_json::Value::as_str) {
+                                    emitter.emit_order_rejected(
+                                        &order, error, (crate::account_scope::now_ms() * 1_000_000).into(), false,
+                                    );
+                                }
+                            }
+                        }
+                        other => {
+                            let reason = other.and_then(Result::err).map_or_else(
+                                || "io action confirmation is missing".into(), |error| error.to_string(),
+                            );
+                            let _ = runtime.mark_unknown(&prepared.client_order_id, &reason);
+                        }
+                    }
+                    if let Err(error) = runtime.recover(&http, &emitter).await {
+                        log::warn!("io bounded post-action recovery incomplete: {error}");
+                    }
+                }
+            }
+        });
+        if let Err(error) = result {
+            runtime_finish_not_written(&undo, &error.to_string());
+            self.emitter
+                .emit_order_denied(&denied, TASK_SHUTDOWN_DENIAL_REASON);
+            return Err(anyhow::anyhow!(error.to_string()));
+        }
+        Ok(())
+    }
+
+    fn cancel_io_order(&self, cmd: &CancelOrder) -> anyhow::Result<()> {
+        let runtime = self
+            .io_execution
+            .clone()
+            .context("io cancel remains read-only without explicit policy")?;
+        let oid = cmd
+            .venue_order_id
+            .map(|value| value.as_str().parse::<u64>())
+            .transpose()?;
+        let prepared =
+            runtime.prepare_cancel(cmd.instrument_id, cmd.client_order_id, cmd.strategy_id, oid)?;
+        let strategy_id = cmd.strategy_id;
+        let instrument_id = cmd.instrument_id;
+        let client_order_id = cmd.client_order_id;
+        let venue_order_id = cmd.venue_order_id;
+        let emitter = self.emitter.clone();
+        let http = self.http_client.clone();
+        let ws = self.ws_client.clone();
+        let undo = prepared.clone();
+        let result = self.pending_tasks.spawn(async move {
+            let deadline = prepared.deadline();
+            let result = ws
+                .post_prepared_action(
+                    &http,
+                    &prepared.action,
+                    prepared.epoch,
+                    deadline,
+                    prepared.preparation(),
+                    prepared.admission(),
+                )
+                .await;
+            match result.outcome {
+                nautilus_network::websocket::PreparedWriteOutcome::NotWritten { reason } => {
+                    let _ = runtime.finish_not_written(&prepared.client_order_id, true, &reason);
+                    emitter.emit_order_cancel_rejected_event(
+                        strategy_id,
+                        instrument_id,
+                        client_order_id,
+                        venue_order_id,
+                        &format!("Local io cancel NotWritten: {reason}"),
+                        (crate::account_scope::now_ms() * 1_000_000).into(),
+                    );
+                }
+                nautilus_network::websocket::PreparedWriteOutcome::MayHaveWritten { .. } => {
+                    match result.response {
+                        Some(Ok(response)) => {
+                            if let Err(error) = runtime.observe_ack(&prepared, &response) {
+                                let _ = runtime
+                                    .mark_unknown(&prepared.client_order_id, &error.to_string());
+                            }
+                        }
+                        _ => {
+                            let _ = runtime.mark_unknown(
+                                &prepared.client_order_id,
+                                "io cancellation confirmation is unknown",
+                            );
+                        }
+                    }
+                    if let Err(error) = runtime.recover(&http, &emitter).await {
+                        log::warn!("io bounded cancel recovery incomplete: {error}");
+                    }
+                }
+            }
+        });
+        if let Err(error) = result {
+            runtime_finish_not_written(&undo, &error.to_string());
+            return Err(anyhow::anyhow!(error.to_string()));
+        }
+        Ok(())
     }
 
     fn restore_staged_brackets(&self) -> Vec<ClientOrderId> {
@@ -465,6 +636,16 @@ impl HyperliquidExecutionClient {
                 "io scope requires an explicit dedicated account_id matching the execution core"
             );
         }
+        anyhow::ensure!(
+            config.io_execution_policy_json.is_none()
+                || config.account_dex.as_deref() == Some("io"),
+            "Explicit io execution policy requires account_dex=io"
+        );
+        let io_policy = config
+            .io_execution_policy_json
+            .as_deref()
+            .map(IoExecutionPolicy::parse)
+            .transpose()?;
         let secrets = Secrets::resolve(
             config.private_key.as_deref(),
             config.vault_address.as_deref(),
@@ -552,6 +733,18 @@ impl HyperliquidExecutionClient {
             None
         };
 
+        let io_execution = io_policy
+            .map(|policy| {
+                IoExecutionRuntime::new(
+                    policy,
+                    account_scope
+                        .clone()
+                        .context("io execution requires scoped account proof")?,
+                    &http_client.get_account_address()?,
+                    core.account_id,
+                )
+            })
+            .transpose()?;
         Ok(Self {
             core,
             clock,
@@ -566,6 +759,7 @@ impl HyperliquidExecutionClient {
             staged_brackets: Arc::new(Mutex::new(StagedBracketState::default())),
             outcome_settlement_tracker: Arc::new(Mutex::new(OutcomeSettlementTracker::new())),
             account_scope,
+            io_execution,
         })
     }
 
@@ -945,6 +1139,13 @@ impl ExecutionClient for HyperliquidExecutionClient {
 
     fn submit_order(&self, cmd: SubmitOrder) -> anyhow::Result<()> {
         let order = self.core.cache().try_order_owned(&cmd.client_order_id)?;
+        if self.io_execution.is_some() {
+            anyhow::ensure!(
+                cmd.instrument_id == order.instrument_id(),
+                "io SubmitOrder/cache native instrument mismatch"
+            );
+            return self.submit_io_order(order);
+        }
 
         if order.is_closed() {
             log::warn!("Cannot submit closed order {}", order.client_order_id());
@@ -1538,6 +1739,9 @@ impl ExecutionClient for HyperliquidExecutionClient {
     }
 
     fn cancel_order(&self, cmd: CancelOrder) -> anyhow::Result<()> {
+        if self.io_execution.is_some() {
+            return self.cancel_io_order(&cmd);
+        }
         anyhow::ensure!(
             self.account_scope.is_none() && !is_io_instrument(cmd.instrument_id),
             "io execution is read-only; cancellation and recovery require issue #101"
@@ -1822,8 +2026,39 @@ impl ExecutionClient for HyperliquidExecutionClient {
                 .invalidate("io account proof refresh is pending", false);
             let http = self.http_client.clone();
             let emitter = self.emitter.clone();
+            let runtime = self.io_execution.clone();
+            if let Some(runtime) = &runtime {
+                runtime.invalidate("io explicit query/recovery pending");
+            }
             self.spawn_task("query_io_account", async move {
-                refresh_account_scope(&scope.state, &http, &scope.ws, &emitter).await
+                if let Some(runtime) = runtime {
+                    let result = tokio::time::timeout(
+                        Duration::from_millis(runtime.policy.recovery_timeout_ms),
+                        async {
+                            refresh_account_scope(&scope.state, &http, &scope.ws, &emitter).await?;
+                            runtime
+                                .refresh_metadata(&http)
+                                .await
+                                .context("io metadata verification failed")?;
+                            runtime.recover(&http, &emitter).await
+                        },
+                    )
+                    .await;
+                    let result = match result {
+                        Ok(result) => result,
+                        Err(_) => Err(anyhow::anyhow!(
+                            "io verification/recovery total deadline exhausted"
+                        )),
+                    };
+                    if let Err(error) = &result {
+                        let reason = format!("io verification/recovery failed: {error:#}");
+                        scope.state.lock().invalidate(&reason, false);
+                        runtime.invalidate(&reason);
+                    }
+                    result
+                } else {
+                    refresh_account_scope(&scope.state, &http, &scope.ws, &emitter).await
+                }
             });
             return Ok(());
         }
@@ -1861,6 +2096,19 @@ impl ExecutionClient for HyperliquidExecutionClient {
     }
 
     fn query_order(&self, cmd: QueryOrder) -> anyhow::Result<()> {
+        if let Some(runtime) = self.io_execution.clone() {
+            runtime.validate_owned_command(
+                cmd.client_order_id,
+                cmd.instrument_id,
+                cmd.strategy_id,
+            )?;
+            let http = self.http_client.clone();
+            let emitter = self.emitter.clone();
+            self.spawn_task("query_owned_io", async move {
+                runtime.recover(&http, &emitter).await
+            });
+            return Ok(());
+        }
         anyhow::ensure!(
             self.account_scope.is_none(),
             "io order reconciliation requires issue #101"
@@ -1995,6 +2243,40 @@ impl ExecutionClient for HyperliquidExecutionClient {
             self.refresh_account_state().await?;
             self.await_account_registered(30.0).await?;
             self.await_scoped_private_ready().await?;
+            if let Some(runtime) = &self.io_execution {
+                let result = tokio::time::timeout(
+                    Duration::from_millis(runtime.policy.recovery_timeout_ms),
+                    async {
+                        runtime.refresh_metadata(&self.http_client).await?;
+                        if let Err(error) = runtime.recover(&self.http_client, &self.emitter).await
+                        {
+                            if let Some(scope) = &self.account_scope {
+                                scope.state.lock().invalidate(
+                                    &format!("io startup recovery incomplete: {error}"),
+                                    false,
+                                );
+                            }
+                            log::warn!("io startup recovery remains incomplete: {error}");
+                        }
+                        Ok::<(), anyhow::Error>(())
+                    },
+                )
+                .await;
+                let result = match result {
+                    Ok(result) => result,
+                    Err(_) => Err(anyhow::anyhow!(
+                        "io startup verification/recovery total deadline exhausted"
+                    )),
+                };
+                if let Err(error) = &result {
+                    let reason = format!("io startup verification/recovery failed: {error}");
+                    if let Some(scope) = &self.account_scope {
+                        scope.state.lock().invalidate(&reason, false);
+                    }
+                    runtime.invalidate(&reason);
+                }
+                result?;
+            }
 
             Ok::<(), anyhow::Error>(())
         };
@@ -2377,6 +2659,7 @@ impl HyperliquidExecutionClient {
         let builder = self.http_client.builder_attribution();
         let clock = self.clock;
         let account_scope = self.account_scope.clone();
+        let io_execution = self.io_execution.clone();
         let session_spawner = self
             .session_tasks
             .spawner()
@@ -2400,7 +2683,58 @@ impl HyperliquidExecutionClient {
 
                 match event {
                     Some(msg) => match msg {
+                        NautilusWsMessage::PrivateIngressApplied {
+                            generation,
+                            epoch,
+                            sequence,
+                        } => {
+                            if !ws_client.mark_private_ingress_applied(generation, epoch, sequence)
+                            {
+                                if let Some(runtime) = &io_execution {
+                                    runtime.invalidate(
+                                        "io raw private frame processing sequence is incomplete",
+                                    );
+                                }
+                                if let Some(scope) = &account_scope {
+                                    scope
+                                        .state
+                                        .lock()
+                                        .invalidate("io private ingress processing gap", true);
+                                }
+                            }
+                        }
+                        NautilusWsMessage::IoExecutionFrame {
+                            channel,
+                            data,
+                            epoch,
+                            received: _,
+                        } => {
+                            if epoch != ws_client.connection_epoch() {
+                                continue;
+                            }
+                            if let Some(runtime) = &io_execution
+                                && let Err(error) = runtime.observe_frame(
+                                    &channel,
+                                    &data,
+                                    epoch,
+                                    &http_client,
+                                    &emitter,
+                                )
+                            {
+                                    runtime.invalidate(&format!(
+                                        "io owned private ledger conflict/unknown: {error}"
+                                    ));
+                                    if let Some(scope) = &account_scope {
+                                        scope.state.lock().invalidate(&format!("io private financial/ownership facts are unknown: {error}"), false);
+                                    }
+                            }
+                        }
                         NautilusWsMessage::AccountScopeStreamEpoch { epoch } => {
+                            if let Some(runtime) = &io_execution {
+                                runtime.invalidate(
+                                    "io private epoch changed; scoped owned recovery required",
+                                );
+                            }
                             if let Some(scope) = &account_scope
                                 && epoch == ws_client.connection_epoch()
                             {
@@ -2432,6 +2766,17 @@ impl HyperliquidExecutionClient {
                                     .observe_ws(&data, ts_init.as_u64() / 1_000_000)
                             {
                                 log::warn!("io private account proof rejected: {e}");
+                            }
+                            if let Some(runtime) = &io_execution
+                                && let Err(error) = runtime.validate_private_account_leverage(&data)
+                            {
+                                runtime.invalidate(&error.to_string());
+                                if let Some(scope) = &account_scope {
+                                    scope.state.lock().invalidate(
+                                        &format!("io private leverage proof changed: {error}"),
+                                        false,
+                                    );
+                                }
                             }
                         }
                         NautilusWsMessage::ExecutionReports(reports) => {
@@ -2605,6 +2950,11 @@ impl HyperliquidExecutionClient {
                             log::info!("WebSocket reconnected");
                         }
                         NautilusWsMessage::Error(e) => {
+                            if let Some(runtime) = &io_execution {
+                                runtime.invalidate(
+                                    "io private stream error; scoped recovery required",
+                                );
+                            }
                             if let Some(scope) = &account_scope {
                                 scope.state.lock().invalidate(
                                     "io private WebSocket error; a fresh HTTP proof is required",
@@ -2641,6 +2991,13 @@ impl HyperliquidExecutionClient {
         log::debug!("Hyperliquid WebSocket execution stream started");
         Ok(())
     }
+}
+
+fn runtime_finish_not_written(prepared: &crate::execution_scope::IoPreparedAction, reason: &str) {
+    let _ =
+        prepared
+            .runtime
+            .finish_not_written(&prepared.client_order_id, prepared.is_cancel, reason);
 }
 
 fn is_io_instrument(instrument: InstrumentId) -> bool {

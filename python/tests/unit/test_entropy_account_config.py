@@ -74,7 +74,11 @@ def test_new_scope_options_preserve_legacy_positional_constructor_order() -> Non
     ]
     parameters = list(inspect.signature(HyperliquidExecutionClientConfig).parameters)
     assert parameters[: len(legacy)] == legacy
-    assert parameters[len(legacy) :] == ["account_dex", "account_snapshot_max_age_ms"]
+    assert parameters[len(legacy) :] == [
+        "account_dex",
+        "account_snapshot_max_age_ms",
+        "io_execution_policy_json",
+    ]
     config = HyperliquidExecutionClientConfig(
         AccountId("HYPERLIQUID-LEGACY"),
         None,
@@ -85,6 +89,7 @@ def test_new_scope_options_preserve_legacy_positional_constructor_order() -> Non
     assert config.environment == HyperliquidEnvironment.TESTNET
     assert config.account_dex is None
     assert config.account_snapshot_max_age_ms == 30_000
+    assert config.io_execution_policy_json is None
 
 
 def test_unbound_native_factory_returns_no_account_proof() -> None:

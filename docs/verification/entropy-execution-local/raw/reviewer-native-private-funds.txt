@@ -1,0 +1,7 @@
+
+running 2 tests
+test execution::newer_private_funds_decline_limits_new_risk_before_http_refresh::case_1 ... ok
+test execution::newer_private_funds_decline_limits_new_risk_before_http_refresh::case_2 ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 68 filtered out; finished in 0.34s
+

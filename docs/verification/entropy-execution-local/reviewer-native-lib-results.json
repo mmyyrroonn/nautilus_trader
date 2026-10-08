@@ -1,0 +1,91 @@
+{
+  "binary": "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\nautilus_hyperliquid-1fcbc36810deefe5.exe",
+  "sha256": "63a8aba2f9de81cf6a7b60236fef71c192a7a03930666b57175debdabbe3fe05",
+  "runs": [
+    {
+      "name": "scope-unit",
+      "argv": [
+        "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\nautilus_hyperliquid-1fcbc36810deefe5.exe",
+        "execution_scope::tests::",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "seconds": 0.016,
+      "exit_code": 0,
+      "log": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-scope-unit.log",
+      "log_sha256": "5dbe1add7269f9699733a4da9b9b775ea897a5ee312827ad3c985d66f7753b08",
+      "status": "ok",
+      "passed": 28,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "name": "ingress-unit",
+      "argv": [
+        "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\nautilus_hyperliquid-1fcbc36810deefe5.exe",
+        "prepared_private_ingress",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "seconds": 0.016,
+      "exit_code": 0,
+      "log": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-ingress-unit.log",
+      "log_sha256": "d11be48aa709b608e24093e740a02a122e29a410b4f900b2d9cb4767f3a79603",
+      "status": "ok",
+      "passed": 5,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "name": "signed-unit",
+      "argv": [
+        "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\nautilus_hyperliquid-1fcbc36810deefe5.exe",
+        "prepared_signed_binding_is_verified_before_queue_and_rejection_never_writes",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "seconds": 0.015,
+      "exit_code": 0,
+      "log": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-signed-unit.log",
+      "log_sha256": "c0cc06bdf92354f8623b49298ccfc3ce1c0d10df832bcecb367bfc0c0f59a65c",
+      "status": "ok",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "name": "handler-unit",
+      "argv": [
+        "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\nautilus_hyperliquid-1fcbc36810deefe5.exe",
+        "prepared_send_wait_does_not_block_private_raw_frame_processing",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "seconds": 0.156,
+      "exit_code": 0,
+      "log": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-handler-unit.log",
+      "log_sha256": "93b3bd4a240ea0c27eac8959bf133a2316743868c71f3d999febb846c822d610",
+      "status": "ok",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "name": "funds-provenance-unit",
+      "argv": [
+        "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\nautilus_hyperliquid-1fcbc36810deefe5.exe",
+        "latest_private_funds_are_separate_from_http_provenance",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "seconds": 0.015,
+      "exit_code": 0,
+      "log": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-funds-provenance-unit.log",
+      "log_sha256": "4b495d52cafe77004dd621ef65d5ee83d3f7234fe92d6aef70b858d7ab0225d1",
+      "status": "ok",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0
+    }
+  ]
+}

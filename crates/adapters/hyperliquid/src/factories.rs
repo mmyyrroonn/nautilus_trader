@@ -120,6 +120,7 @@ impl DataClientFactory for HyperliquidDataClientFactory {
 )]
 pub struct HyperliquidExecutionClientFactory {
     account_scope_diagnostics: Arc<Mutex<Option<AccountScopeDiagnostics>>>,
+    io_execution_diagnostics: Arc<Mutex<Option<crate::execution_scope::IoExecutionDiagnostics>>>,
 }
 
 impl HyperliquidExecutionClientFactory {
@@ -128,7 +129,18 @@ impl HyperliquidExecutionClientFactory {
     pub fn new() -> Self {
         Self {
             account_scope_diagnostics: Arc::new(Mutex::new(None)),
+            io_execution_diagnostics: Arc::new(Mutex::new(None)),
         }
+    }
+
+    /// Returns the bounded execution policy/ownership diagnostic, when enabled.
+    pub fn execution_scope_snapshot_json(&self) -> anyhow::Result<Option<String>> {
+        self.io_execution_diagnostics
+            .lock()
+            .as_ref()
+            .map(crate::execution_scope::IoExecutionDiagnostics::snapshot_json)
+            .transpose()
+            .map(Option::flatten)
     }
 
     /// Returns the newest factory-bound client's detached account proof, when available.
@@ -192,6 +204,7 @@ impl ExecutionClientFactory for HyperliquidExecutionClientFactory {
 
         let client = HyperliquidExecutionClient::new(core, hyperliquid_config)?;
         *self.account_scope_diagnostics.lock() = client.account_scope_diagnostics();
+        *self.io_execution_diagnostics.lock() = client.io_execution_runtime();
         Ok(Box::new(client))
     }
 

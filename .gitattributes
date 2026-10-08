@@ -9,3 +9,4 @@
 
 # Preserve captured validation bytes so evidence hashes survive a Git checkout.
 docs/verification/entropy-account-local/** -text -whitespace
+docs/verification/entropy-execution-local/** -text -whitespace

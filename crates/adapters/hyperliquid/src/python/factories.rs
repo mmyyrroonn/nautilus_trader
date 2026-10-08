@@ -48,6 +48,13 @@ impl HyperliquidExecutionClientFactory {
         "HYPERLIQUID"
     }
 
+    /// Returns the bounded execution policy/ownership diagnostic, when enabled.
+    #[pyo3(name = "execution_scope_snapshot_json")]
+    fn py_execution_scope_snapshot_json(&self) -> PyResult<Option<String>> {
+        self.execution_scope_snapshot_json()
+            .map_err(nautilus_core::python::to_pyruntime_err)
+    }
+
     /// Returns exact-decimal JSON for the factory-bound io proof, or `None` when unbound.
     #[pyo3(name = "account_scope_snapshot_json")]
     fn py_account_scope_snapshot_json(&self) -> PyResult<Option<String>> {

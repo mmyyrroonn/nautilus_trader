@@ -1,0 +1,16 @@
+[
+  {
+    "file": "order-types.md",
+    "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/order-types.md",
+    "capture_start_utc": "2026-10-08T10:34:52.498851+00:00",
+    "bytes": 4926,
+    "sha256": "9153f790a0d45f6de7334bad6c98f880241577c4168b66d661d6204dafae3512",
+    "capture_end_utc": "2026-10-08T10:34:52.844539+00:00"
+  },
+  {
+    "file": "hip3-deployer-actions.md",
+    "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/hip-3-deployer-actions.md",
+    "capture_start_utc": "2026-10-08T10:34:52.844539+00:00",
+    "error": "URLError: <urlopen error [SSL: UNEXPECTED_EOF_WHILE_READING] EOF occurred in violation of protocol (_ssl.c:1010)>"
+  }
+]

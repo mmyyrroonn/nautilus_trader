@@ -1,0 +1,10 @@
+
+running 5 tests
+test websocket::client::tests::prepared_private_ingress_lock_serializes_receipt_and_write_boundary ... ok
+test websocket::client::tests::prepared_private_ingress_only_explicit_execution_installs_shared_fence ... ok
+test websocket::client::tests::prepared_private_ingress_rejects_old_epoch_and_fresh_connection_markers ... ok
+test websocket::client::tests::prepared_private_ingress_requires_contiguous_actor_application ... ok
+test websocket::client::tests::prepared_private_ingress_unknown_and_private_channels_are_fenced ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 790 filtered out; finished in 0.00s
+
