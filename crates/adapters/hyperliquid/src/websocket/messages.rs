@@ -97,6 +97,8 @@ pub enum SubscriptionRequest {
         n_sig_figs: Option<u32>,
         #[serde(skip_serializing_if = "Option::is_none")]
         mantissa: Option<u32>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        fast: Option<bool>,
     },
     /// Trade updates.
     Trades { coin: Ustr },
@@ -937,6 +939,7 @@ mod tests {
             coin: Ustr::from("BTC"),
             n_sig_figs: Some(5),
             mantissa: None,
+            fast: None,
         };
 
         let json = serde_json::to_string(&sub).unwrap();

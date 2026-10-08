@@ -890,10 +890,15 @@ impl DataClient for HyperliquidDataClient {
         let ws = self.ws_client.clone();
         let instrument_id = subscription.instrument_id;
         let (n_sig_figs, mantissa) = parse_book_precision_params(subscription.params.as_ref())?;
+        let fast = parse_book_fast_param(subscription.params.as_ref())?;
+        if fast == Some(true) && subscription.depth.is_some_and(|depth| depth.get() > 5) {
+            anyhow::bail!("Hyperliquid fast=true provides at most 5 levels per side");
+        }
+
         self.register_stream_health(MarketDataChannel::Deltas, instrument_id);
 
         self.spawn_task("subscribe_book_deltas", async move {
-            ws.subscribe_book_with_options(instrument_id, n_sig_figs, mantissa)
+            ws.subscribe_book_with_options(instrument_id, n_sig_figs, mantissa, fast)
                 .await
         });
 
@@ -913,10 +918,15 @@ impl DataClient for HyperliquidDataClient {
         let ws = self.ws_client.clone();
         let instrument_id = subscription.instrument_id;
         let (n_sig_figs, mantissa) = parse_book_precision_params(subscription.params.as_ref())?;
+        let fast = parse_book_fast_param(subscription.params.as_ref())?;
+        if fast == Some(true) {
+            anyhow::bail!("Hyperliquid fast=true provides only 5 levels and cannot serve Depth10");
+        }
+
         self.register_stream_health(MarketDataChannel::Depth10, instrument_id);
 
         self.spawn_task("subscribe_book_depth10", async move {
-            ws.subscribe_book_depth10_with_options(instrument_id, n_sig_figs, mantissa)
+            ws.subscribe_book_depth10_with_options(instrument_id, n_sig_figs, mantissa, fast)
                 .await
         });
 
@@ -2039,6 +2049,18 @@ pub(crate) fn parse_book_precision_params(
     Ok((read_u32("n_sig_figs")?, read_u32("mantissa")?))
 }
 
+// Preserves omission separately from explicit false for exact lifecycle replay.
+fn parse_book_fast_param(params: Option<&Params>) -> anyhow::Result<Option<bool>> {
+    params
+        .and_then(|params| params.get("fast"))
+        .map(|value| {
+            value
+                .as_bool()
+                .ok_or_else(|| anyhow::anyhow!("`fast` must be a boolean"))
+        })
+        .transpose()
+}
+
 // Hyperliquid funds perpetuals hourly, so `interval` is fixed at 60 mins;
 // `time` from the venue marks the end of the funding interval in ms.
 pub(crate) fn funding_entry_to_update(
@@ -2709,6 +2731,36 @@ mod tests {
         let params = make_params(serde_json::json!({"n_sig_figs": -1}));
         let err = parse_book_precision_params(Some(&params)).unwrap_err();
         assert!(err.to_string().contains("n_sig_figs"));
+    }
+
+    #[rstest]
+    #[case(serde_json::json!({}), None)]
+    #[case(serde_json::json!({"fast": true}), Some(true))]
+    #[case(serde_json::json!({"fast": false}), Some(false))]
+    #[case(serde_json::json!({"fast": true, "n_sig_figs": 5, "mantissa": 2}), Some(true))]
+    #[case(serde_json::json!({"fast": false, "n_sig_figs": 5, "mantissa": 2}), Some(false))]
+    fn test_parse_fast(#[case] value: serde_json::Value, #[case] expected: Option<bool>) {
+        let params = make_params(value);
+        assert_eq!(parse_book_fast_param(Some(&params)).unwrap(), expected);
+        assert!(parse_book_precision_params(Some(&params)).is_ok());
+        assert_eq!(parse_book_fast_param(None).unwrap(), None);
+    }
+
+    #[rstest]
+    #[case(serde_json::json!("true"))]
+    #[case(serde_json::json!(1))]
+    #[case(serde_json::json!(0))]
+    #[case(serde_json::json!(null))]
+    #[case(serde_json::json!([]))]
+    #[case(serde_json::json!({}))]
+    fn test_parse_fast_rejects_non_boolean(#[case] value: serde_json::Value) {
+        let params = make_params(serde_json::json!({"fast": value}));
+        assert_eq!(
+            parse_book_fast_param(Some(&params))
+                .unwrap_err()
+                .to_string(),
+            "`fast` must be a boolean"
+        );
     }
 
     #[rstest]

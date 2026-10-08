@@ -244,7 +244,9 @@ pub fn normalize_order(
 /// Converts millisecond timestamp to [`UnixNanos`].
 #[inline]
 pub fn millis_to_nanos(millis: u64) -> anyhow::Result<UnixNanos> {
-    let value = nautilus_core::datetime::millis_to_nanos(millis as f64)?;
+    let value = millis
+        .checked_mul(1_000_000)
+        .context("Hyperliquid millisecond timestamp overflows nanoseconds")?;
     Ok(UnixNanos::from(value))
 }
 
@@ -1108,6 +1110,22 @@ mod tests {
     use serde::{Deserialize, Serialize};
 
     use super::*;
+
+    #[rstest]
+    #[case(0)]
+    #[case(1_703_875_200_010)]
+    #[case(u64::MAX / 1_000_000)]
+    fn test_millisecond_timestamp_is_exact(#[case] millis: u64) {
+        assert_eq!(
+            millis_to_nanos(millis).unwrap().as_u64(),
+            millis * 1_000_000
+        );
+    }
+
+    #[rstest]
+    fn test_millisecond_timestamp_overflow_is_rejected() {
+        assert!(millis_to_nanos(u64::MAX / 1_000_000 + 1).is_err());
+    }
 
     #[rstest]
     fn test_make_fill_trade_id_is_stable() {

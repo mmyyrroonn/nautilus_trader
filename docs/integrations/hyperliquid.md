@@ -672,7 +672,7 @@ HTTP 422, which the adapter treats as no coverage and answers with an empty
 response. Real-time trades remain available via the WebSocket `trades` channel.
 :::
 
-### Order book precision controls
+### Order book speed, depth and precision
 
 The `l2Book` subscription accepts optional `nSigFigs` and `mantissa` parameters
 that thin the venue-side book aggregation. Pass them as `n_sig_figs` and
@@ -693,15 +693,45 @@ self.subscribe_book_deltas(
 )
 ```
 
-Omitting both params subscribes to the full-depth book.
+The optional boolean `fast` selects the venue's faster **5-level** snapshot
+stream. Omitted `fast` preserves the venue default (slow, up to **20 levels**
+per side); explicit `false` requests slow mode. Neither mode is full depth.
+The push interval is venue-controlled, not an adapter latency guarantee.
+See the [venue subscription specification](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/subscriptions).
+
+```python
+self.subscribe_book_deltas(
+    instrument_id=instrument_id,
+    book_type=BookType.L2_MBP,
+    depth=5,
+    params={"fast": True},
+)
+```
+
+`fast` can be combined with `n_sig_figs` and `mantissa`. Non-boolean values
+(including strings, integers and `None`) are rejected. For Rust data client
+commands use the same `Params` keys; raw WebSocket `*_with_options` methods
+accept `fast: Option<bool>` as their final argument (`None` retains omission).
+No new Python binding or stub is needed.
+
+`fast=True` is rejected for `subscribe_book_depth10` and for a deltas request
+with an explicit depth greater than 5. With no explicit deltas depth, the
+adapter publishes only the levels actually delivered by the venue. Every
+snapshot clears previous prices and preserves `book.time` as `ts_event`;
+missing levels are never fabricated. Consumers must check actual available
+liquidity (for example, skip a 500 USD opportunity when five levels cannot
+cover it) and keep their freshness checks.
 
 Book deltas and depth10 snapshots for the same instrument share one venue
 `l2Book` stream:
 
-- The first subscription opens the stream and sets its precision options.
-- Requesting different options while the stream is active logs a warning and keeps the active options.
+- The first subscription opens the stream and sets its precision and `fast` options.
+- Different precision options log a warning and keep the active options.
+- A different `fast` option is rejected before registering the new use, including
+  omitted versus explicit `false`; use identical parameters for shared consumers.
 - The stream closes when the last of the two uses unsubscribes.
-- Reconnects restore the stream with its original precision options.
+- Reconnects, health-recovery resubscriptions and the final unsubscribe all replay
+  the original precision and `fast` options, including omission and explicit `false`.
 
 ### Hyperliquid specific data
 
@@ -1342,7 +1372,7 @@ Recovery is off by default. When `stale_stream_recovery_enabled` is set:
 - The first stale check always warns.
 - A still-stale stream receives one targeted resubscribe per
   `stale_stream_recovery_cooldown_secs`.
-- `l2Book` resubscribes preserve the original precision options.
+- `l2Book` resubscribes preserve the original precision and `fast` options.
 - After `stale_stream_max_targeted_resubscribes` attempts, the client requests a full WebSocket
   reconnect.
 - Fresh data resets the stream's recovery ladder.

@@ -48,8 +48,8 @@ use nautilus_common::{
         data::{
             RequestBars, RequestBookSnapshot, RequestCustomData, RequestFundingRates,
             RequestInstrument, RequestInstruments, RequestTrades, SubscribeBookDeltas,
-            SubscribeCustomData, SubscribeMarkPrices, SubscribeQuotes, SubscribeTrades,
-            UnsubscribeCustomData, UnsubscribeMarkPrices,
+            SubscribeBookDepth10, SubscribeCustomData, SubscribeMarkPrices, SubscribeQuotes,
+            SubscribeTrades, UnsubscribeCustomData, UnsubscribeMarkPrices,
         },
         system::SocketState,
     },
@@ -1821,10 +1821,13 @@ async fn test_data_client_subscribe_all_dex_asset_ctxs_custom_data() {
 }
 
 #[rstest]
+#[case(None)]
+#[case(Some(true))]
+#[case(Some(false))]
 #[tokio::test]
-async fn test_data_client_subscribe_book_deltas() {
+async fn test_data_client_subscribe_book_deltas(#[case] fast: Option<bool>) {
     let state = TestServerState::default();
-    let addr = start_mock_server(state).await;
+    let addr = start_mock_server(state.clone()).await;
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<DataEvent>();
     set_data_event_sender(tx);
 
@@ -1835,6 +1838,10 @@ async fn test_data_client_subscribe_book_deltas() {
     while rx.try_recv().is_ok() {}
 
     let instrument_id = InstrumentId::from("BTC-USD-PERP.HYPERLIQUID");
+    let mut params = json!({"n_sig_figs": 5, "mantissa": 2});
+    if let Some(fast) = fast {
+        params["fast"] = json!(fast);
+    }
     let cmd = SubscribeBookDeltas::new(
         instrument_id,
         BookType::L2_MBP,
@@ -1845,7 +1852,7 @@ async fn test_data_client_subscribe_book_deltas() {
         None,
         false,
         None,
-        None,
+        Some(serde_json::from_value(params).unwrap()),
     );
     client.subscribe_book_deltas(cmd).unwrap();
 
@@ -1859,6 +1866,15 @@ async fn test_data_client_subscribe_book_deltas() {
         "Expected Deltas event, was: {event:?}"
     );
 
+    let subscriptions = state.subscriptions.lock().await;
+    let book = subscriptions
+        .iter()
+        .find(|sub| sub["type"] == "l2Book")
+        .unwrap();
+    assert_eq!(book.get("fast"), fast.map(Value::Bool).as_ref());
+    assert_eq!(book["nSigFigs"], 5);
+    assert_eq!(book["mantissa"], 2);
+    drop(subscriptions);
     client.disconnect().await.unwrap();
 }
 
@@ -2011,7 +2027,10 @@ async fn test_data_client_stale_book_recovery_escalates_to_reconnect() {
             None,
             false,
             None,
-            None,
+            Some(
+                serde_json::from_value(json!({"fast": true, "n_sig_figs": 5, "mantissa": 2}))
+                    .unwrap(),
+            ),
         ))
         .unwrap();
 
@@ -2059,6 +2078,14 @@ async fn test_data_client_stale_book_recovery_escalates_to_reconnect() {
             .any(|sub| sub.get("type").and_then(Value::as_str) == Some("l2Book")),
         "targeted recovery should send an l2Book unsubscribe, was: {unsubscriptions:?}",
     );
+    let expected =
+        json!({"type": "l2Book", "coin": "BTC", "fast": true, "nSigFigs": 5, "mantissa": 2});
+    assert!(
+        unsubscriptions
+            .iter()
+            .filter(|sub| sub["type"] == "l2Book")
+            .all(|sub| sub == &expected)
+    );
     drop(unsubscriptions);
 
     wait_until_async(
@@ -2079,6 +2106,14 @@ async fn test_data_client_stale_book_recovery_escalates_to_reconnect() {
     )
     .await;
 
+    let subscriptions = state.subscriptions.lock().await;
+    assert!(
+        subscriptions
+            .iter()
+            .filter(|sub| sub["type"] == "l2Book")
+            .all(|sub| sub == &expected)
+    );
+    drop(subscriptions);
     client.disconnect().await.unwrap();
 }
 
@@ -2946,4 +2981,61 @@ async fn test_data_client_reset_recreates_public_trade_stream() {
     wait_for_public_trade_event(&mut rx, instrument_id, data_type).await;
 
     client.disconnect().await.unwrap();
+}
+
+#[rstest]
+#[case(json!({"fast": "true"}), None)]
+#[case(json!({"fast": 1}), None)]
+#[case(json!({"fast": null}), None)]
+#[case(json!({"fast": true}), NonZeroUsize::new(6))]
+#[case(json!({"fast": true}), NonZeroUsize::new(10))]
+#[tokio::test]
+async fn test_data_client_rejects_invalid_fast_book_request(
+    #[case] params: Value,
+    #[case] depth: Option<NonZeroUsize>,
+) {
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel::<DataEvent>();
+    set_data_event_sender(tx);
+    let config = create_data_client_config("127.0.0.1:1".parse().unwrap());
+    let mut client = HyperliquidDataClient::new(*HYPERLIQUID_CLIENT_ID, config).unwrap();
+    let instrument_id = InstrumentId::from("BTC-USD-PERP.HYPERLIQUID");
+    let params: Params = serde_json::from_value(params).unwrap();
+    let deltas = SubscribeBookDeltas::new(
+        instrument_id,
+        BookType::L2_MBP,
+        Some(*HYPERLIQUID_CLIENT_ID),
+        None,
+        UUID4::new(),
+        UnixNanos::default(),
+        depth,
+        false,
+        None,
+        Some(params.clone()),
+    );
+    assert!(
+        client
+            .subscribe_book_deltas(deltas)
+            .unwrap_err()
+            .to_string()
+            .contains("fast")
+    );
+    let depth10 = SubscribeBookDepth10::new(
+        instrument_id,
+        BookType::L2_MBP,
+        Some(*HYPERLIQUID_CLIENT_ID),
+        None,
+        UUID4::new(),
+        UnixNanos::default(),
+        None,
+        false,
+        None,
+        Some(params),
+    );
+    assert!(
+        client
+            .subscribe_book_depth10(depth10)
+            .unwrap_err()
+            .to_string()
+            .contains("fast")
+    );
 }
