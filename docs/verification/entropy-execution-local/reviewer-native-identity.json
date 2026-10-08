@@ -1,0 +1,199 @@
+{
+  "peer": {
+    "path": "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\entropy_account-69bad49fe9dc76e8.exe",
+    "sha256": "20e358c84c80482c9e0e1a6be2a67e86daef47cfcf9a8d4d318d8f616d929178"
+  },
+  "lib": {
+    "path": "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\nautilus_hyperliquid-1fcbc36810deefe5.exe",
+    "sha256": "63a8aba2f9de81cf6a7b60236fef71c192a7a03930666b57175debdabbe3fe05"
+  },
+  "source_inputs": [
+    {
+      "path": "Cargo.lock",
+      "sha256": "a802008d4363de0a4e28dd3b14990d0d79f95ef8a89431c5936fc31e1215463a",
+      "bytes": 259667,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/Cargo.toml",
+      "sha256": "a84ca78eed290c1b5808f989f8ba1a7d08df4b19954611438424710d33057686",
+      "bytes": 5861,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/account_scope.rs",
+      "sha256": "08525b2c352a6902ea47c41677341f3ff5e52af763d79c250f0755c11b688191",
+      "bytes": 35282,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/common/enums.rs",
+      "sha256": "a3732ad6e44c8112d32e46b6e209f4df5be3cbc327402b11179c539095650bfd",
+      "bytes": 59514,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/config.rs",
+      "sha256": "8dbf4b49db74b1d33983ad35947f3151a32d8c6cde1f7335057e5773160a52b5",
+      "bytes": 20286,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/data.rs",
+      "sha256": "dffefe7bd797d5922a23c76bafebbcacade339d9d745458808f7b5fc5cdc0a12",
+      "bytes": 106403,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/execution.rs",
+      "sha256": "f3c369adae7f694b75f8cf077e17e88bdf9d15341bb689167fc4b79ac3bc5063",
+      "bytes": 222633,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/execution_scope.rs",
+      "sha256": "c21efe03a5fd3325fb4e8806bfd5bfcfbec2ba87f67f92a06467fb46f08f03ef",
+      "bytes": 110722,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/factories.rs",
+      "sha256": "ce28a34fb948fec779381395bf807ebdfc41c589578e2b3499bc066bf60b4f75",
+      "bytes": 10676,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/http/client.rs",
+      "sha256": "ed8b4cc3eb4433d151ab5e177f39f42798d6eabf65ec7889aa58ddfc35d7c744",
+      "bytes": 172112,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/http/query.rs",
+      "sha256": "81c542be28eb2c6494b4bc1fa6b023de912d4a86acbf6a7eb81724fe413634fd",
+      "bytes": 28046,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/lib.rs",
+      "sha256": "af161fd9c82cd077c49aeba1c46a7ed12ebf016ceb1bc6591894b44ad7a8c15d",
+      "bytes": 3220,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/python/config.rs",
+      "sha256": "039e9791eec7542b199caae5c13188e54eca8b5574acc6c36529c2e4d8b898e9",
+      "bytes": 8709,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/python/factories.rs",
+      "sha256": "afe47f05b7b356d6ae309c81135d2711827069322ef7973fd4cce97074436643",
+      "bytes": 2221,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/websocket/client.rs",
+      "sha256": "c870a689bc0aaa82b71d1ded14c4d812698074e0a9f3d1f9537ff3410ac1a9a4",
+      "bytes": 127108,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/websocket/handler.rs",
+      "sha256": "77f150798a826aa244c78d04c661c295ae21de67b2d3ed2a7e1a7843b4599100",
+      "bytes": 95580,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/websocket/messages.rs",
+      "sha256": "b4be031dadbab0f1f3652035a93b39073dfa14dc27f9b6552c03966e52c1851c",
+      "bytes": 39483,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/websocket/post.rs",
+      "sha256": "0b5e1524cee0e43ab662c1c92d270637ec6aa20c3f05a27c2c45da793ffd7d4b",
+      "bytes": 35027,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/tests/entropy_account.rs",
+      "sha256": "7d8c8f7b20ecc1c6d71f2d1fedc4c9288286ee65ee5cffdaeb23d368a3fab376",
+      "bytes": 42439,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/tests/entropy_account/execution.rs",
+      "sha256": "28e10f87df1d24b9e3025f727140a2a47b24f0e21e9a429e22e982ca9f473b9d",
+      "bytes": 54493,
+      "matches": true
+    },
+    {
+      "path": "crates/network/src/net.rs",
+      "sha256": "13006a0f81a42e441205652969fdd56ce4ec4846a98ac9bf4c8e673aeb66397f",
+      "bytes": 7510,
+      "matches": true
+    },
+    {
+      "path": "crates/network/src/sink.rs",
+      "sha256": "4a82a04c2ab688bc2c57c4828a8020832b558f7ec023ccbf687fc14890aa7aa5",
+      "bytes": 16414,
+      "matches": true
+    },
+    {
+      "path": "crates/network/src/websocket/client.rs",
+      "sha256": "83af43775542218d989f91b4cc2ca0061f649c2749d318b1fb5c7584b511fd09",
+      "bytes": 402591,
+      "matches": true
+    },
+    {
+      "path": "crates/network/src/websocket/mod.rs",
+      "sha256": "f7c7ffcd69c7d5951a2ba0aff6895b80be73a99c86eebcb922eb4eb5e82f0a5f",
+      "bytes": 5142,
+      "matches": true
+    },
+    {
+      "path": "crates/network/src/websocket/prepared.rs",
+      "sha256": "5160ee74a4ecbd23bf6637f239edb1de85523ba770e6de7033fb24b334c06737",
+      "bytes": 14066,
+      "matches": true
+    },
+    {
+      "path": "crates/network/src/websocket/prepared_client_tests.rs",
+      "sha256": "cb5f8929eb2307a05c810f989cddb8e445a389031144c93ce4eb9feada7d53d9",
+      "bytes": 17067,
+      "matches": true
+    },
+    {
+      "path": "crates/network/src/websocket/prepared_tests.rs",
+      "sha256": "1416fb6f3ad2f79c04e06025046fbd1ca82d34d826a61624ab9e26c64a71344d",
+      "bytes": 15640,
+      "matches": true
+    },
+    {
+      "path": "crates/network/src/websocket/types.rs",
+      "sha256": "a0e49ae53b2def879bfbc0caae9fc10362053d60168457de3a877dd78b2a5668",
+      "bytes": 9720,
+      "matches": true
+    },
+    {
+      "path": "crates/network/tests/prepared_websocket.rs",
+      "sha256": "519dacf34330a277c0dae640d44905203e4c3973296e094dae2b71714c170a74",
+      "bytes": 12359,
+      "matches": true
+    },
+    {
+      "path": "python/tests/unit/test_entropy_account_config.py",
+      "sha256": "a42165a0df0b883fb71c8ca0a77f2e313fd11335c28d874a35c365687f751bb8",
+      "bytes": 6552,
+      "matches": true
+    },
+    {
+      "path": "python/tests/unit/test_entropy_execution_config.py",
+      "sha256": "7899bf19958b9d5cb5883fca2492462194d2320fe2cc310345e415f809b67e22",
+      "bytes": 6925,
+      "matches": true
+    }
+  ],
+  "runs": []
+}

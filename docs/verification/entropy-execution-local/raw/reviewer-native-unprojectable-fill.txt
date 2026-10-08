@@ -1,0 +1,9 @@
+
+running 4 tests
+test execution::contradictory_or_unprojectable_actual_fill_blocks_without_native_position::case_1 ... ok
+test execution::contradictory_or_unprojectable_actual_fill_blocks_without_native_position::case_2 ... ok
+test execution::contradictory_or_unprojectable_actual_fill_blocks_without_native_position::case_3 ... ok
+test execution::contradictory_or_unprojectable_actual_fill_blocks_without_native_position::case_4 ... ok
+
+test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 66 filtered out; finished in 0.82s
+

@@ -1,0 +1,645 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-10-08T14:25:09.722664+00:00",
+  "scope": "Owned synthetic loopback peers and an isolated installed source-bound wheel; no real private account observations or venue actions",
+  "source_commit": "64d33d31daf0ef5a7be9de185a8578f1be86bc01",
+  "source_tree": "a61662ae0a0fe013ca823cbb0a202697f4aaf2be",
+  "source_fingerprint_sha256": "4f1dd4f491e8d649d19d30b7e63a568d20877d5fb8505f9a5f0b5641f72b0e36",
+  "wheel": {
+    "filename": "nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+    "name": "nautilus-trader",
+    "path": "E:\\persarb\\_tmp\\entropy101-wheel-nextest-20261008\\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+    "sha256": "99d6351fc0e8ac3322d97808c6dc5da5a01eb1981ad8184a7fc73927cade94a1",
+    "size": 109048312,
+    "tags": [
+      "cp312-cp312-win_amd64"
+    ],
+    "version": "2.0.0rc4"
+  },
+  "artifacts": [
+    {
+      "path": "raw/clippy-lib-before-main-update.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\clippy-lib-before-main-update.log",
+      "bytes": 1870,
+      "sha256": "aeb7cc5bbf17bc9f8eee78355b1e1eb96d5e48e785cad2d9dbe80dfb5693712e"
+    },
+    {
+      "path": "raw/clippy-lib-initial.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\clippy-lib-initial.log",
+      "bytes": 15326,
+      "sha256": "26be8542540f988fdaa33f162acfaa41c7f5ee7dfadddef58188312c10e81215"
+    },
+    {
+      "path": "raw/clippy-lib-second.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\clippy-lib-second.log",
+      "bytes": 7366,
+      "sha256": "ae7ab66b44a013bb0b5fc1e759ff113a3e5f22cbf0f78a4872258cfe39bd935e"
+    },
+    {
+      "path": "raw/clippy-lib.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\clippy-lib.log",
+      "bytes": 2602,
+      "sha256": "22394f2d21cdba190fdba55593fe16c2dadf421deb87ac0de92e58fdc80550c0"
+    },
+    {
+      "path": "raw/clippy-tests-initial.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\clippy-tests-initial.log",
+      "bytes": 7548,
+      "sha256": "74617eff764c8c43877f9b0619dc66b938e9bb792345706277f5f85031fd735c"
+    },
+    {
+      "path": "raw/clippy-tests.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\clippy-tests.log",
+      "bytes": 7880,
+      "sha256": "9b891e8c3433de5ca1b1bf247f3e95f77d584771d28586a4470122c88fc7b96e"
+    },
+    {
+      "path": "raw/make-format.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\make-format.log",
+      "bytes": 401,
+      "sha256": "d00572cea9ed2962915e09d4badadd5df25d2512a8768c3bb6d2a2786f05e18a"
+    },
+    {
+      "path": "raw/make-precommit.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\make-precommit.log",
+      "bytes": 401,
+      "sha256": "7177e663915c3c157135c144b631eb442d1f55160d90bd362f3a2b5c2ec2dd5e"
+    },
+    {
+      "path": "raw/native-all-02.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\native-all-02.log",
+      "bytes": 149862,
+      "sha256": "5a685ec5553f213d425ff070c34c6ea1297a63f4476a8b24a450a41330398b98"
+    },
+    {
+      "path": "raw/native-all-03.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\native-all-03.log",
+      "bytes": 220748,
+      "sha256": "568ddc1f5ef7b4815a91948cf1178b869509ea04617c003073951c7d899903f8"
+    },
+    {
+      "path": "raw/native-all-04-regression.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\native-all-04-regression.log",
+      "bytes": 209380,
+      "sha256": "d48e5d33c4c57c5f431289a13261ce5c383d8b4a4594861ec71fc9ce8d7c0095"
+    },
+    {
+      "path": "raw/native-all-05.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\native-all-05.log",
+      "bytes": 18546,
+      "sha256": "12845b0a272d6a7e86a499136b51b343c63da4e547730c20ae225ed67ef57d8f"
+    },
+    {
+      "path": "raw/native-all-06.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\native-all-06.log",
+      "bytes": 204230,
+      "sha256": "47a9dc51cf57211ef487c45241c1313437b7432a32973536a2bbf93bf9978d53"
+    },
+    {
+      "path": "raw/native-all-07-before-main-update.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\native-all-07-before-main-update.log",
+      "bytes": 203870,
+      "sha256": "ad74b58242c524a209c22feba62171f236888a17cb6740594621b1ee35df0095"
+    },
+    {
+      "path": "raw/native-all-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\native-all-final.log",
+      "bytes": 209576,
+      "sha256": "acff6466983b5c46d04e3b2e2932ae7da1473fb89947b0fed0396d1834899fdc"
+    },
+    {
+      "path": "raw/native-all-initial.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\native-all-initial.log",
+      "bytes": 17818,
+      "sha256": "1f22f9ebf70406330775dbfbd01a9fb15205ad64d342eb5b9d2ffa8fb088bad5"
+    },
+    {
+      "path": "raw/native-compile-02-failed.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\native-compile-02-failed.log",
+      "bytes": 3040,
+      "sha256": "ddd95c8fe233764758139e873a76f84bdea711af63420d2bdfc3d5978b5d3531"
+    },
+    {
+      "path": "raw/native-execution-02.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\native-execution-02.log",
+      "bytes": 11828,
+      "sha256": "90b10c770cec77f590ecc7dddbbcf6d108e2ccc8b436160259d9bf62833d45ee"
+    },
+    {
+      "path": "raw/native-execution-03.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\native-execution-03.log",
+      "bytes": 63506,
+      "sha256": "40ba528821eb3daf35bdbe5ab0ccb93477fee4f5b6832074eb4c94363694f078"
+    },
+    {
+      "path": "raw/native-execution-04.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\native-execution-04.log",
+      "bytes": 30304,
+      "sha256": "c7fb67e3ee6bde28ff835cce7d5fd63b662e27623c5c917b0d7782962d9821de"
+    },
+    {
+      "path": "raw/native-execution-05.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\native-execution-05.log",
+      "bytes": 23536,
+      "sha256": "2d2b073aa5d6fe6b4a0dd34a2df161d56518ccd63ecc0cc29f38cee3f3bae673"
+    },
+    {
+      "path": "raw/native-execution-06.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\native-execution-06.log",
+      "bytes": 16244,
+      "sha256": "ee58ef624d9bcf6678346eb08db35783cba4f62084d4e05ab7dec64ea4ceb884"
+    },
+    {
+      "path": "raw/native-execution-first.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\native-execution-first.log",
+      "bytes": 3198,
+      "sha256": "ac44fb73710c6c20de11f6efdee4527ecd36f6b785c98c224a0d85cea20db01f"
+    },
+    {
+      "path": "raw/native-peer-03.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\native-peer-03.log",
+      "bytes": 3288,
+      "sha256": "cb23d0037080365a258e275c194047ec0354247ad6d957587a35b42654ef7f0f"
+    },
+    {
+      "path": "raw/native-peer-04.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\native-peer-04.log",
+      "bytes": 4316,
+      "sha256": "157bae1ccdf825b32a0125cb43f40a53615d0a41116a19a3b3c068e129b9344c"
+    },
+    {
+      "path": "raw/native-peer-initial.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\native-peer-initial.log",
+      "bytes": 3040,
+      "sha256": "ddd95c8fe233764758139e873a76f84bdea711af63420d2bdfc3d5978b5d3531"
+    },
+    {
+      "path": "raw/native-prepared-six.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\native-prepared-six.log",
+      "bytes": 4448,
+      "sha256": "26f0158549bd1cac0782a65e8a3e1a5873d2e965ceee1a38ec756d57c31c2e70"
+    },
+    {
+      "path": "raw/network-all-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\network-all-final.log",
+      "bytes": 118222,
+      "sha256": "269f0b05c19224f5bfc4adb95a5ff09c9033c241eba64c6c8f0600148865195b"
+    },
+    {
+      "path": "raw/network-clippy-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\network-clippy-final.log",
+      "bytes": 1006,
+      "sha256": "1ef6252fc1d1a779b18387b393c6b7da5133111a40428bf235d35795c49c56ab"
+    },
+    {
+      "path": "raw/network-clippy-initial.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\network-clippy-initial.log",
+      "bytes": 12568,
+      "sha256": "7c25c9ecb834abdedee9a9dc12904ca0d673f249e4686cf263b45a8fc731641a"
+    },
+    {
+      "path": "raw/network-legacy-writer-initial.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\network-legacy-writer-initial.log",
+      "bytes": 22646,
+      "sha256": "d0258bcf4503d686452518592c0a42a222b234b4a62e6a4bdfa38cf8d4c24dfb"
+    },
+    {
+      "path": "raw/network-owned-tcp-unreproduced-backpressure.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\network-owned-tcp-unreproduced-backpressure.log",
+      "bytes": 7438,
+      "sha256": "c45f151fe08b4b102a22b05602b35b06601bbc1be099ace77a58976eeb7ae18e"
+    },
+    {
+      "path": "raw/network-prepared-20.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\network-prepared-20.log",
+      "bytes": 6514,
+      "sha256": "1e8049446c11815fd337e5c6e546e77413193d1832acd5abafa5b08fffd2a717"
+    },
+    {
+      "path": "raw/network-prepared-initial.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\network-prepared-initial.log",
+      "bytes": 5398,
+      "sha256": "99c1a076a1e57ab4d19d4ee9c0b4286f8216e8a500ea5852a40dcf920abdf8f8"
+    },
+    {
+      "path": "raw/network-prepared-tcp.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\network-prepared-tcp.log",
+      "bytes": 4358,
+      "sha256": "0962defe8c10edaf753461238c6c85d7c8db2ec86e10b63b6e485609b96c885d"
+    },
+    {
+      "path": "raw/network-prepared-turmoil.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\network-prepared-turmoil.log",
+      "bytes": 7438,
+      "sha256": "c45f151fe08b4b102a22b05602b35b06601bbc1be099ace77a58976eeb7ae18e"
+    },
+    {
+      "path": "raw/network-tcp-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\network-tcp-final.log",
+      "bytes": 2940,
+      "sha256": "f338a9b649113fcd65faa3076c50136131be9a36c6d6d6acc161e969ada8e19f"
+    },
+    {
+      "path": "raw/network-tcp-two-backends.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\network-tcp-two-backends.log",
+      "bytes": 3096,
+      "sha256": "0e0f34bfe74d3d4300ba12e93b7f6851f4a3ec9bd2a8b016064d7e8c1fef56c0"
+    },
+    {
+      "path": "raw/network-tcp-unreproduced-backpressure.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\network-tcp-unreproduced-backpressure.log",
+      "bytes": 4358,
+      "sha256": "0962defe8c10edaf753461238c6c85d7c8db2ec86e10b63b6e485609b96c885d"
+    },
+    {
+      "path": "raw/python-candidate.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\python-candidate.log",
+      "bytes": 532,
+      "sha256": "c9126993a48130cea165eee047af80feaa36c39621654c7e272f27b044c78092"
+    },
+    {
+      "path": "raw/python-ruff-check-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\python-ruff-check-final.log",
+      "bytes": 42,
+      "sha256": "af352a86840ad0af3d37ea0d9197f868363a6dac6b1c2ef5d2722f6b41d2d9af"
+    },
+    {
+      "path": "raw/python-ruff-check.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\python-ruff-check.log",
+      "bytes": 42,
+      "sha256": "af352a86840ad0af3d37ea0d9197f868363a6dac6b1c2ef5d2722f6b41d2d9af"
+    },
+    {
+      "path": "raw/python-ruff-format-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\python-ruff-format-final.log",
+      "bytes": 56,
+      "sha256": "1ba32d724ec0aa587aba7888f97338980bc34aae522616cf9f35d4e0b38e574d"
+    },
+    {
+      "path": "raw/python-ruff-format.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\python-ruff-format.log",
+      "bytes": 56,
+      "sha256": "1ba32d724ec0aa587aba7888f97338980bc34aae522616cf9f35d4e0b38e574d"
+    },
+    {
+      "path": "raw/python-ruff-with-stubs.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\python-ruff-with-stubs.log",
+      "bytes": 42,
+      "sha256": "af352a86840ad0af3d37ea0d9197f868363a6dac6b1c2ef5d2722f6b41d2d9af"
+    },
+    {
+      "path": "raw/reviewer-final-native-ordinary-reconnect.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-final-native-ordinary-reconnect.log",
+      "bytes": 170,
+      "sha256": "485398eaa7921e3bc1a275a5a6fcafdd0778ab21ff6e27bd4410828f8577ff1d"
+    },
+    {
+      "path": "raw/reviewer-final-native-ordinary-restoration.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-final-native-ordinary-restoration.log",
+      "bytes": 164,
+      "sha256": "d4f6fd8f8f6eef3093a68ceb3e705aacc08a133b0815b308a279b279c167557c"
+    },
+    {
+      "path": "raw/reviewer-final-native-ordinary-subscribe.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-final-native-ordinary-subscribe.log",
+      "bytes": 152,
+      "sha256": "78462c3d880e3ddd6171cc0b82df551cc45b95882c2f16d994294e28fb9dcf65"
+    },
+    {
+      "path": "raw/reviewer-final-native-owned-cancel.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-final-native-owned-cancel.log",
+      "bytes": 196,
+      "sha256": "71fd0dba50e22ff40e86b4d8a8a8775901daa9228c4cfa3437ec4f2745ce8824"
+    },
+    {
+      "path": "raw/reviewer-final-native-private-funds.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-final-native-private-funds.log",
+      "bytes": 304,
+      "sha256": "3da9250ecf1c075f9252f7cc9a0aee2bbbadbfa40cc52d5fe6e2b32cbe17d5c4"
+    },
+    {
+      "path": "raw/reviewer-final-python.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-final-python.log",
+      "bytes": 101,
+      "sha256": "a1e7487a90e732cf34d8ecba9e1bbdf567553429e21de3c2d4fe9a8ea89dfa5a"
+    },
+    {
+      "path": "raw/reviewer-native-account-deadline.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-account-deadline.log",
+      "bytes": 215,
+      "sha256": "5ec7a7b2adf64264f7e605c70f1a149b8ca64dc2eebf628fe56e898547bcb5be"
+    },
+    {
+      "path": "raw/reviewer-native-double-spend.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-double-spend.log",
+      "bytes": 185,
+      "sha256": "060a37e480f06c5ef8cede2c076ed9bc1e6b1fe04c370b80f4a558a1eefad15c"
+    },
+    {
+      "path": "raw/reviewer-native-economic-conflict.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-economic-conflict.log",
+      "bytes": 450,
+      "sha256": "2b3aa340ec838d02ed5cab15da2e58b3af5e31d5612b120b5c6aa478f3f73573"
+    },
+    {
+      "path": "raw/reviewer-native-factory-partials-close.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-factory-partials-close.log",
+      "bytes": 219,
+      "sha256": "70d9253a50025a83b6a9ce9bff059446e9e815403e762e9f155b0477922c5926"
+    },
+    {
+      "path": "raw/reviewer-native-funds-provenance-unit.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-funds-provenance-unit.log",
+      "bytes": 203,
+      "sha256": "4b495d52cafe77004dd621ef65d5ee83d3f7234fe92d6aef70b858d7ab0225d1"
+    },
+    {
+      "path": "raw/reviewer-native-handler-unit.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-handler-unit.log",
+      "bytes": 216,
+      "sha256": "93b3bd4a240ea0c27eac8959bf133a2316743868c71f3d999febb846c822d610"
+    },
+    {
+      "path": "raw/reviewer-native-ingress-unit.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-ingress-unit.log",
+      "bytes": 644,
+      "sha256": "d11be48aa709b608e24093e740a02a122e29a410b4f900b2d9cb4767f3a79603"
+    },
+    {
+      "path": "raw/reviewer-native-owned-cancel.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-owned-cancel.log",
+      "bytes": 196,
+      "sha256": "8667d1f5e64bddce4bdd5b1df30252f54f2b9db32d93221b0971c7111bf4a0ae"
+    },
+    {
+      "path": "raw/reviewer-native-partial-cancel.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-partial-cancel.log",
+      "bytes": 215,
+      "sha256": "84cd62b60d8150be28af778109fdd9e91ae75a359125456a4ad1f8ec26b8745b"
+    },
+    {
+      "path": "raw/reviewer-native-private-funds.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-private-funds.log",
+      "bytes": 304,
+      "sha256": "307e695c03266bcdb93738425ba239c2c4fe1ec4fe660917e6c32227bb73cecc"
+    },
+    {
+      "path": "raw/reviewer-native-projection-restart.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-projection-restart.log",
+      "bytes": 221,
+      "sha256": "026166d79242152f0a90db4132979847f48fd439ccc3fc27daab8cdef080b29f"
+    },
+    {
+      "path": "raw/reviewer-native-scope-unit.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-scope-unit.log",
+      "bytes": 2968,
+      "sha256": "5dbe1add7269f9699733a4da9b9b775ea897a5ee312827ad3c985d66f7753b08"
+    },
+    {
+      "path": "raw/reviewer-native-signed-unit.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-signed-unit.log",
+      "bytes": 228,
+      "sha256": "c0cc06bdf92354f8623b49298ccfc3ce1c0d10df832bcecb367bfc0c0f59a65c"
+    },
+    {
+      "path": "raw/reviewer-native-unknown-restart.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-unknown-restart.log",
+      "bytes": 204,
+      "sha256": "348d2b21816a08381db2a867de580666fd647ef47bcc2a2a06356be4c51bdb6e"
+    },
+    {
+      "path": "raw/reviewer-native-unprojectable-fill.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-unprojectable-fill.log",
+      "bytes": 534,
+      "sha256": "58b60c11cd0f1addb148ac181ef5f9ee69f619bcd6ee9b3fd1705740b8024200"
+    },
+    {
+      "path": "raw/reviewer-native-unsupported-private.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-unsupported-private.log",
+      "bytes": 402,
+      "sha256": "8852b4a5a8cf586faf40b59c86a35d4b83c8ab6102374c83321a7636e64474e4"
+    },
+    {
+      "path": "raw/rust-format-check-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\rust-format-check-final.log",
+      "bytes": 244,
+      "sha256": "63ef0409da9c8fd69963afe5ba7222b5296c9680f8d38dfc76066a4cc196c124"
+    },
+    {
+      "path": "raw/rust-format.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\rust-format.log",
+      "bytes": 40614,
+      "sha256": "e9d68ebba0e153c08dfc98a09be719fff532fe0479be6ad220d4c5b98eedb929"
+    },
+    {
+      "path": "raw/stubs-format.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\stubs-format.log",
+      "bytes": 46,
+      "sha256": "c7d02329cacc543322237048d541386e3ac70edbce5b1fbd11d513843420d328"
+    },
+    {
+      "path": "raw/stubs-nextest.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\stubs-nextest.log",
+      "bytes": 20404,
+      "sha256": "9a0c3d42c0742f4fbdeb801e1f37c47df3e86d7a16aa60249cb12edea4272356"
+    },
+    {
+      "path": "raw/stubs-python-binding-failed.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\stubs-python-binding-failed.log",
+      "bytes": 9960,
+      "sha256": "a94cfa7a7eb47977b75bca2fb03266220d30f47de000af3d6e43ea4613d3dbc7"
+    },
+    {
+      "path": "raw/wheel-build.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\wheel-build.log",
+      "bytes": 9420,
+      "sha256": "67924969e2730f5ac803480329d6797dfe6a5d640e07128f9f99a1ce3c0d0f86"
+    },
+    {
+      "path": "raw/wheel-install.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\wheel-install.log",
+      "bytes": 2648,
+      "sha256": "5ed04ab1e1a5a5e796f6105d52405b1dce46dd46b15a4180d5060b990ee6b5a9"
+    },
+    {
+      "path": "reviewer-final-artifact.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-final-artifact.json",
+      "bytes": 12911,
+      "sha256": "2af5b51ba94fa261e714bc223b722300eded5edd998b48d4daa58c81dac7f1ca"
+    },
+    {
+      "path": "reviewer-final-native.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-final-native.json",
+      "bytes": 2755,
+      "sha256": "99358186d99c3c2f4a852ea110972b45e40b9f38ca97b22b9e8fc264645298cc"
+    },
+    {
+      "path": "reviewer-native-identity.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-identity.json",
+      "bytes": 6926,
+      "sha256": "ca250c2628604420f0efb7351cd596cc275704ae49f1d1acc545e3155bcb9a47"
+    },
+    {
+      "path": "reviewer-native-lib-results.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-lib-results.json",
+      "bytes": 3252,
+      "sha256": "9ca74dbf92a5d6040e5ec1ed398c48739358ee0f7b615c9a5251cd57b12c03e2"
+    },
+    {
+      "path": "reviewer-native-results.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-results.json",
+      "bytes": 13863,
+      "sha256": "90ba9e5417bb09094e08299c14d143948a95a58471a174f83fec3d698987bd6c"
+    },
+    {
+      "path": "reviewer-final-review.md",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-final-review.md",
+      "bytes": 7383,
+      "sha256": "6ca25d7f9f859d4aa70b5af94780a5565930ce085f607c821a6c9f9976463ea3"
+    },
+    {
+      "path": "reviewer-native-summary.md",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-summary.md",
+      "bytes": 5140,
+      "sha256": "86f7d07c0e9f3659b83b4968de0150077a502aeb31f527496b64a5d92de8aedd"
+    },
+    {
+      "path": "reviewer-source-review-final-source-deltas.md",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-source-review-final-source-deltas.md",
+      "bytes": 4094,
+      "sha256": "2d0191a2d2c5b7627ec6b1cd0a3a02c0e63367a8253459c34de925d86e96b292"
+    },
+    {
+      "path": "reviewer-source-review-ingress-binding.md",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-source-review-ingress-binding.md",
+      "bytes": 4756,
+      "sha256": "1dd74c4833cb7a0b123b23368456b8a53e48f7531eee611c02807b023fba8688"
+    },
+    {
+      "path": "reviewer-source-review-initial.md",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-source-review-initial.md",
+      "bytes": 6275,
+      "sha256": "4e84ef93254b3259f4f9b6810d17cfac23ceb05e555032bd85eda97887bd1b56"
+    },
+    {
+      "path": "reviewer-source-review-rebase-fast-book.md",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-source-review-rebase-fast-book.md",
+      "bytes": 2952,
+      "sha256": "3a669e18d2e3245637cbf29ab0c1a956f89fb3b38aeb856ed31a4daf6578ea80"
+    },
+    {
+      "path": "reviewer-source-review-round2.md",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-source-review-round2.md",
+      "bytes": 5959,
+      "sha256": "b069a61091ae537f1e3614ef62fd6f3f25283fca6082bb2afb415677de9627ad"
+    },
+    {
+      "path": "reviewer-source-review-round3.md",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-source-review-round3.md",
+      "bytes": 7017,
+      "sha256": "dcba4363fde34541d71b46506741b0e3a4214911f7dd3247b93dc588881b2a16"
+    },
+    {
+      "path": "reviewer-source-review-test-plan.md",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-source-review-test-plan.md",
+      "bytes": 9819,
+      "sha256": "446cdd10c96f8da67b57d7012906df64cbadb60c1d53af119db144ca47cf4142"
+    },
+    {
+      "path": "reviewer-source-review-timing-and-financial.md",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-source-review-timing-and-financial.md",
+      "bytes": 5082,
+      "sha256": "4d698baa7010d0c29ed89893d5f5b128965771414664244f866c350488caa481"
+    },
+    {
+      "path": "reviewer-final-native.py",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-final-native.py",
+      "bytes": 2211,
+      "sha256": "66f2913f5bef28cc58b2ab9ffd771fdcede7f9b19983f46149e75e5fb5ca41cc"
+    },
+    {
+      "path": "reviewer-final-wheel.py",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-final-wheel.py",
+      "bytes": 5946,
+      "sha256": "ef8d5080e25addd8cf025103920cfeb053df5c1d0783fcb22bc6da5b92323417"
+    },
+    {
+      "path": "reviewer-run-lib.py",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-run-lib.py",
+      "bytes": 2095,
+      "sha256": "65de9c4de351d71b707360091006f3e49c39848216f6aee38e448fd68f420b5a"
+    },
+    {
+      "path": "reviewer-run-native.py",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-run-native.py",
+      "bytes": 3649,
+      "sha256": "dbbbc74cc5393e8d5d0836c567aa73da283837193c36119045809bb793c10aee"
+    },
+    {
+      "path": "tested-inputs-before-main-update.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\tested-inputs-before-main-update.json",
+      "bytes": 5647,
+      "sha256": "20dbcd238e7a78d27cf79971e7df91eade64f4869f95de2a823b7d5e402acd47"
+    },
+    {
+      "path": "tested-inputs-pre-lint.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\tested-inputs-pre-lint.json",
+      "bytes": 5509,
+      "sha256": "1fa2d628586f5ea2fd65736b747f1f6ca1551105d021f1433f978822040a01d8"
+    },
+    {
+      "path": "tested-inputs.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\tested-inputs.json",
+      "bytes": 5718,
+      "sha256": "7c6c64afb42465b2d322e734b42e8a33b64435cb8f280c2d07e846ffe65a4753"
+    },
+    {
+      "path": "binding-inputs.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\binding-inputs.json",
+      "bytes": 1208,
+      "sha256": "f96f43cfbfc291b6b046c4811d8a36ee087b2e2ca1e24f8d98aab0c39a67499e"
+    },
+    {
+      "path": "installed-native.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\installed-native.json",
+      "bytes": 18289,
+      "sha256": "4ec228ee88651b950d8387bec9f63ab2b8f8a694daa503719b27a33e7590a2e3"
+    },
+    {
+      "path": "commands.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-validation\\commands.json",
+      "bytes": 4478,
+      "sha256": "331c35af3a39018dd484ea6b51399e8b1f8b2f305ace65e7364d5c62ba38a7d6"
+    },
+    {
+      "path": "native-provenance.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-wheel-nextest-20261008\\native-provenance.json",
+      "bytes": 8157,
+      "sha256": "c77042ea5f79a771f46acfd3a8a408312fbf16ceb32c44a3ef6a56eddd32cf39"
+    },
+    {
+      "path": "native-build-input.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-wheel-nextest-20261008\\native-build-input.json",
+      "bytes": 419,
+      "sha256": "6a10d2ba39b90cf6591008a4ecf313078f221d791ddf9b48180469e0868f51b4"
+    },
+    {
+      "path": "observations/provenance.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-design\\observations\\provenance.json",
+      "bytes": 823,
+      "sha256": "367219e656f670a03e950964735f23bebfeacab973dd91f562de923b9bd2a4ba"
+    },
+    {
+      "path": "observations/windows-owned-send-recvbuf-backpressure-failed.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-design\\observations\\windows-owned-send-recvbuf-backpressure-failed.log",
+      "bytes": 7438,
+      "sha256": "c45f151fe08b4b102a22b05602b35b06601bbc1be099ace77a58976eeb7ae18e"
+    },
+    {
+      "path": "observations/windows-peer-recvbuf-only-backpressure-failed.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy101-design\\observations\\windows-peer-recvbuf-only-backpressure-failed.log",
+      "bytes": 4358,
+      "sha256": "0962defe8c10edaf753461238c6c85d7c8db2ec86e10b63b6e485609b96c885d"
+    }
+  ]
+}

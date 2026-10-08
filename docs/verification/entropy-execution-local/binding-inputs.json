@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "captured_at_utc": "2026-10-08T14:11:50.355554+00:00",
+  "default_native_candidate": "acdd46caf83064f47fe57389e89a3e957452ced8",
+  "python_feature_candidate": "64d33d31daf0ef5a7be9de185a8578f1be86bc01",
+  "matched_default_native_inputs": 31,
+  "deltas": [
+    {
+      "path": "crates/adapters/hyperliquid/src/python/factories.rs",
+      "native_run_sha256": "afe47f05b7b356d6ae309c81135d2711827069322ef7973fd4cce97074436643",
+      "python_feature_sha256": "0c572d28c8b3eeb060e537d46af1199997333b659f82228cc90b4950c18afc72"
+    }
+  ],
+  "reason": "The Python-feature build exposed an unqualified runtime-error mapper. Qualify it with the existing ordinary mapper; regenerate the two Python factory docstrings and Hyperliquid stub. Default-native behavior is unchanged; the final source-bound wheel and installed Python tests validate this later feature projection.",
+  "final_projection_inputs": {
+    "crates/adapters/hyperliquid/src/python/factories.rs": "0c572d28c8b3eeb060e537d46af1199997333b659f82228cc90b4950c18afc72",
+    "python/nautilus_trader/adapters/hyperliquid/__init__.pyi": "a7f3cf9f44ea9dc4f800c38fa8cce20740a2c4ced494a250b492d0b1aa4cec3e"
+  }
+}

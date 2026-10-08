@@ -1,0 +1,308 @@
+{
+  "source_commit": "64d33d31daf0ef5a7be9de185a8578f1be86bc01",
+  "source_tree": "a61662ae0a0fe013ca823cbb0a202697f4aaf2be",
+  "source_fingerprint_sha256": "4f1dd4f491e8d649d19d30b7e63a568d20877d5fb8505f9a5f0b5641f72b0e36",
+  "wheel_sha256": "99d6351fc0e8ac3322d97808c6dc5da5a01eb1981ad8184a7fc73927cade94a1",
+  "installed_pyd": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\_libnautilus.cp312-win_amd64.pyd",
+  "installed_pyd_sha256": "e78c5d14ec5309a665ec918e6903f8ef7459ff107145fb96a03d8750ebefdbfc",
+  "native_objects_verified": [
+    {
+      "path": "nautilus_trader/_libnautilus.cp312-win_amd64.pyd",
+      "sha256": "e78c5d14ec5309a665ec918e6903f8ef7459ff107145fb96a03d8750ebefdbfc",
+      "size": 388428800
+    }
+  ],
+  "adapter_stubs_verified": [
+    {
+      "path": "nautilus_trader/adapters/__init__.pyi",
+      "sha256": "b6f46e5fd703208605a3892ee1e09d7d361f68b3d58d0f435db30063765e2324"
+    },
+    {
+      "path": "nautilus_trader/adapters/architect_ax/__init__.pyi",
+      "sha256": "e7734c547cd35be5cf5367575f34a105b5714ca11e29c4688078264d62c9bb93"
+    },
+    {
+      "path": "nautilus_trader/adapters/aster/__init__.pyi",
+      "sha256": "9b72dbc7b89b2578ef6d124b7a6df9e57b047e21edb7789acce82f85fed9bb00"
+    },
+    {
+      "path": "nautilus_trader/adapters/backpack/__init__.pyi",
+      "sha256": "1498096ee67e641cdc27ecab2ffecacf771d4552c79ce24ffbc2bf50154abc11"
+    },
+    {
+      "path": "nautilus_trader/adapters/betfair/__init__.pyi",
+      "sha256": "531091ad2a75b53f42e7da0029f9551f5779d5d3dce6adc24eaa85f159221637"
+    },
+    {
+      "path": "nautilus_trader/adapters/binance/__init__.pyi",
+      "sha256": "2e3e9c4253a8cac2414d456598f7ae682fe3e889871e83d241cb99f3b77c7368"
+    },
+    {
+      "path": "nautilus_trader/adapters/bitmex/__init__.pyi",
+      "sha256": "f44f4d8bd628688dce3405c62a3aa5f2572c3f0aad508807999b95aaa1e7d4db"
+    },
+    {
+      "path": "nautilus_trader/adapters/blockchain/__init__.pyi",
+      "sha256": "e7a9a7d88d3cf63fb924e64c065f39f7c83f27d2ca8635e9768412bfc30eb79f"
+    },
+    {
+      "path": "nautilus_trader/adapters/bybit/__init__.pyi",
+      "sha256": "10c5adb89788504f3bb4bd457e911182087183fd512cba7df87d62e723b9f86c"
+    },
+    {
+      "path": "nautilus_trader/adapters/coinbase/__init__.pyi",
+      "sha256": "563f757b9ce7e62e34ac7f0c9a674b4d7b02e3fcb3e9dcf3c2de8d4aa81263f6"
+    },
+    {
+      "path": "nautilus_trader/adapters/databento/__init__.pyi",
+      "sha256": "e4996914215dd9b1e2a24f9fd7c45d2c085e03d77034d617870d5c5a823b6148"
+    },
+    {
+      "path": "nautilus_trader/adapters/deribit/__init__.pyi",
+      "sha256": "052e4de1171ccb3f3e2d29d877d9f33fce52dd9f203880c52b7b399361d9e663"
+    },
+    {
+      "path": "nautilus_trader/adapters/derive/__init__.pyi",
+      "sha256": "2ef1919968809db7627dbb1ffd7d9d1b98fe251d55dc311422fb3bccbe0e8bd7"
+    },
+    {
+      "path": "nautilus_trader/adapters/dydx/__init__.pyi",
+      "sha256": "52888fdf72d97aadf496dc0e888e57e8eb1cec26ae9fa97815705002f51d5ceb"
+    },
+    {
+      "path": "nautilus_trader/adapters/hyperliquid/__init__.pyi",
+      "sha256": "a7f3cf9f44ea9dc4f800c38fa8cce20740a2c4ced494a250b492d0b1aa4cec3e"
+    },
+    {
+      "path": "nautilus_trader/adapters/interactive_brokers/__init__.pyi",
+      "sha256": "edf80aacbf93888ad7f9b518f660e0b1f874263e16d5dcbe9c582d601cfec7f6"
+    },
+    {
+      "path": "nautilus_trader/adapters/kraken/__init__.pyi",
+      "sha256": "f7cdfd712d3188a0bc816e02ab7a31ca2ce5fececc4df7c81b41cfd791853737"
+    },
+    {
+      "path": "nautilus_trader/adapters/lighter/__init__.pyi",
+      "sha256": "425f451b5fac36359dbad8d0f11779f892ce6801897c1d4768fabe911f5a7b00"
+    },
+    {
+      "path": "nautilus_trader/adapters/okx/__init__.pyi",
+      "sha256": "de8fda7bee851ec3faa58bcb81fb48a812c1ca391e5cb6b879b4bd97f7eac707"
+    },
+    {
+      "path": "nautilus_trader/adapters/ondo/__init__.pyi",
+      "sha256": "53323ad230833c03f4f6121061a256b059cc40b022d0b927d94903444b0bc187"
+    },
+    {
+      "path": "nautilus_trader/adapters/polymarket/__init__.pyi",
+      "sha256": "62d7f08ea762f17435fe471bc4ba732a65da58599cc74df694fcacb80ac843a0"
+    },
+    {
+      "path": "nautilus_trader/adapters/sandbox/__init__.pyi",
+      "sha256": "bc89c0b96a747963eff82153ba7eae5cd5ab5ef4f37efdd8285bd0803252ddd6"
+    },
+    {
+      "path": "nautilus_trader/adapters/tardis/__init__.pyi",
+      "sha256": "dc5f6d93e6bc60a96e9041ef2cabf044efc73430dde84c9aae703d4fba00aba0"
+    }
+  ],
+  "source_checks": [
+    {
+      "path": ".gitattributes",
+      "sha256": "21bdc538540adb0686616aa07a67877c338397c0944a1be6f4fc2024d947dabe",
+      "default_input_matches": true
+    },
+    {
+      "path": "Cargo.lock",
+      "sha256": "a802008d4363de0a4e28dd3b14990d0d79f95ef8a89431c5936fc31e1215463a",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/Cargo.toml",
+      "sha256": "a84ca78eed290c1b5808f989f8ba1a7d08df4b19954611438424710d33057686",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/account_scope.rs",
+      "sha256": "08525b2c352a6902ea47c41677341f3ff5e52af763d79c250f0755c11b688191",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/common/enums.rs",
+      "sha256": "a3732ad6e44c8112d32e46b6e209f4df5be3cbc327402b11179c539095650bfd",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/config.rs",
+      "sha256": "8dbf4b49db74b1d33983ad35947f3151a32d8c6cde1f7335057e5773160a52b5",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/data.rs",
+      "sha256": "d8fa13a5d29a9248f3bf9272bf5861ec16b5eb72f99f17e472322e1f7af8c037",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/execution.rs",
+      "sha256": "90089be4999a61af97c3ace25df5c05030cedf67d734e6365c2218e5b9f8b93e",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/execution_scope.rs",
+      "sha256": "5674eb695cbe77d85de8a56d8e71e803f2e581c0267922db22ef02f69dc216f5",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/factories.rs",
+      "sha256": "ce28a34fb948fec779381395bf807ebdfc41c589578e2b3499bc066bf60b4f75",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/http/client.rs",
+      "sha256": "ed8b4cc3eb4433d151ab5e177f39f42798d6eabf65ec7889aa58ddfc35d7c744",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/http/query.rs",
+      "sha256": "81c542be28eb2c6494b4bc1fa6b023de912d4a86acbf6a7eb81724fe413634fd",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/lib.rs",
+      "sha256": "af161fd9c82cd077c49aeba1c46a7ed12ebf016ceb1bc6591894b44ad7a8c15d",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/python/config.rs",
+      "sha256": "039e9791eec7542b199caae5c13188e54eca8b5574acc6c36529c2e4d8b898e9",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/python/factories.rs",
+      "sha256": "0c572d28c8b3eeb060e537d46af1199997333b659f82228cc90b4950c18afc72",
+      "default_input_matches": false
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/websocket/client.rs",
+      "sha256": "aaa17b216bb35466a91a56b9523ea2c766da9761214c9da3d1aaa1c93b17890a",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/websocket/handler.rs",
+      "sha256": "0d1dbc53fbf32b1f6a6cb81425f32029fb049b2e3a53b2131f0417eb9827995e",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/websocket/messages.rs",
+      "sha256": "e098e2f9b201d6adae1850a6705e04bb172d251847e3d4863ec004ec74d32fbe",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/websocket/post.rs",
+      "sha256": "0b5e1524cee0e43ab662c1c92d270637ec6aa20c3f05a27c2c45da793ffd7d4b",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/tests/entropy_account.rs",
+      "sha256": "7d8c8f7b20ecc1c6d71f2d1fedc4c9288286ee65ee5cffdaeb23d368a3fab376",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/tests/entropy_account/execution.rs",
+      "sha256": "28e10f87df1d24b9e3025f727140a2a47b24f0e21e9a429e22e982ca9f473b9d",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/network/src/net.rs",
+      "sha256": "13006a0f81a42e441205652969fdd56ce4ec4846a98ac9bf4c8e673aeb66397f",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/network/src/sink.rs",
+      "sha256": "4a82a04c2ab688bc2c57c4828a8020832b558f7ec023ccbf687fc14890aa7aa5",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/network/src/websocket/client.rs",
+      "sha256": "83af43775542218d989f91b4cc2ca0061f649c2749d318b1fb5c7584b511fd09",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/network/src/websocket/mod.rs",
+      "sha256": "f7c7ffcd69c7d5951a2ba0aff6895b80be73a99c86eebcb922eb4eb5e82f0a5f",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/network/src/websocket/prepared.rs",
+      "sha256": "5160ee74a4ecbd23bf6637f239edb1de85523ba770e6de7033fb24b334c06737",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/network/src/websocket/prepared_client_tests.rs",
+      "sha256": "cb5f8929eb2307a05c810f989cddb8e445a389031144c93ce4eb9feada7d53d9",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/network/src/websocket/prepared_tests.rs",
+      "sha256": "e721cff0f601aaa5c54723a9220ee77561f7cd08b7c2cd32c0deb1693fbf2df3",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/network/src/websocket/types.rs",
+      "sha256": "a0e49ae53b2def879bfbc0caae9fc10362053d60168457de3a877dd78b2a5668",
+      "default_input_matches": true
+    },
+    {
+      "path": "crates/network/tests/prepared_websocket.rs",
+      "sha256": "519dacf34330a277c0dae640d44905203e4c3973296e094dae2b71714c170a74",
+      "default_input_matches": true
+    },
+    {
+      "path": "python/tests/unit/test_entropy_account_config.py",
+      "sha256": "a42165a0df0b883fb71c8ca0a77f2e313fd11335c28d874a35c365687f751bb8",
+      "default_input_matches": true
+    },
+    {
+      "path": "python/tests/unit/test_entropy_execution_config.py",
+      "sha256": "7899bf19958b9d5cb5883fca2492462194d2320fe2cc310345e415f809b67e22",
+      "default_input_matches": true
+    }
+  ],
+  "python_projection": {
+    "schema_version": 1,
+    "captured_at_utc": "2026-10-08T14:11:50.355554+00:00",
+    "default_native_candidate": "acdd46caf83064f47fe57389e89a3e957452ced8",
+    "python_feature_candidate": "64d33d31daf0ef5a7be9de185a8578f1be86bc01",
+    "matched_default_native_inputs": 31,
+    "deltas": [
+      {
+        "path": "crates/adapters/hyperliquid/src/python/factories.rs",
+        "native_run_sha256": "afe47f05b7b356d6ae309c81135d2711827069322ef7973fd4cce97074436643",
+        "python_feature_sha256": "0c572d28c8b3eeb060e537d46af1199997333b659f82228cc90b4950c18afc72"
+      }
+    ],
+    "reason": "The Python-feature build exposed an unqualified runtime-error mapper. Qualify it with the existing ordinary mapper; regenerate the two Python factory docstrings and Hyperliquid stub. Default-native behavior is unchanged; the final source-bound wheel and installed Python tests validate this later feature projection.",
+    "final_projection_inputs": {
+      "crates/adapters/hyperliquid/src/python/factories.rs": "0c572d28c8b3eeb060e537d46af1199997333b659f82228cc90b4950c18afc72",
+      "python/nautilus_trader/adapters/hyperliquid/__init__.pyi": "a7f3cf9f44ea9dc4f800c38fa8cce20740a2c4ced494a250b492d0b1aa4cec3e"
+    }
+  },
+  "provenance_sha256": "c77042ea5f79a771f46acfd3a8a408312fbf16ceb32c44a3ef6a56eddd32cf39",
+  "python_tests": {
+    "argv": [
+      "E:\\persarb\\worktrees\\entropy-account\\.venv\\Scripts\\python.exe",
+      "-m",
+      "pytest",
+      "-q",
+      "-o",
+      "pythonpath=",
+      "--import-mode=importlib",
+      "E:\\persarb\\worktrees\\entropy-account\\python\\tests\\unit\\test_entropy_execution_config.py",
+      "E:\\persarb\\worktrees\\entropy-account\\python\\tests\\unit\\test_entropy_account_config.py"
+    ],
+    "exit_code": 0,
+    "passed": 27,
+    "seconds": 0.875,
+    "log_sha256": "a1e7487a90e732cf34d8ecba9e1bbdf567553429e21de3c2d4fe9a8ea89dfa5a"
+  }
+}

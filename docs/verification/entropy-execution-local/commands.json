@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "native_workdir": "E:/persarb/worktrees/entropy-account",
+  "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+  "commands": [
+    {
+      "command": "cargo test -p nautilus-network --lib --tests --profile nextest --locked --offline --config \"build.warnings='warn'\"",
+      "log": "network-all-final.log",
+      "result": "648 passed; focused subsets are not additional tests"
+    },
+    {
+      "command": "cargo test -p nautilus-hyperliquid --lib --tests --profile nextest --locked --offline --config \"build.warnings='warn'\"",
+      "log": "native-all-final.log",
+      "result": "1167 passed; 12 existing ignored cases not executed; integrated main 9644fd657e98cdde0067044c9e69a1d8fbd54c54"
+    },
+    {
+      "command": "cargo clippy -p nautilus-hyperliquid -p nautilus-network --lib --profile nextest --locked --offline --config \"build.warnings='warn'\" -- -D warnings",
+      "log": "clippy-lib.log",
+      "result": "passed on integrated main"
+    },
+    {
+      "command": "cargo clippy -p nautilus-hyperliquid -p nautilus-network --lib --tests --profile nextest --locked --offline --config \"build.warnings='warn'\" -- -D warnings",
+      "log": "clippy-tests.log",
+      "result": "blocked by existing Windows crates/persistence/src/parquet.rs:656 documentation lints; no blanket lint waiver"
+    },
+    {
+      "command": "make format",
+      "log": "make-format.log",
+      "result": "exit 1: make executable unavailable"
+    },
+    {
+      "command": "make pre-commit",
+      "log": "make-precommit.log",
+      "result": "exit 1: make executable unavailable"
+    },
+    {
+      "command": "cargo +nightly fmt -p nautilus-hyperliquid -p nautilus-network --check",
+      "log": "rust-format-check-post-stubs.log",
+      "result": "passed"
+    },
+    {
+      "command": ".venv/Scripts/python.exe python/generate_stubs.py",
+      "environment": {
+        "NAUTILUS_STUB_PROFILE": "nextest",
+        "PYTHONUTF8": "1",
+        "CARGO_NET_OFFLINE": "true",
+        "CARGO_BUILD_WARNINGS": "allow",
+        "PYO3_PYTHON": "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+        "CPython_DLL_PATH": "C:/Users/myron/AppData/Roaming/uv/python/cpython-3.12.9-windows-x86_64-none",
+        "PATH": "Selected interpreter Scripts first; Conda entries removed"
+      },
+      "log": "stubs-nextest.log",
+      "result": "passed; 44 generated files formatted using official Ruff with LF"
+    },
+    {
+      "command": ".venv/Scripts/ruff.exe check python/tests/unit/test_entropy_account_config.py python/tests/unit/test_entropy_execution_config.py python/nautilus_trader/adapters/hyperliquid/__init__.pyi",
+      "log": "python-ruff-with-stubs.log",
+      "result": "passed"
+    },
+    {
+      "command": ".venv/Scripts/python.exe scripts/adapter-evidence/build_native.py --python E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe --native-root E:/persarb/worktrees/entropy-account --output-dir E:/persarb/_tmp/entropy101-wheel-nextest-20261008 --profile nextest",
+      "log": "wheel-build.log",
+      "result": "passed; matching clean pre/post source fingerprints; verified source binding"
+    },
+    {
+      "command": "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe scripts/install_native.py --python E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe --local-override --native-root E:/persarb/worktrees/entropy-account --wheel E:/persarb/_tmp/entropy101-wheel-nextest-20261008/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl --provenance E:/persarb/_tmp/entropy101-wheel-nextest-20261008/native-provenance.json --sha256 99d6351fc0e8ac3322d97808c6dc5da5a01eb1981ad8184a7fc73927cade94a1 --additional-adapter hyperliquid --output E:/persarb/_tmp/entropy101-validation/installed-native.json",
+      "workdir": "E:/persarb/worktrees/entropy-app",
+      "log": "wheel-install.log",
+      "result": "passed; isolated native validation interpreter only; strict_source_binding_passed true"
+    },
+    {
+      "command": ".venv/Scripts/python.exe -m pytest --import-mode=importlib -o pythonpath= python/tests/unit/test_entropy_account_config.py python/tests/unit/test_entropy_execution_config.py python/tests/unit/test_config_readback_contracts.py python/tests/unit/test_generate_stubs.py -q",
+      "log": "python-candidate.log",
+      "result": "187 passed in 20.63s against actual installed wheel"
+    }
+  ]
+}

@@ -1,0 +1,82 @@
+{
+  "binaries": {
+    "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\entropy_account-69bad49fe9dc76e8.exe": "608de03171be126816e577520f8353c97ebc91f4281b11d8b11ea59d16ba0a9d",
+    "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\websocket-6b79a96a3b9ad5a0.exe": "66733f12d7a2958b526de2a568a345214c7550022f81dd2cf3497bb6939eda33"
+  },
+  "runs": [
+    {
+      "name": "private-funds",
+      "argv": [
+        "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\entropy_account-69bad49fe9dc76e8.exe",
+        "newer_private_funds_decline_limits_new_risk_before_http_refresh",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "passed": 2,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "3da9250ecf1c075f9252f7cc9a0aee2bbbadbfa40cc52d5fe6e2b32cbe17d5c4"
+    },
+    {
+      "name": "owned-cancel",
+      "argv": [
+        "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\entropy_account-69bad49fe9dc76e8.exe",
+        "execution::owned_cancel_uses_exact_cached_order_and_dedicated_io_asset",
+        "--test-threads=1",
+        "--nocapture",
+        "--exact"
+      ],
+      "exit_code": 0,
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "71fd0dba50e22ff40e86b4d8a8a8775901daa9228c4cfa3437ec4f2745ce8824"
+    },
+    {
+      "name": "ordinary-subscribe",
+      "argv": [
+        "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\websocket-6b79a96a3b9ad5a0.exe",
+        "test_subscribe_user_events",
+        "--test-threads=1",
+        "--nocapture",
+        "--exact"
+      ],
+      "exit_code": 0,
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "78462c3d880e3ddd6171cc0b82df551cc45b95882c2f16d994294e28fb9dcf65"
+    },
+    {
+      "name": "ordinary-restoration",
+      "argv": [
+        "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\websocket-6b79a96a3b9ad5a0.exe",
+        "test_subscription_restoration_tracking",
+        "--test-threads=1",
+        "--nocapture",
+        "--exact"
+      ],
+      "exit_code": 0,
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "d4f6fd8f8f6eef3093a68ceb3e705aacc08a133b0815b308a279b279c167557c"
+    },
+    {
+      "name": "ordinary-reconnect",
+      "argv": [
+        "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\websocket-6b79a96a3b9ad5a0.exe",
+        "test_request_reconnect_replays_subscriptions",
+        "--test-threads=1",
+        "--nocapture",
+        "--exact"
+      ],
+      "exit_code": 0,
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0,
+      "log_sha256": "485398eaa7921e3bc1a275a5a6fcafdd0778ab21ff6e27bd4410828f8577ff1d"
+    }
+  ]
+}

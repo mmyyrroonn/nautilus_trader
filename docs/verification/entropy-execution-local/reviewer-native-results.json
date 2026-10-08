@@ -1,0 +1,387 @@
+{
+  "peer": {
+    "path": "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\entropy_account-69bad49fe9dc76e8.exe",
+    "sha256": "20e358c84c80482c9e0e1a6be2a67e86daef47cfcf9a8d4d318d8f616d929178"
+  },
+  "lib": {
+    "path": "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\nautilus_hyperliquid-1fcbc36810deefe5.exe",
+    "sha256": "63a8aba2f9de81cf6a7b60236fef71c192a7a03930666b57175debdabbe3fe05"
+  },
+  "source_inputs": [
+    {
+      "path": "Cargo.lock",
+      "sha256": "a802008d4363de0a4e28dd3b14990d0d79f95ef8a89431c5936fc31e1215463a",
+      "bytes": 259667,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/Cargo.toml",
+      "sha256": "a84ca78eed290c1b5808f989f8ba1a7d08df4b19954611438424710d33057686",
+      "bytes": 5861,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/account_scope.rs",
+      "sha256": "08525b2c352a6902ea47c41677341f3ff5e52af763d79c250f0755c11b688191",
+      "bytes": 35282,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/common/enums.rs",
+      "sha256": "a3732ad6e44c8112d32e46b6e209f4df5be3cbc327402b11179c539095650bfd",
+      "bytes": 59514,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/config.rs",
+      "sha256": "8dbf4b49db74b1d33983ad35947f3151a32d8c6cde1f7335057e5773160a52b5",
+      "bytes": 20286,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/data.rs",
+      "sha256": "dffefe7bd797d5922a23c76bafebbcacade339d9d745458808f7b5fc5cdc0a12",
+      "bytes": 106403,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/execution.rs",
+      "sha256": "f3c369adae7f694b75f8cf077e17e88bdf9d15341bb689167fc4b79ac3bc5063",
+      "bytes": 222633,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/execution_scope.rs",
+      "sha256": "c21efe03a5fd3325fb4e8806bfd5bfcfbec2ba87f67f92a06467fb46f08f03ef",
+      "bytes": 110722,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/factories.rs",
+      "sha256": "ce28a34fb948fec779381395bf807ebdfc41c589578e2b3499bc066bf60b4f75",
+      "bytes": 10676,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/http/client.rs",
+      "sha256": "ed8b4cc3eb4433d151ab5e177f39f42798d6eabf65ec7889aa58ddfc35d7c744",
+      "bytes": 172112,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/http/query.rs",
+      "sha256": "81c542be28eb2c6494b4bc1fa6b023de912d4a86acbf6a7eb81724fe413634fd",
+      "bytes": 28046,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/lib.rs",
+      "sha256": "af161fd9c82cd077c49aeba1c46a7ed12ebf016ceb1bc6591894b44ad7a8c15d",
+      "bytes": 3220,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/python/config.rs",
+      "sha256": "039e9791eec7542b199caae5c13188e54eca8b5574acc6c36529c2e4d8b898e9",
+      "bytes": 8709,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/python/factories.rs",
+      "sha256": "afe47f05b7b356d6ae309c81135d2711827069322ef7973fd4cce97074436643",
+      "bytes": 2221,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/websocket/client.rs",
+      "sha256": "c870a689bc0aaa82b71d1ded14c4d812698074e0a9f3d1f9537ff3410ac1a9a4",
+      "bytes": 127108,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/websocket/handler.rs",
+      "sha256": "77f150798a826aa244c78d04c661c295ae21de67b2d3ed2a7e1a7843b4599100",
+      "bytes": 95580,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/websocket/messages.rs",
+      "sha256": "b4be031dadbab0f1f3652035a93b39073dfa14dc27f9b6552c03966e52c1851c",
+      "bytes": 39483,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/websocket/post.rs",
+      "sha256": "0b5e1524cee0e43ab662c1c92d270637ec6aa20c3f05a27c2c45da793ffd7d4b",
+      "bytes": 35027,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/tests/entropy_account.rs",
+      "sha256": "7d8c8f7b20ecc1c6d71f2d1fedc4c9288286ee65ee5cffdaeb23d368a3fab376",
+      "bytes": 42439,
+      "matches": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/tests/entropy_account/execution.rs",
+      "sha256": "28e10f87df1d24b9e3025f727140a2a47b24f0e21e9a429e22e982ca9f473b9d",
+      "bytes": 54493,
+      "matches": true
+    },
+    {
+      "path": "crates/network/src/net.rs",
+      "sha256": "13006a0f81a42e441205652969fdd56ce4ec4846a98ac9bf4c8e673aeb66397f",
+      "bytes": 7510,
+      "matches": true
+    },
+    {
+      "path": "crates/network/src/sink.rs",
+      "sha256": "4a82a04c2ab688bc2c57c4828a8020832b558f7ec023ccbf687fc14890aa7aa5",
+      "bytes": 16414,
+      "matches": true
+    },
+    {
+      "path": "crates/network/src/websocket/client.rs",
+      "sha256": "83af43775542218d989f91b4cc2ca0061f649c2749d318b1fb5c7584b511fd09",
+      "bytes": 402591,
+      "matches": true
+    },
+    {
+      "path": "crates/network/src/websocket/mod.rs",
+      "sha256": "f7c7ffcd69c7d5951a2ba0aff6895b80be73a99c86eebcb922eb4eb5e82f0a5f",
+      "bytes": 5142,
+      "matches": true
+    },
+    {
+      "path": "crates/network/src/websocket/prepared.rs",
+      "sha256": "5160ee74a4ecbd23bf6637f239edb1de85523ba770e6de7033fb24b334c06737",
+      "bytes": 14066,
+      "matches": true
+    },
+    {
+      "path": "crates/network/src/websocket/prepared_client_tests.rs",
+      "sha256": "cb5f8929eb2307a05c810f989cddb8e445a389031144c93ce4eb9feada7d53d9",
+      "bytes": 17067,
+      "matches": true
+    },
+    {
+      "path": "crates/network/src/websocket/prepared_tests.rs",
+      "sha256": "1416fb6f3ad2f79c04e06025046fbd1ca82d34d826a61624ab9e26c64a71344d",
+      "bytes": 15640,
+      "matches": true
+    },
+    {
+      "path": "crates/network/src/websocket/types.rs",
+      "sha256": "a0e49ae53b2def879bfbc0caae9fc10362053d60168457de3a877dd78b2a5668",
+      "bytes": 9720,
+      "matches": true
+    },
+    {
+      "path": "crates/network/tests/prepared_websocket.rs",
+      "sha256": "519dacf34330a277c0dae640d44905203e4c3973296e094dae2b71714c170a74",
+      "bytes": 12359,
+      "matches": true
+    },
+    {
+      "path": "python/tests/unit/test_entropy_account_config.py",
+      "sha256": "a42165a0df0b883fb71c8ca0a77f2e313fd11335c28d874a35c365687f751bb8",
+      "bytes": 6552,
+      "matches": true
+    },
+    {
+      "path": "python/tests/unit/test_entropy_execution_config.py",
+      "sha256": "7899bf19958b9d5cb5883fca2492462194d2320fe2cc310345e415f809b67e22",
+      "bytes": 6925,
+      "matches": true
+    }
+  ],
+  "runs": [
+    {
+      "name": "factory-partials-close",
+      "argv": [
+        "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\entropy_account-69bad49fe9dc76e8.exe",
+        "factory_actual_partial_fills_fees_and_owned_ioc_close_update_engine_and_portfolio",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "seconds": 40.36,
+      "log": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-factory-partials-close.log",
+      "log_sha256": "70d9253a50025a83b6a9ce9bff059446e9e815403e762e9f155b0477922c5926",
+      "status": "ok",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "name": "partial-cancel",
+      "argv": [
+        "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\entropy_account-69bad49fe9dc76e8.exe",
+        "partial_fill_then_cancel_preserves_actual_position_and_rejects_oversized_close",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "seconds": 5.25,
+      "log": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-partial-cancel.log",
+      "log_sha256": "84cd62b60d8150be28af778109fdd9e91ae75a359125456a4ad1f8ec26b8745b",
+      "status": "ok",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "name": "owned-cancel",
+      "argv": [
+        "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\entropy_account-69bad49fe9dc76e8.exe",
+        "owned_cancel_uses_exact_cached_order_and_dedicated_io_asset",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "seconds": 0.235,
+      "log": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-owned-cancel.log",
+      "log_sha256": "8667d1f5e64bddce4bdd5b1df30252f54f2b9db32d93221b0971c7111bf4a0ae",
+      "status": "ok",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "name": "unknown-restart",
+      "argv": [
+        "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\entropy_account-69bad49fe9dc76e8.exe",
+        "missing_ack_and_unknown_oid_retain_budget_and_restart_never_resends",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "seconds": 1.422,
+      "log": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-unknown-restart.log",
+      "log_sha256": "348d2b21816a08381db2a867de580666fd647ef47bcc2a2a06356be4c51bdb6e",
+      "status": "ok",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "name": "projection-restart",
+      "argv": [
+        "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\entropy_account-69bad49fe9dc76e8.exe",
+        "durable_actual_fill_does_not_claim_native_cache_restored_after_fresh_factory_restart",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "seconds": 0.453,
+      "log": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-projection-restart.log",
+      "log_sha256": "026166d79242152f0a90db4132979847f48fd439ccc3fc27daab8cdef080b29f",
+      "status": "ok",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "name": "private-funds",
+      "argv": [
+        "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\entropy_account-69bad49fe9dc76e8.exe",
+        "newer_private_funds_decline_limits_new_risk_before_http_refresh",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "seconds": 0.359,
+      "log": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-private-funds.log",
+      "log_sha256": "307e695c03266bcdb93738425ba239c2c4fe1ec4fe660917e6c32227bb73cecc",
+      "status": "ok",
+      "passed": 2,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "name": "account-deadline",
+      "argv": [
+        "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\entropy_account-69bad49fe9dc76e8.exe",
+        "query_account_total_deadline_bounds_private_verification_and_preserves_unknown",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "seconds": 1.703,
+      "log": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-account-deadline.log",
+      "log_sha256": "5ec7a7b2adf64264f7e605c70f1a149b8ca64dc2eebf628fe56e898547bcb5be",
+      "status": "ok",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "name": "unsupported-private",
+      "argv": [
+        "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\entropy_account-69bad49fe9dc76e8.exe",
+        "unsupported_private_economic_frames_revoke_trust_before_new_risk",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "seconds": 0.547,
+      "log": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-unsupported-private.log",
+      "log_sha256": "8852b4a5a8cf586faf40b59c86a35d4b83c8ab6102374c83321a7636e64474e4",
+      "status": "ok",
+      "passed": 3,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "name": "economic-conflict",
+      "argv": [
+        "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\entropy_account-69bad49fe9dc76e8.exe",
+        "same_raw_trade_identity_with_changed_economics_is_a_conflict_even_after_terminal",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "seconds": 0.672,
+      "log": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-economic-conflict.log",
+      "log_sha256": "2b3aa340ec838d02ed5cab15da2e58b3af5e31d5612b120b5c6aa478f3f73573",
+      "status": "ok",
+      "passed": 3,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "name": "unprojectable-fill",
+      "argv": [
+        "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\entropy_account-69bad49fe9dc76e8.exe",
+        "contradictory_or_unprojectable_actual_fill_blocks_without_native_position",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "seconds": 0.828,
+      "log": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-unprojectable-fill.log",
+      "log_sha256": "58b60c11cd0f1addb148ac181ef5f9ee69f619bcd6ee9b3fd1705740b8024200",
+      "status": "ok",
+      "passed": 4,
+      "failed": 0,
+      "ignored": 0
+    },
+    {
+      "name": "double-spend",
+      "argv": [
+        "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\entropy_account-69bad49fe9dc76e8.exe",
+        "concurrent_orders_cannot_spend_one_balance_twice",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "exit_code": 0,
+      "seconds": 0.265,
+      "log": "E:\\persarb\\_tmp\\entropy101-validation\\reviewer-native-double-spend.log",
+      "log_sha256": "060a37e480f06c5ef8cede2c076ed9bc1e6b1fe04c370b80f4a558a1eefad15c",
+      "status": "ok",
+      "passed": 1,
+      "failed": 0,
+      "ignored": 0
+    }
+  ]
+}

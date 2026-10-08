@@ -1,0 +1,6 @@
+
+running 1 test
+test websocket::client::tests::prepared_signed_binding_is_verified_before_queue_and_rejection_never_writes ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 794 filtered out; finished in 0.00s
+

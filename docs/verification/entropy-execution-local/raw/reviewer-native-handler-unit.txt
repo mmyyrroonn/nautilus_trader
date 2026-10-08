@@ -1,0 +1,6 @@
+
+running 1 test
+test websocket::handler::tests::prepared_send_wait_does_not_block_private_raw_frame_processing ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 794 filtered out; finished in 0.14s
+
