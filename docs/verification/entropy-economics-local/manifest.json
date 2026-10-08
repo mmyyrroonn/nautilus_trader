@@ -1,0 +1,808 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-10-08T16:37:58.041809+00:00",
+  "scope": "Owned synthetic loopback peers and an isolated installed source-bound wheel; no real private settlements or venue actions",
+  "source_commit": "95c87d4e70d92ec31072a30df3d764d75172b7b3",
+  "source_tree": "8ed0387e434187098309e22d52f2b7d900d55722",
+  "source_fingerprint_sha256": "56238a5bd653594cb354d871c5c8c8415e7120b12e56891616ca5bda12b61149",
+  "note": "The wheel is bound to the clean implementation commit above. Subsequent changes are documentation formatting and evidence packaging only; they are not relabeled as the built source.",
+  "wheel": {
+    "filename": "nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+    "name": "nautilus-trader",
+    "path": "E:\\persarb\\_tmp\\entropy102-wheel-nextest-20261008\\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+    "sha256": "be8d46c2d0b5f197852086b8818b4a17172aa000416512d73893c6041c129aed",
+    "size": 109319465,
+    "tags": [
+      "cp312-cp312-win_amd64"
+    ],
+    "version": "2.0.0rc4"
+  },
+  "artifacts": [
+    {
+      "path": "raw/binding-inputs-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\binding-inputs-final.log",
+      "bytes": 107,
+      "sha256": "67c4e9ff236a763190667f87008507b951c75afea512af0480da68713a1fc00a"
+    },
+    {
+      "path": "raw/clippy-lib-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\clippy-lib-final.log",
+      "bytes": 603,
+      "sha256": "37645c8de8310e5397a5b9d0a3bcaf6aafbb8628b7448adebc85863e6c349808"
+    },
+    {
+      "path": "raw/clippy-lib-initial.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\clippy-lib-initial.log",
+      "bytes": 9242,
+      "sha256": "adc280b36c0c5daa8393a0e4a856097f7a75af149e34bb5db58519a4b4fa5107"
+    },
+    {
+      "path": "raw/clippy-tests-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\clippy-tests-final.log",
+      "bytes": 3274,
+      "sha256": "b9f9f870cb169499c13988b9e6dca3c9f235957b8fb7a2c52fff9fa4e74224b7"
+    },
+    {
+      "path": "raw/make-format.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\make-format.log",
+      "bytes": 97,
+      "sha256": "4326b575b599c4a0e6b9f83a0e23daeb8ac09e381bb30f88fcd903c5d55f6d5b"
+    },
+    {
+      "path": "raw/make-precommit.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\make-precommit.log",
+      "bytes": 101,
+      "sha256": "70eacc00f5451103a225417d751c61d9e08e0bd7879cedfa2a868da6a5b311c4"
+    },
+    {
+      "path": "raw/markdown-acceptance-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\markdown-acceptance-final.log",
+      "bytes": 301,
+      "sha256": "71ee0e556736ca8c5c68e36b7d972e4215802335ae7dce56b5aa0ca7f2b5c819"
+    },
+    {
+      "path": "raw/markdown-authored-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\markdown-authored-final.log",
+      "bytes": 242,
+      "sha256": "dfa82cbb24aeaf619533cb0082bb2c65d83a7071dbabc82bc81f1cb28df57d97"
+    },
+    {
+      "path": "raw/markdown-authored-initial.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\markdown-authored-initial.log",
+      "bytes": 5435,
+      "sha256": "33b9ebe17fbee8a10ac6722a50aead356fa148f07df49f2d5e23962cbde83cce"
+    },
+    {
+      "path": "raw/markdown-tables-acceptance-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\markdown-tables-acceptance-final.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "raw/markdown-tables-acceptance-format.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\markdown-tables-acceptance-format.log",
+      "bytes": 213,
+      "sha256": "a13647db14c974755fa209482f38bf7acb4911438640ebebff83f7b9c0856bed"
+    },
+    {
+      "path": "raw/markdown-tables-authored-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\markdown-tables-authored-final.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "raw/markdown-tables-authored-initial.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\markdown-tables-authored-initial.log",
+      "bytes": 358,
+      "sha256": "79831c5fcc5f519337cd9c3dfd945b15442af7ff90900e9c47df9557829a76c0"
+    },
+    {
+      "path": "raw/native-account-fifth.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\native-account-fifth.log",
+      "bytes": 86279,
+      "sha256": "ff2b6c8ba7beb631d1702c52f6b2d9bbc24def7f37c96486933f4f2670ff95d0"
+    },
+    {
+      "path": "raw/native-account-fourth.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\native-account-fourth.log",
+      "bytes": 6082,
+      "sha256": "e063825243698bf908e86dbaaa8d50f8140822bede61ec8c17cf2fb6e45de1ce"
+    },
+    {
+      "path": "raw/native-all-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\native-all-final.log",
+      "bytes": 110666,
+      "sha256": "ef6299d729a9293bc82ca146880d39f6d466841657c0fe71333e357dd029d36c"
+    },
+    {
+      "path": "raw/native-economics-initial.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\native-economics-initial.log",
+      "bytes": 3119,
+      "sha256": "6b60d4a4951d3e4655ac18577041da5785814a53881367385ed3a59820f13d3c"
+    },
+    {
+      "path": "raw/native-economics-second.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\native-economics-second.log",
+      "bytes": 20734,
+      "sha256": "e1fc239e63459ad65b2491e8b4b7d10bd23c456b934970ced39a152989a01f5f"
+    },
+    {
+      "path": "raw/native-economics-third.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\native-economics-third.log",
+      "bytes": 13677,
+      "sha256": "96ff6c0af8e3c8b32a887baf55852465ae1a06e0d9011351b1c65fffb1b9f700"
+    },
+    {
+      "path": "raw/native-peer-diagnostics.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\native-peer-diagnostics.log",
+      "bytes": 21406,
+      "sha256": "2d133590b36744553960b0774c8a6b55530847fa1f37166099a2bc79ceefc6fa"
+    },
+    {
+      "path": "raw/progress-issue-post.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\progress-issue-post.log",
+      "bytes": 148,
+      "sha256": "c0e0aca823c28e5007e07ee0afb4d6e7d83ae74c1a89535652f3014c5aa1cbab"
+    },
+    {
+      "path": "raw/public-contract-package.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\public-contract-package.log",
+      "bytes": 90,
+      "sha256": "8b7e052bfdf72bb5fe0466069e7b35f8466a582289cdd6577fcf593fc5bb0e85"
+    },
+    {
+      "path": "raw/python-candidate.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\python-candidate.log",
+      "bytes": 265,
+      "sha256": "8313759b4249990d56f8dadd3ccfd77b2d3537a41870e1f3e6841d8394379904"
+    },
+    {
+      "path": "raw/python-format-check-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\python-format-check-final.log",
+      "bytes": 26,
+      "sha256": "3bc53bf3e981a98a34a852e175bf9b77af841edea74fca595d9aedcbaf9a4938"
+    },
+    {
+      "path": "raw/python-ruff-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\python-ruff-final.log",
+      "bytes": 19,
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    {
+      "path": "raw/python-ruff-initial.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\python-ruff-initial.log",
+      "bytes": 19,
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    {
+      "path": "raw/python-ruff-with-stubs.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\python-ruff-with-stubs.log",
+      "bytes": 19,
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18"
+    },
+    {
+      "path": "raw/reviewer-native-lib-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-native-lib-final.log",
+      "bytes": 2868,
+      "sha256": "0fa951ed83e9c4f7e82b060e1997932fbc3e3c7e6e93ab5f1ea67d30b214c7be"
+    },
+    {
+      "path": "raw/reviewer-native-peer-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-native-peer-final.log",
+      "bytes": 1802,
+      "sha256": "cd64a3ee3cc3d8e6805a15f8de0c8bc065e83c00d050529c52ce4dbe4b4baa18"
+    },
+    {
+      "path": "raw/reviewer-wheel-identity-initial.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-wheel-identity-initial.log",
+      "bytes": 608,
+      "sha256": "2c93b68f04fadcaa46a44ed52ddef29c07a0bf6fa3b4ac3aff6302e72faaf1bd"
+    },
+    {
+      "path": "raw/reviewer-wheel-identity-status-parser.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-wheel-identity-status-parser.log",
+      "bytes": 865,
+      "sha256": "0bcd9200f08b0bcd08f870ff90c6ed0f78f9157b497da536837049fda50a9ad1"
+    },
+    {
+      "path": "raw/reviewer-wheel-identity.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-wheel-identity.log",
+      "bytes": 4078,
+      "sha256": "7a9599cbf1a22f9cab64b46721447b8ba248c24a361d93e0209dfbc448267ce5"
+    },
+    {
+      "path": "raw/reviewer-wheel-lifetime.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-wheel-lifetime.log",
+      "bytes": 105,
+      "sha256": "e619515c63c4db55325a60604b5b9c1da1291bce5155a4d022b261a81d66f7da"
+    },
+    {
+      "path": "raw/reviewer-wheel-python.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-wheel-python.log",
+      "bytes": 106,
+      "sha256": "a38acab71a6ae8137694bffd8480d2ad98f6bf65f1fd030597a7500e0c7568ea"
+    },
+    {
+      "path": "raw/rust-format-check-post-stubs.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\rust-format-check-post-stubs.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "raw/rust-format-fifth.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\rust-format-fifth.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "raw/rust-format-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\rust-format-final.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "raw/rust-format-fourth.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\rust-format-fourth.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "raw/rust-format-initial.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\rust-format-initial.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "raw/rust-format-post-stubs.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\rust-format-post-stubs.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "raw/rust-format-prelint.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\rust-format-prelint.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "raw/rust-format-second.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\rust-format-second.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "raw/rust-format-third.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\rust-format-third.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "raw/sdk-license-capture.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\sdk-license-capture.log",
+      "bytes": 82,
+      "sha256": "e250a24599a0c389913f8fbd7b7a921da190fa26f7cf4e01ea08b9fbb428b583"
+    },
+    {
+      "path": "raw/source-commit.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\source-commit.log",
+      "bytes": 2182,
+      "sha256": "090e10c916cd202d481f532d9840025ffac43396d1599da0f441de7d303f48cd"
+    },
+    {
+      "path": "raw/stubs-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\stubs-final.log",
+      "bytes": 13031,
+      "sha256": "b09cabcf31d02ad95c5d10a7d0843a749f19548092bbe95edb1093c51198cae3"
+    },
+    {
+      "path": "raw/stubs-format-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\stubs-format-final.log",
+      "bytes": 225,
+      "sha256": "c3927b834d3f3c68f755e2a1a7b362881e74a2bc14bd6a735f41ac00e18673a8"
+    },
+    {
+      "path": "raw/stubs-format-lf.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\stubs-format-lf.log",
+      "bytes": 21,
+      "sha256": "a776f471fefe78e1a62d20c34cce8771368c8fa2c3e6f3113f2702173c5670dd"
+    },
+    {
+      "path": "raw/wheel-build.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\wheel-build.log",
+      "bytes": 4185,
+      "sha256": "63386e3f92828a99cd721b0a4cba1f35f30ff5b4394b9cab2ed5f2b938a5da39"
+    },
+    {
+      "path": "raw/wheel-install.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\wheel-install.log",
+      "bytes": 915,
+      "sha256": "40eae5b9d993235dddda844095190c74df2f25e6bc965b7a4e67892a40abef8a"
+    },
+    {
+      "path": "binding-inputs-final.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\binding-inputs-final.json",
+      "bytes": 388,
+      "sha256": "e0b1f20ca23886fa02d3c5ef84f1290b604600f252218769500cb458b30911cd"
+    },
+    {
+      "path": "binding-inputs.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\binding-inputs.json",
+      "bytes": 5580,
+      "sha256": "d7056dbb7ed9c832cc93d6f849d25161e6fdb9cb7f7516eec7f0eabd89650382"
+    },
+    {
+      "path": "clippy-lib-final.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\clippy-lib-final.json",
+      "bytes": 585,
+      "sha256": "bb7c375d997b155a0d780cdf3d5be4076710b0b1bbd196a8a7ac845e20fe4ddf"
+    },
+    {
+      "path": "clippy-lib-initial.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\clippy-lib-initial.json",
+      "bytes": 587,
+      "sha256": "590c9930d1faecf3fddbd92e7f896c83ed3a87fc51e726d5e12d45e29166cd96"
+    },
+    {
+      "path": "clippy-tests-final.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\clippy-tests-final.json",
+      "bytes": 603,
+      "sha256": "2790fba0b1d629e7a577f4e185575f2ec8ab6a8d41a379dd086ccb15e4fac258"
+    },
+    {
+      "path": "commands.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\commands.json",
+      "bytes": 52434,
+      "sha256": "2a739e6bcbd81ec768ff300fb6d745dbdd438ae0ba75c9004805b01c3262a07d"
+    },
+    {
+      "path": "installed-native.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\installed-native.json",
+      "bytes": 18289,
+      "sha256": "0df6c462e7aef75c3d173920b6198413bab59ce9aaba52192da8a8a8e110ba2b"
+    },
+    {
+      "path": "make-format.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\make-format.json",
+      "bytes": 389,
+      "sha256": "3a4ae607977d540ac2eaa34b2c31d23a08e840b625b7a210b903e1fc24ca0f2f"
+    },
+    {
+      "path": "make-precommit.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\make-precommit.json",
+      "bytes": 393,
+      "sha256": "b0bd8edf49dfd2eb478fb0dbd430779e7401c8e897d3d9cea3d9d67c95ad3a7f"
+    },
+    {
+      "path": "markdown-acceptance-final.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\markdown-acceptance-final.json",
+      "bytes": 612,
+      "sha256": "4c78db90b17e2d0bfe50d52ca682655e647767b6835a14fc4097fd14c480ebc9"
+    },
+    {
+      "path": "markdown-authored-final.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\markdown-authored-final.json",
+      "bytes": 545,
+      "sha256": "29713c246ba719a92ea18c83da7a8c713490160be1e99ff04957f80e576bdc43"
+    },
+    {
+      "path": "markdown-authored-initial.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\markdown-authored-initial.json",
+      "bytes": 545,
+      "sha256": "0bfe984dcb38e449cbf271af2ef4b138354e4e4ecf02d71c5ee3bc0ec6ba3279"
+    },
+    {
+      "path": "markdown-tables-acceptance-final.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\markdown-tables-acceptance-final.json",
+      "bytes": 608,
+      "sha256": "8b06edb966d94d80beb7e5a449c54b12c14e7e37a756d6013abdbe74a7728dcc"
+    },
+    {
+      "path": "markdown-tables-acceptance-format.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\markdown-tables-acceptance-format.json",
+      "bytes": 446,
+      "sha256": "b1a652ec98f83a0ed1262e331b91a89297a138c75a502a8012612205ce58b6e4"
+    },
+    {
+      "path": "markdown-tables-authored-final.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\markdown-tables-authored-final.json",
+      "bytes": 541,
+      "sha256": "e6cfdf5cfd1d87e1b549384636046da5472c19ca2d67d95175146eb8ae1cd0f7"
+    },
+    {
+      "path": "markdown-tables-authored-initial.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\markdown-tables-authored-initial.json",
+      "bytes": 541,
+      "sha256": "ea352a5b4b61b0cbb8f432f37f3e5cff8f1138740e42b913946892b516bf0314"
+    },
+    {
+      "path": "native-account-fifth.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\native-account-fifth.json",
+      "bytes": 583,
+      "sha256": "53c2d051b0ef57fe2a24de5f29dfe9ffc0cc665e93acc6492f59e160a00b8343"
+    },
+    {
+      "path": "native-account-fourth.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\native-account-fourth.json",
+      "bytes": 585,
+      "sha256": "1ab652942afc071085a3af50e92065fea904834c915675635fc1db837d32b3c8"
+    },
+    {
+      "path": "native-all-final.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\native-all-final.json",
+      "bytes": 560,
+      "sha256": "dfdd82ccbbb07611f67373f6a1a317b352d666f892b95e1566d8a6c2b9591e5a"
+    },
+    {
+      "path": "native-economics-initial.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\native-economics-initial.json",
+      "bytes": 634,
+      "sha256": "9111cdaf869cf305ded41e5515b9f9d2ff7ec66a3667476f40880445529af370"
+    },
+    {
+      "path": "native-economics-second.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\native-economics-second.json",
+      "bytes": 634,
+      "sha256": "23ca3351cd116bab63c1f5862b4551f7c9b35d18241e9a13f6f6c11cf783a61e"
+    },
+    {
+      "path": "native-economics-third.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\native-economics-third.json",
+      "bytes": 634,
+      "sha256": "682f13cfaf6015c52f8b33060967e289413d9f3d28cf9679e807ce8b36603ab9"
+    },
+    {
+      "path": "native-peer-diagnostics.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\native-peer-diagnostics.json",
+      "bytes": 631,
+      "sha256": "4c5710bf2dbf9b0b4b6549669c4995fea9b9406b02a939bca520c6bcebdaa6b5"
+    },
+    {
+      "path": "progress-issue-post.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\progress-issue-post.json",
+      "bytes": 465,
+      "sha256": "42f64ecede19556d74bcb41cc14722536f6a27bc5ac9a46242bcc1e6dceca903"
+    },
+    {
+      "path": "progress-issue.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\progress-issue.json",
+      "bytes": 1846,
+      "sha256": "24ff92410ab15de5811d3488804efd24e273e2af8973180f13d36b0feedc5415"
+    },
+    {
+      "path": "public-contract-package.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\public-contract-package.json",
+      "bytes": 393,
+      "sha256": "b1176f505a324220e91233dd5f20cbe8d203a46dde07bb98e82b395d31d7c865"
+    },
+    {
+      "path": "python-candidate.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\python-candidate.json",
+      "bytes": 711,
+      "sha256": "a27c09168134209221f04dc189575669e0fb79374ce6471b4c91c3ec46b80a73"
+    },
+    {
+      "path": "python-format-check-final.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\python-format-check-final.json",
+      "bytes": 519,
+      "sha256": "41b5f150f3577da4284d16d063d7b86c355aa7cb9ebd126ed4b30a4809be5696"
+    },
+    {
+      "path": "python-ruff-final.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\python-ruff-final.json",
+      "bytes": 502,
+      "sha256": "7f8a38c5b00ea2d0baf98aff6706adf06fc00d5fec0eca90a6f3f79a2167c2d1"
+    },
+    {
+      "path": "python-ruff-initial.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\python-ruff-initial.json",
+      "bytes": 418,
+      "sha256": "600c0b48a4d0966e42509160d565f73ae1596896e88dd4a7dba95847f4f0bada"
+    },
+    {
+      "path": "python-ruff-with-stubs.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\python-ruff-with-stubs.json",
+      "bytes": 567,
+      "sha256": "2b0510470f0469b9096a2d650e9486bbdacd5e3e546890c26d4b95509c727c05"
+    },
+    {
+      "path": "reviewer-native-input-checks.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-native-input-checks.json",
+      "bytes": 8073,
+      "sha256": "dc2968fba6f2b1402e516b4dd5f864817702bed7cf0a75877214f636f5e4c4e7"
+    },
+    {
+      "path": "reviewer-native-lib-final.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-native-lib-final.json",
+      "bytes": 2198,
+      "sha256": "0c4d0990c774dc0eb25759057596d62bf27fc4128944fa3a3b9752aebc00e90f"
+    },
+    {
+      "path": "reviewer-native-peer-final.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-native-peer-final.json",
+      "bytes": 1633,
+      "sha256": "cf0ac7052184b2efa81d89f78eb457cb8027d962157bcc010a3a5b23ba5dd823"
+    },
+    {
+      "path": "reviewer-native-postflight-inputs.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-native-postflight-inputs.json",
+      "bytes": 7201,
+      "sha256": "83943ddf42570b9b05138d453fb17d9124aa564a08ad0a2360fed947274b42a8"
+    },
+    {
+      "path": "reviewer-native-preflight-inputs.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-native-preflight-inputs.json",
+      "bytes": 8770,
+      "sha256": "4cb401d068043081cdb6f7dcc4981602c65938ddc83cda459b1a2a037aa5af86"
+    },
+    {
+      "path": "reviewer-wheel-identity-initial-run.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-wheel-identity-initial-run.json",
+      "bytes": 362,
+      "sha256": "d58ad174f9012970e74b814058e52dc7feddb6afd8575ee7717a13f94e248baa"
+    },
+    {
+      "path": "reviewer-wheel-identity-run.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-wheel-identity-run.json",
+      "bytes": 366,
+      "sha256": "dd53b493c075ab105c80c8548a1ac60f503c115208c11402c8148e2d96a40e22"
+    },
+    {
+      "path": "reviewer-wheel-identity-status-parser-run.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-wheel-identity-status-parser-run.json",
+      "bytes": 366,
+      "sha256": "e3d3517009318b1914320e32edec64b56da71fed99b28b74afddc7dad565022e"
+    },
+    {
+      "path": "reviewer-wheel-identity.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-wheel-identity.json",
+      "bytes": 12075,
+      "sha256": "eab70a4c8e7128399331f79060fbfab2c8f683b7372e6d5099ae441ec780dc60"
+    },
+    {
+      "path": "reviewer-wheel-lifetime.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-wheel-lifetime.json",
+      "bytes": 700,
+      "sha256": "f8cf4b8e8da04426eedf41a2ffcaa96f7cfb29f0a3bd94bfd2260c50c2c0f0c2"
+    },
+    {
+      "path": "reviewer-wheel-python.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-wheel-python.json",
+      "bytes": 927,
+      "sha256": "e399781855fab2d713a213b52790c6b6c1ca1fe79a40808238b24d62aab5fb0b"
+    },
+    {
+      "path": "rust-format-check-post-stubs.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\rust-format-check-post-stubs.json",
+      "bytes": 356,
+      "sha256": "b4fc28d20ce952ac8e38d70c52e88ae1d904e61acdc6dd250c402f380e74efd0"
+    },
+    {
+      "path": "rust-format-fifth.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\rust-format-fifth.json",
+      "bytes": 430,
+      "sha256": "2c6fdd614ea5e8143e60213bc76b8734e36d54740847d9991001bb81649b8bc9"
+    },
+    {
+      "path": "rust-format-final.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\rust-format-final.json",
+      "bytes": 430,
+      "sha256": "d54a6701c7d607336f0877581e33cda23b069797024f027d620ce58188490ff2"
+    },
+    {
+      "path": "rust-format-fourth.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\rust-format-fourth.json",
+      "bytes": 430,
+      "sha256": "536d48d858dc11c5a6b12e4daf4526ebc4e97cd2483d03b70f792a90a6d33e35"
+    },
+    {
+      "path": "rust-format-initial.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\rust-format-initial.json",
+      "bytes": 430,
+      "sha256": "41af514208a8a8576ef437b1b1bbf5bd1f4f6032e6928f180cfd2d1108935753"
+    },
+    {
+      "path": "rust-format-post-stubs.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\rust-format-post-stubs.json",
+      "bytes": 340,
+      "sha256": "4babd389cd9a08e6001e06d9cac2bd30cf74fa1c9a2ae00bba90c3a9e7157681"
+    },
+    {
+      "path": "rust-format-prelint.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\rust-format-prelint.json",
+      "bytes": 430,
+      "sha256": "063bb9c44172824f043367b95e2093b7abbd98167ffc5de77747bebc2d9c1b2e"
+    },
+    {
+      "path": "rust-format-second.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\rust-format-second.json",
+      "bytes": 430,
+      "sha256": "10c5785bf586e8d2f7bfde46f1c768c53e721d48bc4c75eed76ed8651b7e4c25"
+    },
+    {
+      "path": "rust-format-third.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\rust-format-third.json",
+      "bytes": 430,
+      "sha256": "0ab7ff52f6987fc93aa46823972f235dd56d6518bfeb689a18d71d87d70fcdf3"
+    },
+    {
+      "path": "sdk-license-capture.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\sdk-license-capture.json",
+      "bytes": 396,
+      "sha256": "8948813265d178fd6b1e73307cfc01caf1157f5e18b9ab4e2defce52cb4ea6f3"
+    },
+    {
+      "path": "source-commit.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\source-commit.json",
+      "bytes": 577,
+      "sha256": "954f9b46a01e19e7c797a849521dc86a1bc617045a01c2484997a1285595fe67"
+    },
+    {
+      "path": "start-issue.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\start-issue.json",
+      "bytes": 1684,
+      "sha256": "aec88de22fe593fba767041c2224bcd3165b51abd5fa54de1898912fa8a8908d"
+    },
+    {
+      "path": "stubs-final.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\stubs-final.json",
+      "bytes": 450,
+      "sha256": "2dd41ae015a6822e856fa322f091df33524668928fb7e5508185181ef0d87a84"
+    },
+    {
+      "path": "stubs-format-final.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\stubs-format-final.json",
+      "bytes": 3041,
+      "sha256": "deb40a0115b81626448cdd064b976ed78fd8b1d0500624a35ae3baa7245534c2"
+    },
+    {
+      "path": "stubs-format-lf.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\stubs-format-lf.json",
+      "bytes": 3057,
+      "sha256": "a4529ad806eb29568927286a988516f241d603f69a4621de4f61914746831883"
+    },
+    {
+      "path": "tested-inputs-before-origin-fix.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\tested-inputs-before-origin-fix.json",
+      "bytes": 4692,
+      "sha256": "4b07e3aba11180763dbf0ae328c105507569b04a20b23b5172998090aad0f472"
+    },
+    {
+      "path": "tested-inputs.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\tested-inputs.json",
+      "bytes": 4692,
+      "sha256": "c1a6fd7fa24cacd00c1ab9b2b843e73926b7a34aead5df670ed8b090c7b8bba0"
+    },
+    {
+      "path": "wheel-build.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\wheel-build.json",
+      "bytes": 733,
+      "sha256": "470b0295791de9bfd92e5190b09621018fef23c2def997367b7b5a0a2019bb44"
+    },
+    {
+      "path": "wheel-install.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\wheel-install.json",
+      "bytes": 987,
+      "sha256": "641a0f3401b31615b7d8aeae10ddee45f85259c63568b640d2743dd7659e6ee3"
+    },
+    {
+      "path": "reviews/reviewer-fee-attribution.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-fee-attribution.md",
+      "bytes": 5257,
+      "sha256": "63f2a53e56fdca15645c39d8d64c67e7ede98b7957d2e23e8e73e5599f442126"
+    },
+    {
+      "path": "reviews/reviewer-native-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-native-final.md",
+      "bytes": 12039,
+      "sha256": "8dc91a44b794a0d7076681508f6a1cc12ce8efee48d9da240997d2acba2ea898"
+    },
+    {
+      "path": "reviews/reviewer-source-attribution-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-source-attribution-final.md",
+      "bytes": 9733,
+      "sha256": "339ca38fffea5d94f060c7c052268806e6082c821a33e085b708a8abb15a1ab3"
+    },
+    {
+      "path": "reviews/reviewer-source-initial.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-source-initial.md",
+      "bytes": 11338,
+      "sha256": "7b2590f65cb262b3a5d7407e76d4b55746abcddaab82aeefb8664726ce3d0c9c"
+    },
+    {
+      "path": "reviews/reviewer-wheel-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-wheel-final.md",
+      "bytes": 11032,
+      "sha256": "8e378ff6f6562b932890fcfe69309b70ab73fe7afe46513e8504a11008792d42"
+    },
+    {
+      "path": "procedures/add_source_headers.py.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\add_source_headers.py",
+      "bytes": 692,
+      "sha256": "64aa022a2e7e7ecc932b946db4c59455f99119faf133a8f43a3c004a85ccf2ca"
+    },
+    {
+      "path": "procedures/analyze_peer_diagnostics.py.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\analyze_peer_diagnostics.py",
+      "bytes": 778,
+      "sha256": "962276ea79a776da6be85813dcc2382084954e7120c99a3be90444cd4f827fa9"
+    },
+    {
+      "path": "procedures/archive_contract.py.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\archive_contract.py",
+      "bytes": 1241,
+      "sha256": "ac3634989cfb638462ea16f7503b9a2521f676a5b8124d1e82188213b173bbb8"
+    },
+    {
+      "path": "procedures/archive_evidence.py.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\archive_evidence.py",
+      "bytes": 3771,
+      "sha256": "a9b9b92cbd03b2d84aa0d78f0cd6c37edfa7a9e5f3fec7c2cdd252b2d7be8256"
+    },
+    {
+      "path": "procedures/bind_inputs.py.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\bind_inputs.py",
+      "bytes": 2195,
+      "sha256": "f03fe4798e48d24d898e3a413880e571d1f305e0d02dde968fa29c4dfde9d97e"
+    },
+    {
+      "path": "procedures/capture_sdk_license.py.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\capture_sdk_license.py",
+      "bytes": 1787,
+      "sha256": "d02d570154e9f7e63c5f21c00b334bc2845d6bdd3d91d03c0f18deac3e8eeb04"
+    },
+    {
+      "path": "procedures/capture_source.py.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\capture_source.py",
+      "bytes": 1360,
+      "sha256": "77ee0567c792e158a0d97becd0d09bc2ff9663474b2bbf39d7f77745653c6c3f"
+    },
+    {
+      "path": "procedures/package_contract.py.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\package_contract.py",
+      "bytes": 4368,
+      "sha256": "600db90724bba48ba18859ad0543e1a45ee40c11e043e507833ed24d757c142d"
+    },
+    {
+      "path": "procedures/reviewer-wheel-identity.py.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-wheel-identity.py",
+      "bytes": 4909,
+      "sha256": "9abed0eb9c276358395d35b74ddd70f8c1562b333fad671116b1992a91d1b805"
+    },
+    {
+      "path": "procedures/run_capture.py.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\run_capture.py",
+      "bytes": 1454,
+      "sha256": "12076f96c8098a7394e1559aa81bc8551fa7723cbd9528ae4d647c6b84203bdf"
+    },
+    {
+      "path": "procedures/test_reviewer_entropy_lifetime.py.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\test_reviewer_entropy_lifetime.py",
+      "bytes": 2344,
+      "sha256": "9f223a552122088b05ddae2af8ec40e70b3e47fcaf52d887013efc1adc2dca32"
+    },
+    {
+      "path": "procedures/write_acceptance.py.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\write_acceptance.py",
+      "bytes": 10821,
+      "sha256": "ea66688deb70ea15433963ce46392e95616166d5aa85f431879684070fa543c1"
+    },
+    {
+      "path": "procedures/reviewer-run-native-final.ps1.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-run-native-final.ps1",
+      "bytes": 4771,
+      "sha256": "94904775c4e73338c68f681e69f19ee5814561f9c1df7f73a17859718fd90dc1"
+    },
+    {
+      "path": "native-provenance.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-wheel-nextest-20261008\\native-provenance.json",
+      "bytes": 8157,
+      "sha256": "ddcff3f23c1d72b07690e9db726fa059d4a7399a0f892f531615f02b9d2f8a32"
+    },
+    {
+      "path": "native-build-input.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy102-wheel-nextest-20261008\\native-build-input.json",
+      "bytes": 419,
+      "sha256": "fce6e987b0ee72780d68a1b62f74c03df36de959c549ff164751c0ce78553052"
+    }
+  ]
+}

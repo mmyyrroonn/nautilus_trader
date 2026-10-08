@@ -1,0 +1,41 @@
+﻿$ErrorActionPreference = 'Stop'
+$reviewDir = 'E:/persarb/_tmp/entropy102-validation'
+$rootPath = 'E:/persarb/worktrees/entropy-account'
+$inputPath = Join-Path $reviewDir 'tested-inputs.json'
+$manifest = Get-Content -LiteralPath $inputPath -Raw | ConvertFrom-Json
+$inputChecks = foreach ($entry in $manifest.inputs.PSObject.Properties) {
+    $fullPath = Join-Path $rootPath $entry.Name
+    $actual = (Get-FileHash -LiteralPath $fullPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $size = (Get-Item -LiteralPath $fullPath).Length
+    [pscustomobject]@{path=$entry.Name; expected_sha256=$entry.Value.sha256; sha256=$actual; bytes=$size; matches=($actual -eq $entry.Value.sha256 -and $size -eq $entry.Value.bytes)}
+}
+$defaultNativeMismatches = @($inputChecks | Where-Object { -not $_.matches -and $_.path -ne 'crates/adapters/hyperliquid/src/python/factories.rs' })
+if ($defaultNativeMismatches.Count) { throw 'A default-native final tested input differs from the current source; refusing execution.' }
+# Root's official binding generator updated this cfg(feature="python")-only file.
+# Its exact current hash is retained separately; no claim that default-native tests compile it.
+$inputChecks | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $reviewDir 'reviewer-native-input-checks.json') -Encoding utf8
+function Run-ReviewedExecutable {
+    param([string]$Name, [string]$Exe, [string[]]$RunArgs)
+    $logPath = Join-Path $reviewDir ($Name+'.log')
+    $metaPath = Join-Path $reviewDir ($Name+'.json')
+    $beforeHash=(Get-FileHash -LiteralPath $Exe -Algorithm SHA256).Hash.ToLowerInvariant()
+    $started=[DateTime]::UtcNow.ToString('o')
+    $watch=[Diagnostics.Stopwatch]::StartNew()
+    $result = & $Exe @RunArgs 2>&1
+    $code=$LASTEXITCODE
+    $watch.Stop()
+    $finished=[DateTime]::UtcNow.ToString('o')
+    $result | Out-String -Width 65536 | Set-Content -LiteralPath $logPath -Encoding utf8
+    $afterHash=(Get-FileHash -LiteralPath $Exe -Algorithm SHA256).Hash.ToLowerInvariant()
+    [pscustomobject]@{argv=@($Exe)+$RunArgs; cwd=$rootPath; started_utc=$started; finished_utc=$finished; elapsed_seconds=$watch.Elapsed.TotalSeconds; executable_sha256=$beforeHash; executable_sha256_after=$afterHash; exit_code=$code; raw_output=$logPath; tested_input_manifest_sha256=(Get-FileHash -LiteralPath $inputPath -Algorithm SHA256).Hash.ToLowerInvariant()} | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $metaPath -Encoding utf8
+    Write-Output ($Name+': exit='+$code+'; duration='+$watch.Elapsed.TotalSeconds+'s; hash_stable='+($beforeHash -eq $afterHash))
+    $result | Select-Object -Last 5 | Write-Output
+    if ($code -ne 0 -or $beforeHash -ne $afterHash) { throw 'Independent test or binary stability check failed.' }
+}
+$lib='E:/persarb/nautilus_trader/target/nextest/deps/nautilus_hyperliquid-1fcbc36810deefe5.exe'
+$peer='E:/persarb/nautilus_trader/target/nextest/deps/entropy_account-69bad49fe9dc76e8.exe'
+$libFilters=@('account_scope::tests::validated_position_change','account_scope::tests::generic_invalidation_revokes_attribution','account_scope::tests::attribution_','account_scope::tests::invalid_private_source_and_refresh_start','account_scope::tests::stale_private_source','account_scope::tests::replacement_context_cannot_certify','economics_scope::tests::recomputed_checksum','economics_scope::tests::source_and_consumer_restart','economics_scope::tests::checkpoint_exclusive_owner','economics_scope::tests::only_phase_a_exact','economics_scope::tests::lifetime_coverage_capacity','economics_scope::tests::complete_five_hundred','economics_scope::tests::exact_sum_never_rounds','economics_scope::tests::verified_attribution_with_untrusted','economics_scope::tests::unverified_attribution_cannot','economics_scope::tests::same_time_distinct_hashes','economics_scope::tests::account_wide_ledger','economics_scope::tests::runtime_bound_preserves','economics_scope::tests::semantic_checkpoint_corruption')
+Run-ReviewedExecutable 'reviewer-native-lib-final' $lib ($libFilters+@('--test-threads=1','--nocapture'))
+$peerFilters=@('execution::economics::actual_owned_fill_fee_reporting','execution::economics::failed_full_account_revalidation','execution::economics::malformed_actual_user_fill','execution::economics::persisted_funding_does_not_restore_ready','execution::economics::normal_factory_restart_preserves_pending','execution::economics::actual_full_page_preserves','execution::economics::saturated_equal_time_page','execution::economics::conflicting_strong_history','execution::economics::economic_consumer_failure','execution::economics::websocket_no_id_replay','execution::economics::original_numeric_lexeme')
+Run-ReviewedExecutable 'reviewer-native-peer-final' $peer ($peerFilters+@('--test-threads=1','--nocapture'))
+

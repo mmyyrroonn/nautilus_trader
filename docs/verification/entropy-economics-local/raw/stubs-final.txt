@@ -1,0 +1,73 @@
+  Updated 3 doc(s) in crates\adapters\hyperliquid\src\python\factories.rs
+
+Total: 3 doc comments updated
+   Compiling nautilus-common v0.63.0 (E:\persarb\worktrees\entropy-account\crates\common)
+   Compiling nautilus-portfolio v0.63.0 (E:\persarb\worktrees\entropy-account\crates\portfolio)
+   Compiling nautilus-execution v0.63.0 (E:\persarb\worktrees\entropy-account\crates\execution)
+   Compiling nautilus-persistence v0.63.0 (E:\persarb\worktrees\entropy-account\crates\persistence)
+   Compiling nautilus-infrastructure v0.63.0 (E:\persarb\worktrees\entropy-account\crates\infrastructure)
+   Compiling nautilus-trading v0.63.0 (E:\persarb\worktrees\entropy-account\crates\trading)
+   Compiling nautilus-risk v0.63.0 (E:\persarb\worktrees\entropy-account\crates\risk)
+   Compiling nautilus-data v0.63.0 (E:\persarb\worktrees\entropy-account\crates\data)
+   Compiling nautilus-testkit v0.63.0 (E:\persarb\worktrees\entropy-account\crates\testkit)
+   Compiling nautilus-system v0.63.0 (E:\persarb\worktrees\entropy-account\crates\system)
+   Compiling nautilus-live v0.63.0 (E:\persarb\worktrees\entropy-account\crates\live)
+   Compiling nautilus-backtest v0.63.0 (E:\persarb\worktrees\entropy-account\crates\backtest)
+   Compiling nautilus-sandbox v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\sandbox)
+   Compiling nautilus-binance v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\binance)
+   Compiling nautilus-ondo v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\ondo)
+   Compiling nautilus-betfair v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\betfair)
+   Compiling nautilus-backpack v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\backpack)
+   Compiling nautilus-architect-ax v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\architect_ax)
+   Compiling nautilus-polymarket v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\polymarket)
+   Compiling nautilus-tardis v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\tardis)
+   Compiling nautilus-derive v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\derive)
+   Compiling nautilus-dydx v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\dydx)
+   Compiling nautilus-kraken v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\kraken)
+   Compiling nautilus-okx v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\okx)
+   Compiling nautilus-blockchain v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\blockchain)
+   Compiling nautilus-hyperliquid v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\hyperliquid)
+   Compiling nautilus-coinbase v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\coinbase)
+   Compiling nautilus-bitmex v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\bitmex)
+   Compiling nautilus-deribit v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\deribit)
+   Compiling nautilus-bybit v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\bybit)
+   Compiling nautilus-databento v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\databento)
+   Compiling nautilus-interactive-brokers v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\interactive_brokers)
+   Compiling nautilus-lighter v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\lighter)
+   Compiling nautilus-aster v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\aster)
+   Compiling nautilus-pyo3 v0.63.0 (E:\persarb\worktrees\entropy-account\crates\pyo3)
+    Finished `nextest` profile [unoptimized] target(s) in 1m 05s
+     Running `E:/persarb/nautilus_trader/target\nextest\python-stub-gen.exe`
+Starting Python type stub generation...
+Python type stub generation completed
+Starting nautilus-trader stubs...
+Generating PyO3 docstrings...
+Generating type stubs with pyo3-stub-gen...
+Running: cargo run --bin python-stub-gen --profile nextest --features arrow,betfair,high-precision,mimalloc,redis,postgres,defi,hypersync,tracing-bridge,nautilus-interactive-brokers/gateway
+  in: E:\persarb\worktrees\entropy-account\crates\pyo3
+Stubs generated successfully
+Running: ruff check --fix E:\persarb\worktrees\entropy-account\python\nautilus_trader\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\_libnautilus\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\architect_ax\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\aster\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\backpack\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\betfair\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\binance\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\bitmex\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\blockchain\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\bybit\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\coinbase\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\databento\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\deribit\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\derive\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\dydx\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\hyperliquid\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\interactive_brokers\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\kraken\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\lighter\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\okx\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\ondo\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\polymarket\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\sandbox\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\tardis\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\analysis\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\backtest\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\common\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\config\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\core\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\cryptography\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\data\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\execution\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\indicators\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\infrastructure\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\live\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\model\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\network\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\persistence\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\portfolio\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\risk\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\serialization\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\testkit\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\trading\__init__.pyi
+Running: ruff format E:\persarb\worktrees\entropy-account\python\nautilus_trader\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\_libnautilus\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\architect_ax\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\aster\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\backpack\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\betfair\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\binance\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\bitmex\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\blockchain\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\bybit\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\coinbase\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\databento\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\deribit\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\derive\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\dydx\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\hyperliquid\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\interactive_brokers\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\kraken\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\lighter\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\okx\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\ondo\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\polymarket\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\sandbox\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\adapters\tardis\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\analysis\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\backtest\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\common\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\config\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\core\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\cryptography\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\data\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\execution\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\indicators\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\infrastructure\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\live\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\model\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\network\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\persistence\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\portfolio\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\risk\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\serialization\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\testkit\__init__.pyi E:\persarb\worktrees\entropy-account\python\nautilus_trader\trading\__init__.pyi
+Type stubs written to . 
+Generated: nautilus_trader\__init__.pyi
+Generated: nautilus_trader\_libnautilus\__init__.pyi
+Generated: nautilus_trader\adapters\__init__.pyi
+Generated: nautilus_trader\adapters\architect_ax\__init__.pyi
+Generated: nautilus_trader\adapters\aster\__init__.pyi
+Generated: nautilus_trader\adapters\backpack\__init__.pyi
+Generated: nautilus_trader\adapters\betfair\__init__.pyi
+Generated: nautilus_trader\adapters\binance\__init__.pyi
+Generated: nautilus_trader\adapters\bitmex\__init__.pyi
+Generated: nautilus_trader\adapters\blockchain\__init__.pyi
+Generated: nautilus_trader\adapters\bybit\__init__.pyi
+Generated: nautilus_trader\adapters\coinbase\__init__.pyi
+Generated: nautilus_trader\adapters\databento\__init__.pyi
+Generated: nautilus_trader\adapters\deribit\__init__.pyi
+Generated: nautilus_trader\adapters\derive\__init__.pyi
+Generated: nautilus_trader\adapters\dydx\__init__.pyi
+Generated: nautilus_trader\adapters\hyperliquid\__init__.pyi
+Generated: nautilus_trader\adapters\interactive_brokers\__init__.pyi
+Generated: nautilus_trader\adapters\kraken\__init__.pyi
+Generated: nautilus_trader\adapters\lighter\__init__.pyi
+...and 24 more stub files
+Stub generation completed successfully

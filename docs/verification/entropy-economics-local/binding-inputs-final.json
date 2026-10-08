@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+    "E:/persarb/_tmp/entropy102-validation/bind_inputs.py"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-account",
+  "started_utc": "2026-10-08T16:22:41.410822+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-08T16:22:41.515618+00:00"
+}

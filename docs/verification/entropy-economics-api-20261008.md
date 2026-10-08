@@ -41,11 +41,11 @@ startup, explicit queries and recorded stream gaps consume it without eviction.
 
 ## Native factory methods
 
-| Method | Meaning |
-| --- | --- |
-| `economics_scope_snapshot_json()` | Detached current facts, original source envelopes, report, coverage and provenance. |
-| `pending_economics_json()` | Phase-A durable observations not yet durably consumed into this native report. |
-| `persist_economics()` | Atomically persist report output, immutable receipts and consumed observation IDs together. |
+| Method                            | Meaning                                                                                     |
+| --------------------------------- | ------------------------------------------------------------------------------------------- |
+| `economics_scope_snapshot_json()` | Detached current facts, original source envelopes, report, coverage and provenance.         |
+| `pending_economics_json()`        | Phase-A durable observations not yet durably consumed into this native report.              |
+| `persist_economics()`             | Atomically persist report output, immutable receipts and consumed observation IDs together. |
 
 All return `None` when the factory has no live economic client. They use the same ordinary factory
 registered with `LiveNode.builder(...).add_exec_client(...)`. The consumer holds an exclusive

@@ -1,0 +1,72 @@
+﻿import hashlib, importlib, json, subprocess, sys, zipfile
+from datetime import datetime, timezone
+from pathlib import Path
+
+root=Path('E:/persarb/worktrees/entropy-account')
+validation=Path('E:/persarb/_tmp/entropy102-validation')
+build=Path('E:/persarb/_tmp/entropy102-wheel-nextest-20261008')
+wheel=build/'nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl'
+started=datetime.now(timezone.utc).isoformat()
+
+def stream_digest(stream):
+    h=hashlib.sha256()
+    while chunk:=stream.read(1024*1024): h.update(chunk)
+    return h.hexdigest()
+def file_digest(path):
+    with Path(path).open('rb') as f: return stream_digest(f)
+def fp(identity):
+    keys=('commit','tree','tracked_diff_sha256','untracked_sha256','cargo_lock_sha256')
+    return hashlib.sha256(json.dumps({k:identity.get(k) for k in keys},sort_keys=True,separators=(',',':')).encode()).hexdigest()
+def git(*args): return subprocess.check_output(['git','-C',str(root),*args],text=True).rstrip('\r\n')
+
+provenance=json.loads((build/'native-provenance.json').read_text())
+input_record=json.loads((build/'native-build-input.json').read_text())
+installed=json.loads((validation/'installed-native.json').read_text())
+binding=json.loads((validation/'binding-inputs.json').read_text())
+assert file_digest(wheel)=='be8d46c2d0b5f197852086b8818b4a17172aa000416512d73893c6041c129aed'
+assert provenance['wheel']['sha256']==installed['wheel']['sha256']==file_digest(wheel)
+identities=[provenance['build']['started_source'],provenance['build']['finished_source'],provenance['declared_native'],input_record['native']]
+assert all(x==identities[0] for x in identities)
+assert all(x['commit']=='95c87d4e70d92ec31072a30df3d764d75172b7b3' and x['tree']=='8ed0387e434187098309e22d52f2b7d900d55722' and x['dirty_count']==0 for x in identities)
+assert fp(identities[0])==provenance['source_fingerprint_sha256']
+assert provenance['source_binding']=='verified' and installed['strict_source_binding_passed'] is True
+assert installed['native_provenance']['sha256']==file_digest(build/'native-provenance.json')
+assert provenance['declared_evidence']['sha256']==file_digest(build/'native-build-input.json')
+assert file_digest(root/'Cargo.lock')==identities[0]['cargo_lock_sha256']
+assert git('rev-parse','HEAD')==identities[0]['commit']
+assert git('rev-parse','HEAD^{tree}')==identities[0]['tree']
+dirty_after_build=git('status','--porcelain')
+assert all(line[3:].startswith('docs/') for line in dirty_after_build.splitlines()), dirty_after_build
+
+native=importlib.import_module('nautilus_trader._libnautilus')
+native_path=Path(native.__file__).resolve()
+site_root=native_path.parent.parent
+assert '.venv' in native_path.parts and 'site-packages' in native_path.parts
+assert str(native_path).lower()==str(Path(installed['installed']['native_module']).resolve()).lower()
+native_record=provenance['embedded_native_objects']
+assert len(native_record)==1
+stubs=provenance['embedded_adapter_stubs']
+assert len(stubs)==23
+members=[]
+with zipfile.ZipFile(wheel) as z:
+    assert z.testzip() is None
+    for row in native_record+stubs:
+        with z.open(row['path']) as f: zip_sha=stream_digest(f)
+        installed_path=site_root/row['path']
+        disk_sha=file_digest(installed_path)
+        assert row['sha256']==zip_sha==disk_sha, row['path']
+        if 'size' in row: assert z.getinfo(row['path']).file_size==row['size']==installed_path.stat().st_size
+        if row['path'].endswith('.pyi'):
+            assert file_digest(root/'python'/row['path'])==zip_sha
+        members.append({'path':row['path'],'sha256':zip_sha,'installed_path':str(installed_path),'matches':True})
+    metadata=z.read('nautilus_trader-2.0.0rc4.dist-info/WHEEL').decode()
+    assert 'Tag: cp312-cp312-win_amd64' in metadata
+for path,row in binding['inputs'].items():
+    assert file_digest(root/path)==row['sha256'], path
+assert binding['default_native_inputs_unchanged'] is True
+
+result={'argv':sys.argv,'interpreter':sys.executable,'python':sys.version,'started_utc':started,'finished_utc':datetime.now(timezone.utc).isoformat(),'source_commit':identities[0]['commit'],'source_tree':identities[0]['tree'],'source_fingerprint_sha256':fp(identities[0]),'source_binding':'verified','declared_build_dirty_count':0,'current_docs_only_dirty_status':dirty_after_build,'wheel_path':str(wheel),'wheel_sha256':file_digest(wheel),'installed_native_module':str(native_path),'installed_native_sha256':file_digest(native_path),'matched_native_members':len(native_record),'matched_adapter_stubs':len(stubs),'members':members,'binding_inputs_sha256':file_digest(validation/'binding-inputs.json'),'native_provenance_sha256':file_digest(build/'native-provenance.json'),'installed_record_sha256':file_digest(validation/'installed-native.json')}
+(validation/'reviewer-wheel-identity.json').write_text(json.dumps(result,indent=2)+'\n')
+print(json.dumps({k:v for k,v in result.items() if k!='members'},indent=2))
+
+

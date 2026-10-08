@@ -1,0 +1,20 @@
+{
+  "argv": [
+    "npx.cmd",
+    "--offline",
+    "--yes",
+    "markdownlint-cli2@0.23.2",
+    "--config",
+    ".markdownlint.jsonc",
+    "docs/integrations/hyperliquid.md",
+    "docs/verification/entropy-economics-api-20261008.md",
+    "docs/verification/entropy-economics-acceptance-20261008.md",
+    "docs/verification/entropy-economics-public/README.md"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-account",
+  "started_utc": "2026-10-08T16:37:56.310113+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-08T16:37:57.312297+00:00"
+}

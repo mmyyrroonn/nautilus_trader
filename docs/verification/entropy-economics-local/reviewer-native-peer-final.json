@@ -1,0 +1,27 @@
+﻿{
+    "argv":  [
+                 "E:/persarb/nautilus_trader/target/nextest/deps/entropy_account-69bad49fe9dc76e8.exe",
+                 "execution::economics::actual_owned_fill_fee_reporting",
+                 "execution::economics::failed_full_account_revalidation",
+                 "execution::economics::malformed_actual_user_fill",
+                 "execution::economics::persisted_funding_does_not_restore_ready",
+                 "execution::economics::normal_factory_restart_preserves_pending",
+                 "execution::economics::actual_full_page_preserves",
+                 "execution::economics::saturated_equal_time_page",
+                 "execution::economics::conflicting_strong_history",
+                 "execution::economics::economic_consumer_failure",
+                 "execution::economics::websocket_no_id_replay",
+                 "execution::economics::original_numeric_lexeme",
+                 "--test-threads=1",
+                 "--nocapture"
+             ],
+    "cwd":  "E:/persarb/worktrees/entropy-account",
+    "started_utc":  "2026-10-08T16:21:10.1558946Z",
+    "finished_utc":  "2026-10-08T16:21:23.0440549Z",
+    "elapsed_seconds":  12.8887424,
+    "executable_sha256":  "70f696c987157ecd0585c744211a9c20079b6be2a9d0ce486ef6f247e0d6a588",
+    "executable_sha256_after":  "70f696c987157ecd0585c744211a9c20079b6be2a9d0ce486ef6f247e0d6a588",
+    "exit_code":  0,
+    "raw_output":  "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-native-peer-final.log",
+    "tested_input_manifest_sha256":  "c1a6fd7fa24cacd00c1ab9b2b843e73926b7a34aead5df670ed8b090c7b8bba0"
+}

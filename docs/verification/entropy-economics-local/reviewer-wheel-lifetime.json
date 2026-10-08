@@ -1,0 +1,18 @@
+﻿{
+    "argv":  [
+                 "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+                 "-I",
+                 "-m",
+                 "pytest",
+                 "--import-mode=importlib",
+                 "-o",
+                 "pythonpath=",
+                 "E:/persarb/_tmp/entropy102-validation/test_reviewer_entropy_lifetime.py",
+                 "-q"
+             ],
+    "cwd":  "E:\\persarb\\_tmp\\entropy102-validation",
+    "started_utc":  "2026-10-08T16:32:25.9413921Z",
+    "finished_utc":  "2026-10-08T16:32:26.8265947Z",
+    "exit_code":  0,
+    "test_source_sha256":  "9f223a552122088b05ddae2af8ec40e70b3e47fcaf52d887013efc1adc2dca32"
+}

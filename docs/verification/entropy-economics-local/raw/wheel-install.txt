@@ -1,0 +1,11 @@
+Using Python 3.12.9 environment at: E:\persarb\worktrees\entropy-account\.venv
+Resolved 1 package in 2ms
+Prepared 1 package in 457ms
+Uninstalled 1 package in 50ms
+warning: Failed to hardlink files; falling back to full copy. This may lead to degraded performance.
+         If the cache and target directories are on different filesystems, hardlinking may not be supported.
+         If this is intentional, set `export UV_LINK_MODE=copy` or use `--link-mode=copy` to suppress this warning.
+Installed 1 package in 167ms
+ - nautilus-trader==2.0.0rc4 (from file:///E:/persarb/_tmp/entropy101-wheel-nextest-20261008/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl)
+ + nautilus-trader==2.0.0rc4 (from file:///E:/persarb/_tmp/entropy102-wheel-nextest-20261008/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl)
+installed source-bound native candidate: be8d46c2d0b5f197852086b8818b4a17172aa000416512d73893c6041c129aed

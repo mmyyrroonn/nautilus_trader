@@ -1,0 +1,19 @@
+{
+  "argv": [
+    "gh",
+    "api",
+    "-X",
+    "POST",
+    "repos/mmyyrroonn/nautilus_trader/issues/102/comments",
+    "--input",
+    "E:/persarb/_tmp/entropy102-validation/progress-issue.json",
+    "--jq",
+    "{id,html_url,created_at}"
+  ],
+  "cwd": "E:\\persarb",
+  "started_utc": "2026-10-08T16:33:07.848203+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-08T16:33:09.058797+00:00"
+}

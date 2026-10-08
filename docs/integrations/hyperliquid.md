@@ -1274,13 +1274,13 @@ The io view queries `clearinghouseState` with the actual user and `dex="io"`; it
 add spot or primary perpetual balances. It uses `marginSummary`, which includes isolated
 positions, rather than using the cross-only summary as the total:
 
-| Fact | Native representation |
-| ---- | --------------------- |
-| Raw collateral | Scope snapshot `balance` (`totalRawUsd`). |
-| Equity | Scope snapshot `equity`; `AccountState.total`. |
-| Used margin | Scope snapshot `used`; `AccountState.locked`. |
-| Free equity | Equity less used margin; negative values are preserved. |
-| Withdrawable | Separate exact venue fact; does not replace free equity. |
+| Fact              | Native representation                                                    |
+| ----------------- | ------------------------------------------------------------------------ |
+| Raw collateral    | Scope snapshot `balance` (`totalRawUsd`).                                |
+| Equity            | Scope snapshot `equity`; `AccountState.total`.                           |
+| Used margin       | Scope snapshot `used`; `AccountState.locked`.                            |
+| Free equity       | Equity less used margin; negative values are preserved.                  |
+| Withdrawable      | Separate exact venue fact; does not replace free equity.                 |
 | Total maintenance | Unknown for isolated positions; `None`, with no invented margin balance. |
 
 `account_snapshot_max_age_ms` bounds the proof to 1–30,000 ms, defaulting to 30,000.

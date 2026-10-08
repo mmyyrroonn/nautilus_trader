@@ -1,0 +1,212 @@
+   Compiling nautilus-common v0.63.0 (E:\persarb\worktrees\entropy-account\crates\common)
+warning: linker stdout: 正在创建库 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-e8531d52ba21303c.dll.lib 和对象 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-e8531d52ba21303c.dll.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-persistence-macros` (lib) generated 1 warning
+    Checking nautilus-execution v0.63.0 (E:\persarb\worktrees\entropy-account\crates\execution)
+    Checking nautilus-live v0.63.0 (E:\persarb\worktrees\entropy-account\crates\live)
+    Checking nautilus-hyperliquid v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\hyperliquid)
+error: this argument is passed by value, but not consumed in the function body
+  --> crates\adapters\hyperliquid\src\economics_scope\store.rs:77:18
+   |
+77 |         initial: Checkpoint,
+   |                  ^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#needless_pass_by_value
+   = note: `-D clippy::needless-pass-by-value` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::needless_pass_by_value)]`
+help: consider taking a reference instead
+   |
+77 |         initial: &Checkpoint,
+   |                  +
+
+error: this argument is passed by value, but not consumed in the function body
+   --> crates\adapters\hyperliquid\src\economics_scope.rs:288:17
+    |
+288 |         policy: IoEconomicsPolicy,
+    |                 ^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#needless_pass_by_value
+help: consider taking a reference instead
+    |
+288 |         policy: &IoEconomicsPolicy,
+    |                 +
+
+error: adding items after statements is confusing, since items exist from the start of the scope
+   --> crates\adapters\hyperliquid\src\economics_scope.rs:373:9
+    |
+373 | /         struct Header {
+374 | |             channel: String,
+375 | |         }
+    | |_________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#items_after_statements
+    = note: `-D clippy::items-after-statements` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::items_after_statements)]`
+
+error: this function's return value is unnecessarily wrapped by `Result`
+   --> crates\adapters\hyperliquid\src\economics_scope.rs:392:5
+    |
+392 | /     pub(crate) fn history_requires_invalidation(
+393 | |         &self,
+394 | |         endpoint: &str,
+395 | |         raw_text: &str,
+...   |
+401 | |         scope: Option<&IoEconomicsScopeProof>,
+402 | |     ) -> anyhow::Result<bool> {
+    | |_____________________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#unnecessary_wraps
+    = note: `-D clippy::unnecessary-wraps` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::unnecessary_wraps)]`
+help: remove `Result` from the return type...
+    |
+402 -     ) -> anyhow::Result<bool> {
+402 +     ) -> bool {
+    |
+help: ...and then remove the surrounding `Ok()` from returning expressions
+    |
+407 ~             return true;
+408 |         }
+...
+420 |         if state.tainted {
+421 ~             return true;
+422 |         }
+...
+431 |             Ok(rows) => rows,
+432 ~             Err(_) => return true,
+433 |         };
+...
+439 |             {
+440 ~                 return true;
+441 |             }
+...
+453 |                 {
+454 ~                     return true;
+455 |                 }
+...
+458 |             if !matching {
+459 ~                 return true;
+460 |             }
+461 |         }
+462 ~         false
+    |
+
+error: enclosing `Ok` and `?` operator are unneeded
+   --> crates\adapters\hyperliquid\src\economics_scope.rs:660:5
+    |
+660 | /     Ok(Decimal::try_from_i128_with_scale(
+661 | |         left.checked_add(right)
+662 | |             .context("Exact economic total overflow")?,
+663 | |         scale,
+664 | |     )
+665 | |     .context("Exact economic total outside decimal range")?)
+    | |____________________________________________________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#needless_question_mark
+    = note: `-D clippy::needless-question-mark` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::needless_question_mark)]`
+help: remove the enclosing `Ok` and `?` operator
+    |
+660 ~     Decimal::try_from_i128_with_scale(
+661 |         left.checked_add(right)
+...
+664 |     )
+665 ~     .context("Exact economic total outside decimal range")
+    |
+
+error: this `if` statement can be collapsed
+    --> crates\adapters\hyperliquid\src\execution.rs:2889:9
+     |
+2889 | /         if self.io_economics.is_some() {
+2890 | |             if let Err(error) = async {
+2891 | |                 ws_client
+2892 | |                     .subscribe_user_fundings(&subscription_address)
+...    |
+2903 | |         }
+     | |_________^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#collapsible_if
+     = note: `-D clippy::collapsible-if` implied by `-D warnings`
+     = help: to override `-D warnings` add `#[allow(clippy::collapsible_if)]`
+help: collapse nested if block
+     |
+2889 ~         if self.io_economics.is_some()
+2890 ~             && let Err(error) = async {
+2891 |                 ws_client
+ ...
+2901 |                 return Err(error);
+2902 ~             }
+     |
+
+error: this `if` statement can be collapsed
+    --> crates\adapters\hyperliquid\src\execution.rs:2989:37
+     |
+2989 | / ...   if financial && current && !result.attribution_complete && !empty_supported {
+2990 | | ...       if let Some(scope) = &account_scope { scope.state.lock().invalidate("Economic private source has incomplete account or...
+2991 | | ...   }
+     | |_______^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#collapsible_if
+help: collapse nested if block
+     |
+2989 ~                                     if financial && current && !result.attribution_complete && !empty_supported
+2990 ~                                         && let Some(scope) = &account_scope { scope.state.lock().invalidate("Economic private source has incomplete account or instrument attribution", false); }
+     |
+
+error: this `if` statement can be collapsed
+    --> crates\adapters\hyperliquid\src\execution.rs:3008:29
+     |
+3008 | / ...   if legacy_parse_succeeded && (!matches!(channel.as_str(), "userFundings" | "userNonFundingLedgerUpdates") || io_economics....
+3009 | | ...   if let Some(runtime) = &io_execution
+3010 | | ...       && let Err(error) = runtime.observe_frame(
+3011 | | ...           &channel,
+...    |
+3025 | | ...   }
+     | |_______^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#collapsible_if
+help: collapse nested if block
+     |
+3008 ~                             if legacy_parse_succeeded && (!matches!(channel.as_str(), "userFundings" | "userNonFundingLedgerUpdates") || io_economics.is_none())
+3009 ~                             && let Some(runtime) = &io_execution
+3010 |                                 && let Err(error) = runtime.observe_frame(
+ ...
+3023 |                                     }
+3024 ~                             }
+     |
+
+error: this `if` statement can be collapsed
+    --> crates\adapters\hyperliquid\src\execution.rs:3287:25
+     |
+3287 | / ...   if let Some(economics) = &io_economics {
+3288 | | ...       if let Err(error) = mark_economic_stream_gap(economics, &ws_client, "Private stream ended; economic recovery gap Unkno...
+3289 | | ...           log::warn!("Economic stream-end gap could not be preserved: {error:#}");
+3290 | | ...       }
+3291 | | ...   }
+     | |_______^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#collapsible_if
+help: collapse nested if block
+     |
+3287 ~                         if let Some(economics) = &io_economics
+3288 ~                             && let Err(error) = mark_economic_stream_gap(economics, &ws_client, "Private stream ended; economic recovery gap Unknown") {
+3289 |                                 log::warn!("Economic stream-end gap could not be preserved: {error:#}");
+3290 ~                             }
+     |
+
+error: adding items after statements is confusing, since items exist from the start of the scope
+   --> crates\adapters\hyperliquid\src\websocket\handler.rs:141:5
+    |
+141 | /     struct RawEnvelope<'a> {
+142 | |         channel: String,
+143 | |         #[serde(borrow)]
+144 | |         data: &'a serde_json::value::RawValue,
+145 | |     }
+    | |_____^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#items_after_statements
+
+error: could not compile `nautilus-hyperliquid` (lib) due to 10 previous errors

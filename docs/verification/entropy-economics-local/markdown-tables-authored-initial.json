@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+    "-B",
+    "scripts/check-markdown-tables.py",
+    "docs/integrations/hyperliquid.md",
+    "docs/verification/entropy-economics-api-20261008.md",
+    "docs/verification/entropy-economics-public/README.md"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-account",
+  "started_utc": "2026-10-08T16:27:37.731416+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "exit_code": 1,
+  "finished_utc": "2026-10-08T16:27:37.786416+00:00"
+}

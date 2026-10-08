@@ -1,0 +1,10 @@
+﻿{
+    "argv":  [
+                 "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+                 "-I",
+                 "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-wheel-identity.py"
+             ],
+    "started_utc":  "2026-10-08T16:30:20.4670058Z",
+    "finished_utc":  "2026-10-08T16:30:23.5775901Z",
+    "exit_code":  0
+}

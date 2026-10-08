@@ -1,0 +1,1 @@
+24 native/test inputs byte-identical; 1 generated binding-only input separately bound; one generated stub

@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "E:/persarb/worktrees/entropy-account/.venv/Scripts/ruff.exe",
+    "format",
+    "--check",
+    "--config",
+    "python/pyproject.toml",
+    "python/tests/unit/test_entropy_account_config.py",
+    "python/tests/unit/test_entropy_economics_config.py"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-account",
+  "started_utc": "2026-10-08T16:19:42.089070+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-08T16:19:42.114606+00:00"
+}

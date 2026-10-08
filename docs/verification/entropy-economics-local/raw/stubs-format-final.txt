@@ -1,0 +1,7 @@
+error: unexpected argument '--line-ending' found
+
+  tip: a similar argument exists: '--line-length'
+
+Usage: ruff.exe format --config <CONFIG_OPTION> --line-length <LINE_LENGTH> [FILES]...
+
+For more information, try '--help'.

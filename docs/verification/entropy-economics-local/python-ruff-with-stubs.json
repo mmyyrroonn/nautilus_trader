@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "E:/persarb/worktrees/entropy-account/.venv/Scripts/ruff.exe",
+    "check",
+    "--config",
+    "python/pyproject.toml",
+    "python/tests/unit/test_entropy_account_config.py",
+    "python/tests/unit/test_entropy_economics_config.py",
+    "python/nautilus_trader/adapters/hyperliquid/__init__.pyi"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-account",
+  "started_utc": "2026-10-08T16:20:38.327839+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-08T16:20:38.355151+00:00"
+}

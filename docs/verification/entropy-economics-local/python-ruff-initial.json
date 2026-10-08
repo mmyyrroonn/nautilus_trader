@@ -1,0 +1,14 @@
+{
+  "argv": [
+    ".venv/Scripts/ruff.exe",
+    "check",
+    "python/tests/unit/test_entropy_economics_config.py",
+    "python/tests/unit/test_entropy_account_config.py"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-account",
+  "started_utc": "2026-10-08T15:23:37.725383+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-08T15:23:37.753626+00:00"
+}

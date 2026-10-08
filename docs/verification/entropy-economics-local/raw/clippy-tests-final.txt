@@ -1,0 +1,53 @@
+warning: linker stdout: 正在创建库 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-e8531d52ba21303c.dll.lib 和对象 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-e8531d52ba21303c.dll.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-persistence-macros` (lib) generated 1 warning
+    Checking nautilus-common v0.63.0 (E:\persarb\worktrees\entropy-account\crates\common)
+    Checking nautilus-network v0.63.0 (E:\persarb\worktrees\entropy-account\crates\network)
+    Checking nautilus-execution v0.63.0 (E:\persarb\worktrees\entropy-account\crates\execution)
+    Checking nautilus-portfolio v0.63.0 (E:\persarb\worktrees\entropy-account\crates\portfolio)
+    Checking nautilus-persistence v0.63.0 (E:\persarb\worktrees\entropy-account\crates\persistence)
+    Checking nautilus-live v0.63.0 (E:\persarb\worktrees\entropy-account\crates\live)
+    Checking nautilus-trading v0.63.0 (E:\persarb\worktrees\entropy-account\crates\trading)
+    Checking nautilus-testkit v0.63.0 (E:\persarb\worktrees\entropy-account\crates\testkit)
+error: you should put bare URLs between `<`/`>` or make a proper Markdown link
+   --> crates\persistence\src\parquet.rs:656:18
+    |
+656 | /// On Windows, "file:///C:/x/y" becomes "C:\x\y" so LocalFileSystem and std::fs work correctly.
+    |                  ^^^^^^^^^^^^^^ help: try: `<file:///C:/x/y>`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#doc_markdown
+    = note: `-D clippy::doc-markdown` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::doc_markdown)]`
+
+error: item in documentation is missing backticks
+   --> crates\persistence\src\parquet.rs:656:54
+    |
+656 | /// On Windows, "file:///C:/x/y" becomes "C:\x\y" so LocalFileSystem and std::fs work correctly.
+    |                                                      ^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#doc_markdown
+help: try
+    |
+656 - /// On Windows, "file:///C:/x/y" becomes "C:\x\y" so LocalFileSystem and std::fs work correctly.
+656 + /// On Windows, "file:///C:/x/y" becomes "C:\x\y" so `LocalFileSystem` and std::fs work correctly.
+    |
+
+error: item in documentation is missing backticks
+   --> crates\persistence\src\parquet.rs:656:74
+    |
+656 | /// On Windows, "file:///C:/x/y" becomes "C:\x\y" so LocalFileSystem and std::fs work correctly.
+    |                                                                          ^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#doc_markdown
+help: try
+    |
+656 - /// On Windows, "file:///C:/x/y" becomes "C:\x\y" so LocalFileSystem and std::fs work correctly.
+656 + /// On Windows, "file:///C:/x/y" becomes "C:\x\y" so LocalFileSystem and `std::fs` work correctly.
+    |
+
+    Checking nautilus-hyperliquid v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\hyperliquid)
+error: could not compile `nautilus-persistence` (lib) due to 3 previous errors
+warning: build failed, waiting for other jobs to finish...

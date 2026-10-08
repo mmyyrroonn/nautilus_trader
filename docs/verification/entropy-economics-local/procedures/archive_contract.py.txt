@@ -1,0 +1,27 @@
+"""Copy unchanged official public protocol evidence with its original capture provenance."""
+
+import hashlib
+import json
+import shutil
+from pathlib import Path
+
+source = Path("E:/persarb/_tmp/issue102-official-contract-20261008")
+dest = Path("E:/persarb/worktrees/entropy-account/docs/verification/entropy-economics-public")
+provenance = json.loads((source / "provenance.json").read_text(encoding="utf-8"))
+records = []
+for value in provenance.values():
+    if isinstance(value, list):
+        records.extend(row for row in value if isinstance(row, dict) and "file" in row)
+assert len(records) == 15, len(records)
+for record in records:
+    path = source / record["file"]
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == record["sha256"]
+    assert path.stat().st_size == record["bytes"]
+paths = [source / name for name in ("README.md", "provenance.json", "SHA256SUMS.txt")]
+paths.extend(source / row["file"] for row in records)
+for path in paths:
+    target = dest / path.relative_to(source)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(path, target)
+    assert path.read_bytes() == target.read_bytes()
+print(f"Preserved {len(records)} unchanged source captures and their original UTC/hash metadata")

@@ -1,0 +1,25 @@
+{
+  "argv": [
+    "cargo",
+    "clippy",
+    "-p",
+    "nautilus-hyperliquid",
+    "--lib",
+    "--tests",
+    "--profile",
+    "nextest",
+    "--locked",
+    "--offline",
+    "--config",
+    "build.warnings='warn'",
+    "--",
+    "-D",
+    "warnings"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-account",
+  "started_utc": "2026-10-08T16:16:58.323042+00:00",
+  "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+  "pyo3_python": "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+  "exit_code": 101,
+  "finished_utc": "2026-10-08T16:17:14.318416+00:00"
+}

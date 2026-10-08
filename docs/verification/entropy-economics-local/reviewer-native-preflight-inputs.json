@@ -1,0 +1,202 @@
+﻿[
+    {
+        "path":  ".gitattributes",
+        "expected":  "52aa8e3060532657a3c90dd5d20456fe2fd1465f258090a22df7fbce57f4cbc1",
+        "actual":  "52aa8e3060532657a3c90dd5d20456fe2fd1465f258090a22df7fbce57f4cbc1",
+        "bytes":  520,
+        "expected_bytes":  520,
+        "matches":  true
+    },
+    {
+        "path":  "crates/adapters/hyperliquid/src/account_scope.rs",
+        "expected":  "edfa6945224f6575baa4872668f6022df0911675e5ee442004f78813c485b69f",
+        "actual":  "edfa6945224f6575baa4872668f6022df0911675e5ee442004f78813c485b69f",
+        "bytes":  45966,
+        "expected_bytes":  45966,
+        "matches":  true
+    },
+    {
+        "path":  "crates/adapters/hyperliquid/src/common/enums.rs",
+        "expected":  "01745601292ad41eb69c7cf25c68f09d65caf36f93b2bfc05a69e68ea2193143",
+        "actual":  "01745601292ad41eb69c7cf25c68f09d65caf36f93b2bfc05a69e68ea2193143",
+        "bytes":  59682,
+        "expected_bytes":  59682,
+        "matches":  true
+    },
+    {
+        "path":  "crates/adapters/hyperliquid/src/config.rs",
+        "expected":  "3f7d2531ae1425a36a36c7db215569fcb3425efcf08942205a570144c2d026c4",
+        "actual":  "3f7d2531ae1425a36a36c7db215569fcb3425efcf08942205a570144c2d026c4",
+        "bytes":  20603,
+        "expected_bytes":  20603,
+        "matches":  true
+    },
+    {
+        "path":  "crates/adapters/hyperliquid/src/economics_scope.rs",
+        "expected":  "bcb748af8a343f19b9806021e1a19bf23f81956fa43a7cec4db34185c465bc84",
+        "actual":  "bcb748af8a343f19b9806021e1a19bf23f81956fa43a7cec4db34185c465bc84",
+        "bytes":  32427,
+        "expected_bytes":  32427,
+        "matches":  true
+    },
+    {
+        "path":  "crates/adapters/hyperliquid/src/economics_scope/parsing.rs",
+        "expected":  "e5033d0cc69a85b22765e998995733f2eb2e31748c7fa9ad10db650b9f39ae15",
+        "actual":  "e5033d0cc69a85b22765e998995733f2eb2e31748c7fa9ad10db650b9f39ae15",
+        "bytes":  26378,
+        "expected_bytes":  26378,
+        "matches":  true
+    },
+    {
+        "path":  "crates/adapters/hyperliquid/src/economics_scope/store.rs",
+        "expected":  "45fe49e6b631b8f1a1758370166aa1c19e798ef5357d252ea0e3b60380ce5adf",
+        "actual":  "45fe49e6b631b8f1a1758370166aa1c19e798ef5357d252ea0e3b60380ce5adf",
+        "bytes":  20348,
+        "expected_bytes":  20348,
+        "matches":  true
+    },
+    {
+        "path":  "crates/adapters/hyperliquid/src/economics_scope/tests.rs",
+        "expected":  "3b9363dbf3fd0f6c4a812bb682fc724f842922f3b9c9509319c6ea77ab570602",
+        "actual":  "3b9363dbf3fd0f6c4a812bb682fc724f842922f3b9c9509319c6ea77ab570602",
+        "bytes":  26465,
+        "expected_bytes":  26465,
+        "matches":  true
+    },
+    {
+        "path":  "crates/adapters/hyperliquid/src/execution.rs",
+        "expected":  "d4f2e3a6d1cebebcbaf247b43eb68e148fc87e687f2e441a39ac178f5a238219",
+        "actual":  "d4f2e3a6d1cebebcbaf247b43eb68e148fc87e687f2e441a39ac178f5a238219",
+        "bytes":  240396,
+        "expected_bytes":  240396,
+        "matches":  true
+    },
+    {
+        "path":  "crates/adapters/hyperliquid/src/execution_scope.rs",
+        "expected":  "318b0c005a230549182dc6a80d6c5916f3ff9cfd8d7f73b910b73508fb7dea83",
+        "actual":  "318b0c005a230549182dc6a80d6c5916f3ff9cfd8d7f73b910b73508fb7dea83",
+        "bytes":  111555,
+        "expected_bytes":  111555,
+        "matches":  true
+    },
+    {
+        "path":  "crates/adapters/hyperliquid/src/factories.rs",
+        "expected":  "30fece7dd8955b770c707f4ac7a9107fa24a2ec06c5d3ae29b37890a7aed5886",
+        "actual":  "30fece7dd8955b770c707f4ac7a9107fa24a2ec06c5d3ae29b37890a7aed5886",
+        "bytes":  12460,
+        "expected_bytes":  12460,
+        "matches":  true
+    },
+    {
+        "path":  "crates/adapters/hyperliquid/src/http/client.rs",
+        "expected":  "3873e1e454fb21e7486d51190a6b37d526c0ad6cb8533affc3051bbcf715ed16",
+        "actual":  "3873e1e454fb21e7486d51190a6b37d526c0ad6cb8533affc3051bbcf715ed16",
+        "bytes":  174482,
+        "expected_bytes":  174482,
+        "matches":  true
+    },
+    {
+        "path":  "crates/adapters/hyperliquid/src/http/query.rs",
+        "expected":  "71fd99ba15e009185bceed074d169780ec39638f2b5b2d16c7972abc67a3f3e8",
+        "actual":  "71fd99ba15e009185bceed074d169780ec39638f2b5b2d16c7972abc67a3f3e8",
+        "bytes":  30196,
+        "expected_bytes":  30196,
+        "matches":  true
+    },
+    {
+        "path":  "crates/adapters/hyperliquid/src/http/rate_limits.rs",
+        "expected":  "47dd217c00b7a28358b2f28b7e1803c72e5817212300a2e62c2f0a419047dafc",
+        "actual":  "47dd217c00b7a28358b2f28b7e1803c72e5817212300a2e62c2f0a419047dafc",
+        "bytes":  15968,
+        "expected_bytes":  15968,
+        "matches":  true
+    },
+    {
+        "path":  "crates/adapters/hyperliquid/src/lib.rs",
+        "expected":  "906148403df2613c39db89ef470210abde40ab6b117aeb233d5cde092ae8b32e",
+        "actual":  "906148403df2613c39db89ef470210abde40ab6b117aeb233d5cde092ae8b32e",
+        "bytes":  3241,
+        "expected_bytes":  3241,
+        "matches":  true
+    },
+    {
+        "path":  "crates/adapters/hyperliquid/src/python/config.rs",
+        "expected":  "f480b7e99bf72de4fbe4221655eb0e94fd7db3eefcda3ee7c6c88282a159f7c3",
+        "actual":  "f480b7e99bf72de4fbe4221655eb0e94fd7db3eefcda3ee7c6c88282a159f7c3",
+        "bytes":  8838,
+        "expected_bytes":  8838,
+        "matches":  true
+    },
+    {
+        "path":  "crates/adapters/hyperliquid/src/python/factories.rs",
+        "expected":  "41a8af2d265d3bc730af4c55c28cde1bc9c2afe629a78b942f9b91bace28db1e",
+        "actual":  "b8b964113c16a0facb7960a63d0a4e24b3e40616f02f87df8ee5c6eb689be13b",
+        "bytes":  3326,
+        "expected_bytes":  3249,
+        "matches":  false
+    },
+    {
+        "path":  "crates/adapters/hyperliquid/src/websocket/client.rs",
+        "expected":  "4ff1e3f378dc124dc09cc21dd05c36af533f7e02b3390a896653b26a77b7602a",
+        "actual":  "4ff1e3f378dc124dc09cc21dd05c36af533f7e02b3390a896653b26a77b7602a",
+        "bytes":  131382,
+        "expected_bytes":  131382,
+        "matches":  true
+    },
+    {
+        "path":  "crates/adapters/hyperliquid/src/websocket/handler.rs",
+        "expected":  "e810a1b89ccf2b75cc1389e8788cd2c6c552190d23e24b89508b34e19aad5fb6",
+        "actual":  "e810a1b89ccf2b75cc1389e8788cd2c6c552190d23e24b89508b34e19aad5fb6",
+        "bytes":  99961,
+        "expected_bytes":  99961,
+        "matches":  true
+    },
+    {
+        "path":  "crates/adapters/hyperliquid/src/websocket/messages.rs",
+        "expected":  "9468d33247a7c40e968ba36b4fc294a952d9b8b7840ea7bd5bafb825d48ba2d1",
+        "actual":  "9468d33247a7c40e968ba36b4fc294a952d9b8b7840ea7bd5bafb825d48ba2d1",
+        "bytes":  39891,
+        "expected_bytes":  39891,
+        "matches":  true
+    },
+    {
+        "path":  "crates/adapters/hyperliquid/tests/entropy_account.rs",
+        "expected":  "d8e2d1605c08873c2c28dafcc283cc62997e2adf9138bbc9445c0dc52c1414ae",
+        "actual":  "d8e2d1605c08873c2c28dafcc283cc62997e2adf9138bbc9445c0dc52c1414ae",
+        "bytes":  42906,
+        "expected_bytes":  42906,
+        "matches":  true
+    },
+    {
+        "path":  "crates/adapters/hyperliquid/tests/entropy_account/economics.rs",
+        "expected":  "5bc6af18ae469b768e432c9e8adfb73d68633f4205680f3a083210df25d86127",
+        "actual":  "5bc6af18ae469b768e432c9e8adfb73d68633f4205680f3a083210df25d86127",
+        "bytes":  28981,
+        "expected_bytes":  28981,
+        "matches":  true
+    },
+    {
+        "path":  "crates/adapters/hyperliquid/tests/entropy_account/execution.rs",
+        "expected":  "b6aaa5e995cdab8ce4c74f3384095efe0165f27ff7baba09f828f45f18a19cea",
+        "actual":  "b6aaa5e995cdab8ce4c74f3384095efe0165f27ff7baba09f828f45f18a19cea",
+        "bytes":  56660,
+        "expected_bytes":  56660,
+        "matches":  true
+    },
+    {
+        "path":  "python/tests/unit/test_entropy_account_config.py",
+        "expected":  "e8fe99f5255e300aa625c57703aee1762135fb9b47337fa3749c50b532588b61",
+        "actual":  "e8fe99f5255e300aa625c57703aee1762135fb9b47337fa3749c50b532588b61",
+        "bytes":  6639,
+        "expected_bytes":  6639,
+        "matches":  true
+    },
+    {
+        "path":  "python/tests/unit/test_entropy_economics_config.py",
+        "expected":  "653ed84945a214a2d2466c17ae19f6f552604a689a79058a39c71262733d2b60",
+        "actual":  "653ed84945a214a2d2466c17ae19f6f552604a689a79058a39c71262733d2b60",
+        "bytes":  7855,
+        "expected_bytes":  7855,
+        "matches":  true
+    }
+]

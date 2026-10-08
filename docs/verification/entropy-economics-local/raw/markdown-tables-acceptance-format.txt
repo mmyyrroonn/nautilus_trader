@@ -1,0 +1,4 @@
+docs\verification\entropy-economics-acceptance-20261008.md: normalized table column widths
+
+Tables are padded to the widest cell plus one space either side.
+MD060 enforces pipe alignment but not column width.

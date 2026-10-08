@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+    "E:/persarb/_tmp/entropy102-validation/capture_sdk_license.py"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-account",
+  "started_utc": "2026-10-08T16:32:00.527876+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-08T16:32:01.060892+00:00"
+}
