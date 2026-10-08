@@ -1784,6 +1784,11 @@ impl HyperliquidHttpClient {
         self.inner.info_clearinghouse_state(user).await
     }
 
+    /// Sends the typed info requests used by the explicit execution account proof.
+    pub(crate) async fn account_scope_info(&self, request: &InfoRequest) -> Result<Value> {
+        self.inner.send_info_request(request).await
+    }
+
     async fn info_clearinghouse_state_for_dex(
         &self,
         user: &str,

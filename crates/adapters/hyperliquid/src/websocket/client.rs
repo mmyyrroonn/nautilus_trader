@@ -17,7 +17,7 @@ use std::{
     str::FromStr,
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicU8, Ordering},
+        atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering},
     },
     time::Duration,
 };
@@ -29,7 +29,7 @@ use dashmap::DashMap;
 use nautilus_common::cache::{InstrumentLookupError, fifo::FifoCacheMap};
 #[cfg(test)]
 use nautilus_common::live::get_runtime;
-use nautilus_core::AtomicMap;
+use nautilus_core::{AtomicMap, time::get_atomic_clock_realtime};
 use nautilus_live::{
     SocketControl,
     task::{SharedTaskSlot, TaskJoinOutcome},
@@ -47,8 +47,8 @@ use nautilus_network::{
     SocketStateSink,
     mode::ConnectionMode,
     websocket::{
-        AuthTracker, SubscriptionState, TransportBackend, WebSocketClient, WebSocketConfig,
-        channel_message_handler,
+        AuthTracker, EpochMessageHandler, SubscriptionState, TransportBackend, WebSocketClient,
+        WebSocketConfig,
     },
 };
 use parking_lot::Mutex;
@@ -119,6 +119,7 @@ pub(super) enum AssetContextDataType {
 pub struct HyperliquidWebSocketClient {
     url: String,
     connection_mode: Arc<ArcSwap<AtomicU8>>,
+    connection_epoch: Arc<ArcSwap<AtomicU64>>,
     signal: Arc<AtomicBool>,
     cmd_tx: Arc<tokio::sync::RwLock<tokio::sync::mpsc::UnboundedSender<HandlerCommand>>>,
     out_rx: Option<tokio::sync::mpsc::UnboundedReceiver<NautilusWsMessage>>,
@@ -151,6 +152,7 @@ impl Clone for HyperliquidWebSocketClient {
         Self {
             url: self.url.clone(),
             connection_mode: Arc::clone(&self.connection_mode),
+            connection_epoch: Arc::clone(&self.connection_epoch),
             signal: Arc::clone(&self.signal),
             cmd_tx: Arc::clone(&self.cmd_tx),
             out_rx: None,
@@ -202,6 +204,7 @@ impl HyperliquidWebSocketClient {
         Self {
             url,
             connection_mode,
+            connection_epoch: Arc::new(ArcSwap::new(Arc::new(AtomicU64::new(0)))),
             signal: Arc::new(AtomicBool::new(false)),
             auth_tracker: AuthTracker::new(),
             subscriptions: SubscriptionState::new(':'),
@@ -269,7 +272,16 @@ impl HyperliquidWebSocketClient {
         // entries must not gate the venue subscribe for re-subscriptions
         self.book_streams.clear();
 
-        let (message_handler, raw_rx) = channel_message_handler();
+        let (raw_tx, raw_rx) = tokio::sync::mpsc::unbounded_channel();
+        let message_handler: EpochMessageHandler = Arc::new(move |epoch, message| {
+            let received = get_atomic_clock_realtime().get_time_ns();
+            match tokio_tungstenite::tungstenite::Message::try_from(message) {
+                Ok(message) => {
+                    let _ = raw_tx.send((epoch, received, message));
+                }
+                Err(error) => log::error!("WebSocket frame conversion failed: {error}"),
+            }
+        });
         let cfg = WebSocketConfig {
             url: self.url.clone(),
             headers: vec![],
@@ -286,9 +298,9 @@ impl HyperliquidWebSocketClient {
             backend: self.transport_backend,
             proxy_url: self.proxy_url.clone(),
         };
-        let client = WebSocketClient::builder()
+        let client = WebSocketClient::epoch_builder()
             .config(cfg)
-            .message_handler(message_handler)
+            .epoch_handler(message_handler)
             .maybe_state_sink(
                 self.socket_control
                     .as_ref()
@@ -312,6 +324,8 @@ impl HyperliquidWebSocketClient {
         *self.cmd_tx.write().await = cmd_tx.clone();
         self.out_rx = Some(out_rx);
 
+        self.connection_epoch
+            .store(client.connection_epoch_atomic());
         self.connection_mode.store(client.connection_mode_atomic());
         log::debug!("Hyperliquid WebSocket connected: {}", self.url);
 
@@ -415,12 +429,17 @@ impl HyperliquidWebSocketClient {
 
             loop {
                 match handler.next().await {
-                    Some(NautilusWsMessage::Reconnected) => {
+                    Some(NautilusWsMessage::AccountScopeStreamEpoch { epoch }) => {
                         log::info!("WebSocket reconnected");
                         subscriptions.reset_after_reconnect();
                         resubscribe_all();
 
-                        if handler.send(NautilusWsMessage::Reconnected).is_err() {
+                        if handler.send(NautilusWsMessage::Reconnected).is_err()
+                            || (account_id.is_some()
+                                && handler
+                                    .send(NautilusWsMessage::AccountScopeStreamEpoch { epoch })
+                                    .is_err())
+                        {
                             if handler.is_stopped() {
                                 log::debug!("Failed to send reconnect event (receiver dropped)");
                             } else {
@@ -1090,6 +1109,10 @@ impl HyperliquidWebSocketClient {
         }
     }
 
+    pub(crate) fn connection_epoch(&self) -> u64 {
+        self.connection_epoch.load().load(Ordering::Acquire)
+    }
+
     /// Returns true if the WebSocket is actively connected.
     pub fn is_active(&self) -> bool {
         let mode = self.connection_mode.load();
@@ -1556,6 +1579,25 @@ impl HyperliquidWebSocketClient {
                 subscriptions: vec![subscription],
             })
             .map_err(|e| anyhow::anyhow!("Failed to send subscribe command: {e}"))?;
+        Ok(())
+    }
+
+    /// Subscribes to complete clearinghouse updates for an explicit user and DEX.
+    pub(crate) async fn subscribe_clearinghouse_state(
+        &self,
+        user: &str,
+        dex: &str,
+    ) -> anyhow::Result<()> {
+        self.cmd_tx
+            .read()
+            .await
+            .send(HandlerCommand::Subscribe {
+                subscriptions: vec![SubscriptionRequest::ClearinghouseState {
+                    user: user.to_string(),
+                    dex: dex.to_string(),
+                }],
+            })
+            .map_err(|e| anyhow::anyhow!("Failed to send scoped account subscription: {e}"))?;
         Ok(())
     }
 
@@ -2285,6 +2327,16 @@ fn subscription_from_topic(topic: &str) -> anyhow::Result<SubscriptionRequest> {
         HyperliquidWsChannel::UserEvents => Ok(SubscriptionRequest::UserEvents {
             user: rest.context("Missing user")?.to_string(),
         }),
+        HyperliquidWsChannel::ClearinghouseState => {
+            let (user, dex) = rest
+                .context("Missing account scope")?
+                .split_once(':')
+                .context("Missing account DEX")?;
+            Ok(SubscriptionRequest::ClearinghouseState {
+                user: user.to_string(),
+                dex: dex.to_string(),
+            })
+        }
         HyperliquidWsChannel::UserFills => Ok(SubscriptionRequest::UserFills {
             user: rest.context("Missing user")?.to_string(),
             aggregate_by_time: None,

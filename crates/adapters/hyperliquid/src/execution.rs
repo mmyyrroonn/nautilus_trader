@@ -157,12 +157,16 @@ use ustr::Ustr;
 
 use crate::{
     account::resolve_execution_account_address,
+    account_scope::{
+        AccountScopeDiagnostics, AccountScopeState, HyperliquidAccountScopeSnapshot,
+        refresh_account_scope,
+    },
     common::{
         consts::{
             HYPERLIQUID_BUILDER_APPROVAL_DOCS_URL, HYPERLIQUID_BUILDER_FEE_NOT_APPROVED,
             HYPERLIQUID_POST_ONLY_WOULD_MATCH, HYPERLIQUID_VENUE,
         },
-        credential::Secrets,
+        credential::{Secrets, normalize_address},
         enums::HyperliquidProductType,
         parse::{
             clamp_price_to_precision, derive_limit_from_trigger, derive_market_order_price,
@@ -210,9 +214,29 @@ pub struct HyperliquidExecutionClient {
     ws_dispatch_state: Arc<WsDispatchState>,
     staged_brackets: Arc<Mutex<StagedBracketState>>,
     outcome_settlement_tracker: Arc<Mutex<OutcomeSettlementTracker>>,
+    account_scope: Option<AccountScopeDiagnostics>,
 }
 
 impl HyperliquidExecutionClient {
+    /// Returns a detached io proof with current freshness and stream diagnostics.
+    #[must_use]
+    pub fn account_scope_snapshot(&self) -> Option<HyperliquidAccountScopeSnapshot> {
+        self.account_scope
+            .as_ref()
+            .and_then(AccountScopeDiagnostics::snapshot)
+    }
+
+    /// Returns exact-decimal JSON for the current io proof, or no proof for the default scope.
+    pub fn account_scope_snapshot_json(&self) -> anyhow::Result<Option<String>> {
+        self.account_scope_snapshot()
+            .map(|snapshot| serde_json::to_string(&snapshot))
+            .transpose()
+            .map_err(Into::into)
+    }
+
+    pub(crate) fn account_scope_diagnostics(&self) -> Option<AccountScopeDiagnostics> {
+        self.account_scope.clone()
+    }
     /// Returns a reference to the configuration.
     pub fn config(&self) -> &HyperliquidExecutionClientConfig {
         &self.config
@@ -248,6 +272,10 @@ impl HyperliquidExecutionClient {
     }
 
     fn validate_order_submission(&self, order: &OrderAny) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.account_scope.is_none() && !is_io_instrument(order.instrument_id()),
+            "io execution is read-only; bounded submission and recovery require issue #101"
+        );
         validate_order_for_hyperliquid(order)
     }
 
@@ -256,7 +284,7 @@ impl HyperliquidExecutionClient {
         order: &OrderAny,
         slippage_bps: u32,
     ) -> anyhow::Result<HyperliquidExchangePlaceOrderRequest> {
-        validate_order_for_hyperliquid(order)?;
+        self.validate_order_submission(order)?;
 
         let symbol = order.instrument_id().symbol.inner();
         let asset = self
@@ -298,6 +326,9 @@ impl HyperliquidExecutionClient {
     }
 
     fn restore_staged_brackets(&self) -> Vec<ClientOrderId> {
+        if self.account_scope.is_some() {
+            return Vec::new();
+        }
         let order_lists = self
             .core
             .cache()
@@ -415,6 +446,25 @@ impl HyperliquidExecutionClient {
         core: ExecutionClientCore,
         config: HyperliquidExecutionClientConfig,
     ) -> anyhow::Result<Self> {
+        anyhow::ensure!(
+            config.account_dex.as_deref().is_none_or(|dex| dex == "io"),
+            "Only explicit io account_dex is supported"
+        );
+        anyhow::ensure!(
+            (1..=30_000).contains(&config.account_snapshot_max_age_ms),
+            "account_snapshot_max_age_ms must be in 1..=30000"
+        );
+        anyhow::ensure!(
+            config.account_dex.is_none() || config.outcome_settlement_poll_secs == 0,
+            "Outcome settlement polling is outside io account scope"
+        );
+        if config.account_dex.is_some() {
+            anyhow::ensure!(
+                config.account_id == core.account_id
+                    && config.account_id.to_string() != "HYPERLIQUID-001",
+                "io scope requires an explicit dedicated account_id matching the execution core"
+            );
+        }
         let secrets = Secrets::resolve(
             config.private_key.as_deref(),
             config.vault_address.as_deref(),
@@ -438,6 +488,19 @@ impl HyperliquidExecutionClient {
 
         http_client.set_account_id(core.account_id);
         http_client.set_account_address(account_address);
+        if config.account_dex.is_some() {
+            anyhow::ensure!(
+                !http_client.has_vault_address(),
+                "Vault execution is unsupported for io account scope"
+            );
+            let query_address = normalize_address(&http_client.get_account_address()?)?;
+            let signer_address = normalize_address(&http_client.get_user_address()?)?;
+            anyhow::ensure!(
+                query_address == signer_address,
+                "io account query and signer identities must match; agent execution is unsupported"
+            );
+            http_client.set_account_address(Some(query_address));
+        }
         http_client.set_normalize_prices(config.normalize_prices);
         http_client.set_market_order_slippage_bps(config.market_order_slippage_bps);
         http_client.set_include_builder_attribution(config.include_builder_attribution);
@@ -477,6 +540,17 @@ impl HyperliquidExecutionClient {
 
         let session_tasks = TaskGroup::new();
         let pending_tasks = TaskGroup::new();
+        let account_scope = if config.account_dex.is_some() {
+            Some(AccountScopeDiagnostics {
+                state: Arc::new(Mutex::new(AccountScopeState::new(
+                    http_client.get_account_address()?,
+                    config.account_snapshot_max_age_ms,
+                ))),
+                ws: ws_client.clone(),
+            })
+        } else {
+            None
+        };
 
         Ok(Self {
             core,
@@ -491,6 +565,7 @@ impl HyperliquidExecutionClient {
             ws_dispatch_state: Arc::new(WsDispatchState::new()),
             staged_brackets: Arc::new(Mutex::new(StagedBracketState::default())),
             outcome_settlement_tracker: Arc::new(Mutex::new(OutcomeSettlementTracker::new())),
+            account_scope,
         })
     }
 
@@ -522,6 +597,15 @@ impl HyperliquidExecutionClient {
     }
 
     async fn refresh_account_state(&self) -> anyhow::Result<()> {
+        if let Some(scope) = &self.account_scope {
+            return refresh_account_scope(
+                &scope.state,
+                &self.http_client,
+                &scope.ws,
+                &self.emitter,
+            )
+            .await;
+        }
         let account_address = self.get_account_address()?;
 
         let (perp_state, spot_state) = self
@@ -547,6 +631,23 @@ impl HyperliquidExecutionClient {
 
         log::debug!("Account state updated successfully");
         Ok(())
+    }
+
+    async fn await_scoped_private_ready(&self) -> anyhow::Result<()> {
+        let Some(scope) = &self.account_scope else {
+            return Ok(());
+        };
+        let deadline = Instant::now() + Duration::from_secs(self.config.ws_post_timeout_secs);
+        loop {
+            if scope.snapshot().is_some_and(|snapshot| snapshot.trusted) {
+                return Ok(());
+            }
+            anyhow::ensure!(
+                Instant::now() < deadline,
+                "io private account proof is incomplete or untrusted"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
     }
 
     async fn fetch_combined_clearinghouse_state(
@@ -699,6 +800,12 @@ impl HyperliquidExecutionClient {
     }
 
     fn begin_session_shutdown(&self) {
+        if let Some(scope) = &self.account_scope {
+            scope
+                .state
+                .lock()
+                .invalidate("io execution session is shutting down", true);
+        }
         self.session_tasks.begin_shutdown();
         self.ws_client.begin_shutdown();
     }
@@ -782,6 +889,10 @@ impl ExecutionClient for HyperliquidExecutionClient {
         ts_event: UnixNanos,
         info: Option<Params>,
     ) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.account_scope.is_none(),
+            "Explicit io account facts must come from a complete scoped HTTP proof"
+        );
         self.emitter
             .emit_account_state(balances, margins, reported, ts_event, info);
         Ok(())
@@ -814,6 +925,12 @@ impl ExecutionClient for HyperliquidExecutionClient {
         }
 
         log::info!("Stopping Hyperliquid execution client");
+        if let Some(scope) = &self.account_scope {
+            scope
+                .state
+                .lock()
+                .invalidate("io execution client stopped", true);
+        }
 
         self.session_tasks.abort();
         self.abort_pending_tasks();
@@ -927,7 +1044,6 @@ impl ExecutionClient for HyperliquidExecutionClient {
         let nested_spawner = task_spawner.clone();
         let builder = self.http_client.builder_attribution();
         let denied_order = order.clone();
-
         if let Err(e) = task_spawner.spawn(async move {
             http_client.cache_client_order_id_cloid(order.client_order_id(), cloid);
             ws_client.cache_cloid_mapping(cloid_hex, order.client_order_id());
@@ -982,6 +1098,20 @@ impl ExecutionClient for HyperliquidExecutionClient {
     }
 
     fn submit_order_list(&self, cmd: SubmitOrderList) -> anyhow::Result<()> {
+        let scoped_orders = self.core.get_orders_for_list(&cmd.order_list)?;
+        if self.account_scope.is_some()
+            || scoped_orders
+                .iter()
+                .any(|order| is_io_instrument(order.instrument_id()))
+        {
+            for order in &scoped_orders {
+                self.emitter.emit_order_denied(
+                    order,
+                    "io order lists and bracket submissions are unsupported",
+                );
+            }
+            anyhow::bail!("io order lists and bracket submissions are unsupported");
+        }
         log::debug!(
             "Submitting order list with {} orders",
             cmd.order_list.client_order_ids.len()
@@ -1128,6 +1258,17 @@ impl ExecutionClient for HyperliquidExecutionClient {
     }
 
     fn modify_order(&self, cmd: ModifyOrder) -> anyhow::Result<()> {
+        if self.account_scope.is_some() || is_io_instrument(cmd.instrument_id) {
+            self.emitter.emit_order_modify_rejected_event(
+                cmd.strategy_id,
+                cmd.instrument_id,
+                cmd.client_order_id,
+                cmd.venue_order_id,
+                "io order modification is unsupported",
+                self.clock.get_time_ns(),
+            );
+            anyhow::bail!("io order modification is unsupported");
+        }
         log::debug!("Modifying order: {cmd:?}");
 
         let client_order_id = cmd.client_order_id;
@@ -1153,6 +1294,10 @@ impl ExecutionClient for HyperliquidExecutionClient {
             }
         };
 
+        anyhow::ensure!(
+            !is_io_instrument(order.instrument_id()),
+            "Default account scope cannot modify an io order"
+        );
         let http_client = self.http_client.clone();
         let symbol = cmd.instrument_id.symbol.inner();
         let should_normalize = self.config.normalize_prices;
@@ -1393,6 +1538,10 @@ impl ExecutionClient for HyperliquidExecutionClient {
     }
 
     fn cancel_order(&self, cmd: CancelOrder) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.account_scope.is_none() && !is_io_instrument(cmd.instrument_id),
+            "io execution is read-only; cancellation and recovery require issue #101"
+        );
         log::debug!("Cancelling order: {cmd:?}");
 
         if let Some(order) = self
@@ -1504,6 +1653,10 @@ impl ExecutionClient for HyperliquidExecutionClient {
     }
 
     fn cancel_all_orders(&self, cmd: CancelAllOrders) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.account_scope.is_none() && !is_io_instrument(cmd.instrument_id),
+            "io execution is read-only; cancellation and recovery require issue #101"
+        );
         log::debug!("Cancelling all orders: {cmd:?}");
 
         let cache = self.core.cache();
@@ -1578,6 +1731,14 @@ impl ExecutionClient for HyperliquidExecutionClient {
     }
 
     fn batch_cancel_orders(&self, cmd: BatchCancelOrders) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.account_scope.is_none()
+                && cmd
+                    .cancels
+                    .iter()
+                    .all(|cancel| !is_io_instrument(cancel.instrument_id)),
+            "io execution is read-only; batch cancellation requires issue #101"
+        );
         log::debug!("Batch cancelling orders: {cmd:?}");
 
         if cmd.cancels.is_empty() {
@@ -1649,7 +1810,23 @@ impl ExecutionClient for HyperliquidExecutionClient {
         Ok(())
     }
 
-    fn query_account(&self, _cmd: QueryAccount) -> anyhow::Result<()> {
+    fn query_account(&self, cmd: QueryAccount) -> anyhow::Result<()> {
+        if let Some(scope) = self.account_scope.clone() {
+            anyhow::ensure!(
+                cmd.account_id == self.core.account_id,
+                "QueryAccount identity does not match the explicit io account scope"
+            );
+            scope
+                .state
+                .lock()
+                .invalidate("io account proof refresh is pending", false);
+            let http = self.http_client.clone();
+            let emitter = self.emitter.clone();
+            self.spawn_task("query_io_account", async move {
+                refresh_account_scope(&scope.state, &http, &scope.ws, &emitter).await
+            });
+            return Ok(());
+        }
         let http_client = self.http_client.clone();
         let account_address = self.get_account_address()?;
         let emitter = self.emitter.clone();
@@ -1684,6 +1861,10 @@ impl ExecutionClient for HyperliquidExecutionClient {
     }
 
     fn query_order(&self, cmd: QueryOrder) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.account_scope.is_none(),
+            "io order reconciliation requires issue #101"
+        );
         log::debug!("Querying order: {cmd:?}");
 
         let client_order_id = cmd.client_order_id;
@@ -1813,6 +1994,7 @@ impl ExecutionClient for HyperliquidExecutionClient {
         let post_ws = async {
             self.refresh_account_state().await?;
             self.await_account_registered(30.0).await?;
+            self.await_scoped_private_ready().await?;
 
             Ok::<(), anyhow::Error>(())
         };
@@ -1872,6 +2054,10 @@ impl ExecutionClient for HyperliquidExecutionClient {
         &self,
         cmd: &GenerateOrderStatusReport,
     ) -> anyhow::Result<Option<OrderStatusReport>> {
+        anyhow::ensure!(
+            self.account_scope.is_none(),
+            "io order/fill reconciliation requires issue #101"
+        );
         let account_address = self.get_account_address()?;
 
         if cmd.venue_order_id.is_none() && cmd.client_order_id.is_none() {
@@ -1969,6 +2155,10 @@ impl ExecutionClient for HyperliquidExecutionClient {
         &self,
         cmd: &GenerateOrderStatusReports,
     ) -> anyhow::Result<Vec<OrderStatusReport>> {
+        anyhow::ensure!(
+            self.account_scope.is_none(),
+            "io order/fill reconciliation requires issue #101"
+        );
         let account_address = self.get_account_address()?;
 
         let reports = self
@@ -1987,6 +2177,10 @@ impl ExecutionClient for HyperliquidExecutionClient {
         &self,
         cmd: GenerateFillReports,
     ) -> anyhow::Result<Vec<FillReport>> {
+        anyhow::ensure!(
+            self.account_scope.is_none(),
+            "io order/fill reconciliation requires issue #101"
+        );
         let account_address = self.get_account_address()?;
 
         let reports = self
@@ -2020,6 +2214,10 @@ impl ExecutionClient for HyperliquidExecutionClient {
         &self,
         cmd: &GeneratePositionStatusReports,
     ) -> anyhow::Result<Vec<PositionStatusReport>> {
+        anyhow::ensure!(
+            self.account_scope.is_none(),
+            "io position reconciliation is unsupported until scoped recovery is implemented; inspect account scope snapshot"
+        );
         let account_address = self.get_account_address()?;
 
         // request_position_status_reports already merges spot holdings
@@ -2037,6 +2235,10 @@ impl ExecutionClient for HyperliquidExecutionClient {
         &self,
         lookback_mins: Option<u64>,
     ) -> anyhow::Result<Option<ExecutionMassStatus>> {
+        anyhow::ensure!(
+            self.account_scope.is_none(),
+            "io mass reconciliation is unsupported until scoped recovery is implemented"
+        );
         let ts_init = self.clock.get_time_ns();
         let account_address = self.get_account_address()?;
 
@@ -2143,6 +2345,9 @@ impl HyperliquidExecutionClient {
 
         // Connect and subscribe before spawning the event loop
         ws_client.connect().await?;
+        if let Some(scope) = &self.account_scope {
+            scope.state.lock().bind_stream(ws_client.connection_epoch());
+        }
         if let Err(e) = ws_client
             .subscribe_order_updates(&subscription_address)
             .await
@@ -2155,6 +2360,14 @@ impl HyperliquidExecutionClient {
             let _ = ws_client.disconnect().await;
             return Err(e);
         }
+        if self.account_scope.is_some()
+            && let Err(e) = ws_client
+                .subscribe_clearinghouse_state(&subscription_address, "io")
+                .await
+        {
+            let _ = ws_client.disconnect().await;
+            return Err(e);
+        }
         log::debug!("Subscribed to Hyperliquid execution updates for {subscription_address}");
 
         let emitter = self.emitter.clone();
@@ -2163,6 +2376,7 @@ impl HyperliquidExecutionClient {
         let http_client = self.http_client.clone();
         let builder = self.http_client.builder_attribution();
         let clock = self.clock;
+        let account_scope = self.account_scope.clone();
         let session_spawner = self
             .session_tasks
             .spawner()
@@ -2186,7 +2400,45 @@ impl HyperliquidExecutionClient {
 
                 match event {
                     Some(msg) => match msg {
+                        NautilusWsMessage::AccountScopeStreamEpoch { epoch } => {
+                            if let Some(scope) = &account_scope
+                                && epoch == ws_client.connection_epoch()
+                            {
+                                scope.state.lock().bind_stream(epoch);
+                            }
+                        }
+                        NautilusWsMessage::AccountScopeSubscriptionResponse { data, epoch } => {
+                            if epoch != ws_client.connection_epoch() {
+                                continue;
+                            }
+                            if let Some(scope) = &account_scope
+                                && let Err(e) = scope.state.lock().acknowledge(&data)
+                            {
+                                log::warn!("io private subscription proof rejected: {e}");
+                            }
+                        }
+                        NautilusWsMessage::AccountScopeClearinghouseState {
+                            data,
+                            ts_init,
+                            epoch,
+                        } => {
+                            if epoch != ws_client.connection_epoch() {
+                                continue;
+                            }
+                            if let Some(scope) = &account_scope
+                                && let Err(e) = scope
+                                    .state
+                                    .lock()
+                                    .observe_ws(&data, ts_init.as_u64() / 1_000_000)
+                            {
+                                log::warn!("io private account proof rejected: {e}");
+                            }
+                        }
                         NautilusWsMessage::ExecutionReports(reports) => {
+                            // Global user streams cover other accounts; io ledger recovery is not enabled.
+                            if account_scope.is_some() {
+                                continue;
+                            }
                             for report in reports {
                                 let staged_parent_fill = match &report {
                                     ExecutionReport::Fill(report) => report.client_order_id,
@@ -2353,6 +2605,12 @@ impl HyperliquidExecutionClient {
                             log::info!("WebSocket reconnected");
                         }
                         NautilusWsMessage::Error(e) => {
+                            if let Some(scope) = &account_scope {
+                                scope.state.lock().invalidate(
+                                    "io private WebSocket error; a fresh HTTP proof is required",
+                                    true,
+                                );
+                            }
                             log::warn!("WebSocket error: {e}");
                         }
                         // Handled by data client
@@ -2367,6 +2625,12 @@ impl HyperliquidExecutionClient {
                         | NautilusWsMessage::CustomData(_) => {}
                     },
                     None => {
+                        if let Some(scope) = &account_scope {
+                            scope
+                                .state
+                                .lock()
+                                .invalidate("io private WebSocket stream ended", true);
+                        }
                         log::debug!("WebSocket next_event returned None, stream closed");
                         break;
                     }
@@ -2377,6 +2641,10 @@ impl HyperliquidExecutionClient {
         log::debug!("Hyperliquid WebSocket execution stream started");
         Ok(())
     }
+}
+
+fn is_io_instrument(instrument: InstrumentId) -> bool {
+    instrument.symbol.as_str().starts_with("io:")
 }
 
 fn filter_order_status_reports_for_command(

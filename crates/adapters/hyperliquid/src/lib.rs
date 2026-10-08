@@ -50,6 +50,7 @@
 #![allow(clippy::clone_on_copy)]
 
 pub mod account;
+pub mod account_scope;
 pub mod common;
 pub mod config;
 pub mod data;

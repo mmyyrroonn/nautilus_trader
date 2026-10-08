@@ -6,3 +6,6 @@
 *.ico binary
 *.jpg binary
 *.bz2 binary
+
+# Preserve captured validation bytes so evidence hashes survive a Git checkout.
+docs/verification/entropy-account-local/** -text -whitespace

@@ -15,7 +15,7 @@
 
 //! Factory functions for creating Hyperliquid clients and components.
 
-use std::{any::Any, cell::RefCell, rc::Rc};
+use std::{any::Any, cell::RefCell, rc::Rc, sync::Arc};
 
 use nautilus_common::{
     cache::CacheView,
@@ -28,8 +28,10 @@ use nautilus_model::{
     enums::{AccountType, OmsType},
     identifiers::{ClientId, TraderId},
 };
+use parking_lot::Mutex;
 
 use crate::{
+    account_scope::{AccountScopeDiagnostics, HyperliquidAccountScopeSnapshot},
     common::consts::{HYPERLIQUID, HYPERLIQUID_VENUE},
     config::{HyperliquidDataClientConfig, HyperliquidExecutionClientConfig},
     data::HyperliquidDataClient,
@@ -116,13 +118,34 @@ impl DataClientFactory for HyperliquidDataClientFactory {
     feature = "python",
     pyo3_stub_gen::derive::gen_stub_pyclass(module = "nautilus_trader.adapters.hyperliquid")
 )]
-pub struct HyperliquidExecutionClientFactory;
+pub struct HyperliquidExecutionClientFactory {
+    account_scope_diagnostics: Arc<Mutex<Option<AccountScopeDiagnostics>>>,
+}
 
 impl HyperliquidExecutionClientFactory {
     /// Creates a new [`HyperliquidExecutionClientFactory`] instance.
     #[must_use]
-    pub const fn new() -> Self {
-        Self
+    pub fn new() -> Self {
+        Self {
+            account_scope_diagnostics: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    /// Returns the newest factory-bound client's detached account proof, when available.
+    #[must_use]
+    pub fn account_scope_snapshot(&self) -> Option<HyperliquidAccountScopeSnapshot> {
+        self.account_scope_diagnostics
+            .lock()
+            .as_ref()
+            .and_then(AccountScopeDiagnostics::snapshot)
+    }
+
+    /// Returns exact-decimal JSON for the factory-bound io proof, or `None` when unbound.
+    pub fn account_scope_snapshot_json(&self) -> anyhow::Result<Option<String>> {
+        self.account_scope_snapshot()
+            .map(|snapshot| serde_json::to_string(&snapshot))
+            .transpose()
+            .map_err(Into::into)
     }
 }
 
@@ -168,6 +191,7 @@ impl ExecutionClientFactory for HyperliquidExecutionClientFactory {
         );
 
         let client = HyperliquidExecutionClient::new(core, hyperliquid_config)?;
+        *self.account_scope_diagnostics.lock() = client.account_scope_diagnostics();
         Ok(Box::new(client))
     }
 
@@ -217,7 +241,7 @@ mod tests {
 
     #[rstest]
     fn test_hyperliquid_execution_client_factory_default() {
-        let factory = HyperliquidExecutionClientFactory;
+        let factory = HyperliquidExecutionClientFactory::default();
         assert_eq!(factory.name(), HYPERLIQUID);
     }
 

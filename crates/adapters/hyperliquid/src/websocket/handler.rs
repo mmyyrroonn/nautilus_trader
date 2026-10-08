@@ -215,7 +215,7 @@ pub(super) struct FeedHandler {
     signal: Arc<AtomicBool>,
     client: Option<WebSocketClient>,
     cmd_rx: tokio::sync::mpsc::UnboundedReceiver<HandlerCommand>,
-    raw_rx: tokio::sync::mpsc::UnboundedReceiver<Message>,
+    raw_rx: tokio::sync::mpsc::UnboundedReceiver<(u64, UnixNanos, Message)>,
     out_tx: tokio::sync::mpsc::UnboundedSender<NautilusWsMessage>,
     account_id: Option<AccountId>,
     subscriptions: SubscriptionState,
@@ -245,7 +245,7 @@ impl FeedHandler {
     pub(super) fn new(
         signal: Arc<AtomicBool>,
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<HandlerCommand>,
-        raw_rx: tokio::sync::mpsc::UnboundedReceiver<Message>,
+        raw_rx: tokio::sync::mpsc::UnboundedReceiver<(u64, UnixNanos, Message)>,
         out_tx: tokio::sync::mpsc::UnboundedSender<NautilusWsMessage>,
         account_id: Option<AccountId>,
         subscriptions: SubscriptionState,
@@ -349,6 +349,7 @@ impl FeedHandler {
                                         if let Err(e) = self.send_with_retry(payload).await {
                                             log::error!("Error subscribing to {key}: {e}");
                                             self.subscriptions.mark_failure(&key);
+                                            return Some(NautilusWsMessage::Error(format!("Private subscription send failed: {e}")));
                                         }
                                     }
                                     Err(e) => {
@@ -448,16 +449,25 @@ impl FeedHandler {
                     }
                 }
 
-                Some(raw_msg) = self.raw_rx.recv() => {
+                Some((epoch, received, raw_msg)) = self.raw_rx.recv() => {
+                    if self.client.as_ref().is_some_and(|client| client.connection_epoch_atomic().load(Ordering::Acquire) != epoch) { continue; }
                     match raw_msg {
                         Message::Text(text) => {
                             if text == RECONNECTED {
                                 log::info!("Received RECONNECTED sentinel");
-                                return Some(NautilusWsMessage::Reconnected);
+                                return Some(NautilusWsMessage::AccountScopeStreamEpoch { epoch });
                             }
 
                             match serde_json::from_str::<HyperliquidWsMessage>(&text) {
                                 Ok(msg) => {
+                                    if let HyperliquidWsMessage::SubscriptionResponse { ref data } = msg {
+                                        let key = subscription_to_key(&data.subscription);
+                                        if data.method == "subscribe" {
+                                            self.subscriptions.confirm_subscribe(&key);
+                                        } else if data.method == "unsubscribe" {
+                                            self.subscriptions.confirm_unsubscribe(&key);
+                                        }
+                                    }
                                     if let HyperliquidWsMessage::Post { data } = msg {
                                         self.post_router.complete(data).await;
                                         continue;
@@ -465,7 +475,7 @@ impl FeedHandler {
 
                                     let ts_init = self.clock.get_time_ns();
 
-                                    let nautilus_msgs = Self::parse_to_nautilus_messages(
+                                    let mut nautilus_msgs = Self::parse_to_nautilus_messages(
                                         msg,
                                         &self.instruments,
                                         &self.cloid_cache,
@@ -483,6 +493,13 @@ impl FeedHandler {
                                         self.all_mids_data_types.as_slice(),
                                     );
 
+                                    for message in &mut nautilus_msgs {
+                                        match message {
+                                            NautilusWsMessage::AccountScopeSubscriptionResponse { epoch: origin, .. } => *origin = epoch,
+                                            NautilusWsMessage::AccountScopeClearinghouseState { epoch: origin, ts_init, .. } => { *origin = epoch; *ts_init = received; }
+                                            _ => {}
+                                        }
+                                    }
                                     if !nautilus_msgs.is_empty() {
                                         let mut iter = nautilus_msgs.into_iter();
                                         let first = iter.next().unwrap();
@@ -491,7 +508,8 @@ impl FeedHandler {
                                     }
                                 }
                                 Err(e) => {
-                                    log::error!("Error parsing WebSocket message: {e}, text: {text}");
+                                    log::error!("Error parsing WebSocket message: {e}");
+                                    return Some(NautilusWsMessage::Error(format!("WebSocket message parse failed: {e}")));
                                 }
                             }
                         }
@@ -714,6 +732,17 @@ impl FeedHandler {
             }
             HyperliquidWsMessage::Error { data } => {
                 log::warn!("Received error from Hyperliquid WebSocket: {data}");
+                result.push(NautilusWsMessage::Error(data));
+            }
+            HyperliquidWsMessage::SubscriptionResponse { data } if account_id.is_some() => {
+                result.push(NautilusWsMessage::AccountScopeSubscriptionResponse { data, epoch: 0 });
+            }
+            HyperliquidWsMessage::ClearinghouseState { data } if account_id.is_some() => {
+                result.push(NautilusWsMessage::AccountScopeClearinghouseState {
+                    data,
+                    ts_init,
+                    epoch: 0,
+                });
             }
             // Ignore other message types (subscription confirmations, etc)
             _ => {}
@@ -1332,6 +1361,12 @@ pub(crate) fn subscription_to_key(sub: &SubscriptionRequest) -> String {
         SubscriptionRequest::UserEvents { user } => {
             format!("{}:{user}", HyperliquidWsChannel::UserEvents.as_str())
         }
+        SubscriptionRequest::ClearinghouseState { user, dex } => {
+            format!(
+                "{}:{user}:{dex}",
+                HyperliquidWsChannel::ClearinghouseState.as_str()
+            )
+        }
         SubscriptionRequest::UserFills { user, .. } => {
             format!("{}:{user}", HyperliquidWsChannel::UserFills.as_str())
         }
@@ -1724,6 +1759,10 @@ mod tests {
         drop(cmd_tx);
         drop(raw_tx);
 
+        assert!(matches!(
+            handler.next().await,
+            Some(NautilusWsMessage::Error(message)) if message.contains("Private subscription send failed")
+        ));
         assert!(handler.next().await.is_none());
 
         let messages = OUTBOUND_LOG_CAPTURE.messages();

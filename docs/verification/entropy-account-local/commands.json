@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "native_workdir": "E:/persarb/worktrees/entropy-account",
+  "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+  "commands": [
+    {
+      "purpose": "Full adapter regression",
+      "command": "cargo test -p nautilus-hyperliquid --lib --tests --profile nextest --locked --offline --config \"build.warnings='warn'\"",
+      "result": "1076 passed; 12 live tests ignored"
+    },
+    {
+      "purpose": "Final native account/factory peer regression",
+      "command": "cargo test -p nautilus-hyperliquid --test entropy_account --profile nextest --locked --offline --config \"build.warnings='warn'\"",
+      "result": "46 passed"
+    },
+    {
+      "purpose": "Production-only Clippy",
+      "command": "cargo clippy -p nautilus-hyperliquid --lib --profile nextest --locked --offline --config \"build.warnings='warn'\" -- -D warnings",
+      "result": "passed"
+    },
+    {
+      "purpose": "Clippy including tests",
+      "command": "cargo clippy -p nautilus-hyperliquid --lib --tests --profile nextest --locked --offline --config \"build.warnings='warn'\" -- -D warnings",
+      "result": "blocked by existing Windows persistence/parquet.rs:656 doc_markdown lint"
+    },
+    {
+      "purpose": "Native generated stubs",
+      "command": ".venv/Scripts/python.exe python/generate_stubs.py",
+      "environment": {"NAUTILUS_STUB_PROFILE": "nextest", "PYTHONUTF8": "1", "CARGO_NET_OFFLINE": "true", "CARGO_BUILD_WARNINGS": "allow", "PYO3_PYTHON": "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe", "PATH_prepend": ["C:/Users/myron/AppData/Roaming/uv/python/cpython-3.12.9-windows-x86_64-none", "E:/persarb/worktrees/entropy-account/.venv/Scripts"], "PATH_remove": "Conda entries"},
+      "result": "passed"
+    },
+    {
+      "purpose": "Controlled source-bound wheel",
+      "command": ".venv/Scripts/python.exe scripts/adapter-evidence/build_native.py --python E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe --native-root E:/persarb/worktrees/entropy-account --output-dir E:/persarb/_tmp/entropy100-wheel-nextest-20261008 --profile nextest",
+      "result": "passed; source_binding verified, dirty_count 0"
+    },
+    {
+      "purpose": "Install exact source-bound validation wheel",
+      "workdir": "E:/persarb/worktrees/entropy-app",
+      "command": "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe scripts/install_native.py --python E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe --local-override --native-root E:/persarb/worktrees/entropy-account --wheel E:/persarb/_tmp/entropy100-wheel-nextest-20261008/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl --provenance E:/persarb/_tmp/entropy100-wheel-nextest-20261008/native-provenance.json --sha256 ba8aba6499f45bb69627f644629cecdd110045b6e342e521de8fbc4d362a2b34 --additional-adapter hyperliquid --output E:/persarb/_tmp/entropy100-validation/installed-native.json",
+      "result": "passed; strict_source_binding_passed true"
+    },
+    {
+      "purpose": "Actual installed Python regression",
+      "command": ".venv/Scripts/python.exe -m pytest --import-mode=importlib python/tests/unit/test_entropy_account_config.py python/tests/unit/test_config_readback_contracts.py python/tests/unit/test_generate_stubs.py -q",
+      "result": "170 passed in 21.19s"
+    },
+    {
+      "purpose": "Required make formatting",
+      "command": "make format",
+      "result": "could not execute: make unavailable"
+    },
+    {
+      "purpose": "Required make pre-commit",
+      "command": "make pre-commit",
+      "result": "could not execute: make unavailable"
+    },
+    {
+      "purpose": "Changed Rust formatting",
+      "command": "rustfmt +nightly --edition 2024 --check <changed Hyperliquid Rust files, account_scope.rs and entropy_account.rs>",
+      "result": "passed after native stub/docstring generation"
+    },
+    {
+      "purpose": "Python lint and format",
+      "command": ".venv/Scripts/ruff.exe check python/tests/unit/test_entropy_account_config.py python/nautilus_trader/adapters/hyperliquid/__init__.pyi; .venv/Scripts/ruff.exe format --check <same paths>",
+      "result": "both passed"
+    }
+  ]
+}

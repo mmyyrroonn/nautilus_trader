@@ -920,6 +920,10 @@ pub enum HyperliquidInfoRequestType {
     UserRateLimit,
     /// Get user role.
     UserRole,
+    /// Gets the account abstraction mode.
+    UserAbstraction,
+    /// Gets the legacy DEX abstraction flag.
+    UserDexAbstraction,
     /// Get delegator history.
     DelegatorHistory,
     /// Get delegator rewards.
@@ -964,6 +968,8 @@ impl HyperliquidInfoRequestType {
             Self::UserTwapSliceFillsByTime => "userTwapSliceFillsByTime",
             Self::UserRateLimit => "userRateLimit",
             Self::UserRole => "userRole",
+            Self::UserAbstraction => "userAbstraction",
+            Self::UserDexAbstraction => "userDexAbstraction",
             Self::DelegatorHistory => "delegatorHistory",
             Self::DelegatorRewards => "delegatorRewards",
             Self::ValidatorStats => "validatorStats",

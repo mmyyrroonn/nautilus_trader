@@ -1,0 +1,192 @@
+{
+  "schema_version": 1,
+  "generated_at_utc": "2026-10-08T11:36:17.164145+00:00",
+  "scope": "Owned synthetic loopback peers and local source-bound installed wheel; no actual private account observation or venue orders",
+  "source_commit": "f9b1dda025c06f1306b7f1a66ed7bf731ddc1325",
+  "source_tree": "b541ba11a2937da611678cd48f2f14c071dd9a80",
+  "source_fingerprint_sha256": "d080b1f9e9eab2c79625946e8ed4a816e72366913f0086fad391277a525ef29c",
+  "wheel": {
+    "filename": "nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+    "name": "nautilus-trader",
+    "path": "E:\\persarb\\_tmp\\entropy100-wheel-nextest-20261008\\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+    "sha256": "ba8aba6499f45bb69627f644629cecdd110045b6e342e521de8fbc4d362a2b34",
+    "size": 108667183,
+    "tags": [
+      "cp312-cp312-win_amd64"
+    ],
+    "version": "2.0.0rc4"
+  },
+  "artifacts": [
+    {
+      "path": "raw/adapter-all-verified.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy100-validation\\adapter-all-verified.log",
+      "bytes": 191518,
+      "sha256": "16ba4e41f1d25c84e38c1218167a92047b536a4677d4178b92672a424bc070a7",
+      "result": "Full adapter: 1076 passed, 12 live tests ignored"
+    },
+    {
+      "path": "raw/peer-factory-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy100-validation\\peer-factory-final.log",
+      "bytes": 19454,
+      "sha256": "f4f490bfc7f5d6e963afe586a6100e07a193feecbad9c76dad3eb36421eb13b3",
+      "result": "Final owned HTTP/WS peer: 46 passed"
+    },
+    {
+      "path": "raw/reviewer-factory-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy100-validation\\reviewer-factory-final.log",
+      "bytes": 704,
+      "sha256": "83dadcd468425969c6d43d353f6333da85db5d2f81e5cd2a6a7fc07f786b1bc1",
+      "result": "Independent normal Rust factory case: 1 passed"
+    },
+    {
+      "path": "raw/reviewer-artifact-identity.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy100-validation\\reviewer-artifact-identity.log",
+      "bytes": 2112,
+      "sha256": "31452e688b99234c741537991ee4414bddbbbbae436857e5d0eadc51af3d5973",
+      "result": "Independent installed binary, wheel, stubs and source identity verified"
+    },
+    {
+      "path": "raw/reviewer-python-candidate.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy100-validation\\reviewer-python-candidate.log",
+      "bytes": 1662,
+      "sha256": "4510b25fef74ff27cf71956a3b270e2960886b34fd1159a391a015ca6273ac3e",
+      "result": "Independent pytest initial source-prepend import failure"
+    },
+    {
+      "path": "raw/reviewer-python-installed.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy100-validation\\reviewer-python-installed.log",
+      "bytes": 204,
+      "sha256": "f77bbd43c3a9ea095a8905f9c933fac7bb34f150e1acb44e473f909afec8b60c",
+      "result": "Independent installed-wheel Entropy Python cases: 10 passed"
+    },
+    {
+      "path": "raw/python-candidate.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy100-validation\\python-candidate.log",
+      "bytes": 532,
+      "sha256": "201366ed697879bcceb932c30a017e4ba2e6ebd709a60d66e30d2dc527142c94",
+      "result": "Installed wheel/config/readback/generator: 170 passed"
+    },
+    {
+      "path": "raw/clippy-lib.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy100-validation\\clippy-lib.log",
+      "bytes": 7678,
+      "sha256": "1401efbd0c1e962fb335224aa7a34fb92e879885ece5d790e9d800e36f6d06b4",
+      "result": "Production-only Clippy with -D warnings: passed"
+    },
+    {
+      "path": "raw/clippy-verified.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy100-validation\\clippy-verified.log",
+      "bytes": 6142,
+      "sha256": "293dbd873fde6d9b4276e71c974be7a5a9b631a278a1262ed7638bf3b4218bec",
+      "result": "Tests Clippy blocked by existing Windows persistence doc lint"
+    },
+    {
+      "path": "raw/adapter-all.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy100-validation\\adapter-all.log",
+      "bytes": 143120,
+      "sha256": "3396b5be64de4c66c35be2650887d52de898bf875126c47ea70363be6d569f4a",
+      "result": "Earlier adapter regression failures; corrected before final run"
+    },
+    {
+      "path": "raw/adapter-all-final.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy100-validation\\adapter-all-final.log",
+      "bytes": 193444,
+      "sha256": "b2013c1bacd0d28be5fc23c55eb18c12db895232727b15617dbd6c1b928ad049",
+      "result": "Earlier regression attempt; corrected before verified run"
+    },
+    {
+      "path": "raw/peer-first.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy100-validation\\peer-first.log",
+      "bytes": 26690,
+      "sha256": "8de9b72cee98efcee46487247ccba5ecb42e8005103fce7494d86a856c3e8d7c",
+      "result": "Initial peer compile error: missing Debug; corrected"
+    },
+    {
+      "path": "raw/peer-second.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy100-validation\\peer-second.log",
+      "bytes": 34574,
+      "sha256": "2f87229c783987b672fd7d5f7a49585f45d3f5d08b841ea28fd8920ac34db71f",
+      "result": "Initial peer startup and exact Money expectation failures; corrected"
+    },
+    {
+      "path": "raw/peer-third.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy100-validation\\peer-third.log",
+      "bytes": 30558,
+      "sha256": "3bd460d95e14485763e1a92f9da5d6fe54a700ba736c2fde4b8a731c5f71e3ba",
+      "result": "Peer retry during startup/precision correction"
+    },
+    {
+      "path": "raw/peer-fourth.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy100-validation\\peer-fourth.log",
+      "bytes": 21924,
+      "sha256": "538b8179414455d3663ce854b2100b97487a123ad0c8b83accec24d3fef7079b",
+      "result": "Peer retry before corrected temporal acceptance expectations"
+    },
+    {
+      "path": "raw/stubs-gbk-failed.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy100-validation\\stubs-gbk-failed.log",
+      "bytes": 3154,
+      "sha256": "a6b75b444103c81f412c78eab2b11600db37d9e851855703b9bc1efd533bc890",
+      "result": "Windows default encoding failure; corrected with PYTHONUTF8"
+    },
+    {
+      "path": "raw/stubs-release-interrupted.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy100-validation\\stubs-release-interrupted.log",
+      "bytes": 56788,
+      "sha256": "740ac8b1c64940e3aa980aee93467ae3c46f4759ebb863c7df2e796c412db89d",
+      "result": "Release stub bin fat-LTO deliberately interrupted"
+    },
+    {
+      "path": "raw/stubs-nextest-dll-failed.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy100-validation\\stubs-nextest-dll-failed.log",
+      "bytes": 16992,
+      "sha256": "1bf48aab8828b6a865493513a0849cf92624530cb5232fae62e7cf92b6ff582f",
+      "result": "Missing CPython DLL search path; corrected"
+    },
+    {
+      "path": "raw/stubs-nextest.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy100-validation\\stubs-nextest.log",
+      "bytes": 19704,
+      "sha256": "4ab18bf613160bdce92c6893672d97512bd424fd9fe29450814ed39bb0615594",
+      "result": "Native stub generator completed with selected CPython DLL path"
+    },
+    {
+      "path": "raw/wheel-build.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy100-validation\\wheel-build.log",
+      "bytes": 10896,
+      "sha256": "7b8805e2bb406f57a27e8317a07a68786175e390abff6cd905066364f62676be",
+      "result": "Controlled source-bound nextest wheel build completed"
+    },
+    {
+      "path": "raw/wheel-install.txt",
+      "original_path": "E:\\persarb\\_tmp\\entropy100-validation\\wheel-install.log",
+      "bytes": 2288,
+      "sha256": "0f5ab86431630514a602b0c234ded39bd55d73fd826f6f84d4711305ad74227f",
+      "result": "Exact-interpreter source-bound wheel install/verification completed"
+    },
+    {
+      "path": "native-provenance.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy100-wheel-nextest-20261008\\native-provenance.json",
+      "bytes": 8157,
+      "sha256": "22b526f3cbc427b6a9bc620b5148cbc848cd88a2417633940a99a3d7c45bbebe"
+    },
+    {
+      "path": "native-build-input.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy100-wheel-nextest-20261008\\native-build-input.json",
+      "bytes": 419,
+      "sha256": "65bde9f1670264ba94385356fef99fc7580fb090e350fe2ae9a4619fbc278aab"
+    },
+    {
+      "path": "installed-native.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy100-validation\\installed-native.json",
+      "bytes": 18289,
+      "sha256": "2e81bc966bd3be312fddb813f91717ef7a1928063c99d7d94e557fbff3f9e068"
+    },
+    {
+      "path": "commands.json",
+      "original_path": "E:\\persarb\\_tmp\\entropy100-validation\\commands.json",
+      "bytes": 4158,
+      "sha256": "affc20ca4211a01700fc85a4316a3defc375fdb9d803a3932ad2ccd00e2601c3"
+    }
+  ]
+}

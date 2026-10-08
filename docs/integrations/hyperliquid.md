@@ -1210,8 +1210,8 @@ share the same book and the same venue-side precision options.
 
 ## Account and position management
 
-`AccountState` merges perp margin and spot balances. Perp margin and cross-margin
-usage come from `clearinghouseState`; non-zero spot tokens (USDC, USDH, HYPE,
+With the default `account_dex=None`, `AccountState` merges primary perp margin and spot balances.
+Perp margin and cross-margin usage come from `clearinghouseState`; non-zero spot tokens (USDC, USDH, HYPE,
 vault tokens, HIP-4 outcome side tokens, etc.) come from `spotClearinghouseState`.
 USDC comes from the perp summary when it reflects non-zero collateral, margin, or
 withdrawable balance; when the perp summary is absent or zeroed, spot USDC is used
@@ -1228,6 +1228,58 @@ per-dex open-order and position fan-out.
 Leverage is managed directly through the Hyperliquid web UI or API, not through the adapter.
 Set your desired leverage per instrument on Hyperliquid before trading.
 :::
+
+### Explicit io account view
+
+Set `account_dex="io"` and an explicit, dedicated `account_id` distinct from
+`HYPERLIQUID-001` to observe Entropy's account independently. Use a unique AccountId for
+each execution account in a node. The actual account address must match the direct signer;
+this revision supports verified `user` roles, canonical USDC collateral, and the exact
+`disabled` account abstraction with legacy DEX abstraction `false`. The correspondence of
+`disabled` to standard accounting is an explicit inference from the official mode/SDK
+contract. Agent wallets, vaults, subaccounts, shared/unified/portfolio modes, other collateral,
+and cross-margin io positions are unsupported.
+
+The io view queries `clearinghouseState` with the actual user and `dex="io"`; it does not
+add spot or primary perpetual balances. It uses `marginSummary`, which includes isolated
+positions, rather than using the cross-only summary as the total:
+
+| Fact | Native representation |
+| ---- | --------------------- |
+| Raw collateral | Scope snapshot `balance` (`totalRawUsd`). |
+| Equity | Scope snapshot `equity`; `AccountState.total`. |
+| Used margin | Scope snapshot `used`; `AccountState.locked`. |
+| Free equity | Equity less used margin; negative values are preserved. |
+| Withdrawable | Separate exact venue fact; does not replace free equity. |
+| Total maintenance | Unknown for isolated positions; `None`, with no invented margin balance. |
+
+`account_snapshot_max_age_ms` bounds the proof to 1–30,000 ms, defaulting to 30,000.
+Trust requires complete REST facts, role/mode/collateral verification, all private subscription
+acknowledgements, a full matching io WS snapshot, and the current underlying connection epoch.
+Age is checked at observation time. WS receive time is captured by the reader; missing venue
+source time remains `None`. A fresh REST source anchors the bounded position observation;
+the API does not guarantee an atomic mode/identity/state snapshot or gap-free private replay.
+
+Partial responses, unsupported identity/mode/collateral, mismatched position sizes, silence,
+staleness, and transport replacement revoke trust. Previous facts may remain visible, but
+`flat` becomes `None`. Restoring trust after reconnect requires new stream evidence and an
+explicit fresh `QueryAccount`; reconnecting a socket alone cannot restore it. Observed flat
+positions do not prove there are no pending orders, available funds, or trading permission.
+
+This revision provides a **read-only io account view**. All io submit/modify/cancel/batch
+actions, staged execution, and legacy order/fill/position/mass reconciliation are refused.
+Global order/fill stream reports are not forwarded into the dedicated io account. Bounded
+execution and scoped recovery are tracked in native issue 101; economic receipts are tracked
+in issue 102. The default account view also refuses io order submission without explicit scope.
+
+`HyperliquidExecutionClientFactory.account_scope_snapshot_json()` returns a detached snapshot
+with decimal strings, `trusted`, `flat`, timestamps, epoch, and provenance, or `None` before a
+complete proof exists. A factory tracks its most recently created client; retain one factory
+per observed client and check address/dex in the result. The native Rust execution client also
+exposes the same snapshot. See the [frozen contract and observation limits](../verification/entropy-account-contract-20261008.md).
+
+For Rust callers, construct the stateful execution factory with `::new()` or `::default()`;
+the former unit-struct literal and const construction no longer apply. Python construction is unchanged.
 
 ## Liquidation and ADL handling
 
