@@ -46,7 +46,9 @@ use nautilus_hyperliquid::{
 };
 use nautilus_model::{
     data::{BarType, Data},
+    enums::{BookAction, BookType},
     identifiers::{AccountId, InstrumentId},
+    orderbook::OrderBook,
 };
 use nautilus_network::websocket::TransportBackend;
 use rstest::rstest;
@@ -68,6 +70,7 @@ struct TestServerState {
     received_pong: Arc<AtomicBool>,
     last_pong: Arc<tokio::sync::Mutex<Option<Vec<u8>>>>,
     ping_count: Arc<AtomicUsize>,
+    book_frames: Arc<tokio::sync::Mutex<Vec<Value>>>,
 }
 
 impl Default for TestServerState {
@@ -84,6 +87,7 @@ impl Default for TestServerState {
             received_pong: Arc::new(AtomicBool::new(false)),
             last_pong: Arc::new(tokio::sync::Mutex::new(None)),
             ping_count: Arc::new(AtomicUsize::new(0)),
+            book_frames: Arc::new(tokio::sync::Mutex::new(Vec::new())),
         }
     }
 }
@@ -211,7 +215,13 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<TestServerState>) {
                                 if !should_fail {
                                     let data_msg = match sub_type {
                                         "trades" => trades_payload.clone(),
-                                        "l2Book" => book_payload.clone(),
+                                        "l2Book" => {
+                                            let frames = state.book_frames.lock().await;
+                                            frames
+                                                .first()
+                                                .cloned()
+                                                .unwrap_or_else(|| book_payload.clone())
+                                        }
                                         "candle" => json!({
                                             "channel": "candle",
                                             "data": {
@@ -255,6 +265,16 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<TestServerState>) {
                                         .is_err()
                                     {
                                         break;
+                                    }
+                                }
+
+                                if sub_type == "l2Book" && !should_fail {
+                                    let frames = state.book_frames.lock().await.clone();
+                                    for frame in frames.into_iter().skip(1) {
+                                        socket
+                                            .send(Message::Text(frame.to_string().into()))
+                                            .await
+                                            .unwrap();
                                     }
                                 }
 
@@ -1720,8 +1740,11 @@ async fn test_candle_subscription_survives_reconnection() {
 }
 
 #[rstest]
+#[case(None)]
+#[case(Some(true))]
+#[case(Some(false))]
 #[tokio::test]
-async fn test_book_precision_options_survive_reconnection() {
+async fn test_book_precision_options_survive_reconnection(#[case] fast: Option<bool>) {
     let state = Arc::new(TestServerState::default());
     state.drop_next_connection.store(true, Ordering::Relaxed);
 
@@ -1739,6 +1762,7 @@ async fn test_book_precision_options_survive_reconnection() {
             InstrumentId::from("BTC-USD-PERP.HYPERLIQUID"),
             Some(5),
             Some(2),
+            fast,
         )
         .await
         .expect("subscribe failed");
@@ -1767,6 +1791,7 @@ async fn test_book_precision_options_survive_reconnection() {
     );
 
     for (_, sub) in &book_subs {
+        assert_eq!(sub.get("fast"), fast.map(Value::Bool).as_ref());
         assert_eq!(
             sub.get("nSigFigs").and_then(Value::as_u64),
             Some(5),
@@ -1798,7 +1823,7 @@ async fn test_book_resubscribe_after_reconnect_cycle_reaches_venue() {
 
     let instrument_id = InstrumentId::from("BTC-USD-PERP.HYPERLIQUID");
     client
-        .subscribe_book_with_options(instrument_id, Some(5), None)
+        .subscribe_book_with_options(instrument_id, Some(5), None, None)
         .await
         .expect("subscribe failed");
 
@@ -1825,7 +1850,7 @@ async fn test_book_resubscribe_after_reconnect_cycle_reaches_venue() {
         .expect("client inactive after reconnect");
 
     client
-        .subscribe_book_with_options(instrument_id, Some(5), None)
+        .subscribe_book_with_options(instrument_id, Some(5), None, None)
         .await
         .expect("resubscribe failed");
 
@@ -1868,7 +1893,7 @@ async fn test_book_subscribe_recovers_after_venue_reject() {
 
     let instrument_id = InstrumentId::from("BTC-USD-PERP.HYPERLIQUID");
     client
-        .subscribe_book_with_options(instrument_id, Some(5), None)
+        .subscribe_book_with_options(instrument_id, Some(5), None, None)
         .await
         .expect("subscribe failed");
 
@@ -1892,7 +1917,7 @@ async fn test_book_subscribe_recovers_after_venue_reject() {
         .await
         .expect("unsubscribe failed");
     client
-        .subscribe_book_with_options(instrument_id, Some(5), None)
+        .subscribe_book_with_options(instrument_id, Some(5), None, None)
         .await
         .expect("resubscribe failed");
 
@@ -1937,8 +1962,10 @@ async fn test_book_subscribe_recovers_after_venue_reject() {
 }
 
 #[rstest]
+#[case(None)]
+#[case(Some(false))]
 #[tokio::test]
-async fn test_unsubscribe_book_deltas_keeps_shared_stream_for_depth10() {
+async fn test_unsubscribe_book_deltas_keeps_shared_stream_for_depth10(#[case] fast: Option<bool>) {
     let state = Arc::new(TestServerState::default());
     let addr = start_ws_server(state.clone()).await;
     let ws_url = format!("ws://{addr}/ws");
@@ -1951,11 +1978,11 @@ async fn test_unsubscribe_book_deltas_keeps_shared_stream_for_depth10() {
 
     let instrument_id = InstrumentId::from("BTC-USD-PERP.HYPERLIQUID");
     client
-        .subscribe_book(instrument_id)
+        .subscribe_book_with_options(instrument_id, None, None, fast)
         .await
         .expect("subscribe deltas failed");
     client
-        .subscribe_book_depth10(instrument_id)
+        .subscribe_book_depth10_with_options(instrument_id, None, None, fast)
         .await
         .expect("subscribe depth10 failed");
 
@@ -1998,6 +2025,10 @@ async fn test_unsubscribe_book_deltas_keeps_shared_stream_for_depth10() {
         unsubscriptions[0].get("type").and_then(Value::as_str),
         Some("l2Book"),
     );
+    assert_eq!(
+        unsubscriptions[0].get("fast"),
+        fast.map(Value::Bool).as_ref()
+    );
     drop(unsubscriptions);
 
     client.disconnect().await.expect("close failed");
@@ -2018,7 +2049,7 @@ async fn test_depth10_only_unsubscribe_tears_down_stream_with_original_options()
 
     let instrument_id = InstrumentId::from("BTC-USD-PERP.HYPERLIQUID");
     client
-        .subscribe_book_depth10_with_options(instrument_id, Some(4), None)
+        .subscribe_book_depth10_with_options(instrument_id, Some(4), None, None)
         .await
         .expect("subscribe depth10 failed");
 
@@ -2073,8 +2104,11 @@ async fn test_depth10_only_unsubscribe_tears_down_stream_with_original_options()
 }
 
 #[rstest]
+#[case(None)]
+#[case(Some(true))]
+#[case(Some(false))]
 #[tokio::test]
-async fn test_resubscribe_book_echoes_original_options() {
+async fn test_resubscribe_book_echoes_original_options(#[case] fast: Option<bool>) {
     let state = Arc::new(TestServerState::default());
     let addr = start_ws_server(state.clone()).await;
     let ws_url = format!("ws://{addr}/ws");
@@ -2087,7 +2121,7 @@ async fn test_resubscribe_book_echoes_original_options() {
 
     let instrument_id = InstrumentId::from("BTC-USD-PERP.HYPERLIQUID");
     client
-        .subscribe_book_with_options(instrument_id, Some(5), Some(2))
+        .subscribe_book_with_options(instrument_id, Some(5), Some(2), fast)
         .await
         .expect("subscribe failed");
 
@@ -2124,6 +2158,10 @@ async fn test_resubscribe_book_echoes_original_options() {
     let unsubscriptions = state.unsubscriptions.lock().await;
     assert_eq!(unsubscriptions.len(), 1);
     assert_eq!(
+        unsubscriptions[0].get("fast"),
+        fast.map(Value::Bool).as_ref()
+    );
+    assert_eq!(
         unsubscriptions[0].get("type").and_then(Value::as_str),
         Some("l2Book"),
     );
@@ -2154,6 +2192,7 @@ async fn test_resubscribe_book_echoes_original_options() {
         resubscribed.get("mantissa").and_then(Value::as_u64),
         Some(2),
     );
+    assert_eq!(resubscribed.get("fast"), fast.map(Value::Bool).as_ref());
     drop(subscriptions);
 
     client
@@ -2171,6 +2210,10 @@ async fn test_resubscribe_book_echoes_original_options() {
     .await;
 
     let unsubscriptions = state.unsubscriptions.lock().await;
+    assert_eq!(
+        unsubscriptions[1].get("fast"),
+        fast.map(Value::Bool).as_ref()
+    );
     assert_eq!(
         unsubscriptions[1].get("nSigFigs").and_then(Value::as_u64),
         Some(5),
@@ -2754,4 +2797,155 @@ async fn next_all_mids_emission(
         }
         other => panic!("unexpected message type: {other:?}"),
     }
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_fast_book_snapshots_clear_old_levels_and_preserve_timestamps() {
+    let state = Arc::new(TestServerState::default());
+    let frames: Vec<_> = [(0, 5), (10, 5), (20, 3), (30, 0)]
+        .into_iter()
+        .map(|(shift, count)| {
+            let bids: Vec<_> = (0..count)
+                .map(|i| {
+                    json!({
+                        "px": (98000 + shift - i).to_string(), "sz": "1.000", "n": 1,
+                    })
+                })
+                .collect();
+            let asks: Vec<_> = (0..count)
+                .map(|i| {
+                    json!({
+                        "px": (98001 + shift + i).to_string(), "sz": "2.000", "n": 2,
+                    })
+                })
+                .collect();
+            json!({"channel": "l2Book", "data": {
+                "coin": "BTC", "time": 1703875200000u64 + shift as u64,
+                "levels": [bids, asks],
+            }})
+        })
+        .collect();
+    *state.book_frames.lock().await = frames;
+    let addr = start_ws_server(state.clone()).await;
+    let mut client = connect_client(&format!("ws://{addr}/ws"), None).await;
+    client.connect().await.unwrap();
+    let instrument_id = InstrumentId::from("BTC-USD-PERP.HYPERLIQUID");
+    client
+        .subscribe_book_with_options(instrument_id, None, None, Some(true))
+        .await
+        .unwrap();
+    let mut book = OrderBook::new(instrument_id, BookType::L2_MBP);
+
+    for (shift, count) in [(0, 5), (10, 5), (20, 3), (30, 0)] {
+        let event = tokio::time::timeout(Duration::from_secs(2), client.next_event())
+            .await
+            .unwrap()
+            .unwrap();
+        let NautilusWsMessage::Deltas(deltas) = event else {
+            panic!("expected deltas, received {event:?}");
+        };
+        assert_eq!(deltas.deltas.len(), 1 + 2 * count);
+        assert_eq!(deltas.deltas[0].action, BookAction::Clear);
+        for delta in &deltas.deltas {
+            assert_eq!(delta.ts_event.as_u64(), (1703875200000 + shift) * 1_000_000);
+            assert!(delta.ts_init > delta.ts_event);
+        }
+        book.apply_deltas(&deltas).unwrap();
+        assert_eq!(book.bids(None).count(), count);
+        assert_eq!(book.asks(None).count(), count);
+        if count > 0 {
+            assert_eq!(
+                book.best_bid_price().unwrap().to_string(),
+                format!("{}.00", 98000 + shift)
+            );
+        }
+    }
+    client.disconnect().await.unwrap();
+}
+
+#[rstest]
+#[case(None)]
+#[case(Some(false))]
+#[tokio::test]
+async fn test_fast_conflicts_do_not_change_stream_or_retain_failed_use(#[case] slow: Option<bool>) {
+    let state = Arc::new(TestServerState::default());
+    let addr = start_ws_server(state.clone()).await;
+    let mut client = connect_client(&format!("ws://{addr}/ws"), None).await;
+    client.connect().await.unwrap();
+    let instrument_id = InstrumentId::from("BTC-USD-PERP.HYPERLIQUID");
+    client
+        .subscribe_book_with_options(instrument_id, None, None, Some(true))
+        .await
+        .unwrap();
+    assert!(
+        client
+            .subscribe_book_with_options(instrument_id, None, None, slow)
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("Conflicting")
+    );
+    assert!(
+        client
+            .subscribe_book_depth10_with_options(instrument_id, None, None, slow)
+            .await
+            .is_err()
+    );
+    assert!(
+        client
+            .subscribe_book_depth10_with_options(instrument_id, None, None, Some(true))
+            .await
+            .unwrap_err()
+            .to_string()
+            .contains("5 levels")
+    );
+    client
+        .unsubscribe_book_depth10(instrument_id)
+        .await
+        .unwrap();
+    client.resubscribe_book(instrument_id).await.unwrap();
+    client.unsubscribe_book(instrument_id).await.unwrap();
+    wait_until_async(
+        || {
+            let state = state.clone();
+            async move { state.unsubscriptions.lock().await.len() == 2 }
+        },
+        Duration::from_secs(2),
+    )
+    .await;
+    assert!(state.unsubscriptions.lock().await.iter().all(|sub| sub
+        == &json!({
+            "type": "l2Book", "coin": "BTC", "fast": true,
+        })));
+    // The failed depth10 use cannot retain the fast stream after deltas release.
+    client
+        .subscribe_book_depth10_with_options(instrument_id, None, None, slow)
+        .await
+        .unwrap();
+    assert!(
+        client
+            .subscribe_book_with_options(instrument_id, None, None, Some(true))
+            .await
+            .is_err()
+    );
+    client.unsubscribe_book(instrument_id).await.unwrap();
+    client
+        .unsubscribe_book_depth10(instrument_id)
+        .await
+        .unwrap();
+    wait_until_async(
+        || {
+            let state = state.clone();
+            async move { state.unsubscriptions.lock().await.len() == 3 }
+        },
+        Duration::from_secs(2),
+    )
+    .await;
+    assert_eq!(
+        state.unsubscriptions.lock().await[2].get("fast"),
+        slow.map(Value::Bool).as_ref()
+    );
+    assert_eq!(state.subscription_events().await.len(), 3);
+    client.disconnect().await.unwrap();
 }

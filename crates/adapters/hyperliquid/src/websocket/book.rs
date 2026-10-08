@@ -36,11 +36,12 @@ pub(crate) enum BookStreamUse {
     Depth10,
 }
 
-/// Venue precision options for an `l2Book` subscription.
+/// Venue precision and depth/speed options for an `l2Book` subscription.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct BookStreamOptions {
     pub n_sig_figs: Option<u32>,
     pub mantissa: Option<u32>,
+    pub fast: Option<bool>,
 }
 
 /// Outcome of registering a logical use: whether a venue subscribe should be
@@ -82,19 +83,32 @@ impl BookStreamRegistry {
         coin: Ustr,
         stream_use: BookStreamUse,
         options: BookStreamOptions,
-    ) -> BookStreamRegistration {
+    ) -> anyhow::Result<BookStreamRegistration> {
+        if stream_use == BookStreamUse::Depth10 && options.fast == Some(true) {
+            anyhow::bail!("Hyperliquid fast=true provides only 5 levels and cannot serve Depth10");
+        }
+
         match self.streams.entry(coin) {
             Entry::Occupied(mut occupied) => {
                 let entry = occupied.get_mut();
+
+                if options.fast != entry.options.fast {
+                    anyhow::bail!(
+                        "Conflicting l2Book fast option for {coin}: requested {:?}, active {:?}",
+                        options.fast,
+                        entry.options.fast,
+                    );
+                }
+
                 match stream_use {
                     BookStreamUse::Deltas => entry.deltas = true,
                     BookStreamUse::Depth10 => entry.depth10 = true,
                 }
-                BookStreamRegistration {
+                Ok(BookStreamRegistration {
                     subscribe: false,
                     options: entry.options,
                     options_mismatch: options != entry.options,
-                }
+                })
             }
             Entry::Vacant(vacant) => {
                 vacant.insert(BookStreamEntry {
@@ -102,11 +116,11 @@ impl BookStreamRegistry {
                     deltas: stream_use == BookStreamUse::Deltas,
                     depth10: stream_use == BookStreamUse::Depth10,
                 });
-                BookStreamRegistration {
+                Ok(BookStreamRegistration {
                     subscribe: true,
                     options,
                     options_mismatch: false,
-                }
+                })
             }
         }
     }
@@ -161,6 +175,7 @@ mod tests {
         BookStreamOptions {
             n_sig_figs,
             mantissa,
+            fast: None,
         }
     }
 
@@ -169,7 +184,9 @@ mod tests {
         let registry = BookStreamRegistry::default();
         let coin = Ustr::from("BTC");
 
-        let registration = registry.register(coin, BookStreamUse::Deltas, options(Some(5), None));
+        let registration = registry
+            .register(coin, BookStreamUse::Deltas, options(Some(5), None))
+            .unwrap();
 
         assert!(registration.subscribe);
         assert!(!registration.options_mismatch);
@@ -181,9 +198,13 @@ mod tests {
     fn second_use_shares_stream_and_reports_option_mismatch() {
         let registry = BookStreamRegistry::default();
         let coin = Ustr::from("BTC");
-        registry.register(coin, BookStreamUse::Deltas, options(Some(5), Some(2)));
+        registry
+            .register(coin, BookStreamUse::Deltas, options(Some(5), Some(2)))
+            .unwrap();
 
-        let registration = registry.register(coin, BookStreamUse::Depth10, options(None, None));
+        let registration = registry
+            .register(coin, BookStreamUse::Depth10, options(None, None))
+            .unwrap();
 
         assert!(!registration.subscribe);
         assert!(registration.options_mismatch);
@@ -194,9 +215,13 @@ mod tests {
     fn matching_options_do_not_report_mismatch() {
         let registry = BookStreamRegistry::default();
         let coin = Ustr::from("BTC");
-        registry.register(coin, BookStreamUse::Deltas, options(Some(5), None));
+        registry
+            .register(coin, BookStreamUse::Deltas, options(Some(5), None))
+            .unwrap();
 
-        let registration = registry.register(coin, BookStreamUse::Depth10, options(Some(5), None));
+        let registration = registry
+            .register(coin, BookStreamUse::Depth10, options(Some(5), None))
+            .unwrap();
 
         assert!(!registration.subscribe);
         assert!(!registration.options_mismatch);
@@ -206,9 +231,13 @@ mod tests {
     fn re_registering_same_use_is_idempotent() {
         let registry = BookStreamRegistry::default();
         let coin = Ustr::from("BTC");
-        registry.register(coin, BookStreamUse::Deltas, options(None, None));
+        registry
+            .register(coin, BookStreamUse::Deltas, options(None, None))
+            .unwrap();
 
-        let registration = registry.register(coin, BookStreamUse::Deltas, options(None, None));
+        let registration = registry
+            .register(coin, BookStreamUse::Deltas, options(None, None))
+            .unwrap();
 
         assert!(!registration.subscribe);
         assert_eq!(
@@ -221,8 +250,12 @@ mod tests {
     fn releasing_one_use_retains_stream_for_the_other() {
         let registry = BookStreamRegistry::default();
         let coin = Ustr::from("BTC");
-        registry.register(coin, BookStreamUse::Deltas, options(Some(5), None));
-        registry.register(coin, BookStreamUse::Depth10, options(Some(5), None));
+        registry
+            .register(coin, BookStreamUse::Deltas, options(Some(5), None))
+            .unwrap();
+        registry
+            .register(coin, BookStreamUse::Depth10, options(Some(5), None))
+            .unwrap();
 
         assert_eq!(
             registry.release(&coin, BookStreamUse::Deltas),
@@ -240,7 +273,9 @@ mod tests {
     fn releasing_use_that_was_never_registered_retains_stream() {
         let registry = BookStreamRegistry::default();
         let coin = Ustr::from("BTC");
-        registry.register(coin, BookStreamUse::Deltas, options(None, None));
+        registry
+            .register(coin, BookStreamUse::Deltas, options(None, None))
+            .unwrap();
 
         assert_eq!(
             registry.release(&coin, BookStreamUse::Depth10),
@@ -263,16 +298,20 @@ mod tests {
     #[rstest]
     fn clear_removes_all_tracked_streams() {
         let registry = BookStreamRegistry::default();
-        registry.register(
-            Ustr::from("BTC"),
-            BookStreamUse::Deltas,
-            options(Some(5), None),
-        );
-        registry.register(
-            Ustr::from("ETH"),
-            BookStreamUse::Depth10,
-            options(None, None),
-        );
+        registry
+            .register(
+                Ustr::from("BTC"),
+                BookStreamUse::Deltas,
+                options(Some(5), None),
+            )
+            .unwrap();
+        registry
+            .register(
+                Ustr::from("ETH"),
+                BookStreamUse::Depth10,
+                options(None, None),
+            )
+            .unwrap();
 
         registry.clear();
 
@@ -284,6 +323,7 @@ mod tests {
                     BookStreamUse::Deltas,
                     options(None, None)
                 )
+                .unwrap()
                 .subscribe
         );
     }
