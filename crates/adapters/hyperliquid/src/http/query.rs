@@ -115,6 +115,12 @@ pub struct UserFillsParams {
     pub user: String,
 }
 
+/// Parameters for scoped perpetual metadata.
+#[derive(Debug, Clone, Serialize)]
+pub struct PerpDexParams {
+    pub dex: String,
+}
+
 /// Parameters for order status request.
 #[derive(Debug, Clone, Serialize)]
 pub struct OrderStatusParams {
@@ -174,6 +180,7 @@ pub struct FundingHistoryParams {
 #[derive(Debug, Clone, Serialize)]
 #[serde(untagged)]
 pub enum InfoRequestParams {
+    PerpDex(PerpDexParams),
     L2Book(L2BookParams),
     RecentTrades(RecentTradesParams),
     UserFills(UserFillsParams),
@@ -196,6 +203,24 @@ pub struct InfoRequest {
 }
 
 impl InfoRequest {
+    pub(crate) fn account_mode(user: &str, request_type: HyperliquidInfoRequestType) -> Self {
+        Self {
+            request_type,
+            params: InfoRequestParams::UserFills(UserFillsParams {
+                user: user.to_string(),
+            }),
+        }
+    }
+
+    pub(crate) fn meta_for_dex(dex: &str) -> Self {
+        Self {
+            request_type: HyperliquidInfoRequestType::Meta,
+            params: InfoRequestParams::PerpDex(PerpDexParams {
+                dex: dex.to_string(),
+            }),
+        }
+    }
+
     /// Creates a request to get metadata about available markets.
     pub fn meta() -> Self {
         Self {

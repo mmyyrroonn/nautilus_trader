@@ -15,9 +15,12 @@
 
 use ahash::AHashMap;
 use derive_builder::Builder;
-use nautilus_core::serialization::{
-    deserialize_decimal, deserialize_decimal_from_str, deserialize_optional_decimal_from_str,
-    serialize_decimal_as_str,
+use nautilus_core::{
+    nanos::UnixNanos,
+    serialization::{
+        deserialize_decimal, deserialize_decimal_from_str, deserialize_optional_decimal_from_str,
+        serialize_decimal_as_str,
+    },
 };
 use nautilus_model::{
     data::{
@@ -101,6 +104,8 @@ pub enum SubscriptionRequest {
     OrderUpdates { user: String },
     /// User events (fills, funding, liquidations).
     UserEvents { user: String },
+    /// Complete clearinghouse state for one user and perpetual DEX.
+    ClearinghouseState { user: String, dex: String },
     /// User fill history.
     UserFills {
         user: String,
@@ -335,6 +340,8 @@ pub struct SubscriptionResponseData {
 #[serde(tag = "channel")]
 #[serde(rename_all = "camelCase")]
 pub enum HyperliquidWsMessage {
+    /// Explicit user/DEX account envelope, validated by the execution scope.
+    ClearinghouseState { data: serde_json::Value },
     /// Subscription confirmation.
     SubscriptionResponse { data: SubscriptionResponseData },
     /// Post request response.
@@ -1197,6 +1204,19 @@ mod tests {
 /// passed through to the Python layer.
 #[derive(Debug, Clone)]
 pub enum NautilusWsMessage {
+    /// Origin epoch of a replacement private stream.
+    AccountScopeStreamEpoch { epoch: u64 },
+    /// Subscription acknowledgement evidence with its reader epoch.
+    AccountScopeSubscriptionResponse {
+        data: SubscriptionResponseData,
+        epoch: u64,
+    },
+    /// Complete raw account envelope, retained for strict scope validation.
+    AccountScopeClearinghouseState {
+        epoch: u64,
+        data: serde_json::Value,
+        ts_init: UnixNanos,
+    },
     /// Execution reports (order status and fills).
     ExecutionReports(Vec<ExecutionReport>),
     /// Parsed trade ticks.

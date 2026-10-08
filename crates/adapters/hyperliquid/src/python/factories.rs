@@ -40,11 +40,18 @@ impl HyperliquidExecutionClientFactory {
     /// Factory for creating Hyperliquid execution clients.
     #[new]
     fn py_new() -> Self {
-        Self
+        Self::new()
     }
 
     #[pyo3(name = "name")]
     fn py_name(&self) -> &'static str {
         "HYPERLIQUID"
+    }
+
+    /// Returns exact-decimal JSON for the factory-bound io proof, or `None` when unbound.
+    #[pyo3(name = "account_scope_snapshot_json")]
+    fn py_account_scope_snapshot_json(&self) -> PyResult<Option<String>> {
+        self.account_scope_snapshot_json()
+            .map_err(nautilus_core::python::to_pyruntime_err)
     }
 }

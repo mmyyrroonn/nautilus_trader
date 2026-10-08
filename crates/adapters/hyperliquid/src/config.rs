@@ -231,6 +231,12 @@ pub struct HyperliquidExecutionClientConfig {
     /// If not provided and no explicit vault address is set, falls back to
     /// the `HYPERLIQUID_ACCOUNT_ADDRESS` environment variable.
     pub account_address: Option<String>,
+    /// Explicit execution account scope. Only `io` standard USDC accounts are supported.
+    /// None preserves the legacy default-perpetual/spot account view and cannot authorize io risk.
+    pub account_dex: Option<String>,
+    /// Maximum source and receive age for an io account proof and private stream, in milliseconds.
+    #[builder(default = 30_000)]
+    pub account_snapshot_max_age_ms: u64,
     /// Override for the WebSocket URL.
     pub base_url_ws: Option<String>,
     /// Override for the HTTP info URL.
@@ -286,6 +292,8 @@ nautilus_core::impl_pyo3_config_getters!(HyperliquidExecutionClientConfig {
     account_id: AccountId,
     vault_address: Option<String>,
     account_address: Option<String>,
+    account_dex: Option<String>,
+    account_snapshot_max_age_ms: u64,
     environment: HyperliquidEnvironment,
     base_url_ws: Option<String>,
     base_url_http: Option<String>,
@@ -344,6 +352,11 @@ impl Debug for HyperliquidExecutionClientConfig {
             )
             .field("vault_address", &self.vault_address)
             .field("account_address", &self.account_address)
+            .field("account_dex", &self.account_dex)
+            .field(
+                "account_snapshot_max_age_ms",
+                &self.account_snapshot_max_age_ms,
+            )
             .field("base_url_ws", &self.base_url_ws)
             .field("base_url_http", &self.base_url_http)
             .field("base_url_exchange", &self.base_url_exchange)
