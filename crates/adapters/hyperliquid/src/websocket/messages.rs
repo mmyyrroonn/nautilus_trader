@@ -1224,6 +1224,12 @@ pub enum NautilusWsMessage {
     IoExecutionFrame {
         channel: String,
         data: serde_json::Value,
+        /// Original text retained before typed or Value decoding can round numeric money.
+        raw_text: String,
+        /// Legacy native decoding succeeded; raw preservation alone cannot bypass its errors.
+        legacy_parse_succeeded: bool,
+        generation: u64,
+        sequence: u64,
         epoch: u64,
         received: UnixNanos,
     },

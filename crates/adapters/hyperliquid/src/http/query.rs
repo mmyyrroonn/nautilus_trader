@@ -115,6 +115,16 @@ pub struct UserFillsParams {
     pub user: String,
 }
 
+/// Inclusive account economic history window; these endpoints have no DEX selector.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserHistoryParams {
+    pub user: String,
+    pub start_time: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub end_time: Option<u64>,
+}
+
 /// Parameters for scoped perpetual metadata.
 #[derive(Debug, Clone, Serialize)]
 pub struct PerpDexParams {
@@ -206,6 +216,7 @@ pub enum InfoRequestParams {
     SpotClearinghouseState(SpotClearinghouseStateParams),
     CandleSnapshot(CandleSnapshotParams),
     FundingHistory(FundingHistoryParams),
+    UserHistory(UserHistoryParams),
     None,
 }
 
@@ -219,6 +230,33 @@ pub struct InfoRequest {
 }
 
 impl InfoRequest {
+    /// Requests actual signed account funding payments in an inclusive window.
+    pub fn user_funding(user: &str, start_time: u64, end_time: Option<u64>) -> Self {
+        Self {
+            request_type: HyperliquidInfoRequestType::UserFunding,
+            params: InfoRequestParams::UserHistory(UserHistoryParams {
+                user: user.into(),
+                start_time,
+                end_time,
+            }),
+        }
+    }
+
+    /// Requests account-wide non-funding ledger facts, without invented DEX attribution.
+    pub fn user_non_funding_ledger_updates(
+        user: &str,
+        start_time: u64,
+        end_time: Option<u64>,
+    ) -> Self {
+        Self {
+            request_type: HyperliquidInfoRequestType::UserNonFundingLedgerUpdates,
+            params: InfoRequestParams::UserHistory(UserHistoryParams {
+                user: user.into(),
+                start_time,
+                end_time,
+            }),
+        }
+    }
     pub(crate) fn active_asset_data(user: &str, coin: &str) -> Self {
         Self {
             request_type: HyperliquidInfoRequestType::ActiveAssetData,
@@ -578,6 +616,28 @@ mod tests {
         HyperliquidExchangeModifyOrderRequest, HyperliquidExchangeOrderKind,
         HyperliquidExchangePlaceOrderRequest, HyperliquidExchangeTif,
     };
+
+    #[test]
+    fn economic_account_history_contract_has_inclusive_times_and_no_dex() {
+        for (request, endpoint) in [
+            (
+                InfoRequest::user_funding("0xabc", 100, Some(200)),
+                "userFunding",
+            ),
+            (
+                InfoRequest::user_non_funding_ledger_updates("0xabc", 100, Some(200)),
+                "userNonFundingLedgerUpdates",
+            ),
+        ] {
+            assert_eq!(
+                serde_json::to_value(request).unwrap(),
+                serde_json::json!({ "type": endpoint, "user": "0xabc", "startTime": 100, "endTime": 200 })
+            );
+        }
+        let open = serde_json::to_value(InfoRequest::user_funding("0xabc", 100, None)).unwrap();
+        assert!(open.get("endTime").is_none());
+        assert!(open.get("dex").is_none());
+    }
 
     #[rstest]
     fn test_info_request_meta() {

@@ -912,6 +912,8 @@ pub enum HyperliquidInfoRequestType {
     UserFunding,
     /// Get non-user funding updates.
     NonUserFundingUpdates,
+    /// Get actual account non-funding ledger history.
+    UserNonFundingLedgerUpdates,
     /// Get TWAP history.
     TwapHistory,
     /// Get user TWAP slice fills.
@@ -966,6 +968,7 @@ impl HyperliquidInfoRequestType {
             Self::FundingHistory => "fundingHistory",
             Self::UserFunding => "userFunding",
             Self::NonUserFundingUpdates => "nonUserFundingUpdates",
+            Self::UserNonFundingLedgerUpdates => "userNonFundingLedgerUpdates",
             Self::TwapHistory => "twapHistory",
             Self::UserTwapSliceFills => "userTwapSliceFills",
             Self::UserTwapSliceFillsByTime => "userTwapSliceFillsByTime",

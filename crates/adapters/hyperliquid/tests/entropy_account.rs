@@ -84,6 +84,7 @@ mod execution;
 enum PeerInstruction {
     Close,
     Frame(Value),
+    RawFrame(String),
 }
 
 struct PeerData {
@@ -246,6 +247,16 @@ async fn info(State(state): State<PeerState>, Json(request): Json<Value>) -> Res
             tokio::time::sleep(Duration::from_millis(delay)).await;
         }
     }
+    if let Some((delay_ms, raw_body)) = execution::economic_info_response(&state, &request) {
+        if delay_ms > 0 {
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+        }
+        return (
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            raw_body,
+        )
+            .into_response();
+    }
     let response = match kind.as_str() {
         "meta" => state.meta(),
         "allPerpMetas" => json!([{"universe":[], "collateralToken":0}, state.meta()]),
@@ -366,6 +377,7 @@ async fn stream(mut socket: WebSocket, state: PeerState) {
             command = instructions.recv() => match command {
                 Ok(PeerInstruction::Close) => { let _ = socket.send(Message::Close(None)).await; break; }
                 Ok(PeerInstruction::Frame(value)) => Some(Message::Text(value.to_string().into())),
+                Ok(PeerInstruction::RawFrame(text)) => Some(Message::Text(text.into())),
                 Err(_) => None,
             },
             _ = interval.tick() => {

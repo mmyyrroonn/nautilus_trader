@@ -95,6 +95,34 @@ pub(crate) struct AccountScopeDiagnostics {
 }
 
 impl AccountScopeDiagnostics {
+    pub(crate) fn economic_attribution(
+        &self,
+        instruments: &BTreeSet<String>,
+        expected_origin: (u64, u64),
+    ) -> Option<(HyperliquidAccountScopeSnapshot, bool, BTreeSet<String>)> {
+        // Reader identity is acquired before account state, matching the ingress
+        // -> account lock order used by execution admission.
+        let current_before = self.ws.private_source_identity() == expected_origin;
+        let (generation, epoch) = expected_origin;
+        let result = {
+            let state = self.state.lock();
+            let (snapshot, verified) =
+                state.economic_attribution(now_ms(), self.ws.is_active(), generation, epoch)?;
+            (
+                snapshot,
+                verified,
+                state.attributed_instruments(instruments),
+            )
+        };
+        // Do not certify a reader replaced while this detached proof was copied.
+        let current_after = self.ws.private_source_identity() == expected_origin;
+        Some((
+            result.0,
+            result.1 && current_before && current_after,
+            result.2,
+        ))
+    }
+
     pub(crate) fn snapshot(&self) -> Option<HyperliquidAccountScopeSnapshot> {
         self.state
             .lock()
@@ -116,6 +144,8 @@ pub(crate) struct AccountScopeState {
     universe: BTreeSet<String>,
     refresh_pending: bool,
     stream_epoch: Option<u64>,
+    attribution_generation: Option<u64>,
+    attribution_universe: BTreeSet<String>,
 }
 
 /// Detached latest private financial facts; source time is never synthesized.
@@ -158,10 +188,24 @@ impl AccountScopeState {
             universe: BTreeSet::new(),
             refresh_pending: false,
             stream_epoch: None,
+            attribution_generation: None,
+            attribution_universe: BTreeSet::new(),
         }
     }
 
     pub(crate) fn invalidate(&mut self, reason: &str, reset_stream: bool) {
+        self.attribution_generation = None;
+        self.attribution_universe.clear();
+        self.invalidate_funds(reason, reset_stream);
+    }
+
+    /// Invalidates funds while retaining an already verified metadata context.
+    /// Only callers that validated the financial source may use this path.
+    pub(crate) fn invalidate_financial(&mut self, reason: &str) {
+        self.invalidate_funds(reason, false);
+    }
+
+    fn invalidate_funds(&mut self, reason: &str, reset_stream: bool) {
         self.version = self.version.wrapping_add(1);
         self.diagnostic = Some(reason.to_string());
         self.refresh_pending = false;
@@ -179,6 +223,49 @@ impl AccountScopeState {
             true,
         );
         self.stream_epoch = Some(epoch);
+    }
+
+    fn economic_attribution(
+        &self,
+        now: u64,
+        ws_active: bool,
+        generation: u64,
+        epoch: u64,
+    ) -> Option<(HyperliquidAccountScopeSnapshot, bool)> {
+        let snapshot = self.snapshot(now, ws_active, epoch)?;
+        // Financial invalidation increments version to reject pending HTTP
+        // completions. It does not change metadata identity, so the current
+        // funds revision is deliberately not a metadata freshness criterion.
+        let verified = self.attribution_generation == Some(generation)
+            && ws_active
+            && self.stream_epoch == Some(epoch)
+            && snapshot.private_stream_epoch == epoch
+            && self.acknowledgements == ALL_PRIVATE_ACKS
+            && fresh(snapshot.http_source_time_ms, now, self.max_age_ms)
+            && fresh(snapshot.http_received_time_ms, now, self.max_age_ms)
+            && fresh(
+                snapshot.http_verification_started_time_ms,
+                now,
+                self.max_age_ms,
+            )
+            && self
+                .ws_received_time_ms
+                .is_some_and(|time| fresh(time, now, self.max_age_ms))
+            && self
+                .ws_source_time_ms
+                .is_none_or(|time| fresh(time, now, self.max_age_ms));
+        Some((snapshot, verified))
+    }
+
+    fn attributed_instruments(&self, instruments: &BTreeSet<String>) -> BTreeSet<String> {
+        instruments
+            .iter()
+            .filter(|id| {
+                id.strip_suffix("-USD-PERP.HYPERLIQUID")
+                    .is_some_and(|coin| self.attribution_universe.contains(coin))
+            })
+            .cloned()
+            .collect()
     }
 
     pub(crate) fn snapshot(
@@ -281,17 +368,15 @@ impl AccountScopeState {
                         .as_ref()
                         .is_some_and(|previous| !facts.same_position_sizes(previous));
                 if changed_during_refresh {
-                    self.invalidate(
+                    self.invalidate_financial(
                         "io private position sizes changed during HTTP proof refresh",
-                        false,
                     );
                 } else if self.diagnostic.is_none()
                     && let Some(http) = &self.facts
                     && !facts.matches_positions(http)
                 {
-                    self.invalidate(
+                    self.invalidate_financial(
                         "io private position sizes changed; a fresh HTTP proof is required",
-                        false,
                     );
                 }
                 self.ws_facts = Some(facts);
@@ -316,7 +401,7 @@ pub(crate) async fn refresh_account_scope(
     emitter: &ExecutionEventEmitter,
 ) -> anyhow::Result<()> {
     let started = now_ms();
-    let epoch = ws.connection_epoch();
+    let (generation, epoch) = ws.private_source_identity();
     let (address, version, max_age) = {
         let mut guard = state.lock();
         guard.invalidate("io account proof refresh is pending", false);
@@ -330,6 +415,7 @@ pub(crate) async fn refresh_account_scope(
         let meta = http.account_scope_info(&InfoRequest::meta_for_dex("io")).await?;
         let spot = http.account_scope_info(&InfoRequest::spot_meta()).await?;
         let universe = validate_collateral(&meta, &spot)?;
+        let attribution_universe = active_attribution_universe(&meta, &universe);
         let raw = http.account_scope_info(&InfoRequest::clearinghouse_state_for_dex(&address, Some("io"))).await?;
         let received = now_ms();
         let source = raw.get("time").and_then(Value::as_u64).context("io HTTP clearinghouse source time is missing")?;
@@ -361,8 +447,10 @@ pub(crate) async fn refresh_account_scope(
         info.insert("cross_maintenance_margin_used".to_string(), Value::String(facts.cross_maintenance.to_string()));
         info.insert("total_maintenance_margin".to_string(), Value::String("unknown; isolated total is not supplied".to_string()));
         info.insert("money_precision_policy".to_string(), Value::String("USDC Money precision for equity and used; free derived by checked fixed-point subtraction; exact raw facts retained in scope snapshot".to_string()));
+        let current_identity = ws.private_source_identity();
         let mut guard = state.lock();
         anyhow::ensure!(guard.version == version && guard.stream_epoch == Some(epoch) && ws.connection_epoch() == epoch && ws.is_active(), "io proof was invalidated while HTTP refresh was pending");
+        anyhow::ensure!(current_identity == (generation, epoch), "io metadata proof belongs to an earlier reader generation");
         guard.universe = universe;
         guard.facts = Some(snapshot.clone());
         if let Some(ws) = &guard.ws_facts {
@@ -371,6 +459,10 @@ pub(crate) async fn refresh_account_scope(
         }
         guard.diagnostic = None;
         guard.refresh_pending = false;
+        // Installed only after the complete role/mode/collateral/universe and
+        // position reconciliation succeeds under the captured funds revision.
+        guard.attribution_generation = Some(generation);
+        guard.attribution_universe = attribution_universe;
         drop(guard);
         emitter.emit_account_state(vec![balance], vec![], true, (source * 1_000_000).into(), Some(info));
         Ok::<_, anyhow::Error>(())
@@ -480,6 +572,23 @@ pub(crate) fn validate_collateral(meta: &Value, spot: &Value) -> anyhow::Result<
         "Empty io asset universe cannot prove account scope"
     );
     Ok(universe)
+}
+
+fn active_attribution_universe(meta: &Value, universe: &BTreeSet<String>) -> BTreeSet<String> {
+    // Retain delisted coins in the account position universe, but never certify
+    // them as currently active economics instruments from an older native cache.
+    meta.get("universe")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|row| {
+            row.get("isDelisted")
+                .is_none_or(|value| value.as_bool() == Some(false))
+        })
+        .filter_map(|row| row.get("name").and_then(Value::as_str))
+        .filter(|coin| universe.contains(*coin))
+        .map(str::to_string)
+        .collect()
 }
 
 #[derive(Clone, Debug)]
@@ -679,6 +788,157 @@ mod tests {
         state.acknowledgements = ALL_PRIVATE_ACKS;
         state.ws_received_time_ms = Some(1000);
         state
+    }
+
+    fn attributed_state() -> AccountScopeState {
+        let mut state = ready_state();
+        // Synthetic completed HTTP metadata proof for state-transition tests.
+        state.attribution_generation = Some(11);
+        state.universe = BTreeSet::from(["io:SNDK".to_string()]);
+        state.attribution_universe = state.universe.clone();
+        state
+    }
+
+    #[rstest]
+    fn validated_position_change_preserves_attribution_without_funds_trust() {
+        let mut state = attributed_state();
+        let version = state.revision();
+        let mut value = raw();
+        value["assetPositions"] = json!([{"type":"oneWay","position":{"coin":"io:SNDK","szi":"0.1","marginUsed":"2","leverage":{"type":"isolated","value":2}}}]);
+        state
+            .observe_ws(
+                &json!({"user":"user","dex":"io","clearinghouseState":value}),
+                1001,
+            )
+            .unwrap();
+        let (funds, attribution) = state.economic_attribution(1001, true, 11, 7).unwrap();
+        assert!(attribution);
+        assert!(!funds.trusted);
+        assert_eq!(funds.flat, None);
+        assert_eq!(state.revision(), version + 1);
+        assert_eq!(funds.http_source_time_ms, 1000);
+    }
+
+    #[rstest]
+    #[case("Failed role verification")]
+    #[case("Unsupported account mode")]
+    #[case("Invalid collateral identity")]
+    #[case("Economic source preservation failed")]
+    fn generic_invalidation_revokes_attribution(#[case] reason: &str) {
+        let mut state = attributed_state();
+        state.invalidate(reason, false);
+        assert!(!state.economic_attribution(1000, true, 11, 7).unwrap().1);
+        state.invalidate_financial("Later financial event");
+        assert!(!state.economic_attribution(1000, true, 11, 7).unwrap().1);
+    }
+
+    #[rstest]
+    fn attribution_independently_checks_reader_epoch_ack_and_verification_age() {
+        let mut state = attributed_state();
+        for (now, active, generation, epoch) in [
+            (1000, false, 11, 7),
+            (1000, true, 12, 7),
+            (1000, true, 11, 8),
+            (1301, true, 11, 7),
+            (999, true, 11, 7),
+        ] {
+            assert!(
+                !state
+                    .economic_attribution(now, active, generation, epoch)
+                    .unwrap()
+                    .1
+            );
+        }
+        state.acknowledgements = 3;
+        assert!(!state.economic_attribution(1000, true, 11, 7).unwrap().1);
+        state.acknowledgements = ALL_PRIVATE_ACKS;
+        state
+            .facts
+            .as_mut()
+            .unwrap()
+            .http_verification_started_time_ms = 699;
+        assert!(!state.economic_attribution(1000, true, 11, 7).unwrap().1);
+        state.bind_stream(8);
+        assert_eq!(state.attribution_generation, None);
+    }
+
+    #[rstest]
+    fn invalid_private_source_and_refresh_start_cannot_preserve_or_rebuild_context() {
+        let mut state = attributed_state();
+        assert!(
+            state
+                .observe_ws(
+                    &json!({"user":"other","dex":"io","clearinghouseState":raw()}),
+                    1000
+                )
+                .is_err()
+        );
+        assert!(!state.economic_attribution(1000, true, 11, 7).unwrap().1);
+        let mut state = attributed_state();
+        state.invalidate("HTTP proof refresh pending", false);
+        state.refresh_pending = true;
+        state
+            .observe_ws(
+                &json!({"user":"user","dex":"io","clearinghouseState":raw()}),
+                1001,
+            )
+            .unwrap();
+        assert!(!state.economic_attribution(1001, true, 11, 7).unwrap().1);
+    }
+
+    #[rstest]
+    fn stale_private_source_revokes_detached_attribution() {
+        let mut state = attributed_state();
+        state.ws_source_time_ms = Some(699);
+        assert!(!state.economic_attribution(1000, true, 11, 7).unwrap().1);
+        state.ws_source_time_ms = None;
+        state.ws_received_time_ms = Some(699);
+        assert!(!state.economic_attribution(1000, true, 11, 7).unwrap().1);
+    }
+
+    #[rstest]
+    fn attribution_membership_uses_latest_active_metadata_not_cached_ids() {
+        let mut state = attributed_state();
+        let candidates = BTreeSet::from([
+            "io:SNDK-USD-PERP.HYPERLIQUID".to_string(),
+            "io:GPRO-USD-PERP.HYPERLIQUID".to_string(),
+            "SNDK-USD-PERP.HYPERLIQUID".to_string(),
+        ]);
+        assert_eq!(
+            state.attributed_instruments(&candidates),
+            BTreeSet::from(["io:SNDK-USD-PERP.HYPERLIQUID".to_string()])
+        );
+        let universe = BTreeSet::from(["io:SNDK".to_string(), "io:GPRO".to_string()]);
+        state.attribution_universe = active_attribution_universe(
+            &json!({"universe":[
+                {"name":"io:SNDK","isDelisted":true}, {"name":"io:GPRO"}
+            ]}),
+            &universe,
+        );
+        assert_eq!(
+            state.attributed_instruments(&candidates),
+            BTreeSet::from(["io:GPRO-USD-PERP.HYPERLIQUID".to_string()])
+        );
+        assert!(universe.contains("io:SNDK"));
+    }
+
+    #[rstest]
+    fn replacement_context_cannot_certify_an_old_source_in_the_same_epoch() {
+        let mut state = attributed_state();
+        // Synthetic successful HTTP commit on a replacement reader whose
+        // native connection epoch happens to equal the earlier reader epoch.
+        state.attribution_generation = Some(12);
+        state.invalidate_financial("Current financial state still requires recovery");
+        let (old_funds, old_attribution) = state.economic_attribution(1000, true, 11, 7).unwrap();
+        assert!(!old_attribution);
+        assert!(!old_funds.trusted);
+        let (new_funds, new_attribution) = state.economic_attribution(1000, true, 12, 7).unwrap();
+        assert!(new_attribution);
+        assert!(!new_funds.trusted);
+        assert_eq!(
+            new_funds.private_stream_epoch,
+            old_funds.private_stream_epoch
+        );
     }
 
     #[rstest]

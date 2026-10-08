@@ -196,6 +196,13 @@ pub struct HyperliquidRawHttpClient {
     rate_limit_max_attempts_info: u32,
 }
 
+/// Original economic body and its local completed-response receive time.
+#[derive(Debug)]
+pub(crate) struct EconomicHistoryBody {
+    pub(crate) raw_text: String,
+    pub(crate) received_ms: u64,
+}
+
 impl HyperliquidRawHttpClient {
     /// Creates a new [`HyperliquidRawHttpClient`] for public endpoints only.
     ///
@@ -555,6 +562,46 @@ impl HyperliquidRawHttpClient {
     }
 
     async fn send_info_request(&self, request: &InfoRequest) -> Result<Value> {
+        let response = self.send_info_response(request).await?;
+        let val: Value = serde_json::from_slice(&response.body).map_err(Error::Serde)?;
+        let extra = info_extra_weight(request, &val);
+        if extra > 0 {
+            self.rest_limiter.debit_extra(extra).await;
+        }
+        Ok(val)
+    }
+
+    /// Preserves economic JSON lexemes before ordinary Value decoding.
+    /// The transport has its existing 100 MiB read cap; this smaller bound
+    /// rejects the received body before economic parsing and checkpoint storage.
+    async fn economic_history_body(
+        &self,
+        request: &InfoRequest,
+        max_bytes: usize,
+    ) -> Result<EconomicHistoryBody> {
+        let response = self.send_info_response(request).await?;
+        let received_ms = get_atomic_clock_realtime().get_time_ns().as_u64() / 1_000_000;
+        if response.body.len() > max_bytes {
+            return Err(Error::bad_request(
+                "Economic history body exceeds policy bound",
+            ));
+        }
+        let rows: Vec<Box<serde_json::value::RawValue>> =
+            serde_json::from_slice(&response.body).map_err(Error::Serde)?;
+        let extra = u32::try_from(rows.len() / 20)
+            .map_err(|_| Error::bad_request("Economic history item weight overflow"))?;
+        if extra > 0 {
+            self.rest_limiter.debit_extra(extra).await;
+        }
+        let raw_text = String::from_utf8(response.body.to_vec())
+            .map_err(|_| Error::bad_request("Economic history is not valid UTF-8"))?;
+        Ok(EconomicHistoryBody {
+            raw_text,
+            received_ms,
+        })
+    }
+
+    async fn send_info_response(&self, request: &InfoRequest) -> Result<HttpResponse> {
         let base_w = info_base_weight(request);
         self.rest_limiter.acquire(base_w).await;
 
@@ -564,16 +611,7 @@ impl HyperliquidRawHttpClient {
             let response = self.http_roundtrip_info(request).await?;
 
             if response.status.is_success() {
-                // decode once to count items, then materialize T
-                let val: Value = serde_json::from_slice(&response.body).map_err(Error::Serde)?;
-                let extra = info_extra_weight(request, &val);
-                if extra > 0 {
-                    self.rest_limiter.debit_extra(extra).await;
-                    log::debug!(
-                        "Info debited extra weight: endpoint={request:?}, base_w={base_w}, extra={extra}"
-                    );
-                }
-                return Ok(val);
+                return Ok(response);
             }
 
             // 429 → respect Retry-After; else jittered backoff. Retry Info only.
@@ -1791,6 +1829,38 @@ impl HyperliquidHttpClient {
     /// Sends the typed info requests used by the explicit execution account proof.
     pub(crate) async fn account_scope_info(&self, request: &InfoRequest) -> Result<Value> {
         self.inner.send_info_request(request).await
+    }
+
+    /// Original funding body; caller's total deadline includes quota and retries.
+    pub(crate) async fn info_user_funding_body(
+        &self,
+        user: &str,
+        start: u64,
+        end: u64,
+        max_bytes: usize,
+    ) -> Result<EconomicHistoryBody> {
+        self.inner
+            .economic_history_body(
+                &InfoRequest::user_funding(user, start, Some(end)),
+                max_bytes,
+            )
+            .await
+    }
+
+    /// Original account-wide ledger body, with no DEX attribution implied.
+    pub(crate) async fn info_user_non_funding_ledger_body(
+        &self,
+        user: &str,
+        start: u64,
+        end: u64,
+        max_bytes: usize,
+    ) -> Result<EconomicHistoryBody> {
+        self.inner
+            .economic_history_body(
+                &InfoRequest::user_non_funding_ledger_updates(user, start, Some(end)),
+                max_bytes,
+            )
+            .await
     }
 
     async fn info_clearinghouse_state_for_dex(

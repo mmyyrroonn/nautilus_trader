@@ -1533,6 +1533,23 @@ still goes into the signed exchange payload.
 Hyperliquid perpetual futures use a fixed 1-hour funding interval. The adapter sets
 `interval` to `60` (minutes) on all `FundingRateUpdate` objects.
 
+### Bounded io economic observations
+
+This fork additionally supports opt-in actual user funding and non-funding ledger reporting through
+`HyperliquidExecutionClientConfig.io_economics_policy_json`. It requires the explicit `account_dex="io"`
+account scope and a finite policy with exact native instrument IDs and an owned checkpoint path.
+It can run with the read-only io account configuration. Order execution still requires the separate
+bounded execution policy.
+
+The normal native factory exposes `economics_scope_snapshot_json()`, `pending_economics_json()` and
+`persist_economics()`. Supported signed funding and individual fill fees acquire local immutable
+receipts; weak WS funding identity and unresolved account-wide ledger facts retain explicit Unknown
+diagnostics. The native report never adds a second commission, changes balances or restores trading
+proof. Public rates and estimated funding remain separate from actual cash observations.
+
+See the [bounded reporting API and recovery limits](../verification/entropy-economics-api-20261008.md)
+for the policy, original-byte references, consumption semantics and finite history coverage.
+
 ## Rate limiting
 
 The adapter implements a token bucket rate limiter for Hyperliquid's REST API with a capacity

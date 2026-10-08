@@ -1,0 +1,172 @@
+{
+  "scope": "Official public documentation/SDK research and requested issue read; no actual account queries, credentials, exchange/network writes, or tracked worktree changes",
+  "sdk_revision": "2fdb18f9517675ea03695a0962bd19eece9c83f0",
+  "sources_reused_with_original_capture_times": [
+    {
+      "file": "sources/info.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint.md",
+      "capture_start_utc": "2026-10-08T10:00:44.634563+00:00",
+      "capture_end_utc": "2026-10-08T10:00:45.011585+00:00",
+      "bytes": 55013,
+      "sha256": "f4228fc7734af5dbf420e5bdf2b25c248a5b5287035ab2d8a645dc14ce64f0bd",
+      "source_origin_path": "E:\\persarb\\_tmp\\issue100-official-contract-20261008\\info.md",
+      "reused_without_download": true,
+      "local_copy_utc": "2026-10-08T11:10:49.834026+00:00"
+    },
+    {
+      "file": "sources/perpetuals.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/perpetuals.md",
+      "capture_start_utc": "2026-10-08T10:00:44.980582+00:00",
+      "capture_end_utc": "2026-10-08T10:00:45.297383+00:00",
+      "bytes": 32182,
+      "sha256": "1b9d14665c030b68d257a29f365489be3074bb3a0e57a83069966174cbe790ae",
+      "source_origin_path": "E:\\persarb\\_tmp\\issue100-official-contract-20261008\\perpetuals.md",
+      "reused_without_download": true,
+      "local_copy_utc": "2026-10-08T11:10:49.834026+00:00"
+    },
+    {
+      "file": "sources/spot.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/info-endpoint/spot.md",
+      "capture_start_utc": "2026-10-08T10:00:45.011585+00:00",
+      "capture_end_utc": "2026-10-08T10:00:45.396891+00:00",
+      "bytes": 13114,
+      "sha256": "2790494f02e91dea175643bc803d8659406c5aea213c6382e9a2bb8090c9a679",
+      "source_origin_path": "E:\\persarb\\_tmp\\issue100-official-contract-20261008\\spot.md",
+      "reused_without_download": true,
+      "local_copy_utc": "2026-10-08T11:10:49.835026+00:00"
+    },
+    {
+      "file": "sources/subscriptions.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/subscriptions.md",
+      "capture_start_utc": "2026-10-08T10:00:45.396891+00:00",
+      "capture_end_utc": "2026-10-08T10:00:45.725891+00:00",
+      "bytes": 18564,
+      "sha256": "761f00c20ba21c0396621d6271a1c62405489b5e5400e60088c5fe93befd9a2c",
+      "source_origin_path": "E:\\persarb\\_tmp\\issue100-official-contract-20261008\\subscriptions.md",
+      "reused_without_download": true,
+      "local_copy_utc": "2026-10-08T11:10:49.835026+00:00"
+    },
+    {
+      "file": "sources/account-modes.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/account-abstraction-modes.md",
+      "capture_start_utc": "2026-10-08T10:01:33.853913+00:00",
+      "bytes": 4226,
+      "sha256": "4de73b2624c88427b1fa345d194604ad3dcbc3576af90f9c4790c800c5247bbf",
+      "capture_end_utc": "2026-10-08T10:01:34.227420+00:00",
+      "source_origin_path": "E:\\persarb\\_tmp\\issue100-official-contract-20261008\\account-modes.md",
+      "reused_without_download": true,
+      "local_copy_utc": "2026-10-08T11:10:49.835026+00:00"
+    },
+    {
+      "file": "sources/ws.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket.md",
+      "capture_start_utc": "2026-10-08T10:05:31.485706+00:00",
+      "bytes": 1847,
+      "sha256": "de15e7d302cbd2be16c18a659a07f419a4819e837832f3140bf206a8e400a01a",
+      "capture_end_utc": "2026-10-08T10:05:31.836305+00:00",
+      "source_origin_path": "E:\\persarb\\_tmp\\issue100-official-contract-20261008\\ws.md",
+      "reused_without_download": true,
+      "local_copy_utc": "2026-10-08T11:10:49.835026+00:00"
+    },
+    {
+      "file": "sources/heartbeats.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/websocket/timeouts-and-heartbeats.md",
+      "capture_start_utc": "2026-10-08T10:01:34.227420+00:00",
+      "bytes": 821,
+      "sha256": "12fbc20d261d08e1a890cbd0a7c22cc1602303ff3b40537511ee4a765ebddfa0",
+      "capture_end_utc": "2026-10-08T10:01:34.591927+00:00",
+      "source_origin_path": "E:\\persarb\\_tmp\\issue100-official-contract-20261008\\heartbeats.md",
+      "reused_without_download": true,
+      "local_copy_utc": "2026-10-08T11:10:49.836026+00:00"
+    },
+    {
+      "file": "sources/api-wallets.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/nonces-and-api-wallets.md",
+      "capture_start_utc": "2026-10-08T10:01:34.591927+00:00",
+      "bytes": 4342,
+      "sha256": "e63b1672b6d05dddc9b61e327c16e769024140e32482d5627f037c1eafe9b6c2",
+      "capture_end_utc": "2026-10-08T10:01:39.106466+00:00",
+      "source_origin_path": "E:\\persarb\\_tmp\\issue100-official-contract-20261008\\api-wallets.md",
+      "reused_without_download": true,
+      "local_copy_utc": "2026-10-08T11:10:49.836026+00:00"
+    },
+    {
+      "file": "sources/sdk-info.py",
+      "url": "https://raw.githubusercontent.com/hyperliquid-dex/hyperliquid-python-sdk/2fdb18f9517675ea03695a0962bd19eece9c83f0/hyperliquid/info.py",
+      "capture_start_utc": "2026-10-08T10:00:50.693230+00:00",
+      "capture_end_utc": "2026-10-08T10:00:51.186875+00:00",
+      "bytes": 27783,
+      "sha256": "fc36d225a2b865d474e5682ad4f095d9917e84ef5dba9c80de3d4600467f4882",
+      "source_origin_path": "E:\\persarb\\_tmp\\issue100-official-contract-20261008\\sdk-info.py",
+      "reused_without_download": true,
+      "local_copy_utc": "2026-10-08T11:10:49.836026+00:00"
+    },
+    {
+      "file": "sources/sdk-websocket_manager.py",
+      "url": "https://raw.githubusercontent.com/hyperliquid-dex/hyperliquid-python-sdk/2fdb18f9517675ea03695a0962bd19eece9c83f0/hyperliquid/websocket_manager.py",
+      "capture_start_utc": "2026-10-08T10:05:31.836305+00:00",
+      "bytes": 7546,
+      "sha256": "1382a63068488932a1b9e4995e3a9807f3bf0e68ac71c7cd022edb3fea126b87",
+      "capture_end_utc": "2026-10-08T10:05:32.293812+00:00",
+      "source_origin_path": "E:\\persarb\\_tmp\\issue100-official-contract-20261008\\sdk-websocket_manager.py",
+      "reused_without_download": true,
+      "local_copy_utc": "2026-10-08T11:10:49.837026+00:00"
+    },
+    {
+      "file": "sources/sdk-utils-types.py",
+      "url": "https://raw.githubusercontent.com/hyperliquid-dex/hyperliquid-python-sdk/2fdb18f9517675ea03695a0962bd19eece9c83f0/hyperliquid/utils/types.py",
+      "capture_start_utc": "2026-10-08T10:00:51.233874+00:00",
+      "capture_end_utc": "2026-10-08T10:00:51.686385+00:00",
+      "bytes": 7944,
+      "sha256": "5161dfcfc5ea39f1540d4e68ffd79520b9f5ab7aff9ce88a8440d6e6dabb88ba",
+      "source_origin_path": "E:\\persarb\\_tmp\\issue100-official-contract-20261008\\sdk-utils-types.py",
+      "reused_without_download": true,
+      "local_copy_utc": "2026-10-08T11:10:49.837026+00:00"
+    },
+    {
+      "file": "sources/hl-fees.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/fees.md",
+      "method": "GET",
+      "attempt": 1,
+      "started_at_utc": "2026-10-08T09:16:19.466906+00:00",
+      "status": 200,
+      "bytes": 12174,
+      "sha256": "75e55504b1b887a89e1668a9544d09b013242747bcc29f8648a5410142a71258",
+      "finished_at_utc": "2026-10-08T09:16:19.895414+00:00",
+      "source_origin_path": "E:\\persarb\\worktrees\\entropy-app\\reports\\entropy-discovery\\20261008-public\\hl-fees.md",
+      "reused_without_download": true,
+      "local_copy_utc": "2026-10-08T11:10:49.837026+00:00"
+    }
+  ],
+  "new_sources": [
+    {
+      "file": "sources/hl-funding.md",
+      "url": "https://hyperliquid.gitbook.io/hyperliquid-docs/trading/funding.md",
+      "capture_start_utc": "2026-10-08T11:10:49.840026+00:00",
+      "bytes": 4777,
+      "sha256": "126d1a0489517bad351787542d555a0de25339c69fd544a0d8d283ae172d234c",
+      "capture_end_utc": "2026-10-08T11:10:50.245534+00:00"
+    },
+    {
+      "file": "sources/sdk-basic-ws.py",
+      "url": "https://raw.githubusercontent.com/hyperliquid-dex/hyperliquid-python-sdk/2fdb18f9517675ea03695a0962bd19eece9c83f0/examples/basic_ws.py",
+      "capture_start_utc": "2026-10-08T11:10:49.840026+00:00",
+      "bytes": 1390,
+      "sha256": "113c943330468a383275e366de9b9cf5848a91310f818b7321162b04233a4d6c",
+      "capture_end_utc": "2026-10-08T11:10:50.313535+00:00"
+    },
+    {
+      "file": "sources/issue-102.json",
+      "url": "https://api.github.com/repos/mmyyrroonn/nautilus_trader/issues/102",
+      "capture_start_utc": "2026-10-08T11:10:50.246534+00:00",
+      "bytes": 7110,
+      "sha256": "6f39cd5a7b85abd3fa2521ab1927eaffb6a2138d9589fd303075ff219ba54043",
+      "capture_end_utc": "2026-10-08T11:10:50.814553+00:00"
+    }
+  ],
+  "initial_issue_cli_failure": {
+    "command": "gh issue view 102 --repo mmyyrroonn/nautilus_trader --json number,title,body,state,url,comments",
+    "exit_code": 1,
+    "stderr": "Post https://api.github.com/graphql: EOF"
+  }
+}

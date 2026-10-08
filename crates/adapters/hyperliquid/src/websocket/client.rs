@@ -127,6 +127,7 @@ pub(super) struct PrivateIngressToken {
     pub generation: u64,
     pub epoch: u64,
     pub sequence: u64,
+    pub economic_raw_limit: Option<usize>,
 }
 pub(super) type RawWebSocketFrame = (
     u64,
@@ -139,6 +140,7 @@ pub(super) type RawWebSocketFrame = (
 #[derive(Debug, Default)]
 pub(crate) struct PrivateIngressState {
     enabled: bool,
+    economic_raw_limit: Option<usize>,
     generation: u64,
     epoch: u64,
     received: u64,
@@ -159,6 +161,7 @@ impl PrivateIngressState {
         };
         *self = Self {
             enabled: self.enabled,
+            economic_raw_limit: self.economic_raw_limit,
             generation,
             ..Self::default()
         };
@@ -171,6 +174,7 @@ impl PrivateIngressState {
         if epoch > self.epoch {
             *self = Self {
                 enabled: self.enabled,
+                economic_raw_limit: self.economic_raw_limit,
                 generation,
                 epoch,
                 ..Self::default()
@@ -185,6 +189,7 @@ impl PrivateIngressState {
             generation,
             epoch,
             sequence,
+            economic_raw_limit: self.economic_raw_limit,
         })
     }
     fn mark_applied(&mut self, generation: u64, epoch: u64, sequence: u64) -> bool {
@@ -211,24 +216,26 @@ fn affects_private_admission(message: &tokio_tungstenite::tungstenite::Message) 
     match message {
         Message::Text(text) if text.as_str() == nautilus_network::RECONNECTED => true,
         Message::Text(text) => {
-            let Ok(value) = serde_json::from_str::<serde_json::Value>(text) else {
+            #[derive(serde::Deserialize)]
+            struct Channel {
+                channel: String,
+            }
+            let Ok(value) = serde_json::from_str::<Channel>(text) else {
                 return true;
             };
             // Only explicitly public channels bypass the fence. Unknown/error/private frames
             // remain closed until their actor outputs are handled (and errors invalidate proof).
             !matches!(
-                value.get("channel").and_then(serde_json::Value::as_str),
-                Some(
-                    "allMids"
-                        | "candle"
-                        | "l2Book"
-                        | "trades"
-                        | "bbo"
-                        | "activeAssetCtx"
-                        | "activeSpotAssetCtx"
-                        | "allDexsAssetCtxs"
-                        | "pong"
-                )
+                value.channel.as_str(),
+                "allMids"
+                    | "candle"
+                    | "l2Book"
+                    | "trades"
+                    | "bbo"
+                    | "activeAssetCtx"
+                    | "activeSpotAssetCtx"
+                    | "allDexsAssetCtxs"
+                    | "pong"
             )
         }
         Message::Binary(_) | Message::Close(_) => true,
@@ -443,7 +450,11 @@ impl HyperliquidWebSocketClient {
                 return;
             }
             match tokio_tungstenite::tungstenite::Message::try_from(message) {
-                Ok(message) if ingress.enabled && affects_private_admission(&message) => {
+                Ok(message)
+                    if ingress.enabled
+                        && (matches!(&message, tokio_tungstenite::tungstenite::Message::Text(text) if ingress.economic_raw_limit.is_some_and(|limit| text.len() > limit))
+                            || affects_private_admission(&message)) =>
+                {
                     let token = ingress.receive(generation, epoch);
                     if raw_tx.send((epoch, received, token, message)).is_err() {
                         ingress.failed = true;
@@ -774,6 +785,24 @@ impl HyperliquidWebSocketClient {
 
     pub(crate) fn private_ingress_guard(&self) -> parking_lot::MutexGuard<'_, PrivateIngressState> {
         self.private_ingress.lock()
+    }
+
+    /// Adds the economic raw parsing bound before the first connection.
+    pub(crate) fn install_io_economic_ingress(&self, max_bytes: usize) -> anyhow::Result<()> {
+        let mut ingress = self.private_ingress.lock();
+        anyhow::ensure!(
+            ingress.generation == 0 && max_bytes > 0,
+            "Economic ingress must be installed before connecting"
+        );
+        ingress.enabled = true;
+        ingress.economic_raw_limit = Some(max_bytes);
+        Ok(())
+    }
+
+    /// Reader connection identity for bounded HTTP recovery; never reconstruct a WS fact from this.
+    pub(crate) fn private_source_identity(&self) -> (u64, u64) {
+        let ingress = self.private_ingress.lock();
+        (ingress.generation, self.connection_epoch())
     }
 
     pub(crate) fn mark_private_ingress_applied(
@@ -1921,6 +1950,35 @@ impl HyperliquidWebSocketClient {
         Ok(())
     }
 
+    /// Subscribes to actual account funding observations; these have no DEX selector.
+    pub async fn subscribe_user_fundings(&self, user: &str) -> anyhow::Result<()> {
+        self.cmd_tx
+            .read()
+            .await
+            .send(HandlerCommand::Subscribe {
+                subscriptions: vec![SubscriptionRequest::UserFundings { user: user.into() }],
+            })
+            .map_err(|e| anyhow::anyhow!("Failed to subscribe user fundings: {e}"))?;
+        Ok(())
+    }
+
+    /// Subscribes to account-wide ledger observations without inventing an io attribution.
+    pub async fn subscribe_user_non_funding_ledger_updates(
+        &self,
+        user: &str,
+    ) -> anyhow::Result<()> {
+        self.cmd_tx
+            .read()
+            .await
+            .send(HandlerCommand::Subscribe {
+                subscriptions: vec![SubscriptionRequest::UserNonFundingLedgerUpdates {
+                    user: user.into(),
+                }],
+            })
+            .map_err(|e| anyhow::anyhow!("Failed to subscribe account ledger: {e}"))?;
+        Ok(())
+    }
+
     /// Subscribes to complete clearinghouse updates for an explicit user and DEX.
     pub(crate) async fn subscribe_clearinghouse_state(
         &self,
@@ -2865,6 +2923,33 @@ mod tests {
         );
         assert!(state.mark_applied(fresh.generation, fresh.epoch, fresh.sequence));
         assert!(state.is_applied(0));
+    }
+
+    #[test]
+    fn economics_private_ingress_retains_bound_across_connection_and_epoch_changes() {
+        let mut state = PrivateIngressState {
+            enabled: true,
+            economic_raw_limit: Some(65536),
+            ..PrivateIngressState::default()
+        };
+        let generation = state.reset_connection();
+        let first = state.receive(generation, 0).unwrap();
+        let replacement = state.receive(generation, 1).unwrap();
+        assert_eq!(first.economic_raw_limit, Some(65536));
+        assert_eq!(replacement.economic_raw_limit, Some(65536));
+        let fresh_generation = state.reset_connection();
+        assert_eq!(
+            state
+                .receive(fresh_generation, 0)
+                .unwrap()
+                .economic_raw_limit,
+            Some(65536)
+        );
+        assert!(affects_private_admission(
+            &tokio_tungstenite::tungstenite::Message::text(
+                r#"{"channel":"userFundings","channel":"l2Book","data":{}}"#
+            )
+        ));
     }
 
     #[test]

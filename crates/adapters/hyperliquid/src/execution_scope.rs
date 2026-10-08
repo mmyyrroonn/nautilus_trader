@@ -2130,6 +2130,27 @@ impl IoExecutionRuntime {
         }
         Ok(())
     }
+
+    /// Detached raw facts actually accepted by the ownership journal for this frame.
+    /// This is not a durable native-cache projection receipt.
+    pub(crate) fn accepted_frame_fills(&self, data: &Value) -> Vec<IoFillFacts> {
+        let Some(rows) = data.get("fills").and_then(Value::as_array) else {
+            return Vec::new();
+        };
+        let state = self.state.lock();
+        rows.iter()
+            .filter_map(|raw| {
+                let fact = fill_facts(raw).ok()?;
+                let key = format!("{}:{}:{}", fact.coin, fact.oid, fact.tid);
+                state
+                    .facts
+                    .fills
+                    .get(&key)
+                    .filter(|accepted| *accepted == &fact)
+                    .cloned()
+            })
+            .collect()
+    }
 }
 
 fn fill_facts(raw: &Value) -> anyhow::Result<IoFillFacts> {
