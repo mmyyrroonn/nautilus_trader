@@ -1,0 +1,106 @@
+"""Preserve source-bound startup evidence, including actual failed attempts."""
+
+import hashlib
+import json
+import re
+import shutil
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+NATIVE = Path("E:/persarb/worktrees/entropy-io-startup")
+OLDER = Path("E:/persarb/_tmp/entropy43-validation")
+ARCHIVE = NATIVE / "docs/verification/io-startup-local"
+IMPLEMENTATION = "6f46bad474f850b9279a3a8950f5b300570f179d"
+EXTENSIONS = {".json", ".jsonl", ".log", ".md", ".py"}
+
+
+def sha256(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def main():
+    assert not ARCHIVE.exists(), "A new archive must not replace prior captures"
+    ARCHIVE.mkdir(parents=True)
+    log = ROOT / "native111-hyperliquid-regression.log"
+    groups = [list(map(int, row)) for row in re.findall(
+        r"test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored",
+        log.read_text(encoding="utf-8"),
+    )]
+    summary = {"passed": sum(row[0] for row in groups),
+               "failed": sum(row[1] for row in groups),
+               "ignored": sum(row[2] for row in groups), "groups": groups,
+               "log_sha256": sha256(log)}
+    assert (summary["passed"], summary["failed"], summary["ignored"]) == (1301, 0, 12)
+    identities = {}
+    paths = subprocess.check_output(
+        ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", IMPLEMENTATION],
+        cwd=NATIVE, text=True,
+    ).splitlines()
+    for name in paths:
+        blob = subprocess.check_output(["git", "show", f"{IMPLEMENTATION}:{name}"], cwd=NATIVE)
+        identities[name] = {"git_blob_sha256": hashlib.sha256(blob).hexdigest(),
+                            "tested_file_sha256": sha256(NATIVE / name)}
+    files = []
+    commands = []
+
+    def capture(source, relative):
+        if source.suffix in {".py", ".md"}:
+            relative = Path(str(relative) + ".txt")
+        target = ARCHIVE / relative
+        assert target.resolve().is_relative_to(ARCHIVE.resolve())
+        assert not target.exists(), str(target)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+        files.append({"path": target.relative_to(ARCHIVE).as_posix(),
+                      "source_path": source.as_posix(), "bytes": target.stat().st_size,
+                      "sha256": sha256(target)})
+        if source.suffix == ".json":
+            record = json.loads(source.read_text(encoding="utf-8-sig"))
+            if isinstance(record, dict) and "argv" in record and "exit_code" in record:
+                commands.append({"capture": target.relative_to(ARCHIVE).as_posix(), **record})
+
+    for source in sorted(ROOT.rglob("*")):
+        if (source.is_file() and source.suffix in EXTENSIONS
+                and "__pycache__" not in source.parts
+                and not source.name.startswith("native111-archive-check")):
+            capture(source, source.relative_to(ROOT))
+    for name in (
+        "io-startup-reconciliation-review.md", "io-startup-reconciliation-review-sources.json",
+        "io-startup-implementation.md", "io-startup-implementation-source.json",
+        "io-startup-issue-identity.json",
+    ):
+        capture(OLDER / name, Path("design") / name)
+    wheel_directory = Path("E:/persarb/_tmp/entropy111-wheel-nextest-20261009")
+    for name in ("native-provenance.json", "native-build-input.json"):
+        capture(wheel_directory / name, Path(name))
+    for name, document in (
+        ("commands.json", commands),
+        ("implementation-identities.json", {
+            "implementation_commit": IMPLEMENTATION,
+            "implementation_tree": subprocess.check_output(
+                ["git", "rev-parse", f"{IMPLEMENTATION}^{{tree}}"], cwd=NATIVE, text=True,
+            ).strip(), "source_files": identities,
+        }),
+        ("regression-summary.json", summary),
+    ):
+        target = ARCHIVE / name
+        assert not target.exists()
+        target.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+        files.append({"path": name, "bytes": target.stat().st_size, "sha256": sha256(target)})
+    (ARCHIVE / "manifest.json").write_text(json.dumps({
+        "archived_utc": datetime.now(timezone.utc).isoformat(),
+        "implementation_commit": IMPLEMENTATION, "files": files,
+        "note": "Failed attempts and superseding accuracy notes remain unchanged. "
+                "Overlapping reruns are not additional distinct cases. Large executables/wheel "
+                "are identified by hashes rather than committed. App first seven scenarios are "
+                "preserved as six FAIL and one PASS, not successful paired acceptance. "
+                "Earlier reviewer reports stating later acceptance was pending are superseded "
+                "by the separate final installed acceptance, without changing their bytes.",
+    }, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({"files": len(files), "commands": len(commands), "regression": summary}))
+
+
+if __name__ == "__main__":
+    main()

@@ -13,3 +13,5 @@ docs/verification/entropy-execution-local/** -text -whitespace
 docs/verification/entropy-economics-local/** -text -whitespace
 docs/verification/entropy-economics-public/** -text -whitespace
 docs/verification/aster-selected-scope-local/** -text -whitespace
+
+docs/verification/io-startup-local/** -text -whitespace

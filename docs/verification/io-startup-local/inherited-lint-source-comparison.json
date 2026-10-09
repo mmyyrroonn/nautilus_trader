@@ -1,0 +1,145 @@
+{
+  "captured_utc": "2026-10-09T04:34:04.780404+00:00",
+  "base": "9ff73d1205b4199f9b44686fdf785382388e67e2",
+  "note": "Source comparison, not an actual baseline Clippy rerun or full Clippy pass.",
+  "logs": [
+    {
+      "name": "native111-hyperliquid-clippy.log",
+      "sha256": "84e9bb557ef2e1deffb347dd659e84532914824149a033ba642bf9f77e03a71b",
+      "diagnostic_locations": [
+        {
+          "path": "crates/persistence/src/parquet.rs",
+          "current_line": 656,
+          "baseline_line": 656,
+          "in_unchanged_hunk": true,
+          "whole_file_lines_equal": true,
+          "baseline_sha256": "c1a767da9895dfd1d53b2c2329172e32cdcd3cfbd481ca53986bcc4b842bdeae",
+          "current_sha256": "c1a767da9895dfd1d53b2c2329172e32cdcd3cfbd481ca53986bcc4b842bdeae"
+        },
+        {
+          "path": "crates/persistence/src/parquet.rs",
+          "current_line": 656,
+          "baseline_line": 656,
+          "in_unchanged_hunk": true,
+          "whole_file_lines_equal": true,
+          "baseline_sha256": "c1a767da9895dfd1d53b2c2329172e32cdcd3cfbd481ca53986bcc4b842bdeae",
+          "current_sha256": "c1a767da9895dfd1d53b2c2329172e32cdcd3cfbd481ca53986bcc4b842bdeae"
+        },
+        {
+          "path": "crates/persistence/src/parquet.rs",
+          "current_line": 656,
+          "baseline_line": 656,
+          "in_unchanged_hunk": true,
+          "whole_file_lines_equal": true,
+          "baseline_sha256": "c1a767da9895dfd1d53b2c2329172e32cdcd3cfbd481ca53986bcc4b842bdeae",
+          "current_sha256": "c1a767da9895dfd1d53b2c2329172e32cdcd3cfbd481ca53986bcc4b842bdeae"
+        }
+      ]
+    },
+    {
+      "name": "native111-targeted-clippy-final.log",
+      "sha256": "aaaee6f0289619429097531aa193069290857861d0259858affd3222f5ef1ef1",
+      "diagnostic_locations": [
+        {
+          "path": "crates/adapters/hyperliquid/tests/entropy_account/execution.rs",
+          "current_line": 490,
+          "baseline_line": 459,
+          "in_unchanged_hunk": true,
+          "whole_file_lines_equal": false,
+          "baseline_sha256": "b6aaa5e995cdab8ce4c74f3384095efe0165f27ff7baba09f828f45f18a19cea",
+          "current_sha256": "61dbce3a6438ae76d30c9d3eca493e6be24e8de13e5e1bf57207084bcff13298"
+        },
+        {
+          "path": "crates/adapters/hyperliquid/tests/entropy_account/execution.rs",
+          "current_line": 839,
+          "baseline_line": 808,
+          "in_unchanged_hunk": true,
+          "whole_file_lines_equal": false,
+          "baseline_sha256": "b6aaa5e995cdab8ce4c74f3384095efe0165f27ff7baba09f828f45f18a19cea",
+          "current_sha256": "61dbce3a6438ae76d30c9d3eca493e6be24e8de13e5e1bf57207084bcff13298"
+        },
+        {
+          "path": "crates/adapters/hyperliquid/tests/entropy_account/execution.rs",
+          "current_line": 857,
+          "baseline_line": 826,
+          "in_unchanged_hunk": true,
+          "whole_file_lines_equal": false,
+          "baseline_sha256": "b6aaa5e995cdab8ce4c74f3384095efe0165f27ff7baba09f828f45f18a19cea",
+          "current_sha256": "61dbce3a6438ae76d30c9d3eca493e6be24e8de13e5e1bf57207084bcff13298"
+        },
+        {
+          "path": "crates/adapters/hyperliquid/tests/entropy_account.rs",
+          "current_line": 460,
+          "baseline_line": 445,
+          "in_unchanged_hunk": true,
+          "whole_file_lines_equal": false,
+          "baseline_sha256": "d8e2d1605c08873c2c28dafcc283cc62997e2adf9138bbc9445c0dc52c1414ae",
+          "current_sha256": "2b9ad3bc8dd6904683ccaa10b99396c3504923dc44c4dddf5590d6f792cbd9f3"
+        },
+        {
+          "path": "crates/adapters/hyperliquid/tests/entropy_account.rs",
+          "current_line": 705,
+          "baseline_line": 690,
+          "in_unchanged_hunk": true,
+          "whole_file_lines_equal": false,
+          "baseline_sha256": "d8e2d1605c08873c2c28dafcc283cc62997e2adf9138bbc9445c0dc52c1414ae",
+          "current_sha256": "2b9ad3bc8dd6904683ccaa10b99396c3504923dc44c4dddf5590d6f792cbd9f3"
+        },
+        {
+          "path": "crates/adapters/hyperliquid/tests/entropy_account.rs",
+          "current_line": 708,
+          "baseline_line": 693,
+          "in_unchanged_hunk": true,
+          "whole_file_lines_equal": false,
+          "baseline_sha256": "d8e2d1605c08873c2c28dafcc283cc62997e2adf9138bbc9445c0dc52c1414ae",
+          "current_sha256": "2b9ad3bc8dd6904683ccaa10b99396c3504923dc44c4dddf5590d6f792cbd9f3"
+        },
+        {
+          "path": "crates/adapters/hyperliquid/tests/entropy_account.rs",
+          "current_line": 712,
+          "baseline_line": 697,
+          "in_unchanged_hunk": true,
+          "whole_file_lines_equal": false,
+          "baseline_sha256": "d8e2d1605c08873c2c28dafcc283cc62997e2adf9138bbc9445c0dc52c1414ae",
+          "current_sha256": "2b9ad3bc8dd6904683ccaa10b99396c3504923dc44c4dddf5590d6f792cbd9f3"
+        },
+        {
+          "path": "crates/adapters/hyperliquid/src/economics_scope/tests.rs",
+          "current_line": 66,
+          "baseline_line": 66,
+          "in_unchanged_hunk": true,
+          "whole_file_lines_equal": true,
+          "baseline_sha256": "3b9363dbf3fd0f6c4a812bb682fc724f842922f3b9c9509319c6ea77ab570602",
+          "current_sha256": "3b9363dbf3fd0f6c4a812bb682fc724f842922f3b9c9509319c6ea77ab570602"
+        },
+        {
+          "path": "crates/adapters/hyperliquid/src/economics_scope/tests.rs",
+          "current_line": 70,
+          "baseline_line": 70,
+          "in_unchanged_hunk": true,
+          "whole_file_lines_equal": true,
+          "baseline_sha256": "3b9363dbf3fd0f6c4a812bb682fc724f842922f3b9c9509319c6ea77ab570602",
+          "current_sha256": "3b9363dbf3fd0f6c4a812bb682fc724f842922f3b9c9509319c6ea77ab570602"
+        },
+        {
+          "path": "crates/adapters/hyperliquid/src/economics_scope/tests.rs",
+          "current_line": 470,
+          "baseline_line": 470,
+          "in_unchanged_hunk": true,
+          "whole_file_lines_equal": true,
+          "baseline_sha256": "3b9363dbf3fd0f6c4a812bb682fc724f842922f3b9c9509319c6ea77ab570602",
+          "current_sha256": "3b9363dbf3fd0f6c4a812bb682fc724f842922f3b9c9509319c6ea77ab570602"
+        },
+        {
+          "path": "crates/adapters/hyperliquid/src/economics_scope/tests.rs",
+          "current_line": 634,
+          "baseline_line": 634,
+          "in_unchanged_hunk": true,
+          "whole_file_lines_equal": true,
+          "baseline_sha256": "3b9363dbf3fd0f6c4a812bb682fc724f842922f3b9c9509319c6ea77ab570602",
+          "current_sha256": "3b9363dbf3fd0f6c4a812bb682fc724f842922f3b9c9509319c6ea77ab570602"
+        }
+      ]
+    }
+  ]
+}

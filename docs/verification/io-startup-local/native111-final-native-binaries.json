@@ -1,0 +1,43 @@
+{
+  "captured_utc": "2026-10-09T04:37:42.420159+00:00",
+  "commit": "6f46bad474f850b9279a3a8950f5b300570f179d",
+  "tree": "a42012494565dbe33e949e0d0e7db200305965b0",
+  "final_startup_command": {
+    "argv": [
+      "cargo",
+      "test",
+      "-p",
+      "nautilus-hyperliquid",
+      "--test",
+      "entropy_account",
+      "startup",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-io-startup",
+    "started_utc": "2026-10-09T04:36:07.187411+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": "E:/persarb/worktrees/entropy-io-startup/.venv/Scripts/python.exe",
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T04:36:12.599973+00:00"
+  },
+  "source_capture": "clean-wheel-build-source.json",
+  "executables": [
+    {
+      "path": "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\nautilus_hyperliquid-1fcbc36810deefe5.exe",
+      "sha256": "52ebd610eabccb706a9bbf5de38a2827529108859b2177357b7f8718fe38ff59",
+      "size": 30369792,
+      "previous_regression_sha256": "52ebd610eabccb706a9bbf5de38a2827529108859b2177357b7f8718fe38ff59"
+    },
+    {
+      "path": "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\entropy_account-69bad49fe9dc76e8.exe",
+      "sha256": "54bc216651f2d99933347023ec7400302d729367b43e6e17f57fae4a2b9509cf",
+      "size": 28637184,
+      "previous_regression_sha256": "acb5f19cafd1fb01fca46e00c0dd2423dc2fbb2f2ad39fb4aac59921ab4fbbf9"
+    }
+  ]
+}

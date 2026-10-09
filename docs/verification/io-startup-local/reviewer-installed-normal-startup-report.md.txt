@@ -1,0 +1,36 @@
+# Independent installed-wheel normal startup acceptance
+
+One normal read-only Hyperliquid startup scenario PASS, process exit 0, UTC 2026-10-09T04:44:16.0936142Z–04:44:18.7390681Z. This result is separate from the 92 direct native cases and is not added to overlapping root/app results. Two earlier reviewer-harness failures are preserved below; there was no production, app or fixture change to obtain the passing result.
+
+## Exact candidate and source identity
+
+- Source: supplied clean commit `6f46bad474f850b9279a3a8950f5b300570f179d`, tree `a42012494565dbe33e949e0d0e7db200305965b0`.
+- Wheel: `E:/persarb/_tmp/entropy111-wheel-nextest-20261009/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl`, SHA256 `5aacb4129526edfdabe77739781fa9518a6b21224fdc59d0fa8b5e99006801fb`.
+- Actual imported pyd in the app venv: SHA256 `f65f0a614f6a57e1a34186ce924bb9e6fc1b887b92b9b2f630cb352319786511`.
+- The actual installed pyd and all 23 declared adapter stubs matched their wheel ZIP bytes and provenance hashes before factory construction. Provenance declared/started/finished source identities agree and are clean. Source Git identity is supplied root provenance, not a reviewer-recomputed Git object.
+
+The reviewer independently matched all 30 frozen native/app inputs before execution. The accepted runner hashes itself, frozen peer/app/config/helper inputs, wheel/provenance before and after; dependencies remained unchanged. An independent post-run check matched 56 declared native/app/installed/wheel/provenance byte identities, zero differences (`reviewer-wheel-source-installed-after.json`). No Git/helper, Cargo, build/install, app or native source edits occurred. The Git helper file was hashed only and never imported/executed.
+
+## Actual normal path and observed facts
+
+The accepted runner `reviewer-normal-startup-readonly-v3.py` constructed only normal installed Hyperliquid data and execution factories and LiveNode, with reconciliation enabled, a bounded explicit io execution policy, a genuinely fresh absent journal and numeric 127.0.0.1 HTTP/WS peers. It configured no Strategy or Actor and no order/transfer/mode action. The factory diagnostic getter was None before client creation and returned actual client proof after normal startup.
+
+The normal reconciliation log reports success, then Portfolio initialization for zero open orders and positions. The observed handle state was `NodeState.RUNNING`, with Portfolio initialized. Actual scope was trusted, explicitly flat and empty full io positions, standard disabled abstraction mode and explicit collateral token identity. The selected native instrument and exact metadata identified `io:SNDK-USD-PERP.HYPERLIQUID`, strict isolated mode and actual leverage one. Runtime recovery was complete with fresh journal origin, zero owned intents/fills/actions, no journal taint and no native projection recovery debt.
+
+Global Cache and account-qualified Cache across all strategies had no order or position records. Portfolio selected exposure was exactly zero. The registered native account had three normal AccountState initialization/refresh events and no financial trade/order/position projection. Actual native USDC total/free/locked were exactly `100` / `100` / `0`, matching the current account proof without a synthetic balance adjustment.
+
+Source clocks were HTTP verification start `1791521058202` ms, actual HTTP source `1791521058206` ms and receipt `1791521058207` ms. Observation was `1791521058210474500` ns, only 8.4745 ms after verification start. Private receipt was `1791521058172` ms; current reader epoch was zero, not an invented nonzero epoch. No timestamp was synthesized to fill a missing source.
+
+The peer retained 45 actual HTTP requests/responses, including user role/abstraction, io metadata, collateral, activeAssetData, clearinghouseState, frontendOpenOrders, userFills and historicalOrders. The last three startup history requests returned explicit actual HTTP 200 empty arrays. frontendOpenOrders and clearinghouseState reads explicitly used dex io; userFills and historicalOrders were genuine user-wide requests and were not filtered to hide foreign facts. Exact raw report field tests remain the separate native integration evidence; RUNNING plus initialized Portfolio and normal reconciliation logs are native report-consumption evidence without a test-only production hook.
+
+Three WS commands were the genuine normal read subscriptions: orderUpdates, userEvents and io clearinghouseState, each bound to the published synthetic user. Financial actions, venue orders and fills were all zero. The runner rejects post/action commands and accepts only those known read subscriptions or matching normal unsubscribe commands. Normal native stop/dispose preceded peer teardown; all peer sockets closed, sessions zero and peer errors zero. Final source/wheel/native byte identities remained unchanged.
+
+## Preserved reviewer failures and corrections
+
+1. `reviewer-normal-startup-installed-final-20261009/` and corresponding command/log/result retain the first FAIL. Normal native reconciliation, Portfolio initialization and Running had already occurred. A reviewer assertion incorrectly required `peer.commands == []`, even though this fixture records read subscriptions as commands. Its error path closed the peer before stopping the native clients, causing peer `wait_closed` to time out and mask the original assertion. This was a reviewer harness defect.
+2. `reviewer-normal-startup-installed-v2-20261009/` retains the next FAIL. The corrected failure cleanup stopped native clients first and exposed the original overbroad command assertion. Account/scope/metadata/Cache/Portfolio/balance checks passed before it, and cleanup produced sockets zero and errors zero.
+3. V3 preserves all financial-zero checks and replaces the incorrect command assertion with exact allowed normal read subscription validation. No sleep tuning, swallowed failure, fixture/source edit or weakened financial permission was used. The accepted output has its own fresh ports/journal/directory and exact runner identity. The two old runner files and all failed evidence remain unchanged.
+
+Primary acceptance evidence is `reviewer-normal-startup-installed-v3-20261009-command.json`, the matching `.log`, and the output directory's `candidate.json`, `manifest.json`, `startup-observed.json`, `peer-evidence.json`, `source-before.json`, `source-after.json` and `result.json`.
+
+This verifies only bounded fresh current selected flat startup on synthetic loopback. Kernel egress isolation is false. Real venue behavior, whole-account completeness, full historical completeness, funding, run PnL and durable cold Cache/ownership recovery remain Unknown. It does not claim the separate paired application execution scenarios succeeded.

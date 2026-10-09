@@ -1,0 +1,19 @@
+{
+  "argv": [
+    "E:/persarb/worktrees/entropy-execution-app/.venv/Scripts/python.exe",
+    "-m",
+    "pytest",
+    "-o",
+    "pythonpath=src tests",
+    "tests/test_entropy_execution_native.py",
+    "-k",
+    "actual_installed",
+    "-q"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-execution-app",
+  "started_utc": "2026-10-09T04:41:40.501659+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "exit_code": 1,
+  "finished_utc": "2026-10-09T04:43:48.488955+00:00"
+}

@@ -1,0 +1,19 @@
+﻿usage: reviewer-normal-startup-readonly.py [-h] --native-commit NATIVE_COMMIT
+                                           --native-tree NATIVE_TREE
+                                           directory wheel sha256 provenance
+
+Prepared #111 normal installed-wheel smoke; no strategy or order path. Not
+acceptance evidence until root supplies the exact final source-bound wheel.
+All authority comes from normal native factories and actual numeric-loopback
+peers.
+
+positional arguments:
+  directory
+  wheel
+  sha256
+  provenance
+
+options:
+  -h, --help            show this help message and exit
+  --native-commit NATIVE_COMMIT
+  --native-tree NATIVE_TREE

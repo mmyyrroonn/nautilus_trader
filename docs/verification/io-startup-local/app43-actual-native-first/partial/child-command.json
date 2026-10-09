@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Scripts\\python.exe",
+    "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\test_entropy_execution_native.py",
+    "--entropy43-child",
+    "partial",
+    "E:\\persarb\\_tmp\\entropy111-validation\\app43-actual-native-first\\partial",
+    "E:/persarb/_tmp/entropy111-wheel-nextest-20261009/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+    "5aacb4129526edfdabe77739781fa9518a6b21224fdc59d0fa8b5e99006801fb",
+    "E:/persarb/_tmp/entropy111-wheel-nextest-20261009/native-provenance.json"
+  ],
+  "exit_code": 1
+}

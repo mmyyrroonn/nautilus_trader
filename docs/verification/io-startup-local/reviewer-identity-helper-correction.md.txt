@@ -1,0 +1,15 @@
+# Superseding correction: indirect read-only Git identity queries
+
+This new accuracy note preserves all older archived reports and raw result bytes. It does not change their actual PASS outcomes, wheel/native identities, source before/after hashes or peer traffic.
+
+The previous normal Aster #109 runner imported application `verify_candidate`, which calls `scripts/verify_native_install.py.verify`. On preparing the #111 runner and reading that helper, the reviewer found `verify` returns `app: git_identity(app)` (line 205). `git_identity` executes `subprocess.check_output(['git', ...], cwd=root)` (lines 68-96), for `ls-files`, `rev-parse` and `status`. Thus the #109 normal read-only acceptance runner indirectly executed read-only Git queries even though the reviewer did not directly issue a Git command. Statements implying entirely no Git execution for that runner are superseded by this note. No Git mutation, build/install or venue order operation occurred.
+
+Immutable referenced evidence:
+
+- `E:/persarb/_tmp/entropy43-validation/reviewer-aster109-normal-readonly-report.md`, SHA256 `d83c386d2434191faaeaaafd0b7c55bbadef930397e9bb632bc5d983fcbb5912d`.
+- `E:/persarb/_tmp/entropy43-validation/reviewer-aster109-normal-bound-post.json`, SHA256 `2133c62293650046466d5b5cf6fbd0c9235e9e010d32e16f0c74414690242c51`.
+- Inspected `E:/persarb/worktrees/entropy-execution-app/scripts/verify_native_install.py`, SHA256 `8b177547f5be52a5f737d7d8c3e0ccfbdf392df326eb37badddecfdded56a9f9`.
+
+The independent #109 ABI verification script `reviewer-wheel-abi-verify.py` performed its own ZIP/file/provenance verification, did not call this Git helper and is unaffected. Its report SHA256 is `8df66c33b25d3bd0d736f4ba5fd1cfe833959002d0eab24f39876128cdaa116d`.
+
+The prepared #111 `reviewer-normal-startup-readonly.py` also independently verifies wheel/installed native/stub bytes and provenance consistency, and never calls `verify_candidate` or `verify_native_install`. It hashes the frozen application sources as evidence without executing them. This respects the no-Git execution boundary for future #111 acceptance. No future wheel acceptance is claimed yet.

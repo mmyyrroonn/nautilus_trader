@@ -1,0 +1,21 @@
+from pathlib import Path
+source = Path('E:/persarb/_tmp/entropy111-validation/reviewer-normal-startup-readonly-v2.py').read_text()
+old = '            assert peer.actions == 0 and peer.commands == [] and peer.fills == [] and peer.orders == {}\n'
+assert source.count(old) == 1
+source = source.replace(old, '''            assert peer.actions == 0 and peer.fills == [] and peer.orders == {}
+            # Commands include genuine normal read subscriptions, not only actions.
+            def assert_read_commands_only():
+                allowed = {'orderUpdates', 'userEvents', 'clearinghouseState'}
+                for command in peer.commands:
+                    assert command.get('method') in {'subscribe', 'unsubscribe'}
+                    subscription = command.get('subscription', {})
+                    assert subscription.get('type') in allowed and subscription.get('user') == USER
+                    if subscription['type'] == 'clearinghouseState':
+                        assert subscription.get('dex') == 'io'
+                assert {command['subscription']['type'] for command in peer.commands if command['method'] == 'subscribe'} == allowed
+            assert_read_commands_only()
+''')
+old = '        assert peer.sessions == set() and peer.errors == [] and peer.actions == 0\n'
+assert source.count(old) == 1
+source = source.replace(old, old+'        assert peer.fills == [] and peer.orders == {}\n        assert_read_commands_only()\n')
+Path('E:/persarb/_tmp/entropy111-validation/reviewer-normal-startup-readonly-v3.py').write_text(source, encoding='utf-8')

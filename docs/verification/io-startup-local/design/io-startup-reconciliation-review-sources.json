@@ -1,0 +1,42 @@
+﻿{
+    "utc":  "2026-10-09T03:51:11.4921863Z",
+    "source_identities":  [
+                              {
+                                  "path":  "E:\\persarb\\worktrees\\entropy-aster-proof\\crates\\adapters\\hyperliquid\\src\\account_scope.rs",
+                                  "sha256":  "edfa6945224f6575baa4872668f6022df0911675e5ee442004f78813c485b69f"
+                              },
+                              {
+                                  "path":  "E:\\persarb\\worktrees\\entropy-aster-proof\\crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+                                  "sha256":  "318b0c005a230549182dc6a80d6c5916f3ff9cfd8d7f73b910b73508fb7dea83"
+                              },
+                              {
+                                  "path":  "E:\\persarb\\worktrees\\entropy-aster-proof\\crates\\adapters\\hyperliquid\\src\\execution.rs",
+                                  "sha256":  "d4f2e3a6d1cebebcbaf247b43eb68e148fc87e687f2e441a39ac178f5a238219"
+                              },
+                              {
+                                  "path":  "E:\\persarb\\worktrees\\entropy-aster-proof\\crates\\adapters\\hyperliquid\\src\\websocket\\client.rs",
+                                  "sha256":  "4ff1e3f378dc124dc09cc21dd05c36af533f7e02b3390a896653b26a77b7602a"
+                              },
+                              {
+                                  "path":  "E:\\persarb\\worktrees\\entropy-aster-proof\\crates\\adapters\\hyperliquid\\tests\\entropy_account.rs",
+                                  "sha256":  "d8e2d1605c08873c2c28dafcc283cc62997e2adf9138bbc9445c0dc52c1414ae"
+                              },
+                              {
+                                  "path":  "E:\\persarb\\worktrees\\entropy-aster-proof\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\execution.rs",
+                                  "sha256":  "b6aaa5e995cdab8ce4c74f3384095efe0165f27ff7baba09f828f45f18a19cea"
+                              },
+                              {
+                                  "path":  "E:\\persarb\\worktrees\\entropy-aster-proof\\crates\\live\\src\\node\\mod.rs",
+                                  "sha256":  "b25b76f9efacd998d180b72172c85261292f999ebc196a160c2fc3c7f17ce044"
+                              },
+                              {
+                                  "path":  "E:\\persarb\\worktrees\\entropy-aster-proof\\crates\\live\\src\\execution\\manager.rs",
+                                  "sha256":  "6f700cb823d634f64efaa04efa8ed0b949c43bf27284090074e7eb5b65e998c9"
+                              },
+                              {
+                                  "path":  "E:\\persarb\\worktrees\\entropy-aster-proof\\crates\\model\\src\\reports\\mass_status.rs",
+                                  "sha256":  "b358556a4b05afb510e797477fc2db76829679533aa3e69aa6cee8a0cec82c94"
+                              }
+                          ],
+    "review_kind":  "read-only independent design audit; no tests or implementation executed"
+}

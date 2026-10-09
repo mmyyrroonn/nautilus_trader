@@ -1,0 +1,229 @@
+"""Prepared #111 normal installed-wheel smoke; no strategy or order path.
+
+Not acceptance evidence until root supplies the exact final source-bound wheel.
+All authority comes from normal native factories and actual numeric-loopback peers.
+"""
+import argparse
+import asyncio
+import datetime as dt
+import hashlib
+import importlib.util
+import json
+import sys
+import time
+import traceback
+import zipfile
+from decimal import Decimal
+from pathlib import Path
+from urllib.parse import urlsplit
+
+APP = Path('E:/persarb/worktrees/entropy-execution-app')
+EVIDENCE_ROOT = Path('E:/persarb/_tmp/entropy111-validation')
+
+def now():
+    return dt.datetime.now(dt.timezone.utc).isoformat()
+
+def sha_stream(stream):
+    result = hashlib.sha256()
+    while block := stream.read(1024 * 1024):
+        result.update(block)
+    return result.hexdigest()
+
+def identity(path):
+    path = Path(path).resolve(strict=True)
+    with path.open('rb') as stream:
+        digest = sha_stream(stream)
+    return {'path': str(path), 'sha256': digest, 'bytes': path.stat().st_size}
+
+def write(directory, name, value):
+    raw = json.dumps(value, indent=2, default=str).encode('utf-8')
+    assert len(raw) <= 4 * 1024 * 1024, 'Evidence exceeds finite bound'
+    (directory / name).write_bytes(raw + b'\n')
+
+def candidate(args):
+    """Verify actual bytes before any native factory; no Git/subprocess helper."""
+    wheel, provenance = Path(args.wheel), Path(args.provenance)
+    manifest = json.loads(provenance.read_text())
+    assert identity(wheel)['sha256'] == args.sha256 == manifest['wheel']['sha256']
+    assert wheel.stat().st_size == manifest['wheel']['size']
+    assert manifest['source_binding'] == 'verified'
+    for source in (manifest['declared_native'], manifest['build']['started_source'], manifest['build']['finished_source']):
+        assert source['commit'] == args.native_commit and source['tree'] == args.native_tree
+        assert source['dirty_count'] == 0 and source['dirty'] == []
+    evidence = manifest['declared_evidence']
+    assert identity(evidence['path'])['sha256'] == evidence['sha256']
+    spec = importlib.util.find_spec('nautilus_trader')
+    assert spec and spec.origin
+    installed = Path(spec.origin).parent.parent
+    assert installed.is_relative_to(Path(sys.prefix).resolve())
+    paths = []
+    with zipfile.ZipFile(wheel) as archive:
+        for declared in manifest['embedded_native_objects'] + manifest['embedded_adapter_stubs']:
+            actual = identity(installed / declared['path'])
+            with archive.open(declared['path']) as stream:
+                assert sha_stream(stream) == actual['sha256'] == declared['sha256']
+            paths.append(actual)
+    import nautilus_trader._libnautilus as native
+    assert Path(native.__file__).resolve() == installed / manifest['embedded_native_objects'][0]['path']
+    return {'wheel': identity(wheel), 'provenance': identity(provenance), 'installed': paths, 'native_commit': args.native_commit, 'native_tree': args.native_tree, 'source_binding': 'verified manifest consistency and actual installed/archive bytes; Git tree not independently recomputed'}, paths
+
+async def run(args):
+    directory = Path(args.directory)
+    assert directory.is_absolute() and directory.resolve().is_relative_to(EVIDENCE_ROOT.resolve())
+    assert not any(part.is_symlink() for part in (directory, *directory.parents))
+    directory.mkdir(parents=True, exist_ok=False)
+    sources = [Path(__file__), APP / 'tests/entropy_execution_peer.py', APP / 'src/entropy_execution.py', APP / 'src/entropy_execution_config.py', APP / 'scripts/verify_native_install.py', Path(args.wheel), Path(args.provenance)]
+    before = [identity(path) for path in sources]
+    result = {'started_utc': now(), 'argv': sys.argv, 'cwd': str(Path.cwd()), 'status': 'UNVERIFIED', 'strategy_count': 0, 'orders_authorized': False, 'native_host_egress_isolation_verified': False}
+    write(directory, 'source-before.json', before)
+    node = task = handle = peer = None
+    factory = None
+    try:
+        verified, installed_before = candidate(args)
+        write(directory, 'candidate.json', verified)
+        # Import only the frozen fixture; never run the application or its Git helper.
+        sys.path.insert(0, str(APP / 'tests'))
+        from entropy_execution_peer import ExecutionPeer, IO_ID, USER, KEY, USDC_ID
+        from nautilus_trader.adapters.hyperliquid import HyperliquidDataClientConfig, HyperliquidDataClientFactory, HyperliquidEnvironment, HyperliquidExecutionClientConfig, HyperliquidExecutionClientFactory
+        from nautilus_trader.common import Environment, LoggerConfig, LogLevel
+        from nautilus_trader.live import LiveExecutionEngineConfig, LiveNode, NodeState
+        from nautilus_trader.model import AccountId, InstrumentId, TraderId, Currency
+        from nautilus_trader.network import TransportBackend
+        peer = ExecutionPeer('HYPERLIQUID')
+        await peer.__aenter__()
+        try:
+            assert urlsplit(peer.http_url).hostname == urlsplit(peer.ws_url).hostname == '127.0.0.1'
+            account = AccountId.from_str('HYPERLIQUID-ENTROPY111')
+            instrument = InstrumentId.from_str(IO_ID)
+            journal = directory / 'fresh-io-intents.jsonl'
+            assert not journal.exists()
+            policy = {'schema_version': 1, 'strategy_id': 'IO-STARTUP-READONLY', 'journal_path': str(journal), 'max_order_notional': '10', 'max_gross_notional': '20', 'max_open_orders': 2, 'max_actions': 6, 'max_leverage': 1, 'margin_buffer': '1', 'fee_buffer_bps': '10', 'action_timeout_ms': 1000, 'recovery_timeout_ms': 3000, 'recovery_max_attempts': 2, 'recovery_retry_delay_ms': 10, 'metadata_max_age_ms': 30000, 'symbols': [{'instrument_id': IO_ID, 'max_quantity': '0.05', 'min_price': '99', 'max_price': '101'}]}
+            factory = HyperliquidExecutionClientFactory()
+            assert factory.execution_scope_snapshot_json() is None
+            data = HyperliquidDataClientConfig(environment=HyperliquidEnvironment.TESTNET, base_url_http=peer.http_url + '/info', base_url_ws=peer.ws_url, http_timeout_secs=2, ws_timeout_secs=2, transport_backend=TransportBackend.TUNGSTENITE)
+            execution = HyperliquidExecutionClientConfig(account_id=account, private_key=KEY, account_address=USER, account_dex='io', account_snapshot_max_age_ms=30000, environment=HyperliquidEnvironment.TESTNET, base_url_http=peer.http_url + '/info', base_url_ws=peer.ws_url, base_url_exchange=peer.http_url + '/exchange', http_timeout_secs=2, ws_post_timeout_secs=1, max_retries=0, normalize_prices=False, include_builder_attribution=False, transport_backend=TransportBackend.TUNGSTENITE, io_execution_policy_json=json.dumps(policy))
+            builder = LiveNode.builder('IO-FRESH-STARTUP-READONLY', TraderId.from_str('IO-111'), Environment.LIVE)
+            builder = builder.with_logging(LoggerConfig(stdout_level=LogLevel.INFO)).with_timeout_connection(8).with_timeout_reconciliation(8).with_timeout_portfolio(5).with_timeout_disconnection_secs(5).with_delay_post_stop_secs(0).with_delay_shutdown_secs(0)
+            builder = builder.with_exec_engine_config(LiveExecutionEngineConfig(reconciliation=True, filter_unclaimed_external_orders=False, inflight_check_interval_ms=0, open_check_interval_secs=None, position_check_interval_secs=None))
+            node = builder.add_data_client('HYPERLIQUID', HyperliquidDataClientFactory(), data).add_exec_client('HYPERLIQUID', factory, execution).build()
+            cache, portfolio, handle = node.cache, node.portfolio, node.handle()
+            assert cache.orders() == [] and cache.positions() == []
+            assert not portfolio.is_initialized()
+            write(directory, 'manifest.json', {'candidate': verified, 'policy': policy, 'http_url': peer.http_url, 'ws_url': peer.ws_url, 'reconciliation': True, 'strategy_count': 0, 'orders_authorized': False, 'synthetic_numeric_loopback': True, 'native_host_egress_isolation_verified': False})
+            task = asyncio.ensure_future(node.run_async())
+            deadline = time.monotonic() + 20
+            while handle.state != NodeState.RUNNING:
+                if task.done():
+                    await task
+                    raise AssertionError('Normal node ended before completing startup reconciliation')
+                assert time.monotonic() < deadline, 'Normal startup did not reach RUNNING'
+                await asyncio.sleep(0.01)
+            observed_ns = time.time_ns()
+            assert portfolio.is_initialized()
+            proof = json.loads(factory.account_scope_snapshot_json())
+            runtime = json.loads(factory.execution_scope_snapshot_json())
+            write(directory, 'startup-observed.json', {'account_scope': proof, 'execution_scope': runtime, 'node_state': str(handle.state), 'portfolio_initialized': portfolio.is_initialized()})
+            assert proof['trusted'] is True and proof['flat'] is True and proof['positions'] == []
+            assert proof['dex'] == 'io' and proof['address'] == USER and proof['account_mode'] == 'standard_disabled_inferred'
+            assert proof['collateral_token_id'] == USDC_ID
+            assert proof['http_source_time_ms'] <= proof['http_received_time_ms'] <= observed_ns // 1_000_000
+            assert 0 <= observed_ns // 1_000_000 - proof['http_verification_started_time_ms'] <= 30000
+            assert runtime['recovery_complete'] is True and runtime['native_projection_recovery_required'] is False and runtime['journal_tainted'] is False
+            assert runtime['fresh_journal_origin'] is True
+            assert runtime['actions'] == 0 and runtime['owned_intents'] == {} and runtime['actual_fills'] == {}
+            metadata = runtime['metadata'][IO_ID]
+            assert metadata['instrument_id'] == IO_ID and metadata['coin'] == 'io:SNDK' and metadata['actual_leverage'] == 1 and metadata['margin_mode'] == 'strictIsolated'
+            loaded = cache.instrument(instrument)
+            assert loaded is not None and str(loaded.id) == IO_ID and str(loaded.raw_symbol) == 'io:SNDK'
+            assert loaded.size_precision == metadata['size_decimals'] and str(loaded.settlement_currency) == 'USDC'
+            # No strategy filter: include EXTERNAL and any otherwise foreign cached records.
+            assert cache.orders() == [] and cache.positions() == []
+            assert cache.orders(account_id=account) == [] and cache.positions(account_id=account) == []
+            assert portfolio.net_position(instrument, account_id=account) == Decimal(0)
+            native_account = cache.account(account)
+            assert native_account is not None and str(native_account.id) == str(account)
+            assert all(type(event).__name__ == 'AccountState' for event in native_account.events)
+            actual_balance = native_account.balance(Currency.from_str('USDC'))
+            assert actual_balance is not None
+            assert actual_balance.total.as_decimal() == Decimal(proof['equity'])
+            assert actual_balance.free.as_decimal() == Decimal(proof['free'])
+            assert actual_balance.locked.as_decimal() == Decimal(proof['used'])
+            types = [request.get('body', {}).get('type') for request in peer.requests if isinstance(request.get('body'), dict)]
+            for required in ('userRole', 'userAbstraction', 'userDexAbstraction', 'meta', 'spotMeta', 'perpDexs', 'activeAssetData', 'clearinghouseState', 'frontendOpenOrders', 'userFills', 'historicalOrders'):
+                assert required in types, 'Missing actual native source request: ' + required
+            scoped_reads = [request for request in peer.requests if isinstance(request.get('body'), dict) and request['body'].get('type') in ('frontendOpenOrders', 'clearinghouseState')]
+            assert all(request['body'].get('dex') == 'io' for request in scoped_reads)
+            assert peer.actions == 0 and peer.fills == [] and peer.orders == {}
+            # Commands include genuine normal read subscriptions, not only actions.
+            def assert_read_commands_only():
+                allowed = {'orderUpdates', 'userEvents', 'clearinghouseState'}
+                for command in peer.commands:
+                    assert command.get('method') in {'subscribe', 'unsubscribe'}
+                    subscription = command.get('subscription', {})
+                    assert subscription.get('type') in allowed and subscription.get('user') == USER
+                    if subscription['type'] == 'clearinghouseState':
+                        assert subscription.get('dex') == 'io'
+                assert {command['subscription']['type'] for command in peer.commands if command['method'] == 'subscribe'} == allowed
+            assert_read_commands_only()
+            result.update(status='PASS', node_state_at_observation=str(handle.state), portfolio_initialized=True, actual_account_scope=proof, actual_execution_scope=runtime, observed_at_ns=observed_ns, native_instrument=loaded.to_dict(), cache_order_count=0, cache_position_count=0, portfolio_selected_position='0', account_state_event_count=len(native_account.events), report_consumption_evidence='normal node RUNNING only after startup reconciliation and Portfolio initialization; exact raw report fields verified separately by native peer tests')
+            handle.stop()
+            await asyncio.wait_for(task, 12)
+            assert not handle.is_running
+            node.dispose()
+            node = None
+            result['post_shutdown_execution_scope'] = factory.execution_scope_snapshot_json()
+        except BaseException as original:
+            result['original_error_before_peer_teardown'] = f'{type(original).__name__}: {original}'
+            traceback.print_exc()
+            raise
+        finally:
+            # Stop normal native clients before closing their venue-side peers,
+            # including failures inside the observational assertions.
+            if handle is not None:
+                handle.stop()
+            if task is not None and not task.done():
+                await asyncio.wait_for(task, 12)
+            if node is not None:
+                node.dispose()
+                node = None
+            await peer.__aexit__(None, None, None)
+        assert peer.sessions == set() and peer.errors == [] and peer.actions == 0
+        assert peer.fills == [] and peer.orders == {}
+        assert_read_commands_only()
+        assert [identity(item['path']) for item in installed_before] == installed_before
+        result.update(shutdown_verified=True, peer_sessions_after_teardown=0, kernel_isolation_verified=False, historical_completeness='Unknown', whole_account_verified=False, funding_verified=False, run_pnl_verified=False, durable_cache_restore_verified=False)
+    except BaseException as exc:
+        result.update(status='FAIL', failure=f'{type(exc).__name__}: {exc}')
+        traceback.print_exc()
+        raise
+    finally:
+        if handle is not None:
+            handle.stop()
+        if task is not None and not task.done():
+            try:
+                await asyncio.wait_for(task, 12)
+            except BaseException as teardown_error:
+                result['teardown_error'] = f'{type(teardown_error).__name__}: {teardown_error}'
+        if node is not None:
+            try:
+                node.dispose()
+            except BaseException as dispose_error:
+                result['dispose_error'] = f'{type(dispose_error).__name__}: {dispose_error}'
+        after = [identity(path) for path in sources]
+        result.update(finished_utc=now(), dependencies_unchanged=before == after)
+        write(directory, 'source-after.json', after)
+        if peer is not None:
+            write(directory, 'peer-evidence.json', {'requests': peer.requests, 'commands': peer.commands, 'frames': peer.frames, 'errors': peer.errors, 'actions': peer.actions, 'fills': peer.fills, 'position': str(peer.position), 'active_sessions_after_teardown': len(peer.sessions)})
+        write(directory, 'result.json', result)
+        assert before == after, 'Bounded acceptance dependencies changed during execution'
+    print(json.dumps({'status': result['status'], 'result': str(directory / 'result.json')}), flush=True)
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('directory')
+    parser.add_argument('wheel')
+    parser.add_argument('sha256')
+    parser.add_argument('provenance')
+    parser.add_argument('--native-commit', required=True)
+    parser.add_argument('--native-tree', required=True)
+    asyncio.run(run(parser.parse_args()))

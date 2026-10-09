@@ -1,0 +1,37 @@
+[
+  {
+    "path": "E:\\persarb\\_tmp\\entropy111-validation\\reviewer-normal-startup-readonly-v3.py",
+    "sha256": "7024e86245c4d9a9943d7ab2169a07eb83efec24bf3737b0e31c4c34348571df",
+    "bytes": 16781
+  },
+  {
+    "path": "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\entropy_execution_peer.py",
+    "sha256": "e288616d1ae21a79457f2a7ad49ce5859f9d22da585f31ecc95d08253eb7bc3a",
+    "bytes": 28922
+  },
+  {
+    "path": "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution.py",
+    "sha256": "6a3c41a37d65c72edc0fb12fc9a45386fe960e3fa39b172c4d331bb0c0734276",
+    "bytes": 59904
+  },
+  {
+    "path": "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution_config.py",
+    "sha256": "bcec8d1b94b1d6a86ba6a822122ca5f9a26809c568200071ca42f04e1aeb1ea4",
+    "bytes": 12145
+  },
+  {
+    "path": "E:\\persarb\\worktrees\\entropy-execution-app\\scripts\\verify_native_install.py",
+    "sha256": "8b177547f5be52a5f737d7d8c3e0ccfbdf392df326eb37badddecfdded56a9f9",
+    "bytes": 12357
+  },
+  {
+    "path": "E:\\persarb\\_tmp\\entropy111-wheel-nextest-20261009\\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+    "sha256": "5aacb4129526edfdabe77739781fa9518a6b21224fdc59d0fa8b5e99006801fb",
+    "bytes": 109453782
+  },
+  {
+    "path": "E:\\persarb\\_tmp\\entropy111-wheel-nextest-20261009\\native-provenance.json",
+    "sha256": "be65b9a7e9579528e1a8420b3547698f09009f34e6648e5b728f02005a53f64c",
+    "bytes": 8163
+  }
+]

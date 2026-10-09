@@ -1,0 +1,42 @@
+﻿{
+    "help_exit":  0,
+    "help_argv":  [
+                      "E:/persarb/worktrees/entropy-execution-app/.venv/Scripts/python.exe",
+                      "E:/persarb/_tmp/entropy111-validation/reviewer-normal-startup-readonly.py",
+                      "--help"
+                  ],
+    "note":  "Syntax and argparse preparation only; future source-bound wheel acceptance remains unverified",
+    "native_imported":  false,
+    "sources":  [
+                    {
+                        "path":  "E:\\persarb\\_tmp\\entropy111-validation\\reviewer-normal-startup-readonly.py",
+                        "sha256":  "f577c7b8e3f3bb1f7b940d43bb96068aaa2b219fc5adcfb721e39c349e896eea",
+                        "size":  14793
+                    },
+                    {
+                        "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\entropy_execution_peer.py",
+                        "sha256":  "e288616d1ae21a79457f2a7ad49ce5859f9d22da585f31ecc95d08253eb7bc3a",
+                        "size":  28922
+                    },
+                    {
+                        "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution.py",
+                        "sha256":  "6a3c41a37d65c72edc0fb12fc9a45386fe960e3fa39b172c4d331bb0c0734276",
+                        "size":  59904
+                    },
+                    {
+                        "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution_config.py",
+                        "sha256":  "bcec8d1b94b1d6a86ba6a822122ca5f9a26809c568200071ca42f04e1aeb1ea4",
+                        "size":  12145
+                    }
+                ],
+    "started_utc":  "2026-10-09T04:25:18.7310383Z",
+    "acceptance_executed":  false,
+    "compile_argv":  [
+                         "E:/persarb/worktrees/entropy-execution-app/.venv/Scripts/python.exe",
+                         "-m",
+                         "py_compile",
+                         "E:/persarb/_tmp/entropy111-validation/reviewer-normal-startup-readonly.py"
+                     ],
+    "compile_exit":  0,
+    "finished_utc":  "2026-10-09T04:25:19.0000930Z"
+}

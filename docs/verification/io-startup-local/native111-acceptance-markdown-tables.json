@@ -1,0 +1,14 @@
+{
+  "argv": [
+    ".venv/Scripts/python.exe",
+    "scripts/check-markdown-tables.py",
+    "docs/verification/io-startup-contract-20261009.md",
+    "docs/verification/io-startup-acceptance-20261009.md"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-io-startup",
+  "started_utc": "2026-10-09T05:00:47.567269+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T05:00:47.625774+00:00"
+}

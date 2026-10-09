@@ -1,0 +1,35 @@
+"""Verify captured evidence and its actual staged Git bytes."""
+
+import hashlib
+import json
+import subprocess
+from pathlib import Path
+
+NATIVE = Path("E:/persarb/worktrees/entropy-io-startup")
+ARCHIVE = NATIVE / "docs/verification/io-startup-local"
+
+
+def main():
+    manifest = json.loads((ARCHIVE / "manifest.json").read_text(encoding="utf-8"))
+    names = set()
+    for row in manifest["files"]:
+        path = ARCHIVE / row["path"]
+        assert path.resolve().is_relative_to(ARCHIVE.resolve())
+        assert path.is_file() and path.stat().st_size == row["bytes"]
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == row["sha256"]
+        relative = path.relative_to(NATIVE).as_posix()
+        indexed = subprocess.check_output(["git", "show", ":" + relative], cwd=NATIVE)
+        assert hashlib.sha256(indexed).hexdigest() == row["sha256"], relative
+        names.add(row["path"])
+    actual = {path.relative_to(ARCHIVE).as_posix() for path in ARCHIVE.rglob("*") if path.is_file()}
+    assert actual == names | {"manifest.json"}, sorted(actual - names - {"manifest.json"})
+    indexed_manifest = subprocess.check_output(
+        ["git", "show", ":docs/verification/io-startup-local/manifest.json"], cwd=NATIVE,
+    )
+    assert indexed_manifest == (ARCHIVE / "manifest.json").read_bytes()
+    print(json.dumps({"indexed_files_verified": len(names),
+                      "manifest_sha256": hashlib.sha256(indexed_manifest).hexdigest()}))
+
+
+if __name__ == "__main__":
+    main()

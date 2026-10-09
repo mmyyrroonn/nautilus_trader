@@ -1,0 +1,43 @@
+{
+    "captured_utc":  "2026-10-09T04:17:22.5516339Z",
+    "issue":  111,
+    "branch":  "feature/entropy-io-startup",
+    "parent_reported_base":  "9ff73d1205b4199f9b44686fdf785382388e67e2",
+    "source_frozen":  true,
+    "checks_run_by_implementation_agent":  [
+
+                                           ],
+    "forbidden_operations_not_run":  [
+                                         "Cargo",
+                                         "rustfmt",
+                                         "build",
+                                         "stubs",
+                                         "install",
+                                         "Git",
+                                         "GitHub",
+                                         "live endpoints",
+                                         "credential reads"
+                                     ],
+    "files":  [
+                  {
+                      "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+                      "bytes":  125767,
+                      "sha256":  "515f48ef4b63a996b0afb3a34a6a249e44052756a7385f0124030303dba2c88e"
+                  },
+                  {
+                      "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\adapters\\hyperliquid\\src\\execution.rs",
+                      "bytes":  240555,
+                      "sha256":  "a9f4b5affa0f3065769ebd63ccac4885c29947796b194dea42b6e9c35b92fa1d"
+                  },
+                  {
+                      "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\adapters\\hyperliquid\\src\\http\\client.rs",
+                      "bytes":  174885,
+                      "sha256":  "028af06905f49846751ad4f9e49a168417db7c03946de5723a1c6cebdeff6d6a"
+                  }
+              ],
+    "author_tests":  [
+                         "fresh_origin_survives_same_client_empty_persist_but_never_reopens_fresh",
+                         "nonempty_unparseable_journal_cannot_acquire_fresh_origin"
+                     ],
+    "report":  "E:/persarb/_tmp/entropy43-validation/io-startup-implementation.md"
+}

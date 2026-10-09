@@ -1,0 +1,80 @@
+"""Execute root-supplied native test artifacts without Cargo or Git."""
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+ROOT = Path('E:/persarb/_tmp/entropy111-validation')
+
+def utc():
+    return dt.datetime.now(dt.timezone.utc).isoformat()
+
+def identity(path):
+    path = Path(path).resolve(strict=True)
+    digest = hashlib.sha256()
+    with path.open('rb') as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+    return {'path': str(path), 'size': path.stat().st_size, 'sha256': digest.hexdigest()}
+
+def save(path, value):
+    path.write_text(json.dumps(value, indent=2) + '\n', encoding='utf-8')
+
+def main():
+    binary_path = ROOT / 'native111-final-native-binaries.json'
+    source_path = ROOT / 'clean-wheel-build-source.json'
+    manifest = json.loads(binary_path.read_text())
+    source = json.loads(source_path.read_text())
+    assert manifest['commit'] == source['native']['head'] == '6f46bad474f850b9279a3a8950f5b300570f179d'
+    assert manifest['tree'] == source['native']['tree'] == 'a42012494565dbe33e949e0d0e7db200305965b0'
+    assert source['native']['status'] == ''
+    files = source['native']['files'] + source['app']['files']
+    executables = manifest['executables']
+    input_paths = [Path(__file__), binary_path, source_path] + [Path(item['path']) for item in files + executables]
+    before = [identity(path) for path in input_paths]
+    expected = {item['path'].replace('\\', '/').lower(): item['sha256'] for item in files + executables}
+    assert all(item['sha256'] == expected.get(item['path'].replace('\\', '/').lower(), item['sha256']) for item in before)
+    unit, integration = (item['path'] for item in executables)
+    cases = [
+        ('startup', [integration, 'execution::startup::'], 55),
+        ('origin', [unit, 'execution_scope::tests::', 'fresh_origin'], 2),
+        ('private-ingress', [unit, 'private_ingress'], 6),
+        ('old-cold-fill', [integration, '--exact', 'execution::durable_actual_fill_does_not_claim_native_cache_restored_after_fresh_factory_restart'], 1),
+    ]
+    evidence = {'started_utc': utc(), 'argv': sys.argv, 'cwd': str(Path.cwd()), 'source_commit': manifest['commit'], 'source_tree': manifest['tree'], 'identity_authority': 'Root clean capture plus independent actual source and executable hashes; Git object identity not independently recomputed', 'before': before, 'runs': []}
+    save(ROOT / 'reviewer-direct-native-before.json', evidence)
+    try:
+        unique = set()
+        for label, argv, expected_count in cases:
+            started = utc()
+            completed = subprocess.run(argv, cwd='E:/persarb/worktrees/entropy-io-startup', stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8', errors='replace', timeout=60, check=False)
+            raw = ROOT / f'reviewer-direct-native-{label}.log'
+            raw.write_text(completed.stdout, encoding='utf-8')
+            names = re.findall(r'^test (.+?) \.\.\. ok$', completed.stdout, re.MULTILINE)
+            summary = re.search(r'test result: (\w+)\. (\d+) passed; (\d+) failed; (\d+) ignored;', completed.stdout)
+            result = {'label': label, 'started_utc': started, 'finished_utc': utc(), 'argv': argv, 'cwd': 'E:/persarb/worktrees/entropy-io-startup', 'exit_code': completed.returncode, 'expected_cases': expected_count, 'passing_cases': names, 'summary': summary.group(0) if summary else None, 'raw_log': identity(raw)}
+            evidence['runs'].append(result)
+            save(ROOT / 'reviewer-direct-native-result.json', evidence)
+            assert completed.returncode == 0, result
+            assert summary and int(summary[2]) == expected_count and int(summary[3]) == 0 and int(summary[4]) == 0, result
+            assert len(names) == expected_count and len(set(names)) == expected_count, result
+            assert not unique.intersection(names), 'Overlapping cases must not be summed'
+            unique.update(names)
+            print(json.dumps({'label': label, 'passed': len(names), 'exit': completed.returncode}), flush=True)
+        evidence['status'] = 'PASS'
+        evidence['unique_passing_cases'] = len(unique)
+    except BaseException as error:
+        evidence['status'] = 'FAIL'
+        evidence['failure'] = f'{type(error).__name__}: {error}'
+        raise
+    finally:
+        after = [identity(path) for path in input_paths]
+        evidence.update(finished_utc=utc(), after=after, source_and_executable_bytes_unchanged=before == after)
+        save(ROOT / 'reviewer-direct-native-result.json', evidence)
+        assert before == after, 'Bound source or binary bytes changed during independent execution'
+
+if __name__ == '__main__':
+    main()

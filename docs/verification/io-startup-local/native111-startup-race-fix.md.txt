@@ -1,0 +1,19 @@
+# Native #111 startup failure correction
+
+The parent retained actual failing run `native111-startup-boxed-report.log/.json`, UTC 2026-10-09T04:20:14 through 04:20:21, with 49 passing and 5 failing startup cases. This implementation agent did not run or repeat Cargo/tests.
+
+## Distinct causes
+
+1. `current_complete_account_mode_metadata_and_source_are_required::case_12` used `100.00000001` as unrepresentable native USDC Money. Actual `Currency::USDC()` in `crates/model/src/currencies.rs` has precision 8, so this eight-decimal amount is representable and the positive result was valid for that field. The test author owns correction to a native-precision-plus-one nonzero amount, with an explicit Money representability assertion before invoking normal startup. Production keeps its native Money roundtrip check; no arbitrary six-decimal venue assumption was introduced.
+2. `delayed_window_does_not_borrow_new_proof_or_reader_authority::case_1` delivered an actual private funds update from 100 to 99 while historicalOrders was delayed. `AccountScopeState::observe_ws` replaces private financial facts without increasing the general account revision when position sizes remain unchanged. That existing behavior supports conservative current funds admission, but account revision alone was insufficient for a stable startup read boundary. This was a real implementation gap, not a failed injection.
+3. Three old-origin journal tests read a still-exclusively-locked file on Windows and failed with OS error 33. The test author owns stop/drop-before-read portability corrections while preserving original assertions.
+
+## Production correction
+
+The parent added `PrivateIngressState::received_sequence()` in `websocket/client.rs`. It exposes the existing checked monotonic receipt counter, which is incremented by the real private WebSocket callback before classification/enqueue and bound to reader generation/epoch. It is a production boundary accessor, not a test hook.
+
+The owned startup implementation now captures that exact sequence together with reader generation/epoch, fully applied state, account/execution revisions, complete HTTP account snapshot, exact current private funds witness, selected metadata and complete native instrument snapshots. Before versus after the deliberate account refresh, sequence and private funds must remain unchanged. After the history request group, the final comparison requires exact sequence, private funds and serialized complete account snapshot equality in addition to the existing identity/revision/metadata checks.
+
+The final comparison and report construction still run while private ingress, account and execution guards are held, without an await. A completely applied newer same-reader frame cannot lend new authority to older history responses. The sequence also rejects same-millisecond frames or private financial changes preserving free/withdrawable that a funds-only comparison could miss. General account financial revision semantics, journal facts, reservations and non-io behavior were not changed.
+
+The original WS99 test and its rejection assertion remain intact. No retry, delay tuning, filtering or swallowed error was introduced. Exact byte hashes and capture UTC are in `native111-startup-race-fix-source.json`; the four-file identity includes the parent's new getter source. These records describe a frozen correction awaiting parent compilation and independent acceptance, not a passing test claim.

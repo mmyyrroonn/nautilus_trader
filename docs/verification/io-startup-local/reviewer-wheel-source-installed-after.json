@@ -1,0 +1,343 @@
+﻿{
+    "mismatch_count":  0,
+    "started_utc":  "2026-10-09T04:44:46.3823491Z",
+    "checks":  [
+                   {
+                       "expected":  "46b62a317d15d8e2d1701bf3d0e834bed4973860ebb685749800f148f42f2d5a",
+                       "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\Cargo.toml",
+                       "actual":  "46b62a317d15d8e2d1701bf3d0e834bed4973860ebb685749800f148f42f2d5a",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "a802008d4363de0a4e28dd3b14990d0d79f95ef8a89431c5936fc31e1215463a",
+                       "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\Cargo.lock",
+                       "actual":  "a802008d4363de0a4e28dd3b14990d0d79f95ef8a89431c5936fc31e1215463a",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "846051c913f6fca348bf09b8e0051e1f0d98915c35c73505ff2c6aafb43a0e1a",
+                       "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\AGENTS.md",
+                       "actual":  "846051c913f6fca348bf09b8e0051e1f0d98915c35c73505ff2c6aafb43a0e1a",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "57c967521e37dba26dc00e88d8d8e098ab58574c2ab506b5be629862602d304d",
+                       "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\AI_POLICY.md",
+                       "actual":  "57c967521e37dba26dc00e88d8d8e098ab58574c2ab506b5be629862602d304d",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "c0f05ebf611b058af9bc5f8684fc88aab8a5b7089dcc5bdc98b3d1dc345e189b",
+                       "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\CONTRIBUTING.md",
+                       "actual":  "c0f05ebf611b058af9bc5f8684fc88aab8a5b7089dcc5bdc98b3d1dc345e189b",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "cd807899f98d98338afbbb72d75300d26b5064c1d23cfa61a29c09e40829d492",
+                       "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\docs\\developer_guide\\coding_standards.md",
+                       "actual":  "cd807899f98d98338afbbb72d75300d26b5064c1d23cfa61a29c09e40829d492",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "bd3e1b4b4a1c25a2acaf1053d245c2ccd51e7e17a6068846be41caed4557ced1",
+                       "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+                       "actual":  "bd3e1b4b4a1c25a2acaf1053d245c2ccd51e7e17a6068846be41caed4557ced1",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "37ffc31a63db29877d4d6bd286a4f48e6edf63866be58eaf67f7e58c97cd78f0",
+                       "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\adapters\\hyperliquid\\src\\execution.rs",
+                       "actual":  "37ffc31a63db29877d4d6bd286a4f48e6edf63866be58eaf67f7e58c97cd78f0",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "028af06905f49846751ad4f9e49a168417db7c03946de5723a1c6cebdeff6d6a",
+                       "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\adapters\\hyperliquid\\src\\http\\client.rs",
+                       "actual":  "028af06905f49846751ad4f9e49a168417db7c03946de5723a1c6cebdeff6d6a",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "edfa6945224f6575baa4872668f6022df0911675e5ee442004f78813c485b69f",
+                       "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\adapters\\hyperliquid\\src\\account_scope.rs",
+                       "actual":  "edfa6945224f6575baa4872668f6022df0911675e5ee442004f78813c485b69f",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "15a9fdde9cf9df8e491a63dde625de7029ac85868f19a8dc775d56f2ea160b9a",
+                       "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\adapters\\hyperliquid\\src\\websocket\\client.rs",
+                       "actual":  "15a9fdde9cf9df8e491a63dde625de7029ac85868f19a8dc775d56f2ea160b9a",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "2b9ad3bc8dd6904683ccaa10b99396c3504923dc44c4dddf5590d6f792cbd9f3",
+                       "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\adapters\\hyperliquid\\tests\\entropy_account.rs",
+                       "actual":  "2b9ad3bc8dd6904683ccaa10b99396c3504923dc44c4dddf5590d6f792cbd9f3",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "61dbce3a6438ae76d30c9d3eca493e6be24e8de13e5e1bf57207084bcff13298",
+                       "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\execution.rs",
+                       "actual":  "61dbce3a6438ae76d30c9d3eca493e6be24e8de13e5e1bf57207084bcff13298",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "248e423dab7a105c93c99e0256f4cd060df6b63adf47bafa2bbbf4665da223a8",
+                       "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\startup.rs",
+                       "actual":  "248e423dab7a105c93c99e0256f4cd060df6b63adf47bafa2bbbf4665da223a8",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "b25b76f9efacd998d180b72172c85261292f999ebc196a160c2fc3c7f17ce044",
+                       "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\live\\src\\node\\mod.rs",
+                       "actual":  "b25b76f9efacd998d180b72172c85261292f999ebc196a160c2fc3c7f17ce044",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "6f700cb823d634f64efaa04efa8ed0b949c43bf27284090074e7eb5b65e998c9",
+                       "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\live\\src\\execution\\manager.rs",
+                       "actual":  "6f700cb823d634f64efaa04efa8ed0b949c43bf27284090074e7eb5b65e998c9",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "b358556a4b05afb510e797477fc2db76829679533aa3e69aa6cee8a0cec82c94",
+                       "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\model\\src\\reports\\mass_status.rs",
+                       "actual":  "b358556a4b05afb510e797477fc2db76829679533aa3e69aa6cee8a0cec82c94",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "59f80e4b8b337733705f23a9ebdecd48b6eb10893a16ce9382e115dc2e2491e7",
+                       "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\python\\generate_stubs.py",
+                       "actual":  "59f80e4b8b337733705f23a9ebdecd48b6eb10893a16ce9382e115dc2e2491e7",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "7f94cb247ddbc432779b03e97f87a75703df882fa39bee359413ae2e69d98b70",
+                       "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\scripts\\adapter-evidence\\build_native.py",
+                       "actual":  "7f94cb247ddbc432779b03e97f87a75703df882fa39bee359413ae2e69d98b70",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "2188e2ef55f0927e954eb9ce78d5430eaad84e61a9645e3c0178a0dfd05b3612",
+                       "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\python\\nautilus_trader\\adapters\\hyperliquid\\__init__.py",
+                       "actual":  "2188e2ef55f0927e954eb9ce78d5430eaad84e61a9645e3c0178a0dfd05b3612",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "016760dd07b4e7498769088ce6a7ac85100ba3fcaf07a0abd33e8e51614d7cfd",
+                       "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\python\\nautilus_trader\\adapters\\hyperliquid\\__init__.pyi",
+                       "actual":  "016760dd07b4e7498769088ce6a7ac85100ba3fcaf07a0abd33e8e51614d7cfd",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "e88c45fda78397824437eba1ba8bf3aa8c33760940d377b3f6e3e04f0477e530",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\CLAUDE.md",
+                       "actual":  "e88c45fda78397824437eba1ba8bf3aa8c33760940d377b3f6e3e04f0477e530",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "0db83eca19a5637b536145f71915c4d1d84c7b186eaf809e266b126eb9fde7e5",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\AGENTS.md",
+                       "actual":  "0db83eca19a5637b536145f71915c4d1d84c7b186eaf809e266b126eb9fde7e5",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "6a3c41a37d65c72edc0fb12fc9a45386fe960e3fa39b172c4d331bb0c0734276",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution.py",
+                       "actual":  "6a3c41a37d65c72edc0fb12fc9a45386fe960e3fa39b172c4d331bb0c0734276",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "bcec8d1b94b1d6a86ba6a822122ca5f9a26809c568200071ca42f04e1aeb1ea4",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution_config.py",
+                       "actual":  "bcec8d1b94b1d6a86ba6a822122ca5f9a26809c568200071ca42f04e1aeb1ea4",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "7e64abe5be8a11b97935586f453c91cd48fa3cbb4587c97aae8f83251916a958",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution_core.py",
+                       "actual":  "7e64abe5be8a11b97935586f453c91cd48fa3cbb4587c97aae8f83251916a958",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "a133936adb052546118bcca6c07e3deda40bd9f914159dfc60b02c6ab5d88f13",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution_report.py",
+                       "actual":  "a133936adb052546118bcca6c07e3deda40bd9f914159dfc60b02c6ab5d88f13",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "e288616d1ae21a79457f2a7ad49ce5859f9d22da585f31ecc95d08253eb7bc3a",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\entropy_execution_peer.py",
+                       "actual":  "e288616d1ae21a79457f2a7ad49ce5859f9d22da585f31ecc95d08253eb7bc3a",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "292057dc9fdb8598a4ded7695661b0e5fc108ded171a6a7b38d62f15de54567f",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\test_entropy_execution_native.py",
+                       "actual":  "292057dc9fdb8598a4ded7695661b0e5fc108ded171a6a7b38d62f15de54567f",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "c2d473e5f5dea8c8931ef4350471b2dfa4e1877fcf8168fb7f816f3351d48adf",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\scripts\\install_native.py",
+                       "actual":  "c2d473e5f5dea8c8931ef4350471b2dfa4e1877fcf8168fb7f816f3351d48adf",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "f65f0a614f6a57e1a34186ce924bb9e6fc1b887b92b9b2f630cb352319786511",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\_libnautilus.cp312-win_amd64.pyd",
+                       "actual":  "f65f0a614f6a57e1a34186ce924bb9e6fc1b887b92b9b2f630cb352319786511",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "b6f46e5fd703208605a3892ee1e09d7d361f68b3d58d0f435db30063765e2324",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\__init__.pyi",
+                       "actual":  "b6f46e5fd703208605a3892ee1e09d7d361f68b3d58d0f435db30063765e2324",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "e7734c547cd35be5cf5367575f34a105b5714ca11e29c4688078264d62c9bb93",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\architect_ax\\__init__.pyi",
+                       "actual":  "e7734c547cd35be5cf5367575f34a105b5714ca11e29c4688078264d62c9bb93",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "3dc13e6d8cfca549f5d0396effbd3c14069075666f9b3cbb544332161fb179bf",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\aster\\__init__.pyi",
+                       "actual":  "3dc13e6d8cfca549f5d0396effbd3c14069075666f9b3cbb544332161fb179bf",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "1498096ee67e641cdc27ecab2ffecacf771d4552c79ce24ffbc2bf50154abc11",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\backpack\\__init__.pyi",
+                       "actual":  "1498096ee67e641cdc27ecab2ffecacf771d4552c79ce24ffbc2bf50154abc11",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "531091ad2a75b53f42e7da0029f9551f5779d5d3dce6adc24eaa85f159221637",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\betfair\\__init__.pyi",
+                       "actual":  "531091ad2a75b53f42e7da0029f9551f5779d5d3dce6adc24eaa85f159221637",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "2e3e9c4253a8cac2414d456598f7ae682fe3e889871e83d241cb99f3b77c7368",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\binance\\__init__.pyi",
+                       "actual":  "2e3e9c4253a8cac2414d456598f7ae682fe3e889871e83d241cb99f3b77c7368",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "f44f4d8bd628688dce3405c62a3aa5f2572c3f0aad508807999b95aaa1e7d4db",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\bitmex\\__init__.pyi",
+                       "actual":  "f44f4d8bd628688dce3405c62a3aa5f2572c3f0aad508807999b95aaa1e7d4db",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "e7a9a7d88d3cf63fb924e64c065f39f7c83f27d2ca8635e9768412bfc30eb79f",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\blockchain\\__init__.pyi",
+                       "actual":  "e7a9a7d88d3cf63fb924e64c065f39f7c83f27d2ca8635e9768412bfc30eb79f",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "10c5adb89788504f3bb4bd457e911182087183fd512cba7df87d62e723b9f86c",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\bybit\\__init__.pyi",
+                       "actual":  "10c5adb89788504f3bb4bd457e911182087183fd512cba7df87d62e723b9f86c",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "563f757b9ce7e62e34ac7f0c9a674b4d7b02e3fcb3e9dcf3c2de8d4aa81263f6",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\coinbase\\__init__.pyi",
+                       "actual":  "563f757b9ce7e62e34ac7f0c9a674b4d7b02e3fcb3e9dcf3c2de8d4aa81263f6",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "e4996914215dd9b1e2a24f9fd7c45d2c085e03d77034d617870d5c5a823b6148",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\databento\\__init__.pyi",
+                       "actual":  "e4996914215dd9b1e2a24f9fd7c45d2c085e03d77034d617870d5c5a823b6148",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "052e4de1171ccb3f3e2d29d877d9f33fce52dd9f203880c52b7b399361d9e663",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\deribit\\__init__.pyi",
+                       "actual":  "052e4de1171ccb3f3e2d29d877d9f33fce52dd9f203880c52b7b399361d9e663",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "2ef1919968809db7627dbb1ffd7d9d1b98fe251d55dc311422fb3bccbe0e8bd7",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\derive\\__init__.pyi",
+                       "actual":  "2ef1919968809db7627dbb1ffd7d9d1b98fe251d55dc311422fb3bccbe0e8bd7",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "52888fdf72d97aadf496dc0e888e57e8eb1cec26ae9fa97815705002f51d5ceb",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\dydx\\__init__.pyi",
+                       "actual":  "52888fdf72d97aadf496dc0e888e57e8eb1cec26ae9fa97815705002f51d5ceb",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "016760dd07b4e7498769088ce6a7ac85100ba3fcaf07a0abd33e8e51614d7cfd",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\hyperliquid\\__init__.pyi",
+                       "actual":  "016760dd07b4e7498769088ce6a7ac85100ba3fcaf07a0abd33e8e51614d7cfd",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "edf80aacbf93888ad7f9b518f660e0b1f874263e16d5dcbe9c582d601cfec7f6",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\interactive_brokers\\__init__.pyi",
+                       "actual":  "edf80aacbf93888ad7f9b518f660e0b1f874263e16d5dcbe9c582d601cfec7f6",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "f7cdfd712d3188a0bc816e02ab7a31ca2ce5fececc4df7c81b41cfd791853737",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\kraken\\__init__.pyi",
+                       "actual":  "f7cdfd712d3188a0bc816e02ab7a31ca2ce5fececc4df7c81b41cfd791853737",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "425f451b5fac36359dbad8d0f11779f892ce6801897c1d4768fabe911f5a7b00",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\lighter\\__init__.pyi",
+                       "actual":  "425f451b5fac36359dbad8d0f11779f892ce6801897c1d4768fabe911f5a7b00",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "de8fda7bee851ec3faa58bcb81fb48a812c1ca391e5cb6b879b4bd97f7eac707",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\okx\\__init__.pyi",
+                       "actual":  "de8fda7bee851ec3faa58bcb81fb48a812c1ca391e5cb6b879b4bd97f7eac707",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "53323ad230833c03f4f6121061a256b059cc40b022d0b927d94903444b0bc187",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\ondo\\__init__.pyi",
+                       "actual":  "53323ad230833c03f4f6121061a256b059cc40b022d0b927d94903444b0bc187",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "62d7f08ea762f17435fe471bc4ba732a65da58599cc74df694fcacb80ac843a0",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\polymarket\\__init__.pyi",
+                       "actual":  "62d7f08ea762f17435fe471bc4ba732a65da58599cc74df694fcacb80ac843a0",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "bc89c0b96a747963eff82153ba7eae5cd5ab5ef4f37efdd8285bd0803252ddd6",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\sandbox\\__init__.pyi",
+                       "actual":  "bc89c0b96a747963eff82153ba7eae5cd5ab5ef4f37efdd8285bd0803252ddd6",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "dc5f6d93e6bc60a96e9041ef2cabf044efc73430dde84c9aae703d4fba00aba0",
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\tardis\\__init__.pyi",
+                       "actual":  "dc5f6d93e6bc60a96e9041ef2cabf044efc73430dde84c9aae703d4fba00aba0",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "5aacb4129526edfdabe77739781fa9518a6b21224fdc59d0fa8b5e99006801fb",
+                       "path":  "E:\\persarb\\_tmp\\entropy111-wheel-nextest-20261009\\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+                       "actual":  "5aacb4129526edfdabe77739781fa9518a6b21224fdc59d0fa8b5e99006801fb",
+                       "matches":  true
+                   },
+                   {
+                       "expected":  "be65b9a7e9579528e1a8420b3547698f09009f34e6648e5b728f02005a53f64c",
+                       "path":  "E:\\persarb\\_tmp\\entropy111-wheel-nextest-20261009\\native-provenance.json",
+                       "actual":  "be65b9a7e9579528e1a8420b3547698f09009f34e6648e5b728f02005a53f64c",
+                       "matches":  true
+                   }
+               ],
+    "finished_utc":  "2026-10-09T04:44:46.9255579Z"
+}

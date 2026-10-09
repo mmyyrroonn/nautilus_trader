@@ -1,0 +1,35 @@
+
+running 30 tests
+test execution_scope::tests::entry_budget_uses_minimum_http_and_latest_private_funds::case_1 ... ok
+test execution_scope::tests::entry_budget_uses_minimum_http_and_latest_private_funds::case_2 ... ok
+test execution_scope::tests::entry_budget_uses_minimum_http_and_latest_private_funds::case_3 ... ok
+test execution_scope::tests::entry_budget_uses_minimum_http_and_latest_private_funds::case_4 ... ok
+test execution_scope::tests::wire_precision_respects_quantity_and_integer_price_exception::case_5 ... ok
+test execution_scope::tests::raw_trade_identity_detects_financial_and_owned_oid_conflicts::case_1 ... ok
+test execution_scope::tests::explicit_policy_rejects_unknown_nonexact_or_unbounded_fields::case_1 ... ok
+test execution_scope::tests::explicit_policy_rejects_unknown_nonexact_or_unbounded_fields::case_5 ... ok
+test execution_scope::tests::explicit_policy_rejects_unknown_nonexact_or_unbounded_fields::case_4 ... ok
+test execution_scope::tests::missing_real_trade_facts_are_never_manufactured::case_2 ... ok
+test execution_scope::tests::missing_real_trade_facts_are_never_manufactured::case_1 ... ok
+test execution_scope::tests::missing_real_trade_facts_are_never_manufactured::case_3 ... ok
+test execution_scope::tests::native_instrument_identity_never_uses_ticker_equivalence::case_1 ... ok
+test execution_scope::tests::native_instrument_identity_never_uses_ticker_equivalence::case_2 ... ok
+test execution_scope::tests::native_instrument_identity_never_uses_ticker_equivalence::case_3 ... ok
+test execution_scope::tests::raw_financial_facts_preserve_rebate_and_do_not_add_builder_fee_twice ... ok
+test execution_scope::tests::explicit_policy_rejects_unknown_nonexact_or_unbounded_fields::case_2 ... ok
+test execution_scope::tests::raw_trade_identity_detects_financial_and_owned_oid_conflicts::case_2 ... ok
+test execution_scope::tests::raw_trade_identity_detects_financial_and_owned_oid_conflicts::case_3 ... ok
+test execution_scope::tests::raw_trade_identity_detects_financial_and_owned_oid_conflicts::case_4 ... ok
+test execution_scope::tests::wire_precision_respects_quantity_and_integer_price_exception::case_4 ... ok
+test execution_scope::tests::wire_precision_respects_quantity_and_integer_price_exception::case_2 ... ok
+test execution_scope::tests::wire_precision_respects_quantity_and_integer_price_exception::case_1 ... ok
+test execution_scope::tests::explicit_policy_rejects_unknown_nonexact_or_unbounded_fields::case_3 ... ok
+test execution_scope::tests::wire_precision_respects_quantity_and_integer_price_exception::case_3 ... ok
+test execution_scope::tests::explicit_policy_rejects_unknown_nonexact_or_unbounded_fields::case_6 ... ok
+test execution_scope::tests::running_journal_byte_bound_closes_before_an_unbounded_append ... ok
+test execution_scope::tests::durable_journal_rejects_changed_tif_and_forged_reservation ... ok
+test execution_scope::tests::nonempty_unparseable_journal_cannot_acquire_fresh_origin ... ok
+test execution_scope::tests::fresh_origin_survives_same_client_empty_persist_but_never_reopens_fresh ... ok
+
+test result: ok. 30 passed; 0 failed; 0 ignored; 0 measured; 837 filtered out; finished in 0.01s
+
