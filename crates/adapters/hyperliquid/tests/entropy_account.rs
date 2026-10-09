@@ -107,6 +107,7 @@ struct PeerData {
     requests: Vec<Value>,
     subscriptions: Vec<Value>,
     execution: Option<execution::PeerExecution>,
+    meta_override: Option<Value>,
 }
 
 #[derive(Clone)]
@@ -144,6 +145,7 @@ impl PeerState {
                 requests: Vec::new(),
                 subscriptions: Vec::new(),
                 execution: None,
+                meta_override: None,
             })),
             instructions,
             connections: Arc::new(AtomicUsize::new(0)),
@@ -154,6 +156,9 @@ impl PeerState {
 
     fn meta(&self) -> Value {
         let data = self.data.lock();
+        if let Some(meta) = &data.meta_override {
+            return meta.clone();
+        }
         json!({"universe":[{"name":"io:SNDK", "szDecimals":4, "maxLeverage":10,
             "onlyIsolated":true, "marginMode":"strictIsolated"}], "collateralToken":data.collateral})
     }
@@ -248,6 +253,16 @@ async fn info(State(state): State<PeerState>, Json(request): Json<Value>) -> Res
         }
     }
     if let Some((delay_ms, raw_body)) = execution::economic_info_response(&state, &request) {
+        if delay_ms > 0 {
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+        }
+        return (
+            [(axum::http::header::CONTENT_TYPE, "application/json")],
+            raw_body,
+        )
+            .into_response();
+    }
+    if let Some((delay_ms, raw_body)) = execution::startup_info_response(&state, &request) {
         if delay_ms > 0 {
             tokio::time::sleep(Duration::from_millis(delay_ms)).await;
         }
