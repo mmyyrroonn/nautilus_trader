@@ -153,6 +153,8 @@ pub(crate) struct AccountScopeState {
     startup_policy: Option<Value>,
     startup_metadata_context: Option<Value>,
     startup_source: Option<FullAccountSourceSeal>,
+    prerequisite_account_id: Option<String>,
+    prerequisite_source: Option<Arc<WarmPrerequisiteSourceSeal>>,
 }
 
 /// Original complete HTTP transaction provenance, never reconstructed from trust.
@@ -173,7 +175,7 @@ pub(crate) struct FullAccountSourceSeal {
     pub(crate) metadata: Value,
     spot_metadata: Value,
     pub(crate) metadata_context: Value,
-    sources: IoObservationSourceGroup,
+    sources: Arc<IoObservationSourceGroup>,
     account_facts: Value,
 }
 
@@ -183,6 +185,41 @@ impl FullAccountSourceSeal {
             && fresh(self.verification_finished_ms, now, maximum_age)
             && fresh(self.http_source_time_ms, now, maximum_age)
             && fresh(self.http_received_time_ms, now, maximum_age)
+    }
+}
+
+/// Original nonfinancial sources, not a post-fill funds or continuous mode proof.
+#[derive(Clone, Debug, Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct WarmPrerequisiteSourceSeal {
+    pub(crate) schema_version: u32,
+    pub(crate) account_id: String,
+    pub(crate) address: String,
+    pub(crate) policy: Value,
+    pub(crate) generation: u64,
+    pub(crate) epoch: u64,
+    pub(crate) received_sequence: u64,
+    pub(crate) hard_revision: u64,
+    pub(crate) verification_started_ms: u64,
+    pub(crate) verification_finished_ms: u64,
+    pub(crate) effective_expires_ms: u64,
+    pub(crate) maximum_age_ms: u64,
+    pub(crate) http_source_time_ms: u64,
+    pub(crate) http_received_time_ms: u64,
+    pub(crate) metadata: Value,
+    pub(crate) spot_metadata: Value,
+    pub(crate) native_http: BTreeMap<String, Value>,
+    pub(crate) metadata_context: Value,
+    pub(crate) account_source_start: usize,
+    pub(crate) sources: Arc<IoObservationSourceGroup>,
+}
+
+impl WarmPrerequisiteSourceSeal {
+    pub(crate) fn is_fresh(&self, now: u64, maximum_age: u64) -> bool {
+        self.maximum_age_ms == maximum_age
+            && fresh(self.verification_started_ms, now, maximum_age)
+            && fresh(self.verification_finished_ms, now, maximum_age)
+            && now <= self.effective_expires_ms
     }
 }
 
@@ -234,23 +271,59 @@ impl AccountScopeState {
     pub(crate) fn set_startup_metadata_context(&mut self, context: Value) {
         if self.startup_policy.is_some() {
             self.startup_source = None;
+            self.prerequisite_source = None;
             self.startup_metadata_context = Some(context);
         }
     }
 
-    pub(crate) fn enable_startup_source(&mut self, policy: Value) -> anyhow::Result<()> {
+    pub(crate) fn enable_startup_source(
+        &mut self,
+        policy: Value,
+        account_id: String,
+    ) -> anyhow::Result<()> {
         anyhow::ensure!(
             self.startup_policy
                 .as_ref()
                 .is_none_or(|current| current == &policy),
             "io startup source policy is immutable"
         );
+        anyhow::ensure!(
+            self.prerequisite_account_id
+                .as_ref()
+                .is_none_or(|current| current == &account_id),
+            "io prerequisite account binding is immutable"
+        );
+        self.prerequisite_account_id = Some(account_id);
         self.startup_policy = Some(policy);
         Ok(())
     }
 
     pub(crate) fn startup_source(&self) -> Option<&FullAccountSourceSeal> {
         self.startup_source.as_ref()
+    }
+
+    pub(crate) fn prerequisite_source(&self) -> Option<&Arc<WarmPrerequisiteSourceSeal>> {
+        self.prerequisite_source.as_ref()
+    }
+
+    pub(crate) fn eligible_prerequisite_source(
+        &self,
+        generation: u64,
+        epoch: u64,
+        account_id: &str,
+        policy: &Value,
+        now: u64,
+    ) -> Option<Arc<WarmPrerequisiteSourceSeal>> {
+        let source = self.prerequisite_source.as_ref()?;
+        (source.generation == generation
+            && source.epoch == epoch
+            && source.account_id == account_id
+            && source.address == self.address
+            && source.hard_revision == self.hard_revision
+            && &source.policy == policy
+            && self.startup_metadata_context.as_ref() == Some(&source.metadata_context)
+            && source.is_fresh(now, self.max_age_ms))
+        .then(|| source.clone())
     }
 
     pub(crate) fn private_source_facts(&self) -> anyhow::Result<Value> {
@@ -333,10 +406,13 @@ impl AccountScopeState {
             startup_policy: None,
             startup_metadata_context: None,
             startup_source: None,
+            prerequisite_account_id: None,
+            prerequisite_source: None,
         }
     }
 
     pub(crate) fn invalidate(&mut self, reason: &str, reset_stream: bool) {
+        self.prerequisite_source = None;
         self.hard_revision = self.hard_revision.wrapping_add(1);
         self.attribution_generation = None;
         self.attribution_universe.clear();
@@ -674,7 +750,7 @@ pub(crate) async fn refresh_account_scope(
                 verification_started_ms: started, verification_finished_ms: finished,
                 http_source_time_ms: source, http_received_time_ms: received,
                 private_facts: private_facts.clone(), native_http: native_http.clone(),
-                metadata: meta, spot_metadata: spot, sources: sources.lock().clone(),
+                metadata: meta, spot_metadata: spot, sources: Arc::new(sources.lock().clone()),
                 metadata_context: metadata_context.clone(),
                 account_facts: serde_json::to_value(&snapshot)?,
             };
@@ -687,7 +763,31 @@ pub(crate) async fn refresh_account_scope(
                 && guard.current_source_is_fresh(boundary_time, ws.is_active(), epoch)
             {
                 candidate.verification_finished_ms = boundary_time;
-                guard.startup_source = Some(candidate);
+                // Creation uses this actual postbinding full transaction, never late context
+                guard.prerequisite_source = guard.prerequisite_account_id.as_ref().and_then(|account_id| {
+                    let effective_expires_ms = started.checked_add(max_age)?;
+                    Some(Arc::new(WarmPrerequisiteSourceSeal {
+                        schema_version: 1, account_id: account_id.clone(), address: guard.address.clone(),
+                        policy: candidate.policy.clone(), generation, epoch, received_sequence,
+                        hard_revision, verification_started_ms: started,
+                        verification_finished_ms: candidate.verification_finished_ms,
+                        effective_expires_ms, maximum_age_ms: max_age,
+                        http_source_time_ms: source, http_received_time_ms: received,
+                        metadata: candidate.metadata.clone(), spot_metadata: candidate.spot_metadata.clone(),
+                        native_http: candidate.native_http.clone(), metadata_context: candidate.metadata_context.clone(),
+                        account_source_start: 0, sources: candidate.sources.clone(),
+                    }))
+                });
+                // Candidate copying must not turn the preceding time sample into a gap
+                let completion_time = now_ms();
+                let qualified_after_copy = candidate.is_fresh(completion_time, max_age)
+                    && guard.current_source_is_fresh(completion_time, ws.is_active(), epoch);
+                if !qualified_after_copy || !guard.prerequisite_source.as_ref().is_some_and(|source| source.is_fresh(completion_time, max_age)) {
+                    guard.prerequisite_source = None;
+                }
+                if qualified_after_copy {
+                    guard.startup_source = Some(candidate);
+                }
             }
         }
         if policy.is_some() {
@@ -808,12 +908,16 @@ pub(crate) struct AccountScopeObservation {
     attribution_universe: BTreeSet<String>,
     balance: AccountBalance,
     info: Params,
+    pub(crate) financial_started_ms: u64,
+    pub(crate) verification_finished_ms: u64,
+    pub(crate) account_source_start: usize,
+    pub(crate) full_prerequisites_received: bool,
 }
 
 #[derive(Clone, Debug, Default, Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct IoObservationSourceGroup {
-    pub(crate) original_sources: Vec<IoObservationSource>,
+    pub(crate) original_sources: Vec<Arc<IoObservationSource>>,
     pub(crate) unavailable_sources: Vec<IoUnavailableObservationSource>,
 }
 
@@ -890,11 +994,13 @@ pub(crate) async fn bounded_scope_observation(
                 });
             anyhow::bail!("io observation source group exceeds finite raw bound");
         }
-        retained.original_sources.push(IoObservationSource {
-            request_json,
-            received_ms: body.received_ms,
-            raw_text: body.raw_text.clone(),
-        });
+        retained
+            .original_sources
+            .push(Arc::new(IoObservationSource {
+                request_json,
+                received_ms: body.received_ms,
+                raw_text: body.raw_text.clone(),
+            }));
     }
     // The guard now owns the actual body even if decoding or the normal item
     // quota wait fails, times out, or is canceled.
@@ -909,19 +1015,34 @@ pub(crate) async fn observe_account_scope(
     epoch: u64,
     max_age: u64,
     sources: &IoObservationSources,
+    prerequisite: Option<&WarmPrerequisiteSourceSeal>,
 ) -> anyhow::Result<AccountScopeObservation> {
-    let started = now_ms();
+    let financial_started = now_ms();
+    let started = prerequisite.map_or(financial_started, |source| source.verification_started_ms);
+    let account_source_start = sources.lock().original_sources.len();
     let address = address.to_string();
-    let role = bounded_scope_observation(
-        http,
-        &InfoRequest::account_mode(&address, HyperliquidInfoRequestType::UserRole),
-        sources,
-    )
-    .await?;
-    validate_role(&role)?;
-    observe_account_mode(http, &address, sources).await?;
-    let meta = bounded_scope_observation(http, &InfoRequest::meta_for_dex("io"), sources).await?;
-    let spot = bounded_scope_observation(http, &InfoRequest::spot_meta(), sources).await?;
+    let (meta, spot) = if let Some(source) = prerequisite {
+        anyhow::ensure!(
+            source.address == address
+                && source.epoch == epoch
+                && source.is_fresh(now_ms(), max_age),
+            "io original prerequisites expired or differ in identity"
+        );
+        (source.metadata.clone(), source.spot_metadata.clone())
+    } else {
+        let role = bounded_scope_observation(
+            http,
+            &InfoRequest::account_mode(&address, HyperliquidInfoRequestType::UserRole),
+            sources,
+        )
+        .await?;
+        validate_role(&role)?;
+        observe_account_mode(http, &address, sources).await?;
+        let meta =
+            bounded_scope_observation(http, &InfoRequest::meta_for_dex("io"), sources).await?;
+        let spot = bounded_scope_observation(http, &InfoRequest::spot_meta(), sources).await?;
+        (meta, spot)
+    };
     let universe = validate_collateral(&meta, &spot)?;
     let attribution_universe = active_attribution_universe(&meta, &universe);
     let raw = bounded_scope_observation(
@@ -930,7 +1051,12 @@ pub(crate) async fn observe_account_scope(
         sources,
     )
     .await?;
-    let received = now_ms();
+    let received = sources
+        .lock()
+        .original_sources
+        .last()
+        .context("Missing original financial HTTP receipt")?
+        .received_ms;
     let source = raw
         .get("time")
         .and_then(Value::as_u64)
@@ -938,13 +1064,15 @@ pub(crate) async fn observe_account_scope(
     let facts = parse_clearinghouse(&raw, Some(source), &universe)?;
     // The API has no atomic mode/state snapshot; repeat both mode facts to
     // catch an observed transition, while retaining the bounded limitation.
-    observe_account_mode(http, &address, sources).await?;
+    if prerequisite.is_none() {
+        observe_account_mode(http, &address, sources).await?;
+    }
     let finished = now_ms();
     anyhow::ensure!(
         fresh(source, finished, max_age) && fresh(started, finished, max_age),
         "io account proof source or verification interval is stale"
     );
-    let snapshot = HyperliquidAccountScopeSnapshot {
+    let mut snapshot = HyperliquidAccountScopeSnapshot {
             dex: "io".to_string(), address: address.clone(), account_mode: "standard_disabled_inferred".to_string(),
             collateral_token_id: USDC_TOKEN_ID.to_string(), balance: facts.balance, equity: facts.equity,
             withdrawable: facts.withdrawable, used: facts.used, free: facts.free,
@@ -954,6 +1082,14 @@ pub(crate) async fn observe_account_scope(
             trusted: false, flat: None, diagnostic: "Private stream proof is required".to_string(),
             provenance: "Explicit io REST request scope; marginSummary includes isolated positions; disabled-to-standard is an SDK-supported inference; mode/role/collateral requests are not atomic; WS source time is not synthesized".to_string(),
         };
+    if let Some(original) = prerequisite {
+        snapshot.provenance = format!(
+            "Explicit current fullio financial HTTP with original bounded non-atomic role/mode/collateral sources; prerequisite_start_ms={}, prerequisite_finished_ms={}, prerequisite_expires_ms={}, financial_start_ms={financial_started}; no continuous remote prerequisite authority",
+            original.verification_started_ms,
+            original.verification_finished_ms,
+            original.effective_expires_ms
+        );
+    }
     // Never clamp free or raise equity to fit withdrawable, which is a
     // distinct venue fact rather than the account-balance free component.
     let balance = scoped_balance(facts.equity, facts.used)?;
@@ -986,6 +1122,30 @@ pub(crate) async fn observe_account_scope(
         Value::String("unknown; isolated total is not supplied".to_string()),
     );
     info.insert("money_precision_policy".to_string(), Value::String("USDC Money precision for equity and used; free derived by checked fixed-point subtraction; exact raw facts retained in scope snapshot".to_string()));
+    info.insert(
+        "financial_verification_started_ms".to_string(),
+        Value::from(financial_started),
+    );
+    info.insert("financial_http_source_ms".to_string(), Value::from(source));
+    info.insert(
+        "financial_http_received_ms".to_string(),
+        Value::from(received),
+    );
+    if let Some(original) = prerequisite {
+        info.insert(
+            "prerequisite_verification_started_ms".to_string(),
+            Value::from(original.verification_started_ms),
+        );
+        info.insert(
+            "prerequisite_verification_finished_ms".to_string(),
+            Value::from(original.verification_finished_ms),
+        );
+        info.insert(
+            "prerequisite_expires_ms".to_string(),
+            Value::from(original.effective_expires_ms),
+        );
+        info.insert("prerequisite_authority".to_string(), Value::String("Original bounded non-atomic observation; continuous role/mode/collateral authority Unknown".into()));
+    }
 
     for amount in [facts.equity, facts.used, facts.free] {
         anyhow::ensure!(
@@ -1003,6 +1163,10 @@ pub(crate) async fn observe_account_scope(
         attribution_universe,
         balance,
         info,
+        financial_started_ms: financial_started,
+        verification_finished_ms: finished,
+        account_source_start,
+        full_prerequisites_received: prerequisite.is_none(),
     })
 }
 
@@ -1035,36 +1199,152 @@ async fn observe_account_mode(
 }
 
 impl AccountScopeState {
+    pub(crate) fn prepare_warm_prerequisite(
+        &self,
+        observation: &AccountScopeObservation,
+        http: &HyperliquidHttpClient,
+        generation: u64,
+        epoch: u64,
+        received_sequence: u64,
+        sources: Arc<IoObservationSourceGroup>,
+    ) -> anyhow::Result<Option<Arc<WarmPrerequisiteSourceSeal>>> {
+        if !observation.full_prerequisites_received {
+            return Ok(None);
+        }
+        let Some(policy) = &self.startup_policy else {
+            return Ok(None);
+        };
+        let Some(context) = &self.startup_metadata_context else {
+            return Ok(None);
+        };
+        let Some(account_id) = &self.prerequisite_account_id else {
+            return Ok(None);
+        };
+        let Some(native_http) = startup_native_http(http, policy) else {
+            return Ok(None);
+        };
+        if !startup_metadata_compatible(http, context, &observation.metadata, &native_http)
+            || !context.get("origin").is_some_and(|origin| {
+                origin.get("generation").and_then(Value::as_u64) == Some(generation)
+                    && origin.get("epoch").and_then(Value::as_u64) == Some(epoch)
+                    && origin.get("hard_revision").and_then(Value::as_u64)
+                        == Some(self.hard_revision)
+                    && origin
+                        .get("native_instruments")
+                        .is_some_and(Value::is_object)
+            })
+        {
+            return Ok(None);
+        }
+        let start = observation.account_source_start;
+        let rows = sources
+            .original_sources
+            .get(start..start.saturating_add(8))
+            .context("Missing complete original warm account source group")?;
+        let address = &self.address;
+        let mode =
+            || InfoRequest::account_mode(address, HyperliquidInfoRequestType::UserAbstraction);
+        let legacy =
+            || InfoRequest::account_mode(address, HyperliquidInfoRequestType::UserDexAbstraction);
+        let expected = [
+            InfoRequest::account_mode(address, HyperliquidInfoRequestType::UserRole),
+            mode(),
+            legacy(),
+            InfoRequest::meta_for_dex("io"),
+            InfoRequest::spot_meta(),
+            InfoRequest::clearinghouse_state_for_dex(address, Some("io")),
+            mode(),
+            legacy(),
+        ];
+        anyhow::ensure!(
+            sources.unavailable_sources.is_empty()
+                && observation.financial_started_ms
+                    == observation.snapshot.http_verification_started_time_ms,
+            "Incomplete or composed sources cannot create original prerequisites"
+        );
+        for (actual, request) in rows.iter().zip(expected.iter()) {
+            anyhow::ensure!(
+                actual.request_json == serde_json::to_string(request)?
+                    && actual.received_ms >= observation.financial_started_ms
+                    && actual.received_ms <= observation.verification_finished_ms,
+                "Original prerequisite request/receipt group differs from normal complete collection"
+            );
+        }
+        let candidate = Arc::new(WarmPrerequisiteSourceSeal {
+            schema_version: 1,
+            account_id: account_id.clone(),
+            address: address.clone(),
+            policy: policy.clone(),
+            generation,
+            epoch,
+            received_sequence,
+            hard_revision: self.hard_revision,
+            verification_started_ms: observation.financial_started_ms,
+            verification_finished_ms: observation.verification_finished_ms,
+            effective_expires_ms: observation
+                .financial_started_ms
+                .checked_add(self.max_age_ms)
+                .context("Original prerequisite expiration overflow")?,
+            maximum_age_ms: self.max_age_ms,
+            http_source_time_ms: observation.snapshot.http_source_time_ms,
+            http_received_time_ms: observation.snapshot.http_received_time_ms,
+            metadata: observation.metadata.clone(),
+            spot_metadata: observation.spot_metadata.clone(),
+            native_http,
+            metadata_context: context.clone(),
+            account_source_start: start,
+            sources,
+        });
+        Ok(candidate
+            .is_fresh(now_ms(), self.max_age_ms)
+            .then_some(candidate))
+    }
+
+    pub(crate) fn install_warm_prerequisite(
+        &mut self,
+        source: Option<Arc<WarmPrerequisiteSourceSeal>>,
+    ) {
+        self.prerequisite_source = source;
+    }
+
+    fn observation_sources_are_fresh(
+        &self,
+        observation: &AccountScopeObservation,
+        epoch: u64,
+        now: u64,
+    ) -> bool {
+        self.stream_epoch == Some(epoch)
+            && self.acknowledgements == ALL_PRIVATE_ACKS
+            && fresh(
+                observation.snapshot.http_source_time_ms,
+                now,
+                self.max_age_ms,
+            )
+            && fresh(
+                observation.snapshot.http_received_time_ms,
+                now,
+                self.max_age_ms,
+            )
+            && fresh(
+                observation.snapshot.http_verification_started_time_ms,
+                now,
+                self.max_age_ms,
+            )
+            && self
+                .ws_received_time_ms
+                .is_some_and(|time| fresh(time, now, self.max_age_ms))
+            && self
+                .ws_source_time_ms
+                .is_none_or(|time| fresh(time, now, self.max_age_ms))
+    }
+
     pub(crate) fn validate_observation(
         &self,
         observation: &AccountScopeObservation,
         epoch: u64,
     ) -> anyhow::Result<()> {
-        let now = now_ms();
         anyhow::ensure!(
-            self.stream_epoch == Some(epoch)
-                && self.acknowledgements == ALL_PRIVATE_ACKS
-                && fresh(
-                    observation.snapshot.http_source_time_ms,
-                    now,
-                    self.max_age_ms
-                )
-                && fresh(
-                    observation.snapshot.http_received_time_ms,
-                    now,
-                    self.max_age_ms
-                )
-                && fresh(
-                    observation.snapshot.http_verification_started_time_ms,
-                    now,
-                    self.max_age_ms
-                )
-                && self
-                    .ws_received_time_ms
-                    .is_some_and(|time| fresh(time, now, self.max_age_ms))
-                && self
-                    .ws_source_time_ms
-                    .is_none_or(|time| fresh(time, now, self.max_age_ms)),
+            self.observation_sources_are_fresh(observation, epoch, now_ms()),
             "io account observation/private source expired or incomplete"
         );
         let private = self
@@ -1085,6 +1365,11 @@ impl AccountScopeState {
                 && private.cross_maintenance == observation.cross_maintenance,
             "io HTTP/private position or financial facts conflict"
         );
+        // Position comparisons may be large; sample source ages after them.
+        anyhow::ensure!(
+            self.observation_sources_are_fresh(observation, epoch, now_ms()),
+            "io account observation/private source expired during financial validation"
+        );
         Ok(())
     }
 
@@ -1095,6 +1380,8 @@ impl AccountScopeState {
         generation: u64,
         epoch: u64,
         emitter: &ExecutionEventEmitter,
+        deadline: tokio::time::Instant,
+        metadata_expires_ms: u64,
     ) -> anyhow::Result<()> {
         self.validate_observation(&observation, epoch)?;
         let source = observation
@@ -1102,6 +1389,14 @@ impl AccountScopeState {
             .http_source_time_ms
             .checked_mul(1_000_000)
             .context("io account source timestamp overflow")?;
+        // All fallible validation precedes the final publication clock fence.
+        let publication_time_ms = now_ms();
+        anyhow::ensure!(
+            tokio::time::Instant::now() < deadline
+                && publication_time_ms <= metadata_expires_ms
+                && self.observation_sources_are_fresh(&observation, epoch, publication_time_ms),
+            "io warm original deadline, metadata or account/private source expired before publication"
+        );
         self.universe = observation.universe;
         self.facts = Some(observation.snapshot);
         self.attribution_generation = Some(generation);

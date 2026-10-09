@@ -44,7 +44,8 @@ use serde_json::{Value, json};
 
 use crate::{
     account_scope::{
-        AccountScopeDiagnostics, HyperliquidAccountScopeSnapshot, PrivateFundsWitness, now_ms,
+        AccountScopeDiagnostics, HyperliquidAccountScopeSnapshot, PrivateFundsWitness,
+        WarmPrerequisiteSourceSeal, now_ms,
     },
     http::{
         client::HyperliquidHttpClient,
@@ -325,12 +326,16 @@ struct JournalFacts {
 enum IoRecoverySourceDebt {
     UnknownSources {
         identity: IoWarmSourceIdentity,
-        original_sources: Vec<crate::account_scope::IoObservationSource>,
+        original_sources: Vec<Arc<crate::account_scope::IoObservationSource>>,
         unavailable_sources: Vec<crate::account_scope::IoUnavailableObservationSource>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reused_prerequisite_source: Option<Arc<WarmPrerequisiteSourceSeal>>,
     },
     RetentionFailed {
         identity: IoWarmSourceIdentity,
         diagnostic: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reused_prerequisite_origin: Option<Value>,
     },
 }
 
@@ -386,6 +391,7 @@ pub(crate) struct IoExecutionState {
     query_token: Option<u64>,
     query_completed: u64,
     last_query_warm: bool,
+    last_query_reused_prerequisite: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -476,11 +482,13 @@ pub(crate) struct IoWarmQuery {
     hard_revision: u64,
     private_funds: Value,
     metadata: BTreeMap<String, IoInstrumentProof>,
+    metadata_expires_ms: u64,
     native_instruments: BTreeMap<String, (Value, Value)>,
     native_owned: Value,
     facts: JournalFacts,
     deadline: tokio::time::Instant,
     maximum_age_ms: u64,
+    prerequisite_source: Option<Arc<WarmPrerequisiteSourceSeal>>,
 }
 
 pub(crate) struct IoWarmObservation {
@@ -498,14 +506,18 @@ struct IoWarmSourcesGuard {
     identity: IoWarmSourceIdentity,
     sources: crate::account_scope::IoObservationSources,
     completed: bool,
+    prerequisite_source: Option<Arc<WarmPrerequisiteSourceSeal>>,
 }
 
 impl Drop for IoWarmSourcesGuard {
     fn drop(&mut self) {
         if !self.completed {
             let sources = self.sources.lock().clone();
-            self.runtime
-                .abandon_warm_sources(self.identity.clone(), sources);
+            self.runtime.abandon_warm_sources(
+                self.identity.clone(),
+                sources,
+                self.prerequisite_source.as_ref(),
+            );
         }
     }
 }
@@ -593,6 +605,9 @@ impl IoExecutionRuntime {
         http: &HyperliquidHttpClient,
         core: &ExecutionClientCore,
     ) -> anyhow::Result<Option<IoWarmQuery>> {
+        // All added copies, serialization and owner-lock waits share this deadline
+        let deadline = tokio::time::Instant::now()
+            + std::time::Duration::from_millis(self.policy.recovery_timeout_ms);
         let ingress = self.account.ws.private_ingress_guard();
         let mut account = self.account.state.lock();
         let mut state = self.state.lock();
@@ -638,10 +653,52 @@ impl IoExecutionRuntime {
             "io warm native cache facts differ from the normal metadata witness"
         );
         let native_owned = warm_native_owned(&state, core)?;
+        // Capture absolute original metadata expiry, never a refreshed receipt.
+        anyhow::ensure!(
+            !state.metadata.is_empty(),
+            "Missing captured warm selected metadata"
+        );
+        let metadata_expires_ms =
+            state
+                .metadata
+                .values()
+                .try_fold(u64::MAX, |expires, meta| -> anyhow::Result<u64> {
+                    anyhow::ensure!(
+                        meta.received_ms <= now && meta.verification_started_ms <= now,
+                        "Captured warm metadata belongs to a future source"
+                    );
+                    let received_expiry = meta
+                        .received_ms
+                        .checked_add(self.policy.metadata_max_age_ms)
+                        .context("Captured warm metadata receipt expiration overflow")?;
+                    let started_expiry = meta
+                        .verification_started_ms
+                        .checked_add(self.policy.metadata_max_age_ms)
+                        .context("Captured warm metadata verification expiration overflow")?;
+                    Ok(expires.min(received_expiry).min(started_expiry))
+                })?;
+        let policy = serde_json::to_value(&*self.policy)?;
+        let prerequisite_source = account
+            .eligible_prerequisite_source(
+                ingress.generation(),
+                epoch,
+                &state.facts.account_id,
+                &policy,
+                now_ms(),
+            )
+            .filter(|source| {
+                source.native_http == origin.native_http
+                    && source.metadata_context
+                        == json!({"metadata":state.metadata,"origin":state.metadata_origin})
+            });
         let key = json!({"generation":ingress.generation(),"epoch":epoch,
             "received_sequence":ingress.received_sequence(),"hard_revision":account.hard_revision(),
             "funds":private_funds,"metadata":state.metadata,"native":native_instruments,
-            "facts":state.facts,"cache":native_owned,"policy":*self.policy});
+            "facts":state.facts,"cache":native_owned,"policy":*self.policy,
+            "prerequisite":prerequisite_source.as_ref().map(|source| json!({
+                "start":source.verification_started_ms,"finish":source.verification_finished_ms,
+                "sequence":source.received_sequence,"source":source.http_source_time_ms,
+                "receipt":source.http_received_time_ms}))});
         if state.query_in_flight {
             anyhow::ensure!(
                 state.query_key.as_ref() == Some(&key),
@@ -649,6 +706,10 @@ impl IoExecutionRuntime {
             );
             return Ok(None);
         }
+        anyhow::ensure!(
+            tokio::time::Instant::now() < deadline,
+            "io warm recovery total deadline exhausted during original capture"
+        );
         account.invalidate_financial("io bounded warm account query is pending");
         state.revision = state.revision.wrapping_add(1);
         state.recovery_complete = false;
@@ -656,6 +717,7 @@ impl IoExecutionRuntime {
         state.query_key = Some(key);
         state.query_token = Some(state.revision);
         state.last_query_warm = true;
+        state.last_query_reused_prerequisite = prerequisite_source.is_some();
         state.diagnostic = "io bounded warm account query is pending".into();
         Ok(Some(IoWarmQuery {
             raw_identity: IoWarmSourceIdentity {
@@ -675,12 +737,13 @@ impl IoExecutionRuntime {
             hard_revision: account.hard_revision(),
             private_funds,
             metadata: state.metadata.clone(),
+            metadata_expires_ms,
             native_instruments,
             native_owned,
             facts: state.facts.clone(),
-            deadline: tokio::time::Instant::now()
-                + std::time::Duration::from_millis(self.policy.recovery_timeout_ms),
+            deadline,
             maximum_age_ms: account.maximum_age_ms(),
+            prerequisite_source,
         }))
     }
 
@@ -748,6 +811,7 @@ impl IoExecutionRuntime {
         &self,
         identity: IoWarmSourceIdentity,
         sources: crate::account_scope::IoObservationSourceGroup,
+        prerequisite_source: Option<&Arc<WarmPrerequisiteSourceSeal>>,
     ) {
         if sources.original_sources.is_empty() && sources.unavailable_sources.is_empty() {
             return;
@@ -766,7 +830,8 @@ impl IoExecutionRuntime {
         // Raw Unknown preservation is independent of current-reader admission
         // and flight cleanup. Its immutable identity always remains the origin.
         if state.facts.recovery_source_debt.is_none()
-            && let Err(e) = retain_warm_source_debt(&mut state, identity, sources)
+            && let Err(e) =
+                retain_warm_source_debt(&mut state, identity, sources, prerequisite_source)
         {
             state.journal_tainted = true;
             state.diagnostic = format!("io warm abandoned original source retention failed: {e}");
@@ -792,6 +857,7 @@ impl IoExecutionRuntime {
             identity,
             sources: raw_sources.clone(),
             completed: false,
+            prerequisite_source: query.prerequisite_source.clone(),
         };
         let timed_result = tokio::time::timeout_at(deadline, async {
             let address = &query.facts.address;
@@ -828,6 +894,7 @@ impl IoExecutionRuntime {
                 query.epoch,
                 query.maximum_age_ms,
                 &raw_sources,
+                query.prerequisite_source.as_deref(),
             )
             .await?;
             let present = warm_current_position_leverage(
@@ -906,7 +973,18 @@ impl IoExecutionRuntime {
                 && state.metadata == query.metadata
                 && warm_native_instruments(self, &state, http, core, now)?
                     == query.native_instruments
-                && warm_native_owned(&state, core)? == query.native_owned,
+                && warm_native_owned(&state, core)? == query.native_owned
+                && query.prerequisite_source.as_ref().is_none_or(|original| {
+                    account
+                        .eligible_prerequisite_source(
+                            query.generation,
+                            query.epoch,
+                            &state.facts.account_id,
+                            &original.policy,
+                            now_ms(),
+                        )
+                        .is_some_and(|current| Arc::ptr_eq(&current, original))
+                }),
             "io warm HTTP observation was superseded or expired before commit"
         );
         let origin = state
@@ -999,7 +1077,28 @@ impl IoExecutionRuntime {
                 "io warm terminal reservation lacks a later complete source"
             );
         }
+        let prepared_prerequisite = account.prepare_warm_prerequisite(
+            &observation.account,
+            http,
+            query.generation,
+            query.epoch,
+            query.received_sequence,
+            Arc::new(observation.source_guard.sources.lock().clone()),
+        )?;
         let old = state.facts.clone();
+        // Qualifying and copying the candidate precede the original final time sample
+        account.validate_observation(&observation.account, query.epoch)?;
+        anyhow::ensure!(
+            tokio::time::Instant::now() < query.deadline
+                && query
+                    .prerequisite_source
+                    .as_ref()
+                    .is_none_or(|source| source.is_fresh(now_ms(), query.maximum_age_ms))
+                && prepared_prerequisite
+                    .as_ref()
+                    .is_none_or(|source| source.is_fresh(now_ms(), query.maximum_age_ms)),
+            "io warm original sources or total deadline expired during qualification"
+        );
         for intent in state.facts.intents.values_mut() {
             if intent.phase == IoIntentPhase::TerminalPending {
                 intent.phase = IoIntentPhase::Terminal;
@@ -1016,8 +1115,7 @@ impl IoExecutionRuntime {
         }
         // Durability can wait on the filesystem. A late completion must restore
         // the full original reserve before any account event or Ready is emitted.
-        if tokio::time::Instant::now() >= query.deadline
-            || !*live
+        if !*live
             || !self.account.ws.is_active()
             || self.account.ws.connection_epoch() != query.epoch
             || !warm_native_instruments(self, &state, http, core, now_ms())
@@ -1025,19 +1123,35 @@ impl IoExecutionRuntime {
             || account
                 .validate_observation(&observation.account, query.epoch)
                 .is_err()
+            || tokio::time::Instant::now() >= query.deadline
+            || query
+                .prerequisite_source
+                .as_ref()
+                .is_some_and(|source| !source.is_fresh(now_ms(), query.maximum_age_ms))
+            || prepared_prerequisite
+                .as_ref()
+                .is_some_and(|source| !source.is_fresh(now_ms(), query.maximum_age_ms))
         {
             state.facts = old;
             state.recovery_complete = false;
             state.persist()?;
             anyhow::bail!("io warm proof expired during durable absorption");
         }
-        if let Err(e) =
-            account.commit_observation(observation.account, query.generation, query.epoch, emitter)
-        {
+        if let Err(e) = account.commit_observation(
+            observation.account,
+            query.generation,
+            query.epoch,
+            emitter,
+            query.deadline,
+            query.metadata_expires_ms,
+        ) {
             state.facts = old;
             state.recovery_complete = false;
             state.persist()?;
             return Err(e);
+        }
+        if query.prerequisite_source.is_none() {
+            account.install_warm_prerequisite(prepared_prerequisite);
         }
         state.recovery_complete = true;
         state.recovered_epoch = Some(query.epoch);
@@ -1052,6 +1166,7 @@ fn retain_warm_source_debt(
     state: &mut IoExecutionState,
     identity: IoWarmSourceIdentity,
     sources: crate::account_scope::IoObservationSourceGroup,
+    prerequisite_source: Option<&Arc<WarmPrerequisiteSourceSeal>>,
 ) -> anyhow::Result<()> {
     state.metadata_origin = None;
     state.native_projection_recovery_required = true;
@@ -1060,6 +1175,7 @@ fn retain_warm_source_debt(
         identity: identity.clone(),
         original_sources: sources.original_sources,
         unavailable_sources: sources.unavailable_sources,
+        reused_prerequisite_source: prerequisite_source.cloned(),
     });
     // Never raise a consumer's one-MiB record bound to retain a large response.
     // A durable explicit missing-raw debt is not an original venue observation.
@@ -1067,6 +1183,14 @@ fn retain_warm_source_debt(
         state.facts.recovery_source_debt = Some(IoRecoverySourceDebt::RetentionFailed {
             identity,
             diagnostic: "Actual raw source could not be retained within the finite record bound; recovery Unknown".into(),
+            reused_prerequisite_origin: prerequisite_source.map(|source| json!({
+                "schema_version":source.schema_version,"account_id":source.account_id,
+                "address":source.address,"generation":source.generation,"epoch":source.epoch,
+                "received_sequence":source.received_sequence,"hard_revision":source.hard_revision,
+                "verification_started_ms":source.verification_started_ms,
+                "verification_finished_ms":source.verification_finished_ms,
+                "effective_expires_ms":source.effective_expires_ms,
+                "raw_retention_complete":false})),
         });
     }
     if serde_json::to_vec(&state.facts)?.len() > 1024 * 1024 {
@@ -1947,7 +2071,7 @@ impl IoExecutionRuntime {
         account
             .state
             .lock()
-            .enable_startup_source(serde_json::to_value(&policy)?)?;
+            .enable_startup_source(serde_json::to_value(&policy)?, facts.account_id.clone())?;
         Ok(Self {
             policy: Arc::new(policy),
             state: Arc::new(Mutex::new(IoExecutionState {
@@ -1967,6 +2091,7 @@ impl IoExecutionRuntime {
                 query_token: None,
                 query_completed: 0,
                 last_query_warm: false,
+                last_query_reused_prerequisite: false,
             })),
             account,
         })
@@ -1977,6 +2102,7 @@ impl IoExecutionRuntime {
         let ingress = self.account.ws.private_ingress_guard();
         let account_guard = self.account.state.lock();
         let startup_account_source = account_guard.startup_source();
+        let warm_prerequisite_source = account_guard.prerequisite_source();
         let epoch = self.account.ws.connection_epoch();
         let startup_private_ingress = json!({"generation":ingress.generation(),"epoch":epoch,"received_sequence":ingress.received_sequence(),"is_applied":ingress.is_applied(epoch)});
         let account = account_guard.snapshot(
@@ -1986,7 +2112,7 @@ impl IoExecutionRuntime {
         );
         let latest_private_funds = account_guard.private_funds_witness();
         let state = self.state.lock();
-        serde_json::to_string(&json!({"policy":*self.policy,"account":account,"startup_account_source":startup_account_source,"startup_private_ingress":startup_private_ingress,"latest_private_funds":latest_private_funds,"metadata":state.metadata,"warm_metadata_origin":state.metadata_origin,"query_in_flight":state.query_in_flight,"query_token":state.query_token,"query_completed":state.query_completed,"last_query_warm":state.last_query_warm,"recovery_source_debt":state.facts.recovery_source_debt,"recovery_complete":state.recovery_complete,"recovered_epoch":state.recovered_epoch,"diagnostic":state.diagnostic,"journal_tainted":state.journal_tainted,"fresh_journal_origin":state.fresh_journal_origin,"native_projection_recovery_required":state.native_projection_recovery_required,"actions":state.facts.actions,"owned_intents":state.facts.intents,"actual_fills":state.facts.fills,"margin_basis":"conservative full-notional entry estimate using minimum HTTP/private free and withdrawable; isolated total maintenance unknown; non-atomic source observations","user_asset_source_time_ms":null})).map_err(Into::into)
+        serde_json::to_string(&json!({"policy":*self.policy,"account":account,"startup_account_source":startup_account_source,"warm_prerequisite_source":warm_prerequisite_source,"startup_private_ingress":startup_private_ingress,"latest_private_funds":latest_private_funds,"metadata":state.metadata,"warm_metadata_origin":state.metadata_origin,"query_in_flight":state.query_in_flight,"query_token":state.query_token,"query_completed":state.query_completed,"last_query_warm":state.last_query_warm,"last_query_reused_prerequisite":state.last_query_reused_prerequisite,"recovery_source_debt":state.facts.recovery_source_debt,"recovery_complete":state.recovery_complete,"recovered_epoch":state.recovered_epoch,"diagnostic":state.diagnostic,"journal_tainted":state.journal_tainted,"fresh_journal_origin":state.fresh_journal_origin,"native_projection_recovery_required":state.native_projection_recovery_required,"actions":state.facts.actions,"owned_intents":state.facts.intents,"actual_fills":state.facts.fills,"margin_basis":"conservative full-notional entry estimate using minimum HTTP/private free and withdrawable; isolated total maintenance unknown; non-atomic source observations","user_asset_source_time_ms":null})).map_err(Into::into)
     }
 
     pub(crate) fn invalidate(&self, reason: &str) {
@@ -4617,6 +4743,7 @@ mod tests {
             query_token: None,
             query_completed: 0,
             last_query_warm: false,
+            last_query_reused_prerequisite: false,
         };
         assert!(state.persist().is_err());
         assert!(state.journal_tainted);

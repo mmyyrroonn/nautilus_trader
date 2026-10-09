@@ -53,6 +53,9 @@ mod startup_source_reuse;
 #[path = "io_query_recovery.rs"]
 mod io_query_recovery;
 
+#[path = "warm_prerequisite.rs"]
+mod warm_prerequisite;
+
 #[derive(Debug)]
 pub(super) struct PeerExecution {
     pub record_http: bool,

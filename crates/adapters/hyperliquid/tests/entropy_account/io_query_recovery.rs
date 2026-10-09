@@ -149,10 +149,82 @@ fn count(requests: &[Value], kind: &str) -> usize {
     requests.iter().filter(|row| row["type"] == kind).count()
 }
 
+async fn expire_original_prerequisite(harness: &Harness) {
+    let before = harness.scope();
+    let original = before["warm_prerequisite_source"].clone();
+    assert!(
+        original.is_object(),
+        "normal original source is missing: {before}"
+    );
+    let expires = original["effective_expires_ms"].as_u64().unwrap();
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while now_ms() <= expires {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("original two-second prerequisite did not expire");
+
+    // A real new financial frame restores current private evidence, not the old source age
+    let sequence = before["startup_private_ingress"]["received_sequence"]
+        .as_u64()
+        .unwrap();
+    let published = now_ms();
+    harness.peer.state.data.lock().io["time"] = json!(published);
+    let frame = harness.peer.state.clearinghouse_frame();
+    let raw = frame.to_string();
+    harness
+        .peer
+        .state
+        .instructions
+        .send(PeerInstruction::Frame(frame))
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let scope = harness.scope();
+            let delivered = harness
+                .peer
+                .state
+                .data
+                .lock()
+                .ws_observations
+                .iter()
+                .any(|row| row["raw_body"] == raw && row["delivered"] == true);
+            if delivered
+                && scope["startup_private_ingress"]["received_sequence"]
+                    .as_u64()
+                    .unwrap()
+                    > sequence
+                && scope["startup_private_ingress"]["is_applied"] == true
+                && scope["account"]["ws_source_time_ms"] == published
+            {
+                assert_eq!(
+                    scope["startup_private_ingress"]["generation"],
+                    before["startup_private_ingress"]["generation"]
+                );
+                assert_eq!(
+                    scope["startup_private_ingress"]["epoch"],
+                    before["startup_private_ingress"]["epoch"]
+                );
+                assert_eq!(scope["warm_prerequisite_source"], original);
+                assert_eq!(scope["metadata"], before["metadata"]);
+                assert!(now_ms() > expires);
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect(
+        "actual fresh financial frame did not become fully applied after original source expiry",
+    );
+}
+
 #[derive(Debug)]
 struct CapturedWarm {
     origin: Value,
     policy: Value,
+    prerequisite: Value,
     started_ms: u64,
     token: Value,
 }
@@ -161,9 +233,15 @@ fn issue_captured(harness: &Harness) -> CapturedWarm {
     let before = harness.scope();
     let started_ms = now_ms();
     issue(harness);
+    let pending = harness.scope();
     CapturedWarm {
         origin: before["warm_metadata_origin"].clone(),
         policy: before["policy"].clone(),
+        prerequisite: if pending["last_query_reused_prerequisite"] == true {
+            before["warm_prerequisite_source"].clone()
+        } else {
+            Value::Null
+        },
         started_ms,
         token: harness.scope()["query_token"].clone(),
     }
@@ -196,6 +274,36 @@ fn assert_original_debt(harness: &Harness, captured: &CapturedWarm) -> Value {
     );
     let now = now_ms();
     let data = harness.peer.state.data.lock();
+    if captured.prerequisite.is_object() {
+        let original = &debt["reused_prerequisite_source"];
+        assert_eq!(original, &captured.prerequisite);
+        assert_eq!(original["account_id"], identity["account_id"]);
+        assert_eq!(original["address"], identity["address"]);
+        assert_eq!(original["policy"], captured.policy);
+        assert_eq!(original["generation"], identity["generation"]);
+        assert_eq!(original["epoch"], identity["epoch"]);
+        let old_sources = original["sources"]["original_sources"].as_array().unwrap();
+        let start = usize::try_from(original["account_source_start"].as_u64().unwrap()).unwrap();
+        assert!(old_sources.len() >= start + 8);
+        for (index, source) in old_sources.iter().enumerate() {
+            let request: Value =
+                serde_json::from_str(source["request_json"].as_str().unwrap()).unwrap();
+            let received = source["received_ms"].as_u64().unwrap();
+            assert!(received <= captured.started_ms && received <= now);
+            if (start..start + 8).contains(&index) {
+                assert!(received >= original["verification_started_ms"].as_u64().unwrap());
+                assert!(received <= original["verification_finished_ms"].as_u64().unwrap());
+            }
+            assert!(
+                data.http_observations.iter().any(|actual| {
+                    actual["request"] == request
+                        && actual["raw_body"] == source["raw_text"]
+                        && actual["started_ms"].as_u64().unwrap() <= received
+                }),
+                "original prerequisite raw has no actual prior response: {source}"
+            );
+        }
+    }
     for source in sources {
         let request: Value =
             serde_json::from_str(source["request_json"].as_str().unwrap()).unwrap();
@@ -232,6 +340,13 @@ fn assert_current(harness: &Harness, scope: &Value) {
     assert_eq!(scope["native_projection_recovery_required"], false);
     assert_eq!(scope["account"]["private_stream_epoch"], 0);
     assert!(now_ms() - scope["account"]["http_received_time_ms"].as_u64().unwrap() < 2000);
+    assert!(
+        now_ms()
+            - scope["account"]["http_verification_started_time_ms"]
+                .as_u64()
+                .unwrap()
+            < 2000
+    );
     assert_eq!(harness.peer.state.active.load(Ordering::SeqCst), 1);
 }
 
@@ -318,21 +433,26 @@ async fn actual_post_fill_warm_query_absorbs_reservation_with_one_final_account_
     assert_eq!(count(&requests, "frontendOpenOrders"), 1);
     assert_eq!(count(&requests, "userFills"), 1);
     assert_eq!(count(&requests, "orderStatus"), 1);
-    assert_eq!(count(&requests, "userRole"), 1);
-    assert_eq!(count(&requests, "userAbstraction"), 2);
-    assert_eq!(count(&requests, "userDexAbstraction"), 2);
-    assert_eq!(count(&requests, "meta"), 1);
-    assert_eq!(count(&requests, "spotMeta"), 1);
+    assert_eq!(count(&requests, "userRole"), 0);
+    assert_eq!(count(&requests, "userAbstraction"), 0);
+    assert_eq!(count(&requests, "userDexAbstraction"), 0);
+    assert_eq!(count(&requests, "meta"), 0);
+    assert_eq!(count(&requests, "spotMeta"), 0);
     assert_eq!(count(&requests, "clearinghouseState"), 1);
     assert_eq!(count(&requests, "perpDexs"), 0);
     assert_eq!(count(&requests, "activeAssetData"), 0);
-    assert_eq!(cost(&requests), 224);
-    assert!(
-        result["account"]["http_verification_started_time_ms"]
-            .as_u64()
-            .unwrap()
-            >= started
+    assert_eq!(cost(&requests), 44);
+    assert_eq!(result["last_query_reused_prerequisite"], true);
+    assert!(before["warm_prerequisite_source"].is_object());
+    assert_eq!(
+        result["warm_prerequisite_source"],
+        before["warm_prerequisite_source"]
     );
+    assert_eq!(
+        result["account"]["http_verification_started_time_ms"],
+        before["warm_prerequisite_source"]["verification_started_ms"]
+    );
+    assert!(result["account"]["http_received_time_ms"].as_u64().unwrap() >= started);
     assert_eq!(
         result["owned_intents"][order.client_order_id().as_str()]["phase"],
         "terminal"
@@ -426,9 +546,10 @@ async fn equivalent_normal_queries_singleflight_without_extra_reads_or_borrowed_
     );
     let requests = requests_since(&harness, after);
     assert_eq!(count(&requests, "frontendOpenOrders"), 1);
-    assert_eq!(count(&requests, "userRole"), 1);
+    assert_eq!(count(&requests, "userRole"), 0);
     assert_eq!(count(&requests, "activeAssetData"), 2);
-    assert_eq!(cost(&requests), 262);
+    assert_eq!(cost(&requests), 82);
+    assert_eq!(result["last_query_reused_prerequisite"], true);
     assert_eq!(
         result["metadata"], before_metadata,
         "warm leverage counterproof relabeled original metadata"
@@ -574,7 +695,8 @@ async fn flat_warm_leverage_counterproof_never_refreshes_original_metadata_capac
     assert_current(&harness, &result);
     let requests = requests_since(&harness, after);
     assert_eq!(count(&requests, "activeAssetData"), 2);
-    assert_eq!(cost(&requests), 262);
+    assert_eq!(cost(&requests), 82);
+    assert_eq!(result["last_query_reused_prerequisite"], true);
     assert_eq!(
         result["metadata"], before["metadata"],
         "leverage counterproof widened or relabeled original metadata"
@@ -973,6 +1095,9 @@ async fn received_original_body_survives_reader_race_and_later_source_failure(
 #[tokio::test]
 async fn warm_metadata_never_substitutes_for_actual_final_account_sources(#[case] fault: &str) {
     let mut harness = normal().await;
+    if matches!(fault, "mode" | "role" | "token" | "metadata") {
+        expire_original_prerequisite(&harness).await;
+    }
     {
         let mut data = harness.peer.state.data.lock();
         match fault {
@@ -995,10 +1120,48 @@ async fn warm_metadata_never_substitutes_for_actual_final_account_sources(#[case
             _ => unreachable!(),
         }
     }
+    let responses_before = harness.peer.state.data.lock().http_observations.len();
     issue(&harness);
     let result = finished(&harness).await;
     harness.apply_events();
     assert_eq!(result["recovery_complete"], false, "{fault}: {result}");
+    let endpoint = match fault {
+        "mode" => "userAbstraction",
+        "role" => "userRole",
+        "token" => "spotMeta",
+        "metadata" => "meta",
+        _ => "clearinghouseState",
+    };
+    {
+        let data = harness.peer.state.data.lock();
+        let actual = data
+            .http_observations
+            .iter()
+            .skip(responses_before)
+            .find(|row| row["request"]["type"] == endpoint)
+            .unwrap_or_else(|| {
+                panic!("bad target body was not actually received: {fault}: {result}")
+            });
+        assert_eq!(actual["status"], 200);
+        let body: Value = serde_json::from_str(actual["raw_body"].as_str().unwrap()).unwrap();
+        match fault {
+            "mode" => assert_eq!(body, json!("unifiedAccount")),
+            "role" => assert_eq!(body, json!({"role":"agent"})),
+            "metadata" => assert_eq!(body, *data.meta_override.as_ref().unwrap()),
+            "missing_positions" => assert!(body.get("assetPositions").is_none()),
+            "missing_time" => assert!(body.get("time").is_none()),
+            "foreign_position" => {
+                assert_eq!(body["assetPositions"][0]["position"]["coin"], "io:OTHER");
+            }
+            "token" => assert!(
+                actual["raw_body"]
+                    .as_str()
+                    .unwrap()
+                    .contains("0x00000000000000000000000000000000")
+            ),
+            _ => unreachable!(),
+        }
+    }
     assert_eq!(harness.fill_events, 0);
     assert!(
         harness
@@ -1013,12 +1176,53 @@ async fn warm_metadata_never_substitutes_for_actual_final_account_sources(#[case
 
 #[tokio::test]
 async fn existing_weighted_quota_wait_is_inside_unchanged_three_second_query_deadline() {
+    let setup_started = Instant::now();
     let mut harness = normal().await;
-    for _ in 0..2 {
+    let original = harness.scope()["warm_prerequisite_source"].clone();
+    let metadata = harness.scope()["metadata"].clone();
+    assert!(original.is_object());
+    for index in 0..7 {
+        let after = harness.peer.state.data.lock().requests.len();
         issue(&harness);
         let result = finished(&harness).await;
+        harness.apply_events();
         assert_current(&harness, &result);
+        assert_eq!(result["last_query_reused_prerequisite"], true);
+        let requests = requests_since(&harness, after);
+        for (kind, expected) in [
+            ("frontendOpenOrders", 1),
+            ("userFills", 1),
+            ("userRole", 0),
+            ("userAbstraction", 0),
+            ("userDexAbstraction", 0),
+            ("meta", 0),
+            ("spotMeta", 0),
+            ("clearinghouseState", 1),
+            ("activeAssetData", 2),
+            ("orderStatus", 0),
+        ] {
+            assert_eq!(
+                count(&requests, kind),
+                expected,
+                "quota preload {index}: {kind}"
+            );
+        }
+        assert_eq!(cost(&requests), 82);
+        assert_eq!(result["warm_prerequisite_source"], original);
+        assert_eq!(result["metadata"], metadata);
+        assert_eq!(result["query_completed"], index + 1);
+        eprintln!(
+            "quota_reused_preload={}",
+            json!({"index":index,"requests":requests,
+            "original_group":result["warm_prerequisite_source"],
+            "elapsed_ms":setup_started.elapsed().as_millis()})
+        );
     }
+    expire_original_prerequisite(&harness).await;
+    assert!(
+        setup_started.elapsed() <= Duration::from_secs(3),
+        "actual preload duration exceeds the source-derived quota fixture bound"
+    );
     let after = harness.peer.state.data.lock().requests.len();
     let started = Instant::now();
     issue(&harness);
@@ -1033,7 +1237,15 @@ async fn existing_weighted_quota_wait_is_inside_unchanged_three_second_query_dea
         "quota exhaustion must not become Ready: {result}"
     );
     assert_eq!(result["query_in_flight"], false);
-    assert_eq!(result["query_completed"], 3);
+    assert_eq!(result["query_completed"], 8);
+    assert_eq!(result["last_query_reused_prerequisite"], false);
+    assert!(
+        result["diagnostic"]
+            .as_str()
+            .unwrap()
+            .contains("io warm recovery total deadline exhausted"),
+        "early TTL or another predicate is not quota deadline coverage: {result}"
+    );
     eprintln!(
         "quota_limited_actual_requests={} minimum_weight={}",
         json!(requests_since(&harness, after)),
@@ -1675,7 +1887,8 @@ async fn actual_owned_ws_cancel_requires_matching_consumed_native_cache_terminal
             count(&requests_since(&harness, after), "activeAssetData"),
             2
         );
-        assert_eq!(cost(&requests_since(&harness, after)), 264);
+        assert_eq!(cost(&requests_since(&harness, after)), 84);
+        assert_eq!(result["last_query_reused_prerequisite"], true);
         assert_eq!(
             result["owned_intents"][order.client_order_id().as_str()]["phase"],
             "terminal"
@@ -1775,6 +1988,8 @@ async fn successful_warm_query_keeps_prior_finite_economic_coverage_and_immutabl
     let order = actual_post_fill(&mut harness).await;
     harness.factory.persist_economics().unwrap();
     let before = economics(&harness);
+    let prerequisite = harness.scope()["warm_prerequisite_source"].clone();
+    assert!(prerequisite.is_object());
     let after = harness.peer.state.data.lock().requests.len();
     issue(&harness);
     let result = finished(&harness).await;
@@ -1783,8 +1998,10 @@ async fn successful_warm_query_keeps_prior_finite_economic_coverage_and_immutabl
     let requests = requests_since(&harness, after);
     assert_eq!(count(&requests, "userFunding"), 0);
     assert_eq!(count(&requests, "userNonFundingLedgerUpdates"), 0);
-    assert_eq!(count(&requests, "meta"), 1);
-    assert_eq!(count(&requests, "spotMeta"), 1);
+    assert_eq!(count(&requests, "meta"), 0);
+    assert_eq!(count(&requests, "spotMeta"), 0);
+    assert_eq!(result["last_query_reused_prerequisite"], true);
+    assert_eq!(result["warm_prerequisite_source"], prerequisite);
     harness.factory.persist_economics().unwrap();
     let after = economics(&harness);
     let old_coverage = before["coverage"].as_array().unwrap();
