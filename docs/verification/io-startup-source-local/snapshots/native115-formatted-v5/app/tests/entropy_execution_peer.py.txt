@@ -1,0 +1,769 @@
+"""Bounded synthetic HTTP/WS peers for ordinary installed native execution clients."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import time
+from decimal import Decimal
+from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
+
+from websockets.exceptions import ConnectionClosed
+
+USER = "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+KEY = "0x" + "deadbeef" * 8
+USDC_ID = "0x6d1e7cde53ba9467b783cb7c530ce054"
+IO_ID = "io:SNDK-USD-PERP.HYPERLIQUID"
+ASTER_ID = "SNDKUSD1-PERP.ASTER"
+
+
+class ExecutionPeer:
+    """Real servers; one selected instrument, fixed finite request/action/frame caps."""
+
+    def __init__(self, venue, *, fault="none"):
+        if venue not in {"HYPERLIQUID", "ASTER"}:
+            raise ValueError("unsupported synthetic venue")
+        self.venue, self.fault = venue, fault
+        self.requests, self.commands, self.frames, self.errors = [], [], [], []
+        self.orders, self.fills, self.sessions, self.workers = {}, [], set(), set()
+        self.position = Decimal(0)
+        self.sequence, self.actions, self.connections = 100, 0, 0
+        self.stopping = False
+        self.tasks = set()
+
+    @staticmethod
+    def stamp():
+        return time.time_ns() // 1_000_000
+
+    async def __aenter__(self):
+        from websockets.asyncio.server import serve
+
+        self.http_server = await asyncio.start_server(
+            self.request, "127.0.0.1", 0, limit=16384
+        )
+        self.ws_server = await serve(
+            self.stream, "127.0.0.1", 0, max_size=65536, max_queue=16
+        )
+        self.http_url = (
+            f"http://127.0.0.1:{self.http_server.sockets[0].getsockname()[1]}"
+        )
+        self.ws_url = f"ws://127.0.0.1:{self.ws_server.sockets[0].getsockname()[1]}"
+        return self
+
+    async def __aexit__(self, *_):
+        self.stopping = True
+        for task in self.tasks:
+            task.cancel()
+        await asyncio.gather(*self.tasks, return_exceptions=True)
+        self.ws_server.close()
+        self.http_server.close()
+        await asyncio.wait_for(self.ws_server.wait_closed(), 5)
+        await self.http_server.wait_closed()
+        if self.workers:
+            await asyncio.wait_for(
+                asyncio.gather(*self.workers, return_exceptions=True), 5
+            )
+
+    @staticmethod
+    def meta():
+        return {
+            "universe": [
+                {
+                    "name": "io:SNDK",
+                    "szDecimals": 4,
+                    "maxLeverage": 10,
+                    "onlyIsolated": True,
+                    "marginMode": "strictIsolated",
+                }
+            ],
+            "collateralToken": 0,
+        }
+
+    def clearinghouse(self):
+        rows = []
+        if self.position:
+            rows = [
+                {
+                    "type": "oneWay",
+                    "position": {
+                        "coin": "io:SNDK",
+                        "szi": str(self.position),
+                        "marginUsed": "0",
+                        "leverage": {"type": "isolated", "value": 1},
+                        "cumFunding": {
+                            "allTime": "0",
+                            "sinceOpen": "0",
+                            "sinceChange": "0",
+                        },
+                        "entryPx": "100",
+                        "liquidationPx": None,
+                        "maxLeverage": 10,
+                        "positionValue": str(abs(self.position) * 100),
+                        "returnOnEquity": "0",
+                        "unrealizedPnl": "0",
+                    },
+                }
+            ]
+        return {
+            "marginSummary": {
+                "accountValue": "100",
+                "totalNtlPos": str(abs(self.position) * 100),
+                "totalRawUsd": "100",
+                "totalMarginUsed": "0",
+            },
+            "crossMarginSummary": {
+                "accountValue": "0",
+                "totalNtlPos": "0",
+                "totalRawUsd": "0",
+                "totalMarginUsed": "0",
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": rows,
+            "time": self.stamp(),
+        }
+
+    def hl_book(self):
+        return {
+            "coin": "io:SNDK",
+            "time": self.stamp(),
+            "levels": [
+                [{"px": "99.99", "sz": "1", "n": 1}],
+                [{"px": "100.00", "sz": "1", "n": 1}],
+            ],
+        }
+
+    def hl_info(self, body):
+        kind = body["type"]
+        if "user" in body and body["user"].lower() != USER:
+            raise ValueError("unexpected synthetic account")
+        if kind == "meta":
+            return self.meta()
+        if kind == "allPerpMetas":
+            return [{"universe": [], "collateralToken": 0}, self.meta()]
+        if kind == "perpDexs":
+            return [None, {"name": "io", "fullName": "Synthetic Entropy"}]
+        if kind == "outcomeMeta":
+            return {"outcomes": [], "questions": []}
+        if kind == "spotMeta":
+            return {
+                "universe": [],
+                "tokens": [
+                    {
+                        "name": "USDC",
+                        "index": 0,
+                        "szDecimals": 8,
+                        "weiDecimals": 8,
+                        "tokenId": USDC_ID,
+                        "isCanonical": True,
+                        "fullName": "USD Coin",
+                    }
+                ],
+            }
+        if kind == "spotMetaAndAssetCtxs":
+            return [{"universe": [], "tokens": []}, []]
+        if kind == "metaAndAssetCtxs":
+            return [
+                self.meta(),
+                [
+                    {
+                        "funding": "0",
+                        "openInterest": "1",
+                        "prevDayPx": "100",
+                        "dayNtlVlm": "1",
+                        "premium": "0",
+                        "oraclePx": "100",
+                        "markPx": "100",
+                        "midPx": "100",
+                        "impactPxs": ["100", "100"],
+                    }
+                ],
+            ]
+        if kind == "userRole":
+            return {"role": "user"}
+        if kind == "userAbstraction":
+            return "disabled"
+        if kind == "userDexAbstraction":
+            return False
+        if kind == "clearinghouseState":
+            if body.get("dex") != "io":
+                raise ValueError("default account is outside this execution fixture")
+            return self.clearinghouse()
+        if kind == "spotClearinghouseState":
+            return {"balances": []}
+        if kind == "userFees":
+            return {"userCrossRate": "0.00045", "userAddRate": "0.00015"}
+        if kind == "activeAssetData":
+            return {
+                "user": USER,
+                "coin": "io:SNDK",
+                "leverage": {"type": "isolated", "value": 1},
+                "maxTradeSzs": ["1", "1"],
+                "availableToTrade": ["100", "100"],
+                "markPx": "100",
+            }
+        if kind == "l2Book":
+            if body["coin"] != "io:SNDK":
+                raise ValueError("unexpected book")
+            return self.hl_book()
+        if kind in {"openOrders", "frontendOpenOrders"}:
+            if self.fault == "missing_response":
+                return []
+            return [
+                row["order"] for row in self.orders.values() if row["status"] == "open"
+            ]
+        if kind == "historicalOrders":
+            if self.fault == "missing_response":
+                return []
+            return list(self.orders.values())
+        if kind in {"userFills", "userFillsByTime"}:
+            return self.fills
+        if kind in {"userFunding", "userNonFundingLedgerUpdates"}:
+            if (
+                "dex" in body
+                or not isinstance(body.get("startTime"), int)
+                or not isinstance(body.get("endTime"), int)
+            ):
+                raise ValueError("invalid economic history scope")
+            return []
+        if kind == "orderStatus":
+            if self.fault == "missing_response":
+                return {"status": "unknownOid"}
+            row = next(
+                (
+                    row
+                    for key, row in self.orders.items()
+                    if body["oid"] == key or body["oid"] == row["order"]["oid"]
+                ),
+                None,
+            )
+            return (
+                {"status": "order", "order": row} if row else {"status": "unknownOid"}
+            )
+        raise ValueError(f"unexpected info endpoint: {kind}")
+
+    def aster_response(self, method, path, params):
+        endpoint = path.rsplit("/", 1)[-1]
+        if endpoint == "exchangeInfo":
+            source = (
+                Path(__file__).parent
+                / "fixtures/entropy-public/synthetic-metadata.json"
+            )
+            fixture = json.loads(source.read_text(encoding="utf-8"))["aster"]
+            return {**fixture, "serverTime": self.stamp()}
+        if endpoint == "time":
+            return {"serverTime": self.stamp()}
+        if endpoint == "dual":
+            return {"dualSidePosition": False}
+        if endpoint == "commissionRate":
+            return {
+                "symbol": "SNDKUSD1",
+                "makerCommissionRate": "0.00005",
+                "takerCommissionRate": "0.0004",
+            }
+        if endpoint == "balance":
+            return [
+                {
+                    "asset": "USD1",
+                    "balance": "100",
+                    "crossWalletBalance": "100",
+                    "availableBalance": "100",
+                    "crossUnPnl": "0",
+                    "maxWithdrawAmount": "100",
+                    "marginAvailable": True,
+                    "updateTime": self.stamp(),
+                }
+            ]
+        if endpoint == "positionRisk":
+            return [
+                {
+                    "symbol": "SNDKUSD1",
+                    "positionAmt": str(self.position),
+                    "entryPrice": "100",
+                    "markPrice": "100",
+                    "unRealizedProfit": "0",
+                    "liquidationPrice": "0",
+                    "leverage": "1",
+                    "marginType": "isolated",
+                    "positionSide": "BOTH",
+                    "notional": str(self.position * 100),
+                    "updateTime": self.stamp(),
+                }
+            ]
+        if endpoint == "depth":
+            return {
+                "lastUpdateId": self.sequence,
+                "E": self.stamp(),
+                "T": self.stamp(),
+                "bids": [["100.10", "1"]],
+                "asks": [["100.11", "1"]],
+            }
+        if endpoint == "listenKey":
+            return (
+                {"listenKey": "entropy43-owned-synthetic"} if method == "POST" else {}
+            )
+        if endpoint == "openOrders":
+            return [
+                row
+                for row in self.orders.values()
+                if row["status"] in {"NEW", "PARTIALLY_FILLED"}
+            ]
+        if endpoint == "allOrders":
+            return list(self.orders.values())
+        if endpoint == "userTrades":
+            return self.fills
+        if endpoint == "order":
+            return self.aster_order(method, params)
+        raise ValueError(f"unexpected Aster endpoint: {method} {path}")
+
+    def aster_order(self, method, params):
+        first = lambda name, default=None: params.get(name, [default])[0]
+        if first("symbol") != "SNDKUSD1":
+            raise ValueError("unexpected order symbol")
+        if method in {"GET", "DELETE"}:
+            row = next(
+                (
+                    row
+                    for row in self.orders.values()
+                    if row["clientOrderId"] == first("origClientOrderId")
+                    or str(row["orderId"]) == first("orderId")
+                ),
+                None,
+            )
+            if row is None:
+                return {"code": -2013, "msg": "Order does not exist."}
+            if method == "DELETE":
+                self.actions += 1
+                row.update(status="CANCELED", updateTime=self.stamp())
+            return row
+        if method != "POST" or self.actions >= 6:
+            raise ValueError("unsupported/budgeted order action")
+        self.actions += 1
+        if self.fault == "reject" or (
+            self.fault == "cleanup_reject" and first("reduceOnly") == "true"
+        ):
+            return {"code": -2010, "msg": "synthetic bounded rejection"}
+        identifier = first("newClientOrderId")
+        if not identifier or identifier in self.orders:
+            raise ValueError("unowned or repeated client id")
+        row = {
+            "symbol": "SNDKUSD1",
+            "orderId": 80000 + self.actions,
+            "clientOrderId": identifier,
+            "origQty": first("quantity"),
+            "executedQty": "0",
+            "price": first("price"),
+            "avgPrice": "0",
+            "status": "NEW",
+            "timeInForce": first("timeInForce"),
+            "type": "LIMIT",
+            "side": first("side"),
+            "positionSide": "BOTH",
+            "reduceOnly": first("reduceOnly") == "true",
+            "time": self.stamp(),
+            "updateTime": self.stamp(),
+        }
+        self.orders[identifier] = row
+        self.spawn(self.aster_fill(row))
+        return row
+
+    def spawn(self, awaitable):
+        task = asyncio.create_task(awaitable)
+        self.tasks.add(task)
+        task.add_done_callback(self.tasks.discard)
+
+    async def request(self, reader, writer):
+        task = asyncio.current_task()
+        self.workers.add(task)
+        request_record = None
+        try:
+            header = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), 2)
+            lines = header.decode("ascii").split("\r\n")
+            method, target, _ = lines[0].split(" ")
+            headers = {
+                key.lower(): value.strip()
+                for key, value in (
+                    line.split(":", 1) for line in lines[1:] if ":" in line
+                )
+            }
+            length = int(headers.get("content-length", "0"))
+            if (
+                len(header) > 16384
+                or not 0 <= length <= 65536
+                or len(self.requests) >= 150
+            ):
+                raise ValueError("peer request capacity exceeded")
+            if not headers.get("host", "").startswith("127.0.0.1:"):
+                raise ValueError("nonloopback host")
+            payload = (
+                await asyncio.wait_for(reader.readexactly(length), 2) if length else b""
+            )
+            parsed = urlsplit(target)
+            body = (
+                json.loads(payload) if self.venue == "HYPERLIQUID" and payload else None
+            )
+            # Synthetic signatures remain local; evidence deliberately strips private headers.
+            params = parse_qs(parsed.query)
+            if self.venue == "ASTER" and payload:
+                params.update(parse_qs(payload.decode()))
+            recorded_params = {
+                key: value
+                for key, value in params.items()
+                if key not in {"signature", "user", "signer"}
+            }
+            request_record = {
+                "method": method,
+                "path": parsed.path,
+                "body": body,
+                "params": recorded_params,
+            }
+            self.requests.append(request_record)
+            if self.venue == "HYPERLIQUID":
+                if method != "POST" or parsed.path != "/info":
+                    raise ValueError("only native WS action transport is permitted")
+                result = self.hl_info(body)
+            else:
+                if not parsed.path.startswith("/fapi/"):
+                    raise ValueError("unexpected Aster path")
+                result = self.aster_response(method, parsed.path, params)
+                if (
+                    self.fault == "missing_response"
+                    and parsed.path.endswith("/order")
+                    and method == "POST"
+                ):
+                    await asyncio.sleep(3)
+                    writer.close()
+                    return
+            status = (
+                "400 Bad Request"
+                if isinstance(result, dict) and result.get("code", 0) < 0
+                else "200 OK"
+            )
+        except (
+            ValueError,
+            RuntimeError,
+            TypeError,
+            KeyError,
+            AttributeError,
+            OSError,
+            ArithmeticError,
+        ) as exc:
+            self.errors.append(f"{type(exc).__name__}: {exc}")
+            status, result = "400 Bad Request", {"error": type(exc).__name__}
+        try:
+            raw = json.dumps(result, separators=(",", ":")).encode()
+            if len(raw) > 65536:
+                raise ValueError("peer response body cap exceeded")
+            if request_record is not None:
+                request_record["response"] = {
+                    "status": status,
+                    "body": json.loads(raw),
+                }
+            writer.write(
+                f"HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {len(raw)}\r\nConnection: close\r\n\r\n".encode()
+                + raw
+            )
+            await writer.drain()
+        finally:
+            writer.close()
+            await writer.wait_closed()
+            self.workers.discard(task)
+
+    async def broadcast(self, frame):
+        if len(self.frames) >= 1500:
+            raise ValueError("peer frame cap exceeded")
+        self.frames.append(json.loads(json.dumps(frame)))
+        await asyncio.gather(
+            *(
+                ws.send(json.dumps(frame))
+                for ws, private in tuple(self.sessions)
+                if private
+            ),
+            return_exceptions=True,
+        )
+
+    async def send_frame(self, ws, frame):
+        if len(self.frames) >= 1500:
+            raise ValueError("peer frame cap exceeded")
+        self.frames.append(json.loads(json.dumps(frame)))
+        await ws.send(json.dumps(frame))
+
+    async def aster_fill(self, row):
+        await asyncio.sleep(0.15)
+        quantity = Decimal(row["origQty"])
+        if self.fault == "partial" and not row["reduceOnly"]:
+            quantity = (quantity / 2 // Decimal("0.01")) * Decimal("0.01")
+        if not quantity:
+            return
+        change = quantity if row["side"] == "BUY" else -quantity
+        self.position += change
+        row.update(
+            executedQty=str(quantity),
+            avgPrice=row["price"],
+            updateTime=self.stamp(),
+            status="FILLED"
+            if quantity == Decimal(row["origQty"])
+            else "PARTIALLY_FILLED",
+        )
+        trade = {
+            "symbol": "SNDKUSD1",
+            "id": 90000 + len(self.fills),
+            "orderId": row["orderId"],
+            "price": row["price"],
+            "qty": str(quantity),
+            "quoteQty": str(quantity * Decimal(row["price"])),
+            "realizedPnl": "0",
+            "commission": "0.001",
+            "commissionAsset": "USD1",
+            "time": self.stamp(),
+            "buyer": row["side"] == "BUY",
+            "maker": False,
+            "side": row["side"],
+            "positionSide": "BOTH",
+        }
+        self.fills.append(trade)
+        frame = {
+            "e": "ORDER_TRADE_UPDATE",
+            "E": self.stamp(),
+            "T": self.stamp(),
+            "o": {
+                "s": "SNDKUSD1",
+                "c": row["clientOrderId"],
+                "S": row["side"],
+                "o": "LIMIT",
+                "f": row["timeInForce"],
+                "q": row["origQty"],
+                "p": row["price"],
+                "ap": row["price"],
+                "sp": "0",
+                "x": "TRADE",
+                "X": row["status"],
+                "i": row["orderId"],
+                "l": str(quantity),
+                "z": str(quantity),
+                "L": row["price"],
+                "N": "USD1",
+                "n": "0.001",
+                "T": self.stamp(),
+                "t": trade["id"],
+                "m": False,
+                "R": row["reduceOnly"],
+                "wt": "CONTRACT_PRICE",
+                "ot": "LIMIT",
+                "ps": "BOTH",
+                "rp": "0",
+            },
+        }
+        await self.broadcast(frame)
+        if row["status"] == "PARTIALLY_FILLED" and row["timeInForce"] == "IOC":
+            await asyncio.sleep(0.05)
+            row.update(status="EXPIRED", updateTime=self.stamp())
+            frame["E"] = frame["T"] = self.stamp()
+            frame["o"].update(x="EXPIRED", X="EXPIRED", l="0", n="0", t=-1)
+            await self.broadcast(frame)
+
+    async def hl_action(self, ws, command):
+        action = command["request"]["payload"]["action"]
+        if self.actions >= 6:
+            raise ValueError("peer action budget exceeded")
+        self.actions += 1
+        if action["type"] == "order":
+            wire = action["orders"][0]
+            if (
+                len(action["orders"]) != 1
+                or wire["a"] != 110000
+                or wire["c"] in self.orders
+            ):
+                raise ValueError("wrong native asset/ownership/retransmission")
+            oid, cloid = 70000 + self.actions, wire["c"]
+            self.orders[cloid] = {
+                "order": {
+                    "coin": "io:SNDK",
+                    "side": "B" if wire["b"] else "A",
+                    "limitPx": wire["p"],
+                    "sz": "0",
+                    "origSz": wire["s"],
+                    "oid": oid,
+                    "timestamp": self.stamp(),
+                    "cloid": cloid,
+                    "reduceOnly": wire["r"],
+                    "orderType": "Limit",
+                    "tif": wire["t"]["limit"]["tif"],
+                },
+                "status": "filled",
+                "statusTimestamp": self.stamp(),
+            }
+            statuses = [
+                {"filled": {"oid": oid, "totalSz": wire["s"], "avgPx": wire["p"]}}
+            ]
+            self.spawn(self.hl_fill(wire, oid))
+        elif action["type"] in {"cancel", "cancelByCloid"}:
+            statuses = ["success"]
+        else:
+            raise ValueError("unsupported action")
+        if self.fault == "missing_response":
+            return
+        if self.fault == "reject" or (
+            self.fault == "cleanup_reject" and action["type"] == "order" and wire["r"]
+        ):
+            statuses = [{"error": "synthetic bounded rejection"}]
+        await ws.send(
+            json.dumps(
+                {
+                    "channel": "post",
+                    "data": {
+                        "id": command["id"],
+                        "response": {
+                            "type": "action",
+                            "payload": {
+                                "status": "ok",
+                                "response": {
+                                    "type": "order"
+                                    if action["type"] == "order"
+                                    else "cancel",
+                                    "data": {"statuses": statuses},
+                                },
+                            },
+                        },
+                    },
+                }
+            )
+        )
+
+    async def hl_fill(self, wire, oid):
+        await asyncio.sleep(0.15)
+        if self.fault == "missing_response":
+            return
+        if self.fault == "reject" or (self.fault == "cleanup_reject" and wire["r"]):
+            return
+        quantity = Decimal(wire["s"])
+        start = self.position
+        self.position += quantity if wire["b"] else -quantity
+        tid = 60000 + len(self.fills)
+        row = {
+            "coin": "io:SNDK",
+            "px": wire["p"],
+            "sz": str(quantity),
+            "side": "B" if wire["b"] else "A",
+            "time": self.stamp(),
+            "startPosition": str(start),
+            "dir": "Close Long" if wire["r"] else "Open Long",
+            "closedPnl": "0",
+            "hash": f"0x{tid:064x}",
+            "oid": oid,
+            "crossed": True,
+            "fee": "2" if self.fault == "loss_fee" else "0.001",
+            "builderFee": "0.0002",
+            "tid": tid,
+            "feeToken": "USDC",
+            "cloid": wire["c"],
+        }
+        self.fills.append(row)
+        await self.broadcast({"channel": "user", "data": {"fills": [row]}})
+        await self.broadcast(
+            {
+                "channel": "clearinghouseState",
+                "data": {
+                    "user": USER,
+                    "dex": "io",
+                    "clearinghouseState": self.clearinghouse(),
+                },
+            }
+        )
+
+    async def stream(self, ws):
+        self.connections += 1
+        path = ws.request.path
+        private = self.venue == "HYPERLIQUID" or "entropy43-owned-synthetic" in path
+        self.sessions.add((ws, private))
+        subscriptions = set()
+        producer = asyncio.create_task(self.produce(ws, subscriptions, private))
+        try:
+            async for raw in ws:
+                if len(self.commands) >= 100 or len(raw) > 65536:
+                    raise ValueError("peer command cap exceeded")
+                command = json.loads(raw)
+                self.commands.append(command)
+                if self.venue == "HYPERLIQUID":
+                    method = command["method"]
+                    if method == "post":
+                        await self.hl_action(ws, command)
+                    elif method == "ping":
+                        await ws.send(json.dumps({"channel": "pong"}))
+                    elif method in {"subscribe", "unsubscribe"}:
+                        sub = command["subscription"]
+                        if method == "subscribe":
+                            subscriptions.add(sub["type"])
+                        else:
+                            subscriptions.discard(sub["type"])
+                        await ws.send(
+                            json.dumps(
+                                {"channel": "subscriptionResponse", "data": command}
+                            )
+                        )
+                    else:
+                        raise ValueError("unexpected HL command")
+                else:
+                    if command["method"] not in {"SUBSCRIBE", "UNSUBSCRIBE"}:
+                        raise ValueError("unexpected Aster public command")
+                    subscriptions.update(command["params"])
+                    await ws.send(json.dumps({"result": None, "id": command["id"]}))
+        except (
+            ValueError,
+            RuntimeError,
+            TypeError,
+            KeyError,
+            AttributeError,
+            OSError,
+            ArithmeticError,
+            ConnectionClosed,
+        ) as exc:
+            if not isinstance(exc, ConnectionClosed):
+                self.errors.append(f"{type(exc).__name__}: {exc}")
+        finally:
+            producer.cancel()
+            await asyncio.gather(producer, return_exceptions=True)
+            self.sessions.discard((ws, private))
+
+    async def produce(self, ws, subscriptions, private):
+        last_private_ms = 0
+        while True:
+            await asyncio.sleep(0.1)
+            if self.venue == "HYPERLIQUID":
+                if "l2Book" in subscriptions:
+                    await self.send_frame(
+                        ws, {"channel": "l2Book", "data": self.hl_book()}
+                    )
+                if (
+                    "clearinghouseState" in subscriptions
+                    and self.stamp() - last_private_ms >= 1000
+                ):
+                    await self.send_frame(
+                        ws,
+                        {
+                            "channel": "clearinghouseState",
+                            "data": {
+                                "user": USER,
+                                "dex": "io",
+                                "clearinghouseState": self.clearinghouse(),
+                            },
+                        },
+                    )
+                    last_private_ms = self.stamp()
+            elif not private and subscriptions:
+                self.sequence += 1
+                await self.send_frame(
+                    ws,
+                    {
+                        "e": "depthUpdate",
+                        "E": self.stamp(),
+                        "T": self.stamp(),
+                        "s": "SNDKUSD1",
+                        "U": self.sequence,
+                        "u": self.sequence,
+                        "pu": self.sequence - 1,
+                        "b": [["100.10", "1"]],
+                        "a": [["100.11", "1"]],
+                    },
+                )

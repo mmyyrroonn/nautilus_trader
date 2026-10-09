@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "gh",
+    "api",
+    "repos/mmyyrroonn/nautilus_trader/issues/115/comments",
+    "--method",
+    "POST",
+    "--input",
+    "E:\\persarb\\_tmp\\entropy115-validation\\native115-second-validation-review-trace-input.json"
+  ],
+  "started_utc": "2026-10-09T09:46:58.575544+00:00",
+  "finished_utc": "2026-10-09T09:47:03.659236+00:00",
+  "exit_code": 1,
+  "attempts": 1
+}

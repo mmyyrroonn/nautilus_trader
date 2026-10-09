@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "gh",
+    "api",
+    "repos/mmyyrroonn/nautilus_trader/issues",
+    "--method",
+    "POST",
+    "--input",
+    "E:\\persarb\\_tmp\\entropy113-validation\\native-startup-proof-issue-create-input.json"
+  ],
+  "started_utc": "2026-10-09T08:50:24.048531+00:00",
+  "finished_utc": "2026-10-09T08:50:25.109444+00:00",
+  "exit_code": 0,
+  "attempts": 1
+}

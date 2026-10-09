@@ -1,0 +1,19 @@
+# Set standard UNIX/Linux/MacOSX line endings.
+* text=auto eol=lf
+
+# Denote all files that are truly binary and should not be modified.
+*.png binary
+*.ico binary
+*.jpg binary
+*.bz2 binary
+
+# Preserve captured validation bytes so evidence hashes survive a Git checkout.
+docs/verification/entropy-account-local/** -text -whitespace
+docs/verification/entropy-execution-local/** -text -whitespace
+docs/verification/entropy-economics-local/** -text -whitespace
+docs/verification/entropy-economics-public/** -text -whitespace
+docs/verification/aster-selected-scope-local/** -text -whitespace
+
+docs/verification/io-startup-local/** -text -whitespace
+docs/verification/io-warm-recovery-local/** -text -whitespace
+docs/verification/io-startup-source-local/** -text -whitespace

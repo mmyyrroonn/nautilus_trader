@@ -1,0 +1,20 @@
+{
+  "argv": [
+    "E:/persarb/worktrees/entropy-io-recovery/.venv/Scripts/python.exe",
+    "E:/persarb/_tmp/entropy113-validation/finish_native113_transport_recovered.py"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-io-recovery",
+  "started_utc": "2026-10-09T08:47:19.379202+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "uv_project_environment": null,
+  "nautilus_stub_profile": null,
+  "cargo_build_warnings": null,
+  "cargo_net_offline": null,
+  "entropy43_native_wheel": null,
+  "entropy43_native_sha256": null,
+  "entropy43_native_provenance": null,
+  "entropy43_evidence_root": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T08:47:47.342968+00:00"
+}

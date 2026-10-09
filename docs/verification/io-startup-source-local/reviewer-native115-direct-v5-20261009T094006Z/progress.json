@@ -1,0 +1,655 @@
+{
+    "started_utc":  "2026-10-09T09:40:06.1682861Z",
+    "cwd":  "E:/persarb/worktrees/entropy-startup-account-proof",
+    "source_manifest":  "E:\\persarb\\_tmp\\entropy115-validation\\native115-formatted-v5.json",
+    "source_manifest_sha256":  "a14294cc3032ce47af2ce33ab1a04ed51bb1538179fc7f7fefcd1e0031b76809",
+    "binary_manifest":  "E:\\persarb\\_tmp\\entropy115-validation\\native115-stable-binaries-v5.json",
+    "binary_manifest_sha256":  "4894e10cb55343ef0b28c9b4850ad6ee4e8c70a9e7202a28ab88877b4d218ea0",
+    "pre":  [
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\.gitattributes",
+                    "sha256":  "7a94dfd273d7c91cbf75f8d7c48cded86061204d3150f036ff606782d339a7e7",
+                    "expected_sha256":  "7a94dfd273d7c91cbf75f8d7c48cded86061204d3150f036ff606782d339a7e7",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\python\\pyproject.toml",
+                    "sha256":  "51288a9b821361cdfa6a915ca3048c2e5daf92e9793edd1b8514c0767e666018",
+                    "expected_sha256":  "51288a9b821361cdfa6a915ca3048c2e5daf92e9793edd1b8514c0767e666018",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\python\\uv.lock",
+                    "sha256":  "5bf016c9fa06ee5ecad7d3d346e148793a205bb186e56bfb5d30106a57be7a55",
+                    "expected_sha256":  "5bf016c9fa06ee5ecad7d3d346e148793a205bb186e56bfb5d30106a57be7a55",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\Cargo.toml",
+                    "sha256":  "46b62a317d15d8e2d1701bf3d0e834bed4973860ebb685749800f148f42f2d5a",
+                    "expected_sha256":  "46b62a317d15d8e2d1701bf3d0e834bed4973860ebb685749800f148f42f2d5a",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\Cargo.lock",
+                    "sha256":  "a802008d4363de0a4e28dd3b14990d0d79f95ef8a89431c5936fc31e1215463a",
+                    "expected_sha256":  "a802008d4363de0a4e28dd3b14990d0d79f95ef8a89431c5936fc31e1215463a",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\AGENTS.md",
+                    "sha256":  "846051c913f6fca348bf09b8e0051e1f0d98915c35c73505ff2c6aafb43a0e1a",
+                    "expected_sha256":  "846051c913f6fca348bf09b8e0051e1f0d98915c35c73505ff2c6aafb43a0e1a",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\AI_POLICY.md",
+                    "sha256":  "57c967521e37dba26dc00e88d8d8e098ab58574c2ab506b5be629862602d304d",
+                    "expected_sha256":  "57c967521e37dba26dc00e88d8d8e098ab58574c2ab506b5be629862602d304d",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\CONTRIBUTING.md",
+                    "sha256":  "c0f05ebf611b058af9bc5f8684fc88aab8a5b7089dcc5bdc98b3d1dc345e189b",
+                    "expected_sha256":  "c0f05ebf611b058af9bc5f8684fc88aab8a5b7089dcc5bdc98b3d1dc345e189b",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\docs\\developer_guide\\coding_standards.md",
+                    "sha256":  "cd807899f98d98338afbbb72d75300d26b5064c1d23cfa61a29c09e40829d492",
+                    "expected_sha256":  "cd807899f98d98338afbbb72d75300d26b5064c1d23cfa61a29c09e40829d492",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+                    "sha256":  "afc9ba90c3c7a2b57e6e41212704d333e964b4934b88653960cbca599a16b4d1",
+                    "expected_sha256":  "afc9ba90c3c7a2b57e6e41212704d333e964b4934b88653960cbca599a16b4d1",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\src\\execution.rs",
+                    "sha256":  "2b1e30b896b60b01edd257947426c5f132b841dc7fe7771602f1e810c81c3316",
+                    "expected_sha256":  "2b1e30b896b60b01edd257947426c5f132b841dc7fe7771602f1e810c81c3316",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\src\\http\\client.rs",
+                    "sha256":  "ba66b53fcc6a6d1fb6e8bb34ac6faf677cd9e7eb6ffe89eea9e2c11ea398eab2",
+                    "expected_sha256":  "ba66b53fcc6a6d1fb6e8bb34ac6faf677cd9e7eb6ffe89eea9e2c11ea398eab2",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\src\\account_scope.rs",
+                    "sha256":  "2b176ca4b355955268fe26a218a3019b5195ee4a3e87edd6c24e604f4553d0ce",
+                    "expected_sha256":  "2b176ca4b355955268fe26a218a3019b5195ee4a3e87edd6c24e604f4553d0ce",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\src\\websocket\\client.rs",
+                    "sha256":  "15a9fdde9cf9df8e491a63dde625de7029ac85868f19a8dc775d56f2ea160b9a",
+                    "expected_sha256":  "15a9fdde9cf9df8e491a63dde625de7029ac85868f19a8dc775d56f2ea160b9a",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\src\\economics_scope.rs",
+                    "sha256":  "2ebdf3756f39ea0cd32cfdc79d84ef7babdcabd6c2d7fea0b0f00d4c151f7f47",
+                    "expected_sha256":  "2ebdf3756f39ea0cd32cfdc79d84ef7babdcabd6c2d7fea0b0f00d4c151f7f47",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\src\\http\\rate_limits.rs",
+                    "sha256":  "47dd217c00b7a28358b2f28b7e1803c72e5817212300a2e62c2f0a419047dafc",
+                    "expected_sha256":  "47dd217c00b7a28358b2f28b7e1803c72e5817212300a2e62c2f0a419047dafc",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\common\\src\\runner.rs",
+                    "sha256":  "8c97f8e42092665146c4e0ff976ee9e49a766cf003229b46de8131953000a845",
+                    "expected_sha256":  "8c97f8e42092665146c4e0ff976ee9e49a766cf003229b46de8131953000a845",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\live\\src\\runner.rs",
+                    "sha256":  "cc4a6b2928e4135c83220cf900244b8cdf430dc1f28cfb7803740504998520ac",
+                    "expected_sha256":  "cc4a6b2928e4135c83220cf900244b8cdf430dc1f28cfb7803740504998520ac",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\tests\\entropy_account.rs",
+                    "sha256":  "5976b5e8e5b9e19314679ca009365024817a2ad4e3a07ac65c7cdf1d06a79c07",
+                    "expected_sha256":  "5976b5e8e5b9e19314679ca009365024817a2ad4e3a07ac65c7cdf1d06a79c07",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\execution.rs",
+                    "sha256":  "d3958d96f3f48ada888b671ebc9de1f2ee361f6739d4f9c47b66b5c0b98dc1fb",
+                    "expected_sha256":  "d3958d96f3f48ada888b671ebc9de1f2ee361f6739d4f9c47b66b5c0b98dc1fb",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\startup.rs",
+                    "sha256":  "5a7b86d8b68e7f5929d43594c4f7c281cd972a70b8c10a8b01e0ce1af64db615",
+                    "expected_sha256":  "5a7b86d8b68e7f5929d43594c4f7c281cd972a70b8c10a8b01e0ce1af64db615",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\startup_source_reuse.rs",
+                    "sha256":  "6c4c61de2d84ce81e351604801c20db964f24b8f658f6e80c4e2bd693466487a",
+                    "expected_sha256":  "6c4c61de2d84ce81e351604801c20db964f24b8f658f6e80c4e2bd693466487a",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs",
+                    "sha256":  "2fca06baee1dc91a94ac1956db71c555db980c3566fd25c453ad7b99bfc4f58b",
+                    "expected_sha256":  "2fca06baee1dc91a94ac1956db71c555db980c3566fd25c453ad7b99bfc4f58b",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\live\\src\\node\\mod.rs",
+                    "sha256":  "b25b76f9efacd998d180b72172c85261292f999ebc196a160c2fc3c7f17ce044",
+                    "expected_sha256":  "b25b76f9efacd998d180b72172c85261292f999ebc196a160c2fc3c7f17ce044",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\live\\src\\execution\\manager.rs",
+                    "sha256":  "6f700cb823d634f64efaa04efa8ed0b949c43bf27284090074e7eb5b65e998c9",
+                    "expected_sha256":  "6f700cb823d634f64efaa04efa8ed0b949c43bf27284090074e7eb5b65e998c9",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\model\\src\\reports\\mass_status.rs",
+                    "sha256":  "b358556a4b05afb510e797477fc2db76829679533aa3e69aa6cee8a0cec82c94",
+                    "expected_sha256":  "b358556a4b05afb510e797477fc2db76829679533aa3e69aa6cee8a0cec82c94",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\python\\generate_stubs.py",
+                    "sha256":  "59f80e4b8b337733705f23a9ebdecd48b6eb10893a16ce9382e115dc2e2491e7",
+                    "expected_sha256":  "59f80e4b8b337733705f23a9ebdecd48b6eb10893a16ce9382e115dc2e2491e7",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\scripts\\adapter-evidence\\build_native.py",
+                    "sha256":  "7f94cb247ddbc432779b03e97f87a75703df882fa39bee359413ae2e69d98b70",
+                    "expected_sha256":  "7f94cb247ddbc432779b03e97f87a75703df882fa39bee359413ae2e69d98b70",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\python\\nautilus_trader\\adapters\\hyperliquid\\__init__.py",
+                    "sha256":  "2188e2ef55f0927e954eb9ce78d5430eaad84e61a9645e3c0178a0dfd05b3612",
+                    "expected_sha256":  "2188e2ef55f0927e954eb9ce78d5430eaad84e61a9645e3c0178a0dfd05b3612",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-startup-account-proof\\python\\nautilus_trader\\adapters\\hyperliquid\\__init__.pyi",
+                    "sha256":  "016760dd07b4e7498769088ce6a7ac85100ba3fcaf07a0abd33e8e51614d7cfd",
+                    "expected_sha256":  "016760dd07b4e7498769088ce6a7ac85100ba3fcaf07a0abd33e8e51614d7cfd",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\CLAUDE.md",
+                    "sha256":  "e88c45fda78397824437eba1ba8bf3aa8c33760940d377b3f6e3e04f0477e530",
+                    "expected_sha256":  "e88c45fda78397824437eba1ba8bf3aa8c33760940d377b3f6e3e04f0477e530",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\AGENTS.md",
+                    "sha256":  "0db83eca19a5637b536145f71915c4d1d84c7b186eaf809e266b126eb9fde7e5",
+                    "expected_sha256":  "0db83eca19a5637b536145f71915c4d1d84c7b186eaf809e266b126eb9fde7e5",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution.py",
+                    "sha256":  "fbde3f919a6813a47aeb8c388ac3689a33689139d876c6e7e6551d7a364ab882",
+                    "expected_sha256":  "fbde3f919a6813a47aeb8c388ac3689a33689139d876c6e7e6551d7a364ab882",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution_config.py",
+                    "sha256":  "45ed321317743d05a86b1a51058ad684dbd2e84f31bd86a9fd701845025d8c54",
+                    "expected_sha256":  "45ed321317743d05a86b1a51058ad684dbd2e84f31bd86a9fd701845025d8c54",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution_core.py",
+                    "sha256":  "da5abc7ffa5d61439daaf814254aff4d99ad5a7f977790ee80f86dad910d2443",
+                    "expected_sha256":  "da5abc7ffa5d61439daaf814254aff4d99ad5a7f977790ee80f86dad910d2443",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution_report.py",
+                    "sha256":  "5b1a01d4762173c739a90daed4878f854ab0f78b2232a5de07c6969eab9deffa",
+                    "expected_sha256":  "5b1a01d4762173c739a90daed4878f854ab0f78b2232a5de07c6969eab9deffa",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\entropy_execution_peer.py",
+                    "sha256":  "e288616d1ae21a79457f2a7ad49ce5859f9d22da585f31ecc95d08253eb7bc3a",
+                    "expected_sha256":  "e288616d1ae21a79457f2a7ad49ce5859f9d22da585f31ecc95d08253eb7bc3a",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\test_entropy_execution_native.py",
+                    "sha256":  "9a975f5cca43b6b7cb778435a170b3a1223cf0db351417b7bfdd4f9788124120",
+                    "expected_sha256":  "9a975f5cca43b6b7cb778435a170b3a1223cf0db351417b7bfdd4f9788124120",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\scripts\\install_native.py",
+                    "sha256":  "c2d473e5f5dea8c8931ef4350471b2dfa4e1877fcf8168fb7f816f3351d48adf",
+                    "expected_sha256":  "c2d473e5f5dea8c8931ef4350471b2dfa4e1877fcf8168fb7f816f3351d48adf",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v5\\nautilus_hyperliquid-1fcbc36810deefe5.exe",
+                    "sha256":  "204914f7b6a834a1d44c16a221abf3ed9dd93a74522f7788e8e7d9c486a568f0",
+                    "expected_sha256":  "204914f7b6a834a1d44c16a221abf3ed9dd93a74522f7788e8e7d9c486a568f0",
+                    "match":  true
+                },
+                {
+                    "path":  "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v5\\entropy_account-69bad49fe9dc76e8.exe",
+                    "sha256":  "bc59a1a9e62aefa277495d606a60088be32dc808e34df3279ebeb8563c58d7b4",
+                    "expected_sha256":  "bc59a1a9e62aefa277495d606a60088be32dc808e34df3279ebeb8563c58d7b4",
+                    "match":  true
+                }
+            ],
+    "commands":  [
+                     {
+                         "label":  "startup-reuse-22",
+                         "argv":  [
+                                      "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v5\\entropy_account-69bad49fe9dc76e8.exe",
+                                      "execution::startup_source_reuse::",
+                                      "--test-threads=1",
+                                      "--nocapture"
+                                  ],
+                         "cwd":  "E:/persarb/worktrees/entropy-startup-account-proof",
+                         "started_utc":  "2026-10-09T09:40:06.2022885Z",
+                         "finished_utc":  "2026-10-09T09:40:14.9407687Z",
+                         "exit_code":  0,
+                         "expected_case_count":  22,
+                         "actual_passed":  22,
+                         "actual_failed":  0,
+                         "actual_ignored":  0,
+                         "count_matches":  true,
+                         "summary":  "test result: ok. 22 passed; 0 failed; 0 ignored;",
+                         "stdout":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\startup-reuse-22.stdout.log",
+                         "stdout_sha256":  "f2b8deea7641f2fc335e0e6c75533652e5f8bcbbc106bd9cf5943f7fd8e74546",
+                         "stderr":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\startup-reuse-22.stderr.log",
+                         "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                     },
+                     {
+                         "label":  "startup-existing-55",
+                         "argv":  [
+                                      "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v5\\entropy_account-69bad49fe9dc76e8.exe",
+                                      "execution::startup::",
+                                      "--test-threads=1",
+                                      "--nocapture"
+                                  ],
+                         "cwd":  "E:/persarb/worktrees/entropy-startup-account-proof",
+                         "started_utc":  "2026-10-09T09:40:14.9497702Z",
+                         "finished_utc":  "2026-10-09T09:40:30.2167585Z",
+                         "exit_code":  0,
+                         "expected_case_count":  55,
+                         "actual_passed":  55,
+                         "actual_failed":  0,
+                         "actual_ignored":  0,
+                         "count_matches":  true,
+                         "summary":  "test result: ok. 55 passed; 0 failed; 0 ignored;",
+                         "stdout":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\startup-existing-55.stdout.log",
+                         "stdout_sha256":  "9f68269735a52d4f92788bb24cb7c3124f9dc951e2232eaa2948f6a8415bd3b6",
+                         "stderr":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\startup-existing-55.stderr.log",
+                         "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                     },
+                     {
+                         "label":  "warm-64",
+                         "argv":  [
+                                      "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v5\\entropy_account-69bad49fe9dc76e8.exe",
+                                      "execution::io_query_recovery::",
+                                      "--test-threads=1",
+                                      "--nocapture"
+                                  ],
+                         "cwd":  "E:/persarb/worktrees/entropy-startup-account-proof",
+                         "started_utc":  "2026-10-09T09:40:30.2197573Z",
+                         "finished_utc":  "2026-10-09T09:41:17.2076571Z",
+                         "exit_code":  0,
+                         "expected_case_count":  64,
+                         "actual_passed":  64,
+                         "actual_failed":  0,
+                         "actual_ignored":  0,
+                         "count_matches":  true,
+                         "summary":  "test result: ok. 64 passed; 0 failed; 0 ignored;",
+                         "stdout":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\warm-64.stdout.log",
+                         "stdout_sha256":  "9fed7e3082c0b0410537b5e4cce0953e82c6e27d191cab83c240220198fb8e31",
+                         "stderr":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\warm-64.stderr.log",
+                         "stderr_sha256":  "a671fb5eb5a6c1f2cc78030e753e588c4474b44600abc9bc465dc0d2c0b5c522"
+                     },
+                     {
+                         "label":  "old-durable",
+                         "argv":  [
+                                      "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v5\\entropy_account-69bad49fe9dc76e8.exe",
+                                      "execution::durable_actual_fill_does_not_claim_native_cache_restored_after_fresh_factory_restart",
+                                      "--exact",
+                                      "--test-threads=1",
+                                      "--nocapture"
+                                  ],
+                         "cwd":  "E:/persarb/worktrees/entropy-startup-account-proof",
+                         "started_utc":  "2026-10-09T09:41:17.2156531Z",
+                         "finished_utc":  "2026-10-09T09:41:17.6772659Z",
+                         "exit_code":  0,
+                         "expected_case_count":  1,
+                         "actual_passed":  1,
+                         "actual_failed":  0,
+                         "actual_ignored":  0,
+                         "count_matches":  true,
+                         "summary":  "test result: ok. 1 passed; 0 failed; 0 ignored;",
+                         "stdout":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\old-durable.stdout.log",
+                         "stdout_sha256":  "52a98fa15675d917a9d83a41aeb36adb9e875ea06c8a764032d712c3efae31e2",
+                         "stderr":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\old-durable.stderr.log",
+                         "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                     },
+                     {
+                         "label":  "old-unknown",
+                         "argv":  [
+                                      "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v5\\entropy_account-69bad49fe9dc76e8.exe",
+                                      "execution::missing_ack_and_unknown_oid_retain_budget_and_restart_never_resends",
+                                      "--exact",
+                                      "--test-threads=1",
+                                      "--nocapture"
+                                  ],
+                         "cwd":  "E:/persarb/worktrees/entropy-startup-account-proof",
+                         "started_utc":  "2026-10-09T09:41:17.6802673Z",
+                         "finished_utc":  "2026-10-09T09:41:19.0885709Z",
+                         "exit_code":  0,
+                         "expected_case_count":  1,
+                         "actual_passed":  1,
+                         "actual_failed":  0,
+                         "actual_ignored":  0,
+                         "count_matches":  true,
+                         "summary":  "test result: ok. 1 passed; 0 failed; 0 ignored;",
+                         "stdout":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\old-unknown.stdout.log",
+                         "stdout_sha256":  "74cfa2d506d2cb43fded505ad3613d6fe547b8272efed124c435371aac74d8af",
+                         "stderr":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\old-unknown.stderr.log",
+                         "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                     },
+                     {
+                         "label":  "old-leverage",
+                         "argv":  [
+                                      "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v5\\entropy_account-69bad49fe9dc76e8.exe",
+                                      "execution::actual_user_leverage_change_invalidates_new_risk_without_mutating_leverage",
+                                      "--exact",
+                                      "--test-threads=1",
+                                      "--nocapture"
+                                  ],
+                         "cwd":  "E:/persarb/worktrees/entropy-startup-account-proof",
+                         "started_utc":  "2026-10-09T09:41:19.0915713Z",
+                         "finished_utc":  "2026-10-09T09:41:19.2934473Z",
+                         "exit_code":  0,
+                         "expected_case_count":  1,
+                         "actual_passed":  1,
+                         "actual_failed":  0,
+                         "actual_ignored":  0,
+                         "count_matches":  true,
+                         "summary":  "test result: ok. 1 passed; 0 failed; 0 ignored;",
+                         "stdout":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\old-leverage.stdout.log",
+                         "stdout_sha256":  "a972f0eb1782976f9f15fb52538594e5170cf99b4f3c883f5ebb57e8e9f695f1",
+                         "stderr":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\old-leverage.stderr.log",
+                         "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                     },
+                     {
+                         "label":  "old-funding",
+                         "argv":  [
+                                      "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v5\\entropy_account-69bad49fe9dc76e8.exe",
+                                      "execution::economics::persisted_funding_does_not_restore_ready_but_current_account_recovery_can_absorb_exact_replay",
+                                      "--exact",
+                                      "--test-threads=1",
+                                      "--nocapture"
+                                  ],
+                         "cwd":  "E:/persarb/worktrees/entropy-startup-account-proof",
+                         "started_utc":  "2026-10-09T09:41:19.2984477Z",
+                         "finished_utc":  "2026-10-09T09:41:24.9415080Z",
+                         "exit_code":  0,
+                         "expected_case_count":  1,
+                         "actual_passed":  1,
+                         "actual_failed":  0,
+                         "actual_ignored":  0,
+                         "count_matches":  true,
+                         "summary":  "test result: ok. 1 passed; 0 failed; 0 ignored;",
+                         "stdout":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\old-funding.stdout.log",
+                         "stdout_sha256":  "e4bcd532fa34363f6c4f869bf56428ab12e1b13afa202d56b5402e612f2009f4",
+                         "stderr":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\old-funding.stderr.log",
+                         "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                     },
+                     {
+                         "label":  "scope-unit-30",
+                         "argv":  [
+                                      "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v5\\nautilus_hyperliquid-1fcbc36810deefe5.exe",
+                                      "execution_scope::tests::",
+                                      "--test-threads=1"
+                                  ],
+                         "cwd":  "E:/persarb/worktrees/entropy-startup-account-proof",
+                         "started_utc":  "2026-10-09T09:41:24.9445080Z",
+                         "finished_utc":  "2026-10-09T09:41:24.9775884Z",
+                         "exit_code":  0,
+                         "expected_case_count":  30,
+                         "actual_passed":  30,
+                         "actual_failed":  0,
+                         "actual_ignored":  0,
+                         "count_matches":  true,
+                         "summary":  "test result: ok. 30 passed; 0 failed; 0 ignored;",
+                         "stdout":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\scope-unit-30.stdout.log",
+                         "stdout_sha256":  "0dd103801e20e906a7c961d37eedc0c0a2f99b8d5817e4bdc680e232f276c690",
+                         "stderr":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\scope-unit-30.stderr.log",
+                         "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                     },
+                     {
+                         "label":  "unit-only_phase_a_exact_strong_history_replay_can_preserve_current_ready",
+                         "argv":  [
+                                      "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v5\\nautilus_hyperliquid-1fcbc36810deefe5.exe",
+                                      "economics_scope::tests::only_phase_a_exact_strong_history_replay_can_preserve_current_ready",
+                                      "--exact",
+                                      "--test-threads=1"
+                                  ],
+                         "cwd":  "E:/persarb/worktrees/entropy-startup-account-proof",
+                         "started_utc":  "2026-10-09T09:41:24.9805885Z",
+                         "finished_utc":  "2026-10-09T09:41:25.0232636Z",
+                         "exit_code":  0,
+                         "expected_case_count":  1,
+                         "actual_passed":  1,
+                         "actual_failed":  0,
+                         "actual_ignored":  0,
+                         "count_matches":  true,
+                         "summary":  "test result: ok. 1 passed; 0 failed; 0 ignored;",
+                         "stdout":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\unit-only_phase_a_exact_strong_history_replay_can_preserve_current_ready.stdout.log",
+                         "stdout_sha256":  "d2b149f684492eda2497631c6855484be66dc535ebacd177f4065fc23780e75a",
+                         "stderr":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\unit-only_phase_a_exact_strong_history_replay_can_preserve_current_ready.stderr.log",
+                         "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                     },
+                     {
+                         "label":  "unit-lifetime_coverage_capacity_preserves_last_checkpoint_when_exhausted",
+                         "argv":  [
+                                      "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v5\\nautilus_hyperliquid-1fcbc36810deefe5.exe",
+                                      "economics_scope::tests::lifetime_coverage_capacity_preserves_last_checkpoint_when_exhausted",
+                                      "--exact",
+                                      "--test-threads=1"
+                                  ],
+                         "cwd":  "E:/persarb/worktrees/entropy-startup-account-proof",
+                         "started_utc":  "2026-10-09T09:41:25.0272629Z",
+                         "finished_utc":  "2026-10-09T09:41:25.2522375Z",
+                         "exit_code":  0,
+                         "expected_case_count":  1,
+                         "actual_passed":  1,
+                         "actual_failed":  0,
+                         "actual_ignored":  0,
+                         "count_matches":  true,
+                         "summary":  "test result: ok. 1 passed; 0 failed; 0 ignored;",
+                         "stdout":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\unit-lifetime_coverage_capacity_preserves_last_checkpoint_when_exhausted.stdout.log",
+                         "stdout_sha256":  "a59f6645dd57eff41533bb62a4026664acc7f0e07271c02ea7e7fb59fb55b31d",
+                         "stderr":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\unit-lifetime_coverage_capacity_preserves_last_checkpoint_when_exhausted.stderr.log",
+                         "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                     },
+                     {
+                         "label":  "unit-runtime_bound_preserves_prior_durable_facts_and_does_not_evict_pending",
+                         "argv":  [
+                                      "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v5\\nautilus_hyperliquid-1fcbc36810deefe5.exe",
+                                      "economics_scope::tests::runtime_bound_preserves_prior_durable_facts_and_does_not_evict_pending",
+                                      "--exact",
+                                      "--test-threads=1"
+                                  ],
+                         "cwd":  "E:/persarb/worktrees/entropy-startup-account-proof",
+                         "started_utc":  "2026-10-09T09:41:25.2552370Z",
+                         "finished_utc":  "2026-10-09T09:41:25.2995344Z",
+                         "exit_code":  0,
+                         "expected_case_count":  1,
+                         "actual_passed":  1,
+                         "actual_failed":  0,
+                         "actual_ignored":  0,
+                         "count_matches":  true,
+                         "summary":  "test result: ok. 1 passed; 0 failed; 0 ignored;",
+                         "stdout":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\unit-runtime_bound_preserves_prior_durable_facts_and_does_not_evict_pending.stdout.log",
+                         "stdout_sha256":  "2703f5542288bcfce51c3b6300efe152be6336cb4ac808e88f67e70c00f774d1",
+                         "stderr":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\unit-runtime_bound_preserves_prior_durable_facts_and_does_not_evict_pending.stderr.log",
+                         "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                     },
+                     {
+                         "label":  "unit-replacement_context_cannot_certify_an_old_source_in_the_same_epoch",
+                         "argv":  [
+                                      "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v5\\nautilus_hyperliquid-1fcbc36810deefe5.exe",
+                                      "account_scope::tests::replacement_context_cannot_certify_an_old_source_in_the_same_epoch",
+                                      "--exact",
+                                      "--test-threads=1"
+                                  ],
+                         "cwd":  "E:/persarb/worktrees/entropy-startup-account-proof",
+                         "started_utc":  "2026-10-09T09:41:25.3045347Z",
+                         "finished_utc":  "2026-10-09T09:41:25.3225346Z",
+                         "exit_code":  0,
+                         "expected_case_count":  1,
+                         "actual_passed":  1,
+                         "actual_failed":  0,
+                         "actual_ignored":  0,
+                         "count_matches":  true,
+                         "summary":  "test result: ok. 1 passed; 0 failed; 0 ignored;",
+                         "stdout":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\unit-replacement_context_cannot_certify_an_old_source_in_the_same_epoch.stdout.log",
+                         "stdout_sha256":  "843d16c3215691e07259f9e8026569f7d5c7673565d30e1e53cdaf29a83794a9",
+                         "stderr":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\unit-replacement_context_cannot_certify_an_old_source_in_the_same_epoch.stderr.log",
+                         "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                     },
+                     {
+                         "label":  "unit-invalid_private_source_and_refresh_start_cannot_preserve_or_rebuild_context",
+                         "argv":  [
+                                      "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v5\\nautilus_hyperliquid-1fcbc36810deefe5.exe",
+                                      "account_scope::tests::invalid_private_source_and_refresh_start_cannot_preserve_or_rebuild_context",
+                                      "--exact",
+                                      "--test-threads=1"
+                                  ],
+                         "cwd":  "E:/persarb/worktrees/entropy-startup-account-proof",
+                         "started_utc":  "2026-10-09T09:41:25.3255344Z",
+                         "finished_utc":  "2026-10-09T09:41:25.3426750Z",
+                         "exit_code":  0,
+                         "expected_case_count":  1,
+                         "actual_passed":  1,
+                         "actual_failed":  0,
+                         "actual_ignored":  0,
+                         "count_matches":  true,
+                         "summary":  "test result: ok. 1 passed; 0 failed; 0 ignored;",
+                         "stdout":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\unit-invalid_private_source_and_refresh_start_cannot_preserve_or_rebuild_context.stdout.log",
+                         "stdout_sha256":  "ff07b825bc4f83e6dbd883b20e8e92f57cc49b4ab92019b2ab18568281766918",
+                         "stderr":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\unit-invalid_private_source_and_refresh_start_cannot_preserve_or_rebuild_context.stderr.log",
+                         "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                     },
+                     {
+                         "label":  "unit-attribution_independently_checks_reader_epoch_ack_and_verification_age",
+                         "argv":  [
+                                      "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v5\\nautilus_hyperliquid-1fcbc36810deefe5.exe",
+                                      "account_scope::tests::attribution_independently_checks_reader_epoch_ack_and_verification_age",
+                                      "--exact",
+                                      "--test-threads=1"
+                                  ],
+                         "cwd":  "E:/persarb/worktrees/entropy-startup-account-proof",
+                         "started_utc":  "2026-10-09T09:41:25.3458659Z",
+                         "finished_utc":  "2026-10-09T09:41:25.3628660Z",
+                         "exit_code":  0,
+                         "expected_case_count":  1,
+                         "actual_passed":  1,
+                         "actual_failed":  0,
+                         "actual_ignored":  0,
+                         "count_matches":  true,
+                         "summary":  "test result: ok. 1 passed; 0 failed; 0 ignored;",
+                         "stdout":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\unit-attribution_independently_checks_reader_epoch_ack_and_verification_age.stdout.log",
+                         "stdout_sha256":  "e8ab1340780e2e612bebf0a0a0fd51c7464d7d5f14fa9468851d4af665498115",
+                         "stderr":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\unit-attribution_independently_checks_reader_epoch_ack_and_verification_age.stderr.log",
+                         "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                     },
+                     {
+                         "label":  "ingress-prepared_private_ingress_requires_contiguous_actor_application",
+                         "argv":  [
+                                      "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v5\\nautilus_hyperliquid-1fcbc36810deefe5.exe",
+                                      "websocket::client::tests::prepared_private_ingress_requires_contiguous_actor_application",
+                                      "--exact",
+                                      "--test-threads=1"
+                                  ],
+                         "cwd":  "E:/persarb/worktrees/entropy-startup-account-proof",
+                         "started_utc":  "2026-10-09T09:41:25.3658662Z",
+                         "finished_utc":  "2026-10-09T09:41:25.3818688Z",
+                         "exit_code":  0,
+                         "expected_case_count":  1,
+                         "actual_passed":  1,
+                         "actual_failed":  0,
+                         "actual_ignored":  0,
+                         "count_matches":  true,
+                         "summary":  "test result: ok. 1 passed; 0 failed; 0 ignored;",
+                         "stdout":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\ingress-prepared_private_ingress_requires_contiguous_actor_application.stdout.log",
+                         "stdout_sha256":  "031c26847badf0fcae52c9da2cf4aa18178a2eea9b902b445b74e0102945370f",
+                         "stderr":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\ingress-prepared_private_ingress_requires_contiguous_actor_application.stderr.log",
+                         "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                     },
+                     {
+                         "label":  "ingress-prepared_private_ingress_rejects_old_epoch_and_fresh_connection_markers",
+                         "argv":  [
+                                      "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v5\\nautilus_hyperliquid-1fcbc36810deefe5.exe",
+                                      "websocket::client::tests::prepared_private_ingress_rejects_old_epoch_and_fresh_connection_markers",
+                                      "--exact",
+                                      "--test-threads=1"
+                                  ],
+                         "cwd":  "E:/persarb/worktrees/entropy-startup-account-proof",
+                         "started_utc":  "2026-10-09T09:41:25.3858662Z",
+                         "finished_utc":  "2026-10-09T09:41:25.4018693Z",
+                         "exit_code":  0,
+                         "expected_case_count":  1,
+                         "actual_passed":  1,
+                         "actual_failed":  0,
+                         "actual_ignored":  0,
+                         "count_matches":  true,
+                         "summary":  "test result: ok. 1 passed; 0 failed; 0 ignored;",
+                         "stdout":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\ingress-prepared_private_ingress_rejects_old_epoch_and_fresh_connection_markers.stdout.log",
+                         "stdout_sha256":  "0af4a2698a7a9331bd19d63d60383c5ad3cb9a189d0dd1a3e6a6e9e0b80eb349",
+                         "stderr":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\ingress-prepared_private_ingress_rejects_old_epoch_and_fresh_connection_markers.stderr.log",
+                         "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                     },
+                     {
+                         "label":  "ingress-prepared_private_ingress_lock_serializes_receipt_and_write_boundary",
+                         "argv":  [
+                                      "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v5\\nautilus_hyperliquid-1fcbc36810deefe5.exe",
+                                      "websocket::client::tests::prepared_private_ingress_lock_serializes_receipt_and_write_boundary",
+                                      "--exact",
+                                      "--test-threads=1"
+                                  ],
+                         "cwd":  "E:/persarb/worktrees/entropy-startup-account-proof",
+                         "started_utc":  "2026-10-09T09:41:25.4048655Z",
+                         "finished_utc":  "2026-10-09T09:41:25.4238660Z",
+                         "exit_code":  0,
+                         "expected_case_count":  1,
+                         "actual_passed":  1,
+                         "actual_failed":  0,
+                         "actual_ignored":  0,
+                         "count_matches":  true,
+                         "summary":  "test result: ok. 1 passed; 0 failed; 0 ignored;",
+                         "stdout":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\ingress-prepared_private_ingress_lock_serializes_receipt_and_write_boundary.stdout.log",
+                         "stdout_sha256":  "f522ea8796bdfd1f5341e0d2322dfc22c1886dea7c680bd7060476acf4c3f124",
+                         "stderr":  "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\ingress-prepared_private_ingress_lock_serializes_receipt_and_write_boundary.stderr.log",
+                         "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                     }
+                 ],
+    "independent_passed":  184,
+    "independent_failed":  0,
+    "acceptance":  "Pending"
+}

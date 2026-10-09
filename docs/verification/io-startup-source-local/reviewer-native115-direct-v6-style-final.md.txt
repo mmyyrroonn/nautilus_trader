@@ -1,0 +1,15 @@
+﻿# Independent native115 final-v6 style-touched executable smoke
+
+Actual direct execution ran UTC 2026-10-09T09:53:38.5257117Z to 2026-10-09T09:53:40.5859561Z. Seven exact copied-executable tests passed; zero failed, zero ignored. Every process exited 0 and reported precisely one test. Commands, individual clocks and byte-preserved stdout/stderr with SHA256 are in the adjacent result.json.
+
+This is a final-v6 recheck of seven tests already covered by the prior independent v5 184-test run. These checks are not seven additional distinct tests and are not added to the parent's 1387-test regression count. No Cargo, build, install, Git, production/test edit, or native Python import was performed.
+
+All 39 declared source inputs and both immutable copied executables matched their expected hashes before and after the run. Official stub generation/postprocessing had completed before this capture. The test-inclusive style delta changes only a semicolon and borrowing the report in the assertion helper; the earlier independent source addendum proved both production files and 37 other inputs unchanged.
+
+Account executable SHA256: c0934c09cda2211909294a13a33832e08428142771894e84ce4f281d15205c7b.
+Library executable SHA256: 204914f7b6a834a1d44c16a221abf3ed9dd93a74522f7788e8e7d9c486a568f0 (captured, not executed in this smoke).
+Source manifest native115-formatted-v6.json SHA256: cdff728ad3e07dd8288a254600469a4c44d915cb3e07dbdcf70a1a333533144d.
+
+The executed IDs were the three original-sealed-source positive variants, repeated mass calls, identical-applied-frame full-read fallback, connect-crossing-source full-read fallback, and original startup current-complete-source case_04 (unselected position). Exact strings are retained in result.json. No loopback fixture budgets or assertions were altered.
+
+Conclusion: the final-v6 style-only source delta has independent actual executable coverage. This does not certify the not-yet-supplied installed final wheel, mainnet, host/kernel egress isolation, arbitrary Cache mutation during writer waits, complete historical economics, whole-account ownership, funding/run PnL, or generic durable Cache restoration. The earlier independent warm history run observed one actual history request; the legal zero-history-request deadline branch is source-reviewed, not separately claimed as independently executed here.

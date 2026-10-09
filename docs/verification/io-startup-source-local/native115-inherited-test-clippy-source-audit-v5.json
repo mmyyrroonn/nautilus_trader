@@ -1,0 +1,30 @@
+{
+  "created_utc": "2026-10-09T09:41:20.673559+00:00",
+  "actual_clippy_command": "native115-test-inclusive-clippy-v5.json",
+  "actual_clippy_log": "native115-test-inclusive-clippy-v5.log",
+  "new_diagnostics": 2,
+  "inherited_diagnostics": 10,
+  "note": "Four inherited library-test diagnostics plus six inherited integration-test diagnostics; no blanket Clippy pass",
+  "sources": [
+    {
+      "path": "crates/adapters/hyperliquid/src/economics_scope/tests.rs",
+      "base_sha256": "3b9363dbf3fd0f6c4a812bb682fc724f842922f3b9c9509319c6ea77ab570602",
+      "current_sha256": "3b9363dbf3fd0f6c4a812bb682fc724f842922f3b9c9509319c6ea77ab570602",
+      "exactly_unchanged": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/tests/entropy_account.rs",
+      "base_sha256": "5976b5e8e5b9e19314679ca009365024817a2ad4e3a07ac65c7cdf1d06a79c07",
+      "current_sha256": "5976b5e8e5b9e19314679ca009365024817a2ad4e3a07ac65c7cdf1d06a79c07",
+      "exactly_unchanged": true
+    },
+    {
+      "path": "crates/adapters/hyperliquid/tests/entropy_account/execution.rs",
+      "only_child_module_hook_changed": true,
+      "inherited_functions_unchanged": [
+        "PeerState.send_fill",
+        "normal_execution_client_factory_exposes_scope_snapshot_from_registered_core"
+      ]
+    }
+  ]
+}

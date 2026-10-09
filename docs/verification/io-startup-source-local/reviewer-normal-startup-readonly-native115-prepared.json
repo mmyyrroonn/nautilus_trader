@@ -1,0 +1,13 @@
+﻿{
+    "prepared_utc":  "2026-10-09T09:55:18.6729210Z",
+    "new_runner":  "E:/persarb/_tmp/entropy115-validation/reviewer-normal-startup-readonly-native115.py",
+    "new_runner_sha256":  "8c984f84d65fd91a9b4a5370585c09960ea01063419865cbe53afb83b9ea4963",
+    "old_runner":  "E:/persarb/_tmp/entropy113-validation/reviewer-normal-startup-readonly-native113.py",
+    "old_runner_sha256":  "1b0910c2ff19a288c0dc2b4030f50d236ebf13d4a806a2f9d71bbacd82232731",
+    "old_runner_unchanged":  true,
+    "executed":  false,
+    "native_imported":  false,
+    "expected_identity_from_cli":  true,
+    "limits":  "30s read-only ABI/startup; no 2s warm or startup reuse authority claim",
+    "capture_helper_readonly_not_executed":  true
+}

@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "gh",
+    "api",
+    "repos/mmyyrroonn/Nautilus-Perps/issues/43/comments",
+    "--method",
+    "POST",
+    "--input",
+    "E:\\persarb\\_tmp\\entropy113-validation\\app43-startup-proof-dependency-start-input.json"
+  ],
+  "started_utc": "2026-10-09T08:50:25.110445+00:00",
+  "finished_utc": "2026-10-09T08:50:26.592495+00:00",
+  "exit_code": 0,
+  "attempts": 1
+}

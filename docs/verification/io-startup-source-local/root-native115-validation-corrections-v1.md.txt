@@ -1,0 +1,13 @@
+# Actual root corrections before full acceptance
+
+The original latest main baseline is aadad78fab77467f4a1467a252947ebb84f5361d. Author v1 and test v1 were captured as exact bytes before mutation. The initial working capture was already changing and is not described as a clean baseline; native115-main-base.json contains independently read original Git blobs.
+
+Independent source review found two time-sampling gaps in v1. Author v2 moves the original seal's complete candidate copying before its final scalar freshness check. Startup boundary now keeps ingress/account/execution guards through callback comparisons and report construction, then resamples time and checks original account/private/seal/metadata freshness and the same original deadline before returning. No deterministic mutex-wait integration run is claimed.
+
+Actual focused compile v2 ran 09:19:56-09:20:39 UTC and failed E0716 in startup_source_reuse.rs:369. No test executed. Root changed only the lifetime of the returned position_reports map: hold the original map before borrowing a row. native115-lifetime-fixed-v3 captures the exact revised source, including the unchanged v2 production bytes. Actual v3 focused execution ran 09:22:07-09:22:20 UTC and passed 19 tests, with 211 filtered out. This is not a full regression or independent binary result.
+
+Independent review also found a startup fallback qualification gap. An actual selected-row metadata contradiction can prevent optional sealing while inherited ordinary account publication succeeds. Startup previously accepted this unsealed fallback using earlier metadata. The narrow agreed correction is to require a new strict source seal after the actual fallback full read, while preserving ordinary account publication. Missing or changed old seal still triggers a real full read when current trusted startup prerequisites allow it; absence of a newly qualified seal means finite refusal. A once-unbound metadata origin does not acquire retrospective startup authority merely because Cache is populated later.
+
+Three new HTTP-only row-counterproof cases are being prepared. They keep collateral and the valid universe unchanged and must prove that an actual faulty metadata body was received, with ordinary Engine/native Cache instruments untouched. Their future result is not yet claimed in this note.
+
+The initial public progress comment payload was corrupted by PowerShell stdin's ASCII encoding. Its original input/response/command files are retained. The corrected body was read from native115-first-validation-trace-corrected.md as UTF-8, PATCHed once at 09:24:18 UTC, and compared exactly with GitHub's returned body. No validation record was rewritten to conceal this failure.

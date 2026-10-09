@@ -1,0 +1,93 @@
+{
+  "passed": 1387,
+  "failed": 0,
+  "ignored": 18,
+  "groups": [
+    [
+      867,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0
+    ],
+    [
+      46,
+      0,
+      0
+    ],
+    [
+      40,
+      0,
+      0
+    ],
+    [
+      233,
+      0,
+      0
+    ],
+    [
+      102,
+      0,
+      1
+    ],
+    [
+      46,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      5
+    ],
+    [
+      0,
+      0,
+      6
+    ],
+    [
+      53,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      6
+    ]
+  ],
+  "log_sha256": "e13864b679af2a2fa22e02dfaadda634259c0235b668a6e5c9d19ef5cc4cbd36",
+  "command": {
+    "argv": [
+      "cargo",
+      "test",
+      "-p",
+      "nautilus-hyperliquid",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'",
+      "--",
+      "--test-threads=1"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-startup-account-proof",
+    "started_utc": "2026-10-09T09:44:11.817677+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": "E:/persarb/worktrees/entropy-startup-account-proof/.venv/Scripts/python.exe",
+    "uv_project_environment": null,
+    "nautilus_stub_profile": null,
+    "cargo_build_warnings": null,
+    "cargo_net_offline": null,
+    "entropy43_native_wheel": null,
+    "entropy43_native_sha256": null,
+    "entropy43_native_provenance": null,
+    "entropy43_evidence_root": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T09:48:07.698776+00:00"
+  }
+}

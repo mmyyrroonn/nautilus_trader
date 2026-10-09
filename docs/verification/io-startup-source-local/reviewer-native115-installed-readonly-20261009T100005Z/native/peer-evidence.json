@@ -1,0 +1,802 @@
+{
+  "requests": [
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "spotMeta"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "universe": [],
+          "tokens": [
+            {
+              "name": "USDC",
+              "index": 0,
+              "szDecimals": 8,
+              "weiDecimals": 8,
+              "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+              "isCanonical": true,
+              "fullName": "USD Coin"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "allPerpMetas"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": [
+          {
+            "universe": [],
+            "collateralToken": 0
+          },
+          {
+            "universe": [
+              {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            ],
+            "collateralToken": 0
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "outcomeMeta"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "outcomes": [],
+          "questions": []
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "allPerpMetas"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": [
+          {
+            "universe": [],
+            "collateralToken": 0
+          },
+          {
+            "universe": [
+              {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            ],
+            "collateralToken": 0
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "perpDexs"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": [
+          null,
+          {
+            "name": "io",
+            "fullName": "Synthetic Entropy"
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "spotMeta"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "universe": [],
+          "tokens": [
+            {
+              "name": "USDC",
+              "index": 0,
+              "szDecimals": 8,
+              "weiDecimals": 8,
+              "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+              "isCanonical": true,
+              "fullName": "USD Coin"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "allPerpMetas"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": [
+          {
+            "universe": [],
+            "collateralToken": 0
+          },
+          {
+            "universe": [
+              {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            ],
+            "collateralToken": 0
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "outcomeMeta"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "outcomes": [],
+          "questions": []
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "spotMeta"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "universe": [],
+          "tokens": [
+            {
+              "name": "USDC",
+              "index": 0,
+              "szDecimals": 8,
+              "weiDecimals": 8,
+              "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+              "isCanonical": true,
+              "fullName": "USD Coin"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "allPerpMetas"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": [
+          {
+            "universe": [],
+            "collateralToken": 0
+          },
+          {
+            "universe": [
+              {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            ],
+            "collateralToken": 0
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "outcomeMeta"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "outcomes": [],
+          "questions": []
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "userRole",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "role": "user"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "userAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": "disabled"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "userDexAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": false
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "meta",
+        "dex": "io"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "universe": [
+            {
+              "name": "io:SNDK",
+              "szDecimals": 4,
+              "maxLeverage": 10,
+              "onlyIsolated": true,
+              "marginMode": "strictIsolated"
+            }
+          ],
+          "collateralToken": 0
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "spotMeta"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "universe": [],
+          "tokens": [
+            {
+              "name": "USDC",
+              "index": 0,
+              "szDecimals": 8,
+              "weiDecimals": 8,
+              "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+              "isCanonical": true,
+              "fullName": "USD Coin"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "clearinghouseState",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "dex": "io"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "marginSummary": {
+            "accountValue": "100",
+            "totalNtlPos": "0",
+            "totalRawUsd": "100",
+            "totalMarginUsed": "0"
+          },
+          "crossMarginSummary": {
+            "accountValue": "0",
+            "totalNtlPos": "0",
+            "totalRawUsd": "0",
+            "totalMarginUsed": "0"
+          },
+          "crossMaintenanceMarginUsed": "0",
+          "withdrawable": "100",
+          "assetPositions": [],
+          "time": 1791540007604
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "userAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": "disabled"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "userDexAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": false
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "perpDexs"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": [
+          null,
+          {
+            "name": "io",
+            "fullName": "Synthetic Entropy"
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "meta",
+        "dex": "io"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "universe": [
+            {
+              "name": "io:SNDK",
+              "szDecimals": 4,
+              "maxLeverage": 10,
+              "onlyIsolated": true,
+              "marginMode": "strictIsolated"
+            }
+          ],
+          "collateralToken": 0
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "spotMeta"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "universe": [],
+          "tokens": [
+            {
+              "name": "USDC",
+              "index": 0,
+              "szDecimals": 8,
+              "weiDecimals": 8,
+              "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+              "isCanonical": true,
+              "fullName": "USD Coin"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "activeAssetData",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "coin": "io:SNDK"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "coin": "io:SNDK",
+          "leverage": {
+            "type": "isolated",
+            "value": 1
+          },
+          "maxTradeSzs": [
+            "1",
+            "1"
+          ],
+          "availableToTrade": [
+            "100",
+            "100"
+          ],
+          "markPx": "100"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "activeAssetData",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "coin": "io:SNDK"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "coin": "io:SNDK",
+          "leverage": {
+            "type": "isolated",
+            "value": 1
+          },
+          "maxTradeSzs": [
+            "1",
+            "1"
+          ],
+          "availableToTrade": [
+            "100",
+            "100"
+          ],
+          "markPx": "100"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "frontendOpenOrders",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "dex": "io"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": []
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "userFills",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": []
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "userRole",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "role": "user"
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "userAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": "disabled"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "userDexAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": false
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "meta",
+        "dex": "io"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "universe": [
+            {
+              "name": "io:SNDK",
+              "szDecimals": 4,
+              "maxLeverage": 10,
+              "onlyIsolated": true,
+              "marginMode": "strictIsolated"
+            }
+          ],
+          "collateralToken": 0
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "spotMeta"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "universe": [],
+          "tokens": [
+            {
+              "name": "USDC",
+              "index": 0,
+              "szDecimals": 8,
+              "weiDecimals": 8,
+              "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+              "isCanonical": true,
+              "fullName": "USD Coin"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "clearinghouseState",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "dex": "io"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "marginSummary": {
+            "accountValue": "100",
+            "totalNtlPos": "0",
+            "totalRawUsd": "100",
+            "totalMarginUsed": "0"
+          },
+          "crossMarginSummary": {
+            "accountValue": "0",
+            "totalNtlPos": "0",
+            "totalRawUsd": "0",
+            "totalMarginUsed": "0"
+          },
+          "crossMaintenanceMarginUsed": "0",
+          "withdrawable": "100",
+          "assetPositions": [],
+          "time": 1791540007724
+        }
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "userAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": "disabled"
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "userDexAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": false
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "frontendOpenOrders",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "dex": "io"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": []
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "userFills",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": []
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/info",
+      "body": {
+        "type": "historicalOrders",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": []
+      }
+    }
+  ],
+  "commands": [
+    {
+      "method": "subscribe",
+      "subscription": {
+        "type": "orderUpdates",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      }
+    },
+    {
+      "method": "subscribe",
+      "subscription": {
+        "type": "userEvents",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      }
+    },
+    {
+      "method": "subscribe",
+      "subscription": {
+        "type": "clearinghouseState",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "dex": "io"
+      }
+    }
+  ],
+  "frames": [
+    {
+      "channel": "clearinghouseState",
+      "data": {
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "dex": "io",
+        "clearinghouseState": {
+          "marginSummary": {
+            "accountValue": "100",
+            "totalNtlPos": "0",
+            "totalRawUsd": "100",
+            "totalMarginUsed": "0"
+          },
+          "crossMarginSummary": {
+            "accountValue": "0",
+            "totalNtlPos": "0",
+            "totalRawUsd": "0",
+            "totalMarginUsed": "0"
+          },
+          "crossMaintenanceMarginUsed": "0",
+          "withdrawable": "100",
+          "assetPositions": [],
+          "time": 1791540007699
+        }
+      }
+    }
+  ],
+  "errors": [],
+  "actions": 0,
+  "fills": [],
+  "position": "0",
+  "active_sessions_after_teardown": 0
+}

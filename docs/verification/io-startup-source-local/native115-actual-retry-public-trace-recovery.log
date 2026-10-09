@@ -1,0 +1,9 @@
+Traceback (most recent call last):
+  File "E:\persarb\_tmp\entropy115-validation\post_native115_actual_retry.py", line 61, in <module>
+    main()
+  File "E:\persarb\_tmp\entropy115-validation\post_native115_actual_retry.py", line 33, in main
+    comment = found[0] if found else api(
+                                     ^^^^
+  File "E:\persarb\_tmp\entropy115-validation\github113.py", line 39, in api
+    raise RuntimeError(label + ": inspect remote state before retrying a mutation")
+RuntimeError: native115-retry-trace-v2-native-post: inspect remote state before retrying a mutation

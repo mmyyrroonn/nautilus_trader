@@ -1,0 +1,65 @@
+"""Bind copied native binaries to a completed full Cargo regression and source."""
+
+import argparse
+import hashlib
+import json
+import re
+import shutil
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--source", required=True)
+    parser.add_argument("--regression", required=True)
+    parser.add_argument("--label", required=True)
+    args = parser.parse_args()
+    assert re.fullmatch(r"[a-z0-9-]+", args.label)
+    target = ROOT / (args.label + ".json")
+    output = ROOT / "verified-bin" / args.label
+    assert not target.exists() and not output.exists()
+    manifest = ROOT / (args.source + ".json")
+    source = json.loads(manifest.read_text(encoding="utf-8"))
+    for repository in ("native", "app"):
+        assert not source[repository].get("missing_inputs"), "Incomplete source capture"
+        for row in source[repository]["files"]:
+            assert digest(Path(row["path"])) == row["sha256"], row["path"]
+    command_path = ROOT / (args.regression + ".json")
+    command = json.loads(command_path.read_text(encoding="utf-8"))
+    assert command["exit_code"] == 0
+    log = ROOT / (args.regression + ".log")
+    raw = log.read_text(encoding="utf-8")
+    groups = re.findall(r"test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored", raw)
+    assert len(groups) >= 10 and sum(int(row[1]) for row in groups) == 0
+    recorded = dict(re.findall(r"^\s*Running (.+?) \((.+?\.exe)\)\s*$", raw, re.MULTILINE))
+    output.mkdir(parents=True)
+    binaries = []
+    for marker in ("unittests src\\lib.rs", "tests\\entropy_account.rs"):
+        original = Path(recorded[marker])
+        copied = output / original.name
+        original_sha = digest(original)
+        shutil.copyfile(original, copied)
+        assert digest(copied) == original_sha == digest(original)
+        binaries.append({"cargo_running_marker": marker, "build_output_path": str(original),
+                         "immutable_copy_path": str(copied), "sha256": original_sha,
+                         "bytes": copied.stat().st_size})
+    record = {"captured_utc": datetime.now(timezone.utc).isoformat(),
+              "source_manifest": {"path": str(manifest), "sha256": digest(manifest)},
+              "actual_cargo_command": {"path": str(command_path), "sha256": digest(command_path), "command": command},
+              "actual_cargo_log": {"path": str(log), "sha256": digest(log)},
+              "regression_passed": sum(int(row[0]) for row in groups),
+              "regression_ignored": sum(int(row[2]) for row in groups),
+              "source_files_unchanged": True, "binaries": binaries}
+    target.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({"capture": str(target), "binaries": binaries, "passed": record["regression_passed"]}))
+
+
+if __name__ == "__main__":
+    main()

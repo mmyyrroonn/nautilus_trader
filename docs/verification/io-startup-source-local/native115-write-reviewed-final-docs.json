@@ -1,0 +1,22 @@
+{
+  "argv": [
+    ".venv/Scripts/python.exe",
+    "-X",
+    "utf8",
+    "E:/persarb/_tmp/entropy115-validation/write_native115_final_docs.py"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-startup-account-proof",
+  "started_utc": "2026-10-09T10:25:14.052738+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "uv_project_environment": null,
+  "nautilus_stub_profile": null,
+  "cargo_build_warnings": null,
+  "cargo_net_offline": null,
+  "entropy43_native_wheel": null,
+  "entropy43_native_sha256": null,
+  "entropy43_native_provenance": null,
+  "entropy43_evidence_root": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T10:25:14.421828+00:00"
+}

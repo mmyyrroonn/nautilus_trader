@@ -1,0 +1,105 @@
+   Compiling nautilus-core v0.63.0 (E:\persarb\worktrees\entropy-startup-account-proof\crates\core)
+   Compiling nautilus-common v0.63.0 (E:\persarb\worktrees\entropy-startup-account-proof\crates\common)
+   Compiling nautilus-persistence-macros v0.63.0 (E:\persarb\worktrees\entropy-startup-account-proof\crates\persistence\macros)
+   Compiling nautilus-serialization v0.63.0 (E:\persarb\worktrees\entropy-startup-account-proof\crates\serialization)
+warning: linker stdout: 正在创建库 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-63fd5ed65377140a.dll.lib 和对象 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-63fd5ed65377140a.dll.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-persistence-macros` (lib) generated 1 warning
+   Compiling nautilus-model v0.63.0 (E:\persarb\worktrees\entropy-startup-account-proof\crates\model)
+   Compiling nautilus-cryptography v0.63.0 (E:\persarb\worktrees\entropy-startup-account-proof\crates\cryptography)
+   Compiling nautilus-network v0.63.0 (E:\persarb\worktrees\entropy-startup-account-proof\crates\network)
+   Compiling nautilus-analysis v0.63.0 (E:\persarb\worktrees\entropy-startup-account-proof\crates\analysis)
+   Compiling nautilus-execution v0.63.0 (E:\persarb\worktrees\entropy-startup-account-proof\crates\execution)
+   Compiling nautilus-portfolio v0.63.0 (E:\persarb\worktrees\entropy-startup-account-proof\crates\portfolio)
+   Compiling nautilus-persistence v0.63.0 (E:\persarb\worktrees\entropy-startup-account-proof\crates\persistence)
+   Compiling nautilus-live v0.63.0 (E:\persarb\worktrees\entropy-startup-account-proof\crates\live)
+   Compiling nautilus-trading v0.63.0 (E:\persarb\worktrees\entropy-startup-account-proof\crates\trading)
+   Compiling nautilus-testkit v0.63.0 (E:\persarb\worktrees\entropy-startup-account-proof\crates\testkit)
+   Compiling nautilus-hyperliquid v0.63.0 (E:\persarb\worktrees\entropy-startup-account-proof\crates\adapters\hyperliquid)
+error[E0716]: temporary value dropped while borrowed
+   --> crates\adapters\hyperliquid\tests\entropy_account\startup_source_reuse.rs:369:20
+    |
+369 |           let rows = report
+    |  ____________________^
+370 | |             .position_reports()
+    | |_______________________________^ creates a temporary value which is freed while still in use
+371 |               .get(&InstrumentId::from(id))
+372 |               .unwrap();
+    |                        - temporary value is freed at the end of this statement
+373 |           assert_eq!(rows.len(), 1);
+    |                      ---- borrow later used here
+    |
+    = note: consider using a `let` binding to create a longer lived value
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_exec.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_exec.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_approve.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_approve.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_public.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_public.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_user_outcome.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_user_outcome.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_revoke.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_revoke.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_outcome_order.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_outcome_order.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_capture_test_data.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_capture_test_data.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_private.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_private.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+For more information about this error, try `rustc --explain E0716`.
+error: could not compile `nautilus-hyperliquid` (test "entropy_account") due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_exec.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_exec.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_flatten.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_flatten.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_data.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_data.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (bin "hyperliquid-builder-fee-revoke") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-builder-fee-approve") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-public") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-capture-test-data") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-exec") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-user-outcome") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-private") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-outcome-order") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-flatten") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-ws-exec") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-ws-data") generated 1 warning

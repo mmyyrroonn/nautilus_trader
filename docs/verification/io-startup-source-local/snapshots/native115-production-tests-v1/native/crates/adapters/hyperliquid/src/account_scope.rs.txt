@@ -1,0 +1,1679 @@
+// -------------------------------------------------------------------------------------------------
+//  Copyright (C) 2015-2026 Nautech Systems Pty Ltd. All rights reserved.
+//  https://nautechsystems.io
+//
+//  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+//  You may not use this file except in compliance with the License.
+//  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
+// -------------------------------------------------------------------------------------------------
+
+//! Explicit io standard-account proof, independent of the default perpetual and spot accounts.
+
+use std::{collections::{BTreeMap, BTreeSet}, sync::Arc};
+
+use anyhow::Context;
+use nautilus_core::{Params, time::get_atomic_clock_realtime};
+use nautilus_live::ExecutionEventEmitter;
+use nautilus_model::types::{AccountBalance, Currency, Money};
+use parking_lot::Mutex;
+use rust_decimal::Decimal;
+use serde::Serialize;
+use serde_json::Value;
+
+use crate::{
+    common::{
+        enums::HyperliquidInfoRequestType,
+        parse::{serialize_decimal_as_str, serialize_optional_decimal_as_str},
+    },
+    http::{client::HyperliquidHttpClient, query::InfoRequest},
+    websocket::{
+        client::HyperliquidWebSocketClient,
+        messages::{SubscriptionRequest, SubscriptionResponseData},
+    },
+};
+
+const USDC_TOKEN_ID: &str = "0x6d1e7cde53ba9467b783cb7c530ce054";
+const ALL_PRIVATE_ACKS: u8 = 7;
+
+/// A position from a complete io clearinghouse snapshot.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct HyperliquidAccountScopePosition {
+    pub coin: String,
+    #[serde(serialize_with = "serialize_decimal_as_str")]
+    pub signed_size: Decimal,
+    #[serde(serialize_with = "serialize_decimal_as_str")]
+    pub margin_used: Decimal,
+}
+
+/// A detached read-only account proof. Decimal JSON values are exact strings.
+///
+/// `balance` is raw collateral, `equity` includes position valuation, `free` is
+/// equity less used margin, and `withdrawable` remains a separate venue fact.
+/// An untrusted proof never asserts that the account is flat.
+#[derive(Clone, Debug, Serialize)]
+pub struct HyperliquidAccountScopeSnapshot {
+    pub dex: String,
+    pub address: String,
+    pub account_mode: String,
+    pub collateral_token_id: String,
+    #[serde(serialize_with = "serialize_decimal_as_str")]
+    pub balance: Decimal,
+    #[serde(serialize_with = "serialize_decimal_as_str")]
+    pub equity: Decimal,
+    #[serde(serialize_with = "serialize_decimal_as_str")]
+    pub withdrawable: Decimal,
+    #[serde(serialize_with = "serialize_decimal_as_str")]
+    pub used: Decimal,
+    #[serde(serialize_with = "serialize_decimal_as_str")]
+    pub free: Decimal,
+    /// The API does not supply total maintenance margin for isolated positions.
+    #[serde(serialize_with = "serialize_optional_decimal_as_str")]
+    pub total_maintenance: Option<Decimal>,
+    pub positions: Vec<HyperliquidAccountScopePosition>,
+    pub http_source_time_ms: u64,
+    pub http_received_time_ms: u64,
+    pub http_verification_started_time_ms: u64,
+    pub private_stream_epoch: u64,
+    pub ws_received_time_ms: Option<u64>,
+    pub ws_source_time_ms: Option<u64>,
+    pub trusted: bool,
+    pub flat: Option<bool>,
+    pub diagnostic: String,
+    pub provenance: String,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct AccountScopeDiagnostics {
+    pub(crate) state: Arc<Mutex<AccountScopeState>>,
+    pub(crate) ws: HyperliquidWebSocketClient,
+}
+
+impl AccountScopeDiagnostics {
+    pub(crate) fn economic_attribution(
+        &self,
+        instruments: &BTreeSet<String>,
+        expected_origin: (u64, u64),
+    ) -> Option<(HyperliquidAccountScopeSnapshot, bool, BTreeSet<String>)> {
+        // Reader identity is acquired before account state, matching the ingress
+        // -> account lock order used by execution admission.
+        let current_before = self.ws.private_source_identity() == expected_origin;
+        let (generation, epoch) = expected_origin;
+        let result = {
+            let state = self.state.lock();
+            let (snapshot, verified) =
+                state.economic_attribution(now_ms(), self.ws.is_active(), generation, epoch)?;
+            (
+                snapshot,
+                verified,
+                state.attributed_instruments(instruments),
+            )
+        };
+        // Do not certify a reader replaced while this detached proof was copied.
+        let current_after = self.ws.private_source_identity() == expected_origin;
+        Some((
+            result.0,
+            result.1 && current_before && current_after,
+            result.2,
+        ))
+    }
+
+    pub(crate) fn snapshot(&self) -> Option<HyperliquidAccountScopeSnapshot> {
+        self.state
+            .lock()
+            .snapshot(now_ms(), self.ws.is_active(), self.ws.connection_epoch())
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct AccountScopeState {
+    address: String,
+    max_age_ms: u64,
+    version: u64,
+    hard_revision: u64,
+    facts: Option<HyperliquidAccountScopeSnapshot>,
+    diagnostic: Option<String>,
+    acknowledgements: u8,
+    ws_received_time_ms: Option<u64>,
+    ws_source_time_ms: Option<u64>,
+    ws_facts: Option<ScopedClearinghouse>,
+    universe: BTreeSet<String>,
+    refresh_pending: bool,
+    stream_epoch: Option<u64>,
+    attribution_generation: Option<u64>,
+    attribution_universe: BTreeSet<String>,
+    startup_policy: Option<Value>,
+    startup_metadata_context: Option<Value>,
+    startup_source: Option<FullAccountSourceSeal>,
+}
+
+/// Original complete HTTP transaction provenance, never reconstructed from trust.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub(crate) struct FullAccountSourceSeal {
+    policy: Value,
+    generation: u64,
+    epoch: u64,
+    received_sequence: u64,
+    account_revision: u64,
+    hard_revision: u64,
+    verification_started_ms: u64,
+    verification_finished_ms: u64,
+    http_source_time_ms: u64,
+    http_received_time_ms: u64,
+    private_facts: Value,
+    pub(crate) native_http: BTreeMap<String, Value>,
+    pub(crate) metadata: Value,
+    spot_metadata: Value,
+    pub(crate) metadata_context: Value,
+    sources: IoObservationSourceGroup,
+    account_facts: Value,
+}
+
+#[derive(Serialize)]
+struct PrivateAccountSourceFacts<'a> {
+    facts: &'a Option<ScopedClearinghouse>,
+    received_time_ms: Option<u64>,
+    source_time_ms: Option<u64>,
+    acknowledgements: u8,
+    stream_epoch: Option<u64>,
+}
+
+/// Detached latest private financial facts; source time is never synthesized.
+#[derive(Clone, Debug, Serialize)]
+pub(crate) struct PrivateFundsWitness {
+    #[serde(serialize_with = "serialize_decimal_as_str")]
+    pub(crate) free: Decimal,
+    #[serde(serialize_with = "serialize_decimal_as_str")]
+    pub(crate) withdrawable: Decimal,
+    pub(crate) received_time_ms: u64,
+    pub(crate) source_time_ms: Option<u64>,
+}
+
+impl AccountScopeState {
+    pub(crate) fn set_startup_metadata_context(&mut self, context: Value) {
+        if self.startup_policy.is_some() {
+            self.startup_source = None;
+            self.startup_metadata_context = Some(context);
+        }
+    }
+
+    pub(crate) fn enable_startup_source(&mut self, policy: Value) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.startup_policy.as_ref().is_none_or(|current| current == &policy),
+            "io startup source policy is immutable"
+        );
+        self.startup_policy = Some(policy);
+        Ok(())
+    }
+
+    pub(crate) fn startup_source(&self) -> Option<&FullAccountSourceSeal> {
+        self.startup_source.as_ref()
+    }
+
+    pub(crate) fn private_source_facts(&self) -> anyhow::Result<Value> {
+        serde_json::to_value(PrivateAccountSourceFacts {
+            facts: &self.ws_facts,
+            received_time_ms: self.ws_received_time_ms,
+            source_time_ms: self.ws_source_time_ms,
+            acknowledgements: self.acknowledgements,
+            stream_epoch: self.stream_epoch,
+        }).map_err(Into::into)
+    }
+
+    pub(crate) fn startup_source_matches(
+        &self,
+        generation: u64,
+        epoch: u64,
+        received_sequence: u64,
+        policy: &Value,
+        now: u64,
+    ) -> anyhow::Result<bool> {
+        let Some(seal) = &self.startup_source else { return Ok(false); };
+        Ok(seal.generation == generation
+            && seal.epoch == epoch
+            && seal.received_sequence == received_sequence
+            && seal.account_revision == self.version
+            && seal.hard_revision == self.hard_revision
+            && &seal.policy == policy
+            && self.startup_metadata_context.as_ref() == Some(&seal.metadata_context)
+            && seal.private_facts == self.private_source_facts()?
+            && self.facts.as_ref().map(serde_json::to_value).transpose()? == Some(seal.account_facts.clone())
+            && fresh(seal.verification_started_ms, now, self.max_age_ms)
+            && fresh(seal.verification_finished_ms, now, self.max_age_ms)
+            && fresh(seal.http_source_time_ms, now, self.max_age_ms)
+            && fresh(seal.http_received_time_ms, now, self.max_age_ms))
+    }
+
+    pub(crate) fn revision(&self) -> u64 {
+        self.version
+    }
+
+    pub(crate) fn hard_revision(&self) -> u64 {
+        self.hard_revision
+    }
+
+    pub(crate) fn maximum_age_ms(&self) -> u64 {
+        self.max_age_ms
+    }
+
+    pub(crate) fn private_funds_witness(&self) -> Option<PrivateFundsWitness> {
+        let facts = self.ws_facts.as_ref()?;
+        Some(PrivateFundsWitness {
+            free: facts.free,
+            withdrawable: facts.withdrawable,
+            received_time_ms: self.ws_received_time_ms?,
+            source_time_ms: self.ws_source_time_ms,
+        })
+    }
+
+    pub(crate) fn new(address: String, max_age_ms: u64) -> Self {
+        Self {
+            address,
+            max_age_ms,
+            version: 0,
+            hard_revision: 0,
+            facts: None,
+            diagnostic: Some("No complete io HTTP account proof".to_string()),
+            acknowledgements: 0,
+            ws_received_time_ms: None,
+            ws_source_time_ms: None,
+            ws_facts: None,
+            universe: BTreeSet::new(),
+            refresh_pending: false,
+            stream_epoch: None,
+            attribution_generation: None,
+            attribution_universe: BTreeSet::new(),
+            startup_policy: None,
+            startup_metadata_context: None,
+            startup_source: None,
+        }
+    }
+
+    pub(crate) fn invalidate(&mut self, reason: &str, reset_stream: bool) {
+        self.hard_revision = self.hard_revision.wrapping_add(1);
+        self.attribution_generation = None;
+        self.attribution_universe.clear();
+        self.invalidate_funds(reason, reset_stream);
+    }
+
+    /// Invalidates funds while retaining an already verified metadata context.
+    /// Only callers that validated the financial source may use this path.
+    pub(crate) fn invalidate_financial(&mut self, reason: &str) {
+        self.invalidate_funds(reason, false);
+    }
+
+    fn invalidate_funds(&mut self, reason: &str, reset_stream: bool) {
+        self.startup_source = None;
+        self.version = self.version.wrapping_add(1);
+        self.diagnostic = Some(reason.to_string());
+        self.refresh_pending = false;
+        if reset_stream {
+            self.acknowledgements = 0;
+            self.ws_received_time_ms = None;
+            self.ws_source_time_ms = None;
+            self.ws_facts = None;
+        }
+    }
+
+    pub(crate) fn bind_stream(&mut self, epoch: u64) {
+        self.invalidate(
+            "io private stream epoch changed; fresh HTTP proof required",
+            true,
+        );
+        self.stream_epoch = Some(epoch);
+    }
+
+    fn economic_attribution(
+        &self,
+        now: u64,
+        ws_active: bool,
+        generation: u64,
+        epoch: u64,
+    ) -> Option<(HyperliquidAccountScopeSnapshot, bool)> {
+        let snapshot = self.snapshot(now, ws_active, epoch)?;
+        // Financial invalidation increments version to reject pending HTTP
+        // completions. It does not change metadata identity, so the current
+        // funds revision is deliberately not a metadata freshness criterion.
+        let verified = self.attribution_generation == Some(generation)
+            && ws_active
+            && self.stream_epoch == Some(epoch)
+            && snapshot.private_stream_epoch == epoch
+            && self.acknowledgements == ALL_PRIVATE_ACKS
+            && fresh(snapshot.http_source_time_ms, now, self.max_age_ms)
+            && fresh(snapshot.http_received_time_ms, now, self.max_age_ms)
+            && fresh(
+                snapshot.http_verification_started_time_ms,
+                now,
+                self.max_age_ms,
+            )
+            && self
+                .ws_received_time_ms
+                .is_some_and(|time| fresh(time, now, self.max_age_ms))
+            && self
+                .ws_source_time_ms
+                .is_none_or(|time| fresh(time, now, self.max_age_ms));
+        Some((snapshot, verified))
+    }
+
+    fn attributed_instruments(&self, instruments: &BTreeSet<String>) -> BTreeSet<String> {
+        instruments
+            .iter()
+            .filter(|id| {
+                id.strip_suffix("-USD-PERP.HYPERLIQUID")
+                    .is_some_and(|coin| self.attribution_universe.contains(coin))
+            })
+            .cloned()
+            .collect()
+    }
+
+    pub(crate) fn snapshot(
+        &self,
+        now: u64,
+        ws_active: bool,
+        epoch: u64,
+    ) -> Option<HyperliquidAccountScopeSnapshot> {
+        let mut snapshot = self.facts.clone()?;
+        snapshot.ws_received_time_ms = self.ws_received_time_ms;
+        snapshot.ws_source_time_ms = self.ws_source_time_ms;
+        let reason = self.diagnostic.clone().or_else(|| {
+            if !ws_active {
+                Some("Private WebSocket is not connected".to_string())
+            } else if self.stream_epoch != Some(epoch) || snapshot.private_stream_epoch != epoch {
+                Some("io account proof belongs to an earlier private stream epoch".to_string())
+            } else if self.acknowledgements != ALL_PRIVATE_ACKS {
+                Some("Private subscriptions are not fully acknowledged".to_string())
+            } else if !fresh(snapshot.http_source_time_ms, now, self.max_age_ms)
+                || !fresh(snapshot.http_received_time_ms, now, self.max_age_ms)
+                || !fresh(
+                    snapshot.http_verification_started_time_ms,
+                    now,
+                    self.max_age_ms,
+                )
+            {
+                Some("io HTTP source or account-mode proof is stale".to_string())
+            } else if self
+                .ws_received_time_ms
+                .is_none_or(|time| !fresh(time, now, self.max_age_ms))
+            {
+                Some("Complete io private stream evidence is missing or stale".to_string())
+            } else if self
+                .ws_source_time_ms
+                .is_some_and(|time| !fresh(time, now, self.max_age_ms))
+            {
+                Some("io private stream source time is stale".to_string())
+            } else {
+                None
+            }
+        });
+        snapshot.trusted = reason.is_none();
+        snapshot.flat = snapshot.trusted.then(|| {
+            snapshot
+                .positions
+                .iter()
+                .all(|position| position.signed_size.is_zero())
+        });
+        snapshot.diagnostic = reason.unwrap_or_else(|| "Complete bounded io HTTP proof and matching private stream; WS source time may be unknown".to_string());
+        Some(snapshot)
+    }
+
+    pub(crate) fn acknowledge(&mut self, data: &SubscriptionResponseData) -> anyhow::Result<()> {
+        let (user, bit, dex_matches) = match &data.subscription {
+            SubscriptionRequest::OrderUpdates { user } => (user, 1, true),
+            SubscriptionRequest::UserEvents { user } => (user, 2, true),
+            SubscriptionRequest::ClearinghouseState { user, dex } => (user, 4, dex == "io"),
+            _ => return Ok(()),
+        };
+        if user != &self.address || !dex_matches || data.method != "subscribe" {
+            self.invalidate("Private subscription identity or scope mismatch", true);
+            anyhow::bail!("Private subscription identity or scope mismatch");
+        }
+        self.acknowledgements |= bit;
+        Ok(())
+    }
+
+    pub(crate) fn observe_ws(&mut self, data: &Value, received: u64) -> anyhow::Result<()> {
+        let result = (|| {
+            anyhow::ensure!(
+                data.get("user").and_then(Value::as_str) == Some(&self.address),
+                "io private message user mismatch"
+            );
+            anyhow::ensure!(
+                data.get("dex").and_then(Value::as_str) == Some("io"),
+                "io private message DEX mismatch"
+            );
+            let raw = data
+                .get("clearinghouseState")
+                .context("Missing io private clearinghouse state")?;
+            let facts = parse_clearinghouse(raw, None, &self.universe)?;
+            if let Some(time) = raw.get("time").and_then(Value::as_u64) {
+                anyhow::ensure!(
+                    fresh(time, received, self.max_age_ms),
+                    "io private source time is stale"
+                );
+            }
+            Ok::<_, anyhow::Error>(facts)
+        })();
+        match result {
+            Ok(facts) => {
+                self.ws_received_time_ms = Some(received);
+                self.ws_source_time_ms = data
+                    .get("clearinghouseState")
+                    .and_then(|raw| raw.get("time"))
+                    .and_then(Value::as_u64);
+                let changed_during_refresh = self.refresh_pending
+                    && self
+                        .ws_facts
+                        .as_ref()
+                        .is_some_and(|previous| !facts.same_position_sizes(previous));
+                if changed_during_refresh {
+                    self.invalidate_financial(
+                        "io private position sizes changed during HTTP proof refresh",
+                    );
+                } else if self.diagnostic.is_none()
+                    && let Some(http) = &self.facts
+                    && !facts.matches_positions(http)
+                {
+                    self.invalidate_financial(
+                        "io private position sizes changed; a fresh HTTP proof is required",
+                    );
+                }
+                self.ws_facts = Some(facts);
+                Ok(())
+            }
+            Err(e) => {
+                self.ws_received_time_ms = None;
+                self.ws_source_time_ms = None;
+                self.ws_facts = None;
+                self.invalidate(&format!("Invalid io private account snapshot: {e}"), false);
+                Err(e)
+            }
+        }
+    }
+}
+
+/// Refreshes all io facts without consulting default perpetual or spot balances.
+pub(crate) async fn refresh_account_scope(
+    state: &Arc<Mutex<AccountScopeState>>,
+    http: &HyperliquidHttpClient,
+    ws: &HyperliquidWebSocketClient,
+    emitter: &ExecutionEventEmitter,
+) -> anyhow::Result<()> {
+    let started = now_ms();
+    let (generation, epoch, received_sequence, applied, address, version, hard_revision, max_age, policy, private_facts, native_http, metadata_context) = {
+        let ingress = ws.private_ingress_guard();
+        let epoch = ws.connection_epoch();
+        let mut guard = state.lock();
+        guard.invalidate_financial("io account proof refresh is pending");
+        guard.refresh_pending = true;
+        let native_http = guard.startup_policy.as_ref()
+            .and_then(|policy| startup_native_http(http, policy));
+        (ingress.generation(), epoch, ingress.received_sequence(), ingress.is_applied(epoch),
+            guard.address.clone(), guard.version, guard.hard_revision, guard.max_age_ms,
+            guard.startup_policy.clone(), guard.private_source_facts()?, native_http,
+            guard.startup_metadata_context.clone())
+    };
+    let sources = policy.as_ref().map(|_| IoObservationSources::default());
+    let result = async {
+        let role = full_account_read(http, &InfoRequest::account_mode(&address, HyperliquidInfoRequestType::UserRole), sources.as_ref()).await?;
+        validate_role(&role)?;
+        full_account_mode(http, &address, sources.as_ref()).await?;
+        let meta = full_account_read(http, &InfoRequest::meta_for_dex("io"), sources.as_ref()).await?;
+        let spot = full_account_read(http, &InfoRequest::spot_meta(), sources.as_ref()).await?;
+        let universe = validate_collateral(&meta, &spot)?;
+        let attribution_universe = active_attribution_universe(&meta, &universe);
+        let raw = full_account_read(http, &InfoRequest::clearinghouse_state_for_dex(&address, Some("io")), sources.as_ref()).await?;
+        let received = sources.as_ref().and_then(|sources| sources.lock().original_sources.last().map(|source| source.received_ms)).unwrap_or_else(now_ms);
+        let source = raw.get("time").and_then(Value::as_u64).context("io HTTP clearinghouse source time is missing")?;
+        let facts = parse_clearinghouse(&raw, Some(source), &universe)?;
+        // The API has no atomic mode/state snapshot; repeat both mode facts to
+        // catch an observed transition, while retaining the bounded limitation.
+        full_account_mode(http, &address, sources.as_ref()).await?;
+        let finished = now_ms();
+        anyhow::ensure!(fresh(source, finished, max_age) && fresh(started, finished, max_age), "io account proof source or verification interval is stale");
+        let snapshot = HyperliquidAccountScopeSnapshot {
+            dex: "io".to_string(), address: address.clone(), account_mode: "standard_disabled_inferred".to_string(),
+            collateral_token_id: USDC_TOKEN_ID.to_string(), balance: facts.balance, equity: facts.equity,
+            withdrawable: facts.withdrawable, used: facts.used, free: facts.free,
+            total_maintenance: None,
+            positions: facts.positions.clone(), http_source_time_ms: source, http_received_time_ms: received,
+            http_verification_started_time_ms: started, private_stream_epoch: epoch, ws_received_time_ms: None, ws_source_time_ms: None,
+            trusted: false, flat: None, diagnostic: "Private stream proof is required".to_string(),
+            provenance: "Explicit io REST request scope; marginSummary includes isolated positions; disabled-to-standard is an SDK-supported inference; mode/role/collateral requests are not atomic; WS source time is not synthesized".to_string(),
+        };
+        // Never clamp free or raise equity to fit withdrawable, which is a
+        // distinct venue fact rather than the account-balance free component.
+        let balance = scoped_balance(facts.equity, facts.used)?;
+        let mut info = Params::new();
+        info.insert("account_dex".to_string(), Value::String("io".to_string()));
+        info.insert("balance_basis".to_string(), Value::String("marginSummary.accountValue; locked=totalMarginUsed; free=equity-used".to_string()));
+        info.insert("raw_collateral".to_string(), Value::String(facts.balance.to_string()));
+        info.insert("withdrawable".to_string(), Value::String(facts.withdrawable.to_string()));
+        info.insert("used_margin".to_string(), Value::String(facts.used.to_string()));
+        info.insert("cross_maintenance_margin_used".to_string(), Value::String(facts.cross_maintenance.to_string()));
+        info.insert("total_maintenance_margin".to_string(), Value::String("unknown; isolated total is not supplied".to_string()));
+        info.insert("money_precision_policy".to_string(), Value::String("USDC Money precision for equity and used; free derived by checked fixed-point subtraction; exact raw facts retained in scope snapshot".to_string()));
+        let ingress = ws.private_ingress_guard();
+        let current_identity = (ingress.generation(), ws.connection_epoch());
+        let mut guard = state.lock();
+        anyhow::ensure!(guard.version == version && guard.stream_epoch == Some(epoch) && ws.connection_epoch() == epoch && ws.is_active(), "io proof was invalidated while HTTP refresh was pending");
+        anyhow::ensure!(current_identity == (generation, epoch), "io metadata proof belongs to an earlier reader generation");
+        guard.universe = universe;
+        guard.facts = Some(snapshot.clone());
+        if let Some(ws) = &guard.ws_facts {
+            anyhow::ensure!(ws.positions.iter().all(|position| guard.universe.contains(&position.coin)), "io private position coin is outside the verified universe");
+            anyhow::ensure!(ws.matches_positions(&snapshot), "io HTTP/private position-size conflict; flatness is unknown");
+        }
+        guard.diagnostic = None;
+        guard.refresh_pending = false;
+        // Installed only after the complete role/mode/collateral/universe and
+        // position reconciliation succeeds under the captured funds revision.
+        guard.attribution_generation = Some(generation);
+        guard.attribution_universe = attribution_universe;
+        // Optional sealing is stronger than legacy publication. A crossing
+        // identical frame prevents reuse without inventing a financial conflict.
+        if let (Some(policy), Some(native_http), Some(sources), Some(metadata_context)) = (&policy, &native_http, &sources, &metadata_context) {
+            let full_private_match = guard.ws_facts.as_ref().is_some_and(|private| {
+                private.balance == facts.balance && private.equity == facts.equity
+                    && private.withdrawable == facts.withdrawable && private.used == facts.used
+                    && private.free == facts.free && private.cross_maintenance == facts.cross_maintenance
+                    && private.positions == facts.positions
+            });
+            let continuous = applied && ingress.is_applied(epoch)
+                && ingress.received_sequence() == received_sequence
+                && guard.hard_revision == hard_revision
+                && guard.private_source_facts()? == private_facts
+                && guard.startup_policy.as_ref() == Some(policy)
+                && guard.startup_metadata_context.as_ref() == Some(metadata_context)
+                && metadata_context.get("origin").is_some_and(|origin| {
+                    origin.get("generation").and_then(Value::as_u64) == Some(generation)
+                        && origin.get("epoch").and_then(Value::as_u64) == Some(epoch)
+                        && origin.get("hard_revision").and_then(Value::as_u64) == Some(hard_revision)
+                        && origin.get("native_instruments").is_some_and(Value::is_object)
+                })
+                && startup_metadata_compatible(http, metadata_context, &meta, native_http)
+                && startup_native_http(http, policy).as_ref() == Some(native_http)
+                && full_private_match
+                && [facts.equity, facts.used, facts.free].into_iter().all(|amount| {
+                    Money::from_decimal(amount, Currency::USDC()).is_ok_and(|money| money.as_decimal() == amount)
+                });
+            // Instrument-cache lock waits and exact validations cannot renew TTL
+            let boundary_time = now_ms();
+            if continuous
+                && fresh(source, boundary_time, max_age)
+                && fresh(received, boundary_time, max_age)
+                && fresh(started, boundary_time, max_age)
+                && guard.snapshot(boundary_time, ws.is_active(), epoch).is_some_and(|proof| proof.trusted)
+            {
+                guard.startup_source = Some(FullAccountSourceSeal {
+                    policy: policy.clone(), generation, epoch, received_sequence,
+                    account_revision: version, hard_revision,
+                    verification_started_ms: started, verification_finished_ms: boundary_time,
+                    http_source_time_ms: source, http_received_time_ms: received,
+                    private_facts: private_facts.clone(), native_http: native_http.clone(),
+                    metadata: meta, spot_metadata: spot, sources: sources.lock().clone(),
+                    metadata_context: metadata_context.clone(),
+                    account_facts: serde_json::to_value(&snapshot)?,
+                });
+            }
+        }
+        if policy.is_some() {
+            emitter.emit_account_state(vec![balance], vec![], true, (source * 1_000_000).into(), Some(info));
+            return Ok(());
+        }
+        drop(guard);
+        drop(ingress);
+        emitter.emit_account_state(vec![balance], vec![], true, (source * 1_000_000).into(), Some(info));
+        Ok::<_, anyhow::Error>(())
+    }.await;
+    if let Err(e) = &result {
+        state
+            .lock()
+            .invalidate(&format!("io HTTP account proof failed: {e}"), false);
+    }
+    result
+}
+
+fn startup_native_http(http: &HyperliquidHttpClient, policy: &Value) -> Option<BTreeMap<String, Value>> {
+    policy.get("symbols")?.as_array()?.iter().map(|symbol| {
+        let id = symbol.get("instrument_id")?.as_str()?;
+        let coin = id.strip_suffix("-USD-PERP.HYPERLIQUID")?;
+        let native = http.io_cached_instrument(coin)?;
+        Some((id.to_string(), serde_json::to_value(native).ok()?))
+    }).collect()
+}
+
+fn startup_metadata_compatible(
+    http: &HyperliquidHttpClient,
+    context: &Value,
+    metadata: &Value,
+    native_http: &BTreeMap<String, Value>,
+) -> bool {
+    let Some(origin) = context.get("origin") else { return false; };
+    let Some(proofs) = context.get("metadata").and_then(Value::as_object) else { return false; };
+    let Some(rows) = metadata.get("universe").and_then(Value::as_array) else { return false; };
+    proofs.len() == native_http.len() && proofs.iter().all(|(id, proof)| {
+        let Some(index) = proof.get("universe_index").and_then(Value::as_u64).and_then(|index| usize::try_from(index).ok()) else { return false; };
+        let Some(coin) = proof.get("coin").and_then(Value::as_str) else { return false; };
+        let Some(asset) = proof.get("asset").and_then(Value::as_u64).and_then(|asset| u32::try_from(asset).ok()) else { return false; };
+        proof.get("instrument_id").and_then(Value::as_str) == Some(id.as_str())
+            && rows.get(index) == origin.get("selected_rows").and_then(|selected| selected.get(id))
+            && native_http.get(id) == origin.get("native_http").and_then(|native| native.get(id))
+            && origin.get("native_instruments").and_then(|native| native.get(id)).and_then(Value::as_array).is_some_and(|pair| {
+                pair.len() == 2 && pair.first() == native_http.get(id)
+            })
+            && http.get_asset_index(&format!("{coin}-USD-PERP")) == Some(asset)
+    })
+}
+
+async fn full_account_read(
+    http: &HyperliquidHttpClient,
+    request: &InfoRequest,
+    sources: Option<&IoObservationSources>,
+) -> anyhow::Result<Value> {
+    match sources {
+        Some(sources) => bounded_scope_observation(http, request, sources).await,
+        None => http.account_scope_info(request).await.map_err(Into::into),
+    }
+}
+
+async fn full_account_mode(
+    http: &HyperliquidHttpClient,
+    address: &str,
+    sources: Option<&IoObservationSources>,
+) -> anyhow::Result<()> {
+    if let Some(sources) = sources {
+        observe_account_mode(http, address, sources).await
+    } else {
+        validate_account_mode(http, address).await
+    }
+}
+
+/// Complete uncommitted HTTP observation, never an admission token.
+pub(crate) struct AccountScopeObservation {
+    pub(crate) snapshot: HyperliquidAccountScopeSnapshot,
+    pub(crate) metadata: Value,
+    pub(crate) spot_metadata: Value,
+    pub(crate) clearinghouse: Value,
+    cross_maintenance: Decimal,
+    universe: BTreeSet<String>,
+    attribution_universe: BTreeSet<String>,
+    balance: AccountBalance,
+    info: Params,
+}
+
+#[derive(Clone, Debug, Default, Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct IoObservationSourceGroup {
+    pub(crate) original_sources: Vec<IoObservationSource>,
+    pub(crate) unavailable_sources: Vec<IoUnavailableObservationSource>,
+}
+
+#[derive(Clone, Debug, Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct IoObservationSource {
+    pub(crate) request_json: String,
+    pub(crate) received_ms: u64,
+    pub(crate) raw_text: String,
+}
+
+#[derive(Clone, Debug, Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub(crate) struct IoUnavailableObservationSource {
+    pub(crate) request_json: String,
+    pub(crate) received_ms: Option<u64>,
+    pub(crate) diagnostic: String,
+}
+
+pub(crate) type IoObservationSources = Arc<Mutex<IoObservationSourceGroup>>;
+
+pub(crate) async fn bounded_scope_observation(
+    http: &HyperliquidHttpClient,
+    request: &InfoRequest,
+    sources: &IoObservationSources,
+) -> anyhow::Result<Value> {
+    let request_json = serde_json::to_string(request)?;
+    sources
+        .lock()
+        .unavailable_sources
+        .push(IoUnavailableObservationSource {
+            request_json: request_json.clone(),
+            received_ms: None,
+            diagnostic: "Request began but no complete bounded raw body was received".into(),
+        });
+    let body = match http.io_scope_raw_body(request, 1024 * 1024).await {
+        Ok(body) => body,
+        Err(e) => {
+            if let Some(pending) = sources
+                .lock()
+                .unavailable_sources
+                .iter_mut()
+                .find(|source| {
+                    source.request_json == request_json
+                        && source.diagnostic.starts_with("Request began")
+                })
+            {
+                pending.diagnostic =
+                    "Request failed before a complete bounded raw body was available".into();
+            }
+            return Err(e.into());
+        }
+    };
+    {
+        let mut retained = sources.lock();
+        retained.unavailable_sources.retain(|source| {
+            source.request_json != request_json || !source.diagnostic.starts_with("Request began")
+        });
+        if retained
+            .original_sources
+            .iter()
+            .map(|source| source.raw_text.len())
+            .sum::<usize>()
+            + body.raw_text.len()
+            > 4 * 1024 * 1024
+        {
+            retained
+                .unavailable_sources
+                .push(IoUnavailableObservationSource {
+                    request_json,
+                    received_ms: Some(body.received_ms),
+                    diagnostic: "Received original body exceeds the finite group retention bound"
+                        .into(),
+                });
+            anyhow::bail!("io observation source group exceeds finite raw bound");
+        }
+        retained.original_sources.push(IoObservationSource {
+            request_json,
+            received_ms: body.received_ms,
+            raw_text: body.raw_text.clone(),
+        });
+    }
+    // The guard now owns the actual body even if decoding or the normal item
+    // quota wait fails, times out, or is canceled.
+    http.io_scope_decode_body(request, &body.raw_text)
+        .await
+        .map_err(Into::into)
+}
+
+pub(crate) async fn observe_account_scope(
+    http: &HyperliquidHttpClient,
+    address: &str,
+    epoch: u64,
+    max_age: u64,
+    sources: &IoObservationSources,
+) -> anyhow::Result<AccountScopeObservation> {
+    let started = now_ms();
+    let address = address.to_string();
+    let role = bounded_scope_observation(
+        http,
+        &InfoRequest::account_mode(&address, HyperliquidInfoRequestType::UserRole),
+        sources,
+    )
+    .await?;
+    validate_role(&role)?;
+    observe_account_mode(http, &address, sources).await?;
+    let meta = bounded_scope_observation(http, &InfoRequest::meta_for_dex("io"), sources).await?;
+    let spot = bounded_scope_observation(http, &InfoRequest::spot_meta(), sources).await?;
+    let universe = validate_collateral(&meta, &spot)?;
+    let attribution_universe = active_attribution_universe(&meta, &universe);
+    let raw = bounded_scope_observation(
+        http,
+        &InfoRequest::clearinghouse_state_for_dex(&address, Some("io")),
+        sources,
+    )
+    .await?;
+    let received = now_ms();
+    let source = raw
+        .get("time")
+        .and_then(Value::as_u64)
+        .context("io HTTP clearinghouse source time is missing")?;
+    let facts = parse_clearinghouse(&raw, Some(source), &universe)?;
+    // The API has no atomic mode/state snapshot; repeat both mode facts to
+    // catch an observed transition, while retaining the bounded limitation.
+    observe_account_mode(http, &address, sources).await?;
+    let finished = now_ms();
+    anyhow::ensure!(
+        fresh(source, finished, max_age) && fresh(started, finished, max_age),
+        "io account proof source or verification interval is stale"
+    );
+    let snapshot = HyperliquidAccountScopeSnapshot {
+            dex: "io".to_string(), address: address.clone(), account_mode: "standard_disabled_inferred".to_string(),
+            collateral_token_id: USDC_TOKEN_ID.to_string(), balance: facts.balance, equity: facts.equity,
+            withdrawable: facts.withdrawable, used: facts.used, free: facts.free,
+            total_maintenance: None,
+            positions: facts.positions.clone(), http_source_time_ms: source, http_received_time_ms: received,
+            http_verification_started_time_ms: started, private_stream_epoch: epoch, ws_received_time_ms: None, ws_source_time_ms: None,
+            trusted: false, flat: None, diagnostic: "Private stream proof is required".to_string(),
+            provenance: "Explicit io REST request scope; marginSummary includes isolated positions; disabled-to-standard is an SDK-supported inference; mode/role/collateral requests are not atomic; WS source time is not synthesized".to_string(),
+        };
+    // Never clamp free or raise equity to fit withdrawable, which is a
+    // distinct venue fact rather than the account-balance free component.
+    let balance = scoped_balance(facts.equity, facts.used)?;
+    let mut info = Params::new();
+    info.insert("account_dex".to_string(), Value::String("io".to_string()));
+    info.insert(
+        "balance_basis".to_string(),
+        Value::String(
+            "marginSummary.accountValue; locked=totalMarginUsed; free=equity-used".to_string(),
+        ),
+    );
+    info.insert(
+        "raw_collateral".to_string(),
+        Value::String(facts.balance.to_string()),
+    );
+    info.insert(
+        "withdrawable".to_string(),
+        Value::String(facts.withdrawable.to_string()),
+    );
+    info.insert(
+        "used_margin".to_string(),
+        Value::String(facts.used.to_string()),
+    );
+    info.insert(
+        "cross_maintenance_margin_used".to_string(),
+        Value::String(facts.cross_maintenance.to_string()),
+    );
+    info.insert(
+        "total_maintenance_margin".to_string(),
+        Value::String("unknown; isolated total is not supplied".to_string()),
+    );
+    info.insert("money_precision_policy".to_string(), Value::String("USDC Money precision for equity and used; free derived by checked fixed-point subtraction; exact raw facts retained in scope snapshot".to_string()));
+
+    for amount in [facts.equity, facts.used, facts.free] {
+        anyhow::ensure!(
+            Money::from_decimal(amount, Currency::USDC())?.as_decimal() == amount,
+            "io account observation exceeds native USDC precision"
+        );
+    }
+    Ok(AccountScopeObservation {
+        snapshot,
+        metadata: meta,
+        spot_metadata: spot,
+        clearinghouse: raw,
+        cross_maintenance: facts.cross_maintenance,
+        universe,
+        attribution_universe,
+        balance,
+        info,
+    })
+}
+
+async fn observe_account_mode(
+    http: &HyperliquidHttpClient,
+    address: &str,
+    sources: &IoObservationSources,
+) -> anyhow::Result<()> {
+    let mode = bounded_scope_observation(
+        http,
+        &InfoRequest::account_mode(address, HyperliquidInfoRequestType::UserAbstraction),
+        sources,
+    )
+    .await?;
+    anyhow::ensure!(
+        mode.as_str() == Some("disabled"),
+        "Unknown io account abstraction mode"
+    );
+    let legacy = bounded_scope_observation(
+        http,
+        &InfoRequest::account_mode(address, HyperliquidInfoRequestType::UserDexAbstraction),
+        sources,
+    )
+    .await?;
+    anyhow::ensure!(
+        legacy.as_bool() == Some(false),
+        "Unknown io DEX abstraction mode"
+    );
+    Ok(())
+}
+
+impl AccountScopeState {
+    pub(crate) fn validate_observation(
+        &self,
+        observation: &AccountScopeObservation,
+        epoch: u64,
+    ) -> anyhow::Result<()> {
+        let now = now_ms();
+        anyhow::ensure!(
+            self.stream_epoch == Some(epoch)
+                && self.acknowledgements == ALL_PRIVATE_ACKS
+                && fresh(
+                    observation.snapshot.http_source_time_ms,
+                    now,
+                    self.max_age_ms
+                )
+                && fresh(
+                    observation.snapshot.http_received_time_ms,
+                    now,
+                    self.max_age_ms
+                )
+                && fresh(
+                    observation.snapshot.http_verification_started_time_ms,
+                    now,
+                    self.max_age_ms
+                )
+                && self
+                    .ws_received_time_ms
+                    .is_some_and(|time| fresh(time, now, self.max_age_ms))
+                && self
+                    .ws_source_time_ms
+                    .is_none_or(|time| fresh(time, now, self.max_age_ms)),
+            "io account observation/private source expired or incomplete"
+        );
+        let private = self
+            .ws_facts
+            .as_ref()
+            .context("Missing current io private funds")?;
+        anyhow::ensure!(
+            private
+                .positions
+                .iter()
+                .all(|position| observation.universe.contains(&position.coin))
+                && private.matches_positions(&observation.snapshot)
+                && private.balance == observation.snapshot.balance
+                && private.equity == observation.snapshot.equity
+                && private.used == observation.snapshot.used
+                && private.free == observation.snapshot.free
+                && private.withdrawable == observation.snapshot.withdrawable
+                && private.cross_maintenance == observation.cross_maintenance,
+            "io HTTP/private position or financial facts conflict"
+        );
+        Ok(())
+    }
+
+    /// Applies an observation while its caller holds the original ingress fence.
+    pub(crate) fn commit_observation(
+        &mut self,
+        observation: AccountScopeObservation,
+        generation: u64,
+        epoch: u64,
+        emitter: &ExecutionEventEmitter,
+    ) -> anyhow::Result<()> {
+        self.validate_observation(&observation, epoch)?;
+        let source = observation
+            .snapshot
+            .http_source_time_ms
+            .checked_mul(1_000_000)
+            .context("io account source timestamp overflow")?;
+        self.universe = observation.universe;
+        self.facts = Some(observation.snapshot);
+        self.attribution_generation = Some(generation);
+        self.attribution_universe = observation.attribution_universe;
+        self.diagnostic = None;
+        self.refresh_pending = false;
+        emitter.emit_account_state(
+            vec![observation.balance],
+            vec![],
+            true,
+            source.into(),
+            Some(observation.info),
+        );
+        Ok(())
+    }
+}
+
+pub(crate) fn now_ms() -> u64 {
+    get_atomic_clock_realtime().get_time_ns().as_u64() / 1_000_000
+}
+
+fn fresh(time: u64, now: u64, maximum_age: u64) -> bool {
+    time <= now && now - time <= maximum_age
+}
+
+fn scoped_balance(equity: Decimal, used: Decimal) -> anyhow::Result<AccountBalance> {
+    let currency = Currency::USDC();
+    let total = Money::from_decimal(equity, currency)?;
+    let locked = Money::from_decimal(used, currency)?;
+    let free_raw = total
+        .raw
+        .checked_sub(locked.raw)
+        .context("io free Money arithmetic overflow")?;
+    let free = Money::from_raw_checked(free_raw, currency)?;
+    AccountBalance::new_checked(total, locked, free).map_err(Into::into)
+}
+
+async fn validate_account_mode(http: &HyperliquidHttpClient, address: &str) -> anyhow::Result<()> {
+    let mode = http
+        .account_scope_info(&InfoRequest::account_mode(
+            address,
+            HyperliquidInfoRequestType::UserAbstraction,
+        ))
+        .await?;
+    anyhow::ensure!(
+        mode.as_str() == Some("disabled"),
+        "Unsupported or unknown io account abstraction mode"
+    );
+    let legacy = http
+        .account_scope_info(&InfoRequest::account_mode(
+            address,
+            HyperliquidInfoRequestType::UserDexAbstraction,
+        ))
+        .await?;
+    anyhow::ensure!(
+        legacy.as_bool() == Some(false),
+        "Unsupported or inconsistent io DEX abstraction mode"
+    );
+    Ok(())
+}
+
+fn validate_role(role: &Value) -> anyhow::Result<()> {
+    match role.get("role").and_then(Value::as_str) {
+        Some("user") => Ok(()),
+        _ => anyhow::bail!(
+            "Unsupported or unknown io account identity; agents, vaults and subaccounts are not supported"
+        ),
+    }
+}
+
+pub(crate) fn validate_collateral(meta: &Value, spot: &Value) -> anyhow::Result<BTreeSet<String>> {
+    let index = meta
+        .get("collateralToken")
+        .and_then(Value::as_u64)
+        .context("Missing io collateral token index")?;
+    let tokens = spot
+        .get("tokens")
+        .and_then(Value::as_array)
+        .context("Missing collateral token metadata")?;
+    let selected = tokens
+        .iter()
+        .filter(|token| token.get("index").and_then(Value::as_u64) == Some(index))
+        .collect::<Vec<_>>();
+    anyhow::ensure!(
+        selected.len() == 1,
+        "Missing or ambiguous io collateral token identity"
+    );
+    let token = selected[0];
+    anyhow::ensure!(
+        token.get("name").and_then(Value::as_str) == Some("USDC")
+            && token.get("tokenId").and_then(Value::as_str) == Some(USDC_TOKEN_ID)
+            && token.get("isCanonical").and_then(Value::as_bool) == Some(true),
+        "Unsupported io collateral token identity"
+    );
+    let rows = meta
+        .get("universe")
+        .and_then(Value::as_array)
+        .context("Missing io asset universe")?;
+    let mut universe = BTreeSet::new();
+    for row in rows {
+        let coin = row
+            .get("name")
+            .and_then(Value::as_str)
+            .context("Missing io asset identity")?;
+        anyhow::ensure!(
+            valid_io_coin(coin) && universe.insert(coin.to_string()),
+            "Invalid or duplicate io asset identity"
+        );
+    }
+    anyhow::ensure!(
+        !universe.is_empty(),
+        "Empty io asset universe cannot prove account scope"
+    );
+    Ok(universe)
+}
+
+fn active_attribution_universe(meta: &Value, universe: &BTreeSet<String>) -> BTreeSet<String> {
+    // Retain delisted coins in the account position universe, but never certify
+    // them as currently active economics instruments from an older native cache.
+    meta.get("universe")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|row| {
+            row.get("isDelisted")
+                .is_none_or(|value| value.as_bool() == Some(false))
+        })
+        .filter_map(|row| row.get("name").and_then(Value::as_str))
+        .filter(|coin| universe.contains(*coin))
+        .map(str::to_string)
+        .collect()
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct ScopedClearinghouse {
+    #[serde(serialize_with = "serialize_decimal_as_str")]
+    balance: Decimal,
+    #[serde(serialize_with = "serialize_decimal_as_str")]
+    equity: Decimal,
+    #[serde(serialize_with = "serialize_decimal_as_str")]
+    withdrawable: Decimal,
+    #[serde(serialize_with = "serialize_decimal_as_str")]
+    used: Decimal,
+    #[serde(serialize_with = "serialize_decimal_as_str")]
+    free: Decimal,
+    #[serde(serialize_with = "serialize_decimal_as_str")]
+    cross_maintenance: Decimal,
+    positions: Vec<HyperliquidAccountScopePosition>,
+}
+
+impl ScopedClearinghouse {
+    fn same_position_sizes(&self, other: &Self) -> bool {
+        self.positions
+            .iter()
+            .filter(|position| !position.signed_size.is_zero())
+            .map(|position| (&position.coin, position.signed_size))
+            .eq(other
+                .positions
+                .iter()
+                .filter(|position| !position.signed_size.is_zero())
+                .map(|position| (&position.coin, position.signed_size)))
+    }
+    fn matches_positions(&self, snapshot: &HyperliquidAccountScopeSnapshot) -> bool {
+        self.positions
+            .iter()
+            .filter(|position| !position.signed_size.is_zero())
+            .map(|position| (&position.coin, position.signed_size))
+            .eq(snapshot
+                .positions
+                .iter()
+                .filter(|position| !position.signed_size.is_zero())
+                .map(|position| (&position.coin, position.signed_size)))
+    }
+}
+
+fn parse_clearinghouse(
+    raw: &Value,
+    source: Option<u64>,
+    universe: &BTreeSet<String>,
+) -> anyhow::Result<ScopedClearinghouse> {
+    let margin = raw
+        .get("marginSummary")
+        .context("Missing io marginSummary including isolated positions")?;
+    let cross = raw
+        .get("crossMarginSummary")
+        .context("Missing io crossMarginSummary")?;
+    for summary in [margin, cross] {
+        for field in [
+            "accountValue",
+            "totalNtlPos",
+            "totalRawUsd",
+            "totalMarginUsed",
+        ] {
+            exact_decimal(summary, field)?;
+        }
+    }
+    if source.is_some() {
+        anyhow::ensure!(
+            raw.get("time").and_then(Value::as_u64) == source,
+            "Invalid io HTTP source time"
+        );
+    } else if let Some(time) = raw.get("time") {
+        anyhow::ensure!(time.as_u64().is_some(), "Invalid io private source time");
+    }
+    let used = exact_decimal(margin, "totalMarginUsed")?;
+    let equity = exact_decimal(margin, "accountValue")?;
+    let withdrawable = exact_decimal(raw, "withdrawable")?;
+    let cross_maintenance = exact_decimal(raw, "crossMaintenanceMarginUsed")?;
+    anyhow::ensure!(
+        used >= Decimal::ZERO
+            && withdrawable >= Decimal::ZERO
+            && cross_maintenance >= Decimal::ZERO,
+        "Negative io margin or withdrawable fact"
+    );
+    let rows = raw
+        .get("assetPositions")
+        .and_then(Value::as_array)
+        .context("Missing complete io assetPositions")?;
+    let mut coins = BTreeSet::new();
+    let mut positions = Vec::new();
+    for row in rows {
+        anyhow::ensure!(
+            row.get("type").and_then(Value::as_str) == Some("oneWay"),
+            "Unknown io position type"
+        );
+        let position = row.get("position").context("Missing io position payload")?;
+        let coin = position
+            .get("coin")
+            .and_then(Value::as_str)
+            .context("Missing io position coin")?;
+        anyhow::ensure!(
+            valid_io_coin(coin)
+                && coins.insert(coin.to_string())
+                && (universe.is_empty() || universe.contains(coin)),
+            "Wrong, unknown or duplicate io position coin"
+        );
+        let leverage = position
+            .get("leverage")
+            .context("Missing io position leverage")?;
+        anyhow::ensure!(
+            leverage.get("type").and_then(Value::as_str) == Some("isolated")
+                && leverage
+                    .get("value")
+                    .and_then(Value::as_u64)
+                    .is_some_and(|value| value > 0),
+            "Unsupported io position margin mode"
+        );
+        let margin_used = exact_decimal(position, "marginUsed")?;
+        anyhow::ensure!(margin_used >= Decimal::ZERO, "Negative io position margin");
+        positions.push(HyperliquidAccountScopePosition {
+            coin: coin.to_string(),
+            signed_size: exact_decimal(position, "szi")?,
+            margin_used,
+        });
+    }
+    positions.sort_by(|left, right| left.coin.cmp(&right.coin));
+    let free = equity
+        .checked_sub(used)
+        .context("io free-equity arithmetic overflow")?;
+    Ok(ScopedClearinghouse {
+        balance: exact_decimal(margin, "totalRawUsd")?,
+        equity,
+        withdrawable,
+        used,
+        free,
+        cross_maintenance,
+        positions,
+    })
+}
+
+fn exact_decimal(raw: &Value, field: &str) -> anyhow::Result<Decimal> {
+    let value = raw
+        .get(field)
+        .and_then(Value::as_str)
+        .with_context(|| format!("Missing exact io decimal {field}"))?;
+    Decimal::from_str_exact(value).with_context(|| format!("Invalid exact io decimal {field}"))
+}
+
+fn valid_io_coin(coin: &str) -> bool {
+    coin.strip_prefix("io:").is_some_and(|name| {
+        !name.is_empty()
+            && name.len() <= 40
+            && name
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+    use serde_json::json;
+
+    use super::*;
+
+    fn raw() -> Value {
+        let summary = json!({"accountValue":"5.125001", "totalNtlPos":"0", "totalRawUsd":"4.75", "totalMarginUsed":"9.25"});
+        json!({"marginSummary":summary, "crossMarginSummary":summary,
+            "crossMaintenanceMarginUsed":"0", "withdrawable":"2", "assetPositions":[], "time":1000})
+    }
+
+    fn proof() -> HyperliquidAccountScopeSnapshot {
+        let facts = parse_clearinghouse(&raw(), Some(1000), &BTreeSet::new()).unwrap();
+        HyperliquidAccountScopeSnapshot {
+            dex: "io".into(),
+            address: "user".into(),
+            account_mode: "standard_disabled_inferred".into(),
+            collateral_token_id: USDC_TOKEN_ID.into(),
+            balance: facts.balance,
+            equity: facts.equity,
+            withdrawable: facts.withdrawable,
+            used: facts.used,
+            free: facts.free,
+            total_maintenance: None,
+            positions: facts.positions,
+            http_source_time_ms: 1000,
+            http_received_time_ms: 1000,
+            http_verification_started_time_ms: 1000,
+            private_stream_epoch: 7,
+            ws_received_time_ms: None,
+            ws_source_time_ms: None,
+            trusted: false,
+            flat: None,
+            diagnostic: String::new(),
+            provenance: String::new(),
+        }
+    }
+
+    fn ready_state() -> AccountScopeState {
+        let mut state = AccountScopeState::new("user".into(), 300);
+        state.bind_stream(7);
+        state.facts = Some(proof());
+        state.diagnostic = None;
+        state.acknowledgements = ALL_PRIVATE_ACKS;
+        state.ws_received_time_ms = Some(1000);
+        state
+    }
+
+    fn attributed_state() -> AccountScopeState {
+        let mut state = ready_state();
+        // Synthetic completed HTTP metadata proof for state-transition tests.
+        state.attribution_generation = Some(11);
+        state.universe = BTreeSet::from(["io:SNDK".to_string()]);
+        state.attribution_universe = state.universe.clone();
+        state
+    }
+
+    #[rstest]
+    fn validated_position_change_preserves_attribution_without_funds_trust() {
+        let mut state = attributed_state();
+        let version = state.revision();
+        let mut value = raw();
+        value["assetPositions"] = json!([{"type":"oneWay","position":{"coin":"io:SNDK","szi":"0.1","marginUsed":"2","leverage":{"type":"isolated","value":2}}}]);
+        state
+            .observe_ws(
+                &json!({"user":"user","dex":"io","clearinghouseState":value}),
+                1001,
+            )
+            .unwrap();
+        let (funds, attribution) = state.economic_attribution(1001, true, 11, 7).unwrap();
+        assert!(attribution);
+        assert!(!funds.trusted);
+        assert_eq!(funds.flat, None);
+        assert_eq!(state.revision(), version + 1);
+        assert_eq!(funds.http_source_time_ms, 1000);
+    }
+
+    #[rstest]
+    #[case("Failed role verification")]
+    #[case("Unsupported account mode")]
+    #[case("Invalid collateral identity")]
+    #[case("Economic source preservation failed")]
+    fn generic_invalidation_revokes_attribution(#[case] reason: &str) {
+        let mut state = attributed_state();
+        state.invalidate(reason, false);
+        assert!(!state.economic_attribution(1000, true, 11, 7).unwrap().1);
+        state.invalidate_financial("Later financial event");
+        assert!(!state.economic_attribution(1000, true, 11, 7).unwrap().1);
+    }
+
+    #[rstest]
+    fn attribution_independently_checks_reader_epoch_ack_and_verification_age() {
+        let mut state = attributed_state();
+        for (now, active, generation, epoch) in [
+            (1000, false, 11, 7),
+            (1000, true, 12, 7),
+            (1000, true, 11, 8),
+            (1301, true, 11, 7),
+            (999, true, 11, 7),
+        ] {
+            assert!(
+                !state
+                    .economic_attribution(now, active, generation, epoch)
+                    .unwrap()
+                    .1
+            );
+        }
+        state.acknowledgements = 3;
+        assert!(!state.economic_attribution(1000, true, 11, 7).unwrap().1);
+        state.acknowledgements = ALL_PRIVATE_ACKS;
+        state
+            .facts
+            .as_mut()
+            .unwrap()
+            .http_verification_started_time_ms = 699;
+        assert!(!state.economic_attribution(1000, true, 11, 7).unwrap().1);
+        state.bind_stream(8);
+        assert_eq!(state.attribution_generation, None);
+    }
+
+    #[rstest]
+    fn invalid_private_source_and_refresh_start_cannot_preserve_or_rebuild_context() {
+        let mut state = attributed_state();
+        assert!(
+            state
+                .observe_ws(
+                    &json!({"user":"other","dex":"io","clearinghouseState":raw()}),
+                    1000
+                )
+                .is_err()
+        );
+        assert!(!state.economic_attribution(1000, true, 11, 7).unwrap().1);
+        let mut state = attributed_state();
+        state.invalidate("HTTP proof refresh pending", false);
+        state.refresh_pending = true;
+        state
+            .observe_ws(
+                &json!({"user":"user","dex":"io","clearinghouseState":raw()}),
+                1001,
+            )
+            .unwrap();
+        assert!(!state.economic_attribution(1001, true, 11, 7).unwrap().1);
+    }
+
+    #[rstest]
+    fn stale_private_source_revokes_detached_attribution() {
+        let mut state = attributed_state();
+        state.ws_source_time_ms = Some(699);
+        assert!(!state.economic_attribution(1000, true, 11, 7).unwrap().1);
+        state.ws_source_time_ms = None;
+        state.ws_received_time_ms = Some(699);
+        assert!(!state.economic_attribution(1000, true, 11, 7).unwrap().1);
+    }
+
+    #[rstest]
+    fn attribution_membership_uses_latest_active_metadata_not_cached_ids() {
+        let mut state = attributed_state();
+        let candidates = BTreeSet::from([
+            "io:SNDK-USD-PERP.HYPERLIQUID".to_string(),
+            "io:GPRO-USD-PERP.HYPERLIQUID".to_string(),
+            "SNDK-USD-PERP.HYPERLIQUID".to_string(),
+        ]);
+        assert_eq!(
+            state.attributed_instruments(&candidates),
+            BTreeSet::from(["io:SNDK-USD-PERP.HYPERLIQUID".to_string()])
+        );
+        let universe = BTreeSet::from(["io:SNDK".to_string(), "io:GPRO".to_string()]);
+        state.attribution_universe = active_attribution_universe(
+            &json!({"universe":[
+                {"name":"io:SNDK","isDelisted":true}, {"name":"io:GPRO"}
+            ]}),
+            &universe,
+        );
+        assert_eq!(
+            state.attributed_instruments(&candidates),
+            BTreeSet::from(["io:GPRO-USD-PERP.HYPERLIQUID".to_string()])
+        );
+        assert!(universe.contains("io:SNDK"));
+    }
+
+    #[rstest]
+    fn replacement_context_cannot_certify_an_old_source_in_the_same_epoch() {
+        let mut state = attributed_state();
+        // Synthetic successful HTTP commit on a replacement reader whose
+        // native connection epoch happens to equal the earlier reader epoch.
+        state.attribution_generation = Some(12);
+        state.invalidate_financial("Current financial state still requires recovery");
+        let (old_funds, old_attribution) = state.economic_attribution(1000, true, 11, 7).unwrap();
+        assert!(!old_attribution);
+        assert!(!old_funds.trusted);
+        let (new_funds, new_attribution) = state.economic_attribution(1000, true, 12, 7).unwrap();
+        assert!(new_attribution);
+        assert!(!new_funds.trusted);
+        assert_eq!(
+            new_funds.private_stream_epoch,
+            old_funds.private_stream_epoch
+        );
+    }
+
+    #[rstest]
+    #[case("marginSummary")]
+    #[case("crossMarginSummary")]
+    #[case("crossMaintenanceMarginUsed")]
+    #[case("withdrawable")]
+    #[case("assetPositions")]
+    #[case("time")]
+    fn incomplete_http_is_rejected(#[case] field: &str) {
+        let mut value = raw();
+        value.as_object_mut().unwrap().remove(field);
+        assert!(parse_clearinghouse(&value, Some(1000), &BTreeSet::new()).is_err());
+    }
+
+    #[rstest]
+    fn exact_negative_free_and_equity_are_retained_without_money_clamping() {
+        let facts = parse_clearinghouse(&raw(), Some(1000), &BTreeSet::new()).unwrap();
+        assert_eq!(facts.free.to_string(), "-4.124999");
+        let balance = scoped_balance(facts.equity, facts.used).unwrap();
+        assert_eq!(balance.free.as_decimal(), facts.free);
+        assert_eq!(balance.locked.as_decimal(), facts.used);
+        let balance = scoped_balance(Decimal::from(-5), Decimal::from(9)).unwrap();
+        assert_eq!(balance.total.as_decimal(), Decimal::from(-5));
+        assert_eq!(balance.free.as_decimal(), Decimal::from(-14));
+    }
+
+    #[rstest]
+    fn missing_facts_never_mean_flat() {
+        assert!(
+            AccountScopeState::new("user".into(), 300)
+                .snapshot(1000, true, 7)
+                .is_none()
+        );
+    }
+
+    #[rstest]
+    fn epoch_ack_transport_and_age_are_independent_trust_requirements() {
+        let mut state = ready_state();
+        assert_eq!(state.snapshot(1000, true, 7).unwrap().flat, Some(true));
+        for (time, active, epoch) in [
+            (1000, false, 7),
+            (1000, true, 8),
+            (1301, true, 7),
+            (999, true, 7),
+        ] {
+            let snapshot = state.snapshot(time, active, epoch).unwrap();
+            assert!(!snapshot.trusted);
+            assert_eq!(snapshot.flat, None);
+        }
+        state.acknowledgements = 3;
+        assert!(!state.snapshot(1000, true, 7).unwrap().trusted);
+        state.bind_stream(8);
+        assert_eq!(state.acknowledgements, 0);
+        assert_eq!(state.snapshot(1000, true, 8).unwrap().flat, None);
+    }
+
+    #[rstest]
+    fn explicit_ws_source_expires_even_when_receive_is_fresh() {
+        let mut state = ready_state();
+        state.ws_source_time_ms = Some(701);
+        assert!(state.snapshot(1000, true, 7).unwrap().trusted);
+        let snapshot = state.snapshot(1002, true, 7).unwrap();
+        assert!(!snapshot.trusted);
+        assert_eq!(snapshot.flat, None);
+        assert_eq!(snapshot.ws_source_time_ms, Some(701));
+        assert_eq!(snapshot.ws_received_time_ms, Some(1000));
+        state.ws_source_time_ms = None;
+        assert!(state.snapshot(1002, true, 7).unwrap().trusted);
+    }
+
+    #[rstest]
+    fn ws_source_time_stays_unknown_and_pnl_changes_do_not_invalidate_rest() {
+        let mut state = ready_state();
+        let mut value = raw();
+        value.as_object_mut().unwrap().remove("time");
+        value["marginSummary"]["accountValue"] = json!("10.75");
+        state
+            .observe_ws(
+                &json!({"user":"user","dex":"io","clearinghouseState":value}),
+                1001,
+            )
+            .unwrap();
+        let snapshot = state.snapshot(1001, true, 7).unwrap();
+        assert!(snapshot.trusted);
+        assert_eq!(snapshot.ws_source_time_ms, None);
+        assert_eq!(snapshot.equity.to_string(), "5.125001");
+    }
+
+    #[rstest]
+    fn latest_private_funds_are_separate_from_http_provenance() {
+        let mut state = ready_state();
+        assert!(state.private_funds_witness().is_none());
+        let mut value = raw();
+        value.as_object_mut().unwrap().remove("time");
+        value["marginSummary"]["accountValue"] = json!("1");
+        value["marginSummary"]["totalMarginUsed"] = json!("0");
+        value["withdrawable"] = json!("1");
+        state
+            .observe_ws(
+                &json!({"user":"user","dex":"io","clearinghouseState":value}),
+                1001,
+            )
+            .unwrap();
+        let witness = state.private_funds_witness().unwrap();
+        assert_eq!(witness.free, Decimal::ONE);
+        assert_eq!(witness.withdrawable, Decimal::ONE);
+        assert_eq!(witness.received_time_ms, 1001);
+        assert_eq!(witness.source_time_ms, None);
+        let http = state.snapshot(1001, true, 7).unwrap();
+        assert!(http.trusted);
+        assert_eq!(http.free.to_string(), "-4.124999");
+        assert_eq!(http.http_source_time_ms, 1000);
+        let json = serde_json::to_value(witness).unwrap();
+        assert_eq!(json["free"], "1");
+        assert!(json["source_time_ms"].is_null());
+        state.invalidate("Private transport lost", true);
+        assert!(state.private_funds_witness().is_none());
+    }
+
+    #[rstest]
+    #[case("other", "io")]
+    #[case("user", "")]
+    #[case("user", "xyz")]
+    fn incorrect_ws_identity_or_dex_invalidates(#[case] user: &str, #[case] dex: &str) {
+        let mut state = ready_state();
+        assert!(
+            state
+                .observe_ws(
+                    &json!({"user":user,"dex":dex,"clearinghouseState":raw()}),
+                    1000
+                )
+                .is_err()
+        );
+        assert_eq!(state.snapshot(1000, true, 7).unwrap().flat, None);
+    }
+
+    #[rstest]
+    fn changed_position_size_invalidates_and_malformed_position_cannot_be_flat() {
+        let mut state = ready_state();
+        let mut value = raw();
+        value["assetPositions"] = json!([{"type":"oneWay","position":{"coin":"io:SNDK","szi":"1","marginUsed":"2","leverage":{"type":"isolated","value":2}}}]);
+        state
+            .observe_ws(
+                &json!({"user":"user","dex":"io","clearinghouseState":value}),
+                1000,
+            )
+            .unwrap();
+        assert_eq!(state.snapshot(1000, true, 7).unwrap().flat, None);
+        value["assetPositions"][0]["position"]["coin"] = json!("BTC");
+        assert!(parse_clearinghouse(&value, Some(1000), &BTreeSet::new()).is_err());
+        value["assetPositions"][0]["position"]["coin"] = json!("io:UNKNOWN");
+        assert!(
+            parse_clearinghouse(&value, Some(1000), &BTreeSet::from(["io:SNDK".to_string()]))
+                .is_err()
+        );
+    }
+
+    #[rstest]
+    #[case("agent")]
+    #[case("vault")]
+    #[case("subAccount")]
+    #[case("unknown")]
+    fn only_direct_user_identity_is_supported(#[case] role: &str) {
+        assert!(validate_role(&json!({"role":role,"data":{"master":"user"}})).is_err());
+        assert!(validate_role(&json!({"role":"user"})).is_ok());
+    }
+
+    #[rstest]
+    fn collateral_uses_explicit_token_index_and_exact_identity() {
+        let meta = json!({"collateralToken":42,"universe":[{"name":"io:SNDK"}]});
+        let mut spot = json!({"tokens":[{"index":9,"name":"OTHER"},{"index":42,"name":"USDC","tokenId":USDC_TOKEN_ID,"isCanonical":true}]});
+        assert!(validate_collateral(&meta, &spot).is_ok());
+        spot["tokens"][1]["tokenId"] = json!("fake");
+        assert!(validate_collateral(&meta, &spot).is_err());
+        spot["tokens"][1]["tokenId"] = json!(USDC_TOKEN_ID);
+        let duplicate = spot["tokens"][1].clone();
+        spot["tokens"].as_array_mut().unwrap().push(duplicate);
+        assert!(validate_collateral(&meta, &spot).is_err());
+    }
+
+    #[rstest]
+    fn snapshot_json_decimals_are_exact_strings_and_no_source_time_is_invented() {
+        let state = ready_state();
+        let snapshot = state.snapshot(1000, true, 7).unwrap();
+        let value = serde_json::to_value(snapshot).unwrap();
+        assert_eq!(value["equity"], "5.125001");
+        assert_eq!(value["free"], "-4.124999");
+        assert!(value["ws_source_time_ms"].is_null());
+        assert!(value["total_maintenance"].is_null());
+    }
+}

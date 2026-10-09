@@ -1,0 +1,25 @@
+{
+  "issue": 115,
+  "revision": "author-production-v2-pre-format",
+  "baseline_main": "aadad78fab77467f4a1467a252947ebb84f5361d",
+  "baseline_authority": "Root supplied fresh main and isolated worktree; no author Git operations",
+  "worktree": "E:/persarb/worktrees/entropy-startup-account-proof",
+  "utc": "2026-10-09T09:19:09.9165408Z",
+  "frozen": true,
+  "files": [
+    {
+      "path": "crates/adapters/hyperliquid/src/account_scope.rs",
+      "bytes": 70497,
+      "sha256": "232b6ae034c7f811dcfc3d3bddbcb0dfd30bb9833f78748784c1aac472748aab"
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/execution_scope.rs",
+      "bytes": 186699,
+      "sha256": "745e3e8855107e3aef19d227c5a4e3653b88928c319262eaf371fc2d090f4a4b"
+    }
+  ],
+  "findings_addressed": ["Original seal raw-copy final-time gap", "Startup boundary/report post-copy final-time gap"],
+  "checks_run": [],
+  "unrun": ["Cargo compilation", "Rust format", "Clippy", "native tests", "Python/stubs", "build/install", "installed-wheel app paired acceptance"],
+  "execution_rs_changed": false
+}

@@ -1,0 +1,30 @@
+{
+  "implementation_commit": "617ffd42eeed6e8e5fff2ec36c10e25f0de1fcbe",
+  "implementation_tree": "834cd4329cbbd8c1ba7f4fe317b0d18a887f8e91",
+  "source_files": {
+    ".gitattributes": {
+      "git_blob_sha256": "7a94dfd273d7c91cbf75f8d7c48cded86061204d3150f036ff606782d339a7e7",
+      "tested_file_sha256": "7a94dfd273d7c91cbf75f8d7c48cded86061204d3150f036ff606782d339a7e7"
+    },
+    "crates/adapters/hyperliquid/src/account_scope.rs": {
+      "git_blob_sha256": "2b176ca4b355955268fe26a218a3019b5195ee4a3e87edd6c24e604f4553d0ce",
+      "tested_file_sha256": "2b176ca4b355955268fe26a218a3019b5195ee4a3e87edd6c24e604f4553d0ce"
+    },
+    "crates/adapters/hyperliquid/src/execution_scope.rs": {
+      "git_blob_sha256": "afc9ba90c3c7a2b57e6e41212704d333e964b4934b88653960cbca599a16b4d1",
+      "tested_file_sha256": "afc9ba90c3c7a2b57e6e41212704d333e964b4934b88653960cbca599a16b4d1"
+    },
+    "crates/adapters/hyperliquid/tests/entropy_account/execution.rs": {
+      "git_blob_sha256": "d3958d96f3f48ada888b671ebc9de1f2ee361f6739d4f9c47b66b5c0b98dc1fb",
+      "tested_file_sha256": "d3958d96f3f48ada888b671ebc9de1f2ee361f6739d4f9c47b66b5c0b98dc1fb"
+    },
+    "crates/adapters/hyperliquid/tests/entropy_account/startup.rs": {
+      "git_blob_sha256": "a0f708aba4572358881536b5e724259289f46343c938995cbfc11ca90e946951",
+      "tested_file_sha256": "a0f708aba4572358881536b5e724259289f46343c938995cbfc11ca90e946951"
+    },
+    "crates/adapters/hyperliquid/tests/entropy_account/startup_source_reuse.rs": {
+      "git_blob_sha256": "671ee0467460743f9f4c94f1f67e8febd14568754f8be89320e6d4ed2ca373b5",
+      "tested_file_sha256": "671ee0467460743f9f4c94f1f67e8febd14568754f8be89320e6d4ed2ca373b5"
+    }
+  }
+}

@@ -1,0 +1,64 @@
+﻿{
+    "status":  "PASS",
+    "process_exit":  0,
+    "started_utc":  "2026-10-09T10:00:05.0868657Z",
+    "finished_utc":  "2026-10-09T10:00:08.5156641Z",
+    "independent_integration_procedures":  1,
+    "no_retries":  true,
+    "frozen_inputs":  56,
+    "procedure_inputs":  4,
+    "inputs_before_after_unchanged":  60,
+    "dependencies_unchanged":  true,
+    "shutdown_verified":  true,
+    "socket_count_after_shutdown":  0,
+    "actual_http_requests":  37,
+    "actual_ws_commands":  3,
+    "actual_ws_peer_frames":  1,
+    "actual_account_state_events":  2,
+    "actions":  0,
+    "fills":  0,
+    "orders":  0,
+    "errors":  0,
+    "account_ttl_ms":  30000,
+    "startup_seal_present":  true,
+    "startup_reuse_consumption_flag_verified":  false,
+    "warm_contract_verified":  false,
+    "kernel_isolation_verified":  false,
+    "report":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-installed-readonly-final.md",
+    "report_sha256":  "b068fc9b31457a095c7dffb5e4e358eabd1d7108f86f332a641d1f74c11e6d1f",
+    "raw_directory":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-installed-readonly-20261009T100005Z",
+    "evidence":  [
+                     {
+                         "path":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-installed-readonly-20261009T100005Z/command.json",
+                         "sha256":  "c9764cf7eaf4971e7460c4c5ad00797016c897c803a83bea0fee007002019f98"
+                     },
+                     {
+                         "path":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-installed-readonly-20261009T100005Z/native/result.json",
+                         "sha256":  "d0db75dd0ce7f800a45ac1b1619a1c965746a7c2da678ebf815a3f2c1927d4e3"
+                     },
+                     {
+                         "path":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-installed-readonly-20261009T100005Z/native/candidate.json",
+                         "sha256":  "37cd89cbbabd5ea437991e7626867f9edc22e85ec2f732cc218a45078bf9bddc"
+                     },
+                     {
+                         "path":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-installed-readonly-20261009T100005Z/native/peer-evidence.json",
+                         "sha256":  "32df7ee875bdf1fbee3820edc44b216f680915db1021b7bc73faf86d221245c7"
+                     },
+                     {
+                         "path":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-installed-readonly-20261009T100005Z/native/source-before.json",
+                         "sha256":  "fc1816f3325bc665c52279e1a5350b263d57fb9811d83040c8cfd2419fea2720"
+                     },
+                     {
+                         "path":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-installed-readonly-20261009T100005Z/native/source-after.json",
+                         "sha256":  "fc1816f3325bc665c52279e1a5350b263d57fb9811d83040c8cfd2419fea2720"
+                     },
+                     {
+                         "path":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-installed-readonly-20261009T100005Z/stdout.log",
+                         "sha256":  "f4cb0874541c8b8baa1ea91499d5f9df287fe5863e57bebc513492c4a7e93af4"
+                     },
+                     {
+                         "path":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-installed-readonly-20261009T100005Z/stderr.log",
+                         "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                     }
+                 ]
+}

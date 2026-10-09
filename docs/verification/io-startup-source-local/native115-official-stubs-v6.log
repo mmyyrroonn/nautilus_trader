@@ -1,0 +1,19 @@
+Traceback (most recent call last):
+  File "E:\persarb\worktrees\entropy-startup-account-proof\python\generate_docstrings.py", line 528, in <module>
+    main()
+  File "E:\persarb\worktrees\entropy-startup-account-proof\python\generate_docstrings.py", line 516, in main
+    total += process_crate(
+             ^^^^^^^^^^^^^^
+  File "E:\persarb\worktrees\entropy-startup-account-proof\python\generate_docstrings.py", line 401, in process_crate
+    source_docs = collect_source_docs(src_dir)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\persarb\worktrees\entropy-startup-account-proof\python\generate_docstrings.py", line 135, in collect_source_docs
+    lines = rs_file.read_text().splitlines()
+            ^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\myron\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\pathlib.py", line 1028, in read_text
+    return f.read()
+           ^^^^^^^^
+UnicodeDecodeError: 'gbk' codec can't decode byte 0xa6 in position 27133: illegal multibyte sequence
+Starting nautilus-trader stubs...
+Generating PyO3 docstrings...
+Build failed: Command '['E:\\persarb\\worktrees\\entropy-startup-account-proof\\.venv\\Scripts\\python.exe', 'E:\\persarb\\worktrees\\entropy-startup-account-proof\\python\\generate_docstrings.py']' returned non-zero exit status 1.

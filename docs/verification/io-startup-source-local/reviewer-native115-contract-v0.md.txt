@@ -1,0 +1,27 @@
+# Native115 independent contract preparation v0
+
+This is a read-only preparation review dated 2026-10-09 UTC. Production/test authors are still implementing in `E:/persarb/worktrees/entropy-startup-account-proof`; no moving source is accepted or signed off here. The parent reports fresh-main base `aadad78fab77467f4a1467a252947ebb84f5361d`. I did not query Git. Tests/builds/imports/installations performed by this reviewer: 0. No source was edited or private credentials inspected.
+
+The copied seal contract and test design match the minimum bounded design from the prior independent review. Formal implementation review must bind the root's exact post-format frozen source manifest and hashes; author descriptions and proposed tests are not test passes.
+
+## Criteria confirmed with the authors and root
+
+- A seal must originate inside the actual successful complete account transaction. Capture original start/end/source/transport receipt, actual bounded raw request/response provenance, reader generation/epoch/received/applied sequence and complete financial/position facts. Publish only after the original final ingress/account fence. Current trusted facts, metadata origin, or retrospective serialization do not establish that provenance.
+- Every identical or funds-only private frame crossing original capture or reuse invalidates that seal, even if general account revision and position sizes do not change. Exact whole private financial facts are necessary; free/withdrawable alone are incomplete.
+- This is an optional stronger origin. A seal-ineligible transaction must grant no reuse authority. It does not automatically require changing the inherited ordinary legacy refresh/Ready behavior where that existing contract still succeeds. Tests must distinguish absence/refusal of the seal and reuse from blanket global Ready=false. A normal still-trusted current snapshot with an invalid seal may exercise the genuine full-read fallback; an already untrusted/expired snapshot may retain existing early refusal.
+- Retain the actual three explicit empty arrays, original report source/window timestamps, selected Flat reports, reports_complete=false, no additional AccountState solely for reuse, all Cache/journal/debt/reservation/ownership exclusions, original 2-second account TTL, 30-second metadata TTL, 3-second recovery deadline and ordinary limiter/caps. Recheck after lock waits and hold guards through no-await report creation.
+- A copied or weakly retained diagnostic object must not create a new eligible reader or prolong an old runtime's authority. Canceled/late/replaced publication cannot resurrect an origin; optional failure must never wash journal debt or reserve facts away.
+
+## Correctly separate old Cache rejection from HTTP source coverage
+
+The original `startup.rs:315-375` has twelve faults installed after normal connect. Eleven only change future HTTP responses. A valid reuse cannot inspect bodies it does not request. Those eleven must first receive a genuine identical ordinary clearinghouse frame and wait for actual native applied sequence change while current trust remains valid. Then require actual receipt/count of the faulty endpoint and the original error/no-financial-projection assertions; a generic early refusal is not equivalent coverage.
+
+The original wrong_metadata case also loads altered instruments through a normal provider into ordinary Engine Cache. Its existing before-refresh Cache mismatch is a legitimate independent rejection and must not be weakened to force an HTTP request. Root explicitly decided to preserve that original provider mutation and rejection assertions, adapt the eleven HTTP-only setups, and add a distinct bad-metadata HTTP fallback without the premass Cache mutation. The new metadata case must evidence the actual meta response, while the old case retains exact Cache rejection. Future review will check this three-part distinction rather than advertising unchanged triggers for all original 55 scenarios.
+
+Endpoint coverage must name what was actually reached: userRole for role faults; userAbstraction for abstraction mode; meta/spotMeta for metadata/collateral/token; clearinghouseState for complete account/source/precision faults. Remote override alone is not evidence, and no private invalidation hook, artificial timestamp, debt deletion, quota refill or prefill sleep may establish fallback eligibility.
+
+## Remaining evidence and boundaries
+
+No current production diff, final lifetime/lock path, integrated race, regression result, executable, wheel ABI or paired liveness is accepted in this v0. Source-derived 182 cost omission remains a liveness hypothesis. Hidden remote role/mode changes with neither a request nor a private signal remain unobservable, even under a normal-owner startup capability. Non-atomic reads, generic cold adoption, post-prepare cross-Send arbitrary Engine Cache mutation, kernel isolation and whole-account economics remain distinct limits. Original native113 failed-source archives and debt are not repaired by this work.
+
+Frozen source review, independently authorized copied test binaries, source-bound installed normal-node and unchanged bounded paired acceptance will be separate evidence phases. The accompanying identity file binds only the actually read contract inputs and the original native113 startup fixture, not moving native115 source.

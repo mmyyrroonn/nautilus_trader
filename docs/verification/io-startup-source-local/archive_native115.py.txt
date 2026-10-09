@@ -1,0 +1,147 @@
+"""Archive immutable warm recovery evidence, including failed revisions."""
+
+import argparse
+import hashlib
+import json
+import re
+import shutil
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parent
+NATIVE = Path("E:/persarb/worktrees/entropy-startup-account-proof")
+ARCHIVE = NATIVE / "docs/verification/io-startup-source-local"
+WHEEL = Path("E:/persarb/_tmp/entropy115-wheel-nextest-20261009")
+PUBLIC_TRACE = Path("E:/persarb/_tmp/entropy43-validation")
+PAIRED = Path("E:/persarb/_tmp/app43-native115-chronology-first-paired-20261009/paired")
+EXTENSIONS = {".json", ".jsonl", ".log", ".md", ".py", ".txt", ".rs", ".toml", ".lock", ".pyi"}
+TEXT_SNAPSHOTS = {".md", ".py", ".rs", ".toml", ".lock", ".pyi"}
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def git(*args):
+    return subprocess.check_output(["git", *args], cwd=NATIVE).strip()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--implementation", required=True)
+    parser.add_argument("--regression", required=True)
+    args = parser.parse_args()
+    assert not ARCHIVE.exists(), "An archive must not replace prior captures"
+    implementation = git("rev-parse", args.implementation).decode()
+    log = ROOT / (args.regression + ".log")
+    command = json.loads((ROOT / (args.regression + ".json")).read_text(encoding="utf-8"))
+    assert command["exit_code"] == 0, "Final full regression did not pass"
+    groups = [list(map(int, row)) for row in re.findall(
+        r"test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored",
+        log.read_text(encoding="utf-8"),
+    )]
+    assert len(groups) >= 10, "A filtered target cannot represent full regression"
+    summary = {"passed": sum(row[0] for row in groups),
+               "failed": sum(row[1] for row in groups),
+               "ignored": sum(row[2] for row in groups), "groups": groups,
+               "log_sha256": digest(log), "command": command}
+    assert summary["failed"] == 0
+    identities = {}
+    for relative in git("diff-tree", "--no-commit-id", "--name-only", "-r", implementation).decode().splitlines():
+        blob = subprocess.check_output(["git", "show", f"{implementation}:{relative}"], cwd=NATIVE)
+        current = NATIVE / relative
+        identities[relative] = {"git_blob_sha256": hashlib.sha256(blob).hexdigest(),
+                                "tested_file_sha256": digest(current)}
+        assert identities[relative]["git_blob_sha256"] == identities[relative]["tested_file_sha256"], relative
+    provenance = json.loads((WHEEL / "native-provenance.json").read_text(encoding="utf-8"))
+    assert provenance["declared_native"]["commit"] == implementation
+    assert provenance["source_binding"] == "verified"
+    ARCHIVE.mkdir(parents=True)
+    files = []
+    commands = []
+    connector_operations = []
+    non_json_responses = []
+
+    def capture(source, relative):
+        if source.suffix in TEXT_SNAPSHOTS:
+            relative = Path(str(relative) + ".txt")
+        target = ARCHIVE / relative
+        assert target.resolve().is_relative_to(ARCHIVE.resolve())
+        assert not target.exists(), target
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+        row = {"path": target.relative_to(ARCHIVE).as_posix(),
+               "source_path": source.as_posix(), "bytes": target.stat().st_size,
+               "sha256": digest(target)}
+        assert row["sha256"] == digest(source)
+        files.append(row)
+        if source.suffix == ".json":
+            try:
+                data = json.loads(source.read_text(encoding="utf-8-sig"))
+            except (ValueError, UnicodeError):
+                non_json_responses.append(row["path"])
+                return
+            if isinstance(data, dict) and "tool" in data and "args" in data and "result" in data:
+                connector_operations.append({"capture": row["path"], **data})
+            if isinstance(data, dict) and "argv" in data and "exit_code" in data:
+                commands.append({"capture": row["path"], **data})
+
+    for source in sorted(ROOT.rglob("*")):
+        if (source.is_file() and (source.suffix in EXTENSIONS or source.name == ".gitattributes")
+                and "__pycache__" not in source.parts
+                and "next-issue26-audit" not in source.parts
+                and not source.name.startswith("native115-archive-check")):
+            capture(source, source.relative_to(ROOT))
+    for name in ("native-provenance.json", "native-build-input.json"):
+        capture(WHEEL / name, Path(name))
+    paired_summary = json.loads((PAIRED / "summary.json").read_text(encoding="utf-8"))
+    assert paired_summary["synthetic_numeric_loopback"] is True
+    assert paired_summary["controller"]["state"] == "StoppedUnknown"
+    for name in ("summary.json", "peer-evidence.json", "manifest.json", "plan.json",
+                 "events.jsonl", "economic-report.json", "child-command.json",
+                 "child-stdout.log", "child-stderr.log", "native-io-intents.jsonl",
+                 "native-io-economics.json", "native-io-economics.json.lease"):
+        source = PAIRED / name
+        if source.is_file():
+            capture(source, Path("app43-first-paired-failed") / name)
+    for source in sorted(PUBLIC_TRACE.glob("native115-*")):
+        if source.is_file() and source.suffix in EXTENSIONS:
+            capture(source, Path("public-trace") / source.name)
+    for name in ("post_native115_v8_correction.py", "start_native_recovery_issue.py",
+                 "start_dependency.py", "recover_native115_validation_comment.py"):
+        source = PUBLIC_TRACE / name
+        if source.is_file():
+            capture(source, Path("public-trace") / name)
+    for name, data in (
+        ("commands.json", commands),
+        ("connector-operations.json", connector_operations),
+        ("implementation-identities.json", {
+            "implementation_commit": implementation,
+            "implementation_tree": git("rev-parse", implementation + "^{tree}").decode(),
+            "source_files": identities,
+        }),
+        ("regression-summary.json", summary),
+    ):
+        target = ARCHIVE / name
+        assert not target.exists()
+        target.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        files.append({"path": name, "bytes": target.stat().st_size, "sha256": digest(target)})
+    (ARCHIVE / "manifest.json").write_text(json.dumps({
+        "archived_utc": datetime.now(timezone.utc).isoformat(),
+        "implementation_commit": implementation, "files": files,
+        "non_json_raw_responses": non_json_responses,
+        "note": "Failed commands, superseded reviews and correction records retain their original bytes. "
+                "Full explicit source snapshots exist only for the labels which actually captured them. "
+                "Overlapping reruns are not additional distinct cases. Executables and the wheel are "
+                "identified by hashes rather than committed. Source-only review is not independent "
+                "binary acceptance, and native issue completion does not close application issue 43.",
+    }, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({"files": len(files), "commands": len(commands),
+                      "passed": summary["passed"], "ignored": summary["ignored"],
+                      "archive": ARCHIVE.as_posix()}))
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,26 @@
+{
+  "argv": [
+    "uv",
+    "pip",
+    "install",
+    "--python",
+    "E:/persarb/worktrees/entropy-startup-account-proof/.venv/Scripts/python.exe",
+    "--offline",
+    "-r",
+    "E:/persarb/_tmp/entropy115-validation/development-requirements.txt"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-startup-account-proof",
+  "started_utc": "2026-10-09T08:57:33.592114+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "uv_project_environment": null,
+  "nautilus_stub_profile": null,
+  "cargo_build_warnings": null,
+  "cargo_net_offline": null,
+  "entropy43_native_wheel": null,
+  "entropy43_native_sha256": null,
+  "entropy43_native_provenance": null,
+  "entropy43_evidence_root": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T08:57:34.914694+00:00"
+}

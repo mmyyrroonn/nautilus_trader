@@ -1,0 +1,84 @@
+﻿# Native115 corrected-chronology paired: next dependency analysis v1
+
+Read-only analysis of the root's single failed actual run, 2026-10-09 10:11:46.206–10:12:04.739 UTC. Evidence root: `E:/persarb/_tmp/app43-native115-chronology-first-paired-20261009/paired`. No product/test source, old archive, budget, or installed artifact was edited; no tests, build, Git/GitHub, installation, environment, or venue actions ran. The companion JSON contains every observed HL request and response, preserved native receipt timestamps where actually available, scope transitions, exact raw debt, and SHA256 identities. Source-derived weights are explicitly not measured token balances.
+
+## Actual outcome and earliest observed failure
+
+Normal startup and the first post-entry warm query succeeded. Four exact owned native fills reached ordinary order Cache and Portfolio: HL entry0.12, Aster entry0.12, HL close0.12, Aster close0.12. All four ordinary orders are Filled, both ordinary cached positions and Portfolio net quantities are zero, and controller positions/reserves are zero. Controller still reports StoppedUnknown, with cleanup/current selected flat proof Unknown. This is a failed acceptance; physical synthetic flattening is not substituted for current native proof.
+
+Times below are actual epoch milliseconds; the common prefix is `179154070` until the deadline crosses into `179154071`.
+
+| Actual fact | Epoch milliseconds | Evidence |
+|---|---:|---|
+| Initial selected normal source received | 1791540708399 | Native scope; current trust/recovery true |
+| HL entry executed / eventual raw fill source | 1791540708643 | Actual peer terminal and immutable raw fill |
+| HL entry ordinary fill callback | 1791540708819 | Exact scoped trade `io:io:SNDK:70001:60001`, Cache attribution follows |
+| First HL ordinary QueryAccount requested | 1791540708844 | Application native_account_query |
+| Successful warm fullaccount source received | 1791540708855 | Native scope, query_completed1, recovery/trust true observed8938 |
+| Aster entry ordinary fill callback | 1791540709096 | Exact native oid80001/tid90000 |
+| HL close executed / eventual raw fill source | 1791540709146 | Actual peer terminal and immutable raw fill |
+| HL close ordinary fill callback | 1791540709307 | Exact scoped trade `io:io:SNDK:70002:60002` |
+| Close HL ordinary QueryAccount requested | 1791540709348 | Application read_action4 |
+| Close warm first3 original bodies received | 1791540709364–9365 | Native captured raw sources |
+| Aster close ordinary fill callback | 1791540709521 | Exact native oid80002/tid90001 |
+| Close warm userRole body received | 1791540711175 | Actual bounded raw body, role=user |
+| Close warm userAbstraction body received | 1791540712170 | Actual bounded raw body, disabled |
+| Native total deadline failure observed | 1791540712437 | query_completed2, recovery/trust false, immutable source debt |
+
+The first post-close gate appropriately withdrew trust upon a real fill that requires new complete account absorption. The first fatal reason actually observed is `io warm RecoveryIncomplete: io warm recovery total deadline exhausted`. The next userDexAbstraction request was begun but produced no complete raw body. There was no final clearinghouse read, collateral/meta read, repeated mode pair, flat leverage counterproof, staged normal owner completion, or owner commit for this transaction. This run therefore does not prove a final owner-gate, native source-TTL, or lock-wait refusal. The application later exhausted its bounded cleanup window; it cannot certify current flatness from the previous long-position HTTP proof.
+
+## Exact incomplete group and immutable debt
+
+The failed group's native identity is query_token10, generation1, epoch0, received_sequence12, explicit account/address/policy. Exactly five complete originals remain durable:
+
+1. frontendOpenOrders, user exact, dex=io: `[]`, received9364.
+2. userFills, exact account and no filter/window: both actual owned immutable fills, received9365.
+3. orderStatus, exact close CLOID `0x782dac5589d929429784b00b34589629`: oid70002, filled, remaining0, status/fill source1791540709146, received9365.
+4. userRole: role=user, received11175.
+5. userAbstraction: disabled, received12170.
+
+The unavailable entry is the actual userDexAbstraction request with `received_ms:null` and diagnostic `Request began but no complete bounded raw body was received`. The companion JSON preserves exact `raw_text` rather than claiming reconstructed peer JSON is original native wire text. Neither a final full account source nor an applied warm commit exists. Captured raw facts must not be discarded or reattributed because the current reader/sequence later changes.
+
+`execution.rs:2123` refuses an ordinary QueryAccount immediately when recovery source debt exists. Application evidence records four later HL query invocations at12535,15640,18750,21949. The peer has no later HL HTTP requests after the two partial account-mode bodies. These subsequent invocations are not recovery successes and do not consume the missing HTTP weight. Any new experiment must use a fresh unique source-bound run; this journal must never be cleared into Ready.
+
+## Observed requests and source-derived budget
+
+The peer records69 HL HTTP requests, all200, zero peer errors; Aster records144 requests. HL source base weights use `http/rate_limits.rs:131`: userRole60, current clearinghouse/exact status2, all other observed info kinds20. Observed history arrays have fewer than20 items, so the history item adder is0. Native `http/client.rs:605` awaits the normal weighted limiter before any HTTP roundtrip. Its per-client capacity1200 and refill20/second are source facts, not measured balances. Multiple instrument providers/data/execution clients are present: summing every peer request is not proof of one shared limiter's debit.
+
+| Actual peer indices, inclusive | Group classification | Requests | Source-derived base |
+|---|---|---:|---:|
+| 0–40 | All startup peer sources, including multiple providers/history/startup arrays | 41 | 864 |
+| 41–46 | Entry ACK's two normal bounded open/fills/exact-status attempts | 6 | 84 |
+| 47–57 | First successful owned warm, complete account group | 11 | 224 |
+| 58–63 | Close ACK's two normal bounded open/fills/exact-status attempts | 6 | 84 |
+| 64–68 | Close owned warm, accepted bodies before deadline | 5 | 122 |
+
+Aggregate observed base is1378, explicitly not an observed single-client token depletion. The full current warm transaction requires open20+fills20+one active exact-CLOID status2, plus role60+first mode pair40+meta20+spot20+current clearinghouse2+repeated mode pair40 =224. Flat selected position additionally requires two actual activeAssetData counterproofs20 each because clearinghouse carries no selected leverage row. The post-close full-group source-derived minimum is therefore264. Only122 of that group's accepted HTTP base is present; at least142 of required base remains, including the begun but unreceived legacy mode request. Source definitions and actual request bodies are preserved in the JSON; no actual quota remainder is invented.
+
+The measured gap between exact close-status receipt9365 and role receipt11175 is1810ms; role-to-mode is995ms. Neither endpoint has a peer delay or error injection. Native weighted-acquire-before-send and60/20 base costs make quota wait a strong explanation consistent with the near1-second20-weight spacing. The transcript does not instrument limiter acquisition, token balance or owner scheduling; sole causality and exact remaining tokens are unproven. No arbitrary timeout/TTL/refill adjustment is justified.
+
+Warm still rereads the entire role/mode/collateral group. Actual peer bodies are unchanged across4 role,7 current-mode,6 legacy-mode,5 io meta,8 spotMeta responses. Their sameness is an observed result, not permission to cache them forever. Warm already retains original selected HTTP/Engine instrument metadata origin rather than refetching perpDexs/metadata/leverage initialization. It also preserves finite economics coverage without silently broadening history. The flat leverage counterproof is essential: unchanged metadata cannot prove current leverage for an omitted position; the existing actual out-of-policy leverage regressions must remain intact.
+
+## Genuine periodic ingress and final fences
+
+Captured failed query source sequence12 had already consumed the actual close/account source. Normal periodic current-flat clearinghouse frames then have source9444,10447,11540; native observed sequence reaches15 by deadline. These are genuine current account publications with unchanged actual flat quantity, not hidden fixture traffic. Even if all remaining HTTP sources had arrived, `commit_warm_query` requires the identical captured received_sequence and applied reader, revisions, current Cache/owned facts, original metadata, active token and unexpired original deadline while holding normal ingress→account→execution guards. The changed sequence is therefore a source-derived counterfactual final-fence risk. It is not the actual observed failure, because the HTTP stage timed out first. A future faster source transaction must still pass all final fences and prove no raw debt; it cannot suppress periodic frames or manufacture current Ready.
+
+## Smallest next dependency proposal, after native115 merge
+
+Open a separate issue/worktree from newly merged main for bounded warm reuse of independently sealed nonfinancial account sources. The design question is whether an original complete role/mode/collateral/selected-metadata subset can remain eligible across explicitly proved run-owned financial changes, under its original source TTL and exact address/account/policy/reader/hard-source identity, while a fresh current fullio clearinghouse and exact order/fill sources are still read. Do not implement a blanket TTL cache or call similar raw bodies authority. Financial changes cannot manufacture a new nonfinancial observation timestamp. Missing, stale, changed, external or ambiguous sources must use the original fullread path or remain Unknown. Existing source-sequence and owner Cache fences remain; permissible source transitions need independent review before code.
+
+Retain actual current open/fills/exact active status, two missing-position leverage counterproofs, the ordinary Cache/Portfolio/commission join, immutable raw capture before parsing, cancellation/late-owner handling, and total3s including quota/lock waits. No quota refill, delay tuning, repeated run until pass, original2s account/action enlargement, history budget change or failed debt clearing is proposed. This design may reduce repeated requests but does not promise the remaining group fits a depleted limiter; genuine paired acceptance must decide that.
+
+Meaningful future acceptance: normal existing-quota post-entry and post-close groups both finish with current source/Cache joins; exact4 immutable native fills applied once; current selected flat proof true only after complete final native commit; failed deadline/source crossing preserves captured originals and Unknown; missing/stale source falls back to actual fullreads; actual role/mode/collateral/metadata/leverage counterproof still closes readiness; same/new reader, identical/new financial frame, unconsumed cache status, late callback and raw-body timeout cases remain fail closed. Run the unchanged paired and seven scenario assertions on a fresh exact installed candidate once, preserving any failure. A separate small application improvement could avoid repeated read invocations after explicit immutable debt; that improves bounded diagnostics only and cannot complete this paired proof.
+
+## Source/artifact identity and limits
+
+Installed candidate wheel SHA256 from actual wrapper: `7ea01172ddb8f7bc985edcf5641b62b1d4fc0e4704d79a68d0dc615d3926d748`. Root reported57 pre/post inputs stable. Current inspected source hashes are captured independently in companion JSON:
+
+- execution_scope.rs `afc9ba90c3c7a2b57e6e41212704d333e964b4934b88653960cbca599a16b4d1`.
+- account_scope.rs `2b176ca4b355955268fe26a218a3019b5195ee4a3e87edd6c24e604f4553d0ce`.
+- execution.rs `2b1e30b896b60b01edd257947426c5f132b841dc7fe7771602f1e810c81c3316`.
+- peer.py `11930d360dabe0c8751b0f2451c1f8570489311a8526b419a72b25781075515d`.
+- production app runtime `fbde3f919a6813a47aeb8c388ac3689a33689139d876c6e7e6551d7a364ab882`.
+
+The companion JSON hashes all consulted actual logs, peer/raw journals, manifest/plan, summary/economic report, wrappers and source files. This is synthetic numeric-loopback functional evidence, not venue execution, kernel egress isolation, durable cold cache recovery, account-wide flatness or complete run economics. Those reported Unknown boundaries remain unchanged.

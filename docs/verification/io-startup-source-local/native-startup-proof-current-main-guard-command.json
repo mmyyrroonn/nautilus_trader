@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "gh",
+    "api",
+    "repos/mmyyrroonn/nautilus_trader/git/ref/heads/main"
+  ],
+  "started_utc": "2026-10-09T08:50:16.577994+00:00",
+  "finished_utc": "2026-10-09T08:50:17.192595+00:00",
+  "exit_code": 0,
+  "attempts": 1
+}

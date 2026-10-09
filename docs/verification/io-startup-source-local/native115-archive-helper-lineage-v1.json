@@ -1,0 +1,12 @@
+{
+  "utc": "2026-10-09T10:25:54.292192+00:00",
+  "before": {
+    "path": "E:\\persarb\\_tmp\\entropy113-validation\\archive_native113.py",
+    "sha256": "48828d40fcb7e7ed30fb4f712a06f4a2ef09e6a63164aec71ac9d328cc608fd3"
+  },
+  "after": {
+    "path": "E:\\persarb\\_tmp\\entropy115-validation\\archive_native115.py",
+    "sha256": "411125f68ad9e1267381d03a1d84f1b268cc9ce798d56de12618af9964e82620"
+  },
+  "changes": "Adapt immutable archive paths/labels for 115; retain paired lease, independent connector operation records; exclude unrelated issue26 preparation."
+}

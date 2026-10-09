@@ -1,0 +1,27 @@
+
+running 22 tests
+test execution::startup_source_reuse::actual_connect_crossing_identical_source_has_no_seal_and_startup_requires_full_read ... ok
+test execution::startup_source_reuse::actual_identical_applied_frame_preserves_trust_but_requires_complete_full_read ... ok
+test execution::startup_source_reuse::original_full_read_crossing_private_source_cannot_create_reusable_seal::case_1 ... ok
+test execution::startup_source_reuse::original_full_read_crossing_private_source_cannot_create_reusable_seal::case_2 ... ok
+test execution::startup_source_reuse::original_full_read_crossing_private_source_cannot_create_reusable_seal::case_3 ... ok
+test execution::startup_source_reuse::original_sealed_source_reuses_only_account_group_and_keeps_actual_report_times::case_1 ... ok
+test execution::startup_source_reuse::original_sealed_source_reuses_only_account_group_and_keeps_actual_report_times::case_2 ... ok
+test execution::startup_source_reuse::original_sealed_source_reuses_only_account_group_and_keeps_actual_report_times::case_3 ... ok
+test execution::startup_source_reuse::previously_empty_array_is_not_reused_when_next_actual_window_is_nonempty::case_1 ... ok
+test execution::startup_source_reuse::previously_empty_array_is_not_reused_when_next_actual_window_is_nonempty::case_2 ... ok
+test execution::startup_source_reuse::previously_empty_array_is_not_reused_when_next_actual_window_is_nonempty::case_3 ... ok
+test execution::startup_source_reuse::repeated_mass_calls_read_three_new_empty_arrays_without_renewing_original_seal ... ok
+test execution::startup_source_reuse::reused_source_cannot_survive_real_changes_during_actual_history_window::case_1 ... ok
+test execution::startup_source_reuse::reused_source_cannot_survive_real_changes_during_actual_history_window::case_2 ... ok
+test execution::startup_source_reuse::reused_source_cannot_survive_real_changes_during_actual_history_window::case_3 ... ok
+test execution::startup_source_reuse::reused_source_cannot_survive_real_changes_during_actual_history_window::case_4 ... ok
+test execution::startup_source_reuse::reused_source_expiring_after_successful_empty_reads_cannot_refresh_its_own_time ... ok
+test execution::startup_source_reuse::reused_source_total_deadline_does_not_accept_late_successful_history ... ok
+test execution::startup_source_reuse::selected_http_row_counterproof_without_cache_mutation_refuses_startup::case_1 ... ok
+test execution::startup_source_reuse::selected_http_row_counterproof_without_cache_mutation_refuses_startup::case_2 ... ok
+test execution::startup_source_reuse::selected_http_row_counterproof_without_cache_mutation_refuses_startup::case_3 ... ok
+test execution::startup_source_reuse::wrong_http_metadata_fallback_is_observed_separately_from_native_cache_mismatch ... ok
+
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 211 filtered out; finished in 8.35s
+

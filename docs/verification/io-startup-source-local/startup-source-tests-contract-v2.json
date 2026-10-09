@@ -1,0 +1,16 @@
+﻿{
+    "revision":  "test-v2",
+    "captured_utc":  "2026-10-09T09:29:00.0290506Z",
+    "source_path":  "E:/persarb/worktrees/entropy-startup-account-proof/crates/adapters/hyperliquid/tests/entropy_account/startup_source_reuse.rs",
+    "source_sha256":  "46f09ce14b7e34c3e905c81852be3cb42784e025b5aae22703e83990e05ca525",
+    "before_sha256":  "a820268397be42b564b443bcacde50b430eb9fee51928e975f90196897a90ad7",
+    "original_startup_sha256":  "248e423dab7a105c93c99e0256f4cd060df6b63adf47bafa2bbbf4665da223a8",
+    "expanded_new_module_cases":  22,
+    "existing_new_module_cases":  19,
+    "added_cases":  3,
+    "original_startup_cases":  55,
+    "agent_test_runs":  0,
+    "agent_format_runs":  0,
+    "root_observed_prior_result":  "19 PASS on production v2; root actual UTC 2026-10-09 09:22:07-09:22:20",
+    "new_cases_actual_result":  "Not run. Root may first execute against unchanged production v2 to capture missing-seal admission."
+}

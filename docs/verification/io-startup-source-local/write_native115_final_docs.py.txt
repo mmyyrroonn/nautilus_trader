@@ -1,0 +1,117 @@
+"""Apply reviewed documentation corrections while preserving frozen drafts."""
+
+import hashlib
+import json
+import re
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+NATIVE = Path("E:/persarb/worktrees/entropy-startup-account-proof")
+DOCS = NATIVE / "docs/verification"
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def replace_once(text, before, after):
+    assert text.count(before) == 1, before
+    return text.replace(before, after)
+
+
+def main():
+    frozen = json.loads((ROOT / "native115-formatted-v6.json").read_text(encoding="utf-8"))
+    for row in frozen["native"]["files"]:
+        assert digest(Path(row["path"])) == row["sha256"], row["path"]
+    changed = [row["path"] for row in frozen["app"]["files"]
+               if digest(Path(row["path"])) != row["sha256"]]
+    assert len(frozen["native"]["files"]) == 30
+    assert len(frozen["app"]["files"]) == 9
+    assert len(changed) == 1 and changed[0].endswith("entropy_execution_peer.py")
+    current = json.loads((ROOT / "native115-app-chronology-v2-after-first-paired.json").read_text(encoding="utf-8"))
+    assert current["differences"] == []
+    for kind in ("source_files", "installed_files", "artifacts"):
+        for row in current[kind]:
+            assert digest(Path(row["path"])) == row["sha256"], row["path"]
+    assert sum(len(current[key]) for key in ("source_files", "installed_files", "artifacts")) == 57
+    regression = (ROOT / "native115-full-hyperliquid-regression-v6.log").read_text(encoding="utf-8")
+    groups = [tuple(map(int, row)) for row in re.findall(
+        r"test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored", regression
+    )]
+    assert len(groups) == 11
+    assert tuple(sum(row[i] for row in groups) for i in range(3)) == (1387, 0, 18)
+    assert "242 passed" in (ROOT / "native115-installed-python-contracts.log").read_text(encoding="utf-8")
+    assert "156 passed, 7 deselected" in (ROOT / "app43-chronology-v2-all-pure.log").read_text(encoding="utf-8")
+    contract = (ROOT / "native115-contract-final-draft-v1.md").read_text(encoding="utf-8")
+    acceptance = (ROOT / "native115-acceptance-final-draft-v1.md").read_text(encoding="utf-8")
+    contract = replace_once(contract, "This draft describes implementation", "This contract describes implementation")
+    contract = replace_once(contract, "planned [local archive manifest]", "[local archive manifest]")
+    contract = replace_once(contract, "The acceptance document must retain failed attempts", "The acceptance document retains failed attempts")
+    acceptance = replace_once(
+        acceptance,
+        "Evidence filenames below refer to the planned `io-startup-source-local/` archive; its [manifest](io-startup-source-local/manifest.json) is the index for actual bytes, identities and procedure captures. This draft does not assert that the archive or PR already exists.",
+        "Evidence filenames below refer to the `io-startup-source-local/` archive; its [manifest](io-startup-source-local/manifest.json) indexes actual bytes, identities and procedure captures. Publication and exact-head remote CI are recorded separately from these local procedures.",
+    )
+    acceptance = replace_once(
+        acceptance,
+        "Subsequent authorized application fixture changes intentionally replaced the nine application inputs.",
+        "Subsequent authorized fixture work changed only the old peer among those nine application inputs and added a new test outside the earlier nine-input list.",
+    )
+    acceptance = replace_once(
+        acceptance,
+        "The nine application inputs changed after earlier native-v6 captures are not silently relabeled as unchanged.",
+        "The changed old peer and newly added test are not silently relabeled as inputs to earlier native-v6 captures; the other eight declared application inputs remained unchanged.",
+    )
+    acceptance = replace_once(acceptance, "The archive must keep the first failures", "The archive keeps the first failures")
+    acceptance = replace_once(
+        acceptance,
+        "Initial official stub generation failed under GBK output encoding.",
+        "Initial official stub generation failed when `generate_docstrings.py` used `read_text` with GBK to decode a source byte 0xa6.",
+    )
+    acceptance = replace_once(
+        acceptance,
+        "Wire action counts were **Hyperliquid 2 / Aster 3** (including one Aster cancel); the controller recorded six actions.",
+        "Wire action counts were **Hyperliquid 2 / Aster 3**, including one actual Aster cancel. The controller's six actions comprised four submits and two prepared cancels; the Hyperliquid cancel was rejected by the native engine before reaching the peer.",
+    )
+    acceptance = replace_once(
+        acceptance,
+        "Complete fresh cleanup flatness was not established within the original 3-second warm deadline.",
+        "The first cleanup refusal preceded that timeout while Aster's selected scope was temporarily degraded; its actual refresh then recovered and allowed its close. The final missing current proof was Hyperliquid's later warm source debt. That attempt received five real raw bodies, then timed out before later account sources and the final owner commit. It did not execute a final owner/TTL rejection. Complete fresh cleanup flatness was not established within the original 3-second warm deadline.",
+    )
+    acceptance = replace_once(
+        acceptance,
+        "At draft time, no accurate-head PR or remote CI result is asserted. Root must independently review these documents, archive actual evidence and identities, create the PR from the frozen implementation lineage, and record its real CI result.",
+        "These local acceptance records do not assert a remote CI result. Root reviewed the final source, actual commands, installed candidate and independently prepared documents; immutable evidence is archived. The PR and its exact-head CI result are recorded separately after publication.",
+    )
+    acceptance += (
+        "\n\n[Independent paired evidence review](io-startup-source-local/native115-app43-first-paired-review-v1.md.txt) "
+        "and [next-dependency source analysis](io-startup-source-local/native115-paired-next-dependency-analysis-v1.md.txt) "
+        "separate the actual deadline refusal from inferred quota waiting. The corrected fixture's source review "
+        "and final style review are retained as source-only review, with zero independently rerun application tests. "
+        "Two CLI comment POST attempts failed with EOF; read-only remote guards confirmed no matching comment "
+        "before the purpose-built GitHub connector posted once. [Native progress](https://github.com/mmyyrroonn/nautilus_trader/issues/115#issuecomment-6078959205) "
+        "and [application progress](https://github.com/mmyyrroonn/Nautilus-Perps/issues/43#issuecomment-6078975991) "
+        "retain the actual failed retry. Issue-body literal-newline formatting and the eleven-trigger count "
+        "were corrected explicitly while all six finite acceptance checkboxes remained unchecked.\n"
+    )
+    outputs = []
+    for name, text in (("io-startup-source-contract-20261009.md", contract),
+                       ("io-startup-source-acceptance-20261009.md", acceptance)):
+        target = DOCS / name
+        assert not target.exists(), target
+        target.write_text(text, encoding="utf-8", newline="\n")
+        outputs.append({"path": target.as_posix(), "sha256": digest(target), "bytes": target.stat().st_size})
+    record = {"utc": datetime.now(timezone.utc).isoformat(), "native_source_inputs_unchanged": 30,
+              "changed_old_app_inputs": changed, "current_input_identity_count": 57,
+              "current_inputs_unchanged": True, "outputs": outputs,
+              "drafts": [{"path": name, "sha256": digest(ROOT / name)} for name in (
+                  "native115-contract-final-draft-v1.md", "native115-acceptance-final-draft-v1.md")]}
+    target = ROOT / "native115-root-final-doc-corrections-v2.json"
+    assert not target.exists()
+    target.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(record))
+
+
+if __name__ == "__main__":
+    main()

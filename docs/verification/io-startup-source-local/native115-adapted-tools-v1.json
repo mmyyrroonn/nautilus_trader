@@ -1,0 +1,18 @@
+{
+  "created_utc": "2026-10-09T09:19:16.030624+00:00",
+  "files": [
+    {
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\postprocess_stubs.py",
+      "source_sha256": "c7ca761741dbbe21f410387ba28b5919db7354d4c2711e3cb6829cb9253af7e0",
+      "adapted": "E:\\persarb\\_tmp\\entropy115-validation\\postprocess_stubs.py",
+      "sha256": "782cbdb7d1faec1a45c47ce550bc9e780f76144825671288714430f7eedeee5a"
+    },
+    {
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\capture_app_candidate.py",
+      "source_sha256": "69556ca2c4c4e6c4d9ae46e8fbef2f2da4f6a47f2f95bd75d2cf81af09b01622",
+      "adapted": "E:\\persarb\\_tmp\\entropy115-validation\\capture_app_candidate.py",
+      "sha256": "06137dc0392cc808eb1aa463df790920ed49405b3d19fe210c7fcf2ec18b4ef5"
+    }
+  ],
+  "note": "Adapted helpers only; no build, install, import or comparison has run"
+}

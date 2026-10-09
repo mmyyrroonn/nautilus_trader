@@ -1,0 +1,14 @@
+﻿{
+    "prepared_v1_archive":  "E:/persarb/_tmp/entropy115-validation/reviewer-normal-startup-readonly-native115-prepared-v1.py.txt",
+    "prepared_v1_sha256":  "8c984f84d65fd91a9b4a5370585c09960ea01063419865cbe53afb83b9ea4963",
+    "final_runner":  "E:/persarb/_tmp/entropy115-validation/reviewer-normal-startup-readonly-native115.py",
+    "final_runner_sha256":  "cfdd0109e4843771b849d8b3de06b71d60ff56c9165d35302f2131dd73f3a445",
+    "changed":  "Freeze label to root actual native115-normal-installed-before.json; remove nonexecuted capture helper from procedure set (4 actual/lineage dependencies, no Git); add exact fixture equity/free/used=100/100/0 assertion",
+    "source_inputs":  56,
+    "procedure_inputs":  4,
+    "expected_native_commit":  "617ffd42eeed6e8e5fff2ec36c10e25f0de1fcbe",
+    "expected_native_tree":  "834cd4329cbbd8c1ba7f4fe317b0d18a887f8e91",
+    "expected_source_fingerprint":  "739bb0507e1e320f4d35467537d02eee1139a478c6a5f7ccda4090e2b2288905",
+    "expected_pyd_sha256":  "2ab428c99dd5c676b1afa09a34e66ee3ef4d37f308f4a413b3f1ea136801fa81",
+    "executed":  false
+}

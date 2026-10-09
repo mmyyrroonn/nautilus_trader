@@ -1,0 +1,61 @@
+"""Record the actual failed paired retry, guarding ambiguous public mutations."""
+
+import argparse
+import json
+import re
+from pathlib import Path
+
+from github113 import api
+
+ROOT = Path(__file__).resolve().parent
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("label")
+    args = parser.parse_args()
+    assert re.fullmatch(r"[a-z0-9-]+", args.label)
+    body = (ROOT / "native115-paired-progress-v1.md").read_text(encoding="utf-8")
+    results = {}
+    for repo, number, suffix in (
+        ("nautilus_trader", 115, "native"),
+        ("Nautilus-Perps", 43, "app"),
+    ):
+        path = f"repos/mmyyrroonn/{repo}/issues/{number}"
+        issue = api(path, f"{args.label}-{suffix}-issue")
+        assert issue["state"] == "open" and issue["comments"] < 100
+        comments = api(path + "/comments?per_page=100", f"{args.label}-{suffix}-comments")
+        message = body if suffix == "native" else body + (
+            "\n\nNative dependency: https://github.com/mmyyrroonn/nautilus_trader/issues/115\n"
+        )
+        found = [row for row in comments if row["body"] == message]
+        assert len(found) <= 1
+        comment = found[0] if found else api(
+            path + "/comments", f"{args.label}-{suffix}-post", "POST", {"body": message}
+        )
+        results[suffix] = comment["html_url"]
+    path = "repos/mmyyrroonn/nautilus_trader/issues/115"
+    issue = api(path, args.label + "-body-current")
+    original = issue["body"]
+    assert issue["state"] == "open" and original.count("- [ ]") == 6
+    corrected = original.replace("\\n", "\n").replace(
+        "原12个connect后纯future-HTTP故障", "原11个connect后纯future-HTTP故障"
+    )
+    if corrected != original:
+        corrected += (
+            "\n\nDocumentation correction: literal newline escapes are normalized. "
+            "The actual eleven future-HTTP-only fault setups are distinguished from "
+            "the retained original Engine metadata counterproof. All six acceptance "
+            "items remain unchecked until PR and exact-head CI merge. No runtime "
+            "limits or rejection obligations changed.\n"
+        )
+        changed = api(path, args.label + "-body-correction", "PATCH", {"body": corrected})
+        assert changed["body"].count("- [ ]") == 6
+    destination = ROOT / (args.label + "-result.json")
+    assert not destination.exists()
+    destination.write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(results))
+
+
+if __name__ == "__main__":
+    main()

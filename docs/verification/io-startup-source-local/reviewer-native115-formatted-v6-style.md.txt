@@ -1,0 +1,28 @@
+# Native115 v6 independent style delta review
+
+2026-10-09 UTC. **The two reviewed test style changes preserve the business assertions and production source approval.** No v6 runtime tests were run in this delta review. The independently executed 184 tests remain explicitly bound to v5 and its copied binary identities. Final v6 regression/binary and installed-wheel binding are separate evidence; no Cargo/Git/GitHub/format/build/install/native import/source edit occurred here.
+
+## Exact change and identity verification
+
+Root manifest `native115-formatted-v6.json` and complete byte snapshots were independently hashed against current files. All39 inputs matched. Exactly two test files differ from reviewed/executed v5; **37 other inputs, including both production files, are identical**.
+
+- `tests/entropy_account/startup.rs`: v6 SHA-256 `a0f708aba4572358881536b5e724259289f46343c938995cbfc11ca90e946951`.
+- `tests/entropy_account/startup_source_reuse.rs`: v6 SHA-256 `671ee0467460743f9f4c94f1f67e8febd14568754f8be89320e6d4ed2ca373b5`.
+- `src/account_scope.rs` remains `2b176ca4b355955268fe26a218a3019b5195ee4a3e87edd6c24e604f4553d0ce`.
+- `src/execution_scope.rs` remains `afc9ba90c3c7a2b57e6e41212704d333e964b4934b88653960cbca599a16b4d1`.
+
+Paths above are under `E:/persarb/worktrees/entropy-startup-account-proof/crates/adapters/hyperliquid/`. Full before/current/snapshot hashes and manifest identity are in the companion JSON. No Git/helper fingerprint was queried.
+
+For startup.rs, removing the one new semicolon after the existing unselected_position assert restores the complete v5 file text exactly. The actual target io:OTHER equality and all surrounding refusal/projection/source tests remain intact.
+
+For startup_source_reuse.rs, changing the sole helper parameter back from `&ExecutionMassStatus` to by-value and removing the four call-site borrows restores the complete v5 file text exactly. The helper continues reading the same report account/client/venue/window/complete/order/fill/position/timestamp fields, cloning each real position report into the same normal ExecutionEngine path, draining normal events and checking the same no-financial-effects predicate. No assertion, protocol stimulus, source gate, quota, timeout or fixture fact changed. The borrowed report is an ordinary report value, not a reader/lifecycle authority.
+
+## Final source recommendation and test limits
+
+The v5 strict fallback seal gate and two final post-copy/post-result scalar TTL qualifications remain byte-identical. Thus source approval carries forward for those production bytes with the same narrow source/Cache/lifetime/debt/economics limitations. This is not a waiver of final build/checks or a final wheel claim.
+
+If the root authorizes a final copied-v6 smoke rather than repeating all184, the style-touched report helper spans **six distinct expanded cases**: three original one/two-symbol/precreated-zero positives, one repeated mass call case, one normal identical-applied-frame full fallback, and one actual connect-crossing/no-seal fallback. The changed old unselected_position assertion adds one exact case, for **seven** meaningful distinct smoke cases, not five. Repeating them on a final binary does not add seven new distinct tests to the already executed184.
+
+The root's earlier test-inclusive Clippy had two introduced test-style diagnostics and ten inherited diagnostics across its library+tests scope. This delta addresses only the two introduced issues; it neither edits inherited failures nor claims an all-tests Clippy pass. Actual final diagnostic/result evidence belongs to the root's pending final check.
+
+All v5 failed and successful artifacts are retained with their original identities. Kernel isolation, generic cold/native Cache restoration, whole-account/run economics, exact composed startup mutex-wait integration and paired liveness are not upgraded by these style changes.

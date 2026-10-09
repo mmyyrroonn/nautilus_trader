@@ -1,0 +1,105 @@
+warning: linker stdout: 正在创建库 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-63fd5ed65377140a.dll.lib 和对象 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-63fd5ed65377140a.dll.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-persistence-macros` (lib) generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_capture_test_data.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_capture_test_data.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_approve.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_approve.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_flatten.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_flatten.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_public.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_public.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_private.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_private.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_exec.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_exec.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_data.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_data.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_outcome_order.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_outcome_order.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_user_outcome.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_user_outcome.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_revoke.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_revoke.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_exec.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_exec.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (bin "hyperliquid-capture-test-data") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-builder-fee-approve") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-flatten") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-public") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-private") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-ws-exec") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-ws-data") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-outcome-order") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-user-outcome") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-builder-fee-revoke") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-exec") generated 1 warning
+   Compiling nautilus-hyperliquid v0.63.0 (E:\persarb\worktrees\entropy-startup-account-proof\crates\adapters\hyperliquid)
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\entropy_account-69bad49fe9dc76e8.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\entropy_account-69bad49fe9dc76e8.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (test "entropy_account") generated 1 warning
+    Finished `nextest` profile [unoptimized] target(s) in 5.12s
+     Running tests\entropy_account.rs (E:/persarb/nautilus_trader/target\nextest\deps\entropy_account-69bad49fe9dc76e8.exe)
+
+running 19 tests
+test execution::startup_source_reuse::actual_connect_crossing_identical_source_has_no_seal_and_startup_requires_full_read ... ok
+test execution::startup_source_reuse::actual_identical_applied_frame_preserves_trust_but_requires_complete_full_read ... ok
+test execution::startup_source_reuse::original_full_read_crossing_private_source_cannot_create_reusable_seal::case_1 ... ok
+test execution::startup_source_reuse::original_full_read_crossing_private_source_cannot_create_reusable_seal::case_2 ... ok
+test execution::startup_source_reuse::original_full_read_crossing_private_source_cannot_create_reusable_seal::case_3 ... ok
+test execution::startup_source_reuse::original_sealed_source_reuses_only_account_group_and_keeps_actual_report_times::case_1 ... ok
+test execution::startup_source_reuse::original_sealed_source_reuses_only_account_group_and_keeps_actual_report_times::case_2 ... ok
+test execution::startup_source_reuse::original_sealed_source_reuses_only_account_group_and_keeps_actual_report_times::case_3 ... ok
+test execution::startup_source_reuse::previously_empty_array_is_not_reused_when_next_actual_window_is_nonempty::case_1 ... ok
+test execution::startup_source_reuse::previously_empty_array_is_not_reused_when_next_actual_window_is_nonempty::case_2 ... ok
+test execution::startup_source_reuse::previously_empty_array_is_not_reused_when_next_actual_window_is_nonempty::case_3 ... ok
+test execution::startup_source_reuse::repeated_mass_calls_read_three_new_empty_arrays_without_renewing_original_seal ... ok
+test execution::startup_source_reuse::reused_source_cannot_survive_real_changes_during_actual_history_window::case_1 ... ok
+test execution::startup_source_reuse::reused_source_cannot_survive_real_changes_during_actual_history_window::case_2 ... ok
+test execution::startup_source_reuse::reused_source_cannot_survive_real_changes_during_actual_history_window::case_3 ... ok
+test execution::startup_source_reuse::reused_source_cannot_survive_real_changes_during_actual_history_window::case_4 ... ok
+test execution::startup_source_reuse::reused_source_expiring_after_successful_empty_reads_cannot_refresh_its_own_time ... ok
+test execution::startup_source_reuse::reused_source_total_deadline_does_not_accept_late_successful_history ... ok
+test execution::startup_source_reuse::wrong_http_metadata_fallback_is_observed_separately_from_native_cache_mismatch ... ok
+
+test result: ok. 19 passed; 0 failed; 0 ignored; 0 measured; 211 filtered out; finished in 7.80s
+

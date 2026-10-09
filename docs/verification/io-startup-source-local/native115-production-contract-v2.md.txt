@@ -1,0 +1,66 @@
+# Native startup source seal: revision 2 final time qualification
+
+Frozen production author bytes at 2026-10-09T09:19:09.9165408Z. This revision
+supersedes only the final time-boundary placement in production v1. The v1
+contract and exact source capture remain archived and are not overwritten.
+The original baseline remains root-provided latest main
+`aadad78fab77467f4a1467a252947ebb84f5361d` in
+`E:/persarb/worktrees/entropy-startup-account-proof`.
+
+## Two addressed source findings
+
+The optional original account seal now constructs its complete detached candidate
+before its final qualification. Raw group lock/clone, original metadata context
+and HTTP object clones, private facts and account serialization all precede the
+last `now_ms()` sample under the existing ingress/account guards. At that point
+only original source/start/receive freshness and a no-allocation current account
+trust predicate run. Its true verification finish is then set to that last
+sample and the candidate is moved into the account state. Source time, transport
+receipt and verification start are not renewed. Legacy account publication
+criteria remain unchanged, and lack of a seal remains an optional outcome.
+
+Each of the three internal startup boundary calls now receives the same original
+recovery deadline. The boundary retains the existing
+`FnOnce(IoStartupBoundary) -> Result<T>` callback contract. It builds and copies
+all identities and the bounded source, then invokes the callback while holding
+ingress -> account -> execution. After the callback has performed any large
+source comparisons or actual report construction, those same guards remain
+held. A fresh final clock sample checks current live reader epoch/applied state,
+original account source/start/receive and private-source freshness, every
+selected metadata original receipt/start TTL, chosen seal original times and
+the same original total deadline before returning the callback result.
+
+`AccountScopeState::current_source_is_fresh` uses scalar stored fields and borrows
+the existing account snapshot. Its criteria match the existing snapshot trust
+predicate: no diagnostic, active stream, matching epoch, all private subscription
+acks, original HTTP times, private receive and optional private source time.
+`FullAccountSourceSeal::is_fresh` only checks the seal's original timestamps.
+Neither method allocates, copies raw content, serializes policy/private/account
+facts, acquires another mutex or grants authority. The complete policy/private/
+account/metadata identities were already compared under these unchanged guards.
+No final `startup_source_matches` or large serde comparison occurs after the
+last time sample.
+
+The startup callback does not receive authority to unlock or await. Report
+creation has no financial emission, so a final late failure discards the result
+and follows the existing finite startup failure path. No request, quota, TTL,
+deadline, response cap, history or debt behavior is enlarged or bypassed.
+
+## Unrun verification and remaining limitations
+
+No Cargo, format, tests, native imports, stubs, build/install, Git, GitHub
+operation, secret read or actual venue operation was performed by this author.
+Compilation/warnings, deterministic exact lock-wait coverage, native test counts,
+binary review and installed-wheel/app paired success remain for root to verify
+against the formatted frozen source. The prior finite/non-atomic startup-only
+scope and explicit cold, debt, Portfolio, writer Cache mutation and kernel
+limitations in the v1 contract remain. This is an implementation revision, not
+an independent acceptance report or a claimed test pass.
+
+| Owned path | Bytes | SHA-256 before root format |
+| --- | ---: | --- |
+| crates/adapters/hyperliquid/src/account_scope.rs | 70497 | 232b6ae034c7f811dcfc3d3bddbcb0dfd30bb9833f78748784c1aac472748aab |
+| crates/adapters/hyperliquid/src/execution_scope.rs | 186699 | 745e3e8855107e3aef19d227c5a4e3653b88928c319262eaf371fc2d090f4a4b |
+
+Only these two owned production files changed. All production writes stopped
+before handing control back for root's serial capture/format/compilation.

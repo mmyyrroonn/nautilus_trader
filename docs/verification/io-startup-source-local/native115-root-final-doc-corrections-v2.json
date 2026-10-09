@@ -1,0 +1,31 @@
+{
+  "utc": "2026-10-09T10:25:14.414829+00:00",
+  "native_source_inputs_unchanged": 30,
+  "changed_old_app_inputs": [
+    "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\entropy_execution_peer.py"
+  ],
+  "current_input_identity_count": 57,
+  "current_inputs_unchanged": true,
+  "outputs": [
+    {
+      "path": "E:/persarb/worktrees/entropy-startup-account-proof/docs/verification/io-startup-source-contract-20261009.md",
+      "sha256": "c8ba20b14edda847c5f001f21ca34175f802a07ef172c9a3cc0b4dda31f28c81",
+      "bytes": 9417
+    },
+    {
+      "path": "E:/persarb/worktrees/entropy-startup-account-proof/docs/verification/io-startup-source-acceptance-20261009.md",
+      "sha256": "c80f57dcc6f8582474fe648fc8782872a3f517f414005ec346344ada479ce34c",
+      "bytes": 13854
+    }
+  ],
+  "drafts": [
+    {
+      "path": "native115-contract-final-draft-v1.md",
+      "sha256": "c6450d54ef70dbdd251ad7bb2a83f5f268928352f58bb533d727ee732f6e9b23"
+    },
+    {
+      "path": "native115-acceptance-final-draft-v1.md",
+      "sha256": "e6743ad01fd4a286865e761273a106917742c17cc1a00b0c4949c7c300ce23c6"
+    }
+  ]
+}

@@ -1,0 +1,77 @@
+# Next native fresh-origin startup proof reuse: read-only test design
+
+Prepared from the current native #113 worktree while PR #114 CI is pending. This is a proposed contract only. No implementation, test, Cargo, format, Git, build/install, real-venue access or environment-file read occurred. Implementation must start in a new worktree from the newly merged main. No prior evidence/source is edited.
+
+## Existing normal test surface and baseline to preserve
+
+The path was confirmed with rg --files: crates/adapters/hyperliquid/tests/entropy_account/startup.rs. There is no inferred tests/execution/io_startup_recovery.rs path.
+
+The original startup group expands to 55 scenarios:
+- 3 actual selected one/two-symbol flat successes, including genuinely absent and descriptor-zero precreated journals.
+- 10 null/non-array/malformed/nonempty full-window responses.
+- 6 foreign, other-dex, saturated and oversized histories.
+- 12 complete account/role/mode/collateral/metadata/source faults.
+- 3 nonempty-original journal faults; 1 account-only refusal; 3 endpoint outages.
+- 6 delayed-window mutations, 1 late-response deadline, 4 routed unbound Cache histories.
+- 6 individual normal canceled history, terminal journal replay, actual cold-fill debt, account TTL, prepared action and Unknown submission cases.
+
+Keep their business refusal/projection/reservation assertions. Three actual success arrays remain frontendOpenOrders(dex=io), userFills(user, no time/filter), historicalOrders(user, no time/filter), each explicit complete empty array. The report remains selected and reports_complete=false. No order/fill reports or synthetic financial effects may be generated. Every selected FlatReport keeps exact native account/instrument/precision=4/quantity0, original actual HTTP source ts_last, a current local receive ts_init, and report lookback_start equal to the actual full-account verification start (not a fabricated timestamp or reuse-call start). Applying normal Position reports through ExecutionEngine must create no order, fill, position or Portfolio adjustment.
+
+Relevant normal helpers:
+- startup.rs:25 override_response, :38 mass (normal client.generate_mass_status(None), original finite 4s outer timeout); :47 assert_no_financial_projection; :84 await_request; :110 success/report timestamp assertions; :315 account faults; :444 delayed races; :803 account TTL; :818 ordinary owned action during history.
+- execution.rs:258 Harness; :304 from_parts_wait loads actual native instruments via public numeric-loopback HTTP into ordinary Cache, then creates a normal factory/client; :336 tokio::join awaits normal connect/register_account. It does not set Ready or inject financial facts.
+- execution.rs:430 apply_event handles ordinary native ExecutionEvent through ExecutionEngine/Portfolio; :450 apply_events drains events and normal time-event runner; :460 apply_time_events uses AsyncRunner::handle_time_event.
+- entropy_account.rs:170 clearinghouse_frame produces normal private frame; :245 record_http_response records request/start/receive/raw/status when existing opt-in record_http=true; :259 info records actual requests and endpoint failures/delays. PeerInstruction::Frame/Close are normal external wire stimuli.
+- Existing window races wait for an actual historicalOrders request before mutation. Original identical-funds case preserves same connection count and exact financial facts. Changed funds, unknown actual fill, private leverage and normal native Cache replacement remain separate cases.
+- Old journal cases stop and drop normal client/factory before Windows journal read. Keep original file prefix and cold facts; do not add no-op runner cleanup or erase a journal.
+
+## Minimum focused additions
+
+Reuse means using the SAME current full-account source previously verified by the normal native lifecycle, while still performing all three real empty-window reads. It must never mean an empty Cache proving account flatness. Record the captured source identity before the call and actual requests/bodies after it; source/debug flags alone do not grant authority.
+
+| Case | Normal stimulus | Required outcome and evidence |
+|---|---|---|
+| R1: original sealed source, one selected ID | Fresh native factory/connect; current full selected flat source, exact ordinary Cache native metadata, no actions/fills/history; call normal mass once | Three actual explicit empty arrays; no additional role/mode/meta/spot/clearinghouse HTTP for the reused full-account group; unchanged original account source/start/receive and native instrument origin; report identities/timestamps as above; no financial effects. |
+| R2: two selected IDs and descriptor-zero origin | Reuse the existing two-ID fixture and precreated-zero variant | Both exact FlatReports with native precision and same source window; no manufactured positions. Connect's persisted empty record is allowed only because descriptor origin was genuinely zero. |
+| F1: genuine invalidation requires complete fallback | Receive a real private financial or leverage invalidating frame BEFORE mass, observe normal native invalidation, then supply a coherent current HTTP account source and strict empty windows | Explicit full normal account reread or bounded refusal according to final product contract; never sealed-source reuse. If fallback succeeds it uses NEW real verification/source timestamps, and all three empty arrays still arrive. Old source must remain distinguishable. |
+| F2: expired original full-account proof | Existing small TTL fixture, wait boundedly on native freshness becoming invalid; current genuine peer account response available | No reused witness from the expired source. Actual fallback full read may establish a fresh valid witness within original caps/deadline; explicit wrong/new missing-source response must refuse. No quota pre-refill sleep. |
+| R3: second invocation does not promote prior arrays | After a valid reuse call, change one next actual history endpoint to nonempty/invalid/503 | Next normal call must actually read that endpoint and refuse; cannot reuse old empty arrays or relabel their window. Original full-account source timestamps do not advance merely from first successful mass. |
+| N1: private identical/changed/unknown frames across windows | Existing await_request(history) race, real same-reader identical clearinghouse, changed financial frame, unknown fill, or activeAssetData change | Old sealed group refuses after actual receipt; identical same-reader frame still changes received-sequence authority. Preserve funds/connection identity assertions, no phantom financial grant. |
+| N2: reader identity transition | Normal Close/reconnect during actual delayed history; where possible separately a new normal factory with numeric epoch0 | Captured old reader cannot authorize a new reader even if epoch number equals0. No old callback/report emission into the new factory. Existing generation/epoch mechanism tests support but do not replace this integration evidence. |
+| N3: Cache/policy/owned history change | Ordinary public metadata provider replaces native Cache instrument during actual delayed history; ordinary initialized routed EXTERNAL/other-strategy/unselected io orders; normal owned submit; actual canceled history and cold-fill journal | No reuse/fallback flat report through exact native metadata/Cache or ownership contradiction. Preserve gross reserve/native actual fill count/fees; normal helper means no fabricated fill/account binding. Immutable factory policy change is a different new lifecycle, not an in-place private test mutation. |
+| N4: source TTL expires after successful reads | Existing 500ms account TTL, 600ms actual delayed history; original total recovery deadline unchanged | Final boundary refuses even when arrays returned200 []; account source/verification start cannot be refreshed by reuse or report emission. |
+| N5: deadline/retention bounds | Existing 5000ms late response with original recovery deadline, response cap, saturated/nonempty pages, old empty-record/tainted/truncated/terminal journals | Original refusal and original-journal preservation unchanged. Delayed success must not emit a late report or turn nonfresh origin into fresh. |
+
+These are contract groups, not a promise of an expanded count or an actual pass. Reuse positive and fallback positive each need real normal source evidence. Retained diagnostics are not a test authority, and no new production testhooks are proposed.
+
+## Important original-test compatibility issue
+
+The 12 current_complete_account_mode_metadata_and_source_are_required variants change only the peer's HTTP state AFTER Harness::new has completed a valid native connect. They currently pass because startup_mass_status always refreshes the full-account HTTP group. Except wrong_metadata, which also updates ordinary Cache through a normal provider, most have no native private frame/revision invalidation at all. A new algorithm that legally reuses a sealed current source without rereading HTTP cannot observe those silent future HTTP faults.
+
+Do not silently change their rejection expectations or claim all55 unchanged passed. Resolve the branch contract before implementation:
+1. Keep the original normal full-read path exercisable by a genuine production fallback condition, not a test-only switch.
+2. If modifying fixture SETUP is authorized, deliver a real invalidating private frame and prove normal receipt before mass; retain each original malformed/conflicting HTTP response and the exact old refusal/no-projection assertions. Preserve the old fixture source/hash and report why eligibility now requires fallback. Do not add a fixed sleep as receipt evidence.
+3. The new reuse positive cases establish their actual sealed source before entering the three-window group. Hidden server-side changes that have neither a request nor a private signal cannot be claimed detected.
+4. If the original source bytes/assertions must be entirely unchanged, production must continue actual reads for those observable fixtures or expressly not classify their normal lifecycle as reusable. This cannot be decided through harness-side Ready or opaque flags.
+
+The existing TTL test also has a deterministic branch distinction: waiting until an old source expires before mass tests fallback; expiring DURING delayed actual windows tests final reuse refusal. Do not merge these outcomes into one forgiving assertion.
+
+## Honest deterministic and compositional limits
+
+- Actual identical/changed frames across history can be deterministically scheduled by awaiting a real request; receipt must be evidenced by native diagnostic/raw/current scope, not merely sending a frame. Receipt-sequence change and same-source-time financial mutation are not identical: the peer can preserve clearinghouse time while changing funds, but receipt sequence still advances. A same-received-sequence financial revision requires a different normal account callback/read race and cannot be claimed by the WS case.
+- Integration cannot pause only raw ingress application, hold sibling-private native ingress/account/execution locks for a chosen duration, force same-millisecond callback internals, or mutate immutable policy without unauthorized hooks. Do not label new source/TLL tests as those exact boundaries.
+- Existing websocket/client.rs unit mechanisms are prepared_private_ingress_requires_contiguous_actor_application (:2875), prepared_private_ingress_rejects_old_epoch_and_fresh_connection_markers (:2905), and prepared_private_ingress_lock_serializes_receipt_and_write_boundary (:2959). They establish unapplied/read-generation/serialization mechanics independently; a product source audit must still prove startup reuses those same guards and samples TTL after lock wait. Composition is not an actual isolated full startup integration test.
+- Same-epoch new-factory behavior and queued owner cancellation have existing normal warm-query examples in io_query_recovery.rs; reuse them only if the future startup actually uses a normal owner callback. Do not invent or manually call a private startup completion executor.
+- No arbitrary ticks, larger timeouts, quota changes, loop-until-pass or synthetic account/fill/cache projection. Keep original 2s account/action, 3s recovery/history and 15s app acceptance limits when following with installed-wheel application tests.
+- Negative HTTP/window/policy/metadata failures stay Unknown with original raw/reader identity retained where the product supplies debt retention; reuse must not clear old source debt. Nonfresh/cold paths retain existing restrictions.
+
+## Source identity at design time
+
+- crates/adapters/hyperliquid/tests/entropy_account.rs: 5976b5e8e5b9e19314679ca009365024817a2ad4e3a07ac65c7cdf1d06a79c07
+- crates/adapters/hyperliquid/tests/entropy_account/execution.rs: c7765f65fc74d682c9245a54df47aacb428c1f394c0ff9903691057f765c7a95
+- crates/adapters/hyperliquid/tests/entropy_account/startup.rs: 248e423dab7a105c93c99e0256f4cd060df6b63adf47bafa2bbbf4665da223a8
+- crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs: 2fca06baee1dc91a94ac1956db71c555db980c3566fd25c453ad7b99bfc4f58b
+- crates/adapters/hyperliquid/src/execution_scope.rs: fd10b2e0deb1b90e42dcb0756eb68d2227b3bffe7d383807a93cf962e67270d2
+- crates/adapters/hyperliquid/src/account_scope.rs: 586839f5e0a2bc598330d28a6b22746bb12f44ca2bb2df0fad10fcc5e632483c
+- crates/adapters/hyperliquid/src/execution.rs: 2b1e30b896b60b01edd257947426c5f132b841dc7fe7771602f1e810c81c3316
+- crates/adapters/hyperliquid/src/websocket/client.rs: 15a9fdde9cf9df8e491a63dde625de7029ac85868f19a8dc775d56f2ea160b9a

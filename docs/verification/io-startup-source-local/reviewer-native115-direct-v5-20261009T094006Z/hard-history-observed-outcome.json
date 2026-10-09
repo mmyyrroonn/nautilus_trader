@@ -1,0 +1,34 @@
+{
+    "origin":  "Actual independent v5 warm-64 stderr",
+    "origin_sha256":  "a671fb5eb5a6c1f2cc78030e753e588c4474b44600abc9bc465dc0d2c0b5c522",
+    "outcome":  {
+                    "history_requests":  1,
+                    "actual_request_count":  26,
+                    "new_coverage":  [
+                                         {
+                                             "generation":  1,
+                                             "epoch":  0,
+                                             "endpoint":  "userFunding",
+                                             "start_ms":  1791538851472,
+                                             "end_ms":  1791538852898,
+                                             "pages":  0,
+                                             "records":  0,
+                                             "complete":  false,
+                                             "diagnostic":  "Economic history total deadline exhausted (quota/retries/metadata included)"
+                                         },
+                                         {
+                                             "generation":  1,
+                                             "epoch":  0,
+                                             "endpoint":  "userNonFundingLedgerUpdates",
+                                             "start_ms":  1791538851472,
+                                             "end_ms":  1791538852898,
+                                             "pages":  0,
+                                             "records":  0,
+                                             "complete":  false,
+                                             "diagnostic":  "Economic history total deadline exhausted (quota/retries/metadata included)"
+                                         }
+                                     ],
+                    "proof_ready":  false,
+                    "signed_writes":  0
+                }
+}

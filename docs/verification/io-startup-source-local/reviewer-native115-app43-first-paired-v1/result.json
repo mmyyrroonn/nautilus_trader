@@ -1,0 +1,1510 @@
+{
+  "review_started_utc": "2026-10-09T10:16:23.482041+00:00",
+  "review_finished_utc": "2026-10-09T10:16:24.114712+00:00",
+  "review_type": "Independent read-only analysis of parent actual failed run; no reviewer execution/retry",
+  "actual_parent_command": {
+    "argv": [
+      ".venv/Scripts/python.exe",
+      "-m",
+      "pytest",
+      "-q",
+      "tests/test_entropy_execution_native.py::test_actual_installed_factory_two_leg_execution[paired]",
+      "--basetemp",
+      "E:/persarb/_tmp/app43-native115-chronology-first-paired-pytest-20261009"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-execution-app",
+    "started_utc": "2026-10-09T10:11:46.206245+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "uv_project_environment": null,
+    "nautilus_stub_profile": null,
+    "cargo_build_warnings": null,
+    "cargo_net_offline": null,
+    "entropy43_native_wheel": "E:/persarb/_tmp/entropy115-wheel-nextest-20261009/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+    "entropy43_native_sha256": "7ea01172ddb8f7bc985edcf5641b62b1d4fc0e4704d79a68d0dc615d3926d748",
+    "entropy43_native_provenance": "E:/persarb/_tmp/entropy115-wheel-nextest-20261009/native-provenance.json",
+    "entropy43_evidence_root": "E:/persarb/_tmp/app43-native115-chronology-first-paired-20261009",
+    "exit_code": 1,
+    "finished_utc": "2026-10-09T10:12:04.739496+00:00"
+  },
+  "controller": {
+    "account_flat_verified": "Unknown",
+    "actions": 6,
+    "cleanup_orders": 2,
+    "cleanup_started_ns": 1791540709142763900,
+    "current_projection_verified": "Unknown",
+    "entry_notional_usd": "25.20",
+    "entry_orders": 2,
+    "gross_reserved_usd": "0.0000",
+    "loss_usd": "0.00640000",
+    "native_cache_recovery": "Unknown",
+    "new_risk_closed": true,
+    "orders_terminal": true,
+    "owned_flat_verified": "Unknown",
+    "plan_sha256": "088e50568d6afd61348df15280d884b03b08f5d12fc74f37e83a2e6b4c621953",
+    "positions": {
+      "aster": "0.00",
+      "entropy": "0.0000"
+    },
+    "reasons": [
+      "cleanup_not_currently_proven_or_budget_exhausted",
+      "cleanup_deadline_exhausted"
+    ],
+    "run_id": "ENTROPY43_LOCAL",
+    "schema_version": 1,
+    "shutdown_verified": "Unknown",
+    "start_ns": 1791540708639378200,
+    "state": "StoppedUnknown",
+    "unhedged_reserved_usd": "0.0000"
+  },
+  "orders": {
+    "ENTROPY43_LOCAL-aster-2": {
+      "intent": {
+        "action": "submit",
+        "client_order_id": "ENTROPY43_LOCAL-aster-2",
+        "leg": "aster",
+        "limit_price": "100.10000",
+        "quantity": "0.12",
+        "reason": "one finite entry cycle",
+        "reduce_only": false,
+        "side": "SELL",
+        "time_in_force": "IOC"
+      },
+      "filled_quantity": "0.12",
+      "terminal": "FILLED",
+      "unknown": false,
+      "reserved_usd": "0.0000",
+      "cancel_attempted": false
+    },
+    "ENTROPY43_LOCAL-aster-5": {
+      "intent": {
+        "action": "submit",
+        "client_order_id": "ENTROPY43_LOCAL-aster-5",
+        "leg": "aster",
+        "limit_price": "100.11000",
+        "quantity": "0.12",
+        "reason": "owned cleanup",
+        "reduce_only": true,
+        "side": "BUY",
+        "time_in_force": "IOC"
+      },
+      "filled_quantity": "0.12",
+      "terminal": "FILLED",
+      "unknown": false,
+      "reserved_usd": "0",
+      "cancel_attempted": true
+    },
+    "ENTROPY43_LOCAL-entropy-1": {
+      "intent": {
+        "action": "submit",
+        "client_order_id": "ENTROPY43_LOCAL-entropy-1",
+        "leg": "entropy",
+        "limit_price": "100.00",
+        "quantity": "0.12",
+        "reason": "one finite entry cycle",
+        "reduce_only": false,
+        "side": "BUY",
+        "time_in_force": "IOC"
+      },
+      "filled_quantity": "0.1200",
+      "terminal": "FILLED",
+      "unknown": false,
+      "reserved_usd": "0.000000",
+      "cancel_attempted": false
+    },
+    "ENTROPY43_LOCAL-entropy-3": {
+      "intent": {
+        "action": "submit",
+        "client_order_id": "ENTROPY43_LOCAL-entropy-3",
+        "leg": "entropy",
+        "limit_price": "99.99",
+        "quantity": "0.1200",
+        "reason": "owned cleanup",
+        "reduce_only": true,
+        "side": "SELL",
+        "time_in_force": "IOC"
+      },
+      "filled_quantity": "0.1200",
+      "terminal": "FILLED",
+      "unknown": false,
+      "reserved_usd": "0",
+      "cancel_attempted": true
+    }
+  },
+  "native_consumed_fills": [
+    {
+      "account_id": "HYPERLIQUID-ENTROPY43",
+      "client_order_id": "ENTROPY43_LOCAL-entropy-1",
+      "fee": "0.00100000",
+      "fee_currency": "USDC",
+      "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+      "leg": "entropy",
+      "native_applied": true,
+      "price": "100.00",
+      "quantity": "0.1200",
+      "received_ns": 1791540708819863700,
+      "side": "BUY",
+      "source_reference": "native-order-filled:b998ee99-efbb-47ef-b478-c1adc022e2cd",
+      "trade_id": "io:io:SNDK:70001:60001",
+      "venue_order_id": "70001",
+      "utc": "2026-10-09T10:11:48.819864+00:00"
+    },
+    {
+      "account_id": "ASTER-ENTROPY43",
+      "client_order_id": "ENTROPY43_LOCAL-aster-2",
+      "fee": "0.00100000",
+      "fee_currency": "USD1",
+      "instrument_id": "SNDKUSD1-PERP.ASTER",
+      "leg": "aster",
+      "native_applied": true,
+      "price": "100.10000",
+      "quantity": "0.12",
+      "received_ns": 1791540709096698600,
+      "side": "SELL",
+      "source_reference": "native-order-filled:f41ba0e1-5af2-4c15-ad82-fd49d2287d07",
+      "trade_id": "90000",
+      "venue_order_id": "80001",
+      "utc": "2026-10-09T10:11:49.096699+00:00"
+    },
+    {
+      "account_id": "HYPERLIQUID-ENTROPY43",
+      "client_order_id": "ENTROPY43_LOCAL-entropy-3",
+      "fee": "0.00100000",
+      "fee_currency": "USDC",
+      "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+      "leg": "entropy",
+      "native_applied": true,
+      "price": "99.99",
+      "quantity": "0.1200",
+      "received_ns": 1791540709307799000,
+      "side": "SELL",
+      "source_reference": "native-order-filled:64520256-eb1c-4d0b-aca0-a71f5b2c62f3",
+      "trade_id": "io:io:SNDK:70002:60002",
+      "venue_order_id": "70002",
+      "utc": "2026-10-09T10:11:49.307799+00:00"
+    },
+    {
+      "account_id": "ASTER-ENTROPY43",
+      "client_order_id": "ENTROPY43_LOCAL-aster-5",
+      "fee": "0.00100000",
+      "fee_currency": "USD1",
+      "instrument_id": "SNDKUSD1-PERP.ASTER",
+      "leg": "aster",
+      "native_applied": true,
+      "price": "100.11000",
+      "quantity": "0.12",
+      "received_ns": 1791540709521156100,
+      "side": "BUY",
+      "source_reference": "native-order-filled:bcebf642-74b0-43aa-b357-fd59f1de2667",
+      "trade_id": "90001",
+      "venue_order_id": "80002",
+      "utc": "2026-10-09T10:11:49.521156+00:00"
+    }
+  ],
+  "peer_actual": {
+    "HYPERLIQUID": {
+      "actual_requests": 69,
+      "commands": 9,
+      "frames": 173,
+      "actions": 2,
+      "position": "0.00",
+      "fills": [
+        {
+          "coin": "io:SNDK",
+          "px": "100",
+          "sz": "0.12",
+          "side": "B",
+          "time": 1791540708643,
+          "startPosition": "0",
+          "dir": "Open Long",
+          "closedPnl": "0",
+          "hash": "0x000000000000000000000000000000000000000000000000000000000000ea61",
+          "oid": 70001,
+          "crossed": true,
+          "fee": "0.001",
+          "builderFee": "0.0002",
+          "tid": 60001,
+          "feeToken": "USDC",
+          "cloid": "0x765fde8d8d4a9ae99a37a1f3deb3a35e"
+        },
+        {
+          "coin": "io:SNDK",
+          "px": "99.99",
+          "sz": "0.12",
+          "side": "A",
+          "time": 1791540709146,
+          "startPosition": "0.12",
+          "dir": "Close Long",
+          "closedPnl": "0",
+          "hash": "0x000000000000000000000000000000000000000000000000000000000000ea62",
+          "oid": 70002,
+          "crossed": true,
+          "fee": "0.001",
+          "builderFee": "0.0002",
+          "tid": 60002,
+          "feeToken": "USDC",
+          "cloid": "0x782dac5589d929429784b00b34589629"
+        }
+      ],
+      "errors": [],
+      "http_response_status_counts": {
+        "200 OK": 69
+      }
+    },
+    "ASTER": {
+      "actual_requests": 144,
+      "commands": 2,
+      "frames": 154,
+      "actions": 3,
+      "position": "0.00",
+      "fills": [
+        {
+          "symbol": "SNDKUSD1",
+          "id": 90000,
+          "orderId": 80001,
+          "price": "100.10000",
+          "qty": "0.12",
+          "quoteQty": "12.0120000",
+          "realizedPnl": "0",
+          "commission": "0.001",
+          "commissionAsset": "USD1",
+          "time": 1791540709095,
+          "buyer": false,
+          "maker": false,
+          "side": "SELL",
+          "positionSide": "BOTH"
+        },
+        {
+          "symbol": "SNDKUSD1",
+          "id": 90001,
+          "orderId": 80002,
+          "price": "100.11000",
+          "qty": "0.12",
+          "quoteQty": "12.0132000",
+          "realizedPnl": "0",
+          "commission": "0.001",
+          "commissionAsset": "USD1",
+          "time": 1791540709520,
+          "buyer": true,
+          "maker": false,
+          "side": "BUY",
+          "positionSide": "BOTH"
+        }
+      ],
+      "errors": [],
+      "http_response_status_counts": {
+        "200 OK": 144
+      }
+    }
+  },
+  "native_cache_positions": {
+    "aster": [
+      "Position(FLAT SNDKUSD1-PERP.ASTER, id=SNDKUSD1-PERP.ASTER-ENTROPY-043)"
+    ],
+    "entropy": [
+      "Position(FLAT io:SNDK-USD-PERP.HYPERLIQUID, id=io:SNDK-USD-PERP.HYPERLIQUID-ENTROPY-043)"
+    ]
+  },
+  "native_portfolio_net_positions": {
+    "aster": "0",
+    "entropy": "0"
+  },
+  "initial_selected_flat_projection": {
+    "aster": {
+      "account_id": "ASTER-ENTROPY43",
+      "actual_fill_count": 0,
+      "cold_native_cache_restore_verified": false,
+      "instrument_id": "SNDKUSD1-PERP.ASTER",
+      "native_scope_received_ns": 1791540708550180300,
+      "observed_at_ns": 1791540708639378200,
+      "ordinary_order_count": 0,
+      "ordinary_position_count": 0,
+      "portfolio_signed_quantity": "0",
+      "scope_sha256": "7561be72db16485ffdf816c730e544d7590ba0e0408f2e4bfcdccab3f32c2930",
+      "signed_quantity": "0",
+      "strategy_id": "ENTROPY-043",
+      "verified": true,
+      "whole_account_verified": false
+    },
+    "entropy": {
+      "account_id": "HYPERLIQUID-ENTROPY43",
+      "actual_fill_count": 0,
+      "cold_native_cache_restore_verified": false,
+      "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+      "native_scope_received_ns": 1791540708399000000,
+      "observed_at_ns": 1791540708544160900,
+      "ordinary_order_count": 0,
+      "ordinary_position_count": 0,
+      "portfolio_signed_quantity": "0",
+      "scope_sha256": "8804fdffe409031d996adf0c9e0ad708ff2f3df8491dde3aa1ca7bb98daec69f",
+      "signed_quantity": "0",
+      "strategy_id": "ENTROPY-043",
+      "verified": true,
+      "whole_account_verified": false
+    }
+  },
+  "latest_current_projection_witnesses": {
+    "aster": {
+      "account_id": "ASTER-ENTROPY43",
+      "actual_fill_count": 2,
+      "cold_native_cache_restore_verified": false,
+      "instrument_id": "SNDKUSD1-PERP.ASTER",
+      "native_scope_received_ns": 1791540722744944300,
+      "observed_at_ns": 1791540723434727900,
+      "ordinary_order_count": 2,
+      "ordinary_position_count": 1,
+      "portfolio_signed_quantity": "0",
+      "scope_sha256": "bf773980f02909fd82cad4407a18eb3e7afec7d9f38a85cd029c9f6e593f2c56",
+      "signed_quantity": "0",
+      "strategy_id": "ENTROPY-043",
+      "verified": true,
+      "whole_account_verified": false
+    },
+    "entropy": {
+      "account_id": "HYPERLIQUID-ENTROPY43",
+      "actual_fill_count": 1,
+      "cold_native_cache_restore_verified": false,
+      "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+      "io_actual_fill_source_refs": {
+        "io:io:SNDK:70001:60001": [
+          {
+            "financial_digest": "0xb0bdc800c7660e1109e6035e8d4eaaab5303f795610d82970dae6efd939bb5be",
+            "native_applied": "Unknown",
+            "observation_id": "observation-1",
+            "ownership_basis": "AccountRaw; strategy/native application Unknown",
+            "raw_envelope_ref": "0x461e77adcc91b26426de41f6e6885a6079426c80ada1a5a0d122c24e5974e93c",
+            "source_seq": 1
+          },
+          {
+            "financial_digest": "0xb0bdc800c7660e1109e6035e8d4eaaab5303f795610d82970dae6efd939bb5be",
+            "native_applied": "Unknown",
+            "observation_id": "observation-2",
+            "ownership_basis": "AcceptedOwnedRaw; native durable application Unknown",
+            "raw_envelope_ref": "0x5e49f391fbc595ebba1790b12891061957d4a90a164b58129c502a06e3ec5ecf",
+            "source_seq": 2
+          }
+        ]
+      },
+      "native_scope_received_ns": 1791540708855000000,
+      "observed_at_ns": 1791540709142763900,
+      "ordinary_order_count": 1,
+      "ordinary_position_count": 1,
+      "portfolio_signed_quantity": "0.12",
+      "scope_sha256": "5560204f9e6f006abd35de4b14cb15eb12e1b505459e3cfb942977a364759d30",
+      "signed_quantity": "0.1200",
+      "strategy_id": "ENTROPY-043",
+      "verified": true,
+      "whole_account_verified": false
+    }
+  },
+  "unattributed_native_events": [],
+  "economic_flags": {
+    "account_flat_verified": "Unknown",
+    "current_projection_verified": "Unknown",
+    "economic_identity_complete": true,
+    "economics_complete": "Unknown",
+    "fill_fee_attribution_complete": true,
+    "history_coverage_complete": "Unknown",
+    "native_cache_recovery": "Unknown",
+    "orders_terminal": true,
+    "owned_flat_verified": "Unknown",
+    "run_attribution_complete": "Unknown",
+    "shutdown_verified": true
+  },
+  "economics": {
+    "durable_receipts": 2,
+    "consumed_observations": 4,
+    "coverage": [
+      {
+        "complete": true,
+        "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown",
+        "end_ms": 1791540708401,
+        "endpoint": "userFunding",
+        "epoch": 0,
+        "generation": 1,
+        "pages": 1,
+        "records": 0,
+        "start_ms": 1791540706898
+      },
+      {
+        "complete": true,
+        "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown",
+        "end_ms": 1791540708401,
+        "endpoint": "userNonFundingLedgerUpdates",
+        "epoch": 0,
+        "generation": 1,
+        "pages": 1,
+        "records": 0,
+        "start_ms": 1791540706898
+      },
+      {
+        "complete": false,
+        "diagnostic": "Current interval was not requested by warm account recovery; coverage Unknown",
+        "end_ms": 1791540708857,
+        "endpoint": "userFunding",
+        "epoch": 0,
+        "generation": 1,
+        "pages": 0,
+        "records": 0,
+        "start_ms": 1791540708401
+      },
+      {
+        "complete": false,
+        "diagnostic": "Current interval was not requested by warm account recovery; coverage Unknown",
+        "end_ms": 1791540708857,
+        "endpoint": "userNonFundingLedgerUpdates",
+        "epoch": 0,
+        "generation": 1,
+        "pages": 0,
+        "records": 0,
+        "start_ms": 1791540708401
+      }
+    ],
+    "financial_identity_complete": true,
+    "native_applied": "Unknown",
+    "actual_fee_usdc": "0.002"
+  },
+  "shutdown_verified": true,
+  "entropy_final": {
+    "trusted": false,
+    "http_positions": [
+      {
+        "coin": "io:SNDK",
+        "margin_used": "0",
+        "signed_size": "0.12"
+      }
+    ],
+    "http_started_ms": 1791540708853,
+    "http_received_ms": 1791540708855,
+    "latest_private_funds": {
+      "free": "100",
+      "received_time_ms": 1791540723245,
+      "source_time_ms": 1791540723244,
+      "withdrawable": "100"
+    },
+    "recovery_complete": false,
+    "native_projection_recovery_required": true,
+    "query_completed": 2,
+    "query_in_flight": false,
+    "diagnostic": "io warm RecoveryIncomplete: io warm recovery total deadline exhausted",
+    "warm_metadata_origin": null,
+    "source_debt": {
+      "identity": {
+        "account_id": "HYPERLIQUID-ENTROPY43",
+        "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "epoch": 0,
+        "generation": 1,
+        "policy": {
+          "action_timeout_ms": 2000,
+          "fee_buffer_bps": "100",
+          "journal_path": "E:\\persarb\\_tmp\\app43-native115-chronology-first-paired-20261009\\paired\\native-io-intents.jsonl",
+          "margin_buffer": "1",
+          "max_actions": 6,
+          "max_gross_notional": "40",
+          "max_leverage": 1,
+          "max_open_orders": 2,
+          "max_order_notional": "20",
+          "metadata_max_age_ms": 30000,
+          "recovery_max_attempts": 2,
+          "recovery_retry_delay_ms": 10,
+          "recovery_timeout_ms": 3000,
+          "schema_version": 1,
+          "strategy_id": "ENTROPY-043",
+          "symbols": [
+            {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "max_price": "105",
+              "max_quantity": "0.12",
+              "min_price": "95"
+            }
+          ]
+        },
+        "query_token": 10,
+        "received_sequence": 12
+      },
+      "sources": [
+        {
+          "request": {
+            "type": "frontendOpenOrders",
+            "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+            "dex": "io"
+          },
+          "received_ms": 1791540709364,
+          "utc": "2026-10-09T10:11:49.364000+00:00",
+          "raw_text_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+        },
+        {
+          "request": {
+            "type": "userFills",
+            "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+          },
+          "received_ms": 1791540709365,
+          "utc": "2026-10-09T10:11:49.365000+00:00",
+          "raw_text_sha256": "9c0d76f9a68053abae1ba294606ea9166ede3a0b6016426fe1248f87b785ec48"
+        },
+        {
+          "request": {
+            "type": "orderStatus",
+            "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+            "oid": "0x782dac5589d929429784b00b34589629"
+          },
+          "received_ms": 1791540709365,
+          "utc": "2026-10-09T10:11:49.365000+00:00",
+          "raw_text_sha256": "c12d5cbf4f2cd60ee72cbaa491f801daeca4b7800753577c5aeb88cd414ea6e9"
+        },
+        {
+          "request": {
+            "type": "userRole",
+            "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+          },
+          "received_ms": 1791540711175,
+          "utc": "2026-10-09T10:11:51.175000+00:00",
+          "raw_text_sha256": "6b3061507ef8cc2ca95320f790a9f9ccb3c850ae081df4b6f6e56e40d57203e4"
+        },
+        {
+          "request": {
+            "type": "userAbstraction",
+            "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+          },
+          "received_ms": 1791540712170,
+          "utc": "2026-10-09T10:11:52.170000+00:00",
+          "raw_text_sha256": "f693b9deb860600fb93d749df324c55991afe7eba6300113ab381339b23d12d5"
+        }
+      ],
+      "unavailable": [
+        {
+          "diagnostic": "Request began but no complete bounded raw body was received",
+          "received_ms": null,
+          "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}"
+        }
+      ]
+    }
+  },
+  "aster_final": {
+    "account_id": "ASTER-ENTROPY43",
+    "balance": {
+      "asset": "USD1",
+      "free": "100",
+      "source_update_time_ms": 1791540722745,
+      "total": "100"
+    },
+    "balance_asset": "USD1",
+    "fill_chronology_debt": false,
+    "funding_verified": false,
+    "generation": 41,
+    "instrument_ids": [
+      "SNDKUSD1-PERP.ASTER"
+    ],
+    "max_age_ms": 2000,
+    "mode_verified": true,
+    "open_orders": [],
+    "phase": "ready",
+    "positions": [
+      {
+        "instrument_id": "SNDKUSD1-PERP.ASTER",
+        "signed_quantity": "0.00",
+        "source_update_time_ms": 1791540722745
+      }
+    ],
+    "ready": true,
+    "reason": null,
+    "received_time_ns": 1791540722744944300,
+    "recovery_complete": true,
+    "run_ownership_verified": false,
+    "schema_version": 1,
+    "signer_address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+    "source": "native_http_selected_scope",
+    "source_endpoint": "http://127.0.0.1:9970",
+    "source_time_ns": null,
+    "source_time_origin": "venue_does_not_supply_snapshot_time",
+    "stream_live": true,
+    "trusted": true,
+    "user_address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+    "venue": "ASTER",
+    "whole_account_verified": false
+  },
+  "query_timeline": [
+    {
+      "utc": "2026-10-09T10:11:48.545161+00:00",
+      "received_ns": 1791540708545161300,
+      "baseline_generation": 4,
+      "baseline_source_reference": "f33cde618cd3736d624351c96bd010176fd891266641c2138919b23bbcc4fabd",
+      "leg": "aster",
+      "read_action": 1
+    },
+    {
+      "utc": "2026-10-09T10:11:48.844868+00:00",
+      "received_ns": 1791540708844867900,
+      "baseline_generation": 0,
+      "baseline_source_reference": "b6081c590571d5cc95fccf7b258d1fb8c1007a28a2f545b6d01912006205aa60",
+      "leg": "entropy",
+      "read_action": 2
+    },
+    {
+      "utc": "2026-10-09T10:11:49.143766+00:00",
+      "received_ns": 1791540709143765800,
+      "baseline_generation": 9,
+      "baseline_source_reference": "4afadcb243968665e1e76b1c8678da0b7682f2533d5a27486c31c118749d4a9d",
+      "leg": "aster",
+      "read_action": 3
+    },
+    {
+      "utc": "2026-10-09T10:11:49.348809+00:00",
+      "received_ns": 1791540709348809200,
+      "baseline_generation": 0,
+      "baseline_source_reference": "02d9cdaf4f7bfc2979dec567ea910130d9a971ca00387ec7f7c7357dfe84941a",
+      "leg": "entropy",
+      "read_action": 4
+    },
+    {
+      "utc": "2026-10-09T10:11:49.647712+00:00",
+      "received_ns": 1791540709647711400,
+      "baseline_generation": 15,
+      "baseline_source_reference": "0a6cc4375b80cf74082e3cd10802c3c1561eb3c8a9c70f122717d71f62c3c6cd",
+      "leg": "aster",
+      "read_action": 5
+    },
+    {
+      "utc": "2026-10-09T10:11:50.750042+00:00",
+      "received_ns": 1791540710750042100,
+      "baseline_generation": 17,
+      "baseline_source_reference": "15584b7df91bd987d2e935f62ef589dab741ddb71595b8fe8e96e16ca9293678",
+      "leg": "aster",
+      "read_action": 6
+    },
+    {
+      "utc": "2026-10-09T10:11:51.839286+00:00",
+      "received_ns": 1791540711839285800,
+      "baseline_generation": 19,
+      "baseline_source_reference": "d55d8b131e9440dc2df9ef69f4f169fe18178ea47570e051a8141c862fbf0d5c",
+      "leg": "aster",
+      "read_action": 7
+    },
+    {
+      "utc": "2026-10-09T10:11:52.535030+00:00",
+      "received_ns": 1791540712535030300,
+      "baseline_generation": 0,
+      "baseline_source_reference": "c00ca9cac8bd982e6d5ecc10574fdfdcbaac7582042fff7958da13603f92e230",
+      "leg": "entropy",
+      "read_action": 8
+    },
+    {
+      "utc": "2026-10-09T10:11:52.945880+00:00",
+      "received_ns": 1791540712945879800,
+      "baseline_generation": 21,
+      "baseline_source_reference": "7987c69ab96a89c00f22f0bc6880a46738d8e72b509a23c3ae7bfd363ec56b3c",
+      "leg": "aster",
+      "read_action": 9
+    },
+    {
+      "utc": "2026-10-09T10:11:54.046415+00:00",
+      "received_ns": 1791540714046415400,
+      "baseline_generation": 23,
+      "baseline_source_reference": "cda3760db2fed67c084a0a7c273456a7836a13adafe52f73248acef2bf8157dd",
+      "leg": "aster",
+      "read_action": 10
+    },
+    {
+      "utc": "2026-10-09T10:11:55.141022+00:00",
+      "received_ns": 1791540715141022200,
+      "baseline_generation": 25,
+      "baseline_source_reference": "74e3ca5115191c686addbb7b8139633f8909adf842d0d9c4f1795185b37f7c05",
+      "leg": "aster",
+      "read_action": 11
+    },
+    {
+      "utc": "2026-10-09T10:11:55.640492+00:00",
+      "received_ns": 1791540715640492400,
+      "baseline_generation": 0,
+      "baseline_source_reference": "87f654de5cfac4fd0859773a39a15aacb7e7226a278e268fcfc26bb3afd5044f",
+      "leg": "entropy",
+      "read_action": 12
+    },
+    {
+      "utc": "2026-10-09T10:11:56.237031+00:00",
+      "received_ns": 1791540716237030300,
+      "baseline_generation": 27,
+      "baseline_source_reference": "887d43343a8d1c7823165d3b2361a78f49caeec49ebc558a4f965ef44ca8cca3",
+      "leg": "aster",
+      "read_action": 13
+    },
+    {
+      "utc": "2026-10-09T10:11:57.248457+00:00",
+      "received_ns": 1791540717248457300,
+      "baseline_generation": 29,
+      "baseline_source_reference": "26b58491346029f63ec0def87a0652d9d852170d16fd551fe8f067d66507bcb2",
+      "leg": "aster",
+      "read_action": 14
+    },
+    {
+      "utc": "2026-10-09T10:11:58.338718+00:00",
+      "received_ns": 1791540718338718500,
+      "baseline_generation": 31,
+      "baseline_source_reference": "903f4feaa1c60feb03cbbc80b582e2dc50cc6c5b06955133bee0c3e07d889855",
+      "leg": "aster",
+      "read_action": 15
+    },
+    {
+      "utc": "2026-10-09T10:11:58.750968+00:00",
+      "received_ns": 1791540718750968000,
+      "baseline_generation": 0,
+      "baseline_source_reference": "3e5313bf9cbf85e6f1b503a2f63174abd676531cb964137a4728d87b863e6e06",
+      "leg": "entropy",
+      "read_action": 16
+    },
+    {
+      "utc": "2026-10-09T10:11:59.445225+00:00",
+      "received_ns": 1791540719445225000,
+      "baseline_generation": 33,
+      "baseline_source_reference": "eba9340bc55f7bc04ffcfcef9236c037e02ffa65f486199b2b54f09be56408f9",
+      "leg": "aster",
+      "read_action": 17
+    },
+    {
+      "utc": "2026-10-09T10:12:00.534824+00:00",
+      "received_ns": 1791540720534824400,
+      "baseline_generation": 35,
+      "baseline_source_reference": "d9a976f41b1fece211f0eed78dd53dc3c2d6f197a7d29ec5e1b5cd3734ed55d6",
+      "leg": "aster",
+      "read_action": 18
+    },
+    {
+      "utc": "2026-10-09T10:12:01.649648+00:00",
+      "received_ns": 1791540721649647800,
+      "baseline_generation": 37,
+      "baseline_source_reference": "3764b7dc125cfc9492cd20dd4984783884703ce70766d7d7415cb83142999ee7",
+      "leg": "aster",
+      "read_action": 19
+    },
+    {
+      "utc": "2026-10-09T10:12:01.949415+00:00",
+      "received_ns": 1791540721949414700,
+      "baseline_generation": 0,
+      "baseline_source_reference": "3f0895f0ae7d8422663c29f37f7e245f99ee544a4501d20ad9c6f8fddbb02109",
+      "leg": "entropy",
+      "read_action": 20
+    },
+    {
+      "utc": "2026-10-09T10:12:02.738401+00:00",
+      "received_ns": 1791540722738401300,
+      "baseline_generation": 39,
+      "baseline_source_reference": "eab15a4b501bbd38ca909dbe3c85cd41e81163a8b22e3cdf569a0f826405908c",
+      "leg": "aster",
+      "read_action": 21
+    }
+  ],
+  "prepared_intent_timeline": [
+    {
+      "utc": "2026-10-09T10:11:48.640379+00:00",
+      "received_ns": 1791540708640379000,
+      "intent": {
+        "action": "submit",
+        "client_order_id": "ENTROPY43_LOCAL-entropy-1",
+        "leg": "entropy",
+        "limit_price": "100.00",
+        "quantity": "0.12",
+        "reason": "one finite entry cycle",
+        "reduce_only": false,
+        "side": "BUY",
+        "time_in_force": "IOC"
+      },
+      "controller_state": "EntryPending",
+      "reasons": [],
+      "positions": {
+        "aster": "0",
+        "entropy": "0"
+      }
+    },
+    {
+      "utc": "2026-10-09T10:11:48.939895+00:00",
+      "received_ns": 1791540708939895200,
+      "intent": {
+        "action": "submit",
+        "client_order_id": "ENTROPY43_LOCAL-aster-2",
+        "leg": "aster",
+        "limit_price": "100.10000",
+        "quantity": "0.12",
+        "reason": "one finite entry cycle",
+        "reduce_only": false,
+        "side": "SELL",
+        "time_in_force": "IOC"
+      },
+      "controller_state": "HedgePending",
+      "reasons": [],
+      "positions": {
+        "aster": "0",
+        "entropy": "0.1200"
+      }
+    },
+    {
+      "utc": "2026-10-09T10:11:49.143766+00:00",
+      "received_ns": 1791540709143765800,
+      "intent": {
+        "action": "submit",
+        "client_order_id": "ENTROPY43_LOCAL-entropy-3",
+        "leg": "entropy",
+        "limit_price": "99.99",
+        "quantity": "0.1200",
+        "reason": "owned cleanup",
+        "reduce_only": true,
+        "side": "SELL",
+        "time_in_force": "IOC"
+      },
+      "controller_state": "StoppedUnknown",
+      "reasons": [
+        "cleanup_not_currently_proven_or_budget_exhausted"
+      ],
+      "positions": {
+        "aster": "-0.12",
+        "entropy": "0.1200"
+      }
+    },
+    {
+      "utc": "2026-10-09T10:11:49.144765+00:00",
+      "received_ns": 1791540709144765100,
+      "intent": {
+        "action": "cancel",
+        "client_order_id": "ENTROPY43_LOCAL-entropy-3",
+        "leg": "entropy",
+        "limit_price": "99.99",
+        "quantity": "0.1200",
+        "reason": "owned terminal reconciliation",
+        "reduce_only": true,
+        "side": "SELL",
+        "time_in_force": "IOC"
+      },
+      "controller_state": "Closing",
+      "reasons": [
+        "cleanup_not_currently_proven_or_budget_exhausted"
+      ],
+      "positions": {
+        "aster": "-0.12",
+        "entropy": "0.1200"
+      }
+    },
+    {
+      "utc": "2026-10-09T10:11:49.348809+00:00",
+      "received_ns": 1791540709348809200,
+      "intent": {
+        "action": "submit",
+        "client_order_id": "ENTROPY43_LOCAL-aster-5",
+        "leg": "aster",
+        "limit_price": "100.11000",
+        "quantity": "0.12",
+        "reason": "owned cleanup",
+        "reduce_only": true,
+        "side": "BUY",
+        "time_in_force": "IOC"
+      },
+      "controller_state": "Closing",
+      "reasons": [
+        "cleanup_not_currently_proven_or_budget_exhausted"
+      ],
+      "positions": {
+        "aster": "-0.12",
+        "entropy": "0.0000"
+      }
+    },
+    {
+      "utc": "2026-10-09T10:11:49.349806+00:00",
+      "received_ns": 1791540709349805600,
+      "intent": {
+        "action": "cancel",
+        "client_order_id": "ENTROPY43_LOCAL-aster-5",
+        "leg": "aster",
+        "limit_price": "100.11000",
+        "quantity": "0.12",
+        "reason": "owned terminal reconciliation",
+        "reduce_only": true,
+        "side": "BUY",
+        "time_in_force": "IOC"
+      },
+      "controller_state": "Closing",
+      "reasons": [
+        "cleanup_not_currently_proven_or_budget_exhausted"
+      ],
+      "positions": {
+        "aster": "-0.12",
+        "entropy": "0.0000"
+      }
+    }
+  ],
+  "native_scope_timeline": [
+    {
+      "received_ns": 1791540708545161300,
+      "utc": "2026-10-09T10:11:48.545161+00:00",
+      "leg": "entropy",
+      "trusted": true,
+      "recovery_complete": true,
+      "diagnostic": "Complete bounded owned io recovery for HYPERLIQUID-ENTROPY43; REST requests are non-atomic; leverage proof source time unknown",
+      "account_diagnostic": "Complete bounded io HTTP proof and matching private stream; WS source time may be unknown",
+      "query_in_flight": false,
+      "query_completed": 0,
+      "source_debt_present": false,
+      "warm_origin_present": true
+    },
+    {
+      "received_ns": 1791540708545161300,
+      "utc": "2026-10-09T10:11:48.545161+00:00",
+      "leg": "aster",
+      "trusted": false,
+      "recovery_complete": false,
+      "diagnostic": "partial position reports are not a complete selected scope proof",
+      "account_diagnostic": null,
+      "query_in_flight": null,
+      "query_completed": null,
+      "source_debt_present": false,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540708640379000,
+      "utc": "2026-10-09T10:11:48.640379+00:00",
+      "leg": "aster",
+      "trusted": true,
+      "recovery_complete": true,
+      "diagnostic": null,
+      "account_diagnostic": null,
+      "query_in_flight": null,
+      "query_completed": null,
+      "source_debt_present": false,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540708733716000,
+      "utc": "2026-10-09T10:11:48.733716+00:00",
+      "leg": "entropy",
+      "trusted": true,
+      "recovery_complete": false,
+      "diagnostic": "io RecoveryIncomplete: Verified owned filled marker awaits complete actual fills",
+      "account_diagnostic": "Complete bounded io HTTP proof and matching private stream; WS source time may be unknown",
+      "query_in_flight": false,
+      "query_completed": 0,
+      "source_debt_present": false,
+      "warm_origin_present": true
+    },
+    {
+      "received_ns": 1791540708820867600,
+      "utc": "2026-10-09T10:11:48.820868+00:00",
+      "leg": "entropy",
+      "trusted": false,
+      "recovery_complete": false,
+      "diagnostic": "Actual io fill requires new complete scoped account absorption",
+      "account_diagnostic": "Economic private financial observation requires current scoped recovery",
+      "query_in_flight": false,
+      "query_completed": 0,
+      "source_debt_present": false,
+      "warm_origin_present": true
+    },
+    {
+      "received_ns": 1791540708843866200,
+      "utc": "2026-10-09T10:11:48.843866+00:00",
+      "leg": "entropy",
+      "trusted": false,
+      "recovery_complete": false,
+      "diagnostic": "Actual io fill requires new complete scoped account absorption",
+      "account_diagnostic": "Economic private financial observation requires current scoped recovery",
+      "query_in_flight": false,
+      "query_completed": 0,
+      "source_debt_present": false,
+      "warm_origin_present": true
+    },
+    {
+      "received_ns": 1791540708938896000,
+      "utc": "2026-10-09T10:11:48.938896+00:00",
+      "leg": "entropy",
+      "trusted": true,
+      "recovery_complete": true,
+      "diagnostic": "Bounded live owned warm io recovery; historical coverage remains independent",
+      "account_diagnostic": "Complete bounded io HTTP proof and matching private stream; WS source time may be unknown",
+      "query_in_flight": false,
+      "query_completed": 1,
+      "source_debt_present": false,
+      "warm_origin_present": true
+    },
+    {
+      "received_ns": 1791540709049116700,
+      "utc": "2026-10-09T10:11:49.049117+00:00",
+      "leg": "aster",
+      "trusted": false,
+      "recovery_complete": false,
+      "diagnostic": "an order write consumed the selected account witness",
+      "account_diagnostic": null,
+      "query_in_flight": null,
+      "query_completed": null,
+      "source_debt_present": false,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540709097698000,
+      "utc": "2026-10-09T10:11:49.097698+00:00",
+      "leg": "aster",
+      "trusted": false,
+      "recovery_complete": false,
+      "diagnostic": "private evidence requires a fresh selected account snapshot",
+      "account_diagnostic": null,
+      "query_in_flight": null,
+      "query_completed": null,
+      "source_debt_present": false,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540709235746100,
+      "utc": "2026-10-09T10:11:49.235746+00:00",
+      "leg": "entropy",
+      "trusted": true,
+      "recovery_complete": false,
+      "diagnostic": "io RecoveryIncomplete: Verified owned filled marker awaits complete actual fills",
+      "account_diagnostic": "Complete bounded io HTTP proof and matching private stream; WS source time may be unknown",
+      "query_in_flight": false,
+      "query_completed": 1,
+      "source_debt_present": false,
+      "warm_origin_present": true
+    },
+    {
+      "received_ns": 1791540709236749700,
+      "utc": "2026-10-09T10:11:49.236750+00:00",
+      "leg": "aster",
+      "trusted": true,
+      "recovery_complete": true,
+      "diagnostic": null,
+      "account_diagnostic": null,
+      "query_in_flight": null,
+      "query_completed": null,
+      "source_debt_present": false,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540709308800100,
+      "utc": "2026-10-09T10:11:49.308800+00:00",
+      "leg": "entropy",
+      "trusted": false,
+      "recovery_complete": false,
+      "diagnostic": "Actual io fill requires new complete scoped account absorption",
+      "account_diagnostic": "Economic private financial observation requires current scoped recovery",
+      "query_in_flight": false,
+      "query_completed": 1,
+      "source_debt_present": false,
+      "warm_origin_present": true
+    },
+    {
+      "received_ns": 1791540709347801200,
+      "utc": "2026-10-09T10:11:49.347801+00:00",
+      "leg": "entropy",
+      "trusted": false,
+      "recovery_complete": false,
+      "diagnostic": "Actual io fill requires new complete scoped account absorption",
+      "account_diagnostic": "Economic private financial observation requires current scoped recovery",
+      "query_in_flight": false,
+      "query_completed": 1,
+      "source_debt_present": false,
+      "warm_origin_present": true
+    },
+    {
+      "received_ns": 1791540709443504800,
+      "utc": "2026-10-09T10:11:49.443505+00:00",
+      "leg": "entropy",
+      "trusted": false,
+      "recovery_complete": false,
+      "diagnostic": "io bounded warm account query is pending",
+      "account_diagnostic": "io bounded warm account query is pending",
+      "query_in_flight": true,
+      "query_completed": 1,
+      "source_debt_present": false,
+      "warm_origin_present": true
+    },
+    {
+      "received_ns": 1791540709443504800,
+      "utc": "2026-10-09T10:11:49.443505+00:00",
+      "leg": "aster",
+      "trusted": false,
+      "recovery_complete": false,
+      "diagnostic": "an order cancellation changed selected scope",
+      "account_diagnostic": null,
+      "query_in_flight": null,
+      "query_completed": null,
+      "source_debt_present": false,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540709522157600,
+      "utc": "2026-10-09T10:11:49.522158+00:00",
+      "leg": "entropy",
+      "trusted": false,
+      "recovery_complete": false,
+      "diagnostic": "io bounded warm account query is pending",
+      "account_diagnostic": "io bounded warm account query is pending",
+      "query_in_flight": true,
+      "query_completed": 1,
+      "source_debt_present": false,
+      "warm_origin_present": true
+    },
+    {
+      "received_ns": 1791540709522157600,
+      "utc": "2026-10-09T10:11:49.522158+00:00",
+      "leg": "aster",
+      "trusted": false,
+      "recovery_complete": false,
+      "diagnostic": "private evidence requires a fresh selected account snapshot",
+      "account_diagnostic": null,
+      "query_in_flight": null,
+      "query_completed": null,
+      "source_debt_present": false,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540709741703800,
+      "utc": "2026-10-09T10:11:49.741704+00:00",
+      "leg": "aster",
+      "trusted": true,
+      "recovery_complete": true,
+      "diagnostic": null,
+      "account_diagnostic": null,
+      "query_in_flight": null,
+      "query_completed": null,
+      "source_debt_present": false,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540710448723800,
+      "utc": "2026-10-09T10:11:50.448724+00:00",
+      "leg": "entropy",
+      "trusted": false,
+      "recovery_complete": false,
+      "diagnostic": "io bounded warm account query is pending",
+      "account_diagnostic": "io bounded warm account query is pending",
+      "query_in_flight": true,
+      "query_completed": 1,
+      "source_debt_present": false,
+      "warm_origin_present": true
+    },
+    {
+      "received_ns": 1791540710843215600,
+      "utc": "2026-10-09T10:11:50.843216+00:00",
+      "leg": "aster",
+      "trusted": true,
+      "recovery_complete": true,
+      "diagnostic": null,
+      "account_diagnostic": null,
+      "query_in_flight": null,
+      "query_completed": null,
+      "source_debt_present": false,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540711648576900,
+      "utc": "2026-10-09T10:11:51.648577+00:00",
+      "leg": "entropy",
+      "trusted": false,
+      "recovery_complete": false,
+      "diagnostic": "io bounded warm account query is pending",
+      "account_diagnostic": "io bounded warm account query is pending",
+      "query_in_flight": true,
+      "query_completed": 1,
+      "source_debt_present": false,
+      "warm_origin_present": true
+    },
+    {
+      "received_ns": 1791540711949152900,
+      "utc": "2026-10-09T10:11:51.949153+00:00",
+      "leg": "aster",
+      "trusted": true,
+      "recovery_complete": true,
+      "diagnostic": null,
+      "account_diagnostic": null,
+      "query_in_flight": null,
+      "query_completed": null,
+      "source_debt_present": false,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540712437029800,
+      "utc": "2026-10-09T10:11:52.437030+00:00",
+      "leg": "entropy",
+      "trusted": false,
+      "recovery_complete": false,
+      "diagnostic": "io warm RecoveryIncomplete: io warm recovery total deadline exhausted",
+      "account_diagnostic": "io bounded warm account query is pending",
+      "query_in_flight": false,
+      "query_completed": 2,
+      "source_debt_present": true,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540712645526400,
+      "utc": "2026-10-09T10:11:52.645526+00:00",
+      "leg": "entropy",
+      "trusted": false,
+      "recovery_complete": false,
+      "diagnostic": "io warm RecoveryIncomplete: io warm recovery total deadline exhausted",
+      "account_diagnostic": "io bounded warm account query is pending",
+      "query_in_flight": false,
+      "query_completed": 2,
+      "source_debt_present": true,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540713039877300,
+      "utc": "2026-10-09T10:11:53.039877+00:00",
+      "leg": "aster",
+      "trusted": true,
+      "recovery_complete": true,
+      "diagnostic": null,
+      "account_diagnostic": null,
+      "query_in_flight": null,
+      "query_completed": null,
+      "source_debt_present": false,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540713748167200,
+      "utc": "2026-10-09T10:11:53.748167+00:00",
+      "leg": "entropy",
+      "trusted": false,
+      "recovery_complete": false,
+      "diagnostic": "io warm RecoveryIncomplete: io warm recovery total deadline exhausted",
+      "account_diagnostic": "io bounded warm account query is pending",
+      "query_in_flight": false,
+      "query_completed": 2,
+      "source_debt_present": true,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540714139416100,
+      "utc": "2026-10-09T10:11:54.139416+00:00",
+      "leg": "aster",
+      "trusted": true,
+      "recovery_complete": true,
+      "diagnostic": null,
+      "account_diagnostic": null,
+      "query_in_flight": null,
+      "query_completed": null,
+      "source_debt_present": false,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540714949020300,
+      "utc": "2026-10-09T10:11:54.949020+00:00",
+      "leg": "entropy",
+      "trusted": false,
+      "recovery_complete": false,
+      "diagnostic": "io warm RecoveryIncomplete: io warm recovery total deadline exhausted",
+      "account_diagnostic": "io bounded warm account query is pending",
+      "query_in_flight": false,
+      "query_completed": 2,
+      "source_debt_present": true,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540715234553500,
+      "utc": "2026-10-09T10:11:55.234554+00:00",
+      "leg": "aster",
+      "trusted": true,
+      "recovery_complete": true,
+      "diagnostic": null,
+      "account_diagnostic": null,
+      "query_in_flight": null,
+      "query_completed": null,
+      "source_debt_present": false,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540715938863300,
+      "utc": "2026-10-09T10:11:55.938863+00:00",
+      "leg": "entropy",
+      "trusted": false,
+      "recovery_complete": false,
+      "diagnostic": "io warm RecoveryIncomplete: io warm recovery total deadline exhausted",
+      "account_diagnostic": "io bounded warm account query is pending",
+      "query_in_flight": false,
+      "query_completed": 2,
+      "source_debt_present": true,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540716347202500,
+      "utc": "2026-10-09T10:11:56.347203+00:00",
+      "leg": "aster",
+      "trusted": true,
+      "recovery_complete": true,
+      "diagnostic": null,
+      "account_diagnostic": null,
+      "query_in_flight": null,
+      "query_completed": null,
+      "source_debt_present": false,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540716946244100,
+      "utc": "2026-10-09T10:11:56.946244+00:00",
+      "leg": "entropy",
+      "trusted": false,
+      "recovery_complete": false,
+      "diagnostic": "io warm RecoveryIncomplete: io warm recovery total deadline exhausted",
+      "account_diagnostic": "io bounded warm account query is pending",
+      "query_in_flight": false,
+      "query_completed": 2,
+      "source_debt_present": true,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540717343597600,
+      "utc": "2026-10-09T10:11:57.343598+00:00",
+      "leg": "aster",
+      "trusted": true,
+      "recovery_complete": true,
+      "diagnostic": null,
+      "account_diagnostic": null,
+      "query_in_flight": null,
+      "query_completed": null,
+      "source_debt_present": false,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540718147205300,
+      "utc": "2026-10-09T10:11:58.147205+00:00",
+      "leg": "entropy",
+      "trusted": false,
+      "recovery_complete": false,
+      "diagnostic": "io warm RecoveryIncomplete: io warm recovery total deadline exhausted",
+      "account_diagnostic": "io bounded warm account query is pending",
+      "query_in_flight": false,
+      "query_completed": 2,
+      "source_debt_present": true,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540718447462300,
+      "utc": "2026-10-09T10:11:58.447462+00:00",
+      "leg": "aster",
+      "trusted": true,
+      "recovery_complete": true,
+      "diagnostic": null,
+      "account_diagnostic": null,
+      "query_in_flight": null,
+      "query_completed": null,
+      "source_debt_present": false,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540719143369200,
+      "utc": "2026-10-09T10:11:59.143369+00:00",
+      "leg": "entropy",
+      "trusted": false,
+      "recovery_complete": false,
+      "diagnostic": "io warm RecoveryIncomplete: io warm recovery total deadline exhausted",
+      "account_diagnostic": "io bounded warm account query is pending",
+      "query_in_flight": false,
+      "query_completed": 2,
+      "source_debt_present": true,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540719540733200,
+      "utc": "2026-10-09T10:11:59.540733+00:00",
+      "leg": "aster",
+      "trusted": true,
+      "recovery_complete": true,
+      "diagnostic": null,
+      "account_diagnostic": null,
+      "query_in_flight": null,
+      "query_completed": null,
+      "source_debt_present": false,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540720142601500,
+      "utc": "2026-10-09T10:12:00.142601+00:00",
+      "leg": "entropy",
+      "trusted": false,
+      "recovery_complete": false,
+      "diagnostic": "io warm RecoveryIncomplete: io warm recovery total deadline exhausted",
+      "account_diagnostic": "io bounded warm account query is pending",
+      "query_in_flight": false,
+      "query_completed": 2,
+      "source_debt_present": true,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540720645823600,
+      "utc": "2026-10-09T10:12:00.645823+00:00",
+      "leg": "aster",
+      "trusted": true,
+      "recovery_complete": true,
+      "diagnostic": null,
+      "account_diagnostic": null,
+      "query_in_flight": null,
+      "query_completed": null,
+      "source_debt_present": false,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540721242179400,
+      "utc": "2026-10-09T10:12:01.242179+00:00",
+      "leg": "entropy",
+      "trusted": false,
+      "recovery_complete": false,
+      "diagnostic": "io warm RecoveryIncomplete: io warm recovery total deadline exhausted",
+      "account_diagnostic": "io bounded warm account query is pending",
+      "query_in_flight": false,
+      "query_completed": 2,
+      "source_debt_present": true,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540721744649200,
+      "utc": "2026-10-09T10:12:01.744649+00:00",
+      "leg": "aster",
+      "trusted": true,
+      "recovery_complete": true,
+      "diagnostic": null,
+      "account_diagnostic": null,
+      "query_in_flight": null,
+      "query_completed": null,
+      "source_debt_present": false,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540722249502100,
+      "utc": "2026-10-09T10:12:02.249502+00:00",
+      "leg": "entropy",
+      "trusted": false,
+      "recovery_complete": false,
+      "diagnostic": "io warm RecoveryIncomplete: io warm recovery total deadline exhausted",
+      "account_diagnostic": "io bounded warm account query is pending",
+      "query_in_flight": false,
+      "query_completed": 2,
+      "source_debt_present": true,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540722848834700,
+      "utc": "2026-10-09T10:12:02.848835+00:00",
+      "leg": "aster",
+      "trusted": true,
+      "recovery_complete": true,
+      "diagnostic": null,
+      "account_diagnostic": null,
+      "query_in_flight": null,
+      "query_completed": null,
+      "source_debt_present": false,
+      "warm_origin_present": false
+    },
+    {
+      "received_ns": 1791540723245731700,
+      "utc": "2026-10-09T10:12:03.245732+00:00",
+      "leg": "entropy",
+      "trusted": false,
+      "recovery_complete": false,
+      "diagnostic": "io warm RecoveryIncomplete: io warm recovery total deadline exhausted",
+      "account_diagnostic": "io bounded warm account query is pending",
+      "query_in_flight": false,
+      "query_completed": 2,
+      "source_debt_present": true,
+      "warm_origin_present": false
+    }
+  ],
+  "frozen_input_count": 57,
+  "independent_test_executions": 0,
+  "paired_outcome": "FAIL, StoppedUnknown; physical/cache/Portfolio flat is insufficient fresh complete proof",
+  "quota_wait_cause": "Inference consistent with serial limiter/late successful body receipts; no internal token balance asserted"
+}

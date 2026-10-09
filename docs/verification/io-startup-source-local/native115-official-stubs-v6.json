@@ -1,0 +1,20 @@
+{
+  "argv": [
+    "E:/persarb/worktrees/entropy-startup-account-proof/.venv/Scripts/python.exe",
+    "python/generate_stubs.py"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-startup-account-proof",
+  "started_utc": "2026-10-09T09:48:35.708420+00:00",
+  "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+  "pyo3_python": "E:/persarb/worktrees/entropy-startup-account-proof/.venv/Scripts/python.exe",
+  "uv_project_environment": null,
+  "nautilus_stub_profile": "nextest",
+  "cargo_build_warnings": "allow",
+  "cargo_net_offline": "true",
+  "entropy43_native_wheel": null,
+  "entropy43_native_sha256": null,
+  "entropy43_native_provenance": null,
+  "entropy43_evidence_root": null,
+  "exit_code": 1,
+  "finished_utc": "2026-10-09T09:48:35.840160+00:00"
+}

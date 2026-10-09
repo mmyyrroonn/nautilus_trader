@@ -1,0 +1,48 @@
+"""Capture original main Git blobs independently of ongoing working edits."""
+
+import hashlib
+import json
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+
+from capture_identity import NATIVE, NATIVE_INPUTS
+
+ROOT = Path(__file__).resolve().parent
+BASE = "aadad78fab77467f4a1467a252947ebb84f5361d"
+
+
+def main():
+    output = ROOT / "native115-main-base.json"
+    snapshot = ROOT / "snapshots/native115-main-base"
+    assert not output.exists() and not snapshot.exists()
+    assert subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=NATIVE).decode().strip() == BASE
+    tracked = set(subprocess.check_output(["git", "ls-tree", "-r", "--name-only", BASE], cwd=NATIVE).decode().splitlines())
+    selected = [name for name in NATIVE_INPUTS if name in tracked]
+    batch = subprocess.run(["git", "cat-file", "--batch"], cwd=NATIVE,
+                           input="".join(f"{BASE}:{name}\n" for name in selected).encode(), capture_output=True, check=True).stdout
+    offset = 0
+    records = []
+    for name in selected:
+        end = batch.index(b"\n", offset)
+        header = batch[offset:end].split()
+        assert header[1] == b"blob"
+        length = int(header[2])
+        raw = batch[end + 1:end + 1 + length]
+        target = snapshot / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(raw)
+        records.append({"path": name, "git_blob": header[0].decode(), "bytes": length,
+                        "sha256": hashlib.sha256(raw).hexdigest()})
+        offset = end + length + 2
+    assert offset == len(batch)
+    result = {"captured_utc": datetime.now(timezone.utc).isoformat(), "base": BASE,
+              "tree": subprocess.check_output(["git", "rev-parse", BASE + "^{tree}"], cwd=NATIVE).decode().strip(),
+              "origin": "Actual original main Git blobs; not a claim that current working files are unchanged",
+              "files": records, "absent_at_base": [name for name in NATIVE_INPUTS if name not in tracked]}
+    output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({"captured": len(records), "absent_at_base": result["absent_at_base"]}))
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,21 @@
+{
+  "started_utc": "2026-10-09T10:12:42.428451+00:00",
+  "finished_utc": "2026-10-09T10:12:42.441452+00:00",
+  "all_before_after_match": true,
+  "inputs": 32,
+  "peer_unchanged": true,
+  "normalized_test_business_ast_equal": true,
+  "import_members_equal": true,
+  "context_entry_order": [
+    "peer",
+    "ws"
+  ],
+  "context_exit_order": [
+    "ws",
+    "peer"
+  ],
+  "normalization": "Flatten directly nested async with only; imports sorted solely for comparison; original assertions/calls/constants unchanged",
+  "source_review_blockers": [],
+  "independent_test_executions": 0,
+  "source_review_only": true
+}

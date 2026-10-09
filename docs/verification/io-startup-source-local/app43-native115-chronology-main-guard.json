@@ -1,0 +1,21 @@
+{
+  "captured_utc": "2026-10-09T09:54:40.232934+00:00",
+  "head": "5b8c144c39ebcbcfd03ca07f8e53b103741b130a",
+  "main": "f09e66f0533f53bfd44e14947cd6f0ef0648a94a",
+  "common_base": "f09e66f0533f53bfd44e14947cd6f0ef0648a94a",
+  "status": "",
+  "files_from_main": [
+    "config/entropy-loopback-execution.example.toml",
+    "src/entropy_execution.py",
+    "src/entropy_execution_config.py",
+    "src/entropy_execution_core.py",
+    "src/entropy_execution_report.py",
+    "tests/entropy_execution_peer.py",
+    "tests/fixtures/entropy-execution/README.md",
+    "tests/test_entropy_execution_config.py",
+    "tests/test_entropy_execution_core.py",
+    "tests/test_entropy_execution_native.py",
+    "tests/test_entropy_execution_report.py"
+  ],
+  "note": "Continuing existing issue43 source branch originally started at the freshly confirmed latest app main; no fixture/source mutation has happened in this guard"
+}
