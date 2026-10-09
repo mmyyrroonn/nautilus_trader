@@ -1,0 +1,21 @@
+{
+  "argv": [
+    "cmd",
+    "/d",
+    "/c",
+    "npx",
+    "--offline",
+    "--yes",
+    "markdownlint-cli2@0.23.2",
+    "--config",
+    ".markdownlint.jsonc",
+    "docs/verification/aster-selected-scope-contract-20261009.md",
+    "docs/verification/aster-selected-scope-acceptance-20261009.md"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+  "started_utc": "2026-10-09T03:40:21.818757+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T03:40:33.901055+00:00"
+}

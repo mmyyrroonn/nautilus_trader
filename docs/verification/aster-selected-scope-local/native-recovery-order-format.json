@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "cargo",
+    "+nightly",
+    "fmt",
+    "-p",
+    "nautilus-aster",
+    "-p",
+    "nautilus-binance"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+  "started_utc": "2026-10-09T03:03:45.613406+00:00",
+  "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+  "pyo3_python": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T03:03:46.621275+00:00"
+}

@@ -1,0 +1,47 @@
+   Compiling nautilus-aster v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\adapters\aster)
+error: variants `AsterError`, `Status`, and `StatusWithRetryAfter` are never constructed
+  --> crates\adapters\aster\tests\common\mod.rs:62:5
+   |
+58 | pub(crate) enum SubmitOutcome {
+   |                 ------------- variants in this enum
+...
+62 |     AsterError { code: i64, msg: String },
+   |     ^^^^^^^^^^
+63 |     /// Answer with a raw HTTP status and body (no Aster envelope).
+64 |     Status { status: u16, body: String },
+   |     ^^^^^^
+...
+67 |     StatusWithRetryAfter {
+   |     ^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `SubmitOutcome` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+   = note: `-D dead-code` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[expect(dead_code)]` or `#[allow(dead_code)]`
+
+error: variant `Close` is never constructed
+   --> crates\adapters\aster\tests\common\mod.rs:212:5
+    |
+208 | pub(crate) enum WsCommand {
+    |                 --------- variant in this enum
+...
+212 |     Close,
+    |     ^^^^^
+    |
+    = note: `WsCommand` has derived impls for the traits `Debug` and `Clone`, but these are intentionally ignored during dead code analysis
+
+error: methods `requests`, `ws_connection_count`, and `drop_ws` are never used
+   --> crates\adapters\aster\tests\common\mod.rs:270:19
+    |
+215 | impl MockVenue {
+    | -------------- methods in this implementation
+...
+270 |     pub(crate) fn requests(&self) -> Vec<CapturedRequest> {
+    |                   ^^^^^^^^
+...
+291 |     pub(crate) fn ws_connection_count(&self) -> usize {
+    |                   ^^^^^^^^^^^^^^^^^^^
+...
+301 |     pub(crate) fn drop_ws(&self) {
+    |                   ^^^^^^^
+
+error: could not compile `nautilus-aster` (test "selected_scope") due to 3 previous errors

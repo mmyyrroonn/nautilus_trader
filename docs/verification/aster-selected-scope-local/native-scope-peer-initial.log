@@ -1,0 +1,101 @@
+   Compiling foldhash v0.2.0
+   Compiling serde_json v1.0.151
+   Compiling arrow-schema v59.2.0
+   Compiling num-traits v0.2.19
+   Compiling either v1.18.0
+   Compiling regex-syntax v0.8.11
+   Compiling tokio v1.53.1
+   Compiling rustls-platform-verifier v0.7.0
+   Compiling hashbrown v0.17.1
+   Compiling itertools v0.14.0
+   Compiling num-integer v0.1.47
+   Compiling half v2.7.1
+   Compiling num-complex v0.4.6
+   Compiling chrono v0.4.45
+   Compiling atoi v2.0.0
+   Compiling rmp v0.8.15
+   Compiling rust_decimal v1.42.1
+   Compiling alloy-primitives v1.7.1
+   Compiling indexmap v2.14.0
+   Compiling lru v0.18.2
+   Compiling num-bigint v0.5.1
+   Compiling rmp-serde v1.3.1
+   Compiling regex-automata v0.4.18
+   Compiling nautilus-core v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\core)
+   Compiling arrow-buffer v59.2.0
+   Compiling alloy-json-abi v1.7.1
+   Compiling alloy-eip2930 v0.2.4
+   Compiling alloy-eip7702 v0.6.3
+   Compiling alloy-eip2124 v0.2.0
+   Compiling alloy-eip7928 v0.4.8
+   Compiling alloy-serde v2.4.1
+   Compiling alloy-trie v0.9.5
+   Compiling alloy-signer v2.4.1
+   Compiling alloy-chains v0.2.37
+   Compiling alloy-eips v2.4.1
+   Compiling arrow-data v59.2.0
+   Compiling alloy-sol-types v1.7.1
+   Compiling arrow-array v59.2.0
+   Compiling alloy-consensus v2.4.1
+   Compiling regex v1.13.1
+   Compiling nautilus-cryptography v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\cryptography)
+   Compiling alloy-json-rpc v2.4.1
+   Compiling alloy-dyn-abi v1.7.1
+   Compiling alloy-core v1.7.1
+   Compiling tokio-util v0.7.19
+   Compiling tower v0.5.3
+   Compiling tokio-rustls v0.26.4
+   Compiling tokio-tungstenite v0.29.0
+   Compiling alloy-consensus-any v2.4.1
+   Compiling alloy-network-primitives v2.4.1
+   Compiling tokio-tungstenite v0.30.0
+   Compiling alloy-rpc-types-eth v2.4.1
+   Compiling arrow-select v59.2.0
+   Compiling arrow-row v59.2.0
+   Compiling arrow-arith v59.2.0
+   Compiling alloy-transport v2.4.1
+   Compiling tower-http v0.6.11
+   Compiling h2 v0.4.19
+   Compiling tokio-stream v0.1.19
+   Compiling sockudo-ws v2.0.1
+   Compiling alloy-transport-http v2.4.1
+   Compiling alloy-rpc-client v2.4.1
+   Compiling alloy-rpc-types-any v2.4.1
+   Compiling alloy-network v2.4.1
+   Compiling arrow-ord v59.2.0
+   Compiling arrow-string v59.2.0
+   Compiling arrow-ipc v59.2.0
+   Compiling alloy-provider v2.4.1
+   Compiling alloy-signer-local v2.4.1
+   Compiling hyper v1.11.0
+   Compiling arrow-cast v59.2.0
+   Compiling hyper-util v0.1.20
+   Compiling arrow-json v59.2.0
+   Compiling arrow-csv v59.2.0
+   Compiling hyper-rustls v0.27.9
+   Compiling axum v0.8.9
+   Compiling reqwest v0.13.4
+   Compiling alloy-contract v2.4.1
+   Compiling arrow v59.2.0
+   Compiling alloy v2.4.1
+   Compiling nautilus-network v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\network)
+   Compiling nautilus-model v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\model)
+   Compiling nautilus-common v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\common)
+   Compiling nautilus-serialization v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\serialization)
+   Compiling nautilus-analysis v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\analysis)
+   Compiling nautilus-execution v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\execution)
+   Compiling nautilus-portfolio v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\portfolio)
+   Compiling nautilus-live v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\live)
+   Compiling nautilus-binance v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\adapters\binance)
+   Compiling nautilus-aster v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\adapters\aster)
+error[E0502]: cannot borrow `script.balances` as immutable because it is also borrowed as mutable
+   --> crates\adapters\aster\tests\selected_scope.rs:232:69
+    |
+232 |         "duplicate" => script.balances.as_array_mut().unwrap().push(script.balances[0].clone()),
+    |                        ---------------                         ---- ^^^^^^^^^^^^^^^ immutable borrow occurs here
+    |                        |                                       |
+    |                        |                                       mutable borrow later used by call
+    |                        mutable borrow occurs here
+
+For more information about this error, try `rustc --explain E0502`.
+error: could not compile `nautilus-aster` (test "selected_scope") due to 1 previous error

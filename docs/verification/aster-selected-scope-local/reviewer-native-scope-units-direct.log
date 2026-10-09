@@ -1,0 +1,32 @@
+
+running 27 tests
+test scope::tests::selected_decimal_accepts_exact_original_values::case_1 ... ok
+test scope::tests::selected_decimal_accepts_exact_original_values::case_2 ... ok
+test scope::tests::selected_decimal_accepts_exact_original_values::case_3 ... ok
+test scope::tests::selected_decimal_accepts_exact_original_values::case_4 ... ok
+test scope::tests::selected_decimal_accepts_exact_original_values::case_5 ... ok
+test scope::tests::selected_decimal_rejects_rounding_underflow_and_unsupported_grammar::case_01 ... ok
+test scope::tests::selected_decimal_rejects_rounding_underflow_and_unsupported_grammar::case_02 ... ok
+test scope::tests::selected_decimal_rejects_rounding_underflow_and_unsupported_grammar::case_03 ... ok
+test scope::tests::selected_decimal_rejects_rounding_underflow_and_unsupported_grammar::case_04 ... ok
+test scope::tests::selected_decimal_rejects_rounding_underflow_and_unsupported_grammar::case_05 ... ok
+test scope::tests::selected_decimal_rejects_rounding_underflow_and_unsupported_grammar::case_06 ... ok
+test scope::tests::selected_decimal_rejects_rounding_underflow_and_unsupported_grammar::case_07 ... ok
+test scope::tests::selected_decimal_rejects_rounding_underflow_and_unsupported_grammar::case_08 ... ok
+test scope::tests::selected_decimal_rejects_rounding_underflow_and_unsupported_grammar::case_09 ... ok
+test scope::tests::selected_decimal_rejects_rounding_underflow_and_unsupported_grammar::case_10 ... ok
+test scope::tests::selected_decimal_rejects_rounding_underflow_and_unsupported_grammar::case_11 ... ok
+test scope::tests::selected_decimal_rejects_rounding_underflow_and_unsupported_grammar::case_12 ... ok
+test scope::tests::strict_policy_accepts_exact_finite_scope ... ok
+test scope::tests::strict_policy_rejects_invalid_numeric_age::case_1 ... ok
+test scope::tests::strict_policy_rejects_invalid_numeric_age::case_2 ... ok
+test scope::tests::strict_policy_rejects_invalid_numeric_age::case_3 ... ok
+test scope::tests::strict_policy_rejects_invalid_numeric_age::case_4 ... ok
+test scope::tests::strict_policy_rejects_invalid_numeric_age::case_5 ... ok
+test scope::tests::strict_policy_rejects_unknown_or_duplicate_scope::case_1 ... ok
+test scope::tests::strict_policy_rejects_unknown_or_duplicate_scope::case_2 ... ok
+test scope::tests::strict_policy_rejects_unknown_or_duplicate_scope::case_3 ... ok
+test scope::tests::strict_policy_rejects_unknown_or_duplicate_scope::case_4 ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 331 filtered out; finished in 0.01s
+

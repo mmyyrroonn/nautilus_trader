@@ -1,0 +1,20 @@
+   Compiling nautilus-binance v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\adapters\binance)
+error[E0631]: type mismatch in closure arguments
+   --> crates\adapters\binance\src\futures\websocket\streams\client.rs:638:13
+    |
+638 |               Arc::new(move |message: Message| {
+    |               ^        ----------------------- found signature defined here
+    |  _____________|
+    | |
+639 | |                 if matches!(&message, Message::Text(_) | Message::Binary(_)) {
+640 | |                     observer();
+...   |
+643 | |             }) as nautilus_network::websocket::MessageHandler
+    | |______________^ expected due to this
+    |
+    = note: expected closure signature `fn(nautilus_network::Message) -> _`
+               found closure signature `fn(tokio_tungstenite::tungstenite::Message) -> _`
+    = note: required for the cast from `Arc<{closure@crates\adapters\binance\src\futures\websocket\streams\client.rs:638:22: 638:45}>` to `Arc<(dyn Fn(nautilus_network::Message) + std::marker::Send + std::marker::Sync + 'static)>`
+
+For more information about this error, try `rustc --explain E0631`.
+error: could not compile `nautilus-binance` (lib) due to 1 previous error

@@ -1,0 +1,36 @@
+# Independent recovery-order investigation
+
+Review UTC: 2026-10-09T02:55:13Z. Read-only source inspection; reviewer did not invoke Cargo, rebuild, alter product/tests, or execute a new candidate artifact in this investigation.
+
+## Follow-up after actual diagnosis and first production fix
+
+Parent supplied `recovery-order-diagnostic-attempt-6.log`: the actual failed event trace contains CLOSE 980002 at T+1 before OPEN 980001 at T, and cache retains only the opening BUY position of 0.010. The bounded diagnostic series retained five passing attempts and this failure. This confirms the report-order mechanism; the attempts are not retries to accept a flaky result.
+
+First proposed fix sorts each group's trades by `(time, id)` and groups by earliest time, and rejects overlapping/tied selected-mode groups before emission. Read-only follow-up found two remaining safety gaps, sent immediately to parent:
+
+1. Refusal notes pending OIDs/TIDs and bails. On the next compensation, those OIDs enter `pending_orders_before`. `compensate_orders`' targeted pending loop directly invokes `emit_order_evidence(..., Vec::new(), false)` without checking the chronology refusal/Unreliable coverage. The resolver can retrieve and publish each order separately, bypassing the refusal and consuming the debt. Chronology debt needs an explicit central emission barrier that cannot be repaired by a per-order fetch.
+2. The interval guard uses only `missed` groups. If A's T1/T3 fills were delivered first and B's T2 arrives later, the next batch contains only B and passes an empty pairwise check. A selected-mode central guard must also account for already delivered event-time frontier/lineage, including targeted resolver and WebSocket emission; a conservatively retained Unknown is preferable to retroactively claiming global chronology. Existing `AppliedTrades.last_ts_ms` records actual delivered time and can support a strict conservative frontier; its lifecycle and bounded-cache behavior must not allow evicted metadata to reset the authority.
+
+No repaired-source test result is claimed here. Both gaps remain findings against the first patch until parent freezes the revised source for review and actual testing.
+
+## Observed evidence and unresolved status
+
+Parent retained the final two-package Aster/Binance failure and isolated repeat failure of `test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once`. Both reach the final open-position assertion after the real per-order quantity, trade ID and commission assertions. The earlier three-package run passed. Clean main `fff2aa6808afb76acf274a6a972322b5ac34d830` under the same two-package combination passed its isolated run. These observations do not establish harmless flakiness or a resolved default-behavior regression. A diagnostic current/baseline comparison is still required.
+
+## Concrete source candidate
+
+`crates/adapters/aster/src/execution.rs:2822-2835` groups missed fills by venue order in `AHashMap`, then emits bundles by hash-map iteration. It does not establish chronological order across orders. The test has BUY opening order 980001/trade 980101 at time T followed by reduce-only SELL closing order 980002/trade 980102 at T+1.
+
+`crates/execution/src/engine/mod.rs:1061` immediately reconciles each delivered `OrderWithFills`; `:1620` processes that bundle's supplied fills in input order. There is no global buffering/order sort. `:3084-3101` gives the explicit EXTERNAL Netting override priority; `:3354` chooses the same instrument/strategy netting position ID. `:4015` and `:4041` refuse to create a position from a reduce-only fill when no existing position is present. A SELL-first bundle therefore can preserve the real SELL order's trade ID and commission but cannot create a position; a later BUY opens a long position, matching the reported assertion shape. This is a source-supported hypothesis, not a measured report-order result.
+
+The complete `compensate_fills` source block in current and clean baseline is exactly equal (2,951 characters). Execution engine source hashes and Aster/Binance/Hyperliquid/execution manifests are also identical; see `reviewer-native-recovery-order-hashes.json`. Current `validate_selected_trade` returns `Ok(())` immediately when selected policy is None. No inspected execution-engine OMS feature switch explains a different default behavior. Different feature dependency closure and/or artifact/hash-state behavior remain hypotheses until actual emission traces are captured.
+
+## Strict diagnostic/validation recommendation
+
+Keep both failing logs and the clean-baseline passing log. For each unchanged test run, capture the received report sequence with venue order ID, side, reduce-only, trade IDs, trade timestamps, and positions after each engine reconciliation. Compare current and clean main with the exact same recorded Cargo argv/profile/features/toolchain and executable SHA. Capture actual resolved feature metadata for each package combination in the parent build workflow. A single baseline pass cannot rule out the ordering candidate.
+
+If traces confirm SELL-before-BUY, production must provide a deterministic history replay contract or conservative holdback for unrepresentable order overlap. Sorting only test events would conceal the adapter defect. Sorting bundles by earliest trade solves the simple one-fill open/close case but does not generally solve interleaved multi-fill orders: A(T1), B(T2), A(T3) cannot be represented by whole-order sequential bundles in true chronology. Preserve exact real IDs/fees, unknown coverage and exactly-once delivery while choosing a valid bounded solution. Run a deterministic reverse-input and multi-order chronology regression plus both package combinations; do not skip/weaken the flat assertion.
+
+## Artifact scope clarification
+
+Earlier independent direct runs were real passes on the parent-supplied executable hashes: 227 executions, 210 unique names, including all 31 selected-scope peer tests. They predate the parent's two equivalent `map(...).unwrap_or(&[])` to `map_or(&[][..], ...)` serialization changes. They are not proof that the later final-source commit/wheel passed. Final source binding and wheel ABI/app native acceptance remain pending. Whole-account status, funding, durable cold recovery, kernel isolation and mainnet outcomes remain Unknown/unrun.

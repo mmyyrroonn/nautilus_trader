@@ -1,0 +1,104 @@
+    Checking arrow-data v59.2.0
+    Checking tokio v1.53.1
+    Checking nautilus-core v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\core)
+    Checking itertools v0.14.0
+    Checking alloy-signer v2.4.1
+    Checking tinytemplate v1.2.1
+    Checking alloy-eips v2.4.1
+    Checking codspeed v5.0.1
+    Checking codspeed-criterion-compat-walltime v5.0.1
+    Checking nautilus-cryptography v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\cryptography)
+    Checking arrow-array v59.2.0
+    Checking alloy-consensus v2.4.1
+    Checking codspeed-criterion-compat v5.0.1
+    Checking alloy-consensus-any v2.4.1
+    Checking alloy-network-primitives v2.4.1
+    Checking arrow-select v59.2.0
+    Checking arrow-row v59.2.0
+    Checking arrow-arith v59.2.0
+    Checking tokio-util v0.7.19
+    Checking tower v0.5.3
+    Checking tokio-rustls v0.26.4
+    Checking tokio-tungstenite v0.29.0
+    Checking alloy-rpc-types-eth v2.4.1
+    Checking tokio-tungstenite v0.30.0
+    Checking tower-http v0.6.11
+    Checking alloy-transport v2.4.1
+    Checking h2 v0.4.19
+    Checking sockudo-ws v2.0.1
+    Checking tokio-stream v0.1.19
+    Checking alloy-transport-http v2.4.1
+    Checking alloy-rpc-client v2.4.1
+    Checking arrow-ord v59.2.0
+    Checking arrow-string v59.2.0
+    Checking arrow-ipc v59.2.0
+    Checking arrow-cast v59.2.0
+    Checking alloy-rpc-types-any v2.4.1
+    Checking alloy-network v2.4.1
+    Checking hyper v1.11.0
+    Checking arrow-json v59.2.0
+    Checking arrow-csv v59.2.0
+    Checking alloy-provider v2.4.1
+    Checking alloy-signer-local v2.4.1
+    Checking arrow v59.2.0
+    Checking hyper-util v0.1.20
+    Checking nautilus-model v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\model)
+    Checking hyper-rustls v0.27.9
+    Checking axum v0.8.9
+    Checking reqwest v0.13.4
+    Checking nautilus-network v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\network)
+    Checking alloy-contract v2.4.1
+    Checking alloy v2.4.1
+    Checking nautilus-common v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\common)
+    Checking nautilus-analysis v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\analysis)
+    Checking nautilus-serialization v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\serialization)
+    Checking nautilus-execution v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\execution)
+    Checking nautilus-portfolio v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\portfolio)
+    Checking nautilus-live v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\live)
+    Checking nautilus-trading v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\trading)
+    Checking nautilus-testkit v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\testkit)
+    Checking nautilus-binance v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\adapters\binance)
+    Checking nautilus-aster v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\adapters\aster)
+error: length comparison to one
+   --> crates\adapters\aster\tests\selected_scope.rs:265:13
+    |
+265 |     assert!(venue.requests_for("GET", "userTrades").len() >= 1);
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: using `!is_empty` is clearer and more explicit: `!venue.requests_for("GET", "userTrades").is_empty()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#len_zero
+    = note: `-D clippy::len-zero` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::len_zero)]`
+
+error: length comparison to one
+   --> crates\adapters\aster\tests\selected_scope.rs:266:13
+    |
+266 |     assert!(venue.requests_for("GET", "openOrders").len() >= 1);
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: using `!is_empty` is clearer and more explicit: `!venue.requests_for("GET", "openOrders").is_empty()`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#len_zero
+
+error: consider adding a `;` to the last statement for consistent formatting
+   --> crates\adapters\aster\tests\selected_scope.rs:599:9
+    |
+599 | /         script.open_orders = json!([{
+600 | |             "symbol":"BTCUSDT", "orderId":919, "clientOrderId":"FOREIGN-PARTIAL",
+601 | |             "price":"50000.00", "avgPrice":"50000.00", "origQty":"0.010",
+602 | |             "executedQty":"0.005", "cumQuote":"250.00", "status":"PARTIALLY_FILLED",
+603 | |             "timeInForce":"GTC", "type":"LIMIT", "side":"BUY", "positionSide":"BOTH",
+604 | |             "reduceOnly":false, "closePosition":false, "time":1, "updateTime":1
+605 | |         }])
+    | |___________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#semicolon_if_nothing_returned
+    = note: `-D clippy::semicolon-if-nothing-returned` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::semicolon_if_nothing_returned)]`
+help: add a `;` here
+    |
+599 |         script.open_orders = json!([{
+...
+604 |             "reduceOnly":false, "closePosition":false, "time":1, "updateTime":1
+605 ~         }]);
+    |
+
+error: could not compile `nautilus-aster` (test "selected_scope") due to 3 previous errors
+warning: build failed, waiting for other jobs to finish...

@@ -1,0 +1,20 @@
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+directory = Path(__file__).parent
+root = Path("E:/persarb/worktrees/entropy-aster-proof")
+before = json.loads((directory / "native-final-inputs-before-stubs.json").read_text(encoding="utf-8"))
+after = json.loads((directory / "native-final-inputs-after-stubs.json").read_text(encoding="utf-8"))
+changed = [path for path, value in before["paths"].items() if value != after["paths"][path]]
+(directory / "native-stub-source-comparison.json").write_text(json.dumps({
+    "before": "native-final-inputs-before-stubs.json",
+    "after": "native-final-inputs-after-stubs.json",
+    "changed_scoped_sources": changed,
+}, indent=2) + "\n", encoding="utf-8")
+argv = [sys.executable, str(directory / "run_capture.py"), "native-stubs-line-ending-format", "--",
+        str(root / ".venv/Scripts/ruff.exe"), "format", "python/nautilus_trader",
+        "--config", "python/pyproject.toml", "--config", 'format.line-ending="lf"']
+print("Official generator source comparison:", json.dumps(changed), flush=True)
+raise SystemExit(subprocess.run(argv, cwd=root, check=False).returncode)

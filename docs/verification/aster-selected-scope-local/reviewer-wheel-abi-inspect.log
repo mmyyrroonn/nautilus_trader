@@ -1,0 +1,75 @@
+{
+  "package": "E:\\persarb\\worktrees\\entropy-aster-proof\\.venv\\Lib\\site-packages\\nautilus_trader\\__init__.py",
+  "aster": "E:\\persarb\\worktrees\\entropy-aster-proof\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\aster\\__init__.py",
+  "binance": "E:\\persarb\\worktrees\\entropy-aster-proof\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\binance\\__init__.py",
+  "config_signature": "(account_id=None, environment=None, user_address=None, signer_address=None, signer_private_key=None, base_url_http=None, base_url_ws=None, instrument_provider=None, http_timeout_secs=None, ws_heartbeat_secs=None, ws_connect_timeout_secs=None, proxy_url=None, treat_expired_as_canceled=None, venue=None, assume_one_way_mode_when_unconfirmed=None, selected_scope_policy_json=None)",
+  "factory_signature": "()",
+  "getter_signature": "(self, /)",
+  "manifest_keys": [
+    "build",
+    "collector",
+    "declared_build",
+    "declared_by",
+    "declared_evidence",
+    "declared_native",
+    "embedded_adapter_stubs",
+    "embedded_native_objects",
+    "generated_at",
+    "purpose",
+    "reference_stubs",
+    "schema_version",
+    "source_binding",
+    "source_binding_note",
+    "source_fingerprint_sha256",
+    "wheel"
+  ]
+}
+{
+  "collector": {
+    "machine": "AMD64",
+    "platform": "Windows-11-10.0.26300-SP0"
+  },
+  "declared_build": {
+    "features": "extension-module,arrow,betfair,high-precision,mimalloc,redis,postgres,defi,hypersync,tracing-bridge",
+    "profile": "nextest"
+  },
+  "declared_by": "evidence_file",
+  "declared_evidence": {
+    "path": "E:\\persarb\\_tmp\\entropy109-wheel-nextest-20261009\\native-build-input.json",
+    "sha256": "a595f7ba9cefdf814cbee928af9c16223ef0be6f4aa78164da3d39966e776672"
+  },
+  "declared_native": {
+    "cargo_lock_sha256": "a802008d4363de0a4e28dd3b14990d0d79f95ef8a89431c5936fc31e1215463a",
+    "commit": "f5246dc34bf73f58dba8cf94bcabc7e4aac1144a",
+    "dirty": [],
+    "dirty_count": 0,
+    "tracked_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "tree": "4e1dcf22aef587d7675d8468d15a631f4a1f7ecb",
+    "untracked_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "embedded_native_objects": [
+    {
+      "path": "nautilus_trader/_libnautilus.cp312-win_amd64.pyd",
+      "sha256": "62eaea08f84ae9fa7cc21e374d38fc8fc6b4d877d6a24c4e85919618de139138",
+      "size": 389675520
+    }
+  ],
+  "generated_at": "2026-10-09T03:29:04.106835+00:00",
+  "purpose": "name the binary an installed wheel actually is (issue #11)",
+  "reference_stubs": [],
+  "schema_version": 1,
+  "source_binding": "verified",
+  "source_binding_note": "single controlled build from matching pre/post source fingerprints",
+  "source_fingerprint_sha256": "d7b7300a6eace724ce80b1e8cbbe930b7fd295d7ec0e00ff11913f560b812fcf",
+  "wheel": {
+    "filename": "nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+    "name": "nautilus-trader",
+    "path": "E:\\persarb\\_tmp\\entropy109-wheel-nextest-20261009\\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+    "sha256": "da0cc0df4fc70cefe52c80ddb6c5514c1566c73a7cac32e460ca5d59298b72cf",
+    "size": 109417293,
+    "tags": [
+      "cp312-cp312-win_amd64"
+    ],
+    "version": "2.0.0rc4"
+  }
+}

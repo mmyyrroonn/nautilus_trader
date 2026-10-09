@@ -1,0 +1,1291 @@
+{
+  "archived_utc": "2026-10-09T03:40:34.898992+00:00",
+  "implementation_commit": "f5246dc34bf73f58dba8cf94bcabc7e4aac1144a",
+  "files": [
+    {
+      "path": "archive_native109.py.txt",
+      "original_name": "archive_native109.py",
+      "sha256": "2a41a83cd64a12876dec79b1ea75329d6c6fa72c2e44c2589db9ab100879fe52",
+      "bytes": 6833
+    },
+    {
+      "path": "aster-proof-design.md.txt",
+      "original_name": "aster-proof-design.md",
+      "sha256": "7f1109645ca9ccfb4a37cd7cb0dae5575ef9fad1b5c4093fd0bd3abdac027cb8",
+      "bytes": 2732
+    },
+    {
+      "path": "aster-selected-config-format-check-final-fixed.json",
+      "original_name": "aster-selected-config-format-check-final-fixed.json",
+      "sha256": "86f3d88800158ad22320875c8dd35f8e60e204e75dfe33151f754e835df5b8fa",
+      "bytes": 499
+    },
+    {
+      "path": "aster-selected-config-format-check-final-fixed.log",
+      "original_name": "aster-selected-config-format-check-final-fixed.log",
+      "sha256": "1d0ffb724f036eb827a2d5215db64c07f3c19db1f733af801d1dd2217babe43b",
+      "bytes": 255
+    },
+    {
+      "path": "aster-selected-config-format-check-fixed.json",
+      "original_name": "aster-selected-config-format-check-fixed.json",
+      "sha256": "a7f3f4b320c299b0077b786f1c666f46a0523e5c1fdbf562b8d3973a22472cfe",
+      "bytes": 499
+    },
+    {
+      "path": "aster-selected-config-format-check-fixed.log",
+      "original_name": "aster-selected-config-format-check-fixed.log",
+      "sha256": "fd2299c9f1c6dc869070883e281051bfe93aacf66c1a3b0069f45b4aa410ca50",
+      "bytes": 25
+    },
+    {
+      "path": "aster-selected-config-format-check-validated-fixed.json",
+      "original_name": "aster-selected-config-format-check-validated-fixed.json",
+      "sha256": "c64fec0084f8c81fcd6e3a3e919f33fd2aa56da71ba5dc10f71c48e0d44dd267",
+      "bytes": 499
+    },
+    {
+      "path": "aster-selected-config-format-check-validated-fixed.log",
+      "original_name": "aster-selected-config-format-check-validated-fixed.log",
+      "sha256": "fd2299c9f1c6dc869070883e281051bfe93aacf66c1a3b0069f45b4aa410ca50",
+      "bytes": 25
+    },
+    {
+      "path": "aster-selected-config-format-final-fixed.json",
+      "original_name": "aster-selected-config-format-final-fixed.json",
+      "sha256": "982ac3fbab0b513420527e32fd4775347896f9fca3fdb7d0414cc9f36361eb21",
+      "bytes": 483
+    },
+    {
+      "path": "aster-selected-config-format-final-fixed.log",
+      "original_name": "aster-selected-config-format-final-fixed.log",
+      "sha256": "413a709001976657cb743636fd34e48fc41d8d302d665460d3f874b3313da127",
+      "bytes": 19
+    },
+    {
+      "path": "aster-selected-config-format-fixed.json",
+      "original_name": "aster-selected-config-format-fixed.json",
+      "sha256": "3041b6efdc989805a0d2f4d172bb76a0c82e30b7edbfbc78aba84a0352cf6276",
+      "bytes": 483
+    },
+    {
+      "path": "aster-selected-config-format-fixed.log",
+      "original_name": "aster-selected-config-format-fixed.log",
+      "sha256": "413a709001976657cb743636fd34e48fc41d8d302d665460d3f874b3313da127",
+      "bytes": 19
+    },
+    {
+      "path": "aster-selected-config-ruff-before-fixed.json",
+      "original_name": "aster-selected-config-ruff-before-fixed.json",
+      "sha256": "f4cdd1a85e1a407ff7397b6e6d8bf45065eea438b1469f1abe0df2f444f44836",
+      "bytes": 482
+    },
+    {
+      "path": "aster-selected-config-ruff-before-fixed.log",
+      "original_name": "aster-selected-config-ruff-before-fixed.log",
+      "sha256": "7bc32fd95ce5321118931446f647e3aad011f33a6640b10487653d67a547cc21",
+      "bytes": 15002
+    },
+    {
+      "path": "aster-selected-config-ruff-check-final-fixed.json",
+      "original_name": "aster-selected-config-ruff-check-final-fixed.json",
+      "sha256": "945a91a5cdf35ddf818005a13995d5a141973d9ef27b9cb692a2b6bb46bdc9cd",
+      "bytes": 482
+    },
+    {
+      "path": "aster-selected-config-ruff-check-final-fixed.log",
+      "original_name": "aster-selected-config-ruff-check-final-fixed.log",
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+      "bytes": 19
+    },
+    {
+      "path": "aster-selected-config-ruff-check-fixed.json",
+      "original_name": "aster-selected-config-ruff-check-fixed.json",
+      "sha256": "f9a37f694cb8d1d6aab30fda196179457bfd172fc3e11457dffc0bffc676658f",
+      "bytes": 482
+    },
+    {
+      "path": "aster-selected-config-ruff-check-fixed.log",
+      "original_name": "aster-selected-config-ruff-check-fixed.log",
+      "sha256": "00721acaaff2f18b78d5e8814cf2fd098e0b019ed2f772f682eb33969b137dde",
+      "bytes": 460
+    },
+    {
+      "path": "aster-selected-config-ruff-check-validated-fixed.json",
+      "original_name": "aster-selected-config-ruff-check-validated-fixed.json",
+      "sha256": "fa201b8e56d72a6d871a999b1cc4d6dcb5cb4ab8d712732f114b9c3e26d85b1c",
+      "bytes": 482
+    },
+    {
+      "path": "aster-selected-config-ruff-check-validated-fixed.log",
+      "original_name": "aster-selected-config-ruff-check-validated-fixed.log",
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+      "bytes": 19
+    },
+    {
+      "path": "aster-selected-config-source-fixed.json",
+      "original_name": "aster-selected-config-source-fixed.json",
+      "sha256": "bddcfdf93000250833901470b84da52a62ac3ad1ae616a0b4e27aa13d359456c",
+      "bytes": 1064
+    },
+    {
+      "path": "aster109-normal-readonly-final.json",
+      "original_name": "aster109-normal-readonly-final.json",
+      "sha256": "f1e52f6e8bbde9e143c972ab47915d94d49d2d5117642dd25bda4ac3f624ead3",
+      "bytes": 750
+    },
+    {
+      "path": "aster109-normal-readonly-final.log",
+      "original_name": "aster109-normal-readonly-final.log",
+      "sha256": "c6b57cf520c2348a380ed7ac938e06700a0c90c32e2a23572087d4131d130211",
+      "bytes": 152
+    },
+    {
+      "path": "aster109-normal-readonly-initial.json",
+      "original_name": "aster109-normal-readonly-initial.json",
+      "sha256": "94837a7bba5b3883fcd287af6782af4034c38bb57e968ccfa5515f3ce4030b55",
+      "bytes": 752
+    },
+    {
+      "path": "aster109-normal-readonly-initial.log",
+      "original_name": "aster109-normal-readonly-initial.log",
+      "sha256": "b6d8b7cd20355546ce69e97e3b3a9445bf5f15b98a10b750034903dc5b4e5ed2",
+      "bytes": 154
+    },
+    {
+      "path": "aster109_normal_readonly.py.txt",
+      "original_name": "aster109_normal_readonly.py",
+      "sha256": "383c99088629d568d3866fcd4ea83a0ef51c1fb9ffc1a587c4832da9decc494a",
+      "bytes": 10479
+    },
+    {
+      "path": "capture_native_inputs.py.txt",
+      "original_name": "capture_native_inputs.py",
+      "sha256": "5336bf2dea3b6102352e62487357e70793dcbfc03f25aa359ef32db044698703",
+      "bytes": 1104
+    },
+    {
+      "path": "chronology-peer-agent-inputs.json",
+      "original_name": "chronology-peer-agent-inputs.json",
+      "sha256": "437a5903835cab8fdd1d58504985dab20f01f5457a03aafac2d91beb5216357d",
+      "bytes": 1482
+    },
+    {
+      "path": "default-reconnect-implementation-diagnosis.json",
+      "original_name": "default-reconnect-implementation-diagnosis.json",
+      "sha256": "8194dcda01669f9c7c403dfbb9c80e141e9ef6b740ed30387cd6ef1f634fd980",
+      "bytes": 2603
+    },
+    {
+      "path": "finalize_generated_stubs.py.txt",
+      "original_name": "finalize_generated_stubs.py",
+      "sha256": "5246753f06044624da92ee2ec8bff1e3cdde92f77b919b43dce5941cdd91740f",
+      "bytes": 1134
+    },
+    {
+      "path": "native-adapter-final-chronology-regression.json",
+      "original_name": "native-adapter-final-chronology-regression.json",
+      "sha256": "44cc9cf3284260de01ef2af977841e2ac94dd02615bf6b49fcbe0aca5b013fe2",
+      "bytes": 575
+    },
+    {
+      "path": "native-adapter-final-chronology-regression.log",
+      "original_name": "native-adapter-final-chronology-regression.log",
+      "sha256": "ebe059a3fbaae743fe1c03d963b2b6fec19cf973a9b27ad53b0d9aaacbcd5090",
+      "bytes": 275628
+    },
+    {
+      "path": "native-adapter-regression-final.json",
+      "original_name": "native-adapter-regression-final.json",
+      "sha256": "53054e2ef128ab514a18876066e636a492bcf9c6c47ab4af68a2737dfb78cc7d",
+      "bytes": 577
+    },
+    {
+      "path": "native-adapter-regression-final.log",
+      "original_name": "native-adapter-regression-final.log",
+      "sha256": "db23eaff80fa3b7b0d350ee25010aa67550bd185506e06b8251e89d126bcf896",
+      "bytes": 12571
+    },
+    {
+      "path": "native-adapter-regression-peer-fix.json",
+      "original_name": "native-adapter-regression-peer-fix.json",
+      "sha256": "dbf07939cb5e44b97132125324b94d295c79e057ca7ccf47a9525e9150836807",
+      "bytes": 575
+    },
+    {
+      "path": "native-adapter-regression-peer-fix.log",
+      "original_name": "native-adapter-regression-peer-fix.log",
+      "sha256": "a6d537a70c33167d59483c8436f793e2b13e9b9ab582cb20effd466333a3d188",
+      "bytes": 274029
+    },
+    {
+      "path": "native-adapter-regression-summary.json",
+      "original_name": "native-adapter-regression-summary.json",
+      "sha256": "08f792aadaafd7fc8eb71919e2543639240393bcc8c8b6a91d21797733d3d25a",
+      "bytes": 224
+    },
+    {
+      "path": "native-aster-binance-final-source.json",
+      "original_name": "native-aster-binance-final-source.json",
+      "sha256": "8a6d493f3ab9ce7ce311950e55eb7bd4289634ed8307253cd79ede3a26a687a1",
+      "bytes": 537
+    },
+    {
+      "path": "native-aster-binance-final-source.log",
+      "original_name": "native-aster-binance-final-source.log",
+      "sha256": "61161db2301c0fb3cc3163a9ee15a13128ff4de61da40953a0c6310ef57f5133",
+      "bytes": 44058
+    },
+    {
+      "path": "native-check-hook.json",
+      "original_name": "native-check-hook.json",
+      "sha256": "e341893af2c94ff5eed39b228777abecca1610a6e5afd76be75aabf59954a81f",
+      "bytes": 484
+    },
+    {
+      "path": "native-check-hook.log",
+      "original_name": "native-check-hook.log",
+      "sha256": "260cd412b8103f61d19647c03a769ab49ae626927eb3a129c98860491ae5ef08",
+      "bytes": 165
+    },
+    {
+      "path": "native-check-initial.json",
+      "original_name": "native-check-initial.json",
+      "sha256": "f41a9860a1823c59d4e811e89a4aaa3c2f8e28fa0ca6f0c6dfd0f6b1181112e0",
+      "bytes": 486
+    },
+    {
+      "path": "native-check-initial.log",
+      "original_name": "native-check-initial.log",
+      "sha256": "ff554893a95a87cfd5dd40705d144fb4d3c2263d8d76a8758ecbc080f105982d",
+      "bytes": 3030
+    },
+    {
+      "path": "native-chronology-peer-format.json",
+      "original_name": "native-chronology-peer-format.json",
+      "sha256": "9a843f81ba224b419b64706c4061354b243c23f9378915f945b122772aea7ecf",
+      "bytes": 405
+    },
+    {
+      "path": "native-chronology-peer-format.log",
+      "original_name": "native-chronology-peer-format.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "native-chronology-peers-initial.json",
+      "original_name": "native-chronology-peers-initial.json",
+      "sha256": "dfae80f1407be28f3f50ffde67c519c7ad4f190d1ea7519d1e3c04c22af6a18e",
+      "bytes": 578
+    },
+    {
+      "path": "native-chronology-peers-initial.log",
+      "original_name": "native-chronology-peers-initial.log",
+      "sha256": "758cd1451ef2135ad95ab5a5eed93b501d99c7f2afa78eef9cb1ba59d427c5c1",
+      "bytes": 11592
+    },
+    {
+      "path": "native-clippy-libraries-final.json",
+      "original_name": "native-clippy-libraries-final.json",
+      "sha256": "3c6daf44981d7340d05ff2d93aa15b66e7f0144f2f5022c7a454e8eff033b757",
+      "bytes": 562
+    },
+    {
+      "path": "native-clippy-libraries-final.log",
+      "original_name": "native-clippy-libraries-final.log",
+      "sha256": "da1c5d720eeb3712f77ae15dfa17ece3a4d5a336f34c1dfdd4a33cb754c72787",
+      "bytes": 2057
+    },
+    {
+      "path": "native-clippy-libraries-style-fixed.json",
+      "original_name": "native-clippy-libraries-style-fixed.json",
+      "sha256": "b503046e5d698ebcc3d053c2ff6f83a7cb09d2f1da8c56b256d93e3b344f6e5d",
+      "bytes": 560
+    },
+    {
+      "path": "native-clippy-libraries-style-fixed.log",
+      "original_name": "native-clippy-libraries-style-fixed.log",
+      "sha256": "3963a191f6e57996f98f1292235ccef72990fc9febbafc3067aa1b7e94e698e1",
+      "bytes": 165
+    },
+    {
+      "path": "native-clippy-tests-clean-final.json",
+      "original_name": "native-clippy-tests-clean-final.json",
+      "sha256": "fac3f9c262eb0e2036ff3c848afef1995decfdfd443515e349fe2f2e9ef52a79",
+      "bytes": 576
+    },
+    {
+      "path": "native-clippy-tests-clean-final.log",
+      "original_name": "native-clippy-tests-clean-final.log",
+      "sha256": "046987e91a2babbd724544d80709523161e7dcf347e135fee598adde105ad7ed",
+      "bytes": 165
+    },
+    {
+      "path": "native-clippy-tests-style-fixed.json",
+      "original_name": "native-clippy-tests-style-fixed.json",
+      "sha256": "0f90f18be6c07993a84fc00c23a4ad23f5c1a8f55a5bf01726dd63f26c55ac2f",
+      "bytes": 578
+    },
+    {
+      "path": "native-clippy-tests-style-fixed.log",
+      "original_name": "native-clippy-tests-style-fixed.log",
+      "sha256": "fc9d342a4e3282fbe8f02db7f68ef9b5ffa0fb2c037ba4a5331b60bf8bc543de",
+      "bytes": 5349
+    },
+    {
+      "path": "native-config-ruff-format.json",
+      "original_name": "native-config-ruff-format.json",
+      "sha256": "9d81cc702004d86d2fc07bb35417750f17163068cc32b85aae0ca5753cd53947",
+      "bytes": 432
+    },
+    {
+      "path": "native-config-ruff-format.log",
+      "original_name": "native-config-ruff-format.log",
+      "sha256": "328b96a7022f573d3086bbdd48d53d09af642a4f744b3c5eb3b624388dd35b5b",
+      "bytes": 3130
+    },
+    {
+      "path": "native-config-ruff.json",
+      "original_name": "native-config-ruff.json",
+      "sha256": "838b58a0c6b7b02fe8cb55805055628bff67b0c0b8ac4bf545c516c83e06e01c",
+      "bytes": 415
+    },
+    {
+      "path": "native-config-ruff.log",
+      "original_name": "native-config-ruff.log",
+      "sha256": "7bc32fd95ce5321118931446f647e3aad011f33a6640b10487653d67a547cc21",
+      "bytes": 15002
+    },
+    {
+      "path": "native-config-test-lf-format.json",
+      "original_name": "native-config-test-lf-format.json",
+      "sha256": "783a50b0028831a7e83ba9f1b8036d4dbb4a9765bd1042bcd936233fbe34e370",
+      "bytes": 449
+    },
+    {
+      "path": "native-config-test-lf-format.log",
+      "original_name": "native-config-test-lf-format.log",
+      "sha256": "413a709001976657cb743636fd34e48fc41d8d302d665460d3f874b3313da127",
+      "bytes": 19
+    },
+    {
+      "path": "native-final-chronology-clippy.json",
+      "original_name": "native-final-chronology-clippy.json",
+      "sha256": "cdd29d7a8b81acfbf673b3a8ea9e93bbb51cbb694ea39b9ed7e987dbb1d8109e",
+      "bytes": 576
+    },
+    {
+      "path": "native-final-chronology-clippy.log",
+      "original_name": "native-final-chronology-clippy.log",
+      "sha256": "4ab72fd7c1664f5ee20f0e61a9937ebe5ccf2bfb300874e4aeb70a6c43267d98",
+      "bytes": 165
+    },
+    {
+      "path": "native-final-chronology-format.json",
+      "original_name": "native-final-chronology-format.json",
+      "sha256": "6ccbe31a7e282d0b1536560facd10f53aed1af10e8be2f59cd9ec190a05f964c",
+      "bytes": 405
+    },
+    {
+      "path": "native-final-chronology-format.log",
+      "original_name": "native-final-chronology-format.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "native-final-format-lf-check.json",
+      "original_name": "native-final-format-lf-check.json",
+      "sha256": "e392bfadf83f0bd4a310557df7d0fab40b64f48e1376e095c4b195174782efcf",
+      "bytes": 524
+    },
+    {
+      "path": "native-final-format-lf-check.log",
+      "original_name": "native-final-format-lf-check.log",
+      "sha256": "7ae94e75f5948ada393895de69fcd125f57bad6b6296e1894f55a9e28d72e090",
+      "bytes": 17615
+    },
+    {
+      "path": "native-final-format-lf-corrected.json",
+      "original_name": "native-final-format-lf-corrected.json",
+      "sha256": "74e48831156f08e10ffb262c2cc467b6c670d63d60a6d098d93b6bca012f5d3d",
+      "bytes": 524
+    },
+    {
+      "path": "native-final-format-lf-corrected.log",
+      "original_name": "native-final-format-lf-corrected.log",
+      "sha256": "3bc53bf3e981a98a34a852e175bf9b77af841edea74fca595d9aedcbaf9a4938",
+      "bytes": 26
+    },
+    {
+      "path": "native-final-inputs-after-stubs.json",
+      "original_name": "native-final-inputs-after-stubs.json",
+      "sha256": "944df722f0526eca24d746d43a05e7ddde45e309e7814d82c46b3f45689e9bbb",
+      "bytes": 3116
+    },
+    {
+      "path": "native-final-inputs-before-stubs.json",
+      "original_name": "native-final-inputs-before-stubs.json",
+      "sha256": "455f039b78eb634de1ef1d098c138f46a4eeb6daf0443e7b3115a0f5e779036e",
+      "bytes": 3116
+    },
+    {
+      "path": "native-final-regression-summary.json",
+      "original_name": "native-final-regression-summary.json",
+      "sha256": "ad18c6d8fb35cea9a717e394d89a99b35029b159b3af33e8611d3ca45a855881",
+      "bytes": 1026
+    },
+    {
+      "path": "native-final-ruff-format.json",
+      "original_name": "native-final-ruff-format.json",
+      "sha256": "64875e396a3717c565ad4a0187a6a2592b831ccb87ec86d938ba8e70b02241b7",
+      "bytes": 491
+    },
+    {
+      "path": "native-final-ruff-format.log",
+      "original_name": "native-final-ruff-format.log",
+      "sha256": "3bc53bf3e981a98a34a852e175bf9b77af841edea74fca595d9aedcbaf9a4938",
+      "bytes": 26
+    },
+    {
+      "path": "native-final-ruff.json",
+      "original_name": "native-final-ruff.json",
+      "sha256": "ba5caf8ec616b3a3e093e5596b9ab599571ab26ce0500537bac6be957ecf027c",
+      "bytes": 474
+    },
+    {
+      "path": "native-final-ruff.log",
+      "original_name": "native-final-ruff.log",
+      "sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+      "bytes": 19
+    },
+    {
+      "path": "native-implementation-identities.json",
+      "original_name": "native-implementation-identities.json",
+      "sha256": "008b7492cd84fbdd86d142b32590b94bcca3f5831df33655f76733cf01599ce7",
+      "bytes": 4011
+    },
+    {
+      "path": "native-official-stubs.json",
+      "original_name": "native-official-stubs.json",
+      "sha256": "817d022d82915feab4a74ad5fd2b0db6b34d20a7b9cfcc8964140d193d08889e",
+      "bytes": 462
+    },
+    {
+      "path": "native-official-stubs.log",
+      "original_name": "native-official-stubs.log",
+      "sha256": "56c28c636f88f16233e50e8a6d523581009423423f5f1b3aa9d9dc9bba1423db",
+      "bytes": 14601
+    },
+    {
+      "path": "native-reconnect-flat-baseline.json",
+      "original_name": "native-reconnect-flat-baseline.json",
+      "sha256": "3fa9eb42828dd4905b24efeefc4442fffa6c60ca656f921896d8a97cf1cae3ee",
+      "bytes": 666
+    },
+    {
+      "path": "native-reconnect-flat-baseline.log",
+      "original_name": "native-reconnect-flat-baseline.log",
+      "sha256": "79c6ba6258b36781eeca7eb9d905d9f19c9e0f09cd03ea3d95e44849250b1868",
+      "bytes": 1949
+    },
+    {
+      "path": "native-reconnect-flat-diagnostics.json",
+      "original_name": "native-reconnect-flat-diagnostics.json",
+      "sha256": "aed26632d0fdfde8563b1287e8fe5f41a262ea66c0540713cb427af185f2a282",
+      "bytes": 666
+    },
+    {
+      "path": "native-reconnect-flat-diagnostics.log",
+      "original_name": "native-reconnect-flat-diagnostics.log",
+      "sha256": "781441aab7a941b076e177253a2bfd667f754c84d3fb9fa36e05185309617696",
+      "bytes": 1083
+    },
+    {
+      "path": "native-reconnect-flat-isolate.json",
+      "original_name": "native-reconnect-flat-isolate.json",
+      "sha256": "d3ff35f32928cfdf99dc8d21cc41635d35ac74076aa956d99fcb9c4ddbe2d1fb",
+      "bytes": 668
+    },
+    {
+      "path": "native-reconnect-flat-isolate.log",
+      "original_name": "native-reconnect-flat-isolate.log",
+      "sha256": "de992452b8a352338932a76c4b7d039824793e4bf584a4aedf827d8c2a96e6a8",
+      "bytes": 1289
+    },
+    {
+      "path": "native-recovery-order-clippy.json",
+      "original_name": "native-recovery-order-clippy.json",
+      "sha256": "57a6c33d319a6071bc83552fa84202f90082721d332d4e0a9859abb9b990c1b8",
+      "bytes": 576
+    },
+    {
+      "path": "native-recovery-order-clippy.log",
+      "original_name": "native-recovery-order-clippy.log",
+      "sha256": "54a307303430023d8b307ec5fea011f565f7d5ed03796efc4774144173710904",
+      "bytes": 165
+    },
+    {
+      "path": "native-recovery-order-format.json",
+      "original_name": "native-recovery-order-format.json",
+      "sha256": "fa1e37744a85f53d1560f978c03d4dc159d9fe87527679de1cd2ff11e6536bd7",
+      "bytes": 405
+    },
+    {
+      "path": "native-recovery-order-format.log",
+      "original_name": "native-recovery-order-format.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "native-scope-peer-bridge.json",
+      "original_name": "native-scope-peer-bridge.json",
+      "sha256": "c2147163ecd46c397b4d3fdb0f5a9533356e7fa5960c7ce54fc4a3ff8eaa5eec",
+      "bytes": 509
+    },
+    {
+      "path": "native-scope-peer-bridge.log",
+      "original_name": "native-scope-peer-bridge.log",
+      "sha256": "107608baff2d1ae0aba43917ee7f99638caa8d6aebdc9b26123af19c053d12f6",
+      "bytes": 1200
+    },
+    {
+      "path": "native-scope-peer-formatted.json",
+      "original_name": "native-scope-peer-formatted.json",
+      "sha256": "d5109f18141c0e3b6d2c8c70c982fc58847ce9d6cc3714fc56d56b4e0d32bf66",
+      "bytes": 509
+    },
+    {
+      "path": "native-scope-peer-formatted.log",
+      "original_name": "native-scope-peer-formatted.log",
+      "sha256": "6f8ebef2ca19f33b0f6d06072cd598d85cf703005b1f085cd81a8200d1605dee",
+      "bytes": 1879
+    },
+    {
+      "path": "native-scope-peer-initial.json",
+      "original_name": "native-scope-peer-initial.json",
+      "sha256": "08505f9b064544f42dae2de2db3b73864118da2911616ba5b05bb07c9174154a",
+      "bytes": 509
+    },
+    {
+      "path": "native-scope-peer-initial.log",
+      "original_name": "native-scope-peer-initial.log",
+      "sha256": "5b5ad5ca0222742369d3f853018eb96e2c0684e7a07bebe6765d8e68024cfd54",
+      "bytes": 4502
+    },
+    {
+      "path": "native-scope-peer-money-fix.json",
+      "original_name": "native-scope-peer-money-fix.json",
+      "sha256": "f85a6f58a3c36c56191492c304de5e7a0e138685c348c49e087f0a46ea73b73e",
+      "bytes": 509
+    },
+    {
+      "path": "native-scope-peer-money-fix.log",
+      "original_name": "native-scope-peer-money-fix.log",
+      "sha256": "883f7781b85c3264b5dcce5c49b637b3b623d83080a17f1ca647701e06485cf8",
+      "bytes": 511
+    },
+    {
+      "path": "native-scope-peer-native-handler.json",
+      "original_name": "native-scope-peer-native-handler.json",
+      "sha256": "9825cd2fbeee204b3e13edcfa30bd362d992f0ad8d7abaa73a3ff5703d1f5e1b",
+      "bytes": 509
+    },
+    {
+      "path": "native-scope-peer-native-handler.log",
+      "original_name": "native-scope-peer-native-handler.log",
+      "sha256": "1bd15b7141d0368305631516107057d220fffebdc2285a136090057a23a22f27",
+      "bytes": 3967
+    },
+    {
+      "path": "native-scope-peer-precision-final.json",
+      "original_name": "native-scope-peer-precision-final.json",
+      "sha256": "bc0fc4cf630cc9b4cd7d0bb494441591e1fc54c9d4adb52b98bba0ff57063a36",
+      "bytes": 507
+    },
+    {
+      "path": "native-scope-peer-precision-final.log",
+      "original_name": "native-scope-peer-precision-final.log",
+      "sha256": "7cc50f3c23e473667e16b0855f44f0941c93a276e4681fb10e042e9dbc28f405",
+      "bytes": 3058
+    },
+    {
+      "path": "native-scope-peer-review-fixes.json",
+      "original_name": "native-scope-peer-review-fixes.json",
+      "sha256": "cf30d455454eef69cf50f638bd968cb2487f046171dbded28256d5cb3e96a99d",
+      "bytes": 509
+    },
+    {
+      "path": "native-scope-peer-review-fixes.log",
+      "original_name": "native-scope-peer-review-fixes.log",
+      "sha256": "3f3d24a04533c293171a707e602949cbe9ee46d57c607fae162ab58a4144860c",
+      "bytes": 1440
+    },
+    {
+      "path": "native-stub-source-comparison.json",
+      "original_name": "native-stub-source-comparison.json",
+      "sha256": "8c247cfdcc4b9bf01b5f1947ecf58c03a653837f304bea3d5a387fa61b5524af",
+      "bytes": 144
+    },
+    {
+      "path": "native-stubs-line-ending-format.json",
+      "original_name": "native-stubs-line-ending-format.json",
+      "sha256": "8c1a9dc056d780ae85e0320776ccdc1d9ce3d0e2d35a75a4bf48808bc3e7b84c",
+      "bytes": 483
+    },
+    {
+      "path": "native-stubs-line-ending-format.log",
+      "original_name": "native-stubs-line-ending-format.log",
+      "sha256": "b0b2990765b4cdf09f154eb27c7447dcdd74f84cf827f5f55e881b20eef6205c",
+      "bytes": 46
+    },
+    {
+      "path": "native109-app-install.json",
+      "original_name": "native109-app-install.json",
+      "sha256": "94ecabfdb2a2aaad17d31ed8cf787846ff90995ac7f3cf3e4316a006d5af9182",
+      "bytes": 1089
+    },
+    {
+      "path": "native109-app-install.log",
+      "original_name": "native109-app-install.log",
+      "sha256": "062302d4081953818d5418ed3eea18a99a56458c819333b0ab945bdb631d2805",
+      "bytes": 662
+    },
+    {
+      "path": "native109-app-installed.json",
+      "original_name": "native109-app-installed.json",
+      "sha256": "de8fe1e3aac23e198c5b94b6983e83e92563d0775a8e57ffc0ce0d4d2c4f7ec6",
+      "bytes": 19564
+    },
+    {
+      "path": "native109-installed-python-initial.json",
+      "original_name": "native109-installed-python-initial.json",
+      "sha256": "67aba2a1dacf799b788f9b17367c36084b6ab6a6d94eff7254f3d3945f2d9b17",
+      "bytes": 787
+    },
+    {
+      "path": "native109-installed-python-initial.log",
+      "original_name": "native109-installed-python-initial.log",
+      "sha256": "3d1bc34fcbca1c0d249eda8f9392e6f075944131dfb94e8d19f037035d0a3c50",
+      "bytes": 346
+    },
+    {
+      "path": "native109-markdown-check.json",
+      "original_name": "native109-markdown-check.json",
+      "sha256": "5318d7299f63c5c245a5690e665fce00c433d789b27d097c9316b9c79baf784e",
+      "bytes": 555
+    },
+    {
+      "path": "native109-markdown-check.log",
+      "original_name": "native109-markdown-check.log",
+      "sha256": "22d537e622b0694cabf527eff020fa70c8c685565ef939995825c0e40701f3e6",
+      "bytes": 226
+    },
+    {
+      "path": "native109-nightly-format-check.json",
+      "original_name": "native109-nightly-format-check.json",
+      "sha256": "1c87029e21ba2adb72014c3c3fd004d30b6f48fef33e5d362f2407b18fee8abc",
+      "bytes": 390
+    },
+    {
+      "path": "native109-nightly-format-check.log",
+      "original_name": "native109-nightly-format-check.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "native109-progress-comment-input.json",
+      "original_name": "native109-progress-comment-input.json",
+      "sha256": "26fea1d02cb28ac5e6c0fb2c4c6ce43f64e9193acb22bcef1e0428306760f3e1",
+      "bytes": 1529
+    },
+    {
+      "path": "native109-progress-comment-response.json",
+      "original_name": "native109-progress-comment-response.json",
+      "sha256": "e5d0bf310b940289c64c887aa61996ce98194dac86d848a2557fecca0312d262",
+      "bytes": 3226
+    },
+    {
+      "path": "native109-progress-comment-stderr.log",
+      "original_name": "native109-progress-comment-stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "native109-progress-readback-response.json",
+      "original_name": "native109-progress-readback-response.json",
+      "sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "bytes": 2
+    },
+    {
+      "path": "native109-progress-readback-stderr.log",
+      "original_name": "native109-progress-readback-stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "native109-proof-install.json",
+      "original_name": "native109-proof-install.json",
+      "sha256": "f4a7d2b411b04a34e663a96e675a95b051d45c6fbf766ffd9a45461399084880",
+      "bytes": 1087
+    },
+    {
+      "path": "native109-proof-install.log",
+      "original_name": "native109-proof-install.log",
+      "sha256": "223920d0fd51519ee852cd572aafe7077fb47462c4a784c85daf37a82901c279",
+      "bytes": 744
+    },
+    {
+      "path": "native109-proof-installed.json",
+      "original_name": "native109-proof-installed.json",
+      "sha256": "f5a9caa2c77fab0a8280c286ec2a24277211aaa636161584e4719717fca04905",
+      "bytes": 19560
+    },
+    {
+      "path": "native109-source-bound-wheel.json",
+      "original_name": "native109-source-bound-wheel.json",
+      "sha256": "33031aa88ea0be4fe1c7ac01ce2ba5af80f8046622a44e300149ca8e9e8224c7",
+      "bytes": 780
+    },
+    {
+      "path": "native109-source-bound-wheel.log",
+      "original_name": "native109-source-bound-wheel.log",
+      "sha256": "044afb9b4580f4d2ec927556290e281e08d4257fe966f37f0efa3136ffa03cbd",
+      "bytes": 5218
+    },
+    {
+      "path": "native109-table-check.json",
+      "original_name": "native109-table-check.json",
+      "sha256": "1603a07250d531aa985f19953b1119df9bb4a84f2a79e2ff8626631d35f05bdc",
+      "bytes": 520
+    },
+    {
+      "path": "native109-table-check.log",
+      "original_name": "native109-table-check.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "probe_recovery_order.py.txt",
+      "original_name": "probe_recovery_order.py",
+      "sha256": "da60792dc65ab9bbfbae11c7137fc697d3757fe3f4843d4b25b9a5ae4335b23b",
+      "bytes": 1581
+    },
+    {
+      "path": "recovery-order-diagnostic-attempt-1.log",
+      "original_name": "recovery-order-diagnostic-attempt-1.log",
+      "sha256": "7cb33cf6fdc6c49692ea861c2529db75edf850f87e54d02b9a60542484dfef46",
+      "bytes": 196
+    },
+    {
+      "path": "recovery-order-diagnostic-attempt-2.log",
+      "original_name": "recovery-order-diagnostic-attempt-2.log",
+      "sha256": "7cb33cf6fdc6c49692ea861c2529db75edf850f87e54d02b9a60542484dfef46",
+      "bytes": 196
+    },
+    {
+      "path": "recovery-order-diagnostic-attempt-3.log",
+      "original_name": "recovery-order-diagnostic-attempt-3.log",
+      "sha256": "7cb33cf6fdc6c49692ea861c2529db75edf850f87e54d02b9a60542484dfef46",
+      "bytes": 196
+    },
+    {
+      "path": "recovery-order-diagnostic-attempt-4.log",
+      "original_name": "recovery-order-diagnostic-attempt-4.log",
+      "sha256": "7cb33cf6fdc6c49692ea861c2529db75edf850f87e54d02b9a60542484dfef46",
+      "bytes": 196
+    },
+    {
+      "path": "recovery-order-diagnostic-attempt-5.log",
+      "original_name": "recovery-order-diagnostic-attempt-5.log",
+      "sha256": "9f81f7f14479fc29babb481df9a3f33ee1613be3df1c0be91d23043dd44e17ad",
+      "bytes": 196
+    },
+    {
+      "path": "recovery-order-diagnostic-attempt-6.log",
+      "original_name": "recovery-order-diagnostic-attempt-6.log",
+      "sha256": "fa8d2de678bd947eef52b378ed8b8c55a9c6491826ffa3dabd0fae462b0df367",
+      "bytes": 7689
+    },
+    {
+      "path": "recovery-order-diagnostic-probe.json",
+      "original_name": "recovery-order-diagnostic-probe.json",
+      "sha256": "cc2613e55d470a681645d7ada9a54c0f1ddd64a74e4fccb6008c10baf4bdacfc",
+      "bytes": 3702
+    },
+    {
+      "path": "required-make-format.json",
+      "original_name": "required-make-format.json",
+      "sha256": "8516e3845d2cec5165afebc58d8a10cb34b4595f131ee1528273848de54380f7",
+      "bytes": 393
+    },
+    {
+      "path": "required-make-format.log",
+      "original_name": "required-make-format.log",
+      "sha256": "4326b575b599c4a0e6b9f83a0e23daeb8ac09e381bb30f88fcd903c5d55f6d5b",
+      "bytes": 97
+    },
+    {
+      "path": "required-make-pre-commit.json",
+      "original_name": "required-make-pre-commit.json",
+      "sha256": "98f21a123d11250059d510e99d897cee1e007a807ff3041a06ae7c9d0c614720",
+      "bytes": 397
+    },
+    {
+      "path": "required-make-pre-commit.log",
+      "original_name": "required-make-pre-commit.log",
+      "sha256": "70eacc00f5451103a225417d751c61d9e08e0bd7879cedfa2a868da6a5b311c4",
+      "bytes": 101
+    },
+    {
+      "path": "reviewer-aster109-normal-bound-post.json",
+      "original_name": "reviewer-aster109-normal-bound-post.json",
+      "sha256": "2133c62293650046466d5b5cf6fbd0c9235e9e010d32e16f0c74414690242c51",
+      "bytes": 4082
+    },
+    {
+      "path": "reviewer-aster109-normal-bound-pre.json",
+      "original_name": "reviewer-aster109-normal-bound-pre.json",
+      "sha256": "b9e96a949f9f20846e726a66e11cc4f3146004c11639039848220b7151f9bde1",
+      "bytes": 2315
+    },
+    {
+      "path": "reviewer-aster109-normal-bound-raw.log",
+      "original_name": "reviewer-aster109-normal-bound-raw.log",
+      "sha256": "baa3c332697bb00e901e6d3edf54445c789bb2c065b3296d1f4ef5f42f2eb60f",
+      "bytes": 162
+    },
+    {
+      "path": "reviewer-aster109-normal-bound-run.py.txt",
+      "original_name": "reviewer-aster109-normal-bound-run.py",
+      "sha256": "913b43a4183aee54c43ca2190f7ac04e3b8c19bc37397a915dcfbefede51471e",
+      "bytes": 4260
+    },
+    {
+      "path": "reviewer-aster109-normal-bound-summary.json",
+      "original_name": "reviewer-aster109-normal-bound-summary.json",
+      "sha256": "58961195fe1f5109c2aadbb2f85db447e06df2a1fe6acdb286399b1e4d0cc6c8",
+      "bytes": 467
+    },
+    {
+      "path": "reviewer-aster109-normal-bound.json",
+      "original_name": "reviewer-aster109-normal-bound.json",
+      "sha256": "e1ee0cc71de95b11347e0b23efc531fab24d36fe7b617f329f5e3755237d8a91",
+      "bytes": 427
+    },
+    {
+      "path": "reviewer-aster109-normal-bound.log",
+      "original_name": "reviewer-aster109-normal-bound.log",
+      "sha256": "58961195fe1f5109c2aadbb2f85db447e06df2a1fe6acdb286399b1e4d0cc6c8",
+      "bytes": 467
+    },
+    {
+      "path": "reviewer-aster109-normal-readonly-report.md.txt",
+      "original_name": "reviewer-aster109-normal-readonly-report.md",
+      "sha256": "d83c386d2434191faaeaafd0b7c55bbadef930397e9bb632bc5d983fcbb5912d",
+      "bytes": 3877
+    },
+    {
+      "path": "reviewer-aster109-normal-readonly.json",
+      "original_name": "reviewer-aster109-normal-readonly.json",
+      "sha256": "64490343f6acaae1c15546b784326ce208dc6b778e099b5f4d086979e67613c7",
+      "bytes": 759
+    },
+    {
+      "path": "reviewer-aster109-normal-readonly.log",
+      "original_name": "reviewer-aster109-normal-readonly.log",
+      "sha256": "abee9b2890395ca6186bfb185d88451f076b0713f9f29a313bb0ec6c214fcb06",
+      "bytes": 156
+    },
+    {
+      "path": "reviewer-native-admission-factory-direct.json",
+      "original_name": "reviewer-native-admission-factory-direct.json",
+      "sha256": "52485bbd9365f4488037c350dfa923721875da295c028098ba73c99df2c5b27f",
+      "bytes": 431
+    },
+    {
+      "path": "reviewer-native-admission-factory-direct.log",
+      "original_name": "reviewer-native-admission-factory-direct.log",
+      "sha256": "815d595bab31877edc1cb104b94ef782e984db1a84c9e9e9bfe4c89277843d8b",
+      "bytes": 2210
+    },
+    {
+      "path": "reviewer-native-binance-default-direct.json",
+      "original_name": "reviewer-native-binance-default-direct.json",
+      "sha256": "b50ead43cae4b3988707354c35058b08dfce7b5443eb79f484b00d257c368b21",
+      "bytes": 417
+    },
+    {
+      "path": "reviewer-native-binance-default-direct.log",
+      "original_name": "reviewer-native-binance-default-direct.log",
+      "sha256": "eb6a3da868d9f5cb73609fc9fad10a8dd37b822fb51e645a710c50dd85f075ec",
+      "bytes": 16470
+    },
+    {
+      "path": "reviewer-native-chronology-barrier-source.json",
+      "original_name": "reviewer-native-chronology-barrier-source.json",
+      "sha256": "eb5ea342b62cb86c7eda30ee19324db2267714a8a8bf2b126d9f958b4cc4e57b",
+      "bytes": 257
+    },
+    {
+      "path": "reviewer-native-chronology-barrier-source.md.txt",
+      "original_name": "reviewer-native-chronology-barrier-source.md",
+      "sha256": "9c2f908dde420136bb4dc689eb729dfead67b74d36f67a7191ca7f6ab8b37709",
+      "bytes": 3162
+    },
+    {
+      "path": "reviewer-native-direct-final.md.txt",
+      "original_name": "reviewer-native-direct-final.md",
+      "sha256": "2fb10b3c668613b5fba81dbb301148c40aca7b4a4c1b75ec8d19a3e0ebfaf631",
+      "bytes": 2668
+    },
+    {
+      "path": "reviewer-native-exe-post.json",
+      "original_name": "reviewer-native-exe-post.json",
+      "sha256": "cfe11356b527fd94bdb412f8773671159661376f08b79407b38c1e4e175194b0",
+      "bytes": 3548
+    },
+    {
+      "path": "reviewer-native-exe-pre.json",
+      "original_name": "reviewer-native-exe-pre.json",
+      "sha256": "478d731f270a47d493c9ae0f62f60ee4b58312dd9cbf3978486bd2f5f1cae06d",
+      "bytes": 1271
+    },
+    {
+      "path": "reviewer-native-final-boundary-validation.md.txt",
+      "original_name": "reviewer-native-final-boundary-validation.md",
+      "sha256": "1c4cc3d90c9fd4fa7ad6151dc2c2fd4825f7fa2400ebed879843916159f2f400",
+      "bytes": 3848
+    },
+    {
+      "path": "reviewer-native-final-normal-open-close2.json",
+      "original_name": "reviewer-native-final-normal-open-close2.json",
+      "sha256": "b6a19a8dec28b967b764d4835a7949654ca1ca8b1cf44d14846ae6e20d890e23",
+      "bytes": 453
+    },
+    {
+      "path": "reviewer-native-final-normal-open-close2.log",
+      "original_name": "reviewer-native-final-normal-open-close2.log",
+      "sha256": "4057fc365de997f359728916cee79438e8e92dcdacc19d541903d92cde008bbb",
+      "bytes": 296
+    },
+    {
+      "path": "reviewer-native-final-post.json",
+      "original_name": "reviewer-native-final-post.json",
+      "sha256": "f692981b75a8134b5dd4ac87d05f72e69769afe47cc61df392f56d923b4cebf4",
+      "bytes": 573
+    },
+    {
+      "path": "reviewer-native-final-pre.json",
+      "original_name": "reviewer-native-final-pre.json",
+      "sha256": "6a8930460897c5fb07ff7d46ef449f36c780db77acd07a30f54b1c8087b80191",
+      "bytes": 573
+    },
+    {
+      "path": "reviewer-native-final-selected35.json",
+      "original_name": "reviewer-native-final-selected35.json",
+      "sha256": "e9186035e4d3d51911279fcbc97b07ce0dcf40483f2c11e6dbd9f330e5ba2fb0",
+      "bytes": 377
+    },
+    {
+      "path": "reviewer-native-final-selected35.log",
+      "original_name": "reviewer-native-final-selected35.log",
+      "sha256": "09e470e0f4d7e76ce6c128fcba7a521eb357af4cf93127ff49beb0fc71017031",
+      "bytes": 2727
+    },
+    {
+      "path": "reviewer-native-final-source.json",
+      "original_name": "reviewer-native-final-source.json",
+      "sha256": "e509ad721595ae201e52a88f1a6b874606c81ffa50adfa537ed1dfc3324e9b1b",
+      "bytes": 1765
+    },
+    {
+      "path": "reviewer-native-recovery-order-analysis.md.txt",
+      "original_name": "reviewer-native-recovery-order-analysis.md",
+      "sha256": "4989afcb5352a6f0c0f14dd28dff3c8809a2c76a2b8669b518b0020da4c328f3",
+      "bytes": 6359
+    },
+    {
+      "path": "reviewer-native-recovery-order-hashes.json",
+      "original_name": "reviewer-native-recovery-order-hashes.json",
+      "sha256": "3dad37e35a0124353f541c1e589f784d0c5a74c6b37432f12b19fa6a36b3eb5d",
+      "bytes": 3464
+    },
+    {
+      "path": "reviewer-native-scope-units-direct.json",
+      "original_name": "reviewer-native-scope-units-direct.json",
+      "sha256": "c38acfd375e193b28c01a077e5ff94fa940baf49d588164f8dabd4c3cd0349ec",
+      "bytes": 400
+    },
+    {
+      "path": "reviewer-native-scope-units-direct.log",
+      "original_name": "reviewer-native-scope-units-direct.log",
+      "sha256": "ec0a8f70faa404fd838dbcee5ac5843b9d428dd0d72640f81159cf33eeee242c",
+      "bytes": 2537
+    },
+    {
+      "path": "reviewer-native-selected-direct.json",
+      "original_name": "reviewer-native-selected-direct.json",
+      "sha256": "12cfe8debfc294f0965b856fc7278c90db0d8641cfc896b87c940d0e083ca051",
+      "bytes": 397
+    },
+    {
+      "path": "reviewer-native-selected-direct.log",
+      "original_name": "reviewer-native-selected-direct.log",
+      "sha256": "cc9084cce25e9ea600fb8830157e26ac92d47884e5405cb17aed77f39d76f5c9",
+      "bytes": 2370
+    },
+    {
+      "path": "reviewer-native-source-fixed-pass1.json",
+      "original_name": "reviewer-native-source-fixed-pass1.json",
+      "sha256": "f75468a951d62560c107daec612a63327b891768f65175b71bd0978fe87ea9ea",
+      "bytes": 3520
+    },
+    {
+      "path": "reviewer-native-source-fixed-pass1.md.txt",
+      "original_name": "reviewer-native-source-fixed-pass1.md",
+      "sha256": "da14305dbc3ce71dd14a7fde11556c6b0d456b02f23575687b604510ea7f5f4f",
+      "bytes": 3302
+    },
+    {
+      "path": "reviewer-native-source-initial.json",
+      "original_name": "reviewer-native-source-initial.json",
+      "sha256": "a2df521a6c52b5d8fe7bf1f63f18ee082076700c2ba2d364c24c7d01bf2efe0c",
+      "bytes": 3225
+    },
+    {
+      "path": "reviewer-native-source-initial.md.txt",
+      "original_name": "reviewer-native-source-initial.md",
+      "sha256": "8083498649aa7c80b89554cae3cfe376effa4f0a5db04a445b4ffdbaac99574f",
+      "bytes": 4033
+    },
+    {
+      "path": "reviewer-native-transport-direct.json",
+      "original_name": "reviewer-native-transport-direct.json",
+      "sha256": "90c5cf1355505aa1c6885c9122d6044ba2ac6cf5ce58786f9e3adce4bc1c6c33",
+      "bytes": 622
+    },
+    {
+      "path": "reviewer-native-transport-direct.log",
+      "original_name": "reviewer-native-transport-direct.log",
+      "sha256": "d1c84a4026ec3b412cf44db3a5f820b6b7ec7a72985a1141891fe656f0c19246",
+      "bytes": 372
+    },
+    {
+      "path": "reviewer-source-fixed-pass2.json",
+      "original_name": "reviewer-source-fixed-pass2.json",
+      "sha256": "8ffe1319faceb846b380a723bc9d82990d9693e6b718493eef1e297c23ed57a1",
+      "bytes": 7773
+    },
+    {
+      "path": "reviewer-source-fixed-pass2.md.txt",
+      "original_name": "reviewer-source-fixed-pass2.md",
+      "sha256": "e325c34e4e3dc4351c49179a60778992d47f3994d0f8b225f5b5c4c022613e0e",
+      "bytes": 4538
+    },
+    {
+      "path": "reviewer-wheel-abi-inspect.json",
+      "original_name": "reviewer-wheel-abi-inspect.json",
+      "sha256": "33a844162fb5c3e58a176a9183c37ad5106c2c6e866194f42992f7ebb1558fca",
+      "bytes": 417
+    },
+    {
+      "path": "reviewer-wheel-abi-inspect.log",
+      "original_name": "reviewer-wheel-abi-inspect.log",
+      "sha256": "500db56bb3c8c56bad9a8569f155aa6aa0e2177e513e0040facc3226c8be4388",
+      "bytes": 3319
+    },
+    {
+      "path": "reviewer-wheel-abi-report.md.txt",
+      "original_name": "reviewer-wheel-abi-report.md",
+      "sha256": "8df66c33b25d3bd0d736f4ba5fd1cfe833959002d0eab24f39876128cdaa116d",
+      "bytes": 2794
+    },
+    {
+      "path": "reviewer-wheel-abi-result.json",
+      "original_name": "reviewer-wheel-abi-result.json",
+      "sha256": "a4ea1889e5b5538773c111705586e471cc69ec050f2d136c75320836f380eb2d",
+      "bytes": 7536
+    },
+    {
+      "path": "reviewer-wheel-abi-verify.json",
+      "original_name": "reviewer-wheel-abi-verify.json",
+      "sha256": "a59f0598df22afd2db9cbb9b14df38cecd078bf5a8ddb584bf6bde2860492723",
+      "bytes": 416
+    },
+    {
+      "path": "reviewer-wheel-abi-verify.log",
+      "original_name": "reviewer-wheel-abi-verify.log",
+      "sha256": "a4ea1889e5b5538773c111705586e471cc69ec050f2d136c75320836f380eb2d",
+      "bytes": 7536
+    },
+    {
+      "path": "reviewer-wheel-abi-verify.py.txt",
+      "original_name": "reviewer-wheel-abi-verify.py",
+      "sha256": "b1e64c4fd12789c7f9dae3763219561d93f2cee32d95c673ed2c39bd56611d1b",
+      "bytes": 7408
+    },
+    {
+      "path": "run_capture.py.txt",
+      "original_name": "run_capture.py",
+      "sha256": "12076f96c8098a7394e1559aa81bc8551fa7723cbd9528ae4d647c6b84203bdf",
+      "bytes": 1454
+    },
+    {
+      "path": "rust-format-aster.json",
+      "original_name": "rust-format-aster.json",
+      "sha256": "37e041441f824145e2d43ce0b6cc72cdcd2a2bee2116e3bd4befeaf22edc3418",
+      "bytes": 369
+    },
+    {
+      "path": "rust-format-aster.log",
+      "original_name": "rust-format-aster.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "rust-format-import-final.json",
+      "original_name": "rust-format-import-final.json",
+      "sha256": "e704202afd903860e57f1d795ce35c62af2d9522e466775d08f5d6e3c2e28170",
+      "bytes": 405
+    },
+    {
+      "path": "rust-format-import-final.log",
+      "original_name": "rust-format-import-final.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "rust-format-initial.json",
+      "original_name": "rust-format-initial.json",
+      "sha256": "3924a78064d5f0e3a4347e54bb13d623888e86fe77a4907e116c33c17e3260f9",
+      "bytes": 349
+    },
+    {
+      "path": "rust-format-initial.log",
+      "original_name": "rust-format-initial.log",
+      "sha256": "77acf97d95a43cfe16a0c3b0c22b120b7fecb5461a5e733c514a01d57aaa8093",
+      "bytes": 809
+    },
+    {
+      "path": "rust-format-message-bridge.json",
+      "original_name": "rust-format-message-bridge.json",
+      "sha256": "c15281d8362ce920ffeb0289b7a39e680c1c25f0a8e368a5e4078c6d6ea970a1",
+      "bytes": 405
+    },
+    {
+      "path": "rust-format-message-bridge.log",
+      "original_name": "rust-format-message-bridge.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "rust-format-money-fix.json",
+      "original_name": "rust-format-money-fix.json",
+      "sha256": "4a167b8b16fbff274e7ebe6e12aa83ed365d39ca2d74b055295c733806f0589e",
+      "bytes": 405
+    },
+    {
+      "path": "rust-format-money-fix.log",
+      "original_name": "rust-format-money-fix.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "rust-format-native-handler.json",
+      "original_name": "rust-format-native-handler.json",
+      "sha256": "2165460c7adb5c3006c0a01d59e7dbb5b3313052a4dff2acb1583bbd3d76b8e8",
+      "bytes": 405
+    },
+    {
+      "path": "rust-format-native-handler.log",
+      "original_name": "rust-format-native-handler.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "rust-format-review-fixes.json",
+      "original_name": "rust-format-review-fixes.json",
+      "sha256": "0ffa44ecb194a7592baa0642cae220ee21ffb6fa615f708fd188d796cdafcd23",
+      "bytes": 405
+    },
+    {
+      "path": "rust-format-review-fixes.log",
+      "original_name": "rust-format-review-fixes.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "aster109-agent-readonly-final/manifest.json",
+      "sha256": "b750b4fda64d2caf3c8af5c83b5c243662c0f5115ae748647be4ab4b9eabecb4",
+      "bytes": 20390
+    },
+    {
+      "path": "aster109-agent-readonly-final/peer-evidence.json",
+      "sha256": "93be88d0f6c0af651ac283a6b6a507644b75c2f51a4cda3ec0003376a4ae9fe2",
+      "bytes": 24803
+    },
+    {
+      "path": "aster109-agent-readonly-final/result.json",
+      "sha256": "2226e597759269889aa7590d753d4e12a77204a931982fd24f536a047efb1df0",
+      "bytes": 4123
+    },
+    {
+      "path": "reviewer-aster109-normal-readonly/manifest.json",
+      "sha256": "70486823d2ecd9b8a07451f9fff68f8165a2b29601f1174ce886a82da629b2fe",
+      "bytes": 20390
+    },
+    {
+      "path": "reviewer-aster109-normal-readonly/peer-evidence.json",
+      "sha256": "cff4535ef45277ee187a1ae08251341e779135f093d7df89b75972e5ef2ce5ec",
+      "bytes": 24803
+    },
+    {
+      "path": "reviewer-aster109-normal-readonly/result.json",
+      "sha256": "a867e92c032748313610d6228348d1818380c9f32fe347798e70d131f68f626a",
+      "bytes": 4123
+    },
+    {
+      "path": "reviewer-aster109-normal-readonly-bound/manifest.json",
+      "sha256": "78ffc8f6d8238460a788a29bc441acca975d607506d9c82cf1eb5e9f154cb235",
+      "bytes": 20390
+    },
+    {
+      "path": "reviewer-aster109-normal-readonly-bound/peer-evidence.json",
+      "sha256": "79c424c0db20462b695a290323518ca847b8476ffefb92ad700ea339ae216989",
+      "bytes": 24803
+    },
+    {
+      "path": "reviewer-aster109-normal-readonly-bound/result.json",
+      "sha256": "4416632e8703bf002e31a68bc0d1e2d1408b6d508e6047176669661198d3479d",
+      "bytes": 4123
+    },
+    {
+      "path": "procedures/entropy_execution.py.txt",
+      "source_path": "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution.py",
+      "sha256": "6a3c41a37d65c72edc0fb12fc9a45386fe960e3fa39b172c4d331bb0c0734276",
+      "bytes": 59904
+    },
+    {
+      "path": "procedures/entropy_execution_peer.py.txt",
+      "source_path": "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\entropy_execution_peer.py",
+      "sha256": "e288616d1ae21a79457f2a7ad49ce5859f9d22da585f31ecc95d08253eb7bc3a",
+      "bytes": 28922
+    },
+    {
+      "path": "native-provenance.json",
+      "sha256": "198f1db53003cdba796cb99461c6209e95dfbf874dbfcb97f21d1f72829c28b0",
+      "bytes": 8168
+    },
+    {
+      "path": "native-build-input.json",
+      "sha256": "a595f7ba9cefdf814cbee928af9c16223ef0be6f4aa78164da3d39966e776672",
+      "bytes": 419
+    },
+    {
+      "path": "commands.json",
+      "sha256": "56d00307355788f014249d100a12bd3765a1dc48f606ce2f30a0cd6aa0a43514",
+      "bytes": 49145
+    }
+  ],
+  "note": "Raw failures and corrections are preserved. Test reruns are not additional distinct cases. Wheel and diagnostic executables are external artifacts, identified by SHA256; no binary is committed."
+}

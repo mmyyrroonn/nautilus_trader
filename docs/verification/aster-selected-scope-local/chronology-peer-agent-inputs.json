@@ -1,0 +1,14 @@
+{
+  "captured_utc": "2026-10-09T03:10:07.624008+00:00",
+  "source": "E:\\persarb\\worktrees\\entropy-aster-proof\\crates\\adapters\\aster\\tests\\selected_scope.rs",
+  "sha256_before_parent_format": "01e2eea954305c7f89f97f3a505ac5e008e13e6b28ce316cafb2476b9c9d777f",
+  "scope": "Only selected_scope.rs was modified. Production/common/app sources read only. No Cargo/build/install/Git/GH or formatting execution.",
+  "test_cases": [
+    "selected_ambiguous_atomic_history_stays_in_debt_across_normal_queries::interleaved",
+    "selected_ambiguous_atomic_history_stays_in_debt_across_normal_queries::equal_millisecond",
+    "late_targeted_actual_order_fill_keeps_selected_chronology_debt_sticky",
+    "selected_separated_batches_publish_in_actual_time_order_despite_reverse_order_ids"
+  ],
+  "observability": "Normal factory/client, local actual HTTP paths and real received execution reports. B late arrival uses normal QueryOrder target orderId plus actual userTrades history rather than a history window which would miss checkpoint-old facts. No raw fill facts are injected into cache. Positive case confirms fixture validity and high-earlier/low-later OID actual-time sort. Ambiguous queries require GET positionRisk + degraded terminal phase, ready/recovery false, empty selected balance/positions and no affected OrderWithFills or bare Fill across three normal queries.",
+  "validation": "Pending root format/compile/test. No passing Rust execution is claimed."
+}

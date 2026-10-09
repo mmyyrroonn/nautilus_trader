@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "E:/persarb/worktrees/entropy-execution-app/.venv/Scripts/python.exe",
+    "-I",
+    "E:/persarb/_tmp/entropy43-validation/reviewer-aster109-normal-bound-run.py"
+  ],
+  "cwd": "E:\\persarb\\_tmp\\entropy43-validation",
+  "started_utc": "2026-10-09T03:37:59.298904+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T03:38:03.116858+00:00"
+}

@@ -1,0 +1,86 @@
+{
+  "note": "Bounded reproduction to collect failing event order; first failure stops, no retry-until-pass acceptance.",
+  "source_exe": "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\exec_client-780bac51ce8678c2.exe",
+  "copied_exe_sha256": "ccc30add4be8418048403a5aac9288a558700b3f9bfb7bbe0344801a115eaeb7",
+  "final_exe_sha256": "ccc30add4be8418048403a5aac9288a558700b3f9bfb7bbe0344801a115eaeb7",
+  "attempts": [
+    {
+      "argv": [
+        "E:\\persarb\\_tmp\\entropy43-validation\\reconnect-diagnostics-current.exe",
+        "test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once",
+        "--exact",
+        "--nocapture"
+      ],
+      "started_utc": "2026-10-09T02:56:49.309840+00:00",
+      "exe_sha256": "ccc30add4be8418048403a5aac9288a558700b3f9bfb7bbe0344801a115eaeb7",
+      "exit_code": 0,
+      "finished_utc": "2026-10-09T02:56:51.424885+00:00",
+      "raw_log": "recovery-order-diagnostic-attempt-1.log"
+    },
+    {
+      "argv": [
+        "E:\\persarb\\_tmp\\entropy43-validation\\reconnect-diagnostics-current.exe",
+        "test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once",
+        "--exact",
+        "--nocapture"
+      ],
+      "started_utc": "2026-10-09T02:56:51.425389+00:00",
+      "exe_sha256": "ccc30add4be8418048403a5aac9288a558700b3f9bfb7bbe0344801a115eaeb7",
+      "exit_code": 0,
+      "finished_utc": "2026-10-09T02:56:53.173397+00:00",
+      "raw_log": "recovery-order-diagnostic-attempt-2.log"
+    },
+    {
+      "argv": [
+        "E:\\persarb\\_tmp\\entropy43-validation\\reconnect-diagnostics-current.exe",
+        "test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once",
+        "--exact",
+        "--nocapture"
+      ],
+      "started_utc": "2026-10-09T02:56:53.173895+00:00",
+      "exe_sha256": "ccc30add4be8418048403a5aac9288a558700b3f9bfb7bbe0344801a115eaeb7",
+      "exit_code": 0,
+      "finished_utc": "2026-10-09T02:56:54.923392+00:00",
+      "raw_log": "recovery-order-diagnostic-attempt-3.log"
+    },
+    {
+      "argv": [
+        "E:\\persarb\\_tmp\\entropy43-validation\\reconnect-diagnostics-current.exe",
+        "test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once",
+        "--exact",
+        "--nocapture"
+      ],
+      "started_utc": "2026-10-09T02:56:54.923392+00:00",
+      "exe_sha256": "ccc30add4be8418048403a5aac9288a558700b3f9bfb7bbe0344801a115eaeb7",
+      "exit_code": 0,
+      "finished_utc": "2026-10-09T02:56:56.670894+00:00",
+      "raw_log": "recovery-order-diagnostic-attempt-4.log"
+    },
+    {
+      "argv": [
+        "E:\\persarb\\_tmp\\entropy43-validation\\reconnect-diagnostics-current.exe",
+        "test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once",
+        "--exact",
+        "--nocapture"
+      ],
+      "started_utc": "2026-10-09T02:56:56.671395+00:00",
+      "exe_sha256": "ccc30add4be8418048403a5aac9288a558700b3f9bfb7bbe0344801a115eaeb7",
+      "exit_code": 0,
+      "finished_utc": "2026-10-09T02:56:58.413895+00:00",
+      "raw_log": "recovery-order-diagnostic-attempt-5.log"
+    },
+    {
+      "argv": [
+        "E:\\persarb\\_tmp\\entropy43-validation\\reconnect-diagnostics-current.exe",
+        "test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once",
+        "--exact",
+        "--nocapture"
+      ],
+      "started_utc": "2026-10-09T02:56:58.414396+00:00",
+      "exe_sha256": "ccc30add4be8418048403a5aac9288a558700b3f9bfb7bbe0344801a115eaeb7",
+      "exit_code": 101,
+      "finished_utc": "2026-10-09T02:57:00.161380+00:00",
+      "raw_log": "recovery-order-diagnostic-attempt-6.log"
+    }
+  ]
+}

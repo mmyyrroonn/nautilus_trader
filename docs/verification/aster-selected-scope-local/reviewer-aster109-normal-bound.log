@@ -1,0 +1,14 @@
+{
+  "independent_normal_client": "PASS",
+  "before_after_identities_unchanged": true,
+  "queries": 1,
+  "pre_generation": 4,
+  "post_generation": 6,
+  "received_age_ns": 106741300,
+  "post_shutdown_getter": null,
+  "peer_active_sessions_after_teardown": 0,
+  "peer_actions": 0,
+  "orders_authorized": false,
+  "kernel_isolation_verified": false,
+  "result_directory": "E:\\persarb\\_tmp\\entropy43-validation\\reviewer-aster109-normal-readonly-bound"
+}

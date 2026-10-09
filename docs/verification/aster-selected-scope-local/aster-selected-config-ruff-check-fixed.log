@@ -1,0 +1,13 @@
+PT006 Wrong type passed to first argument of `pytest.mark.parametrize`; expected `tuple`
+  --> python\tests\unit\test_aster_selected_scope_config.py:91:5
+   |
+90 | @pytest.mark.parametrize(
+91 |     "updates,message",
+   |     ^^^^^^^^^^^^^^^^^
+92 |     [
+93 |         ({"ready": True}, "unknown field `ready`"),
+   |
+help: Use a `tuple` for the first argument
+
+Found 1 error.
+No fixes available (1 hidden fix can be enabled with the `--unsafe-fixes` option).

@@ -1,0 +1,69 @@
+unformatted: File would be reformatted
+   --> python\tests\unit\test_aster_selected_scope_config.py:34:28
+    |
+33  |         "instrument_provider": BinanceInstrumentProviderConfig(
+    -             load_all=False, load_ids=["SNDKUSD1-PERP.ASTER"],
+34  +             load_all=False,
+35  +             load_ids=["SNDKUSD1-PERP.ASTER"],
+36  |         ),
+--------------------------------------------------------------------------------
+71  |     with pytest.raises(ValueError):
+    -         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy(**{field: value}))
+72  +         AsterExecutionClientConfig(
+73  +             **config_values, selected_scope_policy_json=policy(**{field: value})
+74  +         )
+75  |
+76  |
+    - @pytest.mark.parametrize("updates", [
+    -     {"ready": True},
+    -     {"instrument_ids": []},
+    -     {"instrument_ids": ["SNDKUSD1-PERP.ASTER"] * 2},
+    -     {"instrument_ids": ["BTCUSDT-PERP.ASTER"]},
+    -     {"instrument_ids": ["SNDKUSD1-PERP.BINANCE"]},
+    -     {"balance_asset": "usd1"},
+    - ])
+77  + @pytest.mark.parametrize(
+78  +     "updates",
+79  +     [
+80  +         {"ready": True},
+81  +         {"instrument_ids": []},
+82  +         {"instrument_ids": ["SNDKUSD1-PERP.ASTER"] * 2},
+83  +         {"instrument_ids": ["BTCUSDT-PERP.ASTER"]},
+84  +         {"instrument_ids": ["SNDKUSD1-PERP.BINANCE"]},
+85  +         {"balance_asset": "usd1"},
+86  +     ],
+87  + )
+88  | def test_optional_policy_rejects_unknown_or_different_scope(config_values, updates):
+--------------------------------------------------------------------------------
+107 |     with pytest.raises(ValueError):
+    -         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy(), assume_one_way_mode_when_unconfirmed=True)
+108 +         AsterExecutionClientConfig(
+109 +             **config_values,
+110 +             selected_scope_policy_json=policy(),
+111 +             assume_one_way_mode_when_unconfirmed=True,
+112 +         )
+113 |     config_values["instrument_provider"] = BinanceInstrumentProviderConfig(load_all=True)
+--------------------------------------------------------------------------------
+124 |
+    - @pytest.mark.parametrize("endpoint", [
+    -     "http://synthetic:secret@127.0.0.1:0",
+    -     "http://127.0.0.1:0?account=unknown",
+    -     "http://127.0.0.1:0#unknown",
+    - ])
+125 + @pytest.mark.parametrize(
+126 +     "endpoint",
+127 +     [
+128 +         "http://synthetic:secret@127.0.0.1:0",
+129 +         "http://127.0.0.1:0?account=unknown",
+130 +         "http://127.0.0.1:0#unknown",
+131 +     ],
+132 + )
+133 | def test_selected_scope_rejects_credential_bearing_or_ambiguous_source_url(config_values, endpoint):
+134 |     with pytest.raises(ValueError):
+    -         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy(), base_url_http=endpoint)
+135 +         AsterExecutionClientConfig(
+136 +             **config_values, selected_scope_policy_json=policy(), base_url_http=endpoint
+137 +         )
+    |
+
+1 file would be reformatted

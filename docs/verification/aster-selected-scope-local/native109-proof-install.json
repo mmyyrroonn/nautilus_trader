@@ -1,0 +1,29 @@
+{
+  "argv": [
+    "E:\\persarb\\worktrees\\entropy-aster-proof\\.venv\\Scripts\\python.exe",
+    "scripts/install_native.py",
+    "--python",
+    "E:\\persarb\\worktrees\\entropy-aster-proof\\.venv\\Scripts\\python.exe",
+    "--local-override",
+    "--native-root",
+    "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "--wheel",
+    "E:\\persarb\\_tmp\\entropy109-wheel-nextest-20261009\\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+    "--provenance",
+    "E:\\persarb\\_tmp\\entropy109-wheel-nextest-20261009\\native-provenance.json",
+    "--sha256",
+    "da0cc0df4fc70cefe52c80ddb6c5514c1566c73a7cac32e460ca5d59298b72cf",
+    "--additional-adapter",
+    "hyperliquid",
+    "--additional-adapter",
+    "aster",
+    "--output",
+    "E:\\persarb\\_tmp\\entropy43-validation\\native109-proof-installed.json"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-execution-app",
+  "started_utc": "2026-10-09T03:29:27.089331+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T03:29:31.911479+00:00"
+}

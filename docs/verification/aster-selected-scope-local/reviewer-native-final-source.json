@@ -1,0 +1,38 @@
+﻿[
+    {
+        "utc":  "2026-10-09T03:19:44.6736216Z",
+        "path":  "E:\\persarb\\worktrees\\entropy-aster-proof\\crates\\adapters\\aster\\src\\execution.rs",
+        "sha256":  "f9d2d4351df4b63f777a0a838a562a89032c5cba74269840097c8a4941c8e223",
+        "bytes":  353934
+    },
+    {
+        "utc":  "2026-10-09T03:19:44.7538260Z",
+        "path":  "E:\\persarb\\worktrees\\entropy-aster-proof\\crates\\adapters\\aster\\tests\\selected_scope.rs",
+        "sha256":  "0107770ea4b2797818048e3ca02e59a4da920c0839485f797613443f0c454a79",
+        "bytes":  33259
+    },
+    {
+        "utc":  "2026-10-09T03:19:44.7548258Z",
+        "path":  "E:\\persarb\\worktrees\\entropy-aster-proof\\crates\\adapters\\aster\\tests\\exec_client.rs",
+        "sha256":  "d823916a947eef296d49f5548817027aca72fff0420fab9129be9d880bbd3a86",
+        "bytes":  212049
+    },
+    {
+        "utc":  "2026-10-09T03:19:44.7558252Z",
+        "path":  "E:\\persarb\\worktrees\\entropy-aster-proof\\crates\\adapters\\binance\\src\\futures\\websocket\\streams\\client.rs",
+        "sha256":  "f92eaaf039f87b9224960fa05936b10c52c7146ff69f2df4235163a351c4fa68",
+        "bytes":  37099
+    },
+    {
+        "utc":  "2026-10-09T03:19:44.7568251Z",
+        "path":  "E:\\persarb\\worktrees\\entropy-aster-proof\\crates\\adapters\\aster\\src\\websocket\\mod.rs",
+        "sha256":  "4bc40d112073610b840c05d9b927f880333d48e77ad6d7d277eda3d007f959b9",
+        "bytes":  16119
+    },
+    {
+        "utc":  "2026-10-09T03:19:44.7578254Z",
+        "path":  "E:\\persarb\\worktrees\\entropy-aster-proof\\crates\\adapters\\aster\\src\\scope.rs",
+        "sha256":  "63f8840d0b6b49a6fe8bb5fc5d9393e176975b027d222201154c6ee342bfb916",
+        "bytes":  9277
+    }
+]

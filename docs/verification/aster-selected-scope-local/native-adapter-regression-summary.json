@@ -1,0 +1,8 @@
+{
+  "groups": 16,
+  "passed": 3088,
+  "failed": 0,
+  "ignored": 12,
+  "log_sha256": "a6d537a70c33167d59483c8436f793e2b13e9b9ab582cb20effd466333a3d188",
+  "command_record": "native-adapter-regression-peer-fix.json"
+}

@@ -1,0 +1,27 @@
+   Compiling nautilus-binance v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\adapters\binance)
+error[E0308]: mismatched types
+   --> crates\adapters\binance\src\futures\websocket\streams\client.rs:643:29
+    |
+643 |                 raw_handler(message);
+    |                 ----------- ^^^^^^^ expected `nautilus_network::Message`, found `tokio_tungstenite::tungstenite::Message`
+    |                 |
+    |                 arguments to this function are incorrect
+    |
+    = note: `tokio_tungstenite::tungstenite::Message` and `nautilus_network::Message` have similar names, but are actually distinct types
+note: `tokio_tungstenite::tungstenite::Message` is defined in crate `tungstenite`
+   --> C:\Users\myron\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\tungstenite-0.30.0\src\protocol\message.rs:157:1
+    |
+157 | pub enum Message {
+    | ^^^^^^^^^^^^^^^^
+note: `nautilus_network::Message` is defined in crate `nautilus_network`
+   --> crates\network\src\transport\message.rs:32:1
+    |
+ 32 | pub enum Message {
+    | ^^^^^^^^^^^^^^^^
+help: call `Into::into` on this expression to convert `tokio_tungstenite::tungstenite::Message` into `nautilus_network::Message`
+    |
+643 |                 raw_handler(message.into());
+    |                                    +++++++
+
+For more information about this error, try `rustc --explain E0308`.
+error: could not compile `nautilus-binance` (lib) due to 1 previous error

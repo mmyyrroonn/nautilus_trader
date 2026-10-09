@@ -1,0 +1,52 @@
+"""Run the frozen normal-client scenario with real before/after dependency hashes."""
+import datetime as dt
+import hashlib
+import json
+import subprocess
+from pathlib import Path
+
+OUT = Path('E:/persarb/_tmp/entropy43-validation')
+APP = Path('E:/persarb/worktrees/entropy-execution-app')
+WHEEL_ROOT = Path('E:/persarb/_tmp/entropy109-wheel-nextest-20261009')
+runner = OUT / 'aster109_normal_readonly.py'
+dependencies = [runner, APP / 'src/entropy_execution.py', APP / 'tests/entropy_execution_peer.py', WHEEL_ROOT / 'nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl', WHEEL_ROOT / 'native-provenance.json', APP / '.venv/Lib/site-packages/nautilus_trader/_libnautilus.cp312-win_amd64.pyd', APP / '.venv/Lib/site-packages/nautilus_trader/adapters/aster/__init__.pyi']
+
+def identity(path):
+    sha = hashlib.sha256()
+    with path.open('rb') as stream:
+        while block := stream.read(1024 * 1024):
+            sha.update(block)
+    return {'path': str(path), 'sha256': sha.hexdigest(), 'bytes': path.stat().st_size}
+
+record = {'started_utc': dt.datetime.now(dt.timezone.utc).isoformat(), 'before': [identity(path) for path in dependencies]}
+target = OUT / 'reviewer-aster109-normal-readonly-bound'
+argv = [str(APP / '.venv/Scripts/python.exe'), '-I', str(runner), str(target), str(dependencies[3]), 'da0cc0df4fc70cefe52c80ddb6c5514c1566c73a7cac32e460ca5d59298b72cf', str(dependencies[4])]
+record['argv'] = argv
+record['cwd'] = str(Path.cwd())
+(OUT / 'reviewer-aster109-normal-bound-pre.json').write_text(json.dumps(record, indent=2) + '\n')
+with (OUT / 'reviewer-aster109-normal-bound-raw.log').open('wb') as log:
+    outcome = subprocess.run(argv, stdout=log, stderr=subprocess.STDOUT, check=False)
+record.update(exit_code=outcome.returncode, finished_utc=dt.datetime.now(dt.timezone.utc).isoformat(), after=[identity(path) for path in dependencies])
+record['all_dependencies_unchanged'] = record['before'] == record['after']
+(OUT / 'reviewer-aster109-normal-bound-post.json').write_text(json.dumps(record, indent=2) + '\n')
+assert record['all_dependencies_unchanged'], 'scenario source or native identity changed during execution'
+assert outcome.returncode == 0, (OUT / 'reviewer-aster109-normal-bound-raw.log').read_text()
+result = json.loads((target / 'result.json').read_text())
+proof = result['actual_selected_scope']
+assert result['queries'] == 1 and proof['generation'] > result['prequery_scope']['generation']
+assert result['post_shutdown_scope_json'] is None and result['active_sessions_after_teardown'] == 0
+assert proof['fill_chronology_debt'] is False and proof['reason'] is None
+assert proof['source_time_ns'] is None and proof['source_time_origin'] == 'venue_does_not_supply_snapshot_time'
+assert proof['whole_account_verified'] is False and proof['run_ownership_verified'] is False and proof['funding_verified'] is False
+assert proof['open_orders'] == [] and proof['balance_asset'] == 'USD1'
+ready_observation = next(observation for observation in result['observations'] if observation['snapshot'] == proof)
+age_ns = ready_observation['received_ns'] - proof['received_time_ns']
+assert 0 <= age_ns <= proof['max_age_ms'] * 1_000_000
+peer = json.loads((target / 'peer-evidence.json').read_text())
+assert peer['commands'] == [] and peer['errors'] == [] and peer['actions'] == 0 and peer['fills'] == []
+manifest = json.loads((target / 'manifest.json').read_text())
+assert manifest['reconciliation'] is True and manifest['orders_authorized'] is False
+assert manifest['synthetic_numeric_loopback'] is True and manifest['native_host_egress_isolation_verified'] is False
+summary = {'independent_normal_client': 'PASS', 'before_after_identities_unchanged': True, 'queries': result['queries'], 'pre_generation': result['prequery_scope']['generation'], 'post_generation': proof['generation'], 'received_age_ns': age_ns, 'post_shutdown_getter': result['post_shutdown_scope_json'], 'peer_active_sessions_after_teardown': peer['active_sessions_after_teardown'], 'peer_actions': peer['actions'], 'orders_authorized': manifest['orders_authorized'], 'kernel_isolation_verified': False, 'result_directory': str(target)}
+(OUT / 'reviewer-aster109-normal-bound-summary.json').write_text(json.dumps(summary, indent=2) + '\n')
+print(json.dumps(summary, indent=2))

@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "E:/persarb/nautilus_trader/target/nextest/deps/nautilus_aster-13029d0434076b74.exe",
+    "http::client::tests::test_submit_admission_runs_after_the_order_quota_wait",
+    "http::client::tests::test_quota_timeout_is_local_and_never_resends_a_post",
+    "http::client::tests::test_timeout_after_dispatch_keeps_the_post_unknown",
+    "--test-threads=1"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+  "started_utc": "2026-10-09T02:46:06.146677+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T02:46:08.694620+00:00"
+}

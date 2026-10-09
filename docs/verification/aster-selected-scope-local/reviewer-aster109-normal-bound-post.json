@@ -1,0 +1,90 @@
+{
+  "started_utc": "2026-10-09T03:37:59.342970+00:00",
+  "before": [
+    {
+      "path": "E:\\persarb\\_tmp\\entropy43-validation\\aster109_normal_readonly.py",
+      "sha256": "383c99088629d568d3866fcd4ea83a0ef51c1fb9ffc1a587c4832da9decc494a",
+      "bytes": 10479
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution.py",
+      "sha256": "6a3c41a37d65c72edc0fb12fc9a45386fe960e3fa39b172c4d331bb0c0734276",
+      "bytes": 59904
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\entropy_execution_peer.py",
+      "sha256": "e288616d1ae21a79457f2a7ad49ce5859f9d22da585f31ecc95d08253eb7bc3a",
+      "bytes": 28922
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy109-wheel-nextest-20261009\\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+      "sha256": "da0cc0df4fc70cefe52c80ddb6c5514c1566c73a7cac32e460ca5d59298b72cf",
+      "bytes": 109417293
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy109-wheel-nextest-20261009\\native-provenance.json",
+      "sha256": "198f1db53003cdba796cb99461c6209e95dfbf874dbfcb97f21d1f72829c28b0",
+      "bytes": 8168
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\_libnautilus.cp312-win_amd64.pyd",
+      "sha256": "62eaea08f84ae9fa7cc21e374d38fc8fc6b4d877d6a24c4e85919618de139138",
+      "bytes": 389675520
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\aster\\__init__.pyi",
+      "sha256": "3dc13e6d8cfca549f5d0396effbd3c14069075666f9b3cbb544332161fb179bf",
+      "bytes": 3854
+    }
+  ],
+  "argv": [
+    "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Scripts\\python.exe",
+    "-I",
+    "E:\\persarb\\_tmp\\entropy43-validation\\aster109_normal_readonly.py",
+    "E:\\persarb\\_tmp\\entropy43-validation\\reviewer-aster109-normal-readonly-bound",
+    "E:\\persarb\\_tmp\\entropy109-wheel-nextest-20261009\\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+    "da0cc0df4fc70cefe52c80ddb6c5514c1566c73a7cac32e460ca5d59298b72cf",
+    "E:\\persarb\\_tmp\\entropy109-wheel-nextest-20261009\\native-provenance.json"
+  ],
+  "cwd": "E:\\persarb\\_tmp\\entropy43-validation",
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T03:38:02.768616+00:00",
+  "after": [
+    {
+      "path": "E:\\persarb\\_tmp\\entropy43-validation\\aster109_normal_readonly.py",
+      "sha256": "383c99088629d568d3866fcd4ea83a0ef51c1fb9ffc1a587c4832da9decc494a",
+      "bytes": 10479
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution.py",
+      "sha256": "6a3c41a37d65c72edc0fb12fc9a45386fe960e3fa39b172c4d331bb0c0734276",
+      "bytes": 59904
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\entropy_execution_peer.py",
+      "sha256": "e288616d1ae21a79457f2a7ad49ce5859f9d22da585f31ecc95d08253eb7bc3a",
+      "bytes": 28922
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy109-wheel-nextest-20261009\\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+      "sha256": "da0cc0df4fc70cefe52c80ddb6c5514c1566c73a7cac32e460ca5d59298b72cf",
+      "bytes": 109417293
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy109-wheel-nextest-20261009\\native-provenance.json",
+      "sha256": "198f1db53003cdba796cb99461c6209e95dfbf874dbfcb97f21d1f72829c28b0",
+      "bytes": 8168
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\_libnautilus.cp312-win_amd64.pyd",
+      "sha256": "62eaea08f84ae9fa7cc21e374d38fc8fc6b4d877d6a24c4e85919618de139138",
+      "bytes": 389675520
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\aster\\__init__.pyi",
+      "sha256": "3dc13e6d8cfca549f5d0396effbd3c14069075666f9b3cbb544332161fb179bf",
+      "bytes": 3854
+    }
+  ],
+  "all_dependencies_unchanged": true
+}

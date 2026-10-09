@@ -1,0 +1,24 @@
+{
+  "captured_utc": "2026-10-09T02:56:00.308786+00:00",
+  "role": "Implementation-agent read-only default regression diagnosis; not independent acceptance",
+  "source_sha256": {
+    "E:\\persarb\\worktrees\\entropy-aster-proof\\crates\\adapters\\aster\\src\\execution.rs": "61507858f76a4e50713ca9ea9e1605f4e166cff1076b2cb4dc31c35d8927725f",
+    "E:\\persarb\\worktrees\\entropy-aster-proof\\crates\\execution\\src\\engine\\mod.rs": "99615c462a05f132934bf12811171438e30d0665575a7a0fa345aca20933fbfe",
+    "E:\\persarb\\worktrees\\entropy109-baseline\\crates\\adapters\\aster\\src\\execution.rs": "39f6ab6fd9356e7f285a364197cc5a135f42c544df1b9e3127ee4a30249005e0",
+    "E:\\persarb\\worktrees\\entropy109-baseline\\crates\\execution\\src\\engine\\mod.rs": "99615c462a05f132934bf12811171438e30d0665575a7a0fa345aca20933fbfe"
+  },
+  "log_evidence": [
+    "native-reconnect-flat-isolate.log: actual 0 pass/1 fail at cache.positions_open assertion after both order/trade/commission checks passed",
+    "native-reconnect-flat-diagnostics.log: actual same focused test 1 pass after adding diagnostic assertion"
+  ],
+  "inference": "The existing AHashMap by-order iteration can emit reduce-only close before opening trade. Engine retains order fill economics but rejects reduce-only position creation when no position exists; later BUY opens .010 Long. Flat position report only checks/logs mismatch, so cache remains Long.",
+  "source_references": [
+    "new execution.rs 2822/2828 and baseline 2124/2130: same AHashMap grouping and unsorted bundle publication",
+    "engine/mod.rs 1533: OrderWithFills preserves actual order fill and economics",
+    "engine/mod.rs 4016, 4041: no position/reduce-only fill rejects position open",
+    "engine/mod.rs 1712: netting position snapshot only compares/logs cached quantity",
+    "new validators early-return Ok on selected_policy None; opt-in checks do not change default numeric projection"
+  ],
+  "suggested_minimum": "Collect by_order into Vec and deterministically sort bundle publication by earliest actual trade (time,id), then venue order ID; retain exact bundle/debt/dedupe behavior. Verify with root trace and regression using chronological trades with reverse insertion/order-ID ordering. Interleaved multiple trades across orders require a separately considered fuller ordering contract; this narrow diagnosis is not a proof that first-trade bundle sorting handles arbitrary interleaving.",
+  "operations": "No source edits, Cargo/build/install/Git/GH, venue requests, credentials or ABI tests. Temporary difflib comparison only."
+}

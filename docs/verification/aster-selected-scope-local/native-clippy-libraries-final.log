@@ -1,0 +1,29 @@
+   Compiling nautilus-core v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\core)
+   Compiling nautilus-common v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\common)
+   Compiling nautilus-serialization v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\serialization)
+    Checking nautilus-model v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\model)
+    Checking nautilus-cryptography v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\cryptography)
+    Checking nautilus-network v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\network)
+    Checking nautilus-execution v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\execution)
+    Checking nautilus-live v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\live)
+    Checking nautilus-binance v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\adapters\binance)
+    Checking nautilus-aster v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\adapters\aster)
+error: called `map(<f>).unwrap_or(<a>)` on an `Option` value
+    --> crates\adapters\aster\src\execution.rs:1377:26
+     |
+1377 |             "positions": witness.map(|w| w.positions.as_slice()).unwrap_or(&[]),
+     |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#map_unwrap_or
+     = note: `-D clippy::map-unwrap-or` implied by `-D warnings`
+     = help: to override `-D warnings` add `#[allow(clippy::map_unwrap_or)]`
+
+error: called `map(<f>).unwrap_or(<a>)` on an `Option` value
+    --> crates\adapters\aster\src\execution.rs:1379:28
+     |
+1379 |             "open_orders": witness.map(|w| w.open_orders.as_slice()).unwrap_or(&[]),
+     |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#map_unwrap_or
+
+error: could not compile `nautilus-aster` (lib) due to 2 previous errors

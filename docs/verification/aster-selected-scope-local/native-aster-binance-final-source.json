@@ -1,0 +1,24 @@
+{
+  "argv": [
+    "cargo",
+    "test",
+    "-p",
+    "nautilus-aster",
+    "-p",
+    "nautilus-binance",
+    "--lib",
+    "--tests",
+    "--profile",
+    "nextest",
+    "--locked",
+    "--offline",
+    "--config",
+    "build.warnings='warn'"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+  "started_utc": "2026-10-09T02:48:05.807938+00:00",
+  "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+  "pyo3_python": null,
+  "exit_code": 101,
+  "finished_utc": "2026-10-09T02:49:33.672612+00:00"
+}

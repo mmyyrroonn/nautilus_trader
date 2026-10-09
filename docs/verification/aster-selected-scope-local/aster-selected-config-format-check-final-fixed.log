@@ -1,0 +1,10 @@
+unformatted: File would be reformatted
+  --> python\tests\unit\test_aster_selected_scope_config.py:91:28
+   |
+90 | @pytest.mark.parametrize(
+   -     ("updates", "message"),
+91 +     ("updates", "message"),
+92 |     [
+   |
+
+1 file would be reformatted

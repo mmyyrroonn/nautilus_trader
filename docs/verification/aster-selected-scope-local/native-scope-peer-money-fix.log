@@ -1,0 +1,9 @@
+   Compiling nautilus-aster v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\adapters\aster)
+error[E0433]: cannot find type `Money` in this scope
+    --> crates\adapters\aster\src\execution.rs:1571:21
+     |
+1571 |                     Money::from_decimal(amount, currency)?.as_decimal() == amount,
+     |                     ^^^^^ use of undeclared type `Money`
+
+For more information about this error, try `rustc --explain E0433`.
+error: could not compile `nautilus-aster` (lib) due to 1 previous error

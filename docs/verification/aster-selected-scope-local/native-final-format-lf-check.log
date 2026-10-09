@@ -1,0 +1,346 @@
+unformatted: File would be reformatted
+   --> python\tests\unit\test_aster_selected_scope_config.py:1:100
+    |
+    - # -------------------------------------------------------------------------------------------------
+    - #  Copyright (C) 2015-2026 Nautech Systems Pty Ltd. All rights reserved.
+    - #  https://nautechsystems.io
+    - #
+    - #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+    - #  You may not use this file except in compliance with the License.
+    - #  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+    - #
+    - #  Unless required by applicable law or agreed to in writing, software
+    - #  distributed under the License is distributed on an "AS IS" BASIS,
+    - #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    - #  See the License for the specific language governing permissions and
+    - #  limitations under the License.
+    - # -------------------------------------------------------------------------------------------------
+    - """Verify optional native Aster selected-scope configuration without network access."""
+    -
+    - import inspect
+    - import json
+    -
+    - import pytest
+    -
+    - from nautilus_trader.adapters.aster import AsterExecutionClientConfig
+    - from nautilus_trader.adapters.aster import AsterExecutionClientFactory
+    - from nautilus_trader.adapters.binance import BinanceInstrumentProviderConfig
+    -
+    -
+    - @pytest.fixture
+    - def config_values() -> dict[str, object]:
+    -     """Provide explicit synthetic account inputs without ambient credential lookup."""
+    -     return {
+    -         "user_address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+    -         "signer_address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+    -         "signer_private_key": "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+    -         "instrument_provider": BinanceInstrumentProviderConfig(
+    -             load_all=False,
+    -             load_ids=["SNDKUSD1-PERP.ASTER"],
+    -         ),
+    -     }
+    -
+    -
+    - def policy(**updates: object) -> str:
+    -     """Serialize the bounded selection with individual validation mutations."""
+    -     values = {
+    -         "instrument_ids": ["SNDKUSD1-PERP.ASTER"],
+    -         "balance_asset": "USD1",
+    -         "max_age_ms": 2000,
+    -         "max_refresh_ms": 15000,
+    -     }
+    -     values.update(updates)
+    -     return json.dumps(values)
+    -
+    -
+    - def test_legacy_constructor_keeps_optional_scope_as_last_suffix() -> None:
+    -     """Preserve positional configuration compatibility and absent diagnostics."""
+    -     names = list(inspect.signature(AsterExecutionClientConfig).parameters)
+    -     assert names[-2:] == ["assume_one_way_mode_when_unconfirmed", "selected_scope_policy_json"]
+    -     assert AsterExecutionClientConfig().selected_scope_policy_json is None
+    -     assert AsterExecutionClientFactory().selected_scope_snapshot_json() is None
+    -
+    -
+    - def test_optional_policy_is_readonly_and_does_not_expose_signer_key(config_values) -> None:
+    -     """Keep policy immutable and signing material outside public diagnostics."""
+    -     raw = policy()
+    -     config = AsterExecutionClientConfig(**config_values, selected_scope_policy_json=raw)
+    -     assert config.selected_scope_policy_json == raw
+    -     with pytest.raises(AttributeError):
+    -         config.selected_scope_policy_json = None
+    -     assert not hasattr(config, "signer_private_key")
+    -     assert config_values["signer_private_key"] not in repr(config)
+    -
+    -
+    - @pytest.mark.parametrize("value", [True, False, 2.0, -1, 0, 60001, "2000"])
+    - @pytest.mark.parametrize("field", ["max_age_ms", "max_refresh_ms"])
+    - def test_optional_policy_rejects_non_integer_or_unbounded_limits(
+    -     config_values, field, value
+    - ) -> None:
+    -     """Reject serde type mismatches and values beyond the finite policy bounds."""
+    -     bound = "age" if field == "max_age_ms" else "refresh"
+    -     message = (
+    -         f"Invalid Aster selected scope {bound} bound"
+    -         if type(value) is int and value >= 0
+    -         else "expected u64"
+    -     )
+    -     with pytest.raises(ValueError, match=message):
+    -         AsterExecutionClientConfig(
+    -             **config_values, selected_scope_policy_json=policy(**{field: value})
+    -         )
+    -
+    -
+    - @pytest.mark.parametrize(
+    -     ("updates", "message"),
+    -     [
+    -         ({"ready": True}, "unknown field `ready`"),
+    -         ({"instrument_ids": []}, "requires 1 to 8 instrument IDs"),
+    -         (
+    -             {"instrument_ids": ["SNDKUSD1-PERP.ASTER"] * 2},
+    -             "Duplicate Aster selected scope instrument ID",
+    -         ),
+    -         ({"instrument_ids": ["BTCUSDT-PERP.ASTER"]}, "IDs must equal finite configured load IDs"),
+    -         ({"instrument_ids": ["SNDKUSD1-PERP.BINANCE"]}, "ID must use the exact configured venue"),
+    -         ({"balance_asset": "usd1"}, "Invalid Aster selected scope balance asset"),
+    -     ],
+    - )
+    - def test_optional_policy_rejects_unknown_or_different_scope(
+    -     config_values, updates, message
+    - ) -> None:
+    -     """Bind every policy rejection to its intended scope validation failure."""
+    -     with pytest.raises(ValueError, match=message):
+    -         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy(**updates))
+    -
+    -
+    - def test_optional_policy_rejects_duplicate_keys(config_values) -> None:
+    -     """Refuse duplicate JSON fields rather than selecting a later authority value."""
+    -     raw = policy()[:-1] + ', "max_age_ms": 3000}'
+    -     with pytest.raises(ValueError, match="duplicate field `max_age_ms`"):
+    -         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=raw)
+    -
+    -
+    - @pytest.mark.parametrize("field", ["signer_private_key", "signer_address", "user_address"])
+    - def test_optional_policy_requires_explicit_account_identity(config_values, field) -> None:
+    -     """Require explicit signing credentials and canonical user/signer addresses."""
+    -     config_values[field] = None
+    -     message = (
+    -         "requires explicit user, signer and signing credentials"
+    -         if field == "signer_private_key"
+    -         else "requires canonical explicit wallet addresses"
+    -     )
+    -     with pytest.raises(ValueError, match=message):
+    -         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy())
+    -
+    -
+    - def test_optional_policy_refuses_mode_exemption_and_catalogue_loading(config_values) -> None:
+    -     """Require confirmed mode and a finite instrument selection for opt-in proof."""
+    -     with pytest.raises(ValueError, match="does not permit a position-mode exemption"):
+    -         AsterExecutionClientConfig(
+    -             **config_values,
+    -             selected_scope_policy_json=policy(),
+    -             assume_one_way_mode_when_unconfirmed=True,
+    -         )
+    -     config_values["instrument_provider"] = BinanceInstrumentProviderConfig(load_all=True)
+    -     with pytest.raises(ValueError, match="requires finite instrument loading"):
+    -         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy())
+    -
+    -
+    - @pytest.mark.parametrize("value", ["bad", "0x" + "g" * 40, " " + "0x" + "a" * 40])
+    - def test_selected_scope_rejects_noncanonical_wallet_identity(config_values, value) -> None:
+    -     """Refuse malformed identities without normalizing their source binding."""
+    -     config_values["user_address"] = value
+    -     with pytest.raises(ValueError, match="requires canonical explicit wallet addresses"):
+    -         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy())
+    -
+    -
+    - @pytest.mark.parametrize(
+    -     "endpoint",
+    -     [
+    -         "http://synthetic:secret@127.0.0.1:0",
+    -         "http://127.0.0.1:0?account=unknown",
+    -         "http://127.0.0.1:0#unknown",
+    -     ],
+    - )
+    - def test_selected_scope_rejects_credential_bearing_or_ambiguous_source_url(
+    -     config_values, endpoint
+    - ) -> None:
+    -     """Reject embedded credentials or source-changing URL query/fragment data."""
+    -     with pytest.raises(
+    -         ValueError, match="must not contain embedded credentials, query or fragment"
+    -     ):
+    -         AsterExecutionClientConfig(
+    -             **config_values, selected_scope_policy_json=policy(), base_url_http=endpoint
+    -         )
+1   + # -------------------------------------------------------------------------------------------------
+2   + #  Copyright (C) 2015-2026 Nautech Systems Pty Ltd. All rights reserved.
+3   + #  https://nautechsystems.io
+4   + #
+5   + #  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+6   + #  You may not use this file except in compliance with the License.
+7   + #  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+8   + #
+9   + #  Unless required by applicable law or agreed to in writing, software
+10  + #  distributed under the License is distributed on an "AS IS" BASIS,
+11  + #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+12  + #  See the License for the specific language governing permissions and
+13  + #  limitations under the License.
+14  + # -------------------------------------------------------------------------------------------------
+15  + """Verify optional native Aster selected-scope configuration without network access."""
+16  +
+17  + import inspect
+18  + import json
+19  +
+20  + import pytest
+21  +
+22  + from nautilus_trader.adapters.aster import AsterExecutionClientConfig
+23  + from nautilus_trader.adapters.aster import AsterExecutionClientFactory
+24  + from nautilus_trader.adapters.binance import BinanceInstrumentProviderConfig
+25  +
+26  +
+27  + @pytest.fixture
+28  + def config_values() -> dict[str, object]:
+29  +     """Provide explicit synthetic account inputs without ambient credential lookup."""
+30  +     return {
+31  +         "user_address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+32  +         "signer_address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+33  +         "signer_private_key": "0xdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+34  +         "instrument_provider": BinanceInstrumentProviderConfig(
+35  +             load_all=False,
+36  +             load_ids=["SNDKUSD1-PERP.ASTER"],
+37  +         ),
+38  +     }
+39  +
+40  +
+41  + def policy(**updates: object) -> str:
+42  +     """Serialize the bounded selection with individual validation mutations."""
+43  +     values = {
+44  +         "instrument_ids": ["SNDKUSD1-PERP.ASTER"],
+45  +         "balance_asset": "USD1",
+46  +         "max_age_ms": 2000,
+47  +         "max_refresh_ms": 15000,
+48  +     }
+49  +     values.update(updates)
+50  +     return json.dumps(values)
+51  +
+52  +
+53  + def test_legacy_constructor_keeps_optional_scope_as_last_suffix() -> None:
+54  +     """Preserve positional configuration compatibility and absent diagnostics."""
+55  +     names = list(inspect.signature(AsterExecutionClientConfig).parameters)
+56  +     assert names[-2:] == ["assume_one_way_mode_when_unconfirmed", "selected_scope_policy_json"]
+57  +     assert AsterExecutionClientConfig().selected_scope_policy_json is None
+58  +     assert AsterExecutionClientFactory().selected_scope_snapshot_json() is None
+59  +
+60  +
+61  + def test_optional_policy_is_readonly_and_does_not_expose_signer_key(config_values) -> None:
+62  +     """Keep policy immutable and signing material outside public diagnostics."""
+63  +     raw = policy()
+64  +     config = AsterExecutionClientConfig(**config_values, selected_scope_policy_json=raw)
+65  +     assert config.selected_scope_policy_json == raw
+66  +     with pytest.raises(AttributeError):
+67  +         config.selected_scope_policy_json = None
+68  +     assert not hasattr(config, "signer_private_key")
+69  +     assert config_values["signer_private_key"] not in repr(config)
+70  +
+71  +
+72  + @pytest.mark.parametrize("value", [True, False, 2.0, -1, 0, 60001, "2000"])
+73  + @pytest.mark.parametrize("field", ["max_age_ms", "max_refresh_ms"])
+74  + def test_optional_policy_rejects_non_integer_or_unbounded_limits(
+75  +     config_values, field, value
+76  + ) -> None:
+77  +     """Reject serde type mismatches and values beyond the finite policy bounds."""
+78  +     bound = "age" if field == "max_age_ms" else "refresh"
+79  +     message = (
+80  +         f"Invalid Aster selected scope {bound} bound"
+81  +         if type(value) is int and value >= 0
+82  +         else "expected u64"
+83  +     )
+84  +     with pytest.raises(ValueError, match=message):
+85  +         AsterExecutionClientConfig(
+86  +             **config_values, selected_scope_policy_json=policy(**{field: value})
+87  +         )
+88  +
+89  +
+90  + @pytest.mark.parametrize(
+91  +     ("updates", "message"),
+92  +     [
+93  +         ({"ready": True}, "unknown field `ready`"),
+94  +         ({"instrument_ids": []}, "requires 1 to 8 instrument IDs"),
+95  +         (
+96  +             {"instrument_ids": ["SNDKUSD1-PERP.ASTER"] * 2},
+97  +             "Duplicate Aster selected scope instrument ID",
+98  +         ),
+99  +         ({"instrument_ids": ["BTCUSDT-PERP.ASTER"]}, "IDs must equal finite configured load IDs"),
+100 +         ({"instrument_ids": ["SNDKUSD1-PERP.BINANCE"]}, "ID must use the exact configured venue"),
+101 +         ({"balance_asset": "usd1"}, "Invalid Aster selected scope balance asset"),
+102 +     ],
+103 + )
+104 + def test_optional_policy_rejects_unknown_or_different_scope(
+105 +     config_values, updates, message
+106 + ) -> None:
+107 +     """Bind every policy rejection to its intended scope validation failure."""
+108 +     with pytest.raises(ValueError, match=message):
+109 +         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy(**updates))
+110 +
+111 +
+112 + def test_optional_policy_rejects_duplicate_keys(config_values) -> None:
+113 +     """Refuse duplicate JSON fields rather than selecting a later authority value."""
+114 +     raw = policy()[:-1] + ', "max_age_ms": 3000}'
+115 +     with pytest.raises(ValueError, match="duplicate field `max_age_ms`"):
+116 +         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=raw)
+117 +
+118 +
+119 + @pytest.mark.parametrize("field", ["signer_private_key", "signer_address", "user_address"])
+120 + def test_optional_policy_requires_explicit_account_identity(config_values, field) -> None:
+121 +     """Require explicit signing credentials and canonical user/signer addresses."""
+122 +     config_values[field] = None
+123 +     message = (
+124 +         "requires explicit user, signer and signing credentials"
+125 +         if field == "signer_private_key"
+126 +         else "requires canonical explicit wallet addresses"
+127 +     )
+128 +     with pytest.raises(ValueError, match=message):
+129 +         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy())
+130 +
+131 +
+132 + def test_optional_policy_refuses_mode_exemption_and_catalogue_loading(config_values) -> None:
+133 +     """Require confirmed mode and a finite instrument selection for opt-in proof."""
+134 +     with pytest.raises(ValueError, match="does not permit a position-mode exemption"):
+135 +         AsterExecutionClientConfig(
+136 +             **config_values,
+137 +             selected_scope_policy_json=policy(),
+138 +             assume_one_way_mode_when_unconfirmed=True,
+139 +         )
+140 +     config_values["instrument_provider"] = BinanceInstrumentProviderConfig(load_all=True)
+141 +     with pytest.raises(ValueError, match="requires finite instrument loading"):
+142 +         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy())
+143 +
+144 +
+145 + @pytest.mark.parametrize("value", ["bad", "0x" + "g" * 40, " " + "0x" + "a" * 40])
+146 + def test_selected_scope_rejects_noncanonical_wallet_identity(config_values, value) -> None:
+147 +     """Refuse malformed identities without normalizing their source binding."""
+148 +     config_values["user_address"] = value
+149 +     with pytest.raises(ValueError, match="requires canonical explicit wallet addresses"):
+150 +         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy())
+151 +
+152 +
+153 + @pytest.mark.parametrize(
+154 +     "endpoint",
+155 +     [
+156 +         "http://synthetic:secret@127.0.0.1:0",
+157 +         "http://127.0.0.1:0?account=unknown",
+158 +         "http://127.0.0.1:0#unknown",
+159 +     ],
+160 + )
+161 + def test_selected_scope_rejects_credential_bearing_or_ambiguous_source_url(
+162 +     config_values, endpoint
+163 + ) -> None:
+164 +     """Reject embedded credentials or source-changing URL query/fragment data."""
+165 +     with pytest.raises(
+166 +         ValueError, match="must not contain embedded credentials, query or fragment"
+167 +     ):
+168 +         AsterExecutionClientConfig(
+169 +             **config_values, selected_scope_policy_json=policy(), base_url_http=endpoint
+170 +         )
+    |
+
+1 file would be reformatted, 1 file already formatted

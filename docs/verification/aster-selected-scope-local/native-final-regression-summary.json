@@ -1,0 +1,90 @@
+{
+  "passed": 3093,
+  "failed": 0,
+  "ignored": 12,
+  "groups": [
+    [
+      358,
+      0,
+      0
+    ],
+    [
+      99,
+      0,
+      0
+    ],
+    [
+      35,
+      0,
+      0
+    ],
+    [
+      977,
+      0,
+      0
+    ],
+    [
+      233,
+      0,
+      0
+    ],
+    [
+      147,
+      0,
+      0
+    ],
+    [
+      865,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0
+    ],
+    [
+      46,
+      0,
+      0
+    ],
+    [
+      40,
+      0,
+      0
+    ],
+    [
+      92,
+      0,
+      0
+    ],
+    [
+      102,
+      0,
+      1
+    ],
+    [
+      46,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      5
+    ],
+    [
+      0,
+      0,
+      6
+    ],
+    [
+      53,
+      0,
+      0
+    ]
+  ],
+  "raw_log": "native-adapter-final-chronology-regression.log",
+  "raw_log_sha256": "ebe059a3fbaae743fe1c03d963b2b6fec19cf973a9b27ad53b0d9aaacbcd5090",
+  "command_record": "native-adapter-final-chronology-regression.json"
+}

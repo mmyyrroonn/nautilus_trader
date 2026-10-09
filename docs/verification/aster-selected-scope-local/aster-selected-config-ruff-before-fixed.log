@@ -1,0 +1,318 @@
+ANN201 Missing return type annotation for public function `config_values`
+  --> python\tests\unit\test_aster_selected_scope_config.py:28:5
+   |
+27 | @pytest.fixture
+28 | def config_values():
+   |     ^^^^^^^^^^^^^
+29 |     return {
+30 |         "user_address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+   |
+help: Add return type annotation
+
+D103 Missing docstring in public function
+  --> python\tests\unit\test_aster_selected_scope_config.py:28:5
+   |
+27 | @pytest.fixture
+28 | def config_values():
+   |     ^^^^^^^^^^^^^
+29 |     return {
+30 |         "user_address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+   |
+
+ANN201 Missing return type annotation for public function `policy`
+  --> python\tests\unit\test_aster_selected_scope_config.py:39:5
+   |
+39 | def policy(**updates):
+   |     ^^^^^^
+40 |     values = {
+41 |         "instrument_ids": ["SNDKUSD1-PERP.ASTER"],
+   |
+help: Add return type annotation
+
+D103 Missing docstring in public function
+  --> python\tests\unit\test_aster_selected_scope_config.py:39:5
+   |
+39 | def policy(**updates):
+   |     ^^^^^^
+40 |     values = {
+41 |         "instrument_ids": ["SNDKUSD1-PERP.ASTER"],
+   |
+
+ANN003 Missing type annotation for `**updates`
+  --> python\tests\unit\test_aster_selected_scope_config.py:39:12
+   |
+39 | def policy(**updates):
+   |            ^^^^^^^^^
+40 |     values = {
+41 |         "instrument_ids": ["SNDKUSD1-PERP.ASTER"],
+   |
+
+ANN201 Missing return type annotation for public function `test_legacy_constructor_keeps_optional_scope_as_last_suffix`
+  --> python\tests\unit\test_aster_selected_scope_config.py:50:5
+   |
+50 | def test_legacy_constructor_keeps_optional_scope_as_last_suffix():
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+51 |     names = list(inspect.signature(AsterExecutionClientConfig).parameters)
+52 |     assert names[-2:] == ["assume_one_way_mode_when_unconfirmed", "selected_scope_policy_json"]
+   |
+help: Add return type annotation: `None`
+
+D103 Missing docstring in public function
+  --> python\tests\unit\test_aster_selected_scope_config.py:50:5
+   |
+50 | def test_legacy_constructor_keeps_optional_scope_as_last_suffix():
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+51 |     names = list(inspect.signature(AsterExecutionClientConfig).parameters)
+52 |     assert names[-2:] == ["assume_one_way_mode_when_unconfirmed", "selected_scope_policy_json"]
+   |
+
+ANN201 Missing return type annotation for public function `test_optional_policy_is_readonly_and_does_not_expose_signer_key`
+  --> python\tests\unit\test_aster_selected_scope_config.py:57:5
+   |
+57 | def test_optional_policy_is_readonly_and_does_not_expose_signer_key(config_values):
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+58 |     raw = policy()
+59 |     config = AsterExecutionClientConfig(**config_values, selected_scope_policy_json=raw)
+   |
+help: Add return type annotation: `None`
+
+D103 Missing docstring in public function
+  --> python\tests\unit\test_aster_selected_scope_config.py:57:5
+   |
+57 | def test_optional_policy_is_readonly_and_does_not_expose_signer_key(config_values):
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+58 |     raw = policy()
+59 |     config = AsterExecutionClientConfig(**config_values, selected_scope_policy_json=raw)
+   |
+
+ANN201 Missing return type annotation for public function `test_optional_policy_rejects_non_integer_or_unbounded_limits`
+  --> python\tests\unit\test_aster_selected_scope_config.py:69:5
+   |
+67 | @pytest.mark.parametrize("value", [True, False, 2.0, -1, 0, 60001, "2000"])
+68 | @pytest.mark.parametrize("field", ["max_age_ms", "max_refresh_ms"])
+69 | def test_optional_policy_rejects_non_integer_or_unbounded_limits(config_values, field, value):
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+70 |     with pytest.raises(ValueError):
+71 |         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy(**{field: value}))
+   |
+help: Add return type annotation: `None`
+
+D103 Missing docstring in public function
+  --> python\tests\unit\test_aster_selected_scope_config.py:69:5
+   |
+67 | @pytest.mark.parametrize("value", [True, False, 2.0, -1, 0, 60001, "2000"])
+68 | @pytest.mark.parametrize("field", ["max_age_ms", "max_refresh_ms"])
+69 | def test_optional_policy_rejects_non_integer_or_unbounded_limits(config_values, field, value):
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+70 |     with pytest.raises(ValueError):
+71 |         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy(**{field: value}))
+   |
+
+PT011 `pytest.raises(ValueError)` is too broad, set the `match` parameter or use a more specific exception
+  --> python\tests\unit\test_aster_selected_scope_config.py:70:24
+   |
+68 | @pytest.mark.parametrize("field", ["max_age_ms", "max_refresh_ms"])
+69 | def test_optional_policy_rejects_non_integer_or_unbounded_limits(config_values, field, value):
+70 |     with pytest.raises(ValueError):
+   |                        ^^^^^^^^^^
+71 |         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy(**{field: value}))
+   |
+
+ANN201 Missing return type annotation for public function `test_optional_policy_rejects_unknown_or_different_scope`
+  --> python\tests\unit\test_aster_selected_scope_config.py:82:5
+   |
+80 |     {"balance_asset": "usd1"},
+81 | ])
+82 | def test_optional_policy_rejects_unknown_or_different_scope(config_values, updates):
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+83 |     with pytest.raises(ValueError):
+84 |         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy(**updates))
+   |
+help: Add return type annotation: `None`
+
+D103 Missing docstring in public function
+  --> python\tests\unit\test_aster_selected_scope_config.py:82:5
+   |
+80 |     {"balance_asset": "usd1"},
+81 | ])
+82 | def test_optional_policy_rejects_unknown_or_different_scope(config_values, updates):
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+83 |     with pytest.raises(ValueError):
+84 |         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy(**updates))
+   |
+
+PT011 `pytest.raises(ValueError)` is too broad, set the `match` parameter or use a more specific exception
+  --> python\tests\unit\test_aster_selected_scope_config.py:83:24
+   |
+81 | ])
+82 | def test_optional_policy_rejects_unknown_or_different_scope(config_values, updates):
+83 |     with pytest.raises(ValueError):
+   |                        ^^^^^^^^^^
+84 |         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy(**updates))
+   |
+
+ANN201 Missing return type annotation for public function `test_optional_policy_rejects_duplicate_keys`
+  --> python\tests\unit\test_aster_selected_scope_config.py:87:5
+   |
+87 | def test_optional_policy_rejects_duplicate_keys(config_values):
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+88 |     raw = policy()[:-1] + ', "max_age_ms": 3000}'
+89 |     with pytest.raises(ValueError):
+   |
+help: Add return type annotation: `None`
+
+D103 Missing docstring in public function
+  --> python\tests\unit\test_aster_selected_scope_config.py:87:5
+   |
+87 | def test_optional_policy_rejects_duplicate_keys(config_values):
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+88 |     raw = policy()[:-1] + ', "max_age_ms": 3000}'
+89 |     with pytest.raises(ValueError):
+   |
+
+PT011 `pytest.raises(ValueError)` is too broad, set the `match` parameter or use a more specific exception
+  --> python\tests\unit\test_aster_selected_scope_config.py:89:24
+   |
+87 | def test_optional_policy_rejects_duplicate_keys(config_values):
+88 |     raw = policy()[:-1] + ', "max_age_ms": 3000}'
+89 |     with pytest.raises(ValueError):
+   |                        ^^^^^^^^^^
+90 |         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=raw)
+   |
+
+ANN201 Missing return type annotation for public function `test_optional_policy_requires_explicit_account_identity`
+  --> python\tests\unit\test_aster_selected_scope_config.py:94:5
+   |
+93 | @pytest.mark.parametrize("field", ["signer_private_key", "signer_address", "user_address"])
+94 | def test_optional_policy_requires_explicit_account_identity(config_values, field):
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+95 |     config_values[field] = None
+96 |     with pytest.raises(ValueError):
+   |
+help: Add return type annotation: `None`
+
+D103 Missing docstring in public function
+  --> python\tests\unit\test_aster_selected_scope_config.py:94:5
+   |
+93 | @pytest.mark.parametrize("field", ["signer_private_key", "signer_address", "user_address"])
+94 | def test_optional_policy_requires_explicit_account_identity(config_values, field):
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+95 |     config_values[field] = None
+96 |     with pytest.raises(ValueError):
+   |
+
+PT011 `pytest.raises(ValueError)` is too broad, set the `match` parameter or use a more specific exception
+  --> python\tests\unit\test_aster_selected_scope_config.py:96:24
+   |
+94 | def test_optional_policy_requires_explicit_account_identity(config_values, field):
+95 |     config_values[field] = None
+96 |     with pytest.raises(ValueError):
+   |                        ^^^^^^^^^^
+97 |         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy())
+   |
+
+ANN201 Missing return type annotation for public function `test_optional_policy_refuses_mode_exemption_and_catalogue_loading`
+   --> python\tests\unit\test_aster_selected_scope_config.py:100:5
+    |
+100 | def test_optional_policy_refuses_mode_exemption_and_catalogue_loading(config_values):
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+101 |     with pytest.raises(ValueError):
+102 |         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy(), assume_one_way_mode_when_unconfirmed=True)
+    |
+help: Add return type annotation: `None`
+
+D103 Missing docstring in public function
+   --> python\tests\unit\test_aster_selected_scope_config.py:100:5
+    |
+100 | def test_optional_policy_refuses_mode_exemption_and_catalogue_loading(config_values):
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+101 |     with pytest.raises(ValueError):
+102 |         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy(), assume_one_way_mode_when_unconfirmed=True)
+    |
+
+PT011 `pytest.raises(ValueError)` is too broad, set the `match` parameter or use a more specific exception
+   --> python\tests\unit\test_aster_selected_scope_config.py:101:24
+    |
+100 | def test_optional_policy_refuses_mode_exemption_and_catalogue_loading(config_values):
+101 |     with pytest.raises(ValueError):
+    |                        ^^^^^^^^^^
+102 |         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy(), assume_one_way_mode_when_unconfirmed=True)
+103 |     config_values["instrument_provider"] = BinanceInstrumentProviderConfig(load_all=True)
+    |
+
+PT011 `pytest.raises(ValueError)` is too broad, set the `match` parameter or use a more specific exception
+   --> python\tests\unit\test_aster_selected_scope_config.py:104:24
+    |
+102 |         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy(), assume_one_way_mode_when_unconfirmed=True)
+103 |     config_values["instrument_provider"] = BinanceInstrumentProviderConfig(load_all=True)
+104 |     with pytest.raises(ValueError):
+    |                        ^^^^^^^^^^
+105 |         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy())
+    |
+
+ANN201 Missing return type annotation for public function `test_selected_scope_rejects_noncanonical_wallet_identity`
+   --> python\tests\unit\test_aster_selected_scope_config.py:109:5
+    |
+108 | @pytest.mark.parametrize("value", ["bad", "0x" + "g" * 40, " " + "0x" + "a" * 40])
+109 | def test_selected_scope_rejects_noncanonical_wallet_identity(config_values, value):
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+110 |     config_values["user_address"] = value
+111 |     with pytest.raises(ValueError):
+    |
+help: Add return type annotation: `None`
+
+D103 Missing docstring in public function
+   --> python\tests\unit\test_aster_selected_scope_config.py:109:5
+    |
+108 | @pytest.mark.parametrize("value", ["bad", "0x" + "g" * 40, " " + "0x" + "a" * 40])
+109 | def test_selected_scope_rejects_noncanonical_wallet_identity(config_values, value):
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+110 |     config_values["user_address"] = value
+111 |     with pytest.raises(ValueError):
+    |
+
+PT011 `pytest.raises(ValueError)` is too broad, set the `match` parameter or use a more specific exception
+   --> python\tests\unit\test_aster_selected_scope_config.py:111:24
+    |
+109 | def test_selected_scope_rejects_noncanonical_wallet_identity(config_values, value):
+110 |     config_values["user_address"] = value
+111 |     with pytest.raises(ValueError):
+    |                        ^^^^^^^^^^
+112 |         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy())
+    |
+
+ANN201 Missing return type annotation for public function `test_selected_scope_rejects_credential_bearing_or_ambiguous_source_url`
+   --> python\tests\unit\test_aster_selected_scope_config.py:120:5
+    |
+118 |     "http://127.0.0.1:0#unknown",
+119 | ])
+120 | def test_selected_scope_rejects_credential_bearing_or_ambiguous_source_url(config_values, endpoint):
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+121 |     with pytest.raises(ValueError):
+122 |         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy(), base_url_http=endpoint)
+    |
+help: Add return type annotation: `None`
+
+D103 Missing docstring in public function
+   --> python\tests\unit\test_aster_selected_scope_config.py:120:5
+    |
+118 |     "http://127.0.0.1:0#unknown",
+119 | ])
+120 | def test_selected_scope_rejects_credential_bearing_or_ambiguous_source_url(config_values, endpoint):
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+121 |     with pytest.raises(ValueError):
+122 |         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy(), base_url_http=endpoint)
+    |
+
+PT011 `pytest.raises(ValueError)` is too broad, set the `match` parameter or use a more specific exception
+   --> python\tests\unit\test_aster_selected_scope_config.py:121:24
+    |
+119 | ])
+120 | def test_selected_scope_rejects_credential_bearing_or_ambiguous_source_url(config_values, endpoint):
+121 |     with pytest.raises(ValueError):
+    |                        ^^^^^^^^^^
+122 |         AsterExecutionClientConfig(**config_values, selected_scope_policy_json=policy(), base_url_http=endpoint)
+    |
+
+Found 31 errors.
+No fixes available (9 hidden fixes can be enabled with the `--unsafe-fixes` option).

@@ -1,0 +1,20 @@
+{
+  "argv": [
+    "E:\\persarb\\worktrees\\entropy-aster-proof\\.venv\\Scripts\\python.exe",
+    "scripts/adapter-evidence/build_native.py",
+    "--python",
+    "E:\\persarb\\worktrees\\entropy-aster-proof\\.venv\\Scripts\\python.exe",
+    "--native-root",
+    "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "--output-dir",
+    "E:\\persarb\\_tmp\\entropy109-wheel-nextest-20261009",
+    "--profile",
+    "nextest"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+  "started_utc": "2026-10-09T03:27:01.689793+00:00",
+  "cargo_target_dir": "E:\\persarb\\nautilus_trader\\target",
+  "pyo3_python": "E:\\persarb\\worktrees\\entropy-aster-proof\\.venv\\Scripts\\python.exe",
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T03:29:04.243924+00:00"
+}
