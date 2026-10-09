@@ -30,7 +30,7 @@ use nautilus_core::{
 };
 use nautilus_live::{ExecutionClientCore, ExecutionEventEmitter};
 use nautilus_model::{
-    enums::{OrderSide, OrderType, PositionSide, TimeInForce},
+    enums::{OrderSide, OrderStatus, OrderType, PositionSide, TimeInForce},
     identifiers::{AccountId, ClientOrderId, InstrumentId, StrategyId},
     instruments::Instrument,
     orders::{Order, OrderAny},
@@ -316,7 +316,57 @@ struct JournalFacts {
     actions: usize,
     intents: BTreeMap<String, IoOwnedIntent>,
     fills: BTreeMap<String, IoFillFacts>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    recovery_source_debt: Option<IoRecoverySourceDebt>,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields, tag = "kind", rename_all = "snake_case")]
+enum IoRecoverySourceDebt {
+    UnknownSources {
+        identity: IoWarmSourceIdentity,
+        original_sources: Vec<crate::account_scope::IoObservationSource>,
+        unavailable_sources: Vec<crate::account_scope::IoUnavailableObservationSource>,
+    },
+    RetentionFailed {
+        identity: IoWarmSourceIdentity,
+        diagnostic: String,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct IoWarmSourceIdentity {
+    query_token: u64,
+    generation: u64,
+    epoch: u64,
+    received_sequence: u64,
+    account_id: String,
+    address: String,
+    policy: Value,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+struct IoMetadataOrigin {
+    generation: u64,
+    epoch: u64,
+    hard_revision: u64,
+    selected_rows: BTreeMap<String, Value>,
+    native_http: BTreeMap<String, Value>,
+    native_instruments: Option<BTreeMap<String, (Value, Value)>>,
+}
+
+/// A verified owned filled marker cannot substitute for missing actual trades.
+#[derive(Debug)]
+struct AwaitingOwnedActualFills;
+
+impl std::fmt::Display for AwaitingOwnedActualFills {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("Verified owned filled marker awaits complete actual fills")
+    }
+}
+
+impl std::error::Error for AwaitingOwnedActualFills {}
 
 #[derive(Debug)]
 pub(crate) struct IoExecutionState {
@@ -330,6 +380,12 @@ pub(crate) struct IoExecutionState {
     journal_tainted: bool,
     native_projection_recovery_required: bool,
     fresh_journal_origin: bool,
+    metadata_origin: Option<IoMetadataOrigin>,
+    query_in_flight: bool,
+    query_key: Option<Value>,
+    query_token: Option<u64>,
+    query_completed: u64,
+    last_query_warm: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -346,6 +402,27 @@ pub(crate) struct IoExecutionDiagnostics {
     account: AccountScopeDiagnostics,
 }
 impl IoExecutionDiagnostics {
+    /// Acquires the journal only while an actual owner completion is executing.
+    pub(crate) fn commit_warm_query(
+        &self,
+        observation: IoWarmObservation,
+        http: &HyperliquidHttpClient,
+        core: &ExecutionClientCore,
+        emitter: &ExecutionEventEmitter,
+        active: &Arc<Mutex<bool>>,
+    ) -> anyhow::Result<()> {
+        let state = self
+            .state
+            .upgrade()
+            .context("io warm execution client was dropped")?;
+        IoExecutionRuntime {
+            policy: self.policy.clone(),
+            state,
+            account: self.account.clone(),
+        }
+        .commit_warm_query(observation, http, core, emitter, active)
+    }
+
     pub(crate) fn snapshot_json(&self) -> anyhow::Result<Option<String>> {
         let Some(state) = self.state.upgrade() else {
             return Ok(None);
@@ -387,6 +464,1031 @@ struct IoStartupBoundary {
 }
 
 const IO_STARTUP_HISTORY_MAX_BYTES: usize = 1024 * 1024;
+
+pub(crate) struct IoWarmQuery {
+    raw_identity: IoWarmSourceIdentity,
+    generation: u64,
+    epoch: u64,
+    received_sequence: u64,
+    account_revision: u64,
+    execution_revision: u64,
+    hard_revision: u64,
+    private_funds: Value,
+    metadata: BTreeMap<String, IoInstrumentProof>,
+    native_instruments: BTreeMap<String, (Value, Value)>,
+    native_owned: Value,
+    facts: JournalFacts,
+    deadline: tokio::time::Instant,
+    maximum_age_ms: u64,
+}
+
+pub(crate) struct IoWarmObservation {
+    query: IoWarmQuery,
+    open: Value,
+    fills: Value,
+    statuses: Vec<(String, Value)>,
+    account: crate::account_scope::AccountScopeObservation,
+    absent_position_leverage: BTreeMap<String, (Value, Value)>,
+    source_guard: IoWarmSourcesGuard,
+}
+
+struct IoWarmSourcesGuard {
+    runtime: IoExecutionRuntime,
+    identity: IoWarmSourceIdentity,
+    sources: crate::account_scope::IoObservationSources,
+    completed: bool,
+}
+
+impl Drop for IoWarmSourcesGuard {
+    fn drop(&mut self) {
+        if !self.completed {
+            let sources = self.sources.lock().clone();
+            self.runtime
+                .abandon_warm_sources(self.identity.clone(), sources);
+        }
+    }
+}
+
+impl IoWarmQuery {
+    pub(crate) fn token(&self) -> u64 {
+        self.execution_revision
+    }
+    pub(crate) fn deadline(&self) -> tokio::time::Instant {
+        self.deadline
+    }
+}
+
+impl IoExecutionRuntime {
+    pub(crate) fn bind_metadata_native_cache(
+        &self,
+        http: &HyperliquidHttpClient,
+        core: &ExecutionClientCore,
+    ) -> anyhow::Result<()> {
+        let ingress = self.account.ws.private_ingress_guard();
+        let account = self.account.state.lock();
+        let mut state = self.state.lock();
+        let instruments = warm_native_instruments(self, &state, http, core, now_ms())?;
+        let origin = state
+            .metadata_origin
+            .as_mut()
+            .context("Missing normal io metadata origin")?;
+        anyhow::ensure!(
+            origin.native_instruments.is_none(),
+            "io existing metadata Cache binding is immutable until new normal metadata verification"
+        );
+        anyhow::ensure!(
+            origin.generation == ingress.generation()
+                && self.account.ws.connection_epoch() == origin.epoch
+                && ingress.is_applied(origin.epoch)
+                && origin.hard_revision == account.hard_revision()
+                && instruments
+                    .iter()
+                    .all(|(id, (http, _))| origin.native_http.get(id) == Some(http)),
+            "io native Cache binding differs from normal verified HTTP metadata"
+        );
+        origin.native_instruments = Some(instruments);
+        Ok(())
+    }
+
+    pub(crate) fn validate_current_native_metadata(
+        &self,
+        http: &HyperliquidHttpClient,
+        core: &ExecutionClientCore,
+    ) -> anyhow::Result<()> {
+        let ingress = self.account.ws.private_ingress_guard();
+        let account = self.account.state.lock();
+        let state = self.state.lock();
+        let epoch = self.account.ws.connection_epoch();
+        let origin = state
+            .metadata_origin
+            .as_ref()
+            .context("Missing io new-risk metadata origin")?;
+        anyhow::ensure!(
+            self.account.ws.is_active()
+                && ingress.is_applied(epoch)
+                && origin.generation == ingress.generation()
+                && origin.epoch == epoch
+                && origin.hard_revision == account.hard_revision()
+                && origin.native_instruments.as_ref()
+                    == Some(&warm_native_instruments(
+                        self,
+                        &state,
+                        http,
+                        core,
+                        now_ms()
+                    )?),
+            "io new risk cannot borrow changed native metadata or reader identity"
+        );
+        Ok(())
+    }
+
+    /// Selects a bounded live recovery. Missing warm evidence never falls through
+    /// to a partial account or old Ready claim.
+    pub(crate) fn begin_warm_query(
+        &self,
+        http: &HyperliquidHttpClient,
+        core: &ExecutionClientCore,
+    ) -> anyhow::Result<Option<IoWarmQuery>> {
+        let ingress = self.account.ws.private_ingress_guard();
+        let mut account = self.account.state.lock();
+        let mut state = self.state.lock();
+        let epoch = self.account.ws.connection_epoch();
+        let now = now_ms();
+        anyhow::ensure!(
+            self.account.ws.is_active() && ingress.is_applied(epoch),
+            "io warm query requires completely applied current private ingress"
+        );
+        let origin = state
+            .metadata_origin
+            .as_ref()
+            .context("Missing io warm metadata origin")?;
+        anyhow::ensure!(
+            origin.generation == ingress.generation()
+                && origin.epoch == epoch
+                && origin.hard_revision == account.hard_revision()
+                && !state.journal_tainted
+                && !state.native_projection_recovery_required
+                && state.facts.recovery_source_debt.is_none()
+                && state.facts.account_id == core.account_id.to_string()
+                && !state.facts.intents.values().any(|intent| matches!(
+                    intent.phase,
+                    IoIntentPhase::Unknown | IoIntentPhase::Prepared
+                )),
+            "io warm metadata reader, ownership or hard source identity is ineligible"
+        );
+        let funds = account
+            .private_funds_witness()
+            .context("Missing io private funds")?;
+        anyhow::ensure!(
+            funds.received_time_ms <= now
+                && now - funds.received_time_ms <= account.maximum_age_ms()
+                && funds
+                    .source_time_ms
+                    .is_none_or(|source| source <= now && now - source <= account.maximum_age_ms()),
+            "io private funds expired"
+        );
+        let private_funds = serde_json::to_value(funds)?;
+        let native_instruments = warm_native_instruments(self, &state, http, core, now)?;
+        anyhow::ensure!(
+            origin.native_instruments.as_ref() == Some(&native_instruments),
+            "io warm native cache facts differ from the normal metadata witness"
+        );
+        let native_owned = warm_native_owned(&state, core)?;
+        let key = json!({"generation":ingress.generation(),"epoch":epoch,
+            "received_sequence":ingress.received_sequence(),"hard_revision":account.hard_revision(),
+            "funds":private_funds,"metadata":state.metadata,"native":native_instruments,
+            "facts":state.facts,"cache":native_owned,"policy":*self.policy});
+        if state.query_in_flight {
+            anyhow::ensure!(
+                state.query_key.as_ref() == Some(&key),
+                "io pending query was superseded by private, native or owned facts"
+            );
+            return Ok(None);
+        }
+        account.invalidate_financial("io bounded warm account query is pending");
+        state.revision = state.revision.wrapping_add(1);
+        state.recovery_complete = false;
+        state.query_in_flight = true;
+        state.query_key = Some(key);
+        state.query_token = Some(state.revision);
+        state.last_query_warm = true;
+        state.diagnostic = "io bounded warm account query is pending".into();
+        Ok(Some(IoWarmQuery {
+            raw_identity: IoWarmSourceIdentity {
+                query_token: state.revision,
+                generation: ingress.generation(),
+                epoch,
+                received_sequence: ingress.received_sequence(),
+                account_id: state.facts.account_id.clone(),
+                address: state.facts.address.clone(),
+                policy: serde_json::to_value(&*self.policy)?,
+            },
+            generation: ingress.generation(),
+            epoch,
+            received_sequence: ingress.received_sequence(),
+            account_revision: account.revision(),
+            execution_revision: state.revision,
+            hard_revision: account.hard_revision(),
+            private_funds,
+            metadata: state.metadata.clone(),
+            native_instruments,
+            native_owned,
+            facts: state.facts.clone(),
+            deadline: tokio::time::Instant::now()
+                + std::time::Duration::from_millis(self.policy.recovery_timeout_ms),
+            maximum_age_ms: account.maximum_age_ms(),
+        }))
+    }
+
+    pub(crate) fn finish_warm_query(&self, token: u64, succeeded: bool) {
+        let mut state = self.state.lock();
+        if state.query_token != Some(token) {
+            return;
+        }
+        if !succeeded {
+            state.revision = state.revision.wrapping_add(1);
+            state.recovery_complete = false;
+            if state.diagnostic == "io bounded warm account query is pending" {
+                state.diagnostic = "io warm query canceled or incomplete".into();
+            }
+        }
+        state.query_in_flight = false;
+        state.query_key = None;
+        state.query_token = None;
+        state.query_completed = state.query_completed.saturating_add(1);
+    }
+
+    pub(crate) fn warm_query_pending(&self) -> bool {
+        self.state.lock().query_in_flight
+    }
+
+    pub(crate) fn current_warm_metadata(&self) -> bool {
+        let ingress = self.account.ws.private_ingress_guard();
+        let account = self.account.state.lock();
+        let state = self.state.lock();
+        let now = now_ms();
+        state.metadata_origin.as_ref().is_some_and(|origin| {
+            origin.generation == ingress.generation()
+                && origin.epoch == self.account.ws.connection_epoch()
+                && origin.hard_revision == account.hard_revision()
+                && state.metadata.values().all(|meta| {
+                    meta.received_ms <= now
+                        && meta.verification_started_ms <= now
+                        && now - meta.received_ms <= self.policy.metadata_max_age_ms
+                        && now - meta.verification_started_ms <= self.policy.metadata_max_age_ms
+                })
+        })
+    }
+
+    pub(crate) fn metadata_needs_native_cache(&self) -> bool {
+        self.state
+            .lock()
+            .metadata_origin
+            .as_ref()
+            .is_some_and(|origin| origin.native_instruments.is_none())
+    }
+
+    pub(crate) fn has_recovery_source_debt(&self) -> bool {
+        self.state.lock().facts.recovery_source_debt.is_some()
+    }
+
+    pub(crate) fn warm_query_failed(&self, token: u64, reason: &str) {
+        let mut state = self.state.lock();
+        if state.query_token == Some(token) {
+            state.recovery_complete = false;
+            state.diagnostic = format!("io warm RecoveryIncomplete: {reason}");
+        }
+    }
+
+    fn abandon_warm_sources(
+        &self,
+        identity: IoWarmSourceIdentity,
+        sources: crate::account_scope::IoObservationSourceGroup,
+    ) {
+        if sources.original_sources.is_empty() && sources.unavailable_sources.is_empty() {
+            return;
+        }
+        if sources.original_sources.is_empty()
+            && sources.unavailable_sources.iter().all(|source| {
+                source.received_ms.is_none() && source.diagnostic.starts_with("Request began")
+            })
+        {
+            // A quota/transport wait with no accepted body is not a financial fact
+            return;
+        }
+        let _ingress = self.account.ws.private_ingress_guard();
+        let _account = self.account.state.lock();
+        let mut state = self.state.lock();
+        // Raw Unknown preservation is independent of current-reader admission
+        // and flight cleanup. Its immutable identity always remains the origin.
+        if state.facts.recovery_source_debt.is_none()
+            && let Err(e) = retain_warm_source_debt(&mut state, identity, sources)
+        {
+            state.journal_tainted = true;
+            state.diagnostic = format!("io warm abandoned original source retention failed: {e}");
+        }
+    }
+
+    pub(crate) fn abandon_warm_observation(&self, observation: IoWarmObservation) {
+        drop(observation);
+    }
+
+    pub(crate) async fn observe_warm_query(
+        &self,
+        query: IoWarmQuery,
+        http: &HyperliquidHttpClient,
+    ) -> anyhow::Result<IoWarmObservation> {
+        let deadline = query.deadline;
+        let identity = query.raw_identity.clone();
+        let raw_sources = Arc::new(Mutex::new(
+            crate::account_scope::IoObservationSourceGroup::default(),
+        ));
+        let source_guard = IoWarmSourcesGuard {
+            runtime: self.clone(),
+            identity,
+            sources: raw_sources.clone(),
+            completed: false,
+        };
+        let timed_result = tokio::time::timeout_at(deadline, async {
+            let address = &query.facts.address;
+            let open = crate::account_scope::bounded_scope_observation(
+                http,
+                &InfoRequest::frontend_open_orders_for_dex(address, Some("io")),
+                &raw_sources,
+            )
+            .await?;
+            let fills = crate::account_scope::bounded_scope_observation(
+                http,
+                &InfoRequest::user_fills(address),
+                &raw_sources,
+            )
+            .await?;
+            let mut statuses = Vec::new();
+            for intent in query.facts.intents.values().filter(|intent| active(intent)) {
+                let result = crate::account_scope::bounded_scope_observation(
+                    http,
+                    &InfoRequest::order_status_cloid(address, &intent.cloid),
+                    &raw_sources,
+                )
+                .await?;
+                let entry = if result.get("status").and_then(Value::as_str) == Some("order") {
+                    result.get("order").cloned().unwrap_or(Value::Null)
+                } else {
+                    Value::Null
+                };
+                statuses.push((intent.client_order_id.clone(), entry));
+            }
+            let account = crate::account_scope::observe_account_scope(
+                http,
+                address,
+                query.epoch,
+                query.maximum_age_ms,
+                &raw_sources,
+            )
+            .await?;
+            let present = warm_current_position_leverage(
+                &query.metadata,
+                &account.clearinghouse,
+                self.policy.max_leverage,
+            ).context("io metadata verification failed")?;
+            let mut absent_position_leverage = BTreeMap::new();
+            for meta in query.metadata.values().filter(|meta| !present.contains(&meta.coin)) {
+                let request = InfoRequest::active_asset_data(address, &meta.coin);
+                let first = crate::account_scope::bounded_scope_observation(http, &request, &raw_sources)
+                    .await.context("io metadata verification failed")?;
+                let actual = validate_user_asset(&first, address, &meta.coin, self.policy.max_leverage)
+                    .context("io metadata verification failed")?;
+                let second = crate::account_scope::bounded_scope_observation(http, &request, &raw_sources)
+                    .await.context("io metadata verification failed")?;
+                let repeated = validate_user_asset(&second, address, &meta.coin, self.policy.max_leverage)
+                    .context("io metadata verification failed")?;
+                anyhow::ensure!(actual == repeated && actual == meta.actual_leverage,
+                    "io metadata verification failed: current actual leverage changed from original metadata");
+                // These are counterproofs only. Original metadata times, mark,
+                // capacity, and availability remain unchanged and receive-bounded.
+                absent_position_leverage.insert(meta.instrument_id.clone(), (first, second));
+            }
+            Ok(IoWarmObservation {
+                query,
+                open,
+                fills,
+                statuses,
+                account,
+                absent_position_leverage,
+                source_guard,
+            })
+        })
+        .await;
+        timed_result
+            .map_err(|_| anyhow::anyhow!("io warm recovery total deadline exhausted"))
+            .and_then(|result| result)
+    }
+
+    /// Runs only on the ordinary runner owner thread. Every source is staged,
+    /// then all current guards remain held through durable absorption and emit.
+    pub(crate) fn commit_warm_query(
+        &self,
+        mut observation: IoWarmObservation,
+        http: &HyperliquidHttpClient,
+        core: &ExecutionClientCore,
+        emitter: &ExecutionEventEmitter,
+        active: &Mutex<bool>,
+    ) -> anyhow::Result<()> {
+        let query = &observation.query;
+        // Cancellation and commit share a short linearization lock. A task drop
+        // releases it before touching execution state, preserving proof lock order.
+        let live = active.lock();
+        let ingress = self.account.ws.private_ingress_guard();
+        let mut account = self.account.state.lock();
+        let mut state = self.state.lock();
+        let now = now_ms();
+        anyhow::ensure!(
+            tokio::time::Instant::now() < query.deadline
+                && *live
+                && self.account.ws.is_active()
+                && self.account.ws.connection_epoch() == query.epoch
+                && ingress.generation() == query.generation
+                && ingress.is_applied(query.epoch)
+                && ingress.received_sequence() == query.received_sequence
+                && account.revision() == query.account_revision
+                && account.hard_revision() == query.hard_revision
+                && state.revision == query.execution_revision
+                && state.query_in_flight
+                && !state.journal_tainted
+                && !state.native_projection_recovery_required
+                && serde_json::to_value(&state.facts)? == serde_json::to_value(&query.facts)?
+                && serde_json::to_value(account.private_funds_witness())?
+                    == serde_json::to_value(Some(&query.private_funds))?
+                && state.metadata == query.metadata
+                && warm_native_instruments(self, &state, http, core, now)?
+                    == query.native_instruments
+                && warm_native_owned(&state, core)? == query.native_owned,
+            "io warm HTTP observation was superseded or expired before commit"
+        );
+        let origin = state
+            .metadata_origin
+            .as_ref()
+            .context("io warm metadata was revoked")?;
+        anyhow::ensure!(
+            origin.generation == query.generation
+                && origin.epoch == query.epoch
+                && origin.hard_revision == query.hard_revision,
+            "io warm metadata origin changed"
+        );
+        let validated = (|| {
+            crate::account_scope::validate_collateral(
+                &observation.account.metadata,
+                &observation.account.spot_metadata,
+            )?;
+            let rows = observation
+                .account
+                .metadata
+                .get("universe")
+                .and_then(Value::as_array)
+                .context("Missing final io metadata universe")?;
+            for meta in state.metadata.values() {
+                anyhow::ensure!(
+                    rows.get(meta.universe_index) == origin.selected_rows.get(&meta.instrument_id),
+                    "Final HTTP io selected metadata differs from the verified warm origin"
+                );
+            }
+            let present = warm_current_position_leverage(
+                &state.metadata,
+                &observation.account.clearinghouse,
+                self.policy.max_leverage,
+            )?;
+            let mut missing = 0;
+            for meta in state
+                .metadata
+                .values()
+                .filter(|meta| !present.contains(&meta.coin))
+            {
+                missing += 1;
+                let (first, second) = observation
+                    .absent_position_leverage
+                    .get(&meta.instrument_id)
+                    .context("Missing current actual leverage counterproof for flat io symbol")?;
+                let actual = validate_user_asset(
+                    first,
+                    &state.facts.address,
+                    &meta.coin,
+                    self.policy.max_leverage,
+                )?;
+                let repeated = validate_user_asset(
+                    second,
+                    &state.facts.address,
+                    &meta.coin,
+                    self.policy.max_leverage,
+                )?;
+                anyhow::ensure!(
+                    actual == repeated && actual == meta.actual_leverage,
+                    "Final actual io leverage differs from original metadata"
+                );
+            }
+            anyhow::ensure!(
+                missing == observation.absent_position_leverage.len(),
+                "Unexpected io leverage counterproof identities"
+            );
+            account.validate_observation(&observation.account, query.epoch)?;
+            validate_warm_recovery(&state, &observation)
+        })();
+        if let Err(e) = validated {
+            account.invalidate(
+                "io warm HTTP financial or metadata source is unknown/conflicting",
+                false,
+            );
+            return Err(e);
+        }
+        // Finish every fallible terminal condition before changing any reservation
+        for intent in state
+            .facts
+            .intents
+            .values()
+            .filter(|intent| intent.phase == IoIntentPhase::TerminalPending)
+        {
+            anyhow::ensure!(
+                intent.terminal_time_ms.is_some_and(|time| observation
+                    .account
+                    .snapshot
+                    .http_source_time_ms
+                    >= time),
+                "io warm terminal reservation lacks a later complete source"
+            );
+        }
+        let old = state.facts.clone();
+        for intent in state.facts.intents.values_mut() {
+            if intent.phase == IoIntentPhase::TerminalPending {
+                intent.phase = IoIntentPhase::Terminal;
+                intent.reservation = Decimal::ZERO;
+                intent.cancel_pending = false;
+                intent.cancel_action_token = None;
+                intent.diagnostic = "Actual owned fills absorbed by complete warm io source".into();
+            }
+        }
+        if let Err(e) = state.persist() {
+            state.facts = old;
+            state.recovery_complete = false;
+            return Err(e);
+        }
+        // Durability can wait on the filesystem. A late completion must restore
+        // the full original reserve before any account event or Ready is emitted.
+        if tokio::time::Instant::now() >= query.deadline
+            || !*live
+            || !self.account.ws.is_active()
+            || self.account.ws.connection_epoch() != query.epoch
+            || !warm_native_instruments(self, &state, http, core, now_ms())
+                .is_ok_and(|instruments| instruments == query.native_instruments)
+            || account
+                .validate_observation(&observation.account, query.epoch)
+                .is_err()
+        {
+            state.facts = old;
+            state.recovery_complete = false;
+            state.persist()?;
+            anyhow::bail!("io warm proof expired during durable absorption");
+        }
+        if let Err(e) =
+            account.commit_observation(observation.account, query.generation, query.epoch, emitter)
+        {
+            state.facts = old;
+            state.recovery_complete = false;
+            state.persist()?;
+            return Err(e);
+        }
+        state.recovery_complete = true;
+        state.recovered_epoch = Some(query.epoch);
+        state.diagnostic =
+            "Bounded live owned warm io recovery; historical coverage remains independent".into();
+        observation.source_guard.completed = true;
+        Ok(())
+    }
+}
+
+fn retain_warm_source_debt(
+    state: &mut IoExecutionState,
+    identity: IoWarmSourceIdentity,
+    sources: crate::account_scope::IoObservationSourceGroup,
+) -> anyhow::Result<()> {
+    state.metadata_origin = None;
+    state.native_projection_recovery_required = true;
+    state.recovery_complete = false;
+    state.facts.recovery_source_debt = Some(IoRecoverySourceDebt::UnknownSources {
+        identity: identity.clone(),
+        original_sources: sources.original_sources,
+        unavailable_sources: sources.unavailable_sources,
+    });
+    // Never raise a consumer's one-MiB record bound to retain a large response.
+    // A durable explicit missing-raw debt is not an original venue observation.
+    if serde_json::to_vec(&state.facts)?.len() > 1024 * 1024 {
+        state.facts.recovery_source_debt = Some(IoRecoverySourceDebt::RetentionFailed {
+            identity,
+            diagnostic: "Actual raw source could not be retained within the finite record bound; recovery Unknown".into(),
+        });
+    }
+    if serde_json::to_vec(&state.facts)?.len() > 1024 * 1024 {
+        state.journal_tainted = true;
+        anyhow::bail!("io unknown source debt cannot fit the existing finite journal record");
+    }
+    state.persist()
+}
+
+fn warm_native_instruments(
+    runtime: &IoExecutionRuntime,
+    state: &IoExecutionState,
+    http: &HyperliquidHttpClient,
+    core: &ExecutionClientCore,
+    now: u64,
+) -> anyhow::Result<BTreeMap<String, (Value, Value)>> {
+    let cache = core.cache();
+    let mut result = BTreeMap::new();
+    anyhow::ensure!(
+        state.metadata.len() == runtime.policy.symbols.len(),
+        "Incomplete warm metadata"
+    );
+    for symbol in &runtime.policy.symbols {
+        let meta = state
+            .metadata
+            .get(&symbol.instrument_id)
+            .context("Missing warm selected metadata")?;
+        let id = InstrumentId::from(symbol.instrument_id.as_str());
+        anyhow::ensure!(
+            meta.received_ms <= now
+                && meta.verification_started_ms <= now
+                && now - meta.received_ms <= runtime.policy.metadata_max_age_ms
+                && now - meta.verification_started_ms <= runtime.policy.metadata_max_age_ms
+                && meta.margin_mode == "strictIsolated"
+                && meta.actual_leverage > 0
+                && meta.actual_leverage <= runtime.policy.max_leverage
+                && meta.instrument_id == symbol.instrument_id
+                && meta.coin == coin_from_instrument(&symbol.instrument_id)?
+                && http.get_asset_index(&format!("{}-USD-PERP", meta.coin)) == Some(meta.asset),
+            "Warm native metadata is stale or inconsistent"
+        );
+        let native = http
+            .io_cached_instrument(&meta.coin)
+            .context("Missing warm HTTP instrument")?;
+        let cached = cache
+            .instrument(&id)
+            .context("Missing warm Engine Cache instrument")?;
+        for instrument in [&native, cached] {
+            anyhow::ensure!(
+                instrument.id() == id
+                    && id.venue == core.venue
+                    && instrument.raw_symbol().as_str() == meta.coin
+                    && u32::from(instrument.size_precision()) == meta.size_decimals
+                    && matches!(
+                        instrument,
+                        nautilus_model::instruments::InstrumentAny::CryptoPerpetual(_)
+                    )
+                    && instrument.quote_currency().code.as_str() == "USD"
+                    && instrument.settlement_currency() == Currency::USDC()
+                    && !instrument.is_inverse()
+                    && instrument.size_increment().as_decimal()
+                        == Decimal::new(1, meta.size_decimals),
+                "Warm HTTP/Engine native instrument precision or identity differs"
+            );
+        }
+        result.insert(
+            symbol.instrument_id.clone(),
+            (serde_json::to_value(native)?, serde_json::to_value(cached)?),
+        );
+    }
+    Ok(result)
+}
+
+fn warm_native_owned(
+    state: &IoExecutionState,
+    core: &ExecutionClientCore,
+) -> anyhow::Result<Value> {
+    let cache = core.cache();
+    let mut orders = BTreeMap::new();
+    for order in cache.orders_refs(Some(&core.venue), None, None, None, None) {
+        let routed = order.instrument_id().symbol.as_str().starts_with("io:")
+            || cache
+                .instrument(&order.instrument_id())
+                .is_some_and(|instrument| instrument.raw_symbol().as_str().starts_with("io:"));
+        if !routed {
+            continue;
+        }
+        anyhow::ensure!(
+            order.account_id().is_some(),
+            "Warm routed io native order has no account identity"
+        );
+        if order.account_id() != Some(core.account_id) {
+            continue;
+        }
+        anyhow::ensure!(
+            order.strategy_id().to_string() == state.facts.strategy_id
+                && state
+                    .facts
+                    .intents
+                    .contains_key(&order.client_order_id().to_string()),
+            "Warm same-account io Cache history includes an external or unowned order"
+        );
+        orders.insert(
+            order.client_order_id().to_string(),
+            serde_json::to_value(&*order)?,
+        );
+    }
+    for intent in state.facts.intents.values() {
+        if matches!(
+            intent.phase,
+            IoIntentPhase::NotWritten | IoIntentPhase::Rejected
+        ) {
+            continue;
+        }
+        let id = ClientOrderId::new_checked(&intent.client_order_id)?;
+        let order = cache
+            .order(&id)
+            .context("Warm owned order has no normal Engine Cache projection")?;
+        anyhow::ensure!(
+            order.account_id() == Some(core.account_id)
+                && order.strategy_id().to_string() == state.facts.strategy_id
+                && order.instrument_id().to_string() == intent.instrument_id
+                && order.order_type() == OrderType::Limit
+                && order.order_side()
+                    == if intent.is_buy {
+                        OrderSide::Buy
+                    } else {
+                        OrderSide::Sell
+                    }
+                && order.is_reduce_only() == intent.reduce_only
+                && matches!(
+                    (order.time_in_force(), intent.tif.as_str()),
+                    (TimeInForce::Ioc, "Ioc") | (TimeInForce::Gtc, "Gtc")
+                )
+                && order.quantity().as_decimal() == intent.quantity
+                && order
+                    .price()
+                    .is_some_and(|price| price.as_decimal() == intent.price)
+                && order.filled_qty().as_decimal() == intent.filled
+                && intent.oid.is_some_and(|oid| order
+                    .venue_order_id()
+                    .is_some_and(|id| id.to_string() == oid.to_string())),
+            "Warm owned order native projection is incomplete or inconsistent"
+        );
+        let native_status_current = match intent.phase {
+            IoIntentPhase::Open => match order.status() {
+                OrderStatus::Accepted => intent.filled.is_zero(),
+                OrderStatus::PartiallyFilled => {
+                    intent.filled > Decimal::ZERO && intent.filled < intent.quantity
+                }
+                OrderStatus::PendingCancel => {
+                    intent.cancel_pending && intent.filled < intent.quantity
+                }
+                _ => false,
+            },
+            IoIntentPhase::TerminalPending | IoIntentPhase::Terminal => {
+                let terminal_time = intent
+                    .terminal_time_ms
+                    .filter(|time| *time >= intent.created_ms && *time <= now_ms());
+                if intent.filled == intent.quantity {
+                    terminal_time.is_some() && order.status() == OrderStatus::Filled
+                } else {
+                    order.status() == OrderStatus::Canceled
+                        && terminal_time.is_some_and(|time| order.events().iter().any(|event| {
+                            matches!(event, nautilus_model::events::OrderEventAny::Canceled(cancel)
+                                if cancel.client_order_id == id
+                                    && cancel.account_id == Some(core.account_id)
+                                    && cancel.strategy_id.to_string() == state.facts.strategy_id
+                                    && cancel.instrument_id.to_string() == intent.instrument_id
+                                    && cancel.venue_order_id.is_some_and(|oid| Some(oid.to_string()) == intent.oid.map(|known| known.to_string()))
+                                    && cancel.ts_event.as_u64() / 1_000_000 == time)
+                        }))
+                }
+            }
+            _ => false,
+        };
+        anyhow::ensure!(
+            native_status_current,
+            "Warm owned terminal/open status has not been consumed by the normal Engine Cache"
+        );
+        for fact in state
+            .facts
+            .fills
+            .values()
+            .filter(|fact| intent.coin == fact.coin && intent.oid == Some(fact.oid))
+        {
+            let tid = format!("io:{}:{}:{}", fact.coin, fact.oid, fact.tid);
+            let events = order.events();
+            let matched = events
+                .iter()
+                .filter_map(|event| match event {
+                    nautilus_model::events::OrderEventAny::Filled(fill)
+                        if fill.trade_id.as_str() == tid =>
+                    {
+                        Some(fill)
+                    }
+                    _ => None,
+                })
+                .collect::<Vec<_>>();
+            anyhow::ensure!(
+                matched.len() == 1
+                    && matched[0].last_qty.as_decimal() == fact.quantity
+                    && matched[0].last_px.as_decimal() == fact.price
+                    && matched[0].account_id == core.account_id
+                    && matched[0].strategy_id.to_string() == state.facts.strategy_id
+                    && matched[0].instrument_id.to_string() == intent.instrument_id
+                    && matched[0].client_order_id == id
+                    && matched[0].venue_order_id.to_string() == fact.oid.to_string()
+                    && matched[0].order_side
+                        == if fact.is_buy {
+                            OrderSide::Buy
+                        } else {
+                            OrderSide::Sell
+                        }
+                    && matched[0].ts_event.as_u64() / 1_000_000 == fact.time
+                    && matched[0]
+                        .commission
+                        .is_some_and(|fee| fee.as_decimal() == fact.fee
+                            && fee.currency.code.as_str() == fact.fee_token),
+                "Warm actual fill lacks its unique exact native quantity/price/fee event"
+            );
+        }
+        orders.insert(
+            intent.client_order_id.clone(),
+            serde_json::to_value(&*order)?,
+        );
+    }
+    let mut positions = BTreeMap::new();
+    let mut quantities = BTreeMap::<String, Decimal>::new();
+    for position in
+        cache.positions_refs(Some(&core.venue), None, None, Some(&core.account_id), None)
+    {
+        if !position.instrument_id.symbol.as_str().starts_with("io:") {
+            continue;
+        }
+        anyhow::ensure!(
+            position.strategy_id.to_string() == state.facts.strategy_id,
+            "Warm scope contains an external or other-strategy io native position"
+        );
+        let coin = coin_from_instrument(&position.instrument_id.to_string())?;
+        let signed = match position.side {
+            PositionSide::Long => position.quantity.as_decimal(),
+            PositionSide::Short => -position.quantity.as_decimal(),
+            PositionSide::Flat => Decimal::ZERO,
+        };
+        let total = quantities.entry(coin).or_default();
+        *total = total
+            .checked_add(signed)
+            .context("Warm native position sum overflow")?;
+        positions.insert(position.id.to_string(), serde_json::to_value(&*position)?);
+    }
+    for coin in state
+        .facts
+        .fills
+        .values()
+        .map(|fill| &fill.coin)
+        .chain(quantities.keys())
+    {
+        anyhow::ensure!(
+            quantities.get(coin).copied().unwrap_or(Decimal::ZERO) == owned_position(state, coin)?,
+            "Warm actual ledger differs from the normal native position cache"
+        );
+    }
+    Ok(json!({"orders":orders,"positions":positions}))
+}
+
+fn validate_warm_recovery(
+    state: &IoExecutionState,
+    observation: &IoWarmObservation,
+) -> anyhow::Result<()> {
+    let fills = observation
+        .fills
+        .as_array()
+        .context("Missing explicit complete warm actual fills")?;
+    anyhow::ensure!(
+        fills.len() < 2000,
+        "Warm retained fill history is saturated"
+    );
+    let mut confirmed = std::collections::BTreeSet::new();
+    for raw in fills {
+        let coin = raw
+            .get("coin")
+            .and_then(Value::as_str)
+            .context("Missing warm fill coin")?;
+        if !coin.starts_with("io:") {
+            continue;
+        }
+        let fact = fill_facts(raw)?;
+        let key = format!("{}:{}:{}", fact.coin, fact.oid, fact.tid);
+        anyhow::ensure!(
+            state.facts.fills.get(&key) == Some(&fact),
+            "New, unknown or conflicting warm REST fill requires native live reconciliation"
+        );
+        confirmed.insert(key);
+    }
+    anyhow::ensure!(
+        state.facts.fills.keys().all(|key| confirmed.contains(key)),
+        "Warm actual-fill response omits a retained owned native fact; coverage Unknown"
+    );
+    for (id, entry) in &observation.statuses {
+        let intent = state
+            .facts
+            .intents
+            .get(id)
+            .context("Warm owned status identity disappeared")?;
+        let raw = entry.get("order").context("Missing warm raw owned order")?;
+        let remaining = decimal(raw, "sz")?;
+        let status = entry
+            .get("status")
+            .and_then(Value::as_str)
+            .context("Missing warm order status")?;
+        let time = entry
+            .get("statusTimestamp")
+            .and_then(Value::as_u64)
+            .filter(|time| *time >= intent.created_ms && *time <= now_ms())
+            .context("Invalid warm owned status source time")?;
+        anyhow::ensure!(
+            raw.get("coin").and_then(Value::as_str) == Some(intent.coin.as_str())
+                && raw.get("cloid").and_then(Value::as_str) == Some(intent.cloid.as_str())
+                && raw.get("oid").and_then(Value::as_u64) == intent.oid
+                && decimal(raw, "origSz")? == intent.quantity
+                && decimal(raw, "limitPx")? == intent.price
+                && raw.get("side").and_then(Value::as_str)
+                    == Some(if intent.is_buy { "B" } else { "A" })
+                && remaining >= Decimal::ZERO
+                && remaining <= intent.quantity,
+            "Warm original owned order identity conflicts"
+        );
+        anyhow::ensure!(
+            match status {
+                "open" =>
+                    intent.phase == IoIntentPhase::Open
+                        && intent.quantity.checked_sub(remaining) == Some(intent.filled),
+                "filled" =>
+                    intent.phase == IoIntentPhase::TerminalPending
+                        && intent.filled == intent.quantity
+                        && intent.terminal_time_ms.is_some_and(|known| known <= time),
+                "canceled" | "marginCanceled" | "iocCancel" =>
+                    intent.phase == IoIntentPhase::TerminalPending
+                        && intent.quantity.checked_sub(remaining) == Some(intent.filled)
+                        && intent.terminal_time_ms.is_some_and(|known| known <= time),
+                _ => false,
+            },
+            "New or unknown warm REST status requires native live reconciliation"
+        );
+    }
+    let open = observation
+        .open
+        .as_array()
+        .context("Missing full explicit warm io open-order array")?;
+    anyhow::ensure!(
+        open.len() < 2000,
+        "Warm full io open-order array is saturated"
+    );
+    let mut open_ids = std::collections::BTreeSet::new();
+    for row in open {
+        let coin = row
+            .get("coin")
+            .and_then(Value::as_str)
+            .context("Missing warm open coin")?;
+        let oid = row
+            .get("oid")
+            .and_then(Value::as_u64)
+            .context("Missing warm open OID")?;
+        anyhow::ensure!(
+            open_ids.insert(oid),
+            "Warm full io open-order array has duplicate identity"
+        );
+        let cloid = row
+            .get("cloid")
+            .and_then(Value::as_str)
+            .context("External warm open order")?;
+        let intent = state
+            .facts
+            .intents
+            .values()
+            .find(|intent| {
+                intent.coin == coin
+                    && intent.oid == Some(oid)
+                    && intent.cloid == cloid
+                    && intent.phase == IoIntentPhase::Open
+            })
+            .context("Full io warm open orders contain unowned or terminal facts")?;
+        anyhow::ensure!(
+            decimal(row, "origSz")? == intent.quantity
+                && decimal(row, "sz")?
+                    == intent
+                        .quantity
+                        .checked_sub(intent.filled)
+                        .context("Warm open size overflow")?
+                && decimal(row, "limitPx")? == intent.price
+                && row.get("side").and_then(Value::as_str)
+                    == Some(if intent.is_buy { "B" } else { "A" }),
+            "Warm open order quantity, direction or price conflict"
+        );
+    }
+    anyhow::ensure!(
+        state
+            .facts
+            .intents
+            .values()
+            .filter(|intent| intent.phase == IoIntentPhase::Open)
+            .all(|intent| intent.oid.is_some_and(|oid| open_ids.contains(&oid))),
+        "Warm full io open-order response omits an active owned native order"
+    );
+    for position in &observation.account.snapshot.positions {
+        anyhow::ensure!(
+            owned_position(state, &position.coin)? == position.signed_size,
+            "Warm full io inventory differs from actual owned ledger"
+        );
+    }
+    for coin in state.facts.fills.values().map(|fill| &fill.coin) {
+        let actual = observation
+            .account
+            .snapshot
+            .positions
+            .iter()
+            .find(|position| &position.coin == coin)
+            .map_or(Decimal::ZERO, |position| position.signed_size);
+        anyhow::ensure!(
+            owned_position(state, coin)? == actual,
+            "Warm owned inventory is missing from full account"
+        );
+    }
+    Ok(())
+}
 
 impl IoExecutionRuntime {
     /// Proves only a fresh client's current selected flat startup projection.
@@ -707,6 +1809,7 @@ impl IoExecutionRuntime {
             actions: 0,
             intents: BTreeMap::new(),
             fills: BTreeMap::new(),
+            recovery_source_debt: None,
         };
         let mut tainted = false;
         if policy.journal_path.exists() {
@@ -748,8 +1851,9 @@ impl IoExecutionRuntime {
                 && facts.fills.len() <= 10000,
             "io journal exceeds configured finite ownership bounds"
         );
-        let native_projection_recovery_required =
-            !facts.fills.is_empty() || facts.intents.values().any(active);
+        let native_projection_recovery_required = !facts.fills.is_empty()
+            || facts.intents.values().any(active)
+            || facts.recovery_source_debt.is_some();
         for intent in facts.intents.values_mut() {
             coin_from_instrument(&intent.instrument_id)?;
             if !matches!(
@@ -775,6 +1879,12 @@ impl IoExecutionRuntime {
                 journal_tainted: tainted,
                 native_projection_recovery_required,
                 fresh_journal_origin,
+                metadata_origin: None,
+                query_in_flight: false,
+                query_key: None,
+                query_token: None,
+                query_completed: 0,
+                last_query_warm: false,
             })),
             account,
         })
@@ -790,10 +1900,18 @@ impl IoExecutionRuntime {
         );
         let latest_private_funds = account_guard.private_funds_witness();
         let state = self.state.lock();
-        serde_json::to_string(&json!({"policy":*self.policy,"account":account,"latest_private_funds":latest_private_funds,"metadata":state.metadata,"recovery_complete":state.recovery_complete,"recovered_epoch":state.recovered_epoch,"diagnostic":state.diagnostic,"journal_tainted":state.journal_tainted,"fresh_journal_origin":state.fresh_journal_origin,"native_projection_recovery_required":state.native_projection_recovery_required,"actions":state.facts.actions,"owned_intents":state.facts.intents,"actual_fills":state.facts.fills,"margin_basis":"conservative full-notional entry estimate using minimum HTTP/private free and withdrawable; isolated total maintenance unknown; non-atomic source observations","user_asset_source_time_ms":null})).map_err(Into::into)
+        serde_json::to_string(&json!({"policy":*self.policy,"account":account,"latest_private_funds":latest_private_funds,"metadata":state.metadata,"warm_metadata_origin":state.metadata_origin,"query_in_flight":state.query_in_flight,"query_token":state.query_token,"query_completed":state.query_completed,"last_query_warm":state.last_query_warm,"recovery_source_debt":state.facts.recovery_source_debt,"recovery_complete":state.recovery_complete,"recovered_epoch":state.recovered_epoch,"diagnostic":state.diagnostic,"journal_tainted":state.journal_tainted,"fresh_journal_origin":state.fresh_journal_origin,"native_projection_recovery_required":state.native_projection_recovery_required,"actions":state.facts.actions,"owned_intents":state.facts.intents,"actual_fills":state.facts.fills,"margin_basis":"conservative full-notional entry estimate using minimum HTTP/private free and withdrawable; isolated total maintenance unknown; non-atomic source observations","user_asset_source_time_ms":null})).map_err(Into::into)
     }
 
     pub(crate) fn invalidate(&self, reason: &str) {
+        let mut state = self.state.lock();
+        state.metadata_origin = None;
+        state.revision = state.revision.wrapping_add(1);
+        state.recovery_complete = false;
+        state.diagnostic = reason.into();
+    }
+
+    pub(crate) fn invalidate_financial(&self, reason: &str) {
         let mut state = self.state.lock();
         state.revision = state.revision.wrapping_add(1);
         state.recovery_complete = false;
@@ -1264,6 +2382,9 @@ impl IoExecutionRuntime {
 
     async fn verify_metadata(&self, http: &HyperliquidHttpClient) -> anyhow::Result<()> {
         let started = now_ms();
+        let origin = self.account.ws.private_source_identity();
+        let received_sequence = self.account.ws.private_ingress_guard().received_sequence();
+        let hard_revision = self.account.state.lock().hard_revision();
         let (snapshot, account_revision) = {
             let guard = self.account.state.lock();
             (
@@ -1298,6 +2419,8 @@ impl IoExecutionRuntime {
         anyhow::ensure!(indices.len() == 1, "Missing or ambiguous io dex slot");
         let dex_index = indices[0];
         let mut proofs = BTreeMap::new();
+        let mut selected_rows = BTreeMap::new();
+        let mut native_http = BTreeMap::new();
         for symbol in &self.policy.symbols {
             let coin = coin_from_instrument(&symbol.instrument_id)?;
             let matches = rows
@@ -1312,6 +2435,7 @@ impl IoExecutionRuntime {
                 "Missing or duplicate explicit io native coin"
             );
             let (universe_index, row) = matches[0];
+            selected_rows.insert(symbol.instrument_id.clone(), (*row).clone());
             anyhow::ensure!(
                 row.get("isDelisted")
                     .is_none_or(|value| value.as_bool() == Some(false)),
@@ -1358,6 +2482,16 @@ impl IoExecutionRuntime {
                 .and_then(|base| base.checked_add(universe_index))
                 .and_then(|value| u32::try_from(value).ok())
                 .context("io native action ID overflow")?;
+            let native = http
+                .io_cached_instrument(&coin)
+                .context("Missing verified io native HTTP instrument")?;
+            anyhow::ensure!(
+                native.id().to_string() == symbol.instrument_id
+                    && native.raw_symbol().as_str() == coin
+                    && u32::from(native.size_precision()) == decimals,
+                "Normal io metadata differs from the native HTTP instrument"
+            );
+            native_http.insert(symbol.instrument_id.clone(), serde_json::to_value(native)?);
             proofs.insert(
                 symbol.instrument_id.clone(),
                 IoInstrumentProof {
@@ -1378,6 +2512,7 @@ impl IoExecutionRuntime {
                 },
             );
         }
+        let ingress = self.account.ws.private_ingress_guard();
         let proof_guard = self.account.state.lock();
         let current = proof_guard
             .snapshot(
@@ -1388,6 +2523,10 @@ impl IoExecutionRuntime {
             .context("io account proof disappeared")?;
         anyhow::ensure!(
             proof_guard.revision() == account_revision
+                && proof_guard.hard_revision() == hard_revision
+                && ingress.generation() == origin.0
+                && ingress.received_sequence() == received_sequence
+                && ingress.is_applied(origin.1)
                 && current.private_stream_epoch == snapshot.private_stream_epoch
                 && current.trusted,
             "io metadata refresh account generation changed"
@@ -1398,6 +2537,14 @@ impl IoExecutionRuntime {
             "io metadata refresh superseded"
         );
         state.metadata = proofs;
+        state.metadata_origin = Some(IoMetadataOrigin {
+            generation: origin.0,
+            epoch: origin.1,
+            hard_revision,
+            selected_rows,
+            native_http,
+            native_instruments: None,
+        });
         state.diagnostic =
             "io metadata is complete; owned order/fill/position recovery required".into();
         Ok(())
@@ -1650,6 +2797,49 @@ impl IoExecutionRuntime {
     }
 }
 
+/// Returns only selected coins whose actual complete position row counterverifies leverage.
+/// A present malformed row is a failure, never an absent-position shortcut.
+fn warm_current_position_leverage(
+    metadata: &BTreeMap<String, IoInstrumentProof>,
+    clearinghouse: &Value,
+    max_leverage: u64,
+) -> anyhow::Result<std::collections::BTreeSet<String>> {
+    let rows = clearinghouse
+        .get("assetPositions")
+        .and_then(Value::as_array)
+        .context("Missing complete final io leverage positions")?;
+    let mut present = std::collections::BTreeSet::new();
+    for row in rows {
+        let position = row
+            .get("position")
+            .context("Missing final io position identity")?;
+        let coin = position
+            .get("coin")
+            .and_then(Value::as_str)
+            .context("Missing final io position coin")?;
+        if let Some(meta) = metadata.values().find(|meta| meta.coin == coin) {
+            anyhow::ensure!(
+                present.insert(coin.to_string()),
+                "Duplicate final selected io leverage position"
+            );
+            let leverage = position
+                .get("leverage")
+                .context("Missing final io actual leverage")?;
+            anyhow::ensure!(
+                leverage.get("type").and_then(Value::as_str) == Some("isolated")
+                    && leverage
+                        .get("value")
+                        .and_then(Value::as_u64)
+                        .is_some_and(|value| value > 0
+                            && value <= max_leverage
+                            && value == meta.actual_leverage),
+                "Final HTTP io leverage differs from original verified metadata"
+            );
+        }
+    }
+    Ok(present)
+}
+
 fn validate_user_asset(
     raw: &Value,
     address: &str,
@@ -1739,6 +2929,41 @@ fn validate_journal(
     previous: &JournalFacts,
     policy: &IoExecutionPolicy,
 ) -> anyhow::Result<()> {
+    anyhow::ensure!(
+        previous
+            .recovery_source_debt
+            .as_ref()
+            .is_none_or(|debt| record.recovery_source_debt.as_ref() == Some(debt)),
+        "io source debt cannot be cleared or replaced by journal replay"
+    );
+    if let Some(IoRecoverySourceDebt::UnknownSources {
+        original_sources,
+        unavailable_sources,
+        ..
+    }) = &record.recovery_source_debt
+    {
+        anyhow::ensure!(
+            !(original_sources.is_empty() && unavailable_sources.is_empty())
+                && original_sources
+                    .iter()
+                    .map(|source| source.raw_text.len())
+                    .sum::<usize>()
+                    <= 4 * 1024 * 1024,
+            "io original unknown source debt exceeds finite raw bound"
+        );
+    }
+    if let Some(debt) = &record.recovery_source_debt {
+        let identity = match debt {
+            IoRecoverySourceDebt::UnknownSources { identity, .. }
+            | IoRecoverySourceDebt::RetentionFailed { identity, .. } => identity,
+        };
+        anyhow::ensure!(
+            identity.account_id == record.account_id
+                && identity.address == record.address
+                && identity.policy == serde_json::to_value(policy)?,
+            "io retained Unknown source has a different original account or policy identity"
+        );
+    }
     anyhow::ensure!(
         record.actions >= previous.actions
             && record.actions <= policy.max_actions
@@ -1911,10 +3136,24 @@ impl IoExecutionRuntime {
         http: &HyperliquidHttpClient,
         emitter: &nautilus_live::ExecutionEventEmitter,
     ) -> anyhow::Result<()> {
-        self.invalidate("io scoped recovery is pending");
+        let (generation, epoch, hard_revision, origin, metadata) = {
+            let ingress = self.account.ws.private_ingress_guard();
+            let account = self.account.state.lock();
+            let state = self.state.lock();
+            (
+                ingress.generation(),
+                self.account.ws.connection_epoch(),
+                account.hard_revision(),
+                state.metadata_origin.clone(),
+                state.metadata.clone(),
+            )
+        };
+        self.invalidate_financial("io scoped recovery is pending");
         let deadline = tokio::time::Instant::now()
             + std::time::Duration::from_millis(self.policy.recovery_timeout_ms);
         let mut last = "No io recovery attempt completed".to_string();
+        let mut only_awaiting_owned_fills = true;
+        let mut attempted = false;
         for _ in 0..self.policy.recovery_max_attempts {
             let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
             if remaining.is_zero() {
@@ -1922,8 +3161,14 @@ impl IoExecutionRuntime {
             }
             match tokio::time::timeout(remaining, self.recover_once(http, emitter)).await {
                 Ok(Ok(())) => return Ok(()),
-                Ok(Err(error)) => last = error.to_string(),
+                Ok(Err(error)) => {
+                    attempted = true;
+                    only_awaiting_owned_fills &=
+                        error.downcast_ref::<AwaitingOwnedActualFills>().is_some();
+                    last = error.to_string();
+                }
                 Err(_) => {
+                    only_awaiting_owned_fills = false;
                     last = "io scoped recovery deadline exhausted".into();
                     break;
                 }
@@ -1937,7 +3182,29 @@ impl IoExecutionRuntime {
             )
             .await;
         }
-        self.invalidate(&format!("io RecoveryIncomplete: {last}"));
+        {
+            let ingress = self.account.ws.private_ingress_guard();
+            let account = self.account.state.lock();
+            let mut state = self.state.lock();
+            // Retention never recreates an origin or changes its original times.
+            // Every failed attempt must be the typed, fully owned marker case.
+            let retain_origin = attempted
+                && only_awaiting_owned_fills
+                && ingress.generation() == generation
+                && self.account.ws.connection_epoch() == epoch
+                && ingress.is_applied(epoch)
+                && self.account.ws.is_active()
+                && account.hard_revision() == hard_revision
+                && origin.is_some()
+                && state.metadata_origin == origin
+                && state.metadata == metadata;
+            if !retain_origin {
+                state.metadata_origin = None;
+            }
+            state.revision = state.revision.wrapping_add(1);
+            state.recovery_complete = false;
+            state.diagnostic = format!("io RecoveryIncomplete: {last}");
+        }
         anyhow::bail!("io RecoveryIncomplete: {last}")
     }
 
@@ -2257,8 +3524,22 @@ impl IoExecutionRuntime {
             }
             "filled" => {
                 anyhow::ensure!(
+                    remaining.is_zero(),
+                    "Owned filled marker retains nonzero remaining size"
+                );
+                if intent.filled < intent.quantity {
+                    anyhow::ensure!(
+                        matches!(
+                            intent.phase,
+                            IoIntentPhase::Open | IoIntentPhase::TerminalPending
+                        ) && intent.oid == Some(oid),
+                        "Owned filled marker has no current confirmed order identity"
+                    );
+                    return Err(AwaitingOwnedActualFills.into());
+                }
+                anyhow::ensure!(
                     intent.filled == intent.quantity,
-                    "Filled marker lacks complete actual fills; do not manufacture them"
+                    "Owned actual fills exceed filled marker quantity"
                 );
                 intent.phase = IoIntentPhase::TerminalPending;
                 intent.terminal_time_ms = Some(time);
@@ -3041,6 +4322,7 @@ mod tests {
             actions: 0,
             intents: BTreeMap::new(),
             fills: BTreeMap::new(),
+            recovery_source_debt: None,
         }
     }
 
@@ -3240,6 +4522,12 @@ mod tests {
             journal_tainted: false,
             native_projection_recovery_required: false,
             fresh_journal_origin: false,
+            metadata_origin: None,
+            query_in_flight: false,
+            query_key: None,
+            query_token: None,
+            query_completed: 0,
+            last_query_warm: false,
         };
         assert!(state.persist().is_err());
         assert!(state.journal_tainted);

@@ -17,6 +17,7 @@
 
 use std::{
     collections::BTreeSet,
+    rc::Rc,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -33,9 +34,11 @@ use nautilus_common::{
         GenerateOrderStatusReport, GenerateOrderStatusReports, GeneratePositionStatusReports,
         ModifyOrder, QueryAccount, QueryOrder, SubmitOrder, SubmitOrderList,
     },
+    runner::{TimeEventMessage, try_get_time_event_sender},
+    timer::{TimeEvent, TimeEventCallback},
 };
 use nautilus_core::{
-    Params, UnixNanos,
+    Params, UUID4, UnixNanos,
     time::{AtomicTime, get_atomic_clock_realtime},
 };
 use nautilus_live::{
@@ -207,6 +210,31 @@ use crate::{
 
 const TASK_SHUTDOWN_DENIAL_REASON: &str = "Hyperliquid execution client is shutting down";
 
+struct IoWarmFlight {
+    runtime: IoExecutionRuntime,
+    token: u64,
+    active: Arc<Mutex<bool>>,
+    staged: Arc<Mutex<Option<crate::execution_scope::IoWarmObservation>>>,
+    succeeded: bool,
+}
+
+impl IoWarmFlight {
+    fn set_succeeded(&mut self, succeeded: bool) {
+        self.succeeded = succeeded;
+    }
+}
+
+impl Drop for IoWarmFlight {
+    fn drop(&mut self) {
+        *self.active.lock() = false;
+        let abandoned = self.staged.lock().take();
+        if let Some(observation) = abandoned {
+            self.runtime.abandon_warm_observation(observation);
+        }
+        self.runtime.finish_warm_query(self.token, self.succeeded);
+    }
+}
+
 #[derive(Debug)]
 pub struct HyperliquidExecutionClient {
     core: ExecutionClientCore,
@@ -225,6 +253,7 @@ pub struct HyperliquidExecutionClient {
     io_execution: Option<IoExecutionRuntime>,
     io_economics: Option<IoEconomicsRuntime>,
     economics_instruments: Arc<Mutex<BTreeSet<String>>>,
+    io_query_lifetime: Arc<()>,
 }
 
 impl HyperliquidExecutionClient {
@@ -366,7 +395,17 @@ impl HyperliquidExecutionClient {
             .io_execution
             .clone()
             .context("io execution remains read-only without explicit policy")?;
-        let prepared = match runtime.prepare_order(&order) {
+        let admission = if order.is_reduce_only() {
+            Ok(())
+        } else {
+            (|| {
+                if runtime.current_warm_metadata() && runtime.metadata_needs_native_cache() {
+                    runtime.bind_metadata_native_cache(&self.http_client, &self.core)?;
+                }
+                runtime.validate_current_native_metadata(&self.http_client, &self.core)
+            })()
+        };
+        let prepared = match admission.and_then(|()| runtime.prepare_order(&order)) {
             Ok(prepared) => prepared,
             Err(error) => {
                 self.emitter
@@ -801,6 +840,7 @@ impl HyperliquidExecutionClient {
             io_execution,
             io_economics,
             economics_instruments: Arc::new(Mutex::new(BTreeSet::new())),
+            io_query_lifetime: Arc::new(()),
         })
     }
 
@@ -2078,6 +2118,142 @@ impl ExecutionClient for HyperliquidExecutionClient {
                 cmd.account_id == self.core.account_id,
                 "QueryAccount identity does not match the explicit io account scope"
             );
+            if let Some(runtime) = &self.io_execution {
+                anyhow::ensure!(
+                    !runtime.has_recovery_source_debt(),
+                    "io unknown recovery source debt cannot fall back or borrow an old proof"
+                );
+                let current_warm_metadata = runtime.current_warm_metadata();
+                if current_warm_metadata
+                    && runtime.metadata_needs_native_cache()
+                    && let Err(e) =
+                        runtime.bind_metadata_native_cache(&self.http_client, &self.core)
+                {
+                    scope
+                        .state
+                        .lock()
+                        .invalidate_financial("io current native Cache metadata is ineligible");
+                    runtime.invalidate_financial("io current native Cache metadata is ineligible");
+                    return Err(e);
+                }
+                // Register a local completion on the caller's owner thread. The
+                // HTTP task moves only its send-safe message and detached facts.
+                match runtime.begin_warm_query(&self.http_client, &self.core) {
+                    Ok(None) => return Ok(()),
+                    Ok(Some(query)) => {
+                        let active = Arc::new(Mutex::new(true));
+                        let staged = Arc::new(Mutex::new(None));
+                        let mut flight = IoWarmFlight {
+                            runtime: runtime.clone(),
+                            token: query.token(),
+                            active: active.clone(),
+                            staged: staged.clone(),
+                            succeeded: false,
+                        };
+                        let sender = try_get_time_event_sender()
+                            .context("io warm query requires the normal owner-thread runner")?;
+                        let deadline = query.deadline();
+                        let core = self.core.clone();
+                        let lifetime = Arc::downgrade(&self.io_query_lifetime);
+                        let completion_runtime = runtime.diagnostics();
+                        let completion_http = self.http_client.clone();
+                        let completion_emitter = self.emitter.clone();
+                        let (result_sender, result_receiver) = tokio::sync::oneshot::channel();
+                        let result_sender = Mutex::new(Some(result_sender));
+                        let event = TimeEvent::new(
+                            Ustr::from("io_query_account_completion"),
+                            UUID4::new(),
+                            self.clock.get_time_ns(),
+                            self.clock.get_time_ns(),
+                        );
+                        let message = TimeEventMessage::new(
+                            event,
+                            TimeEventCallback::RustLocal(Rc::new(move |_| {
+                                let still_active = *active.lock();
+                                let result = if still_active
+                                    && lifetime.strong_count() > 0
+                                    && tokio::time::Instant::now() < deadline
+                                {
+                                    let observation = staged.lock().take();
+                                    observation
+                                        .context("Missing staged io warm source")
+                                        .and_then(|observation| {
+                                            completion_runtime.commit_warm_query(
+                                                observation,
+                                                &completion_http,
+                                                &core,
+                                                &completion_emitter,
+                                                &active,
+                                            )
+                                        })
+                                } else {
+                                    Err(anyhow::anyhow!(
+                                        "io warm owner completion was canceled or expired"
+                                    ))
+                                };
+                                if let Some(sender) = result_sender.lock().take() {
+                                    let _ = sender.send(result);
+                                }
+                            })),
+                        );
+                        let http = self.http_client.clone();
+                        let runtime = runtime.clone();
+                        let economics = self.io_economics.clone();
+                        let warm_source = self.ws_client.clone();
+                        self.spawn_task("query_io_warm_account", async move {
+                            let result = tokio::time::timeout_at(deadline, async {
+                                let observation = runtime.observe_warm_query(query, &http).await?;
+                                *flight.staged.lock() = Some(observation);
+                                sender.send(message);
+                                result_receiver
+                                    .await
+                                    .context("io warm owner completion was dropped")?
+                            })
+                            .await
+                            .map_err(|_| {
+                                anyhow::anyhow!("io warm recovery total deadline exhausted")
+                            })
+                            .and_then(|result| result);
+                            if let Err(e) = &result {
+                                runtime.warm_query_failed(flight.token, &format!("{e:#}"));
+                            }
+                            if result.is_ok()
+                                && let Some(economics) = economics
+                            {
+                                let (generation, epoch) = warm_source.private_source_identity();
+                                if let Err(e) = economics.record_unrequested_history(
+                                    generation,
+                                    epoch,
+                                    crate::account_scope::now_ms(),
+                                ) {
+                                    runtime.invalidate(
+                                        "Economic unrequested coverage could not be preserved",
+                                    );
+                                    return Err(e);
+                                }
+                            }
+                            flight.set_succeeded(result.is_ok());
+                            result
+                        });
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        if current_warm_metadata
+                            || runtime.warm_query_pending()
+                            || runtime.has_recovery_source_debt()
+                        {
+                            scope.state.lock().invalidate_financial(
+                                "io warm current native/owned facts are ineligible",
+                            );
+                            runtime.invalidate_financial(
+                                "io query cannot borrow a superseded flight or source debt",
+                            );
+                            return Err(e);
+                        }
+                        log::debug!("io warm recovery is ineligible: {e:#}");
+                    }
+                }
+            }
             scope
                 .state
                 .lock()
@@ -2320,6 +2496,14 @@ impl ExecutionClient for HyperliquidExecutionClient {
                     Duration::from_millis(runtime.policy.recovery_timeout_ms),
                     async {
                         runtime.refresh_metadata(&self.http_client).await?;
+                        if let Err(error) =
+                            runtime.bind_metadata_native_cache(&self.http_client, &self.core)
+                        {
+                            // A restart can connect read-only with durable projection debt
+                            // and an intentionally empty Engine Cache. Missing binding
+                            // remains ineligible for new risk; it is never manufactured.
+                            log::warn!("io metadata Cache binding remains read-only: {error:#}");
+                        }
                         if let Err(error) = runtime.recover(&self.http_client, &self.emitter).await
                         {
                             if let Some(scope) = &self.account_scope {
@@ -2978,7 +3162,7 @@ impl HyperliquidExecutionClient {
                             // observation/report cannot restore it or the native projection barrier.
                             if io_economics.is_some() && financial && current {
                                 if let Some(scope) = &account_scope { scope.state.lock().invalidate_financial("Economic private financial observation requires current scoped recovery"); }
-                                if let Some(runtime) = &io_execution { runtime.invalidate("Economic financial frame pending durable preservation and scoped recovery"); }
+                                if let Some(runtime) = &io_execution { runtime.invalidate_financial("Economic financial frame pending durable preservation and scoped recovery"); }
                             }
                             let mut economic_source_clean = false;
                             if let Some(economics) = &io_economics {
@@ -2990,6 +3174,10 @@ impl HyperliquidExecutionClient {
                                     // Empty supported snapshots can retain existing metadata;
                                     // they never establish context or assert financial identity.
                                     let empty_supported = result.handled && result.observed == 0 && result.unknown == 0;
+                                    if current && matches!(channel.as_str(), "userFundings" | "userNonFundingLedgerUpdates")
+                                        && !empty_supported && let Some(runtime) = &io_execution {
+                                        runtime.invalidate("New economic funding/ledger source requires bounded source recovery");
+                                    }
                                     if financial && current && !result.attribution_complete && !empty_supported
                                         && let Some(scope) = &account_scope {
                                         scope.state.lock().invalidate("Economic private source has incomplete account or instrument attribution", false);

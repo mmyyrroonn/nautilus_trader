@@ -105,6 +105,8 @@ struct PeerData {
     ws_enabled: bool,
     acknowledge: bool,
     requests: Vec<Value>,
+    http_observations: Vec<Value>,
+    ws_observations: Vec<Value>,
     subscriptions: Vec<Value>,
     execution: Option<execution::PeerExecution>,
     meta_override: Option<Value>,
@@ -143,6 +145,8 @@ impl PeerState {
                 ws_enabled: true,
                 acknowledge: true,
                 requests: Vec::new(),
+                http_observations: Vec::new(),
+                ws_observations: Vec::new(),
                 subscriptions: Vec::new(),
                 execution: None,
                 meta_override: None,
@@ -233,18 +237,34 @@ fn clearinghouse(raw: &str, equity: &str, used: &str, withdrawable: &str, positi
     })
 }
 
-async fn info(State(state): State<PeerState>, Json(request): Json<Value>) -> Response {
-    let kind = request["type"].as_str().unwrap_or("").to_string();
+fn record_http_response(state: &PeerState, request: &Value, started: u64, status: u16, raw: &str) {
+    let mut data = state.data.lock();
+    if data
+        .execution
+        .as_ref()
+        .is_some_and(|execution| execution.record_http)
     {
+        data.http_observations
+            .push(json!({"request":request,"started_ms":started,
+            "completed_ms":now_ms(),"status":status,"raw_body":raw}));
+    }
+}
+
+async fn info(State(state): State<PeerState>, Json(request): Json<Value>) -> Response {
+    let started = now_ms();
+    let kind = request["type"].as_str().unwrap_or("").to_string();
+    let failed = {
         let mut data = state.data.lock();
         data.requests.push(request.clone());
-        if data.failed_endpoint.as_deref() == Some(kind.as_str()) {
-            return (
-                axum::http::StatusCode::SERVICE_UNAVAILABLE,
-                "synthetic outage",
-            )
-                .into_response();
-        }
+        data.failed_endpoint.as_deref() == Some(kind.as_str())
+    };
+    if failed {
+        record_http_response(&state, &request, started, 503, "synthetic outage");
+        return (
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            "synthetic outage",
+        )
+            .into_response();
     }
     if kind == "clearinghouseState" && request["dex"] == "io" {
         let delay = state.data.lock().io_response_delay_ms;
@@ -256,6 +276,7 @@ async fn info(State(state): State<PeerState>, Json(request): Json<Value>) -> Res
         if delay_ms > 0 {
             tokio::time::sleep(Duration::from_millis(delay_ms)).await;
         }
+        record_http_response(&state, &request, started, 200, &raw_body);
         return (
             [(axum::http::header::CONTENT_TYPE, "application/json")],
             raw_body,
@@ -266,6 +287,7 @@ async fn info(State(state): State<PeerState>, Json(request): Json<Value>) -> Res
         if delay_ms > 0 {
             tokio::time::sleep(Duration::from_millis(delay_ms)).await;
         }
+        record_http_response(&state, &request, started, 200, &raw_body);
         return (
             [(axum::http::header::CONTENT_TYPE, "application/json")],
             raw_body,
@@ -310,11 +332,13 @@ async fn info(State(state): State<PeerState>, Json(request): Json<Value>) -> Res
         _ => match execution::info_response(&state, &request) {
             Some(response) => response,
             None => {
+                record_http_response(&state, &request, started, 400, "unexpected info type");
                 return (axum::http::StatusCode::BAD_REQUEST, "unexpected info type")
                     .into_response();
             }
         },
     };
+    record_http_response(&state, &request, started, 200, &response.to_string());
     Json(response).into_response()
 }
 
@@ -401,10 +425,27 @@ async fn stream(mut socket: WebSocket, state: PeerState) {
                 } else { None }
             }
         };
-        if let Some(message) = outgoing
-            && socket.send(message).await.is_err()
-        {
-            break;
+        if let Some(message) = outgoing {
+            let text = match &message {
+                Message::Text(text) => Some(text.to_string()),
+                _ => None,
+            };
+            let sent = socket.send(message).await;
+            {
+                let mut data = state.data.lock();
+                if data
+                    .execution
+                    .as_ref()
+                    .is_some_and(|execution| execution.record_http)
+                    && let Some(text) = text
+                {
+                    data.ws_observations.push(json!({"completed_ms":now_ms(),
+                        "raw_body":text,"delivered":sent.is_ok()}));
+                }
+            }
+            if sent.is_err() {
+                break;
+            }
         }
     }
 }

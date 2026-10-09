@@ -342,6 +342,74 @@ impl IoEconomicsRuntime {
     pub(crate) fn policy(&self) -> &IoEconomicsPolicy {
         &self.policy
     }
+
+    /// Records a demand boundary, without claiming a request or complete history.
+    /// Elapsed time alone never widens a previously requested finite window.
+    pub(crate) fn record_unrequested_history(
+        &self,
+        generation: u64,
+        epoch: u64,
+        now: u64,
+    ) -> anyhow::Result<()> {
+        let end = self
+            .policy
+            .history_start_ms
+            .checked_add(self.policy.history_max_window_ms)
+            .context("Economic demand window overflow")?
+            .min(now);
+        let mut state = self.state.lock();
+        let mut candidate = state.checkpoint.clone();
+        for endpoint in ["userFunding", "userNonFundingLedgerUpdates"] {
+            let start = candidate
+                .coverage
+                .iter()
+                .filter(|row| {
+                    row.generation == generation
+                        && row.epoch == epoch
+                        && row.endpoint == endpoint
+                        && row.complete
+                })
+                .map(|row| row.end_ms)
+                .max()
+                .unwrap_or(self.policy.history_start_ms);
+            if end <= start {
+                continue;
+            }
+            let gap = IoHistoryCoverage {
+                generation,
+                epoch,
+                endpoint: endpoint.into(),
+                start_ms: start,
+                end_ms: end,
+                pages: 0,
+                records: 0,
+                complete: false,
+                diagnostic:
+                    "Current interval was not requested by warm account recovery; coverage Unknown"
+                        .into(),
+            };
+            if let Some(previous) = candidate.coverage.iter_mut().find(|row| {
+                row.generation == generation
+                    && row.epoch == epoch
+                    && row.endpoint == endpoint
+                    && row.pages == 0
+                    && row.records == 0
+                    && !row.complete
+                    && row
+                        .diagnostic
+                        .starts_with("Current interval was not requested")
+            }) {
+                *previous = gap;
+            } else {
+                anyhow::ensure!(
+                    candidate.coverage.len() < self.policy.history_max_pages * 3,
+                    "io economic coverage retention exhausted"
+                );
+                candidate.coverage.push(gap);
+            }
+        }
+        state.commit(candidate, &self.policy)
+    }
     pub(crate) fn diagnostics(&self) -> IoEconomicsDiagnostics {
         IoEconomicsDiagnostics {
             policy: self.policy.clone(),

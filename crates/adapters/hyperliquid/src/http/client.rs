@@ -1841,6 +1841,40 @@ impl HyperliquidHttpClient {
         self.inner.economic_history_body(request, max_bytes).await
     }
 
+    /// Retains a bounded info body before JSON parsing or item-quota waits.
+    /// The normal transport owns base weights, retries, and the receive cap.
+    pub(crate) async fn io_scope_raw_body(
+        &self,
+        request: &InfoRequest,
+        max_bytes: usize,
+    ) -> Result<EconomicHistoryBody> {
+        let response = self.inner.send_info_response(request).await?;
+        let received_ms = get_atomic_clock_realtime().get_time_ns().as_u64() / 1_000_000;
+        if response.body.len() > max_bytes {
+            return Err(Error::bad_request("io scope body exceeds policy bound"));
+        }
+        let raw_text = String::from_utf8(response.body.to_vec())
+            .map_err(|_| Error::bad_request("io scope body is not valid UTF-8"))?;
+        Ok(EconomicHistoryBody {
+            raw_text,
+            received_ms,
+        })
+    }
+
+    /// Decodes an already retained body and debits the ordinary endpoint item weight.
+    pub(crate) async fn io_scope_decode_body(
+        &self,
+        request: &InfoRequest,
+        body: &str,
+    ) -> Result<Value> {
+        let value = serde_json::from_str(body).map_err(Error::Serde)?;
+        let extra = info_extra_weight(request, &value);
+        if extra > 0 {
+            self.inner.rest_limiter.debit_extra(extra).await;
+        }
+        Ok(value)
+    }
+
     /// Original funding body; caller's total deadline includes quota and retries.
     pub(crate) async fn info_user_funding_body(
         &self,

@@ -24,9 +24,11 @@ use nautilus_common::{
         ExecutionReport,
         execution::{CancelOrder, QueryOrder},
     },
+    runner::{TimeEventMessage, replace_time_event_sender},
 };
 use nautilus_execution::engine::ExecutionEngine;
 use nautilus_hyperliquid::http::client::HyperliquidHttpClient;
+use nautilus_live::runner::{AsyncRunner, AsyncTimeEventSender};
 use nautilus_model::{
     enums::{OrderSide, OrderStatus, TimeInForce},
     identifiers::{ClientId, StrategyId, VenueOrderId},
@@ -45,14 +47,19 @@ mod economics;
 #[path = "startup.rs"]
 mod startup;
 
+#[path = "io_query_recovery.rs"]
+mod io_query_recovery;
+
 #[derive(Debug)]
 pub(super) struct PeerExecution {
+    pub record_http: bool,
     pub posts: Vec<Value>,
     pub orders: BTreeMap<String, Value>,
     pub fills: Vec<Value>,
     pub acknowledge_posts: bool,
     pub observable_orders: bool,
     pub asset_data: Value,
+    pub warm_asset_data_pages: VecDeque<String>,
     pub funding_pages: VecDeque<String>,
     pub ledger_pages: VecDeque<String>,
     pub history_delay_ms: u64,
@@ -63,6 +70,7 @@ pub(super) struct PeerExecution {
 impl Default for PeerExecution {
     fn default() -> Self {
         Self {
+            record_http: false,
             posts: Vec::new(),
             orders: BTreeMap::new(),
             fills: Vec::new(),
@@ -70,6 +78,7 @@ impl Default for PeerExecution {
             observable_orders: true,
             asset_data: json!({"user":USER,"coin":"io:SNDK","leverage":{"type":"isolated","value":1},
                 "maxTradeSzs":["1","1"],"availableToTrade":["100","100"],"markPx":"100"}),
+            warm_asset_data_pages: VecDeque::new(),
             funding_pages: VecDeque::from(["[]".to_string()]),
             ledger_pages: VecDeque::from(["[]".to_string()]),
             history_delay_ms: 0,
@@ -80,9 +89,17 @@ impl Default for PeerExecution {
 }
 
 pub(super) fn startup_info_response(state: &PeerState, request: &Value) -> Option<(u64, String)> {
-    let data = state.data.lock();
-    data.execution
-        .as_ref()?
+    let mut data = state.data.lock();
+    let execution = data.execution.as_mut()?;
+    if request["type"] == "activeAssetData" && !execution.warm_asset_data_pages.is_empty() {
+        let body = if execution.warm_asset_data_pages.len() > 1 {
+            execution.warm_asset_data_pages.pop_front().unwrap()
+        } else {
+            execution.warm_asset_data_pages.front().unwrap().clone()
+        };
+        return Some((0, body));
+    }
+    execution
         .startup_responses
         .get(request["type"].as_str()?)
         .cloned()
@@ -247,6 +264,7 @@ struct Harness {
     engine: ExecutionEngine,
     portfolio: Portfolio,
     receiver: UnboundedReceiver<ExecutionEvent>,
+    time_receiver: RefCell<UnboundedReceiver<TimeEventMessage>>,
     fill_events: usize,
 }
 
@@ -303,6 +321,8 @@ impl Harness {
         let factory = HyperliquidExecutionClientFactory::new();
         let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
         replace_exec_event_sender(sender);
+        let (time_sender, time_receiver) = tokio::sync::mpsc::unbounded_channel();
+        replace_time_event_sender(Arc::new(AsyncTimeEventSender::new(time_sender)));
         let mut client = factory
             .create(
                 TraderId::from("TESTER-001"),
@@ -329,6 +349,7 @@ impl Harness {
             engine,
             portfolio,
             receiver,
+            time_receiver: RefCell::new(time_receiver),
             fill_events: 0,
         };
         if wait_for_ready && execution_enabled && !economics_enabled {
@@ -429,6 +450,16 @@ impl Harness {
     fn apply_events(&mut self) {
         while let Ok(event) = self.receiver.try_recv() {
             self.apply_event(event);
+        }
+        self.apply_time_events();
+        while let Ok(event) = self.receiver.try_recv() {
+            self.apply_event(event);
+        }
+    }
+
+    fn apply_time_events(&self) {
+        while let Ok(message) = self.time_receiver.borrow_mut().try_recv() {
+            let _ = AsyncRunner::handle_time_event(message);
         }
     }
 
