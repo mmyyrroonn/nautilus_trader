@@ -729,3 +729,296 @@ fn lifetime_coverage_capacity_preserves_last_checkpoint_when_exhausted() {
     assert_eq!(snapshot(&runtime)["checkpoint_revision"], revision);
     assert_eq!(snapshot(&runtime)["coverage_record_limit"], 24);
 }
+
+fn finite_demand_test_coverage(endpoint: &str, end_ms: u64) -> IoHistoryCoverage {
+    IoHistoryCoverage {
+        generation: 2,
+        epoch: 7,
+        endpoint: endpoint.into(),
+        start_ms: 0,
+        end_ms,
+        pages: 1,
+        records: 0,
+        complete: true,
+        diagnostic: "Synthetic finite observed history".into(),
+    }
+}
+
+fn seed_demand_test_receipts(runtime: &IoEconomicsRuntime) {
+    history(runtime, json!([funding("demand-funding", json!("2"))]));
+    let raw = json!({"channel":"user","data":{"fills":[fill_row()]}}).to_string();
+    runtime
+        .observe_ws(&raw, 2, 7, 1, 1000, Some(&proof()))
+        .unwrap();
+    let consumed = consume(runtime);
+    assert_eq!(consumed["report"]["actual_fee_usdc"], "-0.001");
+    assert_eq!(consumed["report"]["funding_usdc"], "2");
+    assert_eq!(consumed["durable_receipts"], 2);
+}
+
+fn assert_demand_test_receipts(before: &Value, after: &Value) {
+    assert_eq!(after["raw_envelopes"], before["raw_envelopes"]);
+    assert_eq!(after["observations"], before["observations"]);
+    assert_eq!(after["report"], before["report"]);
+    assert_eq!(after["durable_receipts"], before["durable_receipts"]);
+}
+
+#[rstest]
+fn warm_demand_three_boundaries_append_durable_unknown_tails_and_reopen() {
+    let directory = tempfile::tempdir().unwrap();
+    let policy = policy(directory.path());
+    let first = runtime(&policy);
+    seed_demand_test_receipts(&first);
+    first
+        .record_history_coverage(finite_demand_test_coverage("userFunding", 2000))
+        .unwrap();
+    first
+        .record_history_coverage(finite_demand_test_coverage(
+            "userNonFundingLedgerUpdates",
+            1500,
+        ))
+        .unwrap();
+    let original = snapshot(&first);
+    let mut previous = original.clone();
+    for end in [2500, 3000, 3500] {
+        let result = first.record_unrequested_history(2, 7, end);
+        let current = snapshot(&first);
+        eprintln!("warm_demand_end={end} result={result:?} checkpoint={current}");
+        assert!(
+            result.is_ok(),
+            "later demand must append without replacing durable coverage"
+        );
+        let old = previous["coverage"].as_array().unwrap();
+        let rows = current["coverage"].as_array().unwrap();
+        assert!(rows.starts_with(old));
+        assert_eq!(rows.len(), old.len() + 2);
+        assert_eq!(
+            current["checkpoint_revision"].as_u64().unwrap(),
+            previous["checkpoint_revision"].as_u64().unwrap() + 1
+        );
+        for (row, endpoint) in rows[old.len()..]
+            .iter()
+            .zip(["userFunding", "userNonFundingLedgerUpdates"])
+        {
+            let expected_start = match (end, endpoint) {
+                (2500, "userFunding") => 2000,
+                (2500, _) => 1500,
+                (3000, "userFunding") => 2750,
+                _ => end - 500,
+            };
+            assert_eq!(row["endpoint"], endpoint);
+            assert_eq!(row["start_ms"], expected_start);
+            assert_eq!(row["end_ms"], end);
+            assert_eq!(row["complete"], false);
+            assert_eq!(row["pages"], 0);
+            assert_eq!(row["records"], 0);
+        }
+        assert_demand_test_receipts(&original, &current);
+        previous = current;
+        if end == 2500 {
+            // A later observed finite interval overlaps the retained Unknown tail.
+            // Neither the observed interval nor a subsequent demand may erase it.
+            first
+                .record_history_coverage(finite_demand_test_coverage("userFunding", 2750))
+                .unwrap();
+            let observed = snapshot(&first);
+            assert!(
+                observed["coverage"]
+                    .as_array()
+                    .unwrap()
+                    .starts_with(previous["coverage"].as_array().unwrap())
+            );
+            assert_demand_test_receipts(&original, &observed);
+            previous = observed;
+        }
+    }
+    drop(first);
+    let reopened = runtime(&policy);
+    let durable = snapshot(&reopened);
+    assert_eq!(durable["coverage"], previous["coverage"]);
+    assert_eq!(
+        durable["checkpoint_revision"],
+        previous["checkpoint_revision"]
+    );
+    assert_demand_test_receipts(&original, &durable);
+}
+
+#[rstest]
+fn warm_demand_same_or_earlier_boundary_is_a_byte_exact_revision_noop() {
+    let directory = tempfile::tempdir().unwrap();
+    let policy = policy(directory.path());
+    let runtime = runtime(&policy);
+    seed_demand_test_receipts(&runtime);
+    runtime.record_unrequested_history(2, 7, 2500).unwrap();
+    let before = snapshot(&runtime);
+    let bytes = std::fs::read(&policy.checkpoint_path).unwrap();
+    for end in [2500, 2400, 0] {
+        let result = runtime.record_unrequested_history(2, 7, end);
+        eprintln!(
+            "noop_demand_end={end} result={result:?} checkpoint={}",
+            snapshot(&runtime)
+        );
+        assert!(result.is_ok());
+        assert_eq!(snapshot(&runtime), before);
+        assert_eq!(std::fs::read(&policy.checkpoint_path).unwrap(), bytes);
+    }
+}
+
+#[rstest]
+fn warm_demand_clips_to_policy_end_and_never_rewrites_the_final_boundary() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut policy = policy(directory.path());
+    policy.history_start_ms = 1000;
+    policy.history_max_window_ms = 4000;
+    let runtime = runtime(&policy);
+    runtime.record_unrequested_history(2, 7, 3900).unwrap();
+    let prior = snapshot(&runtime);
+    let result = runtime.record_unrequested_history(2, 7, 9000);
+    let clipped = snapshot(&runtime);
+    eprintln!("clipped_demand_result={result:?} checkpoint={clipped}");
+    assert!(result.is_ok());
+    let rows = clipped["coverage"].as_array().unwrap();
+    assert!(rows.starts_with(prior["coverage"].as_array().unwrap()));
+    assert_eq!(rows.len(), 4);
+    for row in &rows[2..] {
+        assert_eq!(row["start_ms"], 3900);
+        assert_eq!(row["end_ms"], 5000);
+        assert_eq!(row["complete"], false);
+    }
+    let bytes = std::fs::read(&policy.checkpoint_path).unwrap();
+    runtime.record_unrequested_history(2, 7, 10000).unwrap();
+    assert_eq!(snapshot(&runtime), clipped);
+    assert_eq!(std::fs::read(&policy.checkpoint_path).unwrap(), bytes);
+}
+
+#[rstest]
+#[case(0, 0, "Private stream gap; completeness Unknown")]
+#[case(
+    0,
+    0,
+    "Current interval was not requested by warm account recovery; coverage Unknown extra suffix"
+)]
+#[case(
+    1,
+    0,
+    "Current interval was not requested by warm account recovery; coverage Unknown"
+)]
+#[case(
+    0,
+    1,
+    "Current interval was not requested by warm account recovery; coverage Unknown"
+)]
+fn warm_demand_scope_and_endpoint_do_not_borrow_other_or_stream_gap_boundaries(
+    #[case] pages: usize,
+    #[case] records: usize,
+    #[case] diagnostic: &str,
+) {
+    let directory = tempfile::tempdir().unwrap();
+    let policy = policy(directory.path());
+    let runtime = runtime(&policy);
+    runtime
+        .record_history_coverage(finite_demand_test_coverage("userFunding", 2000))
+        .unwrap();
+    let mut stream_gap = finite_demand_test_coverage("userNonFundingLedgerUpdates", 9000);
+    stream_gap.complete = false;
+    stream_gap.pages = pages;
+    stream_gap.records = records;
+    stream_gap.diagnostic = diagnostic.into();
+    runtime.record_history_coverage(stream_gap).unwrap();
+    let original = snapshot(&runtime);
+    for (generation, epoch, expected_start) in [(2, 7, 2000), (3, 7, 0), (3, 8, 0)] {
+        runtime
+            .record_unrequested_history(generation, epoch, 2500)
+            .unwrap();
+        let current = snapshot(&runtime);
+        let rows = current["coverage"].as_array().unwrap();
+        let tail = &rows[rows.len() - 2..];
+        assert_eq!(tail[0]["start_ms"], expected_start);
+        assert_eq!(tail[1]["start_ms"], 0);
+        for row in tail {
+            assert_eq!(row["generation"], generation);
+            assert_eq!(row["epoch"], epoch);
+            assert_eq!(row["end_ms"], 2500);
+            assert_eq!(row["complete"], false);
+        }
+        assert!(rows.starts_with(original["coverage"].as_array().unwrap()));
+    }
+}
+
+#[rstest]
+#[case(0)]
+#[case(1)]
+fn warm_demand_full_capacity_rejects_both_endpoints_atomically_but_accepts_noop(
+    #[case] free_rows: usize,
+) {
+    let directory = tempfile::tempdir().unwrap();
+    let policy = policy(directory.path());
+    let first = runtime(&policy);
+    seed_demand_test_receipts(&first);
+    first.record_unrequested_history(2, 7, 2500).unwrap();
+    let limit = policy.history_max_pages * 3;
+    while snapshot(&first)["coverage"].as_array().unwrap().len() < limit - free_rows {
+        let mut unrelated = finite_demand_test_coverage("userFunding", 2000);
+        unrelated.generation = 99;
+        first.record_history_coverage(unrelated).unwrap();
+    }
+    let before = snapshot(&first);
+    let bytes = std::fs::read(&policy.checkpoint_path).unwrap();
+    first.record_unrequested_history(2, 7, 2500).unwrap();
+    assert_eq!(snapshot(&first), before);
+    assert_eq!(std::fs::read(&policy.checkpoint_path).unwrap(), bytes);
+    let result = first.record_unrequested_history(2, 7, 3000);
+    eprintln!(
+        "capacity_free_rows={free_rows} result={result:?} checkpoint={}",
+        snapshot(&first)
+    );
+    assert!(
+        result.is_err(),
+        "both endpoint tails must fit before either is committed"
+    );
+    assert_eq!(snapshot(&first), before);
+    assert_eq!(std::fs::read(&policy.checkpoint_path).unwrap(), bytes);
+    drop(first);
+    let reopened = runtime(&policy);
+    let durable = snapshot(&reopened);
+    assert_eq!(durable["coverage"], before["coverage"]);
+    assert_eq!(
+        durable["checkpoint_revision"],
+        before["checkpoint_revision"]
+    );
+    assert_demand_test_receipts(&before, &durable);
+}
+
+#[rstest]
+fn warm_demand_noop_cannot_bypass_a_real_tainted_checkpoint_failure() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut policy = policy(directory.path());
+    policy.max_observations = 1;
+    let runtime = runtime(&policy);
+    history(&runtime, json!([funding("taint-first", json!("2"))]));
+    consume(&runtime);
+    runtime.record_unrequested_history(2, 7, 2500).unwrap();
+    let durable = std::fs::read(&policy.checkpoint_path).unwrap();
+    let failed = runtime.observe_history(
+        "userFunding",
+        &json!([funding("taint-second", json!("3"))]).to_string(),
+        0,
+        2000,
+        2,
+        7,
+        1000,
+        Some(&proof()),
+    );
+    assert!(failed.is_err());
+    let before = snapshot(&runtime);
+    assert_eq!(before["tainted"], true);
+    for end in [2500, 2400] {
+        let result = runtime.record_unrequested_history(2, 7, end);
+        assert!(
+            result.is_err(),
+            "a represented boundary cannot authorize a tainted runtime"
+        );
+        assert_eq!(snapshot(&runtime), before);
+        assert_eq!(std::fs::read(&policy.checkpoint_path).unwrap(), durable);
+    }
+}

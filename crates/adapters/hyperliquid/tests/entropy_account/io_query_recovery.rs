@@ -2045,6 +2045,203 @@ async fn successful_warm_query_keeps_prior_finite_economic_coverage_and_immutabl
     harness.stop().await;
 }
 
+fn print_economic_callback_evidence(harness: &Harness, phase: &str) {
+    let scope = harness.scope();
+    let economic = economics(harness);
+    let data = harness.peer.state.data.lock();
+    eprintln!(
+        "economic_callback_phase={phase} native_scope={scope} economics={economic} actual_http={} actual_ws={}",
+        json!(data.http_observations),
+        json!(data.ws_observations)
+    );
+}
+
+async fn economic_callback_owned_fill(harness: &mut Harness, close: bool, tid: u64) -> OrderAny {
+    let order = harness.order(
+        if close {
+            "E-ECON-CALLBACK-CLOSE"
+        } else {
+            "E-ECON-CALLBACK-ENTRY"
+        },
+        if close {
+            OrderSide::Sell
+        } else {
+            OrderSide::Buy
+        },
+        "0.12",
+        if close { "99" } else { "100" },
+        close,
+        TimeInForce::Ioc,
+    );
+    let post_index = harness.peer.state.writes.load(Ordering::SeqCst);
+    print_economic_callback_evidence(harness, "before_owned_submit");
+    harness.submit(&order).unwrap();
+    harness.wait_posts(post_index + 1).await;
+    let aggregate = tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if harness.scope()["diagnostic"]
+                .as_str()
+                .unwrap_or("")
+                .contains("RecoveryIncomplete")
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await;
+    print_economic_callback_evidence(harness, "aggregate_ack_without_trade");
+    aggregate.expect("aggregate ACK must not fabricate the actual owned financial fill");
+    let fill = harness.fill(
+        post_index,
+        tid,
+        "0.12",
+        if close { "99" } else { "100" },
+        "0.001",
+        if close { "0.12" } else { "0" },
+    );
+    harness.terminal(post_index, "filled");
+    harness.set_position(if close { "0" } else { "0.12" });
+    harness.send_fill(fill);
+    harness
+        .wait_status(order.client_order_id(), OrderStatus::Filled)
+        .await;
+    harness.wait_latest_position_snapshot().await;
+    print_economic_callback_evidence(harness, "actual_owned_trade_consumed");
+    order
+}
+
+async fn settle_owned_economic_callback(
+    harness: &Harness,
+    index: u64,
+    previous_rows: usize,
+) -> Value {
+    let settled = tokio::time::timeout(Duration::from_millis(3800), async {
+        loop {
+            harness.apply_time_events();
+            let scope = harness.scope();
+            let economic = economics(harness);
+            let owner_completed = scope["query_completed"]
+                .as_u64()
+                .is_some_and(|completed| completed >= index)
+                && scope["query_in_flight"] == false;
+            let economic_completed = economic["coverage"].as_array().unwrap().len() > previous_rows
+                || economic["tainted"] == true
+                || scope["diagnostic"].as_str()
+                    == Some("Economic unrequested coverage could not be preserved");
+            if owner_completed && economic_completed {
+                break scope;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await;
+    print_economic_callback_evidence(harness, "economic_callback_settle_outcome");
+    settled.expect(
+        "normal owner and economic callback did not settle within the original observation bound",
+    )
+}
+
+#[tokio::test]
+async fn consecutive_owned_entry_and_close_warm_callbacks_append_economic_unknown_tails() {
+    let mut harness = normal_economic().await;
+    let prerequisite = harness.scope()["warm_prerequisite_source"].clone();
+    let mut previous_economic = economics(&harness);
+    for (index, close, tid) in [(1_u64, false, 1901_u64), (2, true, 1902)] {
+        let order = economic_callback_owned_fill(&mut harness, close, tid).await;
+        harness.factory.persist_economics().unwrap();
+        let before_economic = economics(&harness);
+        let before_scope = harness.scope();
+        let requests_start = harness.peer.state.data.lock().requests.len();
+        print_economic_callback_evidence(&harness, "before_normal_warm_query");
+        issue(&harness);
+        let recovered = settle_owned_economic_callback(
+            &harness,
+            index,
+            before_economic["coverage"].as_array().unwrap().len(),
+        )
+        .await;
+        harness.apply_events();
+        print_economic_callback_evidence(&harness, "after_normal_warm_callback");
+        assert_current(&harness, &recovered);
+        assert_eq!(recovered["query_completed"], index);
+        assert_eq!(recovered["last_query_reused_prerequisite"], true);
+        assert_eq!(recovered["warm_prerequisite_source"], prerequisite);
+        assert_eq!(recovered["actual_fills"], before_scope["actual_fills"]);
+        assert_eq!(recovered["account"]["flat"], close);
+        assert_eq!(
+            recovered["owned_intents"][order.client_order_id().as_str()]["reservation"],
+            "0"
+        );
+        let requests = requests_since(&harness, requests_start);
+        assert_eq!(count(&requests, "clearinghouseState"), 1);
+        assert_eq!(count(&requests, "userFills"), 1);
+        assert_eq!(count(&requests, "userFunding"), 0);
+        assert_eq!(count(&requests, "userNonFundingLedgerUpdates"), 0);
+        assert_eq!(count(&requests, "userRole"), 0);
+        let after_economic = economics(&harness);
+        assert_eq!(after_economic["tainted"], false);
+        let old_rows = before_economic["coverage"].as_array().unwrap();
+        let rows = after_economic["coverage"].as_array().unwrap();
+        assert!(
+            rows.starts_with(old_rows),
+            "normal callback replaced prior durable coverage"
+        );
+        assert!(
+            rows.len() > old_rows.len(),
+            "later normal owned recovery did not retain its actual Unknown demand"
+        );
+        assert!(rows.starts_with(previous_economic["coverage"].as_array().unwrap()));
+        for tail in &rows[old_rows.len()..] {
+            assert_eq!(tail["complete"], false);
+            assert_eq!(tail["pages"], 0);
+            assert_eq!(tail["records"], 0);
+            assert!(
+                tail["diagnostic"]
+                    .as_str()
+                    .unwrap()
+                    .contains("not requested")
+            );
+        }
+        assert_eq!(
+            after_economic["raw_envelopes"],
+            before_economic["raw_envelopes"]
+        );
+        assert_eq!(
+            after_economic["observations"],
+            before_economic["observations"]
+        );
+        assert_eq!(after_economic["report"], before_economic["report"]);
+        let cached = harness
+            .cache
+            .borrow()
+            .order(&order.client_order_id())
+            .unwrap()
+            .clone();
+        assert_eq!(cached.status(), OrderStatus::Filled);
+        assert_eq!(cached.trade_ids().len(), 1);
+        assert_eq!(
+            cached.commissions()[&Currency::USDC()].as_decimal(),
+            Decimal::from_str_exact("0.001").unwrap()
+        );
+        assert_eq!(harness.fill_events, usize::try_from(index).unwrap());
+        previous_economic = after_economic;
+    }
+    print_economic_callback_evidence(&harness, "two_actual_owned_callbacks_completed");
+    assert_eq!(harness.peer.state.writes.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        harness
+            .portfolio
+            .net_position(&InstrumentId::from(SELECTED)),
+        Decimal::ZERO
+    );
+    assert_eq!(
+        harness.scope()["actual_fills"].as_object().unwrap().len(),
+        2
+    );
+    harness.stop().await;
+}
+
 #[tokio::test]
 async fn genuine_hard_financial_demand_and_history_timeout_remain_unknown_and_fail_closed() {
     let mut harness = normal_economic().await;
