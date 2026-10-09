@@ -1,0 +1,90 @@
+{
+  "source_log": "E:\\persarb\\_tmp\\entropy113-validation\\native113-hyperliquid-regression-v8.log",
+  "source_log_sha256": "8c4f50ba61b89a449a8399875c310dc1e9ec184a1da83373b52714fb43ac74f7",
+  "actual_query_request_types": [
+    "userRole",
+    "userAbstraction",
+    "userDexAbstraction",
+    "meta",
+    "spotMeta",
+    "clearinghouseState",
+    "userAbstraction",
+    "userDexAbstraction",
+    "perpDexs",
+    "meta",
+    "spotMeta",
+    "activeAssetData",
+    "activeAssetData",
+    "frontendOpenOrders",
+    "userFills",
+    "userRole",
+    "userAbstraction",
+    "userDexAbstraction",
+    "meta",
+    "spotMeta",
+    "clearinghouseState",
+    "userAbstraction",
+    "userDexAbstraction",
+    "meta",
+    "spotMeta"
+  ],
+  "new_coverage": [
+    {
+      "generation": 1,
+      "epoch": 0,
+      "endpoint": "userFunding",
+      "start_ms": 1791530706483,
+      "end_ms": 1791530707906,
+      "pages": 0,
+      "records": 0,
+      "complete": false,
+      "diagnostic": "Economic history total deadline exhausted (quota/retries/metadata included)"
+    },
+    {
+      "generation": 1,
+      "epoch": 0,
+      "endpoint": "userNonFundingLedgerUpdates",
+      "start_ms": 1791530706483,
+      "end_ms": 1791530707906,
+      "pages": 0,
+      "records": 0,
+      "complete": false,
+      "diagnostic": "Economic history total deadline exhausted (quota/retries/metadata included)"
+    }
+  ],
+  "before_observed_sources": [
+    {
+      "transport": "websocket",
+      "received_ms": 1791530707558,
+      "generation": 1,
+      "epoch": 0,
+      "sequence": 7,
+      "snapshot": null,
+      "request_start_ms": null,
+      "request_end_ms": null
+    }
+  ],
+  "before_raw_retained": true,
+  "raw_envelopes_unchanged": true,
+  "report_unchanged": true,
+  "actual_http_at_or_after_history_end": [
+    {
+      "type": "meta",
+      "started_ms": 1791530708914,
+      "completed_ms": 1791530708914,
+      "status": 200
+    },
+    {
+      "type": "spotMeta",
+      "started_ms": 1791530709914,
+      "completed_ms": 1791530709914,
+      "status": 200
+    }
+  ],
+  "recovery_complete": false,
+  "account_trusted": false,
+  "warm_metadata_origin": null,
+  "actions": 0,
+  "diagnostic": "Economic history total deadline exhausted (quota/retries/metadata included)",
+  "interpretation": "Original economic deadline expired before a history HTTP request. Actual limiter internal balance was not captured. Zero requests is not evidence of free replay; genuine preceding requests and explicit incomplete zero-page coverage are retained."
+}

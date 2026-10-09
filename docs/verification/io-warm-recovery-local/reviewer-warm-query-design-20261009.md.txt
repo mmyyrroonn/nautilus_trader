@@ -1,0 +1,72 @@
+# #113 ordinary io QueryAccount 独立设计审查
+
+审查结论：设计方向可行，但必须明确下面四个实现阻断条件，不能通过省略请求、只检查 TTL 或只在最后检查 Ready 实现。此报告审查既有 #111 源与新 issue 合同，尚未审查新分支实现，也没有运行任何测试。
+
+来源：`entropy43-validation/io-query-account-quota-design.md/.json`、`native-recovery-create-input.json` 与冻结的 `entropy-io-startup` 原生源码。2026-10-09T05:42:05.5933605Z 独立读取的七份原生源 SHA 与设计记录一致；实际身份另存本报告配套 JSON。没有执行 Cargo、Git/GH、build/install、项目 Python helper、loopback 或真实场所，也没有改生产代码、测试或旧证据。
+
+## 必须解决的边界
+
+### 1. 元数据资格需要独立失效域与真实最终 HTTP 核对
+
+当前 `IoInstrumentProof` 不包含独立 reader generation/epoch、hard invalidation stamp、两份实际 Instrument 序列化快照。`refresh_metadata` (`execution_scope.rs:1250–1405`) 才验证 actual perpDexs/meta/spot 与两次 activeAssetData；`query_account` (`execution.rs:2075–2136`) 先 full invalidate，当前没有安全 warm 分支。
+
+最小合同是 crate-private witness：仅正常成功 metadata 验证安装；绑定 policy/selection/account identity、实际 generation/epoch、原始 verification-start/receipt 时间、strictIsolated/实际杠杆/资产映射/精度/抵押币与完整本地 HTTP/普通 Engine Cache instrument 字段。`InstrumentAny` 相等只比较 ID，不能以该相等替代完整字段比较（现有 startup 检查 `execution_scope.rs:647–651` 已明确）。恢复查询和已验证的金融观察只撤销资金/恢复权限；reader replacement、订阅/来源不明、mode/leverage/metadata 不符、raw 保存失败、taint/debt 等 hard 失效必须使 witness 永久失效，直到正常完整验证重新安装。不能从诊断字符串解析 hard/funds-only，也不能借旧 snapshot.trusted/recovered_epoch 重新授予资格。
+
+**新增具体阻断：**两个本地 instrument cache 没变化，不代表刚读到的远端元数据没变化。最终完整 account 读本来就包含 meta(io)/spotMeta；应保留并检查实际 selected 行的 `szDecimals`、`onlyIsolated`、`isDelisted`、universe 顺序/资产映射，以及 collateral 精度/identity 与 witness。现有 `account_scope.rs:454` 将 universe 降为 coin 集合，不能单独检测这些变化。该核对不需要新增这些 HTTP 请求。若沿用 witness 的 perpDexs 槽位，其来源仍是原有 30s 有界观察，不能宣称每次 warm 重验了未读取的端点。
+
+`maxTradeSzs/availableToTrade/markPx` 来自旧 activeAssetData。当前 admission 的两侧容量只要求均正，单位/side 顺序明确 Unknown (`execution_scope.rs:1172–1177`)，notional 使用 policy.max_price 与 meta.mark_price 的较大值 (`877–893`)，资金另由 fresh HTTP/private minimum/full-notional reservation 给出。warm 不能给这些旧字段更新时间、称为当前可用资金或替代 fresh conservative funds。已观察的当前仓位杠杆必须与原始 bounded witness 相符；没有仓位行不能声称重新读取了该 symbol 的 actual leverage。
+
+### 2. 对最终 Ready 加 fence 不能保护提前投影
+
+现有 `recover_once` 先 `observe_fill`/`observe_order_entry` (`execution_scope.rs:2006–2009`)，再 full account refresh。`observe_fill:2433–2437` 是 persist、drop lock 后 enqueue FillReport；其资格仅检查 active/epoch，`ensure_recovery_generation:2572–2584` 也无 generation/received sequence。`account_scope.rs:450–467` 在锁外复制 reader identity，提交后 drop account lock 再 emit AccountState。之后再拒绝 recovery，不能收回这些事件。
+
+新路径要 staging 完整 HTTP parsed source，或在**每次 owned journal mutation、金融 report enqueue、AccountState commit 与最终 recovery_complete**前使用同一捕获事务的资格，并持相应短锁直到该次 mutation/enqueue 线性化完成；无锁跨 HTTP await。锁顺序沿用 ingress → account → execution。最终持锁后重新采样 wallclock/deadline/TTL；不能先复制资格再 drop lock 后执行。单纯检查前后的两个快照仍留下中间 race。
+
+捕获域至少包含 generation、epoch、received_sequence、fully applied/failed、精确 latest private funds/source/receipt、hard metadata stamp、本次 query identity、policy、两份 native metadata 与预期 owned facts/revisions。恢复自己的逐项 journal 变动必须被显式追踪，不能因为它们没有增加全局 revision 就认为同时没有其他变动。并发 action/cancel/query 或原任务取消不得让旧响应取得新事务资格。
+
+raw 原文可按原身份保存为事实/Unknown；该保存不等于 owned adoption 或原生金融投影。真实合格 owned fill 可以作为事实投影，即使尚未重建资金权限；不能把“资金 Unknown”错误理解为可以丢掉事实，也不能从事实投影反向授予资金 Ready。资格失败后保留已有事实、Unknown/debt 和 worst reservations，不回滚持久化历史、不自动重发或重新收费。
+
+### 3. same-reader funds 变化必须使原 HTTP 组失效
+
+`PrivateIngressState` (`websocket/client.rs:139–213`) 的 generation、epoch、received 与 applied 是不同域。epoch 零合法；不同 generation 可以同 epoch；`is_applied` 只表示 received==applied，不表示没有更新。相同仓位资金变化甚至完全相同 frame 都可能不改变 account revision。只比较 account revision/epoch，或比较最终 fully-applied，会漏掉已全部处理的新 frame。
+
+应使用 #111 startup 同型边界 (`execution_scope.rs:403–459,528–669`) 的 received sequence 与精确 private witness，但 warm 不能复制其“fresh journal/zero history”验收结论。新 frame 在任何 HTTP await 中到达：原事务 source 必须拒绝，不能将后来的 snapshot 与原 openOrders/fills/status 拼接授予 Ready。若允许有界 retry，必须明确重新捕获并重读整个 owned-evidence 组，原总 deadline/attempt bound 不延长。未应用、处理失败、reader 重置、同毫秒/同金额 frame 都要覆盖。
+
+### 4. E5 history timeout 解耦需要按失败类别明确新合同
+
+现有成功 QueryAccount 后自动 history (`execution.rs:2692–2823`) 的任意 failure 在 `2800–2804` hard invalidate。改动这一行为是新合同，需要独立验收。
+
+可以把历史 coverage demand 与 current funds evidence 分开：只由完整 fresh live account/owned recovery 授权资金；历史请求超时本身不证明当前资金有变化，coverage 始终 Unknown。**最小保守实现先只对纯等待/传输超时且尚未接收任何金融 history body、未发生 hard source/metadata/保存错误的情况保留独立 live proof；其他仍按旧保守失效。**如果要允许已接收页中的 exact-known rows 后超时，也须另证明每行 exact immutable dedupe/attribution，无 unhandled raw、无部分新事实，并增加负面测试。
+
+不能用 parsed rows==0 或 observed count==0 代替“没有收到不明金融源”：oversize、malformed、unsupported、部分页、冲突、保存失败均可能在计数前发生。新增/冲突/unattributed/unsupported financial body 必须先撤销资金/恢复再处理；already-known duplicate 的历史优化不能自动扩展到 WS duplicate，后者有真实 received sequence 与既有 frame invalidation。局部 accepted-owned 原文补充不重复 HTTP、不伪造 transport replay，不升级旧 Unknown receipt 的历史身份、不再投影手续费、不清债务或放 reserve。
+
+## 建议的最小正常路径
+
+1. 普通 QueryAccount 接受 exact account 后，在 native 持锁边界检查并捕获 warm witness，随后立即关闭资金/new-risk/recovery。等价同账户进行中 query 有界 single-flight；新私有 frame 或不同 command 不得加入旧事务取得结果。任务结束/取消的清理需要相同事务 identity，不能清理后继任务。
+2. 合格 warm 读取 actual full io frontendOpenOrders、actual userFills、active owned CLOID 的 exact orderStatus。缺失、saturation、Unknown OID、foreign full-io 事实不变成空或已终态；actual fill/fee 与 owned CID/OID/TID/coin/direction/quantity/price/precision 精确关联。
+3. 取得一次实际完整最终 userRole、两组 mode pair、meta(io)/spotMeta/collateral/universe、clearinghouseState(io)。沿用非原子来源披露，精确校验 native Money/Qty/Price roundtrip、actual selected metadata 与 witness、private position/资金、full io inventory 与 owned ledger。
+4. 逐项或 staged commit 都要满足以上 source fence；仅完整最终一致观察可吸收 TerminalPending reserve。report enqueue 不证明普通 Cache/Portfolio 已消费；app 仍需按 exact native events 跨策略/账户检查 current projection，再允许下一腿。warm 不是 durable cache/cold ownership/PnL restore。
+5. cold/stale/no-witness 走完整验证或明确有限失败。hard-invalidated/taint/native projection debt 不能因为 full-account flat 而复活。默认 non-io 与未启用 policy 行为保持原合同。
+
+## Quota / deadline 与能证明的实际结果
+
+独立核对源中的请求组成支持设计的**下界**：one symbol/one active CLOID cold execution 506；warm 224；E5 首次空页 80。原 limiter 1200/min、20/s；account TTL 2s、metadata TTL 30s、recovery total deadline 3s 均不变。无新测试 PASS，也未重建 supplied peer 的同 client quota/timing。
+
+224 不是可持续 1Hz authority；其最低稳态成本为 11.2s 的 refill。metadata witness 30s 在很低剩余额度/竞争读下仍可能不足以完成 full final account 的 2s verification interval。quota acquire 中等待、重试、body item adders、锁等待与已耗 quota 都包含真实成本；总 deadline 从 query admission 起计算，不能 warm/cold/retry/subtask 各自重新得到 3s。若整体预算 reservation 不做，本单可以保持 bounded RecoveryIncomplete，不能以 token snapshot 预判代替原 limiter 的原子收费或偷借容量。
+
+验收要实际 capture request 类型/用户/dex/逐项实际收费与单 client 来源、full final read sequence、查询开始/完成/接收/处理时间、原 source timestamps、两份 metadata、normal Cache/Portfolio 与 reserve。独立 data client 请求不应累加成 execution limiter 的实测余额。只以 source-derived cost 或 peer 200 响应不能声明 paired PASS。
+
+## 必需负面与正常验收（此处均未运行）
+
+| 类别 | 重要案例及必须结果 |
+|---|---|
+| witness | 首次冷验证、warm 原始时间不刷新、30s 到期、hard stamp、同 epoch 新 generation、本地任一 cache 任意非 ID 字段变化、final actual meta 精度/strictIsolated/delist/collateral/index 变化均拒绝旧 witness |
+| ingress race | 暂停各 HTTP 后实际 private funds 改变；同仓位/同毫秒/完全相同 frame；received>applied；处理失败；source replacement：旧组不能投影旧 reader 金融事件或 Ready |
+| commit race | 在 final HTTP 后、逐 fill/status/AccountState enqueue 前和锁等待期间插入 private/action/cancel；保留此前事实与 worst reservation，没有旧事务清理后继 single-flight |
+| sources | missing/null/oversize/saturated full openOrders/fills；未知 CLOID/OID；foreign selected/unselected io orders/positions；terminal 无 actual fill；价量费超 native 精度；taint/debt/cold cache 不采用 |
+| financial projection | normal REST reconciliation actual fills exact native TradeId；WS+REST duplicate 不二次手续费；多个 entry/close 新事实顺序不得因 API 行顺序捏造 position/PnL，无法证明则 Unknown；当前 cache 消费与 durable restore 分开 |
+| quota | 原配置 warm post-fill 完成正例；边界余额、竞争 native read、response item extras/retries、已消耗失败费用不退、deadline/TTL expired 负例；并发等价 query 只一个有界读组，无 write/action 重发 |
+| economics | 无 body 纯等待超时与 raw malformed/oversize/partial/新事实/冲突/attribution/保存失败分开；coverage Unknown，当前 live proof 自然过期，receipts immutable/no fake income/no fee replay |
+| installed | 正常 factory/LiveNode reconciliation=True、numeric-loopback synthetic identity、先实际 owned fill 后普通 QueryAccount，再实际 app hedge/cleanup；源/wheel/pyd/stubs/provenance 前后绑定、全 peer 原始请求/响应/事件保留 |
+
+本单不提前证明 #43 整体、真实场所、whole-account/funding/run PnL、durable cold restore、无限持续 Ready 或 Windows kernel isolation。新实现冻结后仍需逐行 source review、root 编译回归、独立实际 binary/wheel/native-peer 验收；作者或 root 的测试不能被本报告称为 reviewer PASS。

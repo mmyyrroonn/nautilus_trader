@@ -1,0 +1,28 @@
+import json
+from pathlib import Path
+
+from start_dependency import api
+
+
+if __name__ == "__main__":
+    original = "native113-first-validation-progress"
+    root = Path(__file__).parent
+    payload = json.loads((root / (original + "-input.json")).read_text(encoding="utf-8"))
+    comments = api(
+        "repos/mmyyrroonn/nautilus_trader/issues/113/comments?per_page=100",
+        original + "-remote-check",
+    )
+    matches = [comment for comment in comments if comment["body"] == payload["body"]]
+    if matches:
+        assert len(matches) == 1
+        print(matches[0]["html_url"])
+    else:
+        label = original + "-recovered"
+        assert not (root / (label + "-response.json")).exists()
+        result = api(
+            "repos/mmyyrroonn/nautilus_trader/issues/113/comments",
+            label,
+            "POST",
+            payload,
+        )
+        print(result["html_url"])

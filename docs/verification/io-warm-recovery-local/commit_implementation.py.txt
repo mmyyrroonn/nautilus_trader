@@ -1,0 +1,64 @@
+"""Commit only the exact independently reviewed warm recovery source."""
+
+import hashlib
+import json
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parent
+NATIVE = Path("E:/persarb/worktrees/entropy-io-recovery")
+BASE = "667f424e123e177a87c257cdc7f6b4e2e776d138"
+FILES = (
+    ".gitattributes",
+    "crates/adapters/hyperliquid/src/account_scope.rs",
+    "crates/adapters/hyperliquid/src/economics_scope.rs",
+    "crates/adapters/hyperliquid/src/execution.rs",
+    "crates/adapters/hyperliquid/src/execution_scope.rs",
+    "crates/adapters/hyperliquid/src/http/client.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account/execution.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs",
+)
+
+
+def git(*args):
+    return subprocess.check_output(["git", *args], cwd=NATIVE)
+
+
+def main():
+    output = ROOT / "native113-implementation-commit.json"
+    assert not output.exists()
+    assert git("rev-parse", "HEAD").decode().strip() == BASE
+    assert git("rev-parse", "origin/main").decode().strip() == BASE
+    assert not git("diff", "--cached", "--name-only").strip()
+    manifest = json.loads((ROOT / "native113-frozen-source-v9.json").read_text(encoding="utf-8"))
+    for repository in ("native", "app"):
+        for row in manifest[repository]["files"]:
+            assert hashlib.sha256(Path(row["path"]).read_bytes()).hexdigest() == row["sha256"], row["path"]
+    subprocess.run(["git", "add", "--", *FILES], cwd=NATIVE, check=True)
+    subprocess.run(["git", "diff", "--cached", "--check"], cwd=NATIVE, check=True)
+    assert set(git("diff", "--cached", "--name-only").decode().splitlines()) == set(FILES)
+    command = ["git", "commit", "-m", "Support bounded warm Hyperliquid io account recovery",
+               "-m", "Reuse unchanged verified metadata for owned facts consumed by the normal Engine Cache. "
+               "Retain original failed source debt and deadlines, and verify current leverage before owner commit. "
+               "Preserve finite history coverage and explicit Unknown intervals.\n\nReferences #113."]
+    subprocess.run(command, cwd=NATIVE, check=True)
+    assert not git("status", "--porcelain").strip(), "Implementation checkout must be clean"
+    commit = git("rev-parse", "HEAD").decode().strip()
+    files = {}
+    for name in FILES:
+        current = hashlib.sha256((NATIVE / name).read_bytes()).hexdigest()
+        assert hashlib.sha256(git("show", f"{commit}:{name}")).hexdigest() == current
+        files[name] = current
+    record = {"committed_utc": datetime.now(timezone.utc).isoformat(), "base_main": BASE,
+              "commit": commit, "tree": git("rev-parse", "HEAD^{tree}").decode().strip(),
+              "command": command, "files": files, "clean": True,
+              "reviewed_manifest_sha256": hashlib.sha256((ROOT / "native113-frozen-source-v9.json").read_bytes()).hexdigest()}
+    output.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(record))
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,48 @@
+"""Read retained synthetic test output without printing full venue source arrays."""
+
+import argparse
+import json
+from pathlib import Path
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("label")
+    args = parser.parse_args()
+    directory = Path(__file__).resolve().parent
+    output = directory / (args.label + "-failure-summary.json")
+    if output.exists():
+        raise SystemExit("Summary already exists")
+    text = (directory / (args.label + ".log")).read_text(encoding="utf-8", errors="replace")
+    failures = []
+    active = None
+    for line in text.splitlines():
+        if line.startswith("---- ") and line.endswith(" stdout ----"):
+            active = {"test": line[5:-12], "messages": [], "scopes": []}
+            failures.append(active)
+        elif active is not None:
+            if "panicked at" in line or line.startswith(("assertion", "  left:", " right:")):
+                active["messages"].append(line[:800])
+            for prefix in ("normal_query_unknown_scope=", "warm_query_failure_scope="):
+                if line.startswith(prefix):
+                    value = json.JSONDecoder().raw_decode(line[len(prefix):])[0]
+                    active["scopes"].append({key: value.get(key) for key in (
+                        "diagnostic", "recovery_complete", "query_in_flight", "query_token",
+                        "query_completed", "last_query_warm", "warm_metadata_origin",
+                        "recovery_source_debt", "native_projection_recovery_required",
+                    )})
+    record = {"raw_log": str(directory / (args.label + ".log")), "failures": failures}
+    output.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({"summary": str(output), "count": len(failures)}))
+    for failure in failures:
+        print(failure["test"])
+        for message in failure["messages"][:5]:
+            print(message)
+        for scope in failure["scopes"][-1:]:
+            print(json.dumps({key: scope[key] for key in (
+                "diagnostic", "last_query_warm", "query_completed"
+            )}))
+
+
+if __name__ == "__main__":
+    main()

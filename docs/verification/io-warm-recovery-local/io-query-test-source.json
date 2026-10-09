@@ -1,0 +1,21 @@
+{
+  "issue": 113,
+  "source_record_clock_utc": "2026-10-09T06:11:50Z",
+  "worktree": "E:/persarb/worktrees/entropy-io-recovery",
+  "base_main": "667f424e123e177a87c257cdc7f6b4e2e776d138",
+  "expanded_integration_cases": 49,
+  "compiled": false,
+  "executed": false,
+  "pass_claims": 0,
+  "request_weights_are_source_minima_not_measured_balances": true,
+  "source_sha256": {
+    "crates/adapters/hyperliquid/tests/entropy_account.rs": "943245715213f3e599c02ca35efd7777683bf56051df84f83a589393e9637798",
+    "crates/adapters/hyperliquid/tests/entropy_account/execution.rs": "2f01e14cd9b75cc3e6ceb26b7e4984a1984836c6e4aa128bc0eafce4db2ff30e",
+    "crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs": "7008abb59b04f24ca07e0c562994f242465fd4a808dcf66f7f6562069077255e"
+  },
+  "unsupported_precise_integration_boundaries": [
+    "actor-unapplied-only ingress",
+    "final native mutex lock wait expiry",
+    "in-place same numeric epoch reader replacement"
+  ]
+}

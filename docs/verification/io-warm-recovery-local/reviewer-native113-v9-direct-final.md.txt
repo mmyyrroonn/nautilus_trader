@@ -1,0 +1,47 @@
+# 原生 113 v9 独立实际二进制验收
+
+结论：source v7 + test/archive v9 的收窄原生 warm 合同，经独立实际直接二进制测试 **104 个不同场景 PASS / 0 FAIL / 0 ignored**。执行前后36个源码/应用输入及2份immutable binaries共38项全部匹配、字节不变。该结论不包含 installed wheel ABI、normal paired应用成功或真实账号/主网。
+
+## 实际执行身份
+
+UTC `2026-10-09T07:43:03.624514+00:00` 至 `07:43:59.318827+00:00`，cwd `E:/persarb/worktrees/entropy-io-recovery`，仅普通 app venv Python 临时runner subprocess调用父 Agent提供的实际 native executable，没有Cargo/Git/GH/build/install/stubs/nativePythonimports/环境凭据读取/真实venues。完整实际argv、退出码、UTC、每份raw日志及SHA、每项source/exe的pre/post SHA、manifest/script identity在：
+
+`reviewer-v9-direct-20261009T074303Z/result.json` SHA `45e9a242fdc5477ba613e92f3027faa44a538745ef584a8aa47a0b0854909808`。
+
+source manifest SHA `e833cf9e26f33a159a1fcac0a6d7a9e551bd067380b263c2a3071ed22cc20e73`；父 Agent提供的build-to-source binding在 `native113-stable-binaries-v9.json`，reviewer未自行编译或声称最终commit/wheel identity已存在。
+
+- immutable `verified-bin/entropy_account-69bad49fe9dc76e8.exe` SHA `3eb838872a4f80e2c9b64fe7084c43f573063e342ad11937619bd52150280083`
+- immutable `verified-bin/nautilus_hyperliquid-1fcbc36810deefe5.exe` SHA `7e1ee1fd1051b8503a765d7d9cd006ee3afde949788590ee37e6b2648ed9f2a0`
+
+## 精确实际计数
+
+| 独立直接命令 | PASS | FAIL / ignored |
+| --- | ---: | --- |
+| entropy_account `execution::io_query_recovery:: --test-threads=1 --nocapture` |64|0 / 0|
+| exact durable actual fill restart guard |1|0 / 0|
+| exact missing ack/unknown OID never resend/reserve guard |1|0 / 0|
+| exact actual user leverage change never mutate / deny new risk |1|0 / 0|
+| exact persisted funding current recovery can absorb exact replay |1|0 / 0|
+| unit `execution_scope::tests:: --test-threads=1` |30|0 / 0|
+| exact economic only-phase-A strong history replay |1|0 / 0|
+| exact finite coverage capacity preservation |1|0 / 0|
+| exact economic runtime bounds / pending durable facts |1|0 / 0|
+| exact same-epoch replacement account-context refusal |1|0 / 0|
+| exact invalid private source/refresh cannot rebuild context |1|0 / 0|
+| exact independent epoch/ack/verification-age attribution |1|0 / 0|
+
+每次退出码0，实际summary计数与预先expected一致。不同namespace及四个exact旧函数不重叠，计数只属于本轮104；不加此前109/111或root1365 overlapping测试。没有retry-to-accept、skip失败或产品/fixture修改。
+
+64个warm peer场景实际涵盖normalfactory/read/write owner路径、已有actualfill Cache/Portfolio projection、完整源/refusal、singleflight、deadline/旧owner/stop/readerreplacement、actualrawdebt durable保存、foreign/restnewfacts/missinghistory、unconsumed/consumed真实Cachecancel、flatactualleverage及保持originalstamps、有限history demand。各项原始正常合成HTTP/WS证据保存在warm-64.log，SHA `2da40d3ec95de39809fae5e61fcee30befad9c70ad0bc08f9e000cdfda17deb3`。
+
+## hard-history 本轮实际分支
+
+本轮log `hard_history_bounded_outcome` 真实值为 history_requests=1、actual_request_count=26、proof_ready=false、signed_writes=0。两个新endpoint coverage为同generation1/epoch0、start1791531805447/end1791531806871、pages0/records0/completefalse，exact total-deadline诊断。即本轮实际命中了“真实history request已到、总deadline耗尽”的合法分支；没有把先前v8实际0-request读日志当作本轮独立执行的zero-request新分支。zero-request finalfixture分支已通过source/旧actualv8原文criterion独立复核，不能宣称两个分支本轮都实际命中。
+
+## source审查与保留失败
+
+独立source完整report v7、v8 style附录、v9 fixture/archive附录均保留；本次最终source addendum SHA `7d91779313b3ec12e9f1d9538a0dca230c4f8745fb6e420bfeae3af18fa080d4`。v6遗漏flatleverage counterproof由root真实旧回归捕获，修复和审查纠正明示；旧v6 fourFAIL、v7/v8 hard-historyFAIL、旧55的30PASS/25FAIL、工具引号/编码失败都未抹去。本轮没有沿用这些失败来夸大distinct覆盖。
+
+source与实际原生路径的最终判断：之前阻断已闭合，所验收的有限原生warm合同可交父 Agent继续官方stubs/wheel/ABI及normalpaired验收。root官方generator只能在本runnerpostcapture07:43:59后开始，后续产生的新输入不冒称已绑定本次测试。
+
+边界仍为：原旧fill WS/REST provenance未存则Unknown；WS filledmarker先于actualfills可能hardinvalidate/cold；owner/preprepare Cache核验不构成任意prepare→writer Cache revision fence；generic cold cache transaction/Portfolio/wholeaccount/history/funding/runPnL/Windows kernel isolation未知。无真实venue、主网或无限持续quota证明，不以本104PASS替代后续wheel与双腿应用验收。

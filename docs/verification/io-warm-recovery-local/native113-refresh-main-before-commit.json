@@ -1,0 +1,20 @@
+{
+  "argv": [
+    "git",
+    "-c",
+    "http.version=HTTP/1.1",
+    "fetch",
+    "https://github.com/mmyyrroonn/nautilus_trader.git",
+    "refs/heads/main:refs/remotes/origin/main"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-io-recovery",
+  "started_utc": "2026-10-09T07:56:05.631030+00:00",
+  "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+  "pyo3_python": "E:/persarb/worktrees/entropy-io-recovery/.venv/Scripts/python.exe",
+  "uv_project_environment": null,
+  "nautilus_stub_profile": null,
+  "cargo_build_warnings": null,
+  "cargo_net_offline": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T07:56:06.436675+00:00"
+}

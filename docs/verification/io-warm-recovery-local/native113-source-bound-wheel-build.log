@@ -1,0 +1,56 @@
+🍹 Building a mixed python/rust project
+🐍 Found CPython 3.12 at E:\persarb\worktrees\entropy-io-recovery\.venv\Scripts\python.exe
+🔗 Found pyo3 bindings
+📡 Using build options features from pyproject.toml
+   Compiling nautilus-core v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\core)
+   Compiling pyo3-ffi v0.29.2
+   Compiling nautilus-common v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\common)
+   Compiling nautilus-serialization v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\serialization)
+   Compiling pyo3 v0.29.2
+   Compiling pyo3-stub-gen v0.20.0 (E:\persarb\worktrees\entropy-io-recovery\patches\pyo3-stub-gen)
+   Compiling pyo3-async-runtimes v0.29.0
+   Compiling nautilus-model v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\model)
+   Compiling nautilus-cryptography v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\cryptography)
+   Compiling nautilus-network v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\network)
+   Compiling nautilus-indicators v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\indicators)
+   Compiling nautilus-analysis v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\analysis)
+   Compiling nautilus-portfolio v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\portfolio)
+   Compiling nautilus-execution v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\execution)
+   Compiling nautilus-persistence v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\persistence)
+   Compiling nautilus-infrastructure v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\infrastructure)
+   Compiling nautilus-trading v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\trading)
+   Compiling nautilus-risk v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\risk)
+   Compiling nautilus-data v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\data)
+   Compiling nautilus-testkit v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\testkit)
+   Compiling nautilus-system v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\system)
+   Compiling nautilus-live v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\live)
+   Compiling nautilus-backtest v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\backtest)
+   Compiling nautilus-sandbox v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\sandbox)
+   Compiling nautilus-binance v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\binance)
+   Compiling nautilus-bitmex v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\bitmex)
+   Compiling nautilus-okx v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\okx)
+   Compiling nautilus-coinbase v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\coinbase)
+   Compiling nautilus-databento v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\databento)
+   Compiling nautilus-ondo v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\ondo)
+   Compiling nautilus-deribit v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\deribit)
+   Compiling nautilus-polymarket v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\polymarket)
+   Compiling nautilus-architect-ax v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\architect_ax)
+   Compiling nautilus-hyperliquid v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\hyperliquid)
+   Compiling nautilus-bybit v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\bybit)
+   Compiling nautilus-lighter v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\lighter)
+   Compiling nautilus-dydx v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\dydx)
+   Compiling nautilus-betfair v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\betfair)
+   Compiling nautilus-blockchain v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\blockchain)
+   Compiling nautilus-interactive-brokers v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\interactive_brokers)
+   Compiling nautilus-kraken v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\kraken)
+   Compiling nautilus-tardis v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\tardis)
+   Compiling nautilus-backpack v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\backpack)
+   Compiling nautilus-derive v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\derive)
+   Compiling nautilus-aster v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\aster)
+   Compiling nautilus-pyo3 v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\pyo3)
+    Finished `nextest` profile [unoptimized] target(s) in 1m 48s
+📦 Including files matching "**/*.pyi"
+📦 Built wheel for CPython 3.12 to E:\persarb\_tmp\entropy113-wheel-nextest-20261009\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl
+wrote E:\persarb\_tmp\entropy113-wheel-nextest-20261009\native-provenance.json
+source-bound wheel: E:\persarb\_tmp\entropy113-wheel-nextest-20261009\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl
+wheel SHA-256: c2bcce1e98939e1304fa3556463f987eb57266406a18d38e4a713436eca485fd

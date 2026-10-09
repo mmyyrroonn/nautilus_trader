@@ -1,0 +1,92 @@
+import datetime
+import hashlib
+import json
+import pathlib
+import re
+import subprocess
+import sys
+
+def now():
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+root = pathlib.Path("E:/persarb/_tmp/entropy113-validation")
+manifest_path = root / "native113-frozen-source-v9.json"
+binary_manifest_path = root / "native113-stable-binaries-v9.json"
+manifest = json.loads(manifest_path.read_text())
+binaries = json.loads(binary_manifest_path.read_text())["binaries"]
+out = root / ("reviewer-v9-direct-" + datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ"))
+out.mkdir()
+cwd = pathlib.Path(manifest["native"]["root"])
+
+def identities():
+    rows = []
+    for group in ("native", "app"):
+        for expected in manifest[group]["files"]:
+            path = pathlib.Path(expected["path"])
+            data = path.read_bytes()
+            sha = hashlib.sha256(data).hexdigest()
+            rows.append({"path": str(path), "sha256": sha, "size": len(data), "expected_sha256": expected["sha256"], "match": sha == expected["sha256"]})
+    for expected in binaries:
+        path = pathlib.Path(expected["immutable_copy_path"])
+        data = path.read_bytes()
+        sha = hashlib.sha256(data).hexdigest()
+        rows.append({"path": str(path), "sha256": sha, "size": len(data), "expected_sha256": expected["sha256"], "match": sha == expected["sha256"]})
+    return rows
+
+pre = identities()
+result = {"started_utc": now(), "argv": sys.argv, "python": sys.executable, "script_sha256": hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest(), "outdir": str(out), "manifest_sha256": hashlib.sha256(manifest_path.read_bytes()).hexdigest(), "binary_manifest_sha256": hashlib.sha256(binary_manifest_path.read_bytes()).hexdigest(), "pre": pre, "commands": [], "independent_passed": 0, "independent_failed": 0, "product_acceptance": "Pending execution"}
+(out / "pre-identities.json").write_text(json.dumps(result, indent=2) + "\n")
+print(json.dumps({"started_utc":result["started_utc"], "outdir":str(out), "source_inputs":36, "binary_inputs":2, "all_pre_match":all(row["match"] for row in pre)}), flush=True)
+if not all(row["match"] for row in pre):
+    raise SystemExit("Pre identity mismatch; no tests executed")
+account = next(row["immutable_copy_path"] for row in binaries if "entropy_account-" in row["immutable_copy_path"])
+unit = next(row["immutable_copy_path"] for row in binaries if "nautilus_hyperliquid-" in row["immutable_copy_path"])
+cases = [
+    ("warm-64", [account, "execution::io_query_recovery::", "--test-threads=1", "--nocapture"], 64),
+    ("old-durable", [account, "execution::durable_actual_fill_does_not_claim_native_cache_restored_after_fresh_factory_restart", "--exact", "--test-threads=1", "--nocapture"], 1),
+    ("old-unknown", [account, "execution::missing_ack_and_unknown_oid_retain_budget_and_restart_never_resends", "--exact", "--test-threads=1", "--nocapture"], 1),
+    ("old-leverage", [account, "execution::actual_user_leverage_change_invalidates_new_risk_without_mutating_leverage", "--exact", "--test-threads=1", "--nocapture"], 1),
+    ("old-funding", [account, "execution::economics::persisted_funding_does_not_restore_ready_but_current_account_recovery_can_absorb_exact_replay", "--exact", "--test-threads=1", "--nocapture"], 1),
+    ("scope-unit-30", [unit, "execution_scope::tests::", "--test-threads=1"], 30),
+]
+for name in [
+    "economics_scope::tests::only_phase_a_exact_strong_history_replay_can_preserve_current_ready",
+    "economics_scope::tests::lifetime_coverage_capacity_preserves_last_checkpoint_when_exhausted",
+    "economics_scope::tests::runtime_bound_preserves_prior_durable_facts_and_does_not_evict_pending",
+    "account_scope::tests::replacement_context_cannot_certify_an_old_source_in_the_same_epoch",
+    "account_scope::tests::invalid_private_source_and_refresh_start_cannot_preserve_or_rebuild_context",
+    "account_scope::tests::attribution_independently_checks_reader_epoch_ack_and_verification_age",
+]:
+    cases.append(("unit-" + name.split("::")[-1], [unit, name, "--exact", "--test-threads=1"], 1))
+
+failed = False
+for label, argv, expected_count in cases:
+    start = now()
+    print(json.dumps({"start":start, "label":label, "expected":expected_count}), flush=True)
+    run = subprocess.run(argv, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False)
+    finish = now()
+    log = out / (label + ".log")
+    log.write_bytes(run.stdout)
+    text = run.stdout.decode("utf-8", errors="replace")
+    summary = re.search(r"test result: (ok|FAILED)\. (\d+) passed; (\d+) failed; (\d+) ignored;", text)
+    count_ok = summary is not None and summary.group(1) == "ok" and int(summary.group(2)) == expected_count and int(summary.group(3)) == 0
+    record = {"label":label, "argv":argv, "cwd":str(cwd), "started_utc":start, "finished_utc":finish, "exit_code":run.returncode, "expected_case_count":expected_count, "summary":summary.group(0) if summary else None, "count_matches":count_ok, "log":str(log), "log_sha256":hashlib.sha256(run.stdout).hexdigest()}
+    result["commands"].append(record)
+    result["independent_passed"] += int(summary.group(2)) if summary else 0
+    result["independent_failed"] += int(summary.group(3)) if summary else 0
+    print(json.dumps(record), flush=True)
+    if run.returncode != 0 or not count_ok:
+        failed = True
+        result["product_acceptance"] = "Failed; preserved first outcome; remaining commands not run"
+        break
+post = identities()
+result["post"] = post
+result["pre_post_unchanged"] = pre == post
+result["finished_utc"] = now()
+if not failed and pre == post and all(row["match"] for row in post):
+    result["product_acceptance"] = "Independent narrow direct-native tests passed; installed wheel and paired acceptance unverified"
+path = out / "result.json"
+path.write_text(json.dumps(result, indent=2) + "\n")
+print(json.dumps({"result":str(path), "finished_utc":result["finished_utc"], "passed":result["independent_passed"], "failed":result["independent_failed"], "unchanged":pre==post, "acceptance":result["product_acceptance"]}), flush=True)
+if failed or pre != post:
+    raise SystemExit(1)

@@ -1,0 +1,35 @@
+# 原生 113 hard-history fixture 判据独立复核
+
+结论：认可父 Agent 授权修正这项错误的普遍断言。产品允许 economic history 总 deadline 在真实前置 metadata/quota 阶段耗尽，因此 history endpoint HTTP request 数为0本身不能证明“未发起真实历史恢复”。修正只能接受严格源绑定的 pre-request deadline Unknown 分支；不能接受任意本地 Unknown、旧 incomplete coverage 或 skipped history。
+
+本轮只读日志/源码，独立产品测试为0；本结论不是修改后 fixture通过。正式新增判据还须 frozen diff复核及实际运行。
+
+## 纠正前一份报告的准确性
+
+旧 `reviewer-native113-source-v8-addendum.md` 的“30ms history_timeout”表述错误，旧文件保持字节不变。真实 `io_query_recovery.rs:1739` 配置 `history_timeout_ms=3000`；1832 后的 hard-source case 原 `sleep(30ms)` 只是私有事件等待。用 exact native raw-consumption 条件替换该sleep，不扩大 history3s、recovery3s、cash2s、metadata30s 或quota1200/20。该准确性纠正不变更其“生产文件未变、断言曾未变”的事实结论。
+
+## 独立实际日志核对
+
+实际来源 `native113-hyperliquid-regression-v8.log` SHA256 `8c4f50ba61b89a449a8399875c310dc1e9ec184a1da83373b52714fb43ac74f7`。07:28:40.928390 UTC 用临时 `reviewer-native113-history-criterion-extract.py` 只读JSON-decode实际日志，完整提取结果在同名 extract.json，记录脚本 SHA/argv/source SHA。第一次工具脚本默认GBK读取UTF8日志失败；显式 utf-8-sig 后实际成功，未修改日志或产品。
+
+实际 before economic raw已有 exact WS userNonFundingLedgerUpdates withdraw `usdc=1,fee=0,time=1791530707557,hash=...03df`。父 Agent 同一 raw summary 的 native observation为 websocket/generation1/epoch0/native receive1791530707558；独立原文提取保留了 before/after raw和scope，root摘要与该原始日志匹配。不会由 peer发送事实单独推断 native consumption。
+
+query窗口真实25requests：userRole2、userAbstraction4、userDexAbstraction4、meta4、spotMeta4、clearinghouse2、perpDexs1、activeAssetData2、frontendOpenOrders1、userFills1；userFunding/userNonFundingLedgerUpdates均0。实际 cold最后 clearinghouse为1791530707597、last mode1791530707903。新增经济coverage end=1791530707906；之后实际 HTTP200 `meta(io)` 为1791530708914，`spotMeta`为1791530709914。两个新endpoint coverage均generation1/epoch0，pages0/records0/completefalse，exact诊断 `Economic history total deadline exhausted (quota/retries/metadata included)`。final scope recovery_complete=false、warm_metadata_origin=null、actions0；真实peer零writes原断言保留。
+
+由 unchanged `http/rate_limits.rs:130–143` 的官方base权重可计算这些实际25requests的 source-derived最低544（cold504 + history metadata40），包含原2个角色60、其余正常endpoint权重。这是来源下限，未读取或推断内部 bucket token balance；其他initial/data/item/retry/共享任务可能追加成本。一秒级metadata实际等待与 quota成本相容，但并不单凭时间间隔证明所有延迟来自内部limiter。
+
+## 调用链为何允许0 history HTTP
+
+`execution.rs:2269–2307` cold Query依次真实账户refresh、metadata refresh、owned recovery，只有成功后调用economic recovery。`recover_economic_history:2883–2903` 捕获当前generation/epoch/window并初始化两个新coverage pages0/records0/completefalse，然后启动整个history_timeout_ms计时。
+
+`2906–2907` 实际native meta/spot请求及normal quota await就在这个timeout内；`2925/2927` history endpoint请求在其后。若 metadata/quota等待及下一endpoint quota入场耗尽deadline，2925网络请求完全可以尚未到达peer。`2976–3004` 正常timeout分支明确记exact total-deadline诊断、current source下invalidate账户及execution、逐endpoint保存新的zero-page Unknown coverage。这是实际进入恢复的有界失败，不是本地history replay。
+
+## 必须保留的严格新判据
+
+1. 开始query前，等待普通native经济snapshot保留的原文严格等于此次送出的WS body，native source记录对应真实transport/当前generation和epoch/receipt；同时原metadata origin已失效、scope不能Ready。固定sleep30ms不作为消费证据。等待只用有限harness超时，不填quota、不sleep预充值、不改productlimits。
+2. query后的cold读请求/响应必须实际发生，精确为scope account及io的完整role/mode/collateral/clearinghouse/metadata路径，不能是旧connect reads或warm“not requested”interval。记录 baseline及真实时间/source identity。
+3. 仅两种失败证据允许：a) 实际history HTTP request已到peer并产生新有界timeout/incomplete coverage；或 b) history request未到peer，但同代/epoch、覆盖新end的新两个endpoint coverage都有pages0/records0/completefalse和上述exact total-deadline诊断，且cold之后真实history metadata请求已发生。这不能由任意含“unknown/incomplete”的旧coverage满足。
+4. 保留final recovery_complete=false/originNone、zero actions/writes/fill events、fees/receipts不可重放、既有raw/observations不被修改；若case只有无请求且没有新显式deadline/source来源，继续失败。不要把final closed断言扩写为本case证明整个异步cold/history流程从未有任何中间source资格；并无strategy下单/逐时authority观测证据。
+5. 保留两个endpoint的新window/generation/epoch，并与before coverage区分，不将oldcomplete改成新complete，不引入synthetic raw historybody或manualcache/event，不放宽生产拒绝路径。
+
+判据修正会改变测试的普遍请求数量要求，但原因已由原始真实运行及正常源码验证，不是把失败结果直接接受。旧v7/v8 FAIL和旧断言报告全部保留；新fixture要另给真实source/hash/actualoutcome。

@@ -1,0 +1,27 @@
+{
+  "committed_utc": "2026-10-09T07:57:12.692904+00:00",
+  "base_main": "667f424e123e177a87c257cdc7f6b4e2e776d138",
+  "commit": "13064e9a9a199f517480d207f828438f13d05cca",
+  "tree": "c77c933c0d66a366b57e713ff9deb60805e659a9",
+  "command": [
+    "git",
+    "commit",
+    "-m",
+    "Support bounded warm Hyperliquid io account recovery",
+    "-m",
+    "Reuse unchanged verified metadata for owned facts consumed by the normal Engine Cache. Retain original failed source debt and deadlines, and verify current leverage before owner commit. Preserve finite history coverage and explicit Unknown intervals.\n\nReferences #113."
+  ],
+  "files": {
+    ".gitattributes": "7b3788d537d7f27cc6bb86436c4c15f9ab32febd126467530ab69b1920856ce2",
+    "crates/adapters/hyperliquid/src/account_scope.rs": "586839f5e0a2bc598330d28a6b22746bb12f44ca2bb2df0fad10fcc5e632483c",
+    "crates/adapters/hyperliquid/src/economics_scope.rs": "2ebdf3756f39ea0cd32cfdc79d84ef7babdcabd6c2d7fea0b0f00d4c151f7f47",
+    "crates/adapters/hyperliquid/src/execution.rs": "2b1e30b896b60b01edd257947426c5f132b841dc7fe7771602f1e810c81c3316",
+    "crates/adapters/hyperliquid/src/execution_scope.rs": "fd10b2e0deb1b90e42dcb0756eb68d2227b3bffe7d383807a93cf962e67270d2",
+    "crates/adapters/hyperliquid/src/http/client.rs": "ba66b53fcc6a6d1fb6e8bb34ac6faf677cd9e7eb6ffe89eea9e2c11ea398eab2",
+    "crates/adapters/hyperliquid/tests/entropy_account.rs": "5976b5e8e5b9e19314679ca009365024817a2ad4e3a07ac65c7cdf1d06a79c07",
+    "crates/adapters/hyperliquid/tests/entropy_account/execution.rs": "c7765f65fc74d682c9245a54df47aacb428c1f394c0ff9903691057f765c7a95",
+    "crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs": "2fca06baee1dc91a94ac1956db71c555db980c3566fd25c453ad7b99bfc4f58b"
+  },
+  "clean": true,
+  "reviewed_manifest_sha256": "e833cf9e26f33a159a1fcac0a6d7a9e551bd067380b263c2a3071ed22cc20e73"
+}

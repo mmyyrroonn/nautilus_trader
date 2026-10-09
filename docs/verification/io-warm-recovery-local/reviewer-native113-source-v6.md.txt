@@ -1,0 +1,42 @@
+# 原生 113 独立源码复核：formatted v4 → v5 → v6
+
+结论：在父 Agent 已明确收窄的 live-owned warm QueryAccount 合同内，当前未发现新的生产阻断项。此前 ordinary Cache terminal consumption 阻断已关闭；raw source 的独立 Unknown 保存、Weak callback 生命周期和 metadata origin 的 typed retention 已按源码闭合。本结论仅是源码 review，不是原生测试、安装 wheel 或双腿应用验收通过。
+
+## 身份与实际执行
+
+审查工作树为 `E:/persarb/worktrees/entropy-io-recovery`。父 Agent 的 v6 manifest 为 `native113-frozen-source-v6.json`；工作树基线 head `667f424e123e177a87c257cdc7f6b4e2e776d138`，当前改动尚未形成最终 implementation commit。head/tree/status 来自父 Agent 的 manifest，本 reviewer 没有执行 Git 或 Git helper。
+
+独立 capture 用实际文件字节绑定 35 个原生及应用输入。v4 capture 于 06:51:28 UTC 与其 manifest 全部匹配。v5 capture 于 06:56:23 UTC 为 34/35 匹配：唯一 execution_scope.rs 已被父 Agent 同时补入 v6 的 cfg(test) fixture defaults；该失败身份匹配结果仍原样保留，没有称为 35/35。v6 于 06:57:52 UTC 全部 35/35 匹配。完整 SHA、UTC、实际 argv、Python 路径及脚本 SHA 保存在独立 `reviewer-native113-source-v6-pre-identities.json` 和后置 capture 中。
+
+实际命令为明确的 app venv Python 调用临时 capture 脚本；脚本只读 manifest/源码并写临时 identity/diff 文件，没有 import native、Git helper、网络或 venue。一次早先 inline Python 命令因 Windows 引号剥离发生 SyntaxError，未执行源码审查脚本；随后改为实体临时脚本执行成功。此为 reviewer tooling 失败，不是产品测试失败。
+
+本次 reviewer 原生/Python 产品测试执行数为 **0**。父 Agent v4 的 57 PASS 是其实际运行证据，不计为独立测试；v6 全量回归当时仍由父 Agent 执行。此前 55-case 的 30 PASS / 25 FAIL、编译失败和旧报告继续保留，不与未来成功相加。
+
+## 闭合的具体边界
+
+1. `execution_scope.rs:494–507,742–839`：source RAII 从第一请求前开始存在，包含 immutable captured query token / generation / epoch / sequence / account / address / policy。来源保存不再要求当前 reader/sequence/token 仍可授权。raw group 复制锁释放后，保存依 ingress → account → execution 锁序；异常、取消、worker drop、owner early refusal 和 staged discard 均落入同一路径。只有成功 owner commit 才 disarm。第一 debt 不替换、不清除，journal 失败会 taint；容量超限明确 retention_failed，不声称原文已持久化。
+
+2. `account_scope.rs:527–592` 与 `http/client.rs:1844–1875`：正常 info transport 提供实际 body；原始 request JSON、transport return 后实际 receive ms、raw text 先进入 guard，再 decode / normal endpoint item quota wait。role/mode 的 object body 可正常解析，旧 array-only transport 错用已去掉。已有 base weight/retries、item weight、总 deadline 不扩大。超限或无可用完整 UTF-8 body 会记录 unavailable；此时缺失原文和 caller 未保留的 receive timestamp 不冒称已知。
+
+3. `execution.rs:213–234,2141–2230`：whole IoWarmFlight 由方法调用保持 async ownership，直到经济 coverage 记录结束再设置成功。未发送的 RustLocal callback 使用 Weak diagnostics 而非强 IoExecutionRuntime，因此不单凭 callback 注册延长 journal lease。已 staged 的实际 raw sources 由 flight 承担至 commit 或 abandonment；取消锁与 commit 线性化，drop 释放 active/staged 临界锁后再保存/清理。旧 token cleanup 不清理 successor。
+
+4. `execution_scope.rs:845–1008`：normal owner TimeEvent callback 再读普通 Engine Cache，并在 active → ingress → account → execution 临界区核对 epoch/generation/applied/received sequence、revision、完整 funds、metadata、native HTTP/Engine objects 和实际 owned projections。临界区没有 await。所有 remote validation 在 reservation mutation 前；持久化失败恢复原 reserve；fsync 后 TTL/deadline 或当前 witness 失效会恢复并重新 persist，AccountState emission 和 recovery Ready 不发生。warm account 原文经完整 role/mode/collateral/io clearinghouse 读取，private/HTTP cash、margin、withdrawable、position 精确相等；不是用旧 Ready 或 TTL 单独略过来源。
+
+5. `execution_scope.rs:1104–1294`：normal same-account all-strategy io Cache order 必须属于 owned intent/strategy；实际账户、instrument、Limit type、side、reduce-only、IOC/GTC TIF、qty/price/filled/OID 与 intent 一致。Open 只接受相应实际非终态；TerminalPending/Terminal 必须实际 Filled 或 Canceled，Canceled 另外需要 exact native canceled event CID/account/strategy/instrument/OID/source time。实际 native filled event 要 exact scoped TradeId `io:<coin>:<OID>:<TID>`、qty/price/fee/currency/side/time，position sum 对应 owned ledger。此前仅 journal terminal 而 ordinary Cache 仍 Accepted 的漏洞已关闭。新增两项 canceled consumed/unconsumed peer tests 通过真实 WS 更新及正常 Engine event consumption 建立差别；reviewer 只读了这些 tests，没有运行。
+
+6. `execution_scope.rs:1297–1455`：warm REST fills 仅接受完整 exact 已保留 duplicates，并反向要求所有保留 owned fills 出现在响应；new/foreign/conflicting/missing/saturated facts 拒绝。full-io open array 去重并双向覆盖，完整账户 inventory 精确对 owned ledger；warm 本身不添加 REST-only fill/status projection。
+
+7. `execution_scope.rs:3056–3130,3447–3467`：只有每次失败都 downcast 为 AwaitingOwnedActualFills，且当前 active/applied generation/epoch/hard revision、完整旧 metadata origin 及 metadata 未变，才保留原 origin。它不 recreates origin、不更新时间、不恢复 Ready；未知/超时/混合失败仍撤销。Open 和 TerminalPending 的正常来源已先获得 ack/actual-fill OID；此处 phase + immutable intent 检查没有发现新 ownership 绕过。
+
+8. `economics_scope.rs:348–411`：旧正向 complete finite coverage endpoint 不变；新 elapsed interval 标为 pages=0 / records=0 / complete=false / Unknown。成功 warm 不请求/扩展旧 history window，不重放 fees/income。未知经济来源及 hard/cold demand 保留既有 history fail-closed。account/owned commit 与随后经济 coverage 记录不是一个通用全系统事务；经济记录失败会 invalidate，不认证 run economics。
+
+## 小范围转换
+
+独立保存 `reviewer-native113-v4-v5-style-diff.txt`：两个 nested-if 转换为同一评估顺序的 short-circuit let chain，以及 timed_result 临时变量直接返回，未改变 source guard ownership 或 authority。`reviewer-native113-v5-v6-fixture-diff.txt` 仅包含 cfg(test) IoExecutionState literal 的 metadata_origin/query fields 的 None/false/0 六字段，生产逻辑相对 v5 未变。
+
+## 必须继续明示的限制
+
+- AwaitingOwnedActualFills 仅使 recover 的 all-typed-error 路径保留原 metadata origin。实际 WS orderUpdates 的 filled marker 先于 actual fills 时，`execution.rs:3199–3204` 仍 generic hard invalidate：结果是有界 cold/Unknown，不承诺所有乱序都有 warm liveness。
+- 已接受旧 fill 原始来自 WS 还是 genuine REST，若旧事实未保存该 provenance，仍 Unknown。当前 warm HTTP 原文与 captured identity 不证明旧 ingestion transport；reconciliation 布尔值也不能充当 provenance。
+- Engine Cache 是 final owner commit / synchronous owner new-risk pre-prepare 时的核验。Rc Cache 没有 Send-safe revision source，不能声称任意 prepare→sign/quota→final socket write 之间的 Cache metadata 更新都被 writer fencing。writer 保留已有 original receive-bound metadata/ingress/account/action/TTL/ownership gates；通用框架 race、generic cold cache transaction、issue 89 和 Portfolio 仍不在本项证明范围。
+- 不证明 whole account/history、funding、run PnL、冷启动所有 ownership 恢复、经济全区间完整、持续 unlimited Ready 或 Windows kernel isolation。实际 normal installed wheel / paired bounded acceptance 仍须新 source-bound 构建与真实结果，本报告不预填成功。

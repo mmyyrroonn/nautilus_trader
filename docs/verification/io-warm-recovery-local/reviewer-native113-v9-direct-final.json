@@ -1,0 +1,22 @@
+﻿{
+    "utc":  "2026-10-09T07:46:47.9153901Z",
+    "report":  "E:/persarb/_tmp/entropy113-validation/reviewer-native113-v9-direct-final.md",
+    "report_sha256":  "264d6ceb10af3a3d3c1d4623c8792e0e08193130e98c768710a26aeb820df802",
+    "raw_result":  "E:/persarb/_tmp/entropy113-validation/reviewer-v9-direct-20261009T074303Z/result.json",
+    "raw_result_sha256":  "45e9a242fdc5477ba613e92f3027faa44a538745ef584a8aa47a0b0854909808",
+    "independent_distinct_passed":  104,
+    "failed":  0,
+    "ignored":  0,
+    "inputs":  36,
+    "executables":  2,
+    "pre_post_unchanged":  true,
+    "started_utc":  "2026-10-09T07:43:03.623515+00:00",
+    "finished_utc":  "2026-10-09T07:43:59.318827+00:00",
+    "actual_hard_history_requests":  1,
+    "actual_hard_history_branch":  "HTTP request arrived; total bounded deadline Unknown",
+    "root_overlap_added":  false,
+    "source_native_disposition":  "Passed reviewed narrow native warm contract",
+    "installed_wheel_acceptance":  "Unverified",
+    "paired_app_acceptance":  "Unverified",
+    "prior_bytes_preserved":  true
+}

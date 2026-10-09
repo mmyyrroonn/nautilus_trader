@@ -1,0 +1,16 @@
+﻿{
+    "utc":  "2026-10-09T07:26:23.7224376Z",
+    "kind":  "independent source v8 test-only addendum",
+    "report":  "E:/persarb/_tmp/entropy113-validation/reviewer-native113-source-v8-addendum.md",
+    "report_sha256":  "b7c85393530cf220b5d050866f6ae6a363145288118266d782e1b1a61c82dcbd",
+    "manifest":  "E:/persarb/_tmp/entropy113-validation/native113-frozen-source-v8.json",
+    "inputs":  35,
+    "pre_match":  true,
+    "post_match":  true,
+    "pre_post_identical":  true,
+    "production_changed":  false,
+    "assertion_weakened":  false,
+    "independent_product_tests":  0,
+    "product_acceptance":  "Pending root actual regression and exact stable executables",
+    "prior_reports_preserved":  true
+}

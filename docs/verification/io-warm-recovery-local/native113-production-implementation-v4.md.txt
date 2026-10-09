@@ -1,0 +1,28 @@
+# Native issue 113: production author revision v4
+
+Frozen at 2026-10-09T06:49:00.0069417Z in `E:/persarb/worktrees/entropy-io-recovery`.
+The byte identities are in `native113-production-source-v4.json`. Root owns official formatting, compilation, tests, build, installation, and all Git/GitHub operations. The author ran none of those checks. Prior v3 actual failures remain evidence; this revision does not claim they pass.
+
+## Changes against the root-formatted v2 production snapshot
+
+1. `http/client.rs` introduces private, bounded general info raw-body collection through the existing `send_info_response` transport. It preserves the ordinary endpoint base weight, retry behavior, and receive limits. `account_scope.rs` records the actual body and local receive time in its captured-identity RAII source group before JSON parsing or item-weight waiting. A separate private decoder applies the unchanged `info_extra_weight(request, value)` endpoint rules exactly once. The existing array-only economic-history/startup helper is unchanged. This addresses object responses rejected by the array helper, malformed body loss before retention, and cancellation while waiting for additional item quota.
+2. `execution_scope.rs` gives a verified original owned `filled` marker with zero remaining size and insufficient actual fills a private typed `AwaitingOwnedActualFills` error. Original ownership, quantity, price, side, source time, OID, and current known phase must already validate. Recovery preserves metadata origin only when every attempted failure has this type, the original reader generation/epoch/applied state and true hard revision remain unchanged, and the entire original metadata origin and metadata objects still match. It never restores an absent origin, changes source times, grants Ready, absorbs reservations, or softens timeouts/malformed/unknown/conflicting failures. The public diagnostic remains `RecoveryIncomplete`.
+3. `warm_native_owned` requires current ordinary native status consumption. Open intents require compatible Accepted/PartiallyFilled or an actually pending cancellation status. Terminal intents with all actual fills require Filled; incomplete quantities require Canceled plus the corresponding normal Canceled event with exact account, strategy, full instrument, CID, OID, and terminal source milliseconds. Existing exact actual-fill payload/event checks remain mandatory. `is_closed` is not treated as Filled. An unconsumed terminal report is rejected before HTTP and cannot fall back through a valid warm origin.
+4. The normal RustLocal owner callback now captures weak execution diagnostics instead of a strong execution runtime. A private diagnostics forwarding method upgrades state only while actual owner completion executes. Background message abandonment no longer leaves a callback registration holding the journal file open. Flight/staged-source RAII remains responsible for unfinished original-source retention and token-specific cleanup.
+
+## Preserved limits and qualifications
+
+- Account/metadata/recovery TTLs, 1200/minute and 20/second quota, action/cleanup budgets, journal caps, reservations, finite coverage, and unknown-gap behavior are unchanged.
+- Generic cold transaction projection limitations remain outside issue 113. The narrow typed marker case does not claim a cold Ready proof.
+- Warm final owner validation checks actual Engine Cache and native HTTP metadata. NewRisk also has the additional owner pre-prepare check. The Send socket writer does not re-read the non-Send Engine Cache after asynchronous preparation; arbitrary later Cache metadata mutation remains an inherited limitation. This revision does not claim to close that window or certify Portfolio consumption.
+- The journal lifecycle correction is a production ownership change, not a test-only owner registration purge or framework modification.
+- No production test hooks, unsafe code, new HTTP executor, signer, direct venue calls, or time/quota increases were introduced.
+
+## Root verification requested
+
+- Official formatting and strict Rust compilation of all five production identities, followed by the current normal-entry 57-case peer revision (test author may provide one mechanical assertion-contract update before freezing).
+- Actual post-fill recovery preserving a verified original metadata origin, with ordinary Engine Filled/fee/position projections consumed; 224 is a source-derived minimum, not a guaranteed paired result.
+- Malformed original JSON retained before parsing; complete object role/mode sources accepted; unchanged endpoint item costs debited; cancellation during item waiting retaining received raw evidence.
+- Actual WS Canceled status accepted into the journal while Cache remains Accepted must reject synchronously, preserve worst reservation, and emit no financial proof. Ordinary consumption of its exact Canceled event can allow the subsequent full warm group.
+- Normal stop/drop after early HTTP failure, closed owner queue, timeout, and unread/staged owner callback must release the journal descriptor without test-only cleanup while retaining captured-identity unknown source debt.
+- Independent source review must validate the typed marker's original-source qualification, terminal event compatibility, raw-before-parse/item-wait ordering, and callback weak ownership.

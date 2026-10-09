@@ -1,0 +1,33 @@
+{
+  "argv": [
+    "E:/persarb/worktrees/entropy-io-recovery/.venv/Scripts/python.exe",
+    "E:/persarb/worktrees/entropy-execution-app/scripts/install_native.py",
+    "--python",
+    "E:/persarb/worktrees/entropy-io-recovery/.venv/Scripts/python.exe",
+    "--local-override",
+    "--native-root",
+    "E:/persarb/worktrees/entropy-io-recovery",
+    "--wheel",
+    "E:/persarb/_tmp/entropy113-wheel-nextest-20261009/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+    "--provenance",
+    "E:/persarb/_tmp/entropy113-wheel-nextest-20261009/native-provenance.json",
+    "--sha256",
+    "c2bcce1e98939e1304fa3556463f987eb57266406a18d38e4a713436eca485fd",
+    "--additional-adapter",
+    "hyperliquid",
+    "--additional-adapter",
+    "aster",
+    "--output",
+    "E:/persarb/_tmp/entropy113-validation/native113-native-installed-identity.json"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-execution-app",
+  "started_utc": "2026-10-09T08:00:56.137003+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "uv_project_environment": null,
+  "nautilus_stub_profile": null,
+  "cargo_build_warnings": null,
+  "cargo_net_offline": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T08:01:00.427547+00:00"
+}

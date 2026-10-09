@@ -1,0 +1,14 @@
+{
+  "argv": [
+    "make",
+    "pre-commit"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-io-recovery",
+  "started_utc": "2026-10-09T06:16:03.771889+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "uv_project_environment": null,
+  "launch_error": "[WinError 2] \u7cfb\u7edf\u627e\u4e0d\u5230\u6307\u5b9a\u7684\u6587\u4ef6\u3002",
+  "exit_code": 127,
+  "finished_utc": "2026-10-09T06:16:03.773892+00:00"
+}

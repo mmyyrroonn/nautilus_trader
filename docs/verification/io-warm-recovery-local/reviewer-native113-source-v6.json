@@ -1,0 +1,64 @@
+﻿{
+    "utc":  "2026-10-09T06:59:54.4558404Z",
+    "review":  "independent source review only",
+    "source_manifest":  "E:/persarb/_tmp/entropy113-validation/native113-frozen-source-v6.json",
+    "report":  "E:/persarb/_tmp/entropy113-validation/reviewer-native113-source-v6.md",
+    "report_sha256":  "aa440ee6607ca22942f4f357997e3336fb5ec606e3c0f60ab46b0cdfd7733ca7",
+    "pre_identity":  "E:/persarb/_tmp/entropy113-validation/reviewer-native113-source-v6-pre-identities.json",
+    "post_identity":  "E:/persarb/_tmp/entropy113-validation/reviewer-native113-source-v6-post-identities.json",
+    "pre_sha256":  "50ea388ffdab5fd3b4da6c20e4890bbd09d47ac306f249b6a1d888f77377e2a2",
+    "post_sha256":  "9910d5c78cd44c34b30dbce3c3402d363e1b3ab7ca6592fb4702799631f42c95",
+    "bound_file_count":  35,
+    "pre_match":  true,
+    "post_match":  true,
+    "pre_post_identical":  true,
+    "independent_product_tests":  0,
+    "blockers":  [
+
+                 ],
+    "disposition":  "No new source blocker within accepted narrow warm contract; executable, wheel and paired acceptance pending",
+    "limitations":  [
+                        "WS filled marker before fills remains hard invalidation/cold or Unknown",
+                        "Original prior fill WS/REST provenance unknown if unstored",
+                        "No generic post-prepare Engine Cache revision fence",
+                        "No generic cold transactional restore or Portfolio proof",
+                        "No whole-account/funding/run-PnL/kernel-isolation claim"
+                    ],
+    "production":  [
+                       {
+                           "path":  "E:\\persarb\\worktrees\\entropy-io-recovery\\crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+                           "size":  179042,
+                           "sha256":  "4a2a46a7c0cd6c182c9770ce7d47989f05919eee43c694739ee35f9dfb81075d",
+                           "manifest_sha256":  "4a2a46a7c0cd6c182c9770ce7d47989f05919eee43c694739ee35f9dfb81075d",
+                           "matches":  true
+                       },
+                       {
+                           "path":  "E:\\persarb\\worktrees\\entropy-io-recovery\\crates\\adapters\\hyperliquid\\src\\execution.rs",
+                           "size":  249773,
+                           "sha256":  "464c2f82c1d14112ea1118d856eab37d5a83e5fb7c6f53f4e8c93a9583e08ec6",
+                           "manifest_sha256":  "464c2f82c1d14112ea1118d856eab37d5a83e5fb7c6f53f4e8c93a9583e08ec6",
+                           "matches":  true
+                       },
+                       {
+                           "path":  "E:\\persarb\\worktrees\\entropy-io-recovery\\crates\\adapters\\hyperliquid\\src\\http\\client.rs",
+                           "size":  176208,
+                           "sha256":  "ba66b53fcc6a6d1fb6e8bb34ac6faf677cd9e7eb6ffe89eea9e2c11ea398eab2",
+                           "manifest_sha256":  "ba66b53fcc6a6d1fb6e8bb34ac6faf677cd9e7eb6ffe89eea9e2c11ea398eab2",
+                           "matches":  true
+                       },
+                       {
+                           "path":  "E:\\persarb\\worktrees\\entropy-io-recovery\\crates\\adapters\\hyperliquid\\src\\account_scope.rs",
+                           "size":  58494,
+                           "sha256":  "586839f5e0a2bc598330d28a6b22746bb12f44ca2bb2df0fad10fcc5e632483c",
+                           "manifest_sha256":  "586839f5e0a2bc598330d28a6b22746bb12f44ca2bb2df0fad10fcc5e632483c",
+                           "matches":  true
+                       },
+                       {
+                           "path":  "E:\\persarb\\worktrees\\entropy-io-recovery\\crates\\adapters\\hyperliquid\\src\\economics_scope.rs",
+                           "size":  34956,
+                           "sha256":  "2ebdf3756f39ea0cd32cfdc79d84ef7babdcabd6c2d7fea0b0f00d4c151f7f47",
+                           "manifest_sha256":  "2ebdf3756f39ea0cd32cfdc79d84ef7babdcabd6c2d7fea0b0f00d4c151f7f47",
+                           "matches":  true
+                       }
+                   ]
+}

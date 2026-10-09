@@ -1,0 +1,19 @@
+{
+  "revision": "test-v8-root-evidence-addendum",
+  "captured_original_path": "E:\\persarb\\_tmp\\entropy113-validation\\snapshots\\native113-before-official-format-v9\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs",
+  "captured_original_sha256": "9a9cffa0a71cad20dd6823b069f3fc0f2a62f90dfb322552bc3df3cde4e9d288",
+  "preliminary_v7_sha256_only": "ac82c2f8a47e31c1258d2f3d391b22880f8ace608845b01b440903810dcfabf2",
+  "preliminary_v7_bytes_claimed": false,
+  "formatted_test_sha256": "2fca06baee1dc91a94ac1956db71c555db980c3566fd25c453ad7b99bfc4f58b",
+  "root_reported_actual_full_result": {
+    "utc": "2026-10-09 07:38:10 UTC",
+    "passed": 1365,
+    "failed": 0,
+    "ignored": 12,
+    "entropy_passed": 211,
+    "new_integration_cases": 64
+  },
+  "actual_result_verification_by_agent": "Root supplied actual result; this agent independently checked original pre-format snapshot hash only",
+  "agent_test_runs": 0,
+  "earlier_document_save_failures": "First orchestration failed JavaScript parsing before execution; second script failed locating already officially formatted source before any writes. Neither modified source or generated a reconstructed snapshot."
+}

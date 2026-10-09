@@ -1,0 +1,25 @@
+"""Record the existing native development pins without copying native binaries."""
+
+import datetime as dt
+import importlib.metadata
+import json
+import sys
+from pathlib import Path
+
+
+if __name__ == "__main__":
+    assert sys.version_info[:3] == (3, 12, 9)
+    root = Path(__file__).resolve().parent
+    packages = {}
+    for distribution in importlib.metadata.distributions():
+        name = distribution.metadata["Name"]
+        if name.replace("_", "-").lower() != "nautilus-trader":
+            packages[name] = distribution.version
+    requirements = root / "development-requirements.txt"
+    receipt = root / "development-requirements-origin.json"
+    assert not requirements.exists() and not receipt.exists()
+    requirements.write_text("".join(f"{name}=={version}\n" for name, version in sorted(packages.items())), encoding="utf-8")
+    receipt.write_text(json.dumps({"captured_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+                                  "interpreter": sys.executable, "packages": packages,
+                                  "excluded_native_distribution": "nautilus-trader"}, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({"packages": len(packages), "requirements": str(requirements)}))

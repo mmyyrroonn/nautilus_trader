@@ -1,0 +1,34 @@
+{
+  "revision": "v7",
+  "frozen_utc": "2026-10-09 07:32:54 UTC",
+  "expanded_scenarios": 64,
+  "worktree": "E:\\persarb\\worktrees\\entropy-io-recovery",
+  "frozen_files": {
+    "crates/adapters/hyperliquid/tests/entropy_account.rs": "5976b5e8e5b9e19314679ca009365024817a2ad4e3a07ac65c7cdf1d06a79c07",
+    "crates/adapters/hyperliquid/tests/entropy_account/execution.rs": "c7765f65fc74d682c9245a54df47aacb428c1f394c0ff9903691057f765c7a95",
+    "crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs": "ac82c2f8a47e31c1258d2f3d391b22880f8ace608845b01b440903810dcfabf2"
+  },
+  "current_after_official_format_files": {
+    "crates/adapters/hyperliquid/tests/entropy_account.rs": "5976b5e8e5b9e19314679ca009365024817a2ad4e3a07ac65c7cdf1d06a79c07",
+    "crates/adapters/hyperliquid/tests/entropy_account/execution.rs": "c7765f65fc74d682c9245a54df47aacb428c1f394c0ff9903691057f765c7a95",
+    "crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs": "2fca06baee1dc91a94ac1956db71c555db980c3566fd25c453ad7b99bfc4f58b"
+  },
+  "tests_run_by_agent": false,
+  "production_changed": false,
+  "product_bounds_changed": false,
+  "actual_evidence": "E:/persarb/_tmp/entropy113-validation/native113-hyperliquid-regression-v8.log",
+  "original_actual_full_result": {
+    "pass": 210,
+    "fail": 1
+  },
+  "original_failure_preserved": true,
+  "both_endpoint_completion_wait": false,
+  "final_account_trusted_false": false,
+  "snapshot_note": "Original freeze hashes were emitted before root official format. Agent did not archive those original bytes before formatting; no reconstructed snapshot is claimed.",
+  "criterion": {
+    "receipt": "Bounded observation of exact WS raw body in native E5 and actual hard metadata-origin invalidation before normal QueryAccount",
+    "actual_history_http": "New incomplete coverage must show genuine bounded deadline or transport timeout",
+    "no_history_http": "Both new endpoint rows same generation/epoch/end; pages=0 records=0 complete=false; exact Economic history total deadline exhausted (quota/retries/metadata included); actual cold source reads, meta/spot each >=4 and actual successful history meta/spot response started at or after new end",
+    "immutable": "Prior finite coverage, exact raw envelopes and receipts/fees remain identical; no fills/actions/signed writes"
+  }
+}

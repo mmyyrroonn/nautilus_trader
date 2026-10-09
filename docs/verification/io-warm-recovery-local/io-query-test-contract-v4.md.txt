@@ -1,0 +1,17 @@
+# Native issue #113 test revision 4
+
+Source record clock reading: 2026-10-09 06:49:01 UTC. This revision keeps all 57 expanded cases and the previous first-run evidence. It has not been compiled, formatted or executed by the test author.
+
+Root verified the final production contract: a valid warm metadata witness with a mismatched current native Cache projection must cause ordinary QueryAccount to return a synchronous error before HTTP. Falling through to cold recovery previously allowed a false Ready result and is unsafe.
+
+The actual native fill/unconsumed Engine negative now strictly asserts that genuine error, zero additional HTTP requests, unchanged full reservation, false recovery complete, no cached fill quantity and zero Portfolio position. Later ordinary Engine application must still consume the one actual queued fill and produce position 0.12 once.
+
+The unconsumed actual WS Canceled negative now also strictly requires synchronous refusal and zero additional HTTP. The consumed Canceled positive strictly requires a successful ordinary query and the full actual warm current-source group. The shared positive `issue` helper remains unchanged and still unwraps success.
+
+| File | SHA256 before the next official formatting |
+| --- | --- |
+| `crates/adapters/hyperliquid/tests/entropy_account.rs` | `07996db9e58fec3ff8f5b8d4b39621a0115c5b9ca8ea099bcbdca559f2f668d2` |
+| `crates/adapters/hyperliquid/tests/entropy_account/execution.rs` | `b604dac78ce5370847fadd0db3240639847c8ec52c51ea275cb15901dc8c423f` |
+| `crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs` | `824c1e7f769c90a074a7291170230debeb89096f330b7a7622208498e490ebf1` |
+
+All previous limits, captured raw-debt identity requirements, exact ordinary stop/drop persistence assertions, prior-source preservation and unsupported-boundary qualifications remain. No production source, timer housekeeping or private cleanup API was added by the test author. Root owns the next compilation and actual execution.

@@ -1,0 +1,17 @@
+{
+  "issue": 113,
+  "revision": 3,
+  "source_record_clock_utc": "2026-10-09T06:45:27Z",
+  "expanded_integration_cases": 57,
+  "compiled_this_revision": false,
+  "executed_this_revision": false,
+  "first_candidate_actual_root_result": {"pass": 30, "fail": 25},
+  "first_candidate_harness_assumptions_corrected": 3,
+  "first_candidate_failures_remaining_production_dependent": 22,
+  "no_test_only_owner_cleanup_added": true,
+  "source_sha256": {
+    "crates/adapters/hyperliquid/tests/entropy_account.rs": "07996db9e58fec3ff8f5b8d4b39621a0115c5b9ca8ea099bcbdca559f2f668d2",
+    "crates/adapters/hyperliquid/tests/entropy_account/execution.rs": "b604dac78ce5370847fadd0db3240639847c8ec52c51ea275cb15901dc8c423f",
+    "crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs": "9576d9ad2b33260aba2239776a1d1a8fa60642bc7c50ff090994d6fb967dfae9"
+  }
+}

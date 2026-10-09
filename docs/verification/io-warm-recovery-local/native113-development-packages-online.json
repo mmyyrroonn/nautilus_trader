@@ -1,0 +1,18 @@
+{
+  "argv": [
+    "uv",
+    "pip",
+    "install",
+    "--python",
+    "E:/persarb/worktrees/entropy-io-recovery/.venv/Scripts/python.exe",
+    "-r",
+    "E:/persarb/_tmp/entropy113-validation/development-requirements.txt"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-io-recovery",
+  "started_utc": "2026-10-09T05:50:55.838923+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "uv_project_environment": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T05:50:59.554432+00:00"
+}

@@ -1,0 +1,52 @@
+# Observed App #43 follow-up after native #113
+
+This is read-only observed follow-up context, not an acceptance pass. No product/archive source was edited and this agent executed no tests. Original artifacts are untouched.
+
+## Outcome and exact identity
+
+The actual installed-wheel paired run failed: one real owned IOC fill, no Aster order and no cleanup order. Ordinary Cache holds LONG 0.1200; Portfolio reports 0.12. Final controller is StoppedUnknown with unhedged reservation 12.6000, loss estimate 0.00220000, and durable native-cache restoration/current owned flat/run PnL still Unknown. Shutdown was verified; host egress isolation was not verified.
+
+App commit: 5b8c144c39ebcbcfd03ca07f8e53b103741b130a. Native commit: 13064e9a9a199f517480d207f828438f13d05cca.
+Wheel SHA256: c2bcce1e98939e1304fa3556463f987eb57266406a18d38e4a713436eca485fd. Installed native pyd SHA256: 01d27c8b25e53e57bd842206e5bfc9edcf21c3001c17ff566079356a4102d5f1.
+Exact artifact and inspected source SHA256 values are recorded in the accompanying JSON.
+
+## Actual sequence (UTC epoch milliseconds)
+
+| Time | Ordinary observed fact |
+|---|---|
+| 1791533017763 | Strategy started; the run uses the original 15s duration and 5s cleanup allocation. |
+| 1791533017974 | Normal submitted callback and cached event prove actual handoff of the 0.12 BUY IOC. |
+| 1791533018079?8080 | Aggregate filled marker awaits actual fills; application defers this leg's query while the owned handoff remains nonterminal. |
+| 1791533018135?8136 | Native fill with scoped TradeId io:io:SNDK:70001:60000 and OID 70001 arrives, then exact cached ownership/commission is attributed. Normal Cache and Portfolio carry the real position. |
+| 1791533018174 | First application entropy QueryAccount occurs after the actual terminal/cache fill. |
+| 1791533018184?8185 | Warm token6/gen1/epoch0/received-sequence9 receives open=[], exact owned fill and filled status. |
+| 1791533018186 | Final complete account verification receives userRole, then first role/mode/collateral reads. |
+| 1791533018299 | Complete clearinghouse response received; its source time is 1791533018298 and selected position is 0.12. |
+| 1791533019297 | Repeated userAbstraction response received. |
+| 1791533020294 | Repeated userDexAbstraction response received. The receive span from role is 2108ms, already beyond original account max_age=2000ms; source age is 1996ms. |
+| 1791533020372 | First observed failed warm: io account proof source or verification interval is stale. query_completed=1; immutable Unknown raw debt exists; warm metadata origin is null. |
+| 1791533027774 | Cleanup begins around strategy-start+10s, but no current matching entropy account/projection proof exists. No cleanup order is emitted. |
+| 179153303277x | Original 15s run ends; final receipt retains the position/reservation and Unknown outcome. |
+
+## Why no second leg
+
+The initial application scheduling fix worked for this observed first order: it did not query merely because the aggregate marker invalidated Ready. The genuine terminal and normal cached fill preceded the first warm query by approximately38ms.
+
+The first warm query performed real ordinary HTTP reads, but its complete mode/account verification interval exceeded the existing 2s bound. It failed during observe_account_scope, before owner-thread commit could grant an account/Ready or absorb terminal_pending's native reservation. Eleven actual financial source bodies were retained with their captured original token/reader identity as Unknown debt. Retention is evidence, not authority.
+
+Later four entropy query attempts (five total including the first) cannot silently borrow the revoked origin or original debt; native query_completed remains1 and no additional HL HTTP is observed after that group's last response (66 total). The final stale diagnostic is therefore an earlier failed transaction's persistent outcome, plus ordinary later expiry; it is not proof that retrying the same healthy warm path merely ran out of the app's deadline. Aster refreshed successfully (14 app queries, finalgeneration32) but cannot independently authorize the hedge while entropy proof is absent.
+
+Periodic clearinghouse frames were also sent and actually observed at source/receive times around1791533018734/8735 and1791533019766/9767 during the group. These change the reader's received sequence and matter to the independent final-commit fence. However the actual failure shown here is the interval freshness check during observation, before owner commit. No observed sequence-rejection outcome or measured token balance is asserted.
+
+## Focused next dependency acceptance
+
+1. Reproduce installed-native ordinary LiveNode/Strategy startup and post-IOC warm query with original 2s account/action, 3s recovery/history and 15s run, original quota and periodic frames; record exact per-request start/receive and normal owner callback timestamps. Preserve existing first-leg event/Cache/Portfolio identity and fees.
+2. Audit source and limiter costs including ordinary startup provider/reconciliation and ACK actual-fill recovery reads. Optimize only demonstrably duplicate normal work with source/reader/policy/metadata fences preserved; never pre-refill, raise quota/TTL, skip reconciliation or suppress genuine private frames.
+3. Define a separate bounded recovery transaction for captured expired or superseded read-only raw debt: preserve original raw identity/debt, prove exact owned duplicates/current status and current complete account/cache/Portfolio with a new group, then resolve only explicitly evidenced read-only debt. New/unowned/conflicting facts, missing bodies, old reader and policy changes must remain Unknown. No automatic blanket debt clearing or newrisk authority from retention.
+4. Keep source-sequence changes as a negative boundary: a changed or identical private frame across one captured group must deny that old group's owner commit; a current independent future group may proceed only under explicit new recovery semantics, within existing caps/deadlines.
+5. Only after native focused positive and raw-debt/conflict negative acceptance plus independent review, rerun original app paired and all seven scenarios from a fresh main-based candidate; actual paired/cleanup/account-wide flat/run PnL remain unproven now.
+
+All original 2s/3s/15s limits, finite caps, normal reconciliation, quotas and raw-debt negative assertions must remain. No actual venue trading is proposed. The original seven app scenarios remain pending and this observed failed paired run is preserved.
+
+Evidence root: E:\persarb\_tmp\app43-native113-first-paired-20261009\paired.
+Structured report: E:\persarb\_tmp\entropy113-validation\next-dependency-app43-native113-first-paired-20261009.json.

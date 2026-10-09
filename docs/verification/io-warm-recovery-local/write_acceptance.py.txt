@@ -1,0 +1,160 @@
+"""Write final narrow acceptance from retained actual records."""
+
+import hashlib
+import json
+import re
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+NATIVE = Path("E:/persarb/worktrees/entropy-io-recovery")
+DOCS = NATIVE / "docs/verification"
+PAIRED = Path("E:/persarb/_tmp/app43-native113-first-paired-20261009/paired")
+IMPLEMENTATION = "13064e9a9a199f517480d207f828438f13d05cca"
+WHEEL = "c2bcce1e98939e1304fa3556463f987eb57266406a18d38e4a713436eca485fd"
+PYD = "01d27c8b25e53e57bd842206e5bfc9edcf21c3001c17ff566079356a4102d5f1"
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def read(name):
+    return json.loads((ROOT / name).read_text(encoding="utf-8-sig"))
+
+
+def write_new(path, content):
+    assert not path.exists(), path
+    path.write_text(content, encoding="utf-8", newline="\n")
+
+
+def main():
+    frozen = read("native113-frozen-source-v9.json")
+    for kind in ("native", "app"):
+        for row in frozen[kind]["files"]:
+            assert digest(Path(row["path"])) == row["sha256"], row["path"]
+    assert read("native113-hyperliquid-regression-v9.json")["exit_code"] == 0
+    groups = re.findall(r"test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored", (ROOT / "native113-hyperliquid-regression-v9.log").read_text(encoding="utf-8"))
+    assert sum(int(row[0]) for row in groups) == 1365 and len(groups) == 10
+    assert sum(int(row[1]) for row in groups) == 0 and sum(int(row[2]) for row in groups) == 12
+    direct = read("reviewer-native113-v9-direct-final.json")
+    assert direct["independent_distinct_passed"] == 104 and direct["pre_post_unchanged"]
+    installed = read("reviewer-native113-installed-readonly-final.json")
+    assert installed["status"] == "PASS" and installed["pre_post_unchanged"]
+    python = read("native113-installed-python-contracts.json")
+    assert python["exit_code"] == 0
+    assert re.search(r"242 passed", (ROOT / "native113-installed-python-contracts.log").read_text(encoding="utf-8"))
+    after = read("app43-native113-first-paired-after.json")
+    assert after["differences"] == []
+    provenance = json.loads(Path("E:/persarb/_tmp/entropy113-wheel-nextest-20261009/native-provenance.json").read_text(encoding="utf-8"))
+    assert provenance["declared_native"]["commit"] == IMPLEMENTATION
+    assert provenance["wheel"]["sha256"] == WHEEL
+    summary = json.loads((PAIRED / "summary.json").read_text(encoding="utf-8"))
+    entropy = summary["native_selected_scopes"]["entropy"]
+    assert summary["synthetic_numeric_loopback"] and summary["shutdown_verified"]
+    assert summary["controller"]["state"] == "StoppedUnknown"
+    assert entropy["last_query_warm"] and entropy["query_completed"] == 1
+    assert not entropy["recovery_complete"] and not entropy["account"]["trusted"]
+    debt = entropy["recovery_source_debt"]
+    raw = debt["original_sources"]
+    assert len(raw) == 11
+    timeline = [{"request": json.loads(row["request_json"]), "received_ms": row["received_ms"], "raw_sha256": hashlib.sha256(row["raw_text"].encode()).hexdigest()} for row in raw]
+    paired_command = read("app43-native113-first-paired.json")
+    compact = {
+        "captured_utc": datetime.now(timezone.utc).isoformat(),
+        "actual_command": paired_command, "actual_result": "FAIL: StoppedUnknown",
+        "summary_sha256": digest(PAIRED / "summary.json"),
+        "peer_sha256": digest(PAIRED / "peer-evidence.json"),
+        "events_sha256": digest(PAIRED / "events.jsonl"),
+        "normal_native_fills": summary["controller"]["fills"],
+        "actions": summary["controller"]["actions"],
+        "portfolio_net": summary["native_portfolio_net_positions"],
+        "native_diagnostic": entropy["diagnostic"],
+        "recovery_complete": False, "account_trusted": False,
+        "warm_origin": entropy["warm_metadata_origin"],
+        "retained_source_identity": debt["identity"],
+        "retained_actual_sources": timeline,
+        "identity_counts": {key: len(after[key]) for key in ("source_files", "installed_files", "artifacts")},
+        "identity_differences": after["differences"],
+        "shutdown_verified": True, "watchdog_fired": summary["watchdog_fired"],
+        "not_verified": ["two-leg success", "actual venues", "kernel isolation", "whole-account economics"],
+    }
+    write_new(ROOT / "root-app43-native113-first-paired-summary.json", json.dumps(compact, indent=2) + "\n")
+    contract = (ROOT / "io-warm-recovery-contract-final-draft.md").read_text(encoding="utf-8")
+    contract = contract.replace("It does not certify an installed wheel or application #43.", "Artifact and installed checks are recorded in the [acceptance](io-warm-recovery-acceptance-20261009.md); application #43 remains incomplete.")
+    start = contract.index("Root's actual v9 Hyperliquid regression")
+    end = contract.index("\n\nThis change does not certify", start)
+    contract = contract[:start] + """The actual final Hyperliquid regression passed 1365 cases with 12 pre-existing ignored cases. The 64 warm cases are included in that total. Independent execution of copied binaries passed 104 distinct overlapping cases; installed Python passed 242 cases. Official generation verified 44 unchanged stubs. A clean-source wheel was built and verified in both isolated interpreters. An independent normal read-only LiveNode passed with genuine Cache/Portfolio initialization and zero financial actions. That probe used its separate 30-second read-only scope TTL and does not certify the application's 2-second warm contract.
+
+The first application paired attempt on this wheel failed after its genuine first owned fill. Eleven original warm responses remained retained, but the complete verification interval exceeded the unchanged 2-second account bound, leaving durable Unknown debt, conservative reservations and no second-leg action. This refusal is recorded as FAIL. It does not invalidate the bounded fail-closed native mechanism or establish paired liveness. Exact commands, artifact hashes, earlier failures, source reviews and limitations are in the acceptance archive.""" + contract[end:]
+    write_new(DOCS / "io-warm-recovery-contract-20261009.md", contract)
+    acceptance = f"""# Bounded warm io recovery acceptance
+
+Native [issue 113](https://github.com/mmyyrroonn/nautilus_trader/issues/113) adds a finite warm path to ordinary io QueryAccount. Exact already accepted owned native facts, real account responses, the Cache owner thread and final source fences determine authority. The [contract](io-warm-recovery-contract-20261009.md) includes conservative refusals and remaining limits. Application 43 remains open.
+
+The branch started from freshly fetched `main@667f424e123e177a87c257cdc7f6b4e2e776d138`. Clean implementation is `{IMPLEMENTATION}`, tree `c77c933c0d66a366b57e713ff9deb60805e659a9`. Later evidence/documentation commits do not replace the wheel's actual source identity. Upstream rules, workflows and release files are unchanged. The only archive attribute addition preserves raw bytes under `io-warm-recovery-local`.
+
+## Bound artifacts
+
+Wheel SHA256 is `{WHEEL}`; filename is `nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl`. Embedded and installed pyd SHA256 is `{PYD}`. Source fingerprint is `181cafb53bf752864b2042eb5310e6afdc768d2df300964571b28a5baea564da`.
+
+The build ran from 07:57:46.957643 through 07:59:43.751417 UTC on 2026-10-09, with CPython 3.12.9, uv 0.12.6, Rust 1.98.0, maturin 1.15.0 and profile `nextest`. Pre/post source binding was clean and unchanged. Both isolated native-proof and application interpreters were strictly installed and checked against the same wheel. The application's formal candidate lock was unchanged. The original workspace interpreters were not used.
+
+[Provenance](io-warm-recovery-local/native-provenance.json), [manifest](io-warm-recovery-local/manifest.json), [commands](io-warm-recovery-local/commands.json) and [implementation identities](io-warm-recovery-local/implementation-identities.json) retain exact bytes, hashes, actual command intervals, previous failures and source snapshots. Large executable/wheel artifacts are identified rather than committed.
+
+## Actual checks
+
+| Check | Actual result | Scope |
+| --- | --- | --- |
+| Hyperliquid library/integration regression, 07:37:08–07:38:10 UTC | 1365 passed, 0 failed, 12 ignored | Ten test groups; 64 warm cases included in 211 entropy-account cases |
+| Independent copied native binaries, 07:43:03–07:43:59 UTC | 104 distinct passed, 0 failed/ignored | 64 warm, four existing cold/restart cases, 30 execution-scope and six ingress/economic mechanism cases; overlaps root total |
+| Installed Python, 08:01:34–08:01:58 UTC | 242 passed | Account/execution/economics/config/stubs/Aster selected-scope contracts |
+| Independent normal installed LiveNode, 08:06:28–08:06:30 UTC | PASS | Read-only, reconciliation=true, actual RUNNING and Portfolio initialized, zero financial actions |
+| Production Hyperliquid Clippy | PASS | `--lib --no-deps -- -D warnings`, inherited Windows linker messages scoped with build warnings config |
+| Test-inclusive entropy Clippy | FAIL | Six unchanged inherited integration-test diagnostics remain; no new warm-module diagnostics or new allow attributes |
+| Official generated stubs | PASS | 44 AST and normalized-text matches; 23 embedded adapter stubs checked in the wheel/installed package |
+| Scoped nightly Rust format | PASS | Officially formatted final source and final check |
+| Required make format/pre-commit | Launch exit 127 | make unavailable on this Windows host; no full workspace pre-commit claim |
+| First application paired attempt, 08:03:35–08:03:54 UTC | FAIL | One genuine owned first-leg fill, original bounds exceeded by warm account verification; no Aster hedge or cleanup |
+
+The full regression consists of 867 library, 46 data, 40 dispatch, 211 entropy-account, 102 execution, 46 HTTP and 53 WebSocket passes. Twelve prior live/soak/account-registration cases remain ignored and unexecuted. The copied entropy executable SHA256 is `3eb838872a4f80e2c9b64fe7084c43f573063e342ad11937619bd52150280083`; library executable SHA256 is `7e1ee1fd1051b8503a765d7d9cd006ee3afde949788590ee37e6b2648ed9f2a0`. Independent checks verified 36 explicit source inputs and both binary copies before/after. Those checks did not invoke Cargo or regenerate sources.
+
+The [independent binary report](io-warm-recovery-local/reviewer-native113-v9-direct-final.md.txt) and preceding source addenda found no blocker for this narrow native contract. Exactly unapplied-only warm arrival, expiry while holding final mutex guards, and in-place reader-epoch replacement have mechanism/source evidence, not separately claimed deterministic end-to-end integration passes. Generic prepare-to-Send Cache mutation remains an inherited boundary and is not certified here.
+
+The [normal installed report](io-warm-recovery-local/reviewer-native113-installed-readonly-final.md.txt) independently compared the pyd and all 23 adapter stubs with ZIP/provenance bytes. Sixty identities (56 source/install/artifact objects plus four actual procedures) were unchanged. Normal startup observed exact io USDC total/free/locked `100/100/0`, leverage one and epoch zero, empty account/strategy Cache orders and positions, three native AccountState events, 45 actual HTTP reads and three ordinary read subscriptions. No Strategy, financial adjustment or manual Cache injection was used. Stop/dispose left zero peer errors/actions/fills/connections and a None factory getter. This separate read-only probe has a 30-second scope TTL; it does not certify application warm recovery under two seconds or kernel isolation.
+
+## Preserved failures and corrections
+
+Initial compile failures and the first 30-pass/25-fail run remain retained. Their fixes included full body retention for non-array JSON, whole-flight Drop ownership, typed already-owned missing-trade handling, owner-thread completion and legitimate Windows journal read ordering. Later four original cold/restart failures exposed real leverage/funding/binding behavior; production v7 corrected those without rewriting the old tests. Every source snapshot that was actually captured remains explicit; old author hash-only claims are not represented as byte snapshots.
+
+Two full regressions later produced 210 passes and one test failure. The test incorrectly required a history HTTP request to arrive for every hard invalidation. Raw timing showed genuine prerequisites and quota waits exhausting the original total deadline before either history endpoint reached the peer. Both new actual source-bound history ends remained pages-zero, records-zero, incomplete with the exact deadline error. The revised criterion waits for actual raw ingress and both same-batch history ends, retaining all prior Unknown/no-Ready/no-actions assertions. A zero-request outcome additionally requires actual prerequisite responses and exact source identity; it is not a generic success shortcut. Product quota, deadlines and TTLs were unchanged. The independent final run observed a genuine history request and deadline refusal; it does not independently claim runtime coverage of the zero-request branch. Root's earlier actual zero-request evidence remains in [its summary](io-warm-recovery-local/native113-hard-history-v8-actual-summary.json).
+
+Four newly introduced lint style diagnostics were corrected; the six inherited test diagnostics remain recorded. The first official stub executable could not load python312.dll (Windows status 0xc0000135); supplying the selected interpreter's actual DLL directory allowed the official generator to run successfully. No API source/stub edit was required. Raw failed commands, superseded drafts/reviews and subsequent corrections keep their original bytes.
+
+## Application refusal and next dependency
+
+The [first paired raw evidence](io-warm-recovery-local/app43-first-paired-failed/summary.json) and [compact root summary](io-warm-recovery-local/root-app43-native113-first-paired-summary.json) record normal native Cache/Portfolio attribution of `0.1200` / `0.12`, full trade id `io:io:SNDK:70001:60000`, and one USDC `0.00100000` fee. No fee replay or balance adjustment was applied. Only one financial action occurred; the Aster leg remained zero.
+
+The actual warm group retained 11 original responses, starting at epoch-ms `1791533018184` and ending at `1791533020294`. Quota-delayed repeated mode checks made the original verification interval exceed 2000 ms. The diagnostic was `io account proof source or verification interval is stale`; account trusted/recovery complete stayed false, metadata origin was revoked and the captured first Unknown source debt remained durable. The application stopped Unknown with conservative exposure reservations and a verified shutdown. Fifty-six source/install/artifact identities were unchanged around this run. This is a truthful bounded refusal, not two-leg PASS. Request budgeting and conservative recovery after an expired source group require a separate next-main issue and evidence.
+
+Exact-head Actions results are recorded in the issue/PR timeline after packaging. The existing workflow covers Aster, Ondo and Backpack; it does not certify Hyperliquid remotely. Native issue completion does not close application 43, Epic E6, actual venue/account validation, kernel isolation, continuous readiness or whole-account economics. No mainnet order, transfer, account-mode or leverage change was performed.
+"""
+    write_new(DOCS / "io-warm-recovery-acceptance-20261009.md", acceptance)
+    review = f"""# Root final bounded warm recovery review
+
+Reviewed final official source bytes against frozen v9, clean implementation `{IMPLEMENTATION}` and actual final regression/independent binary and installed records. All 36 explicit source inputs matched. No additional code or test changes were made after final full regression. The implementation is accepted for the narrow finite fail-closed native contract described in the checked-in contract and acceptance.
+
+The final boundary validates actual owner Cache, exact source identity/facts, metadata/HTTP stores, policy, TTL/deadline and conservative journal ownership. Unknown retention precedes parsing and item waits; first debt remains immutable. Leverage counterproofs cannot borrow malformed/absent fields. Weak completion ownership and whole-flight RAII preserve lifetime and journal disposal boundaries. Current authority and finite economic history remain distinct. No quota/TTL/deadline expansion, fabricated Ready, REST-only fill projection or economic replay was accepted.
+
+Actual independent tests and normal installed LiveNode corroborate this finite scope. Six inherited test-Clippy diagnostics and unavailable make checks remain explicit. Precisely unobserved integration lock/intermediate states and generic prepare-to-Send mutation are not claimed as full runtime certification.
+
+The actual paired FAIL and durable expired-group debt are material follow-up evidence, preserved without downgrading acceptance criteria. Native113 completion does not claim paired liveness or close app43/E6. A next dependency must start at newly merged main, preserve original bounds and demonstrate actual recovery under ordinary native/Cache/Portfolio paths. No real-mainnet operations were authorized or executed.
+
+Review recorded UTC: {datetime.now(timezone.utc).isoformat()}.
+"""
+    write_new(ROOT / "root-final-warm-recovery-review.md", review)
+    print(json.dumps({"written": ["contract", "acceptance", "root final review", "actual paired FAIL summary"], "source_inputs_verified": 36}))
+
+
+if __name__ == "__main__":
+    main()

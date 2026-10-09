@@ -1,0 +1,29 @@
+{
+  "argv": [
+    "E:/persarb/worktrees/entropy-io-recovery/.venv/Scripts/python.exe",
+    "-m",
+    "pytest",
+    "--import-mode=importlib",
+    "-o",
+    "pythonpath=",
+    "-q",
+    "python/tests/unit/test_entropy_account_config.py",
+    "python/tests/unit/test_entropy_execution_config.py",
+    "python/tests/unit/test_entropy_economics_config.py",
+    "python/tests/unit/test_config_readback_contracts.py",
+    "python/tests/unit/test_generate_stubs.py",
+    "python/tests/unit/test_aster_selected_scope_config.py",
+    "--basetemp",
+    "E:/persarb/_tmp/entropy113-pytest-contracts-20261009"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-io-recovery",
+  "started_utc": "2026-10-09T08:01:34.648889+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "uv_project_environment": null,
+  "nautilus_stub_profile": null,
+  "cargo_build_warnings": null,
+  "cargo_net_offline": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T08:01:58.674211+00:00"
+}

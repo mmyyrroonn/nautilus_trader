@@ -1,0 +1,9 @@
+# Packaging helper correction
+
+The first `write_acceptance.py` invocation failed before creating any output:
+Windows CPython defaulted to GBK when reading the UTF-8 Cargo log and raised
+`UnicodeDecodeError: 'gbk' codec can't decode byte 0x93 in position 38`.
+The helper now supplies UTF-8 explicitly. Product source, frozen source identity,
+tests and artifact provenance were unaffected. This was a packaging-helper
+failure, not a product regression or an executed acceptance test. Its exact
+invocation interval was not separately captured and is not reconstructed.

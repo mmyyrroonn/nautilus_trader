@@ -1,0 +1,56 @@
+"""Bind immutable executable copies to the actual completed Cargo regression."""
+
+import hashlib
+import json
+import re
+import shutil
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parent
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def main():
+    target = ROOT / "native113-stable-binaries-v9.json"
+    assert not target.exists()
+    manifest = ROOT / "native113-frozen-source-v9.json"
+    source = json.loads(manifest.read_text(encoding="utf-8"))
+    for repository in ("native", "app"):
+        for row in source[repository]["files"]:
+            assert digest(Path(row["path"])) == row["sha256"], row["path"]
+    command_path = ROOT / "native113-hyperliquid-regression-v9.json"
+    command = json.loads(command_path.read_text(encoding="utf-8"))
+    assert command["exit_code"] == 0
+    log = ROOT / "native113-hyperliquid-regression-v9.log"
+    recorded = dict(re.findall(r"^\s*Running (.+?) \((.+?\.exe)\)\s*$",
+                               log.read_text(encoding="utf-8"), re.MULTILINE))
+    output = ROOT / "verified-bin"
+    assert not output.exists()
+    output.mkdir()
+    binaries = []
+    for marker in ("unittests src\\lib.rs", "tests\\entropy_account.rs"):
+        original = Path(recorded[marker])
+        copied = output / original.name
+        original_sha = digest(original)
+        shutil.copyfile(original, copied)
+        assert digest(copied) == original_sha == digest(original)
+        binaries.append({"cargo_running_marker": marker, "build_output_path": str(original),
+                         "immutable_copy_path": str(copied), "sha256": original_sha,
+                         "bytes": copied.stat().st_size})
+    record = {"captured_utc": datetime.now(timezone.utc).isoformat(),
+              "source_manifest": {"path": str(manifest), "sha256": digest(manifest)},
+              "actual_cargo_command": {"path": str(command_path), "sha256": digest(command_path),
+                                       "command": command},
+              "actual_cargo_log": {"path": str(log), "sha256": digest(log)},
+              "source_files_unchanged": True, "binaries": binaries}
+    target.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({"capture": str(target), "binaries": binaries}))
+
+
+if __name__ == "__main__":
+    main()

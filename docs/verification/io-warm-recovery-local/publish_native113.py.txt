@@ -1,0 +1,67 @@
+"""Publish the reviewed native warm recovery contract and exact-head workflow."""
+
+import argparse
+import hashlib
+import json
+import subprocess
+from pathlib import Path
+
+from github113 import api
+
+ROOT = Path(__file__).resolve().parent
+NATIVE = Path("E:/persarb/worktrees/entropy-io-recovery")
+REPO = "repos/mmyyrroonn/nautilus_trader"
+BRANCH = "feature/entropy-io-recovery"
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--head", required=True)
+    args = parser.parse_args()
+    head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=NATIVE).decode().strip()
+    assert head == args.head
+    assert not subprocess.check_output(["git", "status", "--porcelain"], cwd=NATIVE).strip()
+    remote = api(f"{REPO}/git/ref/heads/{BRANCH}", "native113-publish-pushed-head")
+    assert remote["object"]["sha"] == head
+    pulls = api(f"{REPO}/pulls?state=open&per_page=100", "native113-publish-existing-pulls")
+    assert not any(pull["head"]["ref"] == BRANCH for pull in pulls)
+    issue = api(f"{REPO}/issues/113", "native113-publish-issue-guard")
+    assert issue["state"] == "open" and issue["body"].count("- [ ]") == 7
+    archive = NATIVE / "docs/verification/io-warm-recovery-local/manifest.json"
+    manifest = json.loads(archive.read_text(encoding="utf-8"))
+    for row in manifest["files"]:
+        assert hashlib.sha256((archive.parent / row["path"]).read_bytes()).hexdigest() == row["sha256"], row["path"]
+    link = f"https://github.com/mmyyrroonn/nautilus_trader/blob/{head}/docs/verification/"
+    progress = f"""原生有限 warm QueryAccount 的实现、主代理最终 review、独立 source/binary/installed review 已完成。分支基线为当时最新 `main@667f424e123e177a87c257cdc7f6b4e2e776d138`；clean implementation `13064e9a9a199f517480d207f828438f13d05cca`，最终文档/证据 head `{head}`。
+
+实际 Hyperliquid 完整回归 **1365 passed / 12 原有 ignored / 0 failed**（64 warm 场景包含在内）；独立 copied binary **104 个不同场景 passed**，与主回归重叠不累加；installed Python **242 passed**。官方 44 stubs AST/normalized text 匹配。source-bound wheel SHA256 `c2bcce1e98939e1304fa3556463f987eb57266406a18d38e4a713436eca485fd`，pyd `01d27c8b25e53e57bd842206e5bfc9edcf21c3001c17ff566079356a4102d5f1`，两独立 venv 正常严格安装。独立只读 normal LiveNode reconciliation=true/Portfolio 初始化通过，45 actual HTTP 读、3 read subscriptions、0 金融动作，60身份前后不变，退出0connections/getter=None；该 probe 使用独立30s只读TTL，不冒充应用2s warm验收。
+
+配额、TTL、deadline、history边界保持原合同。实际原文在parse/item等待前保留，首Unknown debt immutable，owner线程最终Cache/source/facts/TTL/journal核查后才允许更新权限。之前 compile、回归、历史deadline criterion、官方stubber DLL与review修正均保留原字节。production Clippy PASS；test-inclusive仍有6项继承诊断，make format/pre-commit无法启动127；不宣称全workspace checks通过。精确unapplied-only/final锁等待/in-place epoch等边界的未直接集成运行部分明确标注为机制/源码证据。
+
+应用#43对本wheel的首paired **实际FAIL**：normal native/Cache/Portfolio完成0.12首腿成交与精确USDC0.001手续费，11warm raw responses均保留；实际完整核验跨度2108ms以上超过原2000ms，留下Unknown source debt与保守暴露reserve，未发送Aster hedge/cleanup。56 source/install/artifact身份前后不变。正常读失败不能洗掉债务，后续源预算/保守恢复将从本次合并后的最新main另单处理。#43/E6、真实场所、kernel #29、全账户经济/连续Ready保持未完成。
+
+[有限契约]({link}io-warm-recovery-contract-20261009.md) · [实际验收]({link}io-warm-recovery-acceptance-20261009.md) · [{len(manifest['files'])}份证据manifest]({link}io-warm-recovery-local/manifest.json)。接下来创建PR并对最终head运行现有Aster/Ondo/Backpack workflow，其成功不替代本地Hyperliquid回归。"""
+    comment = api(f"{REPO}/issues/113/comments", "native113-publish-progress", "POST", {"body": progress})
+    body = f"""Ordinary io QueryAccount repeats metadata/prerequisite reads after an owned fill, exhausting the existing recovery budget even when the runtime already holds verified selected metadata. Add a bounded warm path that reuses only the exact original metadata origin, reads actual current account/order/fill/status evidence, and commits on the Cache owner thread after source, ownership, native Cache, TTL and durable-reservation checks.
+
+Retain original request bodies before parsing/quota item waits and preserve immutable first Unknown debt. Reader/funds/policy/metadata/Cache changes, absent or conflicting facts, expiry and cancellation fail closed. Limiter, TTLs, deadlines and economics remain unchanged; no REST-only fills or Ready fabrication. Cold recovery and unrequested history retain their conservative contracts.
+
+Validation: 1365 Hyperliquid cases passed (12 pre-existing ignored), including 64 warm cases; independent binary review passed 104 overlapping distinct cases; installed Python passed 242. Official 44-stub generation/comparison, production Clippy and scoped format passed. Test-inclusive Clippy retains six inherited diagnostics; make checks cannot launch on this host. A clean-source wheel was strictly installed in both proof interpreters. Independent normal read-only LiveNode passed with zero financial actions and clean teardown.
+
+Application 43's first paired attempt on this wheel remains FAIL after one genuine owned fill: quota-delayed complete account verification exceeded its original two-second bound, preserving Unknown debt and reserves. This native PR provides finite recovery/retention/refusal behavior, not paired liveness. Follow-up request budgeting and conservative debt recovery will start from newly merged main. [Acceptance]({link}io-warm-recovery-acceptance-20261009.md) retains artifact hashes, failed attempts, final reviews and unverified boundaries. Existing exact-head CI covers Aster/Ondo/Backpack separately from local Hyperliquid checks.
+
+Closes #113. Related to mmyyrroonn/Nautilus-Perps#43.
+"""
+    pull = api(f"{REPO}/pulls", "native113-publish-pr-create", "POST", {
+        "title": "Support bounded warm io account recovery", "head": BRANCH,
+        "base": "main", "draft": False, "body": body,
+    })
+    assert pull["head"]["sha"] == head and pull["base"]["ref"] == "main"
+    result = {"head": head, "pull": pull["html_url"], "number": pull["number"], "progress": comment["html_url"]}
+    (ROOT / "native113-published-result.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    api(f"{REPO}/actions/workflows/nautilus-adapter-checks.yml/dispatches", "native113-exact-head-dispatch", "POST", {"ref": BRANCH})
+    print(json.dumps(result))
+
+
+if __name__ == "__main__":
+    main()

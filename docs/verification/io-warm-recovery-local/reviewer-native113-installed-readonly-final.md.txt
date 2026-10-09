@@ -1,0 +1,33 @@
+# 原生 113 独立 installed-wheel normal read-only 验收
+
+结论：新官方wheel在真实app venv的 normal factory / LiveNode readonly启动和退出路径 **PASS**。这是与独立104原生场景分开的单次安装/启动验收，不相加成新的distinct-test总数，也不等同2s warm应用或双腿策略成功。
+
+实际命令为 app `.venv/Scripts/python.exe` 调用新临时 `reviewer-normal-startup-readonly-native113.py`，cwd `E:/persarb/worktrees/entropy-execution-app`，明确新目录 `reviewer-native113-installed-readonly-20261009`，指定wheel/provenance及 `--native-commit 13064e9a9a199f517480d207f828438f13d05cca --native-tree c77c933c0d66a366b57e713ff9deb60805e659a9`。完整实际sys.argv、UTC、normal log、rawpeerrequests/commands/frames及scope/cache evidence保留在该目录及同名.log。UTC08:06:28.133000–08:06:30.787689，shell退出码0，首次执行成功，没有retry。
+
+## 字节与身份
+
+- wheel SHA `c2bcce1e98939e1304fa3556463f987eb57266406a18d38e4a713436eca485fd`
+- 实际installed pyd SHA `01d27c8b25e53e57bd842206e5bfc9edcf21c3001c17ff566079356a4102d5f1`
+- provenance文件 SHA `089ba1a947e601cbceb608e587c3dd55bf425ca31435dfbf107ed277ec10b6dd`
+- provenance declared source fingerprint `181cafb53bf752864b2042eb5310e6afdc768d2df300964571b28a5baea564da`
+- new runner SHA `1b0910c2ff19a288c0dc2b4030f50d236ebf13d4a806a2f9d71bbacd82232731`
+- old #111 v3 runner SHA `7024e86245c4d9a9943d7ab2169a07eb83efec24bf3737b0e31c4c34348571df`，字节未改。
+
+在任何native factory创建前，独立核对wheel/provenance/body size、声明clean pre/post commit/tree、buildinput真实SHA、实际installed pyd+23adapterstubs共24objects与wheel ZIP/provenance逐字节一致。fingerprint比较已知root期望，source binding是受控manifest一致性+实际source/object bytes；reviewer没有运行Git/helper或独立重算Git tree。
+
+实际pre/post绑定root的56完整inputs（30source、24installed objects、2wheel/provenance），加新runner/oldrunner/输入manifest/buildinput四项procedure，共60项字节完全不变。source-before/after.json列出所有实际path/SHA/bytes。应用模块仅hash读取，未执行application或其verify_native_install Git helper；只import冻结的纯loopbackpeer与正常installednativeAPI。
+
+## normal路径实际结果
+
+- normal Hyperliquid data/exec factory，reconciliation=True，零strategy，明确published synthetic KEY/user，HTTP/WS仅数字127.0.0.1动态端口，没有订单、transfer、mode-change或alternate signer/executor/manualCache/events。
+- normal node RUNNING，Portfolio.is_initialized=True，selected netposition0。allaccount/allstrategy Cache orders/positions均空；原生账户只有3个实际AccountState events，balances与scopeexact USDC equity/free/withdrawable100、used0对应。
+- exact account dex=io/address=syntheticuser、standard_disabled_inferred mode、explicit USDC token、trusted/flat true、positions[]，private_stream_epoch0。metadata实际selected io:SNDK、strictIsolated、actualleverage1、native sizeprecision4和USDC settlement吻合。
+- execution recovery_complete/fresh_journal_origin true，native_projection_recovery_required/journal_tainted/query_in_flight false、recovery_source_debt null、actions0、owned_intents{}、actual_fills{}。这证明本runtime的fresh-flat startup report已通过正常reconciliation/Portfolio消费，不认证genericcoldrestore。
+- 45次真实HTTP读包含role/mode/meta/spot/perpDexs/activeAssetData/clearinghouse/openOrders/userFills/historicalOrders；scope open/account reads实际带dex io。3个正常只读WS subscriptions为orderUpdates/userEvents/clearinghouseState，实际1个privateframe，peer errors/actions/fills/order均零。
+- normal stop + task结束 + dispose先于peerclose；factory execution scope getter返回None，peer sessions最终0，零残留errors/actions/fills/position。成功和finally均保存实际sources/raw traffic。
+
+## 明确范围
+
+使用旧被授权readonlyboot配置：scope account TTL30000ms、metadata30000ms、recovery3000ms，原小有限IoExecutionPolicy。它仅验证normal installedABI/boot及shutdown，不认证应用cashTTL2000ms warm-query合同。LiveNodeHandle公开API无query/execute，本轮没有添加strategy或private Engine/messagebus hook；optional warm扩展跳过。
+
+没有Cargo/Git/GH/build/install/stubs/生产测试源码写入/环境dump/.env/真实venue。numericendpoint和functional peer evidence不证明Windows kernel egress隔离，native_host_egress_isolation_verified=false/kernel_isolation_verified=false。wholeaccount/history/funding/runPnL/durablecache恢复继续Unknown/false。root实际paired应用与242Pythoncontracts都是其独立任务，不计本次通过，也不据此宣称双腿成功；后续应用2s/3s真实warm及完整流程仍须各自验收。

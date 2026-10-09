@@ -1,0 +1,234 @@
+--- E:\persarb\_tmp\entropy113-validation\snapshots\native113-frozen-source-v8\native\.gitattributes
++++ E:\persarb\_tmp\entropy113-validation\snapshots\native113-frozen-source-v9\native\.gitattributes
+@@ -0,0 +1,18 @@
++# Set standard UNIX/Linux/MacOSX line endings.
++* text=auto eol=lf
++
++# Denote all files that are truly binary and should not be modified.
++*.png binary
++*.ico binary
++*.jpg binary
++*.bz2 binary
++
++# Preserve captured validation bytes so evidence hashes survive a Git checkout.
++docs/verification/entropy-account-local/** -text -whitespace
++docs/verification/entropy-execution-local/** -text -whitespace
++docs/verification/entropy-economics-local/** -text -whitespace
++docs/verification/entropy-economics-public/** -text -whitespace
++docs/verification/aster-selected-scope-local/** -text -whitespace
++
++docs/verification/io-startup-local/** -text -whitespace
++docs/verification/io-warm-recovery-local/** -text -whitespace
+--- E:\persarb\_tmp\entropy113-validation\snapshots\native113-frozen-source-v8\native\crates\adapters\hyperliquid\tests\entropy_account\io_query_recovery.rs
++++ E:\persarb\_tmp\entropy113-validation\snapshots\native113-frozen-source-v9\native\crates\adapters\hyperliquid\tests\entropy_account\io_query_recovery.rs
+@@ -1834,6 +1834,7 @@
+     let raw = json!({"channel":"userNonFundingLedgerUpdates","data":{"user":USER,
+         "nonFundingLedgerUpdates":[{"time":now_ms(),"hash":format!("0x{:064x}",991),
+         "delta":{"type":"withdraw","usdc":"1","fee":"0"}}]}});
++    let raw_text = raw.to_string();
+     harness
+         .peer
+         .state
+@@ -1849,7 +1850,20 @@
+         .instructions
+         .send(PeerInstruction::Frame(raw))
+         .unwrap();
+-    tokio::time::sleep(Duration::from_millis(30)).await;
++    tokio::time::timeout(Duration::from_secs(2), async {
++        loop {
++            let economic = economics(&harness);
++            let scope = harness.scope();
++            let received = economic["raw_envelopes"].as_object().unwrap().values()
++                .any(|body| body.as_str() == Some(raw_text.as_str()));
++            let hard_invalidated = scope["recovery_complete"] == false
++                && scope["warm_metadata_origin"].is_null()
++                && scope["diagnostic"].as_str().unwrap_or("")
++                    .contains("New economic funding/ledger source requires bounded source recovery");
++            if received && hard_invalidated { break; }
++            tokio::time::sleep(Duration::from_millis(5)).await;
++        }
++    }).await.expect("exact normal native hard financial frame did not reach durable E5 and revoke its original proof");
+     let before = economics(&harness);
+     assert_eq!(harness.scope()["recovery_complete"], false);
+     let after = harness.peer.state.data.lock().requests.len();
+@@ -1858,27 +1872,38 @@
+         loop {
+             harness.apply_time_events();
+             let economic = economics(&harness);
+-            let completed_unknown =
+-                economic["coverage"]
+-                    .as_array()
+-                    .unwrap()
++            let previous_end = before["coverage"]
++                .as_array()
++                .unwrap()
++                .iter()
++                .filter_map(|coverage| coverage["end_ms"].as_u64())
++                .max()
++                .unwrap();
++            let current_coverage = economic["coverage"]
++                .as_array()
++                .unwrap()
++                .iter()
++                .filter(|coverage| {
++                    coverage["end_ms"]
++                        .as_u64()
++                        .is_some_and(|end| end > previous_end)
++                })
++                .collect::<Vec<_>>();
++            let completed_unknown = current_coverage.len() == 2
++                && current_coverage
+                     .iter()
+-                    .any(|coverage| {
+-                        let diagnostic =
+-                            coverage["diagnostic"].as_str().unwrap_or("").to_lowercase();
+-                        coverage["complete"] == false
+-                            && coverage["end_ms"].as_u64().is_some_and(|end| {
+-                                before["coverage"]
+-                                    .as_array()
+-                                    .unwrap()
+-                                    .iter()
+-                                    .filter_map(|old| old["end_ms"].as_u64())
+-                                    .max()
+-                                    .is_none_or(|old_end| end > old_end)
+-                            })
+-                            && (diagnostic.contains("incomplete")
+-                                || diagnostic.contains("deadline"))
+-                    });
++                    .any(|coverage| coverage["endpoint"] == "userFunding")
++                && current_coverage
++                    .iter()
++                    .any(|coverage| coverage["endpoint"] == "userNonFundingLedgerUpdates")
++                && current_coverage.iter().all(|coverage| {
++                    let diagnostic = coverage["diagnostic"].as_str().unwrap_or("").to_lowercase();
++                    coverage["complete"] == false
++                        && coverage["generation"] == before["coverage"][0]["generation"]
++                        && coverage["epoch"] == before["coverage"][0]["epoch"]
++                        && coverage["end_ms"] == current_coverage[0]["end_ms"]
++                        && (diagnostic.contains("incomplete") || diagnostic.contains("deadline"))
++                });
+             if completed_unknown {
+                 break;
+             }
+@@ -1904,22 +1929,112 @@
+             json!(data.ws_observations)
+         );
+     }
++    assert_eq!(harness.scope()["recovery_complete"], false);
++    assert_eq!(harness.scope()["account"]["trusted"], false);
++    let after = economics(&harness);
++    let previous_end = before["coverage"]
++        .as_array()
++        .unwrap()
++        .iter()
++        .filter_map(|coverage| coverage["end_ms"].as_u64())
++        .max()
++        .unwrap();
++    let new_coverage = after["coverage"]
++        .as_array()
++        .unwrap()
++        .iter()
++        .filter(|coverage| {
++            coverage["end_ms"]
++                .as_u64()
++                .is_some_and(|end| end > previous_end)
++        })
++        .collect::<Vec<_>>();
++    assert_eq!(
++        new_coverage.len(),
++        2,
++        "hard history demand did not record both actual endpoint outcomes: {after}"
++    );
++    let history_requests =
++        count(&requests, "userFunding") + count(&requests, "userNonFundingLedgerUpdates");
++    let deadline = "Economic history total deadline exhausted (quota/retries/metadata included)";
++    for coverage in &new_coverage {
++        assert_eq!(coverage["complete"], false);
++        assert_eq!(coverage["generation"], before["coverage"][0]["generation"]);
++        assert_eq!(coverage["epoch"], before["coverage"][0]["epoch"]);
++        assert_eq!(coverage["end_ms"], new_coverage[0]["end_ms"]);
++        if history_requests == 0 {
++            assert_eq!(
++                coverage["diagnostic"], deadline,
++                "quota refusal lost the exact native deadline: {coverage}"
++            );
++            assert_eq!(coverage["pages"], 0);
++            assert_eq!(coverage["records"], 0);
++        } else {
++            let diagnostic = coverage["diagnostic"].as_str().unwrap().to_lowercase();
++            assert!(
++                diagnostic.contains("deadline")
++                    || (diagnostic.contains("incomplete")
++                        && (diagnostic.contains("timed out") || diagnostic.contains("timeout"))),
++                "actual history transport failure is not a genuine bounded timeout: {coverage}"
++            );
++        }
++    }
+     assert!(
+-        count(&requests, "userFunding") + count(&requests, "userNonFundingLedgerUpdates") > 0,
+-        "hard demand must use actual economic HTTP sources, not a free local replay; request_baseline={after}, since={}, initial_economics={}, final_economics={}, native_scope={}",
+-        json!(requests),
+-        before,
+-        economics(&harness),
+-        harness.scope()
+-    );
+-    assert_eq!(harness.scope()["recovery_complete"], false);
+-    let after = economics(&harness);
++        new_coverage
++            .iter()
++            .any(|coverage| coverage["endpoint"] == "userFunding")
++    );
++    assert!(
++        new_coverage
++            .iter()
++            .any(|coverage| coverage["endpoint"] == "userNonFundingLedgerUpdates")
++    );
++    for previous in before["coverage"].as_array().unwrap() {
++        assert!(
++            after["coverage"].as_array().unwrap().contains(previous),
++            "prior finite history coverage was relabeled: {previous}"
++        );
++    }
++    if history_requests == 0 {
++        assert!(count(&requests, "userRole") >= 2 && count(&requests, "clearinghouseState") >= 2);
++        assert!(count(&requests, "frontendOpenOrders") >= 1 && count(&requests, "userFills") >= 1);
++        assert!(count(&requests, "perpDexs") >= 1 && count(&requests, "activeAssetData") >= 2);
++        assert!(
++            count(&requests, "meta") >= 4 && count(&requests, "spotMeta") >= 4,
++            "no history transport arrived without actual cold and economic metadata reads: {}",
++            json!(requests)
++        );
++        let data = harness.peer.state.data.lock();
++        for endpoint in ["meta", "spotMeta"] {
++            assert!(
++                data.http_observations
++                    .iter()
++                    .any(|response| response["request"]["type"] == endpoint
++                        && response["status"] == 200
++                        && response["started_ms"].as_u64().is_some_and(
++                            |start| start >= new_coverage[0]["end_ms"].as_u64().unwrap()
++                        )),
++                "missing actual completed economic metadata read after the native demand end: {endpoint}"
++            );
++        }
++    }
++    eprintln!(
++        "hard_history_bounded_outcome={}",
++        json!({"history_requests":history_requests,
++        "actual_request_count":requests.len(),"new_coverage":new_coverage,
++        "proof_ready":harness.scope()["recovery_complete"],"signed_writes":harness.peer.state.writes.load(Ordering::SeqCst)})
++    );
++    assert_eq!(
++        after["report"]["receipts"], before["report"]["receipts"],
++        "Unknown history demand reapplied financial receipts"
++    );
+     assert!(!after["raw_envelopes"].as_object().unwrap().is_empty());
+     for (key, raw) in before["raw_envelopes"].as_object().unwrap() {
+         assert_eq!(&after["raw_envelopes"][key], raw);
+     }
+     assert_eq!(harness.fill_events, 0);
+     assert_eq!(harness.peer.state.writes.load(Ordering::SeqCst), 0);
++    assert_eq!(harness.scope()["actions"], 0);
+     harness.stop().await;
+ }
+ 

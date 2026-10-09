@@ -1,0 +1,34 @@
+{
+    "utc":  "2026-10-09T06:49:00.0069417Z",
+    "worktree":  "E:/persarb/worktrees/entropy-io-recovery",
+    "revision":  "production-author-v4",
+    "frozen":  true,
+    "tests_run_by_author":  false,
+    "paths":  [
+                  {
+                      "path":  "crates/adapters/hyperliquid/src/account_scope.rs",
+                      "bytes":  58368,
+                      "sha256":  "4f241d0fe85b0f044dc5c65cc22f6f6fa22a3be0ce11df137ed332ccaad15087"
+                  },
+                  {
+                      "path":  "crates/adapters/hyperliquid/src/execution_scope.rs",
+                      "bytes":  178070,
+                      "sha256":  "c3d2de84957553ed9e0d6028ffa6c2dd9de2212cf8a20cf5327068bdd26fe8ae"
+                  },
+                  {
+                      "path":  "crates/adapters/hyperliquid/src/execution.rs",
+                      "bytes":  249834,
+                      "sha256":  "949918fbfa024d237bab27dde18ced49871f9fb54710be692c481d31d9743ed4"
+                  },
+                  {
+                      "path":  "crates/adapters/hyperliquid/src/economics_scope.rs",
+                      "bytes":  34956,
+                      "sha256":  "2ebdf3756f39ea0cd32cfdc79d84ef7babdcabd6c2d7fea0b0f00d4c151f7f47"
+                  },
+                  {
+                      "path":  "crates/adapters/hyperliquid/src/http/client.rs",
+                      "bytes":  176175,
+                      "sha256":  "3b739b2d0ce923a9236794aa09f8c755a56d4da86058a7423baece5323f06aef"
+                  }
+              ]
+}

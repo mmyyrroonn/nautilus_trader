@@ -1,0 +1,55 @@
+# 原生 113 formatted v7 独立源码复核
+
+结论：在已收窄的 live-owned warm QueryAccount 合同内，formatted v7 未发现新的生产 blocker。v6 漏查的 flat leverage 来源空循环已经由实际 repeated activeAssetData counterproof 修复；optional connect Cache binding 保留只读诊断连接，未赋予新风险资格。此为源码结论，产品测试、最终二进制、wheel/normal paired 验收尚不能由本报告宣称成功。
+
+## 实际身份
+
+工作树 `E:/persarb/worktrees/entropy-io-recovery`，父 Agent 提供 `native113-frozen-source-v7.json` 及完整 byte snapshots。当前 implementation 仍以未提交 changed source 绑定，基线 head 为父 manifest 的 `667f424e123e177a87c257cdc7f6b4e2e776d138`；reviewer 没有执行 Git/helper。
+
+07:14:33.729997 UTC 独立 pre-capture 实际读取 35 个原生/应用输入，全部匹配。执行命令为明确 app venv Python 调用临时 `reviewer-native113-v7-capture.py pre`，仅 hashlib/json/pathlib/difflib，未 import native、环境凭据、网络或 Git helper。post capture、完整 argv/解释器/脚本 SHA/manifest SHA/35 文件 SHA 保存在同名 pre/post identity JSON。
+
+v7 changed production 身份：
+
+- execution_scope.rs: `fd10b2e0deb1b90e42dcb0756eb68d2227b3bffe7d383807a93cf962e67270d2`
+- execution.rs: `2b1e30b896b60b01edd257947426c5f132b841dc7fe7771602f1e810c81c3316`
+- http/client.rs: `ba66b53fcc6a6d1fb6e8bb34ac6faf677cd9e7eb6ffe89eea9e2c11ea398eab2`
+- account_scope.rs: `586839f5e0a2bc598330d28a6b22746bb12f44ca2bb2df0fad10fcc5e632483c`
+- economics_scope.rs: `2ebdf3756f39ea0cd32cfdc79d84ef7babdcabd6c2d7fea0b0f00d4c151f7f47`
+
+三份当前 peer test inputs：entropy_account.rs `07996db9e58fec3ff8f5b8d4b39621a0115c5b9ca8ea099bcbdca559f2f668d2`；entropy_account/execution.rs `c7765f65fc74d682c9245a54df47aacb428c1f394c0ff9903691057f765c7a95`；io_query_recovery.rs `5c590849d2c1558e4f4c79114ebc516d7a3d4ff9e8595bdbee02720e9769cf68`。
+
+## v6 → v7 真实转换
+
+独立全文 diff 为 `reviewer-native113-v6-v7-full-diff.txt`。仅两个生产文件及两个 test files 改变；另外三份生产文件、父 peer module、经济原有 tests 和其余 35 输入不变。旧四项失败测试的业务函数/断言未改；execution.rs peer 测试只增加真实 response queue 字段和 HTTP response opt-in，现有测试逻辑未被 skip/弱化。
+
+### 当前 leverage 来源
+
+`execution_scope.rs:829–859` worker 先对实际完整 clearinghouse assetPositions 调用 `warm_current_position_leverage`（2802–2840）。数组必须存在；selected row present 时要求 unique coin、actual leverage object、isolated、positive u64、<=policy、==original actual_leverage。present malformed/missing/conflicting row直接失败，不当作 absent 后借别的来源成功。零仓位但实际 row 存在仍有此检查。
+
+只有 actual complete array 缺少某 selected coin，才使用该 immutable metadata/address 构造普通 activeAssetData request，读取两次。每次 validate_user_asset 精确 user/coin、isolated、positive/max leverage，校验正常 mark/capacity shape；两次实际 leverage 必须相等且等于原 metadata actual_leverage。out-of-policy、changed-in-policy、second transition、wrong account/coin/cross 一律失败。worker 在发送 owner completion 前完成检查，所以已有 negative source 不依赖 owner 消费才降权。
+
+每次使用原 `bounded_scope_observation`：actual raw body 和 native receive ms 在 decode / item quota wait 前归 source RAII；两次查询仍在同一个原 recovery 3s deadline 内。没有扩大 quota、延长 cash2s/metadata30s TTL 或循环新 deadline。parsed counterproof map 按 instrument key 随 observation 入 owner；`execution_scope.rs:935–970` 再验证 present rows、每个 absent 的两份 exact response，并校验 counterproof cardinality，不能缺失或附带意外 identities。
+
+新 activeAssetData 是当前 leverage counterproof，不会改 original metadata 的 mark/capacity/availability、received_ms/verification_started_ms/native objects 或记录新的 origin。读到的新 mark/capacity 不作为新额度授权；仍为原 receive-bound fields，不能宣称所有资产数据当前。完整 account role/mode/collateral/io clearinghouse 和 final local fences仍照常读取/验证；这些远端请求仍非原子快照。
+
+真实最小来源成本已反映到 tests：flat single selected/no active intent 为262；flat unfilled cancel/one active CLOID 为264；持仓 actual row 的正常warm仍224。一般 source-derived minimum 为222 +40*absent_selected_count +2*active_owned_CLOID_count，item/retry/other reads/等待另计，不推导未来持续容量或 paired PASS。
+
+### 只读 binding 与 new risk
+
+`execution.rs:2496–2512` 原 refresh_metadata 真正执行，之后 Cache binding 失败仅 warn，仍执行原 recover。没有 fabricate Engine objects、清理 projection/journal/raw debt、修改原 times 或捕捉并吞掉 refresh_metadata 错误。None binding 的只读 restart 可以 connect，但 normal warm 要求绑定和 actual Cache，generic cold projection debt 仍禁止 new risk。
+
+`execution.rs:393–415` normal owner new-risk 路径只在 original current metadata + native_instruments None 时尝试 once binding，然后总是 validate_current_native_metadata，再进入 prepare_order。原 binding 只能由正常 metadata verification 重建，Some binding不可被 mismatch 原地替换。绑定仍核对 original current reader/epoch/applied/hard revision、actual HTTP native==original verified HTTP，以及精确 Engine Cache/native metadata；后续 validator 包含active资格，prepare 的 financial/ownership/action预算门保留。binding 函数本身不赋予 Ready，不能作为 standalone account/cash proof。owned reduce-only 维持原 prepare/native ledger/position/financial/TTL/writer gates。
+
+## 保持闭合的 v4–v6 边界
+
+独立复核 unchanged 部分：raw RAII 从第一请求开始覆盖 parse/quota/cancel/drop/lateowner exits；immutable captured identity 保存独立于当前 reader/token admission，first debt不替换，不允许 next query借 cold fallback。Weak local callback 不能单独持有 native journal runtime；staged raw lifetime由 whole flight承担。owner final active→ingress→account→execution无await，current Engine Cache和full funds精确核对，durable absorption后再次deadline/TTL资格，失败恢复原worst reserve。typed AwaitingOwnedActualFills仅 all-typed failures 且完整旧 origin未变才保留原 origin，不重建/刷新/Ready。
+
+实际 owned Cache要求 account/strategy/CID/OID/instrument/Limit/side/reduce-only/TIF/qty/price/fill及真实终态event匹配；scoped numeric TradeId `io:io:SNDK:<OID>:<TID>`和qty/fee/commission对应 actual native events。warm HTTP不添加新REST-only金融projection。E5 prior complete finite window保持，new elapsed end仍pages0/records0/completefalseUnknown；实际history失败继续failclosed。
+
+## 证据等级与限制
+
+本轮独立产品测试执行数 **0**；父 Agent 的 old-four/fullHL 实际运行结果不由 reviewer复述为独立PASS。旧v6实际4FAIL及旧55的30PASS/25FAIL、源码审查漏查纠正都保留原bytes。`reviewer-native113-v7-conditional-design.md` 已明确 v6审查不再作为验收结论；本报告也只更新源码判断。
+
+写报告时父 Agent 通知：v7 四个旧回归各自实际通过，但 fullHL 的 entropy_account 210 PASS / 1 FAIL；失败为新 hard financial demand + history timeout case，预期经济 HTTP 来源未实际到达。raw `native113-hyperliquid-regression-v7.log/.json` 保留，父 Agent 正独立重现和诊断。本 reviewer 未运行或判定这项失败原因，不能由源码结论覆盖实际未通过的验收。
+
+WS filled marker早于actualfills仍走hard invalidate/cold或Unknown；旧accepted fill原WS/REST ingestion若未保存仍Unknown。final owner/preprepare Engine Cache核验不构成任意 prepare→sign/quota→socketwrite Cache mutation fence，Rc Cache架构及genericcold/#89/Portfolio边界仍存在。不认证whole account/history/funding/runPnL/kernel isolation、所有乱序 warm liveness、无限quota、或双腿应用成功。最终需 source-bound稳定exes及官方installedwheel normal路径验收。

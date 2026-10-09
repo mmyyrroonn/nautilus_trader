@@ -1,0 +1,39 @@
+{
+    "kind":  "independent narrowed-contract architecture/API pre-review",
+    "capture_utc":  "2026-10-09T05:53:15.0467724Z",
+    "identity_capture_timing":  "end of API read; not claimed as final frozen production pre/post",
+    "implementation_frozen":  false,
+    "implementation_acceptance":  false,
+    "independent_tests_run":  0,
+    "files":  [
+                  {
+                      "path":  "E:/persarb/worktrees/entropy-io-recovery/crates/common/src/runner.rs",
+                      "bytes":  37029,
+                      "sha256":  "8c97f8e42092665146c4e0ff976ee9e49a766cf003229b46de8131953000a845"
+                  },
+                  {
+                      "path":  "E:/persarb/worktrees/entropy-io-recovery/crates/live/src/runner.rs",
+                      "bytes":  77300,
+                      "sha256":  "cc4a6b2928e4135c83220cf900244b8cdf430dc1f28cfb7803740504998520ac"
+                  },
+                  {
+                      "path":  "E:/persarb/worktrees/entropy-io-recovery/crates/execution/src/client/core.rs",
+                      "bytes":  6312,
+                      "sha256":  "a6f41fce15e26e6acbee63516a844b2cef36c7182092572bf5a61d284fa8f4f5"
+                  },
+                  {
+                      "path":  "E:/persarb/worktrees/entropy-io-recovery/crates/adapters/hyperliquid/src/economics_scope.rs",
+                      "bytes":  32427,
+                      "sha256":  "bcb748af8a343f19b9806021e1a19bf23f81956fa43a7cec4db34185c465bc84"
+                  }
+              ],
+    "report":  "E:/persarb/_tmp/entropy113-validation/reviewer-warm-contract-narrowing-20261009.md",
+    "report_sha256":  "d48f0a1ce14c1726ede4a48b86814e940fb113d697b8d16bd1c7d597d163f8f3",
+    "findings":  [
+                     "RustLocal registration and TLS sender must originate on normal core owner thread",
+                     "Send callback lacks dispatch acknowledgment; deadline/cancellation/late callback needs shared query identity",
+                     "Cloned ExecutionClientCore copies connected/started atomics and cannot certify true client lifetime",
+                     "Native core Cache does not itself certify Portfolio consumption",
+                     "Warm mode is not equivalent to absent economic source demand; no coverage end advancement"
+                 ]
+}

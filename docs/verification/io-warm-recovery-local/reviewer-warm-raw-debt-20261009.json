@@ -1,0 +1,38 @@
+{
+    "kind":  "independent focused source review, non-frozen draft",
+    "source_capture_utc":  "2026-10-09T06:13:38.8191811Z",
+    "snapshot_rehash_utc":  "2026-10-09T06:15:56.5190502Z",
+    "files":  [
+                  {
+                      "origin":  "E:/persarb/worktrees/entropy-io-recovery/crates/adapters/hyperliquid/src/execution_scope.rs",
+                      "snapshot":  "E:/persarb/_tmp/entropy113-validation/reviewer-raw-debt-snapshot-20261009-0614/execution_scope.rs.txt",
+                      "sha256_pre":  "7483c70f877f7ae4a6f6bf5b0d1c9838cc178d022327ec39edaf1acae0060738",
+                      "sha256_post":  "7483c70f877f7ae4a6f6bf5b0d1c9838cc178d022327ec39edaf1acae0060738",
+                      "unchanged":  true
+                  },
+                  {
+                      "origin":  "E:/persarb/worktrees/entropy-io-recovery/crates/adapters/hyperliquid/src/execution.rs",
+                      "snapshot":  "E:/persarb/_tmp/entropy113-validation/reviewer-raw-debt-snapshot-20261009-0614/execution.rs.txt",
+                      "sha256_pre":  "57aecc988aba4f0dc2df807d4984adf2e65bb1502abfc2f3d326f30c25c5a991",
+                      "sha256_post":  "57aecc988aba4f0dc2df807d4984adf2e65bb1502abfc2f3d326f30c25c5a991",
+                      "unchanged":  true
+                  },
+                  {
+                      "origin":  "E:/persarb/worktrees/entropy-io-recovery/crates/adapters/hyperliquid/src/account_scope.rs",
+                      "snapshot":  "E:/persarb/_tmp/entropy113-validation/reviewer-raw-debt-snapshot-20261009-0614/account_scope.rs.txt",
+                      "sha256_pre":  "75e637583954b1decf880d4462c9688b83d021a724a94b186db44a6ff4a2a190",
+                      "sha256_post":  "75e637583954b1decf880d4462c9688b83d021a724a94b186db44a6ff4a2a190",
+                      "unchanged":  true
+                  }
+              ],
+    "production_frozen":  false,
+    "implementation_acceptance":  false,
+    "independent_tests_run":  0,
+    "blockers":  [
+                     "Current source-authority gating loses already-received bodies on error and early owner rejection",
+                     "Anonymous raw strings lack captured reader/query/request/actual receipt provenance",
+                     "Source preservation remains coupled to current flight token; original debt must be immutable"
+                 ],
+    "report":  "E:/persarb/_tmp/entropy113-validation/reviewer-warm-raw-debt-20261009.md",
+    "report_sha256":  "e369273d805fa466dd102273c7ae9f4fe1c7e9b4600f45b0db43ecdfa847aed0"
+}

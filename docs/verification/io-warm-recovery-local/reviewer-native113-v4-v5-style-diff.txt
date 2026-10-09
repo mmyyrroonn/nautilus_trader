@@ -1,0 +1,64 @@
+--- E:\persarb\_tmp\entropy113-validation\snapshots\native113-frozen-source-v4\native\crates\adapters\hyperliquid\src\execution_scope.rs
++++ E:\persarb\_tmp\entropy113-validation\snapshots\native113-frozen-source-v5\native\crates\adapters\hyperliquid\src\execution_scope.rs
+@@ -760,12 +760,11 @@
+         let mut state = self.state.lock();
+         // Raw Unknown preservation is independent of current-reader admission
+         // and flight cleanup. Its immutable identity always remains the origin.
+-        if state.facts.recovery_source_debt.is_none() {
+-            if let Err(e) = retain_warm_source_debt(&mut state, identity, sources) {
+-                state.journal_tainted = true;
+-                state.diagnostic =
+-                    format!("io warm abandoned original source retention failed: {e}");
+-            }
++        if state.facts.recovery_source_debt.is_none()
++            && let Err(e) = retain_warm_source_debt(&mut state, identity, sources)
++        {
++            state.journal_tainted = true;
++            state.diagnostic = format!("io warm abandoned original source retention failed: {e}");
+         }
+     }
+ 
+@@ -836,10 +835,9 @@
+             })
+         })
+         .await;
+-        let result = timed_result
++        timed_result
+             .map_err(|_| anyhow::anyhow!("io warm recovery total deadline exhausted"))
+-            .and_then(|result| result);
+-        result
++            .and_then(|result| result)
+     }
+ 
+     /// Runs only on the ordinary runner owner thread. Every source is staged,
+--- E:\persarb\_tmp\entropy113-validation\snapshots\native113-frozen-source-v4\native\crates\adapters\hyperliquid\src\execution.rs
++++ E:\persarb\_tmp\entropy113-validation\snapshots\native113-frozen-source-v5\native\crates\adapters\hyperliquid\src\execution.rs
+@@ -2119,18 +2119,17 @@
+                     "io unknown recovery source debt cannot fall back or borrow an old proof"
+                 );
+                 let current_warm_metadata = runtime.current_warm_metadata();
+-                if current_warm_metadata && runtime.metadata_needs_native_cache() {
+-                    if let Err(e) =
++                if current_warm_metadata
++                    && runtime.metadata_needs_native_cache()
++                    && let Err(e) =
+                         runtime.bind_metadata_native_cache(&self.http_client, &self.core)
+-                    {
+-                        scope
+-                            .state
+-                            .lock()
+-                            .invalidate_financial("io current native Cache metadata is ineligible");
+-                        runtime
+-                            .invalidate_financial("io current native Cache metadata is ineligible");
+-                        return Err(e);
+-                    }
++                {
++                    scope
++                        .state
++                        .lock()
++                        .invalidate_financial("io current native Cache metadata is ineligible");
++                    runtime.invalidate_financial("io current native Cache metadata is ineligible");
++                    return Err(e);
+                 }
+                 // Register a local completion on the caller's owner thread. The
+                 // HTTP task moves only its send-safe message and detached facts.

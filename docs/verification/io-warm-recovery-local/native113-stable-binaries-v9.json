@@ -1,0 +1,58 @@
+{
+  "captured_utc": "2026-10-09T07:40:14.418066+00:00",
+  "source_manifest": {
+    "path": "E:\\persarb\\_tmp\\entropy113-validation\\native113-frozen-source-v9.json",
+    "sha256": "e833cf9e26f33a159a1fcac0a6d7a9e551bd067380b263c2a3071ed22cc20e73"
+  },
+  "actual_cargo_command": {
+    "path": "E:\\persarb\\_tmp\\entropy113-validation\\native113-hyperliquid-regression-v9.json",
+    "sha256": "7c9723e76f58ed7de5176aa2e45d10c20a119f3c3f56da79b4842940a26af478",
+    "command": {
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "nautilus-hyperliquid",
+        "--lib",
+        "--tests",
+        "--profile",
+        "nextest",
+        "--locked",
+        "--offline",
+        "--config",
+        "build.warnings='warn'"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-io-recovery",
+      "started_utc": "2026-10-09T07:37:08.385653+00:00",
+      "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+      "pyo3_python": "E:/persarb/worktrees/entropy-io-recovery/.venv/Scripts/python.exe",
+      "uv_project_environment": null,
+      "nautilus_stub_profile": null,
+      "cargo_build_warnings": null,
+      "cargo_net_offline": null,
+      "exit_code": 0,
+      "finished_utc": "2026-10-09T07:38:10.068940+00:00"
+    }
+  },
+  "actual_cargo_log": {
+    "path": "E:\\persarb\\_tmp\\entropy113-validation\\native113-hyperliquid-regression-v9.log",
+    "sha256": "3d3738fcd2d4034c93fe62f53cfc7e647dbf03b15f232dbdd1392e2c5ba3de36"
+  },
+  "source_files_unchanged": true,
+  "binaries": [
+    {
+      "cargo_running_marker": "unittests src\\lib.rs",
+      "build_output_path": "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\nautilus_hyperliquid-1fcbc36810deefe5.exe",
+      "immutable_copy_path": "E:\\persarb\\_tmp\\entropy113-validation\\verified-bin\\nautilus_hyperliquid-1fcbc36810deefe5.exe",
+      "sha256": "7e1ee1fd1051b8503a765d7d9cd006ee3afde949788590ee37e6b2648ed9f2a0",
+      "bytes": 31214080
+    },
+    {
+      "cargo_running_marker": "tests\\entropy_account.rs",
+      "build_output_path": "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\entropy_account-69bad49fe9dc76e8.exe",
+      "immutable_copy_path": "E:\\persarb\\_tmp\\entropy113-validation\\verified-bin\\entropy_account-69bad49fe9dc76e8.exe",
+      "sha256": "3eb838872a4f80e2c9b64fe7084c43f573063e342ad11937619bd52150280083",
+      "bytes": 30041088
+    }
+  ]
+}

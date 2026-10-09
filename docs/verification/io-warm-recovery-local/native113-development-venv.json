@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "uv",
+    "venv",
+    "--python",
+    "3.12.9",
+    "--offline",
+    "E:/persarb/worktrees/entropy-io-recovery/.venv"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-io-recovery",
+  "started_utc": "2026-10-09T05:50:40.526591+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "uv_project_environment": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T05:50:40.550588+00:00"
+}

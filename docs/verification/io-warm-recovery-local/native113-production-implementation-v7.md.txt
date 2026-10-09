@@ -1,0 +1,33 @@
+# Native issue 113: production author revision v7
+
+Frozen at 2026-10-09T07:05:21.5475748Z in `E:/persarb/worktrees/entropy-io-recovery`. Exact five-path byte identities are in `native113-production-source-v7.json`.
+
+This revision responds to root's actual v6 Hyperliquid regression run (200 passes, four failures). Those records remain preserved. The author did not execute formatting, Cargo, tests, build, installation, stubs, or Git/GitHub operations and does not claim the regressions or paired acceptance pass.
+
+## Actual regression corrections
+
+1. Normal connect's optional owner Cache metadata binding is now best-effort and logs the concrete error. A restart factory with intentionally absent Engine Cache can connect read-only while its durable native projection debt remains closed. Failure neither fabricates a binding nor clears debt nor creates financial authority.
+2. Normal NewRisk owner pre-prepare can complete a missing binding once, but only while the original successful metadata origin is still eligible. The existing binding method retains all original generation, epoch, hard revision, native HTTP objects, real Engine metadata, policy and TTL checks. Existing `Some` bindings remain immutable. Binding changes no source times or financial Ready state; ordinary NewRisk admission remains independently required.
+3. A warm full clearinghouse observation now verifies actual leverage for every selected row that is present. A present malformed/missing/conflicting leverage row is rejected and never treated as an absent position. For each selected symbol absent from that full account's positions, the worker makes two actual bounded `activeAssetData` requests through the existing raw-retaining transport. Each response must have the exact address/user and coin, isolated mode, a positive leverage within the policy and equal to the original independently verified metadata leverage; the two responses must agree. The staged owner callback validates the same facts again before existing final admission fences.
+
+These new responses are current counterproofs only. Their price, capacity, availability, and receipt times do not refresh or replace any original metadata proof fields. All original metadata source times and TTLs remain unchanged. A worker-side counterproof failure explicitly includes `io metadata verification failed`, retains original raw source debt through the existing RAII guard, and does not require an owner callback to fail closed.
+
+## Corrected source-derived quota minimum
+
+For the existing normal endpoints, the minimum is now:
+
+`222 + 2 * queried_owned_CLOIDs + 40 * selected_symbols_without_actual_leverage_in_the_final_full_account`
+
+A single selected current position with its exact actual leverage and one queried owned CLOID remains 224. A single flat selected symbol with no owned status is 262; two such flat symbols are 302. Retries, endpoint item weights, and other concurrent requests can increase actual use. No capacity, refill rate, account/metadata TTL, recovery/action/cleanup deadline, journal bound, or action budget was increased. Additional counterproof quota waiting can exhaust the original deadline or source TTL and must remain closed.
+
+## Limits retained
+
+- Warm accepts only already consumed, exact native owned facts; unknown source debt and durable restart projection debt still block future warm borrowing.
+- Generic cold transaction projection is not repaired by this focused issue.
+- Native final warm owner Cache validation and owner NewRisk pre-prepare validation do not claim a Send socket-writer re-read of non-Send Engine Cache after asynchronous preparation. That inherited metadata mutation window remains explicitly qualified.
+- Normal Cache verification does not certify Portfolio consumption; the application independently requires it.
+- Warm history still retains prior finite actual coverage and adds explicit unrequested interval Unknown rather than pretending to cover a new end.
+
+## Root verification requested
+
+Run the four actual failed existing regressions first, then the current normal warm peer revision with the corrected absent-symbol quota lower bound, followed by full Hyperliquid regression and independent source review. Preserve all prior actual failures and identities. Specifically verify that flat actual leverage changes are rejected in the worker without pumping owner events, while present malformed leverage cannot enter the absent-symbol branch; restarts remain read-only and absent/changed Cache still cannot grant NewRisk.

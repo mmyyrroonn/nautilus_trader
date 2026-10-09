@@ -1,0 +1,131 @@
+--- E:\persarb\_tmp\entropy113-validation\snapshots\native113-frozen-source-v7\native\crates\adapters\hyperliquid\tests\entropy_account.rs
++++ E:\persarb\_tmp\entropy113-validation\snapshots\native113-frozen-source-v8\native\crates\adapters\hyperliquid\tests\entropy_account.rs
+@@ -237,13 +237,7 @@
+     })
+ }
+ 
+-fn record_http_response(
+-    state: &PeerState,
+-    request: &Value,
+-    started: u64,
+-    status: u16,
+-    raw: String,
+-) {
++fn record_http_response(state: &PeerState, request: &Value, started: u64, status: u16, raw: &str) {
+     let mut data = state.data.lock();
+     if data
+         .execution
+@@ -265,7 +259,7 @@
+         data.failed_endpoint.as_deref() == Some(kind.as_str())
+     };
+     if failed {
+-        record_http_response(&state, &request, started, 503, "synthetic outage".into());
++        record_http_response(&state, &request, started, 503, "synthetic outage");
+         return (
+             axum::http::StatusCode::SERVICE_UNAVAILABLE,
+             "synthetic outage",
+@@ -282,7 +276,7 @@
+         if delay_ms > 0 {
+             tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+         }
+-        record_http_response(&state, &request, started, 200, raw_body.clone());
++        record_http_response(&state, &request, started, 200, &raw_body);
+         return (
+             [(axum::http::header::CONTENT_TYPE, "application/json")],
+             raw_body,
+@@ -293,7 +287,7 @@
+         if delay_ms > 0 {
+             tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+         }
+-        record_http_response(&state, &request, started, 200, raw_body.clone());
++        record_http_response(&state, &request, started, 200, &raw_body);
+         return (
+             [(axum::http::header::CONTENT_TYPE, "application/json")],
+             raw_body,
+@@ -338,19 +332,13 @@
+         _ => match execution::info_response(&state, &request) {
+             Some(response) => response,
+             None => {
+-                record_http_response(
+-                    &state,
+-                    &request,
+-                    started,
+-                    400,
+-                    "unexpected info type".into(),
+-                );
++                record_http_response(&state, &request, started, 400, "unexpected info type");
+                 return (axum::http::StatusCode::BAD_REQUEST, "unexpected info type")
+                     .into_response();
+             }
+         },
+     };
+-    record_http_response(&state, &request, started, 200, response.to_string());
++    record_http_response(&state, &request, started, 200, &response.to_string());
+     Json(response).into_response()
+ }
+ 
+@@ -449,11 +437,10 @@
+                     .execution
+                     .as_ref()
+                     .is_some_and(|execution| execution.record_http)
++                    && let Some(text) = text
+                 {
+-                    if let Some(text) = text {
+-                        data.ws_observations.push(json!({"completed_ms":now_ms(),
+-                            "raw_body":text,"delivered":sent.is_ok()}));
+-                    }
++                    data.ws_observations.push(json!({"completed_ms":now_ms(),
++                        "raw_body":text,"delivered":sent.is_ok()}));
+                 }
+             }
+             if sent.is_err() {
+--- E:\persarb\_tmp\entropy113-validation\snapshots\native113-frozen-source-v7\native\crates\adapters\hyperliquid\tests\entropy_account\io_query_recovery.rs
++++ E:\persarb\_tmp\entropy113-validation\snapshots\native113-frozen-source-v8\native\crates\adapters\hyperliquid\tests\entropy_account\io_query_recovery.rs
+@@ -508,7 +508,7 @@
+     let original = actual.clone();
+     match fault {
+         "out_of_policy" | "changed_in_policy" | "conflicting_repeat" => {
+-            actual["leverage"]["value"] = json!(2)
++            actual["leverage"]["value"] = json!(2);
+         }
+         "user" => actual["user"] = json!("0x0000000000000000000000000000000000000001"),
+         "coin" => actual["coin"] = json!("io:OTHER"),
+@@ -982,7 +982,7 @@
+             "metadata" => {
+                 data.meta_override = Some(
+                     json!({"universe":[{"name":"io:SNDK","szDecimals":3,"maxLeverage":10,"onlyIsolated":true,"marginMode":"strictIsolated"}],"collateralToken":0}),
+-                )
++                );
+             }
+             "missing_positions" => {
+                 data.io.as_object_mut().unwrap().remove("assetPositions");
+@@ -1889,9 +1889,28 @@
+     .expect("hard economic history demand did not finish with bounded Unknown coverage");
+     harness.apply_events();
+     let requests = requests_since(&harness, after);
++    eprintln!(
++        "hard_history_actual_requests={} initial_economics={} final_economics={} native_scope={}",
++        json!(requests),
++        before,
++        economics(&harness),
++        harness.scope()
++    );
++    {
++        let data = harness.peer.state.data.lock();
++        eprintln!(
++            "hard_history_actual_http={} actual_ws={}",
++            json!(data.http_observations),
++            json!(data.ws_observations)
++        );
++    }
+     assert!(
+         count(&requests, "userFunding") + count(&requests, "userNonFundingLedgerUpdates") > 0,
+-        "hard demand must use actual economic HTTP sources, not a free local replay"
++        "hard demand must use actual economic HTTP sources, not a free local replay; request_baseline={after}, since={}, initial_economics={}, final_economics={}, native_scope={}",
++        json!(requests),
++        before,
++        economics(&harness),
++        harness.scope()
+     );
+     assert_eq!(harness.scope()["recovery_complete"], false);
+     let after = economics(&harness);
