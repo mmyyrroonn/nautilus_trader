@@ -1,0 +1,56 @@
+"""Preserve one actual command, UTC interval, output, and exit status."""
+
+import argparse
+import datetime as dt
+import json
+import os
+import subprocess
+from pathlib import Path
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("name")
+    parser.add_argument("argv", nargs=argparse.REMAINDER)
+    args = parser.parse_args()
+    argv = args.argv[1:] if args.argv[:1] == ["--"] else args.argv
+    root = Path(__file__).resolve().parent
+    output = root / (args.name + ".log")
+    receipt = root / (args.name + ".json")
+    if output.exists() or receipt.exists():
+        raise SystemExit("Command capture exists; use a new name to preserve prior results")
+    record = {
+        "argv": argv,
+        "cwd": str(Path.cwd()),
+        "started_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "cargo_target_dir": os.environ.get("CARGO_TARGET_DIR"),
+        "pyo3_python": os.environ.get("PYO3_PYTHON"),
+        "uv_project_environment": os.environ.get("UV_PROJECT_ENVIRONMENT"),
+        "nautilus_stub_profile": os.environ.get("NAUTILUS_STUB_PROFILE"),
+        "cargo_build_warnings": os.environ.get("CARGO_BUILD_WARNINGS"),
+        "cargo_net_offline": os.environ.get("CARGO_NET_OFFLINE"),
+        "entropy43_native_wheel": os.environ.get("ENTROPY43_NATIVE_WHEEL"),
+        "entropy43_native_sha256": os.environ.get("ENTROPY43_NATIVE_SHA256"),
+        "entropy43_native_provenance": os.environ.get("ENTROPY43_NATIVE_PROVENANCE"),
+        "entropy43_evidence_root": os.environ.get("ENTROPY43_EVIDENCE_ROOT"),
+    }
+    with output.open("xb") as log:
+        try:
+            code = subprocess.run(argv, stdout=log, stderr=subprocess.STDOUT, check=False).returncode
+        except OSError as e:
+            code = 127
+            record["launch_error"] = str(e)
+            log.write(f"Could not launch {argv!r}\n{e}\n".encode("utf-8"))
+    record.update(exit_code=code, finished_utc=dt.datetime.now(dt.timezone.utc).isoformat())
+    receipt.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(record))
+    lines = output.read_text(encoding="utf-8", errors="replace").splitlines()[-45:]
+    print("\n".join(
+        line if len(line) <= 1500 else line[:1500] + " ... [complete line retained in raw log]"
+        for line in lines
+    ))
+    return code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

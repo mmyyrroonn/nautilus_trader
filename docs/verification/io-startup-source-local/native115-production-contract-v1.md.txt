@@ -1,0 +1,151 @@
+# Native fresh startup account source seal: production revision 1
+
+Frozen author source at 2026-10-09T09:07:08.6404379Z in
+`E:/persarb/worktrees/entropy-startup-account-proof`. Root supplied freshly
+fetched main `aadad78fab77467f4a1467a252947ebb84f5361d` and branch
+`feature/entropy-startup-account-proof`. This child did not execute Git, Cargo,
+format, tests, dependency/native imports, stubs, build, install, GitHub operations
+or venue requests. Compilation, warnings and test results are not asserted.
+
+## Original transaction, optional stronger provenance
+
+Only a normally constructed explicit `IoExecutionRuntime` enables source sealing
+by installing its serialized immutable policy in its account state. Account-only
+and default perpetual/spot paths retain their existing unbounded account request
+transport and ordinary publication criteria. No new configuration authority or
+test hook is introduced. With the explicit io runtime, the existing full normal
+account group uses the existing bounded raw transport and its normal quota rules:
+role, both initial mode observations, io metadata, spot metadata, full io
+clearinghouse, both repeated mode observations. No request is added or removed
+from that original group. Each body is bounded by the existing 1 MiB helper and
+the group by its existing 4 MiB retained-source bound.
+
+At the real original transaction entry, ingress -> account guards capture reader
+generation, epoch, received sequence, fully-applied state, funds/account revision,
+hard revision, all private funds/positions and their original receipt/source
+times, immutable policy, complete native HTTP instruments and the prior normal
+metadata context. No guards cross an await. The original clearinghouse transport
+receipt is taken from the actual bounded body, rather than from a new clock sample
+after decoding/item quota. Its remote `time`, original verification start and
+actual final transaction boundary time remain distinct.
+
+The metadata context mirror originates only from the successful normal metadata
+transaction and its normal once-only owner Engine binding. It contains the full
+selected proof map (including original precision, isolated mode, actual leverage,
+capacity/mark and original metadata times) plus the full original metadata origin
+and HTTP/Engine serialized objects. Verifying new metadata installs an unbound
+context; the normal first Engine binding updates it once. Neither operation
+constructs a full account source or promotes financial readiness. Changing this
+context discards any old account seal. The worker never reads an Rc Engine Cache.
+
+At the actual original account publication boundary, ingress -> account remains
+held. Legacy ordinary publication can still succeed without a seal. The optional
+seal additionally requires unchanged generation/epoch/sequence, fully-applied
+ingress at both boundaries, unchanged hard/account revision, exact full private
+facts and timestamps, strict HTTP/private equality of balance/equity/free/used/
+withdrawable/cross-maintenance and all positions, exact native USDC roundtrips,
+and unchanged original policy/native HTTP objects/metadata context. The context
+must have an actual Engine binding. This new group's actual selected metadata
+rows and indices must match the prior verified context, and native HTTP objects
+and asset indices must match its original facts. Source/start/receipt freshness is
+sampled again after cache waits and exact validation. Only then is the source
+stored inside this same transaction. No trust/Ready-based retrospective sealing
+occurs. A crossing identical private frame can leave ordinary trust intact while
+preventing optional sealing. Original mode/role reads are still non-atomic.
+
+## Startup reuse and fallback
+
+The existing owner startup boundary still runs first and last with ingress ->
+account -> execution guards. It requires a genuine zero-byte locked-descriptor
+journal origin, current recovery for this epoch, no taint/projection/source debt,
+no actions/intents/fills/pending query, trusted full io flatness with no position
+rows, native money precision, all-history same-account Cache exclusion and routed
+io account-less order exclusion. Existing selection/metadata precision, isolated
+mode/leverage bounds, original metadata times, exact native HTTP and Engine
+instruments and current native asset index validation remain in place.
+
+Reuse requires the original seal to match current full account/private state,
+revisions, reader and received sequence, current immutable policy and original
+times. Its captured metadata context must still equal the current full proof and
+origin. The current Engine/HTTP pair must equal the original immutable normal
+metadata binding, and HTTP objects and the sealed actual selected rows must
+match. These checks authorize omitting only the repeated full account group.
+They do not emit another AccountState or change any original timestamp, balance,
+margin reservation, economics coverage or metadata price/capacity/time.
+
+Absent, changed, expired or unsealed provenance is not an automatic early error:
+if the existing initial startup boundary is independently eligible, the original
+complete account refresh runs. A genuine identical applied WS frame is the normal
+fallback trigger: current trust can remain valid, but its new received sequence
+precludes reuse. An independently unusable initial snapshot retains finite
+refusal. The fallback's existing boundary continuity checks remain, now comparing
+complete private facts rather than only free/withdrawable. No failed debt is
+cleared and no failed source is automatically rescued by a new read.
+
+Both branches always perform the three real unfiltered full-window requests:
+`frontendOpenOrders(io)`, `userFills(user)`, `historicalOrders(user)`. Each response
+must be an actual successful explicit empty array under original response caps
+and normal limiter rules. Prior empty arrays are never reused. Final owner guards
+remain held through report construction and compare original reader/sequence,
+account/execution revisions, full private facts, full account snapshot, metadata,
+both native instrument objects and the same optional seal; the original total
+deadline and TTL are checked after waits. Flat reports retain original full
+account source `ts_last`, current local `ts_init`, original verification window
+start and `reports_complete=false`. No order/fill or additional financial event
+is created by reuse.
+
+## Read-only diagnostic schema
+
+The normal execution scope JSON adds `startup_private_ingress` with actual
+`generation`, `epoch`, `received_sequence`, `is_applied` sampled under the
+production ingress guard. `startup_account_source` is the original stored seal
+or null. A stored source can remain visible after an identical frame while being
+ineligible; its diagnostic presence is not a reuse permission.
+
+Seal fields are policy, generation/epoch/received_sequence, account_revision,
+hard_revision, verification_started_ms/verification_finished_ms,
+http_source_time_ms/http_received_time_ms, private_facts, native_http, metadata,
+spot_metadata, metadata_context, sources and the original account_facts.
+`sources.original_sources` contains actual `{request_json: String, received_ms:
+uint, raw_text: String}` records; successful sealing has no unavailable requests.
+`private_facts` contains exact-string financial values and position facts, actual
+receipt/source times, acknowledgement bits and stream epoch. None of these
+diagnostics replaces normal Cache or application Portfolio authority.
+
+## Verification still required and scope limits
+
+The source-only manifest captures the two owned files before root formatting.
+Root must perform official format/strict compilation, source-bound tests,
+independent review and actual wheel/installed-node/application acceptance. No
+warning-free compilation, test count, performance saving, limiter balance or
+paired success is claimed. Source-derived omission is the existing 182-weight
+group; actual scheduling and quota timing remain unverified. All quota, TTL,
+deadline, cleanup/action budget and history caps remain unchanged.
+
+The twelve old post-connect future-HTTP negatives cannot observe an unrequested
+hidden response under valid reuse. Their full-read setup must use genuine
+identical applied ingress and assert receipt of the original faulty endpoint,
+preserving refusal/projection assertions. A current bad collateral response is
+already an ordinary full-read refusal. A selected precision/margin-mode mismatch
+with otherwise valid collateral precludes sealing; this change does not silently
+promise a new global ordinary account metadata validation rule. Preserve the old
+wrong-metadata normal Engine update stimulus separately.
+
+No generic cold adoption, unknown debt resolution, full-account economics,
+continuous readiness, remote atomicity, arbitrary prepare-to-Send Cache mutation
+protection, native Portfolio certification, actual venue or kernel-isolation
+claim is made. Failed or canceled original refresh drops unpublished optional
+provenance and retains existing account invalidation behavior; this change does
+not retrofit generic cold raw-debt persistence. Existing immutable recovery debt
+and gross reservations are never removed. Expired prior sources cannot be
+renewed solely by metadata binding, reuse, report emission or a new clock sample.
+
+## Frozen owned source identities
+
+| Path | Bytes | SHA-256 |
+| --- | ---: | --- |
+| crates/adapters/hyperliquid/src/account_scope.rs | 69164 | e090ecbbd834ae4e760b6f9d098aa8a9f6fa75427e8dc820d0d254719d4d3095 |
+| crates/adapters/hyperliquid/src/execution_scope.rs | 185419 | e48bf6a15c5929730d8c2950b2ac8199e1c03b211e612f42f0db0cde4c2c6d3a |
+
+No execution.rs, test, Python, dependency, rule, release or workflow source was
+changed by this author. Production writes stopped before root compilation.

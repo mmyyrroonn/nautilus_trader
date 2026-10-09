@@ -1,0 +1,26 @@
+{
+    "utc":  "2026-10-09T08:57:58.1734754Z",
+    "phase":  "contract preparation only",
+    "native115_frozen_source_reviewed":  false,
+    "independent_tests":  0,
+    "git_queried":  false,
+    "inputs":  [
+                   {
+                       "path":  "E:\\persarb\\_tmp\\entropy115-validation\\next-startup-seal-contract-proposal-20261009.md",
+                       "sha256":  "2cf1832f2e5d9540e197e5a81b448b9f97c12900bb332e7635075c1cb42ed47b"
+                   },
+                   {
+                       "path":  "E:\\persarb\\_tmp\\entropy115-validation\\next-startup-reuse-test-design-20261009.md",
+                       "sha256":  "f6c8a9110ea3fe0eeae2d8c890d569a6e979e5333479f845cd39843c0a86dab5"
+                   },
+                   {
+                       "path":  "E:\\persarb\\_tmp\\entropy115-validation\\native-startup-proof-issue-create-input.json",
+                       "sha256":  "e5c924d78748970e25379aa45807ac95d92903c2058cafea88ea733280901193"
+                   },
+                   {
+                       "path":  "E:/persarb/worktrees/entropy-io-recovery/crates/adapters/hyperliquid/tests/entropy_account/startup.rs",
+                       "sha256":  "248e423dab7a105c93c99e0256f4cd060df6b63adf47bafa2bbbf4665da223a8"
+                   }
+               ],
+    "report_sha256":  "b4035844e372d338dd485e82a6e1700084426c164711280ca76b546369dee29b"
+}

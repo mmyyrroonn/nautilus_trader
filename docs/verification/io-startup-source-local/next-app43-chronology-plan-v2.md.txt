@@ -1,0 +1,79 @@
+﻿# App #43 fixture chronology plan, revision 2
+
+Read-only preparation while native #115 is being validated. No app/native/product/test source was written, no Cargo/build/install/pytest/environment/Git/GitHub command ran, and no new pass is claimed. Implementation must wait for native115 merge and a fresh latest-app-main guard/new worktree. Preserve the prior plan and all failed paired artifacts.
+
+## Smallest source change after authorization
+
+Own only tests/entropy_execution_peer.py for execution semantics; tests/test_entropy_execution_native.py may gain passive peer chronology evidence and narrow black-box peer contract tests. Pure config/core/report/runtime logic is outside this chronology change. Do not change native source, timeout/quotas, the seven native scenario expectations or periodic private production to obtain a pass.
+
+Actual callsites:
+- peer.py:566 hl_action parses the normal prepared native WS request; :577 creates filled status; :600 schedules hl_fill; :604 missing ACK returns; :607 rejection overrides ACK after the status has already been created.
+- peer.py:634 hl_fill currently waits150ms then executes, allocates TID and stamps a newer raw fill. :666 broadcasts a current clearinghouse snapshot.
+- peer.py:83 clearinghouse generates a real current synthetic account snapshot with fresh collection time; :189 HTTP io clearinghouse calls it; :210–242 exposes open/history/fills/exact order status.
+- peer.py:732–754 continues real periodic private clearinghouse every1s; :470 broadcast uses normal private WS sessions.
+- native test.py:143 child_case selects HL missing_response for Unknown, HL loss_fee for loss, and Aster reject/partial/cleanup_reject for the corresponding cases. :172 finally retains actual peer traffic even on failure. :198–254 preserve the seven actual native/Cache/Portfolio/controller assertions.
+
+Required HL state transition:
+1. Validate the actual one-order/native io asset/unique CLOID request. Count the received attempt within the existing6-action cap.
+2. Before any execution, classify rejection or the deliberately unexecuted missing-response fault. Those paths create no phantom filled order, position, raw trade or publication task.
+3. For a normal fill, execute the synthetic venue order before its truthful Filled ACK. Once capture OID, independent monotonic TID, quantity/price/fee/builderFee/startPosition and executed_ms. Apply the signed position exactly once at this point. Store the actual terminal order (remaining0, original quantity, statusTimestamp=executed_ms).
+4. Send the existing documented Filled response using actual executed quantity/price. Keep accepted/order timestamp as an actual earlier-or-equal event time; use actual captured execution time for the fill and terminal status. Do not copy a newer clock backwards after a delayed action.
+5. The150ms task only publishes the SAME immutable row into HTTP fill history and delivers it on the normal user WS. It never generates another TID, changes execution time/fee, changes position or rewrites terminal state. Allocate TID independently of len(published_fills), since overlapping not-yet-published executions must stay distinct.
+6. After raw trade publication, send a complete clearinghouse collected at that actual delivery time. Its snapshot timestamp is collection time, not execution time. All HTTP and genuine periodic private snapshots during the publication delay reflect the already executed position. Do not suppress a real frame or falsely show flat to preserve a seal.
+
+Use bounded private execution/pending-publication records (at most the existing six actions) with detached immutable raw copies. Adding passive execution_time/publication_time evidence is useful; it must not confer app/native authority. Existing HTTP evidence already snapshots the response using json.loads(serialized_raw) at peer.py:459–462, so do not replace it with live mutable aliases. ACK currently bypasses the frames log; preserve its actual serialized post response or add a bounded passive chronology record in evidence to distinguish execution from acknowledgement delivery.
+
+## Expected chronology and negative behavior
+
+| Surface | Before actual execution | Executed but not yet published | After unchanged publication |
+|---|---|---|---|
+| Filled ACK | No Filled claim | Actual OID/full quantity/price, one executed_ms | No new ACK authority |
+| HTTP exact status/history | Absent or legitimate prior order | True filled, remaining0, status time=executed_ms | Same identity/status time |
+| HTTP raw fills | No pending row | Intentionally not yet published | Same OID/TID/time/startPosition/fee exactly once |
+| Current HTTP/private account | Actual prior signed position | Actual executed signed position | Same position, newer genuine collection time |
+| Ordinary native Cache/Portfolio | Original facts | Aggregate ACK does not fabricate a trade | Only normal actual native events/reports may apply the unchanged trade once |
+
+Reject/cleanup_reject: choose the error branch before execution; no filled history task/quantity/position mutation, prior actual position remains. Existing Aster rejected submission already classifies before creating its NEW row; preserve that behavior. No accepted OID is fabricated from an error ACK.
+
+Missing_response: keep an explicitly documented received-but-not-executed/lost-result scenario for the existing Unknown test. Suppress ACK and return unknownOid/current actual unchanged account, but never infer native NotWritten or release the app's worst reservation. The native action could have been written from the client's perspective. Executed-but-lost-ACK is a different future case and must carry real executed raw/account sources; it is not silently mixed into this flag.
+
+Partial is currently an Aster-only scenario. Aster returns legitimate NEW, executes after150ms, publishes exact partial raw quantity/fee, then expires remaining IOC quantity50ms later as a separate terminal event. Preserve its own later actual trade time and later expiry time. Do not backdate to NEW or change HL IOC into an invented Resting response. No production protocol change is proposed.
+
+Loss_fee freezes synthetic fee2 at execution. builderFee remains included in that reported fee, not added twice. Original normal actual-fee loss guard and immutable E5/scoped native event correlation must still prevent the second leg. Reduce-only close must start from the actual previously executed quantity and never flip or double-apply position.
+
+## Existing test value and unchanged baseline
+
+The actual preserved baseline is E:/persarb/_tmp/entropy43-validation/app43-bounded-handoff-all-pure.log/.json: 2026-10-09 05:21:53–54 UTC, 152 passed / 7 deselected. Its argv selected execution config/core/report/native guard modules with -k not actual_installed. No new collection/run is performed here; 152 is historical evidence, not a prediction about a future main.
+
+Those152 remain untouched: they meaningfully test exact arithmetic, finite risk/reserves/Unknown/cold restart, raw/scoped ownership/OID joins, native terminal distinction, financial identity/immutable receipts, independent leg query scheduling and actual handoff guard. Their projection fixture uses clearly synthetic SimpleNamespace values; it is not an actual venue/peer execution test and does not prove this chronology.
+
+The seven source-bound fresh-process installed-native cases provide actual factory/LiveNode callbacks, ordinary Cache/Portfolio and finite fail-closed outcomes. They assert paired4fills/entry2/close2/zeroPortfolio, real partial residuals, reject/loss/Unknown/foreign/cleanup failure and shutdown. They do not currently inspect prepublication peer account position or freeze execution-time vs publication-time equality, and they would miss TID collision from len(published_fills) until overlapping executions occurred. The peer path hash is dynamically bound in native_plan and the native manifest; after a fixture change, record the new actual source hash, never substitute old evidence.
+
+## Smallest useful additions and official acceptance
+
+Recommend four new black-box peer protocol contract cases, separated and labeled as synthetic peer correctness rather than installed-native acceptance:
+- One chronology case sends two legitimate synthetic protocol orders before either publication (an entry then its reduce-only close), observes truthful ACK/current HTTP signed position/exact status, then polls actual raw publications within an existing finite bound. Assert distinct OID/TID, exact execution/status/fill time equality, frozen startPosition/quantity/fee and zero final position without any delayed double application. Read via real numeric-loopback HTTP/WS; do not call hl_action/hl_fill directly or manufacture native financial events.
+- Three negative variants: reject; cleanup_reject with a previously executed position; missing_response. Assert actual attempt evidence but no rejected/lost branch executed facts, preserved actual position, no duplicate retransmission and no invented Filled ACK. Missing response is observed within a finite client transport bound, not with a monkeypatched sleep/clock.
+
+Use ordinary HTTP/raw peer visibility and async actual frame/record observation, with no delay tuning or larger product budgets. Standalone peer tests are necessary because the original native scheduler deliberately serializes order risk and should not be forced into an unsafe overlap merely to test peer TID uniqueness. They cannot be labeled native or application PASS.
+
+Then root runs the unchanged152 guard baseline, Ruff appropriate to authorized app edits, one source-bound installed paired fresh child and all seven unchanged native scenarios under the original2s account/action, 3s recovery/history, 15s run/5s cleanup, quota and caps. Keep native_cache_recovery/account-wide flat/run PnL Unknown limitations and host kernel-isolation distinction. Any failure is retained, independently reviewed and addressed without retry-to-pass or budget changes.
+
+## Automatic recovery and publication risks
+
+Native submit records the aggregate ACK and immediately performs its ordinary post-action recovery (execution.rs:421–473). Before raw publication, each bounded attempt reads actual io open orders/userFills/exact CLOID status; the normal typed AwaitingOwnedActualFills keeps uncertainty and manufactures no trade. Approximately six early HTTP requests can still occur across two attempts. This chronology fix is not a quota optimization, and no actual token balance or saved requests are inferred.
+
+If HTTP raw fill visibility becomes immediate while native WS/cache application is still pending, normal REST reconciliation may deliver a legitimate real fill. Do not reject it solely for reconciliation=true and do not change publication ordering merely to avoid native Cache fences. The conservative suggested raw-history delay preserves current meaningful ACK-without-actual-fill behavior.
+
+The application pending-owned-handoff guard should defer its first read until genuine terminal/cache evidence or the original bounded timeout/Unknown; it must not trust peer execution bookkeeping. Meanwhile native automatic recovery and genuine private account frames can invalidate an old account/seal before raw delivery. That is a legitimate current projection mismatch, not permission to show a false flat account, hide periodic frames, clear Unknown debt, suppress ordinary reconciliation or inflate deadlines. New source-sequence crossings and exact native ownership/fee/Cache conditions remain enforced. A truthful fixture may reveal another independent native/app dependency; no paired success is promised.
+
+## Exact inspected source SHA256
+
+- tests/entropy_execution_peer.py: e288616d1ae21a79457f2a7ad49ce5859f9d22da585f31ecc95d08253eb7bc3a
+- tests/test_entropy_execution_native.py: 9a975f5cca43b6b7cb778435a170b3a1223cf0db351417b7bfdd4f9788124120
+- tests/test_entropy_execution_config.py: 8074c229469e950471e81b63e76d20fd4b46732248f04e5903b9a8250f902633
+- tests/test_entropy_execution_core.py: 7776a99af108fb6477fbcc136355b3d7df02d7bb0df10511727a03378df8989e
+- tests/test_entropy_execution_report.py: fc1ed72df406d5221c5393a41606d13f0d07f1858cfd327407d0648dcc07fa73
+- src/entropy_execution.py: fbde3f919a6813a47aeb8c388ac3689a33689139d876c6e7e6551d7a364ab882
+
+Paths refer to E:/persarb/worktrees/entropy-execution-app. They are read-only source identity, not a Git freshness assertion. Original v1 chronology design remains unchanged at E:/persarb/_tmp/entropy113-validation/next-app43-fixture-chronology-design.md.

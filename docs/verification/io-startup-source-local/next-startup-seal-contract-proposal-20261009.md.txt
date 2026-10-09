@@ -1,0 +1,81 @@
+# Proposed next finite native startup account source seal
+
+This is preparation while native PR114 CI is pending, not an implementation or
+accepted benchmark. Source diagnosis, independent review and test design are
+retained separately. Actual implementation must begin in a new worktree from
+the freshly fetched main after PR114 merges. No limit or product source was
+changed while preparing this proposal.
+
+## Narrow purpose
+
+An ordinary fresh-origin startup mass-status currently performs a complete
+account group already performed by connect/recovery. A private, runtime-scoped
+seal produced inside the original successful complete transaction may permit
+omitting only that repeated group. It does not permit reconstructing provenance
+from trusted/Ready, borrowing a metadata origin, adopting old financial facts,
+or restoring journal debt. Source-derived base savings are 182, not measured
+bucket savings or proof of paired liveness.
+
+## Acceptance contract
+
+1. The seal can only originate from actual complete role, both account-mode
+   brackets, collateral, full io clearinghouse and selected metadata reads.
+   Preserve genuine original verification start/end, HTTP source and transport
+   receive times and bounded original requests/responses. Capture actual reader
+   generation/epoch, received/applied ingress, hard/account revisions and all
+   private financial/position facts during the original transaction. Recheck
+   them at its actual final boundary under the native ingress/account lock
+   order. A crossing frame, including identical facts or funds-only changes,
+   prevents creating the seal. Never retrofit a previously exposed snapshot.
+2. Reuse requires the existing explicitly selected policy, same original seal,
+   true fresh zero-byte descriptor origin, no owned action/fill/history or debt,
+   current recovery, strict full flat io account, and exact native HTTP/Engine
+   instruments. Every received-sequence change invalidates reuse. Seal validity
+   is nonrenewable; no new AccountState or refreshed timestamp is emitted solely
+   for reuse. Missing/changed/unsealed sources may use the existing full-read
+   path only while independently eligible; otherwise fail finitely.
+3. Still obtain three real complete explicit empty arrays for io open orders,
+   user fills and unfiltered historical orders through ordinary limiter/body
+   caps. Keep every existing history/journal/Cache exclusion, original source
+   report timestamp and original full-account observation window, selected Flat
+   reports, reports_complete=false and no financial projection/adoption.
+4. Final ingress -> account -> execution guards remain held through report
+   construction with no await. Recheck exact source/account/private funds,
+   received/applied sequence, metadata, full native instrument serialization,
+   Cache all-account/all-strategy history, journal ownership, TTL and the one
+   original recovery deadline after waits. Account2000ms, metadata30000ms,
+   recovery3000ms, limiter1200/minute/refill20sec and all action/caps unchanged.
+   Failed/late/canceled/replaced sources never wash debt or reserves away.
+5. Preserve old negative assertions and raw old fixtures. Twelve old negatives
+   alter only future HTTP bodies after connect; valid reuse cannot observe an
+   unrequested hidden remote change. For their complete-read branch, deliver a
+   genuine identical normal clearinghouse frame, await actual native application
+   and new sequence (current trust unchanged, seal invalid), then require real
+   target faulty HTTP response/count and the original error/no-projection.
+   Hard early denial does not count as exercising those bad responses. Add
+   separate actual seal-creation and reuse-window negatives; record trigger
+   changes honestly, without declaring old bytes/semantics unchanged.
+6. Root full Hyperliquid regression, relevant Python/stubs, independently copied
+   native binary review and a clean-source installed normal LiveNode provide
+   evidence. Follow with the unchanged bounded app43 fixture on the actual
+   wheel, after separately correcting its actual execution/delivery chronology.
+   Preserve every failed attempt, source/artifact/command hash and review.
+   Untested intermediate lock/ingress states are compositional limits, not
+   deterministic integration passes. CI, PR and authorized merge close only
+   this finite native issue; app43/E6 stays open until its own required evidence.
+
+## Explicit remaining boundaries
+
+Role/mode/history venue reads remain non-atomic and cannot observe silent remote
+changes absent from actual requests/private sources. A source validity TTL is
+not a claim of remote atomicity or continuous readiness. Generic cold adoption,
+prepare-to-Send arbitrary Cache mutation, kernel isolation, account-lifetime
+history, actual venues and whole-account economics remain separate. Original
+native113 expired-group Unknown debt is immutable and is not rescued here.
+
+The existing normal account refresh did not bind every received sequence and
+full financial field, so any new source must be sealed in the real transaction.
+Do not inadvertently turn an optional stronger origin into an unreviewed broad
+legacy recovery rewrite; document any necessary stronger publication rule and
+verify its actual ordinary paths. No source eligibility can be obtained through
+harness recognition, private test hooks, prefill sleeps or fake account facts.

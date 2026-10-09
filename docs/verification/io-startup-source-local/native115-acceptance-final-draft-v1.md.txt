@@ -1,0 +1,82 @@
+# io startup source acceptance — native #115
+
+The final native regression and installed readonly checks passed for the frozen implementation. The required corrected-fixture application paired run **failed**: all four native orders filled and local positions returned to zero, but the original 3-second Hyperliquid warm recovery deadline expired before complete fresh flatness could be proved. This is a finite native delivery with an explicitly unresolved application liveness outcome.
+
+The [source contract](io-startup-source-contract-20261009.md) defines the exact reuse, qualified fallback, provenance and final-time fences. Evidence filenames below refer to the planned `io-startup-source-local/` archive; its [manifest](io-startup-source-local/manifest.json) is the index for actual bytes, identities and procedure captures. This draft does not assert that the archive or PR already exists.
+
+## Source and installed identities
+
+| Identity | Recorded value |
+| --- | --- |
+| Fresh main baseline | `aadad78fab77467f4a1467a252947ebb84f5361d` |
+| Clean implementation commit | `617ffd42eeed6e8e5fff2ec36c10e25f0de1fcbe` |
+| Implementation tree | `834cd4329cbbd8c1ba7f4fe317b0d18a887f8e91` |
+| `account_scope.rs` SHA-256 | `2b176ca4b355955268fe26a218a3019b5195ee4a3e87edd6c24e604f4553d0ce` |
+| `execution_scope.rs` SHA-256 | `afc9ba90c3c7a2b57e6e41212704d333e964b4934b88653960cbca599a16b4d1` |
+| Source fingerprint | `739bb0507e1e320f4d35467537d02eee1139a478c6a5f7ccda4090e2b2288905` |
+| Wheel SHA-256 | `7ea01172ddb8f7bc985edcf5641b62b1d4fc0e4704d79a68d0dc615d3926d748` |
+| Installed native `.pyd` SHA-256 | `2ab428c99dd5c676b1afa09a34e66ee3ef4d37f308f4a413b3f1ea136801fa81` |
+
+The artifact is `nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl`, built from clean source with the `nextest` profile on Windows CPython 3.12. The actual source-bound build ran 2026-10-09 **09:52:55.371800–09:54:49.723804 UTC**, exit 0. Strict source-bound installation into both validation venvs preserved the formal application's candidate pins/lock. These identities bind this local candidate; they are not a release-profile or upstream publication claim.
+
+The final 30 native source inputs remained frozen. Earlier 39-input procedure captures comprised those native inputs plus nine application inputs valid at that procedure. Subsequent authorized application fixture changes intentionally replaced the nine application inputs. The earlier 39 captures must not be described as all currently unchanged. The corrected paired run instead has its own **57 current source/install/artifact** before/after captures, with no differences during that run.
+
+## Executed checks and their limits
+
+All times below are UTC on 2026-10-09. Counts overlap where stated; no aggregate is formed by adding root and independent repetitions.
+
+| Procedure | Actual result | Evidence / qualification |
+| --- | --- | --- |
+| Full Hyperliquid native regression v6, `cargo test -p nautilus-hyperliquid --profile nextest --locked --offline --config build.warnings='warn' -- --test-threads=1` | **1,387 passed, 0 failed, 18 ignored**, 09:44:11.817677–09:48:07.698776 | `native115-full-hyperliquid-regression-v6.json/.log`; ignored = 12 native + 6 doc tests. Includes the new 22 startup-source cases and original 55 startup business cases. |
+| Production-only strict Clippy v5, `--lib --no-deps ... -- -D warnings` | PASS, 09:37:14.277219–09:37:35.904826 | `native115-production-clippy-v5.json/.log`; unchanged final production bytes. |
+| Test-inclusive strict Clippy v6, `--lib --tests --no-deps ... -- -D warnings` | **FAIL**, exit 101, ten inherited diagnostics | `native115-test-inclusive-clippy-v6.json/.log`, exact-baseline-blob audit `native115-inherited-test-clippy-source-audit-v5.json`; four economics library-test and six integration diagnostics. No all-tests lint pass is claimed. |
+| Independent copied native v5 execution | **184 distinct passed** | `reviewer-native115-direct-v5-final.md`; includes selected root-covered cases and is not additive to 1,387. |
+| Independent copied final-v6 style smoke | **7 passed**, 09:53:38.5257117–09:53:40.5859561 | `reviewer-native115-direct-v6-style-final.md`; these overlap the 184. Exact copied binary identities and stable inputs are recorded. |
+| Official UTF8 stub generation | PASS, 09:49:18.153676–09:51:34.476166 | `native115-official-stubs-utf8-v6.json/.log`; actual `python -X utf8 python/generate_stubs.py`. |
+| Stub postprocessing/comparison | **44 public AST and normalized-text comparisons equal** | `native115-stub-comparison-v6.json/.log`; no ABI authority is inferred from text comparison alone. |
+| Installed Python configuration/readback/stub contracts | **242 passed**, 09:57:43.950911–09:58:06.119079 | `native115-installed-python-contracts.json/.log`; six named unit modules, installed candidate and isolated pytest base directory. |
+| Independent normal installed readonly node | PASS, 10:00:05.0868657–10:00:08.5156641 | `reviewer-native115-installed-readonly-final.md/.json`; separate finite normal-factory procedure below. |
+| Corrected application pure suite | **156 passed, 7 deselected** | `app43-chronology-v2-all-pure.json/.log`; four new blackbox chronology cases included. Final Ruff checks passed separately. |
+| Corrected application installed paired run | **FAIL**, exit 1, 10:11:46.206245–10:12:04.739496 | `app43-native115-chronology-first-paired.json/.log` and raw paired archive; outcome below. |
+
+The 55 original startup business refusals were retained, but eleven future-HTTP fault setups now send and await a genuine identical applied WS frame so a current trusted account loses seal reuse and performs actual fallback reads. Their source/trigger semantics were intentionally adapted; they are not an untouched old-suite claim. The old Cache/provider metadata refusal remains distinct from actual HTTP-only selected metadata contradictions. The 22 new cases are included in the full total, not additional tests.
+
+Source review v5 found no remaining focused production blocker after strict fallback sealing and final-time fixes; v6 carried that recommendation across two test-only style changes. The independent v6 smoke exercised the affected report assertions on final copied executables. Source approval does not assert a wheel or application result without their separately executed procedures.
+
+## Retained failed attempts
+
+The archive must keep the first failures under their original versions and identities:
+
+- v1 review found large-copy/serialization work after an early TTL sample. v2 moved seal candidate construction before final sampling and added the final scalar qualification after report construction under unchanged guards.
+- The first v2 focused compile failed with **E0716** and executed zero tests. Root's v3 correction was followed by an actual 19-case pass.
+- Three actual HTTP selected-metadata counterproof cases failed before the strict fallback gate: otherwise valid collateral/universe with changed size precision, `onlyIsolated` or margin mode produced an unsealed startup report. v5 required the fallback to form a qualified original seal; the same cases then passed their refusal assertions, followed by 22 + 55 and full regressions.
+- Required `make format` and `make pre-commit` attempts failed to launch with exit **127 / WinError 2** because `make` was absent. They are not completed checks.
+- Initial official stub generation failed under GBK output encoding. The later explicit UTF8 official run and 44 comparisons passed.
+- Test-inclusive Clippy's inherited ten failures remain recorded. The two introduced test-style findings were corrected in v6; no baseline lint failures were suppressed or rewritten.
+- Initial application fixture lint/style failures and two attempts using an app venv without Ruff are retained. Later available-Ruff checks passed; these do not turn the earlier launches into successes.
+
+## Independent installed readonly evidence
+
+The independent reviewer ran one normal installed `TradingNode` with actual normal Hyperliquid data/execution factories, reconciliation enabled and synthetic loopback credentials. It remained RUNNING, made **37 HTTP requests**, **3 readonly subscriptions**, and emitted **2 AccountState events**, with **0 actions, orders or fills**. Ordinary Cache orders/positions and selected Portfolio positions remained zero. Normal stop/dispose left no peer sockets and the factory diagnostic getter returned `None`.
+
+Its 60 captured source/install/artifact/procedure inputs were unchanged. The reviewer checked wheel/native/stub bytes and recorded provenance; it did not independently recompute the Git tree. The observed original startup-source diagnostic was non-null with reader generation 1, epoch 0 and applied ingress. The procedure did **not** separately assert a consumed reuse-branch flag; direct native tests supply that distinct branch evidence.
+
+This readonly policy used an original **30-second account TTL**, 30-second metadata TTL and 3-second recovery deadline. It does not certify the application's **2-second account TTL** or two-leg action/cleanup liveness. Kernel isolation was false. No strategy, manual Cache financial injection, private Python HTTP/signing path or mainnet execution was used.
+
+## Corrected-fixture paired outcome
+
+The application peer now executes the actual synthetic trade before ACK and preserves immutable source time, trade ID and start position. Its 150 ms delay affects only publication delivery. Four new pure blackbox cases cover the chronology; the actual installed paired run used the new wheel once, without retries or increased limits.
+
+The raw run records **four Filled native orders**, two Hyperliquid and two Aster, representing two entry and two owned-cleanup fills. Those actual fills reached ordinary Cache and Portfolio. At the end, both controller positions and selected Portfolio positions were zero, all four owned orders were Filled, and controller gross reservation was zero. Wire action counts were **Hyperliquid 2 / Aster 3** (including one Aster cancel); the controller recorded six actions.
+
+Nevertheless, the controller ended **`StoppedUnknown`**. Current projection and owned-flat proof remained Unknown. Native Hyperliquid reported `io warm RecoveryIncomplete: io warm recovery total deadline exhausted`, with `recovery_complete=false` and captured Unknown source debt. Complete fresh cleanup flatness was not established within the original 3-second warm deadline. The wrapper exited 1; shutdown completed, watchdog was false and the summary's `failure` field was null. Those lifecycle fields do not make the business acceptance pass.
+
+The raw source receipts demonstrate partial progress followed by an unavailable later request; they do not establish a measured limiter balance or the sole cause of the quota wait. Source-derived avoidance of one 182-weight startup group is not paired success. The 57 current inputs matched before/after this run. The nine application inputs changed after earlier native-v6 captures are not silently relabeled as unchanged.
+
+The source contract and successful native/readonly checks remain valid finite evidence. Application #43 E6, real-capital acceptance, continuous operation and complete fresh-flat shutdown acceptance remain open. Old native113 failed-source debt and earlier failed runs are preserved; this candidate does not repair or clear them.
+
+## Publication boundary
+
+At draft time, no accurate-head PR or remote CI result is asserted. Root must independently review these documents, archive actual evidence and identities, create the PR from the frozen implementation lineage, and record its real CI result. Existing Aster/Ondo/Backpack workflows are separate checks, not proof of every Hyperliquid startup contract or application outcome.
+
+No result here certifies whole-account/history completeness, funding/run PnL, generic cold native restoration, arbitrary post-prepare cross-thread Engine Cache mutation, native Portfolio authority, exact composed mutex-wait startup integration, kernel isolation, real venue behavior or mainnet capital.

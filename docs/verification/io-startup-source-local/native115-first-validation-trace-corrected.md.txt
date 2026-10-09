@@ -1,0 +1,7 @@
+Implementation and test v1 are frozen and retained as exact source snapshots. Independent review found two final-time qualification gaps; both were corrected before execution. Account 2000ms, metadata 30000ms, recovery 3000ms, rate limits and action bounds remain unchanged.
+
+The first actual compile failed with E0716 in the new test's temporary position_reports borrow; no tests executed. The correction holds the original returned map without changing business assertions. Focused validation at 2026-10-09 09:22:07-09:22:20 UTC then passed all 19 new source sealing/reuse/fallback/history/freshness scenarios. Exact source, commands, failed output and successful output are retained. Full native regression, official stubs, wheel and normal installed-node acceptance are pending.
+
+Review additionally found that startup fallback must not ignore a newly observed HTTP selected-metadata counterproof. A startup-only strict source qualification and three actual HTTP-only row-conflict cases are being added. Ordinary account publication is unchanged; an unrequested future response is not an observed counterproof. No checklist is marked complete, and application issue 43 / real-venue acceptance remain open.
+
+The initial version of this comment was corrupted by PowerShell stdin encoding. Its exact failed payload is retained locally, and this corrected body is read from a UTF-8 file.

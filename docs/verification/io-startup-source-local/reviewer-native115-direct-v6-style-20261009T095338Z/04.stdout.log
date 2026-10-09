@@ -1,0 +1,6 @@
+
+running 1 test
+test execution::startup_source_reuse::repeated_mass_calls_read_three_new_empty_arrays_without_renewing_original_seal ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 232 filtered out; finished in 0.18s
+

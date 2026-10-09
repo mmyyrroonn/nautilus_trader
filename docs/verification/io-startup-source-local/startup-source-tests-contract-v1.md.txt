@@ -1,0 +1,64 @@
+﻿# Native #115 normal startup source tests, revision 1
+
+Frozen 2026-10-09 09:09:17 UTC in E:/persarb/worktrees/entropy-startup-account-proof, declared base main aadad78fab77467f4a1467a252947ebb84f5361d. No actual test, native import, Cargo, format, Git, build/install, app source or environment-file read was executed by this agent.
+
+Original source bytes and original SHA values were preserved before editing in test-v1-original; frozen source bytes were preserved before root official formatting in test-v1-frozen. The two manifests are test-v1-original-source.json and test-v1-frozen-source.json. Failed/successful actual evidence must be supplied by the root's subsequent serial official validation; no future pass is claimed here.
+
+## Changed source scope
+
+- tests/entropy_account/startup_source_reuse.rs is a new normal numeric-loopback integration module, 19 expanded scenarios.
+- tests/entropy_account/execution.rs only adds that child module. Existing Harness, time runner, peer semantics and financial event application are unchanged.
+- tests/entropy_account/startup.rs adapts 11 pure future-HTTP fault setups and adds actual target/raw-response assertions. The original wrong_metadata public-provider-to-Engine-Cache stimulus and its rejection assertions are intact.
+- tests/entropy_account.rs is unchanged. No production hooks or test-only native API are introduced.
+
+The original startup source SHA was 248e423dab7a105c93c99e0256f4cd060df6b63adf47bafa2bbbf4665da223a8. Its 55 expanded scenarios are retained, but 11 setup triggers intentionally change; this is not a claim that the old source/semantics are byte-identical.
+
+## Eleven original future-HTTP faults
+
+Before modifying those peers' future HTTP state, send the genuine identical clearinghouse wire frame. Await actual native received_sequence growth, is_applied=true, current account trusted=true, and successful exact wire delivery. Reader generation/epoch and connection count stay the same; source/account positions/balance remain unchanged. This invalidates sealed-source eligibility without inventing a financial conflict.
+
+The actual fallback must request the fault endpoint and receive its complete raw HTTP body, rather than fail early elsewhere:
+- wrong mode: userAbstraction, actual unifiedAccount.
+- wrong role: userRole, actual agent.
+- wrong collateral/token: spotMeta, with actual meta collateral1 or actual wrong token identity.
+- missing/null/object/unselected positions, missing/stale source, unrepresentable balance: actual clearinghouseState raw matching that fault.
+
+The old error and no-order/no-fill/no-position/no-Portfolio-effect assertions remain. The original wrong_metadata test additionally replaces ordinary native Cache instruments through the real public provider; its exact BEFORE-refresh refusal remains an independent Cache counterproof. It is not labeled bad-HTTP coverage. A new separate collateralToken1 HTTP metadata negative does not change Cache and must actually request/receive bad meta. This avoids adding a broader production selected-precision rule merely to make a test pass.
+
+## Nineteen new expanded scenarios
+
+| Count | Contract |
+|---|---|
+| 3 | Fresh sealed full source reuse for one/two selected IDs and descriptor-zero precreated origin. Correlate original real request/raw/receive group, same policy/source/start/end, three new actual empty arrays, unchanged original account snapshot/seal and no extra AccountState. Native selected Flat report identities/precision/zero qty and original source/window timestamps are preserved; normal report application has zero financial projection. |
+| 1 | Two ordinary mass calls each read three new actual arrays without renewing the original seal. |
+| 3 | After a valid first call, actual nonempty open/fills/history response is not replaced by its old empty array. |
+| 1 | Genuine identical applied private frame preserves current trust but forces complete real full-account fallback and then a new valid sealed source plus three arrays. |
+| 1 | During normal connect's complete recovery account response (after actual selected activeAssetData verification), a real identical private frame permits legacy current trust but prevents retroactive source sealing. The initially absent seal must lead to an actual full-account startup fallback and real new seal. Exact timing is not a claimed run; official evidence must prove the scheduled response interval was actually crossed. |
+| 1 | Separate intrinsically invalid HTTP metadata/collateral fallback, with actual target body and no Cache prechange. |
+| 3 | Actual fallback full-read crossing identical/funds/reader-close cannot manufacture a reusable new source or report. The funds frame preserves the original source timestamp but advances actual received sequence. |
+| 4 | Reuse during actual history cannot survive identical/funds/reader-close/ordinary native Cache instrument changes. |
+| 1 | Original account TTL expires during successful delayed empty history. No report and no source timestamp renewal. |
+| 1 | Original total recovery deadline cannot accept a late successful history response. |
+
+The original 55 journal/foreign/saturated/cap/unbound Cache/EXTERNAL/other-strategy/unselected-order/actual canceled/actual cold-fill/reservation/Unknown-action tests remain. They supply complementary boundaries without manufactured financial facts.
+
+## Normal APIs and schema
+
+All calls use normal client.generate_mass_status(None), normal factory/config numeric-loopback HTTP/WebSocket, actual native provider instruments, public Cache methods and ordinary native event/ExecutionEngine/Portfolio/runner paths. No application fake Ready, Python native source path, manual account/fill event or private native completion invocation occurs.
+
+The declared source schema is startup_account_source (the original optional source object) and startup_private_ingress {generation, epoch, received_sequence, is_applied}. The source contains original policy, native metadata/context, original private/account source identity and sources.original_sources [{request_json, received_ms, raw_text}] with no unavailable sources for a positive seal. Its positive full group contains actual role, both mode brackets, io metadata/spot collateral and clearinghouse reads. These diagnostics are evidence correlation; HTTP/request/event/Cache/Portfolio behavior remains acceptance authority.
+
+The existing original tests keep their original configuration. New tests explicitly use the intended 2000ms account/action, 3000ms total recovery and 30000ms metadata limits. Smaller existing 500ms TTL/600ms delayed-history negative and 5000ms late-history refusal remain finite counterexamples; no product deadline or quota was raised. Polling only waits for an actual requested/read/applied boundary; it is not a pre-refill sleep or retry-until-pass. The unchanged peer maintains its existing periodic private frames.
+
+## Limitations, not claimed integration proof
+
+The new source-crossing frames prove actual received-sequence changes. They do not isolate same-received-sequence internal financial revision, raw-received-but-not-applied-only state, private mutex lock wait/TTL, controlled same-millisecond actor steps or every owner drop/lifetime transition. Existing websocket ingress mechanism unit tests and production source review provide compositional evidence for those boundaries; they are not mislabeled new deterministic full startup integrations. Original failed native113 source debt is not recovered/cleared by this issue. Whole-account history, durable native cache restore, kernel isolation and original app seven-scenario acceptance remain separate.
+
+## Frozen SHA256
+
+- tests/entropy_account.rs: 5976b5e8e5b9e19314679ca009365024817a2ad4e3a07ac65c7cdf1d06a79c07 (unchanged)
+- tests/entropy_account/execution.rs: d3958d96f3f48ada888b671ebc9de1f2ee361f6739d4f9c47b66b5c0b98dc1fb
+- tests/entropy_account/startup.rs: 5185f3ec5ecd5e7f1aab41d54ad0020b09b15529fff83c51c4e265c118aa888f
+- tests/entropy_account/startup_source_reuse.rs: 767b5ab20a085525e220b4808e9659cf46d3da9cfc48921d4e8ff892f34b75ee
+
+Root may now perform official format/compile/execution. Any actual failure requires a separately archived revision; this agent has stopped source writes.

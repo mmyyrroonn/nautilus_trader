@@ -1,0 +1,28 @@
+﻿{
+    "revision":  "app43-chronology-v1",
+    "captured_utc":  "2026-10-09T10:09:27.3663550Z",
+    "files":  [
+                  {
+                      "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\entropy_execution_peer.py",
+                      "sha256":  "11930d360dabe0c8751b0f2451c1f8570489311a8526b419a72b25781075515d"
+                  },
+                  {
+                      "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\test_entropy_execution_peer.py",
+                      "sha256":  "a6914257d27df9a3575bd2ce7257d43fd682a939365c1c84530d4bada8d8b809"
+                  }
+              ],
+    "original_peer_sha256":  "e288616d1ae21a79457f2a7ad49ce5859f9d22da585f31ecc95d08253eb7bc3a",
+    "expanded_blackbox_cases":  4,
+    "native_assertion_files_modified":  false,
+    "runtime_config_core_report_modified":  false,
+    "aster_execution_source_modified":  false,
+    "agent_test_runs":  0,
+    "agent_format_runs":  0,
+    "agent_git_runs":  0,
+    "actual_result":  "Not executed; source implementation only",
+    "proposed_root_commands":  [
+                                   ".venv/Scripts/python.exe -m pytest -q tests/test_entropy_execution_peer.py",
+                                   "ruff check tests/entropy_execution_peer.py tests/test_entropy_execution_peer.py"
+                               ],
+    "original_product_limits":  "Unchanged: account/action 2000ms; recovery/history 3000ms; run15000ms; six peer actions,150 HTTP requests,1500 frames,100 WS commands; publication delay150ms"
+}

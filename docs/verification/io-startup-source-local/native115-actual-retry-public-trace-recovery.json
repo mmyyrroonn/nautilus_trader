@@ -1,0 +1,23 @@
+{
+  "argv": [
+    "E:/persarb/worktrees/entropy-startup-account-proof/.venv/Scripts/python.exe",
+    "-X",
+    "utf8",
+    "post_native115_actual_retry.py",
+    "native115-retry-trace-v2"
+  ],
+  "cwd": "E:\\persarb\\_tmp\\entropy115-validation",
+  "started_utc": "2026-10-09T10:18:18.901659+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "uv_project_environment": null,
+  "nautilus_stub_profile": null,
+  "cargo_build_warnings": null,
+  "cargo_net_offline": null,
+  "entropy43_native_wheel": null,
+  "entropy43_native_sha256": null,
+  "entropy43_native_provenance": null,
+  "entropy43_evidence_root": null,
+  "exit_code": 1,
+  "finished_utc": "2026-10-09T10:18:25.282350+00:00"
+}

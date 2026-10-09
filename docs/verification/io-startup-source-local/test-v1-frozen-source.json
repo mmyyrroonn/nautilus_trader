@@ -1,0 +1,22 @@
+[
+    {
+        "path":  "crates/adapters/hyperliquid/tests/entropy_account.rs",
+        "sha256":  "5976b5e8e5b9e19314679ca009365024817a2ad4e3a07ac65c7cdf1d06a79c07",
+        "frozen_snapshot":  "E:\\persarb\\_tmp\\entropy115-validation\\test-v1-frozen\\entropy_account.rs"
+    },
+    {
+        "path":  "crates/adapters/hyperliquid/tests/entropy_account/execution.rs",
+        "sha256":  "d3958d96f3f48ada888b671ebc9de1f2ee361f6739d4f9c47b66b5c0b98dc1fb",
+        "frozen_snapshot":  "E:\\persarb\\_tmp\\entropy115-validation\\test-v1-frozen\\execution.rs"
+    },
+    {
+        "path":  "crates/adapters/hyperliquid/tests/entropy_account/startup.rs",
+        "sha256":  "5185f3ec5ecd5e7f1aab41d54ad0020b09b15529fff83c51c4e265c118aa888f",
+        "frozen_snapshot":  "E:\\persarb\\_tmp\\entropy115-validation\\test-v1-frozen\\startup.rs"
+    },
+    {
+        "path":  "crates/adapters/hyperliquid/tests/entropy_account/startup_source_reuse.rs",
+        "sha256":  "767b5ab20a085525e220b4808e9659cf46d3da9cfc48921d4e8ff892f34b75ee",
+        "frozen_snapshot":  "E:\\persarb\\_tmp\\entropy115-validation\\test-v1-frozen\\startup_source_reuse.rs"
+    }
+]

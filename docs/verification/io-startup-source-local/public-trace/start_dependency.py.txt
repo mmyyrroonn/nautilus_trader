@@ -1,0 +1,59 @@
+import json
+import os
+import subprocess
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).parent
+env = dict(os.environ, GODEBUG="http2client=0")
+
+
+def api(path, label, method="GET", payload=None):
+    argv = ["gh", "api", path]
+    if method != "GET":
+        argv += ["--method", method]
+    if payload is not None:
+        data = ROOT / (label + "-input.json")
+        data.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        argv += ["--input", str(data)]
+    for _ in range(3 if method == "GET" else 1):
+        result = subprocess.run(argv, capture_output=True, env=env)
+        if result.returncode == 0:
+            break
+        time.sleep(1)
+    (ROOT / (label + "-response.json")).write_bytes(result.stdout)
+    (ROOT / (label + "-stderr.log")).write_bytes(result.stderr)
+    if result.returncode:
+        raise RuntimeError(label + ": inspect remote state before retrying a mutation")
+    return json.loads(result.stdout)
+
+
+if __name__ == "__main__":
+    # Read existing work before creating the focused dependency.
+    issues = api("repos/mmyyrroonn/nautilus_trader/issues?state=open&per_page=100", "native-issues-before")
+    pulls = [i for i in issues if "pull_request" in i]
+    assert not any("selected-scope" in i["title"] or "selected scope" in i["title"] for i in issues)
+    body = """本单是 [应用 #43](https://github.com/mmyyrroonn/Nautilus-Perps/issues/43) 固定 io×Aster 两腿执行的必要原生依赖，按用户本轮逐单实现/review/PR合并授权处理。基线为刚合并 E5 后最新 `main@fff2aa6808afb76acf274a6a972322b5ac34d830`。
+
+现有 Aster Ready/AccountState/空 cache 不能证明当前选定账户仓位已完整核对：首次 connect 的内部 Ready 不必请求 positionRisk，Python factory 没有可审计的当前 recovery/position witness，position-only ACCOUNT_UPDATE 也不产生原生仓位报告。应用的新风险准入需要正向证据。
+
+## 有界交付
+
+- [ ] 追加可选严格 selected_scope_policy_json；固定少量完整 native instrument IDs、真实 settlement currency 与有限 TTL，None 保持旧契约，错误配置连接前拒绝。
+- [ ] 正常 connect / QueryAccount 经过实际 mode、balances、selected positionRisk、orders/trades recovery；相同 generation、当前 stream、无 recovery debt 且字段/覆盖完整时才发布 witness；missing position row 不推断 flat。
+- [ ] 原生新风险 dispatch 与 HTTP 等待后的实际 send 再核查/消耗 witness；旧 generation、私有资金/仓位/订单变动、malformed、disconnect、Unknown submission 或 recovery debt 撤销新风险授权；reduce-only 保留正常原生限制，应用另核对 run-owned fills/cache。
+- [ ] 正常 Python factory 提供 Weak-bound JSON 诊断；明确 account/instrument/currency/quantity/received age/source origin/recovery/mode/stream。只证明 selected scope；whole-account 与实际 funding 始终不由该接口证明。
+- [ ] source-bound 原生与实际 wheel/local peers 验证正常准入、拒绝、失效、完整刷新、旧 generation 和 factory lifetime；生成 stubs、独立 review、保留真实命令/失败/artifact 身份。
+- [ ] review-ready PR 从最新 main 开始，经相应 CI 后合并；验收和应用 #43 留痕，不把离线证明称为真实账户/两腿/经济通过。
+
+Aster balance/positionRisk 的 updateTime 是行变更时间，不是远端快照时间。快照 source_time 保持 null 并注明 venue 不提供该时点；本地 received TTL 不伪装成远端 freshness。selected scope 不等于 whole account；funding receipt 另有缺口。
+
+不改变账户模式、不转账/借贷、不扫描全部市场、不执行真实主网订单。实际场所操作仍受当轮“上主网”及明确有限范围约束。#88/#107 部署 dependency 风险继续保留。"""
+    issue = api("repos/mmyyrroonn/nautilus_trader/issues", "native-dependency-create", "POST", {"title": "[P2][Aster][Entropy] 提供有界 selected-scope 执行证明与诊断", "body": body})
+    comment = f"""2026-10-09 E6 离线实现开始：应用从最新 main `f09e66f0533f53bfd44e14947cd6f0ef0648a94a` 新建独立分支，固定一组 `io:SNDK-USD-PERP.HYPERLIQUID × SNDKUSD1-PERP.ASTER` 合成市场对；pure config/两腿状态机/原文经济报告与正常 factories/local peers 按独立文件范围由子代理实现，主代理负责最终 review 与验收。
+
+E5 [原生 PR #108](https://github.com/mmyyrroonn/nautilus_trader/pull/108) 已合并至 `main@fff2aa6808afb76acf274a6a972322b5ac34d830`，#102 已完成离线 native 交付。对腿审计发现当前 Aster 缺少 selected inventory/recovery 证明，先以 [原生 #{issue['number']}]({issue['html_url']}) 从此最新 native main 补齐有界证明接口，不把空 cache/旧 Ready 当作新风险准入。
+
+预览不导入 native/env、不访问网络；实际离线验收将使用精确 source-bound wheel 与有界 numeric loopback HTTP/WS peers，所有账户/订单/fills/cache 通过正常 native 路径。Aster funding、whole-account 及未运行的真实场所项保留 Unknown/未完成；无真实主网订单授权。"""
+    api("repos/mmyyrroonn/Nautilus-Perps/issues/43/comments", "app43-start-comment", "POST", {"body": comment})
+    print(json.dumps({"number": issue["number"], "url": issue["html_url"], "base": "fff2aa6808afb76acf274a6a972322b5ac34d830"}))

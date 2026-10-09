@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "gh",
+    "api",
+    "repos/mmyyrroonn/nautilus_trader/issues/115"
+  ],
+  "started_utc": "2026-10-09T10:12:14.127513+00:00",
+  "finished_utc": "2026-10-09T10:12:14.774634+00:00",
+  "exit_code": 0,
+  "attempts": 1
+}

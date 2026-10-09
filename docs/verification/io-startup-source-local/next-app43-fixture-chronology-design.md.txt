@@ -1,0 +1,56 @@
+# App #43 normal peer execution and delayed-publication chronology
+
+Read-only recommendation while native #113/PR #114 awaits completion. No implementation, source/archive changes, actual run, Git/Cargo/install, wheel modification or real-venue action occurred. Changes require authorization in the next main-based worktree.
+
+## Existing inconsistent chronology
+
+tests/entropy_execution_peer.py:566 hl_action currently creates an order with status=filled, remaining size0 and statusTimestamp sampled at ACK, sends an aggregate Filled ACK, then schedules hl_fill. At :634 hl_fill waits150ms before allocating actual tid, sampling a NEW trade time/startPosition, incrementing position and publishing raw fill. Thus a full execution is acknowledged before the fixture actually executes it; until delivery both HTTP and private clearinghouse show flat.
+
+This is more than two timestamps differing. Warm native validation in execution_scope.rs:1364?1412 requires an exact known owned terminal/fill identity and terminal_time_ms<=REST statusTimestamp. Native observe_fill (:3683) takes actual terminal time from the raw trade. The current fixture consequently puts the later actual fill time after its earlier REST filled status time. Changing statusTimestamp to a later clock value only at publication would conceal the earlier inconsistency without making the execution and account sources coherent.
+
+Native execution.rs:421?473 posts the prepared normal wire, records aggregate ACK and emits Accepted, then unconditionally enters bounded recover. Filled ACK does not manufacture a fill. recover_once (:3211+) reads actual full io open orders, user fills and exact original CLOID status, then typed AwaitingOwnedActualFills (:3526+) retains uncertainty when actual trades are not yet available. This important normal path must remain.
+
+## Recommended minimal chronology
+
+For the normal fully executed HL IOC, use ONE logical execution transaction before sending its truthful Filled ACK:
+1. Validate the actual normal action and classify rejection/lost-response fault before any executed-state mutation.
+2. Allocate positive OID/TID once. Capture accepted/executed source time, actual exact quantity, price, fee/builder fee, previous signed position and raw trade identity while the synthetic venue executes the request. This happens BEFORE the first delivery delay, not by backdating a later event.
+3. Update the venue's actual position once at this execution boundary. Store the terminal order with remaining0, actual full quantity and statusTimestamp=executed_ms. The raw fill's time is executed_ms, with the same OID/CLOID and frozen startPosition. Send the normal Filled aggregate ACK with actual quantity/price.
+4. Preserve a finite150ms publication/delivery delay. Before publication userFills may conservatively omit this not-yet-published raw fill; orderStatus/historicalOrders can already show its truthful terminal order. At publication append the SAME immutable raw trade and broadcast the SAME event through the ordinary user wire. Do not allocate a new ID, change time, apply position again or rewrite original order execution time in the worker.
+5. Broadcast a complete private clearinghouse snapshot taken at actual publication time. Its account position already includes the executed trade. Every HTTP clearinghouse and periodic private snapshot during the delay must also show the executed position; snapshot time remains its own actual collection time, independently of the trade's earlier execution time.
+
+This describes a deliberately delayed fill-history/publication service, not proof that any actual venue uses this timing. The fixture is synthetic and the normal native client remains the only source of app events/Cache/Portfolio.
+
+A tid counter independent of len(published_fills) is needed if raw fills can remain pending: two executions must never allocate the same tid while neither has published. Exact frozen raw rows should be private immutable execution records; returning HTTP arrays or recording evidence must not mutate their contents. Publication must be idempotent and cannot reapply position, fee or change terminal state.
+
+Minimal source scope: hl_action classifies/executes/freezes one record; hl_fill becomes delayed publication of that record; peer gains only finite pending/next-TID evidence bookkeeping. Existing action/request/frame caps and original150ms remain. No native gate, app controller, timeout, quota or mainnet behavior changes.
+
+## Fault and partial semantics
+
+| Mode | Truthful execution/source behavior |
+|---|---|
+| Full fill / loss_fee | Actual full execution before Filled ACK. Freeze fee0.001 or actual synthetic fee2 respectively, builderFee0.0002 already included in reported fee. Later publication cannot change economic identity. Normal actual-fee loss guard must still block Aster risk in loss_fee. |
+| Rejected order / cleanup reject | Classify before writing any filled row or changing position. Send the normal existing error ACK; no actual fill, no fill task and no fabricated filled history/OID authority. Attempt counting remains bounded. An old canceled/filled order is not modified by an unrelated rejected action. |
+| Missing response | Explicitly choose the existing Unknown scenario as a received action whose matching/ACK outcome is unavailable and with no simulated execution: record the received attempt, suppress its ACK, create no fake filled status/raw fill/position. Subsequent normal queries return unknownOid. That does NOT prove native NotWritten or safely release an app reservation; Unknown/nonterminal/no retransmission/no invented hedge assertions remain. An executed-but-ACK-lost case is a separate future test and would require its actual execution/raw/account sources, not the same ambiguous fixture flag. |
+| Partial | Current seven-scenario partial fault is on Aster; HL stays fully executed. Do not silently add a partial HL Filled ACK with full totalSz. Any future partial HL IOC needs documented actual partial/cancel status semantics and exact remaining size, not an invented Resting ACK for an IOC. |
+| Aster normal/partial | Existing order request returns NEW; actual trade legitimately occurs after150ms. Trade time is that later execution time, with real position mutation at the same boundary. Partial IOC then expires50ms later as a separate true terminal event. Keep exact trade id/fee/quantity and terminal status; expiry cannot manufacture another fill or fee. This path should not be backdated to its earlier NEW response. |
+
+For Aster publication event E/T fields, a single captured actual trade time per logical trade improves internal coherence but is separate from this minimal HL fix. Its later EXPIRED event keeps its own later source time. Do not widen changes to unrelated order semantics to obtain a pass.
+
+## Finite evidence and request-count acceptance
+
+1. A normal numeric-loopback peer protocol test reads ACK, prepublication full io account and status, then actual delayed user fill and postpublication HTTP fills. It proves executed_ms captured before delay; terminal timestamp equals actual fill execution time; ACK full quantity/price, startPosition and account signed delta agree. Native source/receive timestamps remain distinct. No direct synthetic Engine events or Cache mutation are used.
+2. Repeat for a reduce-only close: execution returns the position to0 exactly once; raw close starts from the previously executed quantity. Replay/duplicate publication leaves position and fee identity unchanged.
+3. Rejection/cleanup-rejection record no financial execution and preserve prior actual position; unknown response produces no invented executed facts and retains application/native reservation ambiguity.
+4. Keep the real installed-native callback test: aggregate Accepted alone creates no native fill; after publication exact actual COID/OID/scoped TID/qty/commission enters normal Cache/Portfolio once. Genuine REST recovery can be reconciliation=true and cannot be rejected solely by that boolean.
+5. Preserve original seven app assertions and actual request/frame/action caps. Capture passive per-request start/receive, execution source time and publication/delivery time without new HTTP calls; producer periodic frames stay active. No pre-refill sleep or deadline extension.
+
+With unpublished raw fills150ms after an immediate Filled ACK, normal ACK recovery may still perform its original two bounded attempts, each full open/fills/exact-CLOID status: approximately6 actual HTTP calls (42 base-weight per attempt, plus ordinary item weights; source-derived minimum only). This recommendation does NOT remove those calls, measure token balance, or promise warm success. A more efficient timeline cannot be claimed by shifting timestamps alone. At the currently observed quota/2s verification failure, truthful chronology is necessary but insufficient.
+
+Private clearinghouse at execution/publication and periodic identical frames advance real received-sequence fences. An in-flight captured query must still fail when superseded; a corrected fixture may expose additional legitimate native race/refusal. Unknown raw debt remains captured and preserved. Test report source binding must record the changed peer hash in the plan/manifest, with old failed artifacts kept. Only official newly built/installed candidate acceptance and independent review can establish success.
+
+## Source identity inspected
+- E:\persarb\worktrees\entropy-execution-app\tests\entropy_execution_peer.py: e288616d1ae21a79457f2a7ad49ce5859f9d22da585f31ecc95d08253eb7bc3a
+- E:\persarb\worktrees\entropy-execution-app\tests\test_entropy_execution_native.py: 9a975f5cca43b6b7cb778435a170b3a1223cf0db351417b7bfdd4f9788124120
+- E:\persarb\worktrees\entropy-io-recovery\crates\adapters\hyperliquid\src\execution.rs: 2b1e30b896b60b01edd257947426c5f132b841dc7fe7771602f1e810c81c3316
+- E:\persarb\worktrees\entropy-io-recovery\crates\adapters\hyperliquid\src\execution_scope.rs: fd10b2e0deb1b90e42dcb0756eb68d2227b3bffe7d383807a93cf962e67270d2

@@ -1,0 +1,735 @@
+// -------------------------------------------------------------------------------------------------
+//  Copyright (C) 2015-2026 Nautech Systems Pty Ltd. All rights reserved.
+//
+//  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+//  You may not use this file except in compliance with the License.
+//  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
+// -------------------------------------------------------------------------------------------------
+
+//! Actual sealed account sources and ordinary fresh-origin startup history reads.
+
+use nautilus_model::{enums::PositionSide, reports::ExecutionMassStatus};
+
+use super::*;
+
+const FIRST: &str = "io:SNDK-USD-PERP.HYPERLIQUID";
+const SECOND: &str = "io:TSLA-USD-PERP.HYPERLIQUID";
+
+fn recorded(harness: &Harness) {
+    harness
+        .peer
+        .state
+        .data
+        .lock()
+        .execution
+        .as_mut()
+        .unwrap()
+        .record_http = true;
+}
+
+async fn fixture(two: bool, precreate_empty: bool, ttl: u64) -> Harness {
+    let peer = Peer::start(clearinghouse("100", "100", "0", "100", false)).await;
+    let directory = TempDir::new().unwrap();
+    let mut selected = policy(&directory);
+    selected["recovery_timeout_ms"] = json!(3000);
+    selected["action_timeout_ms"] = json!(2000);
+    selected["metadata_max_age_ms"] = json!(30000);
+    {
+        let mut data = peer.state.data.lock();
+        data.execution = Some(PeerExecution {
+            record_http: true,
+            ..PeerExecution::default()
+        });
+        if two {
+            data.meta_override = Some(json!({"universe":[
+                {"name":"io:SNDK","szDecimals":4,"maxLeverage":10,"onlyIsolated":true,"marginMode":"strictIsolated"},
+                {"name":"io:TSLA","szDecimals":4,"maxLeverage":10,"onlyIsolated":true,"marginMode":"strictIsolated"}],"collateralToken":0}));
+            let mut asset = data.execution.as_ref().unwrap().asset_data.clone();
+            asset["coin"] = json!("io:TSLA");
+            data.execution
+                .as_mut()
+                .unwrap()
+                .asset_data_by_coin
+                .insert("io:TSLA".into(), asset);
+            selected["symbols"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!({"instrument_id":SECOND,
+                "max_quantity":"1","min_price":"95","max_price":"105"}));
+        }
+    }
+    if precreate_empty {
+        std::fs::write(directory.path().join("io-intents.jsonl"), []).unwrap();
+    }
+    let mut config = execution_config(&peer, ttl);
+    config.io_execution_policy_json = Some(selected.to_string());
+    Harness::from_parts(peer, directory, config).await
+}
+
+async fn mass(harness: &Harness) -> anyhow::Result<Option<ExecutionMassStatus>> {
+    tokio::time::timeout(
+        Duration::from_secs(4),
+        harness.client.generate_mass_status(None),
+    )
+    .await
+    .expect("normal startup source call exceeded its finite observation bound")
+}
+
+fn override_response(harness: &Harness, kind: &str, delay: u64, body: &str) {
+    harness
+        .peer
+        .state
+        .data
+        .lock()
+        .execution
+        .as_mut()
+        .unwrap()
+        .startup_responses
+        .insert(kind.to_string(), (delay, body.to_string()));
+}
+
+async fn await_request(state: &PeerState, kind: &str, after: usize) {
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if state
+                .data
+                .lock()
+                .requests
+                .iter()
+                .skip(after)
+                .any(|row| row["type"] == kind)
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("normal source transaction did not reach the required actual request");
+}
+
+pub(super) async fn invalidate_seal_with_identical_frame(harness: &Harness) {
+    recorded(harness);
+    let before = harness.scope();
+    assert_eq!(before["account"]["trusted"], true);
+    assert_eq!(before["recovery_complete"], true);
+    let original_source = before["startup_account_source"].clone();
+    assert!(
+        original_source.is_object(),
+        "normal complete source was not sealed: {before}"
+    );
+    let sequence = before["startup_private_ingress"]["received_sequence"]
+        .as_u64()
+        .unwrap();
+    let connections = harness.peer.state.connections.load(Ordering::SeqCst);
+    let frame = harness.peer.state.clearinghouse_frame();
+    let raw = frame.to_string();
+    harness
+        .peer
+        .state
+        .instructions
+        .send(PeerInstruction::Frame(frame))
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let scope = harness.scope();
+            let received = scope["startup_private_ingress"]["received_sequence"]
+                .as_u64()
+                .unwrap();
+            let delivered = harness
+                .peer
+                .state
+                .data
+                .lock()
+                .ws_observations
+                .iter()
+                .any(|row| row["raw_body"] == raw && row["delivered"] == true);
+            if received > sequence
+                && scope["startup_private_ingress"]["is_applied"] == true
+                && scope["account"]["trusted"] == true
+                && delivered
+            {
+                assert_eq!(
+                    scope["startup_private_ingress"]["generation"],
+                    before["startup_private_ingress"]["generation"]
+                );
+                assert_eq!(
+                    scope["startup_private_ingress"]["epoch"],
+                    before["startup_private_ingress"]["epoch"]
+                );
+                assert_eq!(
+                    scope["account"]["http_source_time_ms"],
+                    before["account"]["http_source_time_ms"]
+                );
+                assert_eq!(
+                    scope["account"]["positions"],
+                    before["account"]["positions"]
+                );
+                assert_eq!(scope["account"]["balance"], before["account"]["balance"]);
+                assert_eq!(
+                    harness.peer.state.connections.load(Ordering::SeqCst),
+                    connections
+                );
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| {
+        panic!(
+            "identical source did not reach normal applied ingress/current trust: {}",
+            harness.scope()
+        )
+    });
+}
+
+pub(super) fn assert_actual_fault_response(
+    harness: &Harness,
+    endpoint: &str,
+    after: usize,
+) -> Value {
+    let data = harness.peer.state.data.lock();
+    assert!(
+        data.requests
+            .iter()
+            .skip(after)
+            .any(|row| row["type"] == endpoint),
+        "fault refused without actual target HTTP: {endpoint}; requests={:?}",
+        &data.requests[after..]
+    );
+    let request = data
+        .requests
+        .iter()
+        .skip(after)
+        .find(|row| row["type"] == endpoint)
+        .unwrap();
+    let response = data
+        .http_observations
+        .iter()
+        .rev()
+        .find(|row| row["request"] == *request)
+        .unwrap_or_else(|| {
+            panic!(
+                "fault target has no actual complete raw response: {endpoint}; observed={:?}",
+                data.http_observations
+            )
+        });
+    assert_eq!(response["status"], 200);
+    serde_json::from_str(response["raw_body"].as_str().unwrap()).unwrap()
+}
+
+fn no_financial_effect(harness: &Harness) {
+    assert_eq!(harness.fill_events, 0);
+    assert!(
+        harness
+            .cache
+            .borrow()
+            .orders(None, None, None, None, None)
+            .is_empty()
+    );
+    assert!(
+        harness
+            .cache
+            .borrow()
+            .positions(None, None, None, None, None)
+            .is_empty()
+    );
+    assert_eq!(
+        harness.portfolio.net_position(&InstrumentId::from(FIRST)),
+        Decimal::ZERO
+    );
+    assert_eq!(
+        harness.portfolio.net_position(&InstrumentId::from(SECOND)),
+        Decimal::ZERO
+    );
+    assert_eq!(harness.peer.state.writes.load(Ordering::SeqCst), 0);
+}
+
+fn assert_three_actual_empty_sources(harness: &Harness, after: usize) {
+    let data = harness.peer.state.data.lock();
+    let requests = &data.requests[after..];
+    for endpoint in ["frontendOpenOrders", "userFills", "historicalOrders"] {
+        let actual = requests
+            .iter()
+            .filter(|row| row["type"] == endpoint)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            actual.len(),
+            1,
+            "source must be requested once each call: {requests:?}"
+        );
+        let request = actual[0];
+        assert_eq!(request["user"], USER);
+        if endpoint == "frontendOpenOrders" {
+            assert_eq!(request["dex"], "io");
+        } else {
+            assert!(
+                request.get("startTime").is_none()
+                    && request.get("endTime").is_none()
+                    && request.get("dex").is_none()
+            );
+        }
+        let previous = data.requests[..after]
+            .iter()
+            .filter(|row| *row == request)
+            .count();
+        let responses = data
+            .http_observations
+            .iter()
+            .filter(|row| row["request"] == *request)
+            .collect::<Vec<_>>();
+        assert!(
+            responses.len() > previous,
+            "new explicit empty request has no new body for {endpoint}"
+        );
+        let response = responses.last().unwrap();
+        assert_eq!(response["status"], 200);
+        assert_eq!(
+            serde_json::from_str::<Value>(response["raw_body"].as_str().unwrap()).unwrap(),
+            json!([]),
+            "actual explicit response is not empty for {endpoint}"
+        );
+    }
+}
+
+fn assert_seal_original_sources(harness: &Harness, source: &Value) {
+    assert!(source.is_object());
+    let sources = source["sources"]["original_sources"].as_array().unwrap();
+    assert!(
+        source["sources"]["unavailable_sources"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    let started = source["verification_started_ms"].as_u64().unwrap();
+    let finished = source["verification_finished_ms"].as_u64().unwrap();
+    assert!(
+        started > 0
+            && started <= source["http_received_time_ms"].as_u64().unwrap()
+            && source["http_received_time_ms"].as_u64().unwrap() <= finished
+    );
+    let data = harness.peer.state.data.lock();
+    for original in sources {
+        let request: Value =
+            serde_json::from_str(original["request_json"].as_str().unwrap()).unwrap();
+        let received = original["received_ms"].as_u64().unwrap();
+        assert!(received >= started && received <= finished);
+        assert!(
+            data.http_observations
+                .iter()
+                .any(|row| row["request"] == request
+                    && row["status"] == 200
+                    && row["raw_body"] == original["raw_text"]
+                    && row["completed_ms"].as_u64().unwrap() <= received),
+            "sealed source lacks its actual wire body: {original}"
+        );
+    }
+    for (endpoint, count) in [
+        ("userRole", 1),
+        ("userAbstraction", 2),
+        ("userDexAbstraction", 2),
+        ("meta", 1),
+        ("spotMeta", 1),
+        ("clearinghouseState", 1),
+    ] {
+        assert_eq!(sources.iter().filter(|row| {
+            serde_json::from_str::<Value>(row["request_json"].as_str().unwrap()).unwrap()["type"] == endpoint
+        }).count(), count, "original complete group lost {endpoint}");
+    }
+}
+
+fn assert_flat_report(
+    harness: &mut Harness,
+    report: ExecutionMassStatus,
+    source: &Value,
+    two: bool,
+) {
+    assert_eq!(report.account_id, AccountId::from("HYPERLIQUID-ENTROPY"));
+    assert_eq!(report.client_id, *HYPERLIQUID_CLIENT_ID);
+    assert_eq!(report.venue, *HYPERLIQUID_VENUE);
+    assert!(!report.reports_complete());
+    assert!(report.order_reports().is_empty() && report.fill_reports().is_empty());
+    assert_eq!(
+        report.lookback_start().unwrap().as_u64(),
+        source["verification_started_ms"].as_u64().unwrap() * 1_000_000
+    );
+    assert_eq!(report.position_reports().len(), if two { 2 } else { 1 });
+    for id in if two {
+        vec![FIRST, SECOND]
+    } else {
+        vec![FIRST]
+    } {
+        let rows = report
+            .position_reports()
+            .get(&InstrumentId::from(id))
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        let row = &rows[0];
+        assert_eq!(row.account_id, report.account_id);
+        assert_eq!(row.instrument_id, InstrumentId::from(id));
+        assert_eq!(row.position_side, PositionSide::Flat);
+        assert_eq!(row.quantity.as_decimal(), Decimal::ZERO);
+        assert_eq!(row.quantity.precision, 4);
+        assert_eq!(
+            row.ts_last.as_u64(),
+            source["http_source_time_ms"].as_u64().unwrap() * 1_000_000
+        );
+        assert!(row.ts_last <= row.ts_init && row.ts_init <= report.ts_init);
+        harness
+            .engine
+            .reconcile_execution_report(&ExecutionReport::Position(Box::new(row.clone())));
+    }
+    harness.apply_events();
+    no_financial_effect(harness);
+}
+
+#[rstest]
+#[case(false, false)]
+#[case(true, false)]
+#[case(false, true)]
+#[tokio::test]
+async fn original_sealed_source_reuses_only_account_group_and_keeps_actual_report_times(
+    #[case] two: bool,
+    #[case] empty: bool,
+) {
+    let mut harness = fixture(two, empty, 2000).await;
+    let before = harness.scope();
+    let source = before["startup_account_source"].clone();
+    assert_seal_original_sources(&harness, &source);
+    let after = harness.peer.state.data.lock().requests.len();
+    let report = mass(&harness).await.unwrap().unwrap();
+    assert_three_actual_empty_sources(&harness, after);
+    assert_eq!(
+        harness.peer.state.data.lock().requests.len() - after,
+        3,
+        "reuse reread a full account/metadata source instead of its original seal"
+    );
+    assert_eq!(harness.scope()["startup_account_source"], source);
+    assert_eq!(harness.scope()["account"], before["account"]);
+    while let Ok(event) = harness.receiver.try_recv() {
+        assert!(
+            !matches!(&event, ExecutionEvent::Account(_)),
+            "source reuse emitted another AccountState"
+        );
+        harness.apply_event(event);
+    }
+    assert_flat_report(&mut harness, report, &source, two);
+    harness.stop().await;
+}
+
+#[tokio::test]
+async fn repeated_mass_calls_read_three_new_empty_arrays_without_renewing_original_seal() {
+    let mut harness = fixture(false, false, 2000).await;
+    let source = harness.scope()["startup_account_source"].clone();
+    for _ in 0..2 {
+        let after = harness.peer.state.data.lock().requests.len();
+        let report = mass(&harness).await.unwrap().unwrap();
+        assert_three_actual_empty_sources(&harness, after);
+        assert_eq!(harness.peer.state.data.lock().requests.len() - after, 3);
+        assert_eq!(harness.scope()["startup_account_source"], source);
+        assert_flat_report(&mut harness, report, &source, false);
+    }
+    harness.stop().await;
+}
+
+#[rstest]
+#[case("frontendOpenOrders")]
+#[case("userFills")]
+#[case("historicalOrders")]
+#[tokio::test]
+async fn previously_empty_array_is_not_reused_when_next_actual_window_is_nonempty(
+    #[case] endpoint: &str,
+) {
+    let mut harness = fixture(false, false, 2000).await;
+    mass(&harness).await.unwrap().unwrap();
+    let after = harness.peer.state.data.lock().requests.len();
+    override_response(&harness, endpoint, 0, "[{}]");
+    assert!(mass(&harness).await.is_err());
+    assert_actual_fault_response(&harness, endpoint, after);
+    no_financial_effect(&harness);
+    harness.stop().await;
+}
+
+#[tokio::test]
+async fn actual_identical_applied_frame_preserves_trust_but_requires_complete_full_read() {
+    let mut harness = fixture(false, false, 2000).await;
+    let source = harness.scope()["startup_account_source"].clone();
+    invalidate_seal_with_identical_frame(&harness).await;
+    let after = harness.peer.state.data.lock().requests.len();
+    let report = mass(&harness).await.unwrap().unwrap();
+    for endpoint in [
+        "userRole",
+        "userAbstraction",
+        "userDexAbstraction",
+        "meta",
+        "spotMeta",
+        "clearinghouseState",
+    ] {
+        assert_actual_fault_response(&harness, endpoint, after);
+    }
+    assert_three_actual_empty_sources(&harness, after);
+    let current = harness.scope()["startup_account_source"].clone();
+    assert_ne!(current, source);
+    assert_seal_original_sources(&harness, &current);
+    assert_flat_report(&mut harness, report, &current, false);
+    harness.stop().await;
+}
+
+#[tokio::test]
+async fn actual_connect_crossing_identical_source_has_no_seal_and_startup_requires_full_read() {
+    let peer = Peer::start(clearinghouse("100", "100", "0", "100", false)).await;
+    let state = peer.state.clone();
+    state.data.lock().execution = Some(PeerExecution {
+        record_http: true,
+        ..PeerExecution::default()
+    });
+    state.data.lock().io_response_delay_ms = 200;
+    let directory = TempDir::new().unwrap();
+    let mut selected = policy(&directory);
+    selected["recovery_timeout_ms"] = json!(3000);
+    let mut config = execution_config(&peer, 2000);
+    config.io_execution_policy_json = Some(selected.to_string());
+    let race = async {
+        tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let reached_original_recovery = {
+                    let data = state.data.lock();
+                    data.requests
+                        .iter()
+                        .filter(|row| row["type"] == "clearinghouseState")
+                        .count()
+                        >= 2
+                        && data
+                            .requests
+                            .iter()
+                            .filter(|row| row["type"] == "activeAssetData")
+                            .count()
+                            >= 2
+                };
+                if reached_original_recovery {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("normal connect did not reach its actual complete recovery account source");
+        let frame = state.clearinghouse_frame();
+        state
+            .instructions
+            .send(PeerInstruction::Frame(frame))
+            .unwrap();
+    };
+    let (mut harness, ()) = tokio::join!(Harness::from_parts(peer, directory, config), race);
+    let initial = harness.scope();
+    assert_eq!(initial["recovery_complete"], true);
+    assert_eq!(initial["account"]["trusted"], true);
+    assert_eq!(initial["startup_private_ingress"]["is_applied"], true);
+    assert!(
+        initial["startup_account_source"].is_null(),
+        "normal crossed original account transaction was retroactively sealed: {initial}"
+    );
+    let after = harness.peer.state.data.lock().requests.len();
+    let report = mass(&harness).await.unwrap().unwrap();
+    for endpoint in [
+        "userRole",
+        "userAbstraction",
+        "userDexAbstraction",
+        "meta",
+        "spotMeta",
+        "clearinghouseState",
+    ] {
+        assert_actual_fault_response(&harness, endpoint, after);
+    }
+    assert_three_actual_empty_sources(&harness, after);
+    let current = harness.scope()["startup_account_source"].clone();
+    assert_seal_original_sources(&harness, &current);
+    assert_flat_report(&mut harness, report, &current, false);
+    harness.stop().await;
+}
+
+#[tokio::test]
+async fn wrong_http_metadata_fallback_is_observed_separately_from_native_cache_mismatch() {
+    let mut harness = fixture(false, false, 2000).await;
+    invalidate_seal_with_identical_frame(&harness).await;
+    let after = harness.peer.state.data.lock().requests.len();
+    harness.peer.state.data.lock().meta_override = Some(json!({"universe":[{"name":"io:SNDK",
+        "szDecimals":4,"maxLeverage":10,"onlyIsolated":true,"marginMode":"strictIsolated"}],"collateralToken":1}));
+    assert!(mass(&harness).await.is_err());
+    let actual = assert_actual_fault_response(&harness, "meta", after);
+    assert_eq!(actual["collateralToken"], 1);
+    no_financial_effect(&harness);
+    harness.stop().await;
+}
+
+#[rstest]
+#[case("identical")]
+#[case("funds")]
+#[case("reader_close")]
+#[tokio::test]
+async fn original_full_read_crossing_private_source_cannot_create_reusable_seal(
+    #[case] fault: &str,
+) {
+    let mut harness = fixture(false, false, 2000).await;
+    invalidate_seal_with_identical_frame(&harness).await;
+    let source = harness.scope()["startup_account_source"].clone();
+    let mut response = harness.peer.state.data.lock().io.clone();
+    response["time"] = json!(now_ms());
+    override_response(&harness, "clearinghouseState", 200, &response.to_string());
+    let after = harness.peer.state.data.lock().requests.len();
+    let race = async {
+        await_request(&harness.peer.state, "clearinghouseState", after).await;
+        if fault == "reader_close" {
+            harness
+                .peer
+                .state
+                .instructions
+                .send(PeerInstruction::Close)
+                .unwrap();
+        } else {
+            let frame = if fault == "funds" {
+                let mut snapshot = harness.peer.state.clearinghouse_frame();
+                snapshot["data"]["clearinghouseState"]["marginSummary"]["accountValue"] =
+                    json!("99");
+                snapshot["data"]["clearinghouseState"]["withdrawable"] = json!("99");
+                snapshot
+            } else {
+                harness.peer.state.clearinghouse_frame()
+            };
+            harness
+                .peer
+                .state
+                .instructions
+                .send(PeerInstruction::Frame(frame))
+                .unwrap();
+        }
+    };
+    let (result, ()) = tokio::join!(mass(&harness), race);
+    assert!(
+        result.is_err(),
+        "crossed original full read returned a report"
+    );
+    assert_actual_fault_response(&harness, "clearinghouseState", after);
+    assert!(
+        harness.scope()["startup_account_source"].is_null()
+            || harness.scope()["startup_account_source"] == source,
+        "crossed full read manufactured a new source seal"
+    );
+    harness.apply_events();
+    no_financial_effect(&harness);
+    harness.stop().await;
+}
+
+#[rstest]
+#[case("identical")]
+#[case("funds")]
+#[case("reader_close")]
+#[case("native_cache")]
+#[tokio::test]
+async fn reused_source_cannot_survive_real_changes_during_actual_history_window(
+    #[case] fault: &str,
+) {
+    let mut harness = fixture(false, false, 2000).await;
+    override_response(&harness, "historicalOrders", 200, "[]");
+    let after = harness.peer.state.data.lock().requests.len();
+    let race = async {
+        await_request(&harness.peer.state, "historicalOrders", after).await;
+        if fault == "reader_close" {
+            harness
+                .peer
+                .state
+                .instructions
+                .send(PeerInstruction::Close)
+                .unwrap();
+        } else if fault == "native_cache" {
+            harness.peer.state.data.lock().meta_override = Some(
+                json!({"universe":[{"name":"io:SNDK",
+                "szDecimals":3,"maxLeverage":10,"onlyIsolated":true,"marginMode":"strictIsolated"}],"collateralToken":0}),
+            );
+            let mut provider =
+                HyperliquidHttpClient::new(HyperliquidEnvironment::Testnet, 2, None).unwrap();
+            provider.set_base_info_url(format!("http://{}/info", harness.peer.addr));
+            for instrument in provider.request_instruments().await.unwrap() {
+                harness
+                    .cache
+                    .borrow_mut()
+                    .add_instrument(instrument)
+                    .unwrap();
+            }
+        } else {
+            let mut frame = harness.peer.state.clearinghouse_frame();
+            if fault == "funds" {
+                frame["data"]["clearinghouseState"]["marginSummary"]["accountValue"] = json!("99");
+                frame["data"]["clearinghouseState"]["withdrawable"] = json!("99");
+            }
+            harness
+                .peer
+                .state
+                .instructions
+                .send(PeerInstruction::Frame(frame))
+                .unwrap();
+        }
+    };
+    let (result, ()) = tokio::join!(mass(&harness), race);
+    assert!(result.is_err(), "superseded reused group returned a report");
+    assert_actual_fault_response(&harness, "historicalOrders", after);
+    harness.apply_events();
+    no_financial_effect(&harness);
+    harness.stop().await;
+}
+
+#[tokio::test]
+async fn reused_source_expiring_after_successful_empty_reads_cannot_refresh_its_own_time() {
+    let mut harness = fixture(false, false, 500).await;
+    let original = harness.scope()["startup_account_source"].clone();
+    assert!(original.is_object());
+    override_response(&harness, "historicalOrders", 600, "[]");
+    let after = harness.peer.state.data.lock().requests.len();
+    assert!(mass(&harness).await.is_err());
+    assert_actual_fault_response(&harness, "historicalOrders", after);
+    let scope = harness.scope();
+    assert!(
+        scope["startup_account_source"].is_null() || scope["startup_account_source"] == original,
+        "expiry renewed the original seal instead of revoking it"
+    );
+    assert_eq!(
+        scope["account"]["http_source_time_ms"],
+        original["http_source_time_ms"]
+    );
+    assert_eq!(
+        scope["account"]["http_verification_started_time_ms"],
+        original["verification_started_ms"]
+    );
+    no_financial_effect(&harness);
+    harness.stop().await;
+}
+
+#[tokio::test]
+async fn reused_source_total_deadline_does_not_accept_late_successful_history() {
+    let mut harness = fixture(false, false, 2000).await;
+    override_response(&harness, "historicalOrders", 5000, "[]");
+    let after = harness.peer.state.data.lock().requests.len();
+    let started = tokio::time::Instant::now();
+    assert!(mass(&harness).await.is_err());
+    assert!(started.elapsed() < Duration::from_secs(4));
+    assert!(
+        harness
+            .peer
+            .state
+            .data
+            .lock()
+            .requests
+            .iter()
+            .skip(after)
+            .any(|request| request["type"] == "historicalOrders")
+    );
+    no_financial_effect(&harness);
+    harness.stop().await;
+}

@@ -1,0 +1,82 @@
+"""Commit only the exact reviewed and locally validated startup source change."""
+
+import hashlib
+import json
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+NATIVE = Path("E:/persarb/worktrees/entropy-startup-account-proof")
+BASE = "aadad78fab77467f4a1467a252947ebb84f5361d"
+FILES = (
+    ".gitattributes",
+    "crates/adapters/hyperliquid/src/account_scope.rs",
+    "crates/adapters/hyperliquid/src/execution_scope.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account/execution.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account/startup.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account/startup_source_reuse.rs",
+)
+
+
+def git(*args):
+    return subprocess.check_output(["git", *args], cwd=NATIVE)
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def main():
+    output = ROOT / "native115-implementation-commit.json"
+    assert not output.exists()
+    assert git("rev-parse", "HEAD").decode().strip() == BASE
+    assert git("rev-parse", "origin/main").decode().strip() == BASE
+    assert not git("diff", "--cached", "--name-only").strip()
+    manifest_path = ROOT / "native115-formatted-v6.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for repository in ("native", "app"):
+        assert not manifest[repository]["missing_inputs"]
+        for row in manifest[repository]["files"]:
+            assert digest(Path(row["path"])) == row["sha256"], row["path"]
+    for label in (
+        "native115-startup-source-focused-v5",
+        "native115-existing-startup-focused-v5",
+        "native115-full-hyperliquid-regression-v6",
+        "native115-production-clippy-v5",
+        "native115-official-stubs-utf8-v6",
+        "native115-stub-comparison-v6",
+    ):
+        record = json.loads((ROOT / (label + ".json")).read_text(encoding="utf-8"))
+        assert record["exit_code"] == 0, label
+    subprocess.run(["git", "add", "--", *FILES], cwd=NATIVE, check=True)
+    subprocess.run(["git", "diff", "--cached", "--check"], cwd=NATIVE, check=True)
+    assert set(git("diff", "--cached", "--name-only").decode().splitlines()) == set(FILES)
+    command = [
+        "git", "commit", "-m", "Reuse sealed Hyperliquid io startup account sources", "-m",
+        "Preserve original complete HTTP/private source identity and metadata binding. "
+        "Keep three actual empty-history reads, fresh journal and all Cache exclusions. "
+        "Require strict new source qualification after a real fallback read, and "
+        "recheck original freshness and deadline after report construction under "
+        "the existing guards.\n\nReferences #115.",
+    ]
+    subprocess.run(command, cwd=NATIVE, check=True)
+    assert not git("status", "--porcelain").strip(), "Implementation checkout must be clean"
+    commit = git("rev-parse", "HEAD").decode().strip()
+    files = {}
+    for name in FILES:
+        current = digest(NATIVE / name)
+        assert hashlib.sha256(git("show", f"{commit}:{name}")).hexdigest() == current, name
+        files[name] = current
+    record = {
+        "committed_utc": datetime.now(timezone.utc).isoformat(), "base_main": BASE,
+        "commit": commit, "tree": git("rev-parse", "HEAD^{tree}").decode().strip(),
+        "command": command, "files": files, "clean": True,
+        "reviewed_manifest_sha256": digest(manifest_path),
+    }
+    output.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(record))
+
+
+if __name__ == "__main__":
+    main()

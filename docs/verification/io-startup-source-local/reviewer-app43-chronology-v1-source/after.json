@@ -1,0 +1,194 @@
+[
+  {
+    "path": "E:\\persarb\\_tmp\\entropy115-validation\\app43-chronology-v1-before\\entropy_execution_peer.py",
+    "sha256": "e288616d1ae21a79457f2a7ad49ce5859f9d22da585f31ecc95d08253eb7bc3a",
+    "expected_sha256": "e288616d1ae21a79457f2a7ad49ce5859f9d22da585f31ecc95d08253eb7bc3a",
+    "matches": true
+  },
+  {
+    "path": "E:\\persarb\\_tmp\\entropy115-validation\\app43-chronology-v1-frozen\\entropy_execution_peer.py",
+    "sha256": "11930d360dabe0c8751b0f2451c1f8570489311a8526b419a72b25781075515d",
+    "expected_sha256": "11930d360dabe0c8751b0f2451c1f8570489311a8526b419a72b25781075515d",
+    "matches": true
+  },
+  {
+    "path": "E:\\persarb\\_tmp\\entropy115-validation\\app43-chronology-v1-frozen\\test_entropy_execution_peer.py",
+    "sha256": "a6914257d27df9a3575bd2ce7257d43fd682a939365c1c84530d4bada8d8b809",
+    "expected_sha256": "a6914257d27df9a3575bd2ce7257d43fd682a939365c1c84530d4bada8d8b809",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-execution-app/CLAUDE.md",
+    "sha256": "e88c45fda78397824437eba1ba8bf3aa8c33760940d377b3f6e3e04f0477e530",
+    "expected_sha256": "e88c45fda78397824437eba1ba8bf3aa8c33760940d377b3f6e3e04f0477e530",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-execution-app/AGENTS.md",
+    "sha256": "0db83eca19a5637b536145f71915c4d1d84c7b186eaf809e266b126eb9fde7e5",
+    "expected_sha256": "0db83eca19a5637b536145f71915c4d1d84c7b186eaf809e266b126eb9fde7e5",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-execution-app/pyproject.toml",
+    "sha256": "398121ffe743271ad13da6c25b90322b2fbe70bb9b39e0b9229b976d4172c9bb",
+    "expected_sha256": "398121ffe743271ad13da6c25b90322b2fbe70bb9b39e0b9229b976d4172c9bb",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-execution-app/uv.lock",
+    "sha256": "b8d53b8754f95bf00a3cafe4019fb3d36f6156e37396900d3e43f288c02c2c16",
+    "expected_sha256": "b8d53b8754f95bf00a3cafe4019fb3d36f6156e37396900d3e43f288c02c2c16",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-execution-app/src/entropy_execution.py",
+    "sha256": "fbde3f919a6813a47aeb8c388ac3689a33689139d876c6e7e6551d7a364ab882",
+    "expected_sha256": "fbde3f919a6813a47aeb8c388ac3689a33689139d876c6e7e6551d7a364ab882",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-execution-app/src/entropy_execution_config.py",
+    "sha256": "45ed321317743d05a86b1a51058ad684dbd2e84f31bd86a9fd701845025d8c54",
+    "expected_sha256": "45ed321317743d05a86b1a51058ad684dbd2e84f31bd86a9fd701845025d8c54",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-execution-app/src/entropy_execution_core.py",
+    "sha256": "da5abc7ffa5d61439daaf814254aff4d99ad5a7f977790ee80f86dad910d2443",
+    "expected_sha256": "da5abc7ffa5d61439daaf814254aff4d99ad5a7f977790ee80f86dad910d2443",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-execution-app/src/entropy_execution_report.py",
+    "sha256": "5b1a01d4762173c739a90daed4878f854ab0f78b2232a5de07c6969eab9deffa",
+    "expected_sha256": "5b1a01d4762173c739a90daed4878f854ab0f78b2232a5de07c6969eab9deffa",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-execution-app/src/entropy_universe.py",
+    "sha256": "1161fd7a4baf2251b2abbf2177e3f55cf99c0ea0c4c2104c053e86195ec7c461",
+    "expected_sha256": "1161fd7a4baf2251b2abbf2177e3f55cf99c0ea0c4c2104c053e86195ec7c461",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-execution-app/scripts/verify_native_install.py",
+    "sha256": "8b177547f5be52a5f737d7d8c3e0ccfbdf392df326eb37badddecfdded56a9f9",
+    "expected_sha256": "8b177547f5be52a5f737d7d8c3e0ccfbdf392df326eb37badddecfdded56a9f9",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-execution-app/tests/test_entropy_execution_native.py",
+    "sha256": "9a975f5cca43b6b7cb778435a170b3a1223cf0db351417b7bfdd4f9788124120",
+    "expected_sha256": "9a975f5cca43b6b7cb778435a170b3a1223cf0db351417b7bfdd4f9788124120",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-execution-app/tests/test_entropy_execution_config.py",
+    "sha256": "8074c229469e950471e81b63e76d20fd4b46732248f04e5903b9a8250f902633",
+    "expected_sha256": "8074c229469e950471e81b63e76d20fd4b46732248f04e5903b9a8250f902633",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-execution-app/tests/test_entropy_execution_core.py",
+    "sha256": "7776a99af108fb6477fbcc136355b3d7df02d7bb0df10511727a03378df8989e",
+    "expected_sha256": "7776a99af108fb6477fbcc136355b3d7df02d7bb0df10511727a03378df8989e",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-execution-app/tests/test_entropy_execution_report.py",
+    "sha256": "fc1ed72df406d5221c5393a41606d13f0d07f1858cfd327407d0648dcc07fa73",
+    "expected_sha256": "fc1ed72df406d5221c5393a41606d13f0d07f1858cfd327407d0648dcc07fa73",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-execution-app/config/entropy-loopback-execution.example.toml",
+    "sha256": "15b454493fcc39d2f074871b6a178322e17bc852a420fe5f312a5bf7285e8a27",
+    "expected_sha256": "15b454493fcc39d2f074871b6a178322e17bc852a420fe5f312a5bf7285e8a27",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-execution-app/config/native-candidate.lock.json",
+    "sha256": "324d00eaf5e26220aa32a0d39b2b9540c331e5fda2611f71d5d6ede3a7336c27",
+    "expected_sha256": "324d00eaf5e26220aa32a0d39b2b9540c331e5fda2611f71d5d6ede3a7336c27",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-execution-app/tests/fixtures/entropy-execution/README.md",
+    "sha256": "17aba7f3b897a695835e26bcc22f81803faf279208a5e88fb378e3eafb82bd6d",
+    "expected_sha256": "17aba7f3b897a695835e26bcc22f81803faf279208a5e88fb378e3eafb82bd6d",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-execution-app/tests/fixtures/entropy-public/synthetic-metadata.json",
+    "sha256": "166db5f747a4b9c5151e22d196051830ab27711fc6cf27a0c7e1a59ebe1211a3",
+    "expected_sha256": "166db5f747a4b9c5151e22d196051830ab27711fc6cf27a0c7e1a59ebe1211a3",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-startup-account-proof/Cargo.toml",
+    "sha256": "46b62a317d15d8e2d1701bf3d0e834bed4973860ebb685749800f148f42f2d5a",
+    "expected_sha256": "46b62a317d15d8e2d1701bf3d0e834bed4973860ebb685749800f148f42f2d5a",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-startup-account-proof/Cargo.lock",
+    "sha256": "a802008d4363de0a4e28dd3b14990d0d79f95ef8a89431c5936fc31e1215463a",
+    "expected_sha256": "a802008d4363de0a4e28dd3b14990d0d79f95ef8a89431c5936fc31e1215463a",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-startup-account-proof/crates/adapters/hyperliquid/src/execution.rs",
+    "sha256": "2b1e30b896b60b01edd257947426c5f132b841dc7fe7771602f1e810c81c3316",
+    "expected_sha256": "2b1e30b896b60b01edd257947426c5f132b841dc7fe7771602f1e810c81c3316",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-startup-account-proof/crates/adapters/hyperliquid/src/execution_scope.rs",
+    "sha256": "afc9ba90c3c7a2b57e6e41212704d333e964b4934b88653960cbca599a16b4d1",
+    "expected_sha256": "afc9ba90c3c7a2b57e6e41212704d333e964b4934b88653960cbca599a16b4d1",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-startup-account-proof/crates/adapters/hyperliquid/src/account_scope.rs",
+    "sha256": "2b176ca4b355955268fe26a218a3019b5195ee4a3e87edd6c24e604f4553d0ce",
+    "expected_sha256": "2b176ca4b355955268fe26a218a3019b5195ee4a3e87edd6c24e604f4553d0ce",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-startup-account-proof/crates/adapters/hyperliquid/src/http/client.rs",
+    "sha256": "ba66b53fcc6a6d1fb6e8bb34ac6faf677cd9e7eb6ffe89eea9e2c11ea398eab2",
+    "expected_sha256": "ba66b53fcc6a6d1fb6e8bb34ac6faf677cd9e7eb6ffe89eea9e2c11ea398eab2",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-startup-account-proof/crates/adapters/hyperliquid/src/websocket/client.rs",
+    "sha256": "15a9fdde9cf9df8e491a63dde625de7029ac85868f19a8dc775d56f2ea160b9a",
+    "expected_sha256": "15a9fdde9cf9df8e491a63dde625de7029ac85868f19a8dc775d56f2ea160b9a",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-startup-account-proof/crates/adapters/hyperliquid/src/http/rate_limits.rs",
+    "sha256": "47dd217c00b7a28358b2f28b7e1803c72e5817212300a2e62c2f0a419047dafc",
+    "expected_sha256": "47dd217c00b7a28358b2f28b7e1803c72e5817212300a2e62c2f0a419047dafc",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-startup-account-proof/crates/adapters/hyperliquid/src/economics_scope.rs",
+    "sha256": "2ebdf3756f39ea0cd32cfdc79d84ef7babdcabd6c2d7fea0b0f00d4c151f7f47",
+    "expected_sha256": "2ebdf3756f39ea0cd32cfdc79d84ef7babdcabd6c2d7fea0b0f00d4c151f7f47",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-startup-account-proof/crates/common/src/runner.rs",
+    "sha256": "8c97f8e42092665146c4e0ff976ee9e49a766cf003229b46de8131953000a845",
+    "expected_sha256": "8c97f8e42092665146c4e0ff976ee9e49a766cf003229b46de8131953000a845",
+    "matches": true
+  },
+  {
+    "path": "E:/persarb/worktrees/entropy-startup-account-proof/crates/live/src/runner.rs",
+    "sha256": "cc4a6b2928e4135c83220cf900244b8cdf430dc1f28cfb7803740504998520ac",
+    "expected_sha256": "cc4a6b2928e4135c83220cf900244b8cdf430dc1f28cfb7803740504998520ac",
+    "matches": true
+  }
+]

@@ -1,0 +1,185 @@
+{
+  "captured_utc": "2026-10-09T08:58:42.945005+00:00",
+  "base": "aadad78fab77467f4a1467a252947ebb84f5361d",
+  "tree": "cc4e4a95952b2767f096c7c47c951973d6b58e01",
+  "origin": "Actual original main Git blobs; not a claim that current working files are unchanged",
+  "files": [
+    {
+      "path": ".gitattributes",
+      "git_blob": "9bd0b7f69cea40e3014ca86cb3b0b98332cc90bc",
+      "bytes": 705,
+      "sha256": "7b3788d537d7f27cc6bb86436c4c15f9ab32febd126467530ab69b1920856ce2"
+    },
+    {
+      "path": "python/pyproject.toml",
+      "git_blob": "180261240e3828f30019b4e9e181594c3f872892",
+      "bytes": 11420,
+      "sha256": "51288a9b821361cdfa6a915ca3048c2e5daf92e9793edd1b8514c0767e666018"
+    },
+    {
+      "path": "python/uv.lock",
+      "git_blob": "df3e086d8146f7d5078293959784fa2907b8a5db",
+      "bytes": 200194,
+      "sha256": "5bf016c9fa06ee5ecad7d3d346e148793a205bb186e56bfb5d30106a57be7a55"
+    },
+    {
+      "path": "Cargo.toml",
+      "git_blob": "b26267da95ce9a55df7d35921060170c4d03ed1b",
+      "bytes": 24273,
+      "sha256": "46b62a317d15d8e2d1701bf3d0e834bed4973860ebb685749800f148f42f2d5a"
+    },
+    {
+      "path": "Cargo.lock",
+      "git_blob": "b4ffe366627213e9cb99664081632ec4afb90187",
+      "bytes": 259667,
+      "sha256": "a802008d4363de0a4e28dd3b14990d0d79f95ef8a89431c5936fc31e1215463a"
+    },
+    {
+      "path": "AGENTS.md",
+      "git_blob": "3bff96e524395aa52df75f9f19c4db18da80219e",
+      "bytes": 4285,
+      "sha256": "846051c913f6fca348bf09b8e0051e1f0d98915c35c73505ff2c6aafb43a0e1a"
+    },
+    {
+      "path": "AI_POLICY.md",
+      "git_blob": "1ae1e46d5a99490114bac6b0bf37fba76c6d4b5c",
+      "bytes": 5058,
+      "sha256": "57c967521e37dba26dc00e88d8d8e098ab58574c2ab506b5be629862602d304d"
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "git_blob": "eb164d8066843fe75af0df2f081ff0f0335fb701",
+      "bytes": 8543,
+      "sha256": "c0f05ebf611b058af9bc5f8684fc88aab8a5b7089dcc5bdc98b3d1dc345e189b"
+    },
+    {
+      "path": "docs/developer_guide/coding_standards.md",
+      "git_blob": "488f50ad4f793c031b8e723700f793f335c3e957",
+      "bytes": 11180,
+      "sha256": "cd807899f98d98338afbbb72d75300d26b5064c1d23cfa61a29c09e40829d492"
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/execution_scope.rs",
+      "git_blob": "793ae67c93dca9d70b5f2900fa619163f1d67ebe",
+      "bytes": 182824,
+      "sha256": "fd10b2e0deb1b90e42dcb0756eb68d2227b3bffe7d383807a93cf962e67270d2"
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/execution.rs",
+      "git_blob": "19e9e7d66d7a05925bd91d01a410c7e73b67080d",
+      "bytes": 250478,
+      "sha256": "2b1e30b896b60b01edd257947426c5f132b841dc7fe7771602f1e810c81c3316"
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/http/client.rs",
+      "git_blob": "1f6632efbd902fdd9d15ba47922ff8daa3560193",
+      "bytes": 176208,
+      "sha256": "ba66b53fcc6a6d1fb6e8bb34ac6faf677cd9e7eb6ffe89eea9e2c11ea398eab2"
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/account_scope.rs",
+      "git_blob": "12e22cc8ccd53a207d0a96ff314f1961929e905e",
+      "bytes": 58494,
+      "sha256": "586839f5e0a2bc598330d28a6b22746bb12f44ca2bb2df0fad10fcc5e632483c"
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/websocket/client.rs",
+      "git_blob": "aacccb02cb636f473b05cb406e10090619fe4a26",
+      "bytes": 131462,
+      "sha256": "15a9fdde9cf9df8e491a63dde625de7029ac85868f19a8dc775d56f2ea160b9a"
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/economics_scope.rs",
+      "git_blob": "5e8cf4e191c2d1bedf1f2c680edb7a1fe9c2c384",
+      "bytes": 34956,
+      "sha256": "2ebdf3756f39ea0cd32cfdc79d84ef7babdcabd6c2d7fea0b0f00d4c151f7f47"
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/http/rate_limits.rs",
+      "git_blob": "c94e40d3731c84c3f3a73d0cd4eef18bd5885d21",
+      "bytes": 15968,
+      "sha256": "47dd217c00b7a28358b2f28b7e1803c72e5817212300a2e62c2f0a419047dafc"
+    },
+    {
+      "path": "crates/common/src/runner.rs",
+      "git_blob": "12c62ac87f2db2235df4d69690f95b8e7a9d9987",
+      "bytes": 37029,
+      "sha256": "8c97f8e42092665146c4e0ff976ee9e49a766cf003229b46de8131953000a845"
+    },
+    {
+      "path": "crates/live/src/runner.rs",
+      "git_blob": "43e677755da66ac7c577a753f2cbe918e0b57f86",
+      "bytes": 77300,
+      "sha256": "cc4a6b2928e4135c83220cf900244b8cdf430dc1f28cfb7803740504998520ac"
+    },
+    {
+      "path": "crates/adapters/hyperliquid/tests/entropy_account.rs",
+      "git_blob": "6fa31885158a8db6c5e6baa36e015c3a64c652de",
+      "bytes": 45087,
+      "sha256": "5976b5e8e5b9e19314679ca009365024817a2ad4e3a07ac65c7cdf1d06a79c07"
+    },
+    {
+      "path": "crates/adapters/hyperliquid/tests/entropy_account/execution.rs",
+      "git_blob": "843308d3a01ed819341693ae24541fd4d776fe12",
+      "bytes": 58936,
+      "sha256": "c7765f65fc74d682c9245a54df47aacb428c1f394c0ff9903691057f765c7a95"
+    },
+    {
+      "path": "crates/adapters/hyperliquid/tests/entropy_account/startup.rs",
+      "git_blob": "81cdf5459d6dc4661c499074cbb4307f940947f7",
+      "bytes": 31608,
+      "sha256": "248e423dab7a105c93c99e0256f4cd060df6b63adf47bafa2bbbf4665da223a8"
+    },
+    {
+      "path": "crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs",
+      "git_blob": "64d86fd56c8b74e8bb7d698cba5f47154daff4eb",
+      "bytes": 71854,
+      "sha256": "2fca06baee1dc91a94ac1956db71c555db980c3566fd25c453ad7b99bfc4f58b"
+    },
+    {
+      "path": "crates/live/src/node/mod.rs",
+      "git_blob": "a15ef078b281d3f0e394174de0732dc9491e6cf6",
+      "bytes": 312511,
+      "sha256": "b25b76f9efacd998d180b72172c85261292f999ebc196a160c2fc3c7f17ce044"
+    },
+    {
+      "path": "crates/live/src/execution/manager.rs",
+      "git_blob": "789637eace50643245f11312fa77d85d387c52ff",
+      "bytes": 311998,
+      "sha256": "6f700cb823d634f64efaa04efa8ed0b949c43bf27284090074e7eb5b65e998c9"
+    },
+    {
+      "path": "crates/model/src/reports/mass_status.rs",
+      "git_blob": "e8847b39dd31705b91d9841ad1955939aec7d05c",
+      "bytes": 20654,
+      "sha256": "b358556a4b05afb510e797477fc2db76829679533aa3e69aa6cee8a0cec82c94"
+    },
+    {
+      "path": "python/generate_stubs.py",
+      "git_blob": "e03f123d78b4d6c46faa49171b807280bdf341d7",
+      "bytes": 122759,
+      "sha256": "59f80e4b8b337733705f23a9ebdecd48b6eb10893a16ce9382e115dc2e2491e7"
+    },
+    {
+      "path": "scripts/adapter-evidence/build_native.py",
+      "git_blob": "16730661bfc15edeb42f2e7b106e5cfda35c545a",
+      "bytes": 6026,
+      "sha256": "7f94cb247ddbc432779b03e97f87a75703df882fa39bee359413ae2e69d98b70"
+    },
+    {
+      "path": "python/nautilus_trader/adapters/hyperliquid/__init__.py",
+      "git_blob": "26ea657d11705554550f45cdc70aa77d8c3bc5b1",
+      "bytes": 1635,
+      "sha256": "2188e2ef55f0927e954eb9ce78d5430eaad84e61a9645e3c0178a0dfd05b3612"
+    },
+    {
+      "path": "python/nautilus_trader/adapters/hyperliquid/__init__.pyi",
+      "git_blob": "afa997f9e2c22e01919e3d78dc904f493c4d4134",
+      "bytes": 20210,
+      "sha256": "016760dd07b4e7498769088ce6a7ac85100ba3fcaf07a0abd33e8e51614d7cfd"
+    }
+  ],
+  "absent_at_base": [
+    "crates/adapters/hyperliquid/tests/entropy_account/startup_source_reuse.rs"
+  ]
+}

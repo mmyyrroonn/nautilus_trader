@@ -1,0 +1,25 @@
+{
+  "argv": [
+    ".venv/Scripts/python.exe",
+    "-m",
+    "pytest",
+    "-q",
+    "tests/test_entropy_execution_native.py::test_actual_installed_factory_two_leg_execution[paired]",
+    "--basetemp",
+    "E:/persarb/_tmp/app43-native115-chronology-first-paired-pytest-20261009"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-execution-app",
+  "started_utc": "2026-10-09T10:11:46.206245+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "uv_project_environment": null,
+  "nautilus_stub_profile": null,
+  "cargo_build_warnings": null,
+  "cargo_net_offline": null,
+  "entropy43_native_wheel": "E:/persarb/_tmp/entropy115-wheel-nextest-20261009/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+  "entropy43_native_sha256": "7ea01172ddb8f7bc985edcf5641b62b1d4fc0e4704d79a68d0dc615d3926d748",
+  "entropy43_native_provenance": "E:/persarb/_tmp/entropy115-wheel-nextest-20261009/native-provenance.json",
+  "entropy43_evidence_root": "E:/persarb/_tmp/app43-native115-chronology-first-paired-20261009",
+  "exit_code": 1,
+  "finished_utc": "2026-10-09T10:12:04.739496+00:00"
+}

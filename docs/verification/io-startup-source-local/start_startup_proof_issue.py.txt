@@ -1,0 +1,54 @@
+"""Start the next finite startup proof dependency from freshly fetched main."""
+
+import json
+import subprocess
+from pathlib import Path
+
+from github113 import api
+
+NATIVE = Path("E:/persarb/worktrees/entropy-startup-account-proof")
+REPO = "repos/mmyyrroonn/nautilus_trader"
+BASE = "aadad78fab77467f4a1467a252947ebb84f5361d"
+
+
+def main():
+    head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=NATIVE).decode().strip()
+    assert head == BASE
+    assert not subprocess.check_output(["git", "status", "--porcelain"], cwd=NATIVE).strip()
+    main = api(f"{REPO}/git/ref/heads/main", "native-startup-proof-current-main-guard")
+    assert main["object"]["sha"] == BASE
+    existing = api(f"{REPO}/issues?state=open&per_page=100", "native-startup-proof-existing-issues")
+    assert not any("sealed" in item["title"].lower() for item in existing)
+    body = f"""应用[#43](https://github.com/mmyyrroonn/Nautilus-Perps/issues/43)的下一必要有限依赖，按本轮逐issue实现/子代理review/留痕/PR/合并授权推进。本单在[#113/PR114](https://github.com/mmyyrroonn/nautilus_trader/pull/114)已经CI/review合并后，重新fetch最新`main@{BASE}`并建立独立`feature/entropy-startup-account-proof`，不继续修改旧113分支。
+
+113真实paired仍FAIL：首腿normal native/Cache/PF完成0.12；11warm原文完整保存，但完整账户核验跨度至少2108ms超过原2000ms。重复startup fullaccount group源成本182；省去它可能减少本轮配额等待，但不是已实测bucket节省或paired成功。原113 Unknown debt仍immutable，不能借此恢复已经失败的旧run。
+
+现有trusted snapshot/metadata origin不等于可复用的完整来源：原normal刷新最终缺少received-sequence与全部私有财务fact的完整fence。必须在实际原事务内产生seal，禁止事后retro-seal旧状态。
+
+## 有限验收
+
+- [ ] 原始完整normal role/两轮mode/collateral/metadata/io account读取中产生private runtime-scoped sealed source；保留真实request/body/source/receive/verification start/end，绑定实际reader gen/epoch/received/applied/full-private-funds/account+hard revisions；最终真实锁边界再次核查，任何跨帧含同值/同仓位现金更新均不封存来源，不借trusted/Ready补证。
+- [ ] 原fresh-zero descriptor origin、零owned action/fill/history/debt、current recovery、严格full io flat、selected政策和HTTP/Engine instrument全字段不变时才允许startup复用；不刷新时间或额外emit AccountState，不重放/清Unknown debt。missing/changed/unsealed时仅在原完整路径独立可用时actual fullread，否则有限拒绝。
+- [ ] 仍actual读取三完整explicit empty frontendOpenOrders(io)/userFills/historicalOrders，保留旧history/cap/foreign/Cache/all-strategy/journal拒绝与selected Flat/report_complete=false；原fullaccount window/source times原样使用，不造current全账户/全历史证明。
+- [ ] ingress→account→execution最终guard覆盖report创建；原received/applied/funds/revisions/metadata/nativeCache/owner/lifetime/TTL/deadline在锁等待后核查，无await。1200/min、20/sec、account2000ms/metadata30000ms/recovery3000ms/action/cleanup/caps全部不变，不能预填/透支或重启deadline。
+- [ ] 原业务负例/拒绝断言保留，新增真实source-seal/reuse/fallback/三emptyarray/时间窗口验收。原12个connect后纯future-HTTP故障不可被未请求的响应观测；用normal同值WS帧确认实际native新seq/application、使seal失效但currenttrust仍有效，然后actual fullread读到原target坏response并拒绝。明确fixture触发变化和未直接集成测试的机制边界，不冒称旧55源码/语义原样或无新测试即PASS。
+- [ ] 完整本地native回归/官方stubs/Python、独立review与真实binary/clean-source wheel normal installed-node、source/command/artifact/失败归档；应用#43在修正独立fixture执行/发送时序后用原2s/3s/15s真实重跑。PR从本main经actual CI后合并，只关闭本有限依赖，不提前关闭#43/E6/真实场所/kernel/经济项目。
+
+role/mode/history非atomic仍为有限来源证明，不能发现没有请求/私有信号的隐藏远端变化。优化省182只是source下界，需要实测，不承诺连续Ready/当前fixture成功。原Filled ACK/status源时间先于actualfill是单独模拟协议问题；修正须在真实ACK execution前创建不可变事实，150ms只延迟publication/delivery，不回填时间/降低native chronology gate。
+
+无真实主网订单、transfer、mode/leverage修改；旧仓库与未提交原工作区保持不变。#29/#88/#89/#90/#107各自边界仍保留。"""
+    issue = api(f"{REPO}/issues", "native-startup-proof-issue-create", "POST", {
+        "title": "[P1][Entropy] Reuse sealed complete account sources for bounded fresh startup",
+        "body": body,
+    })
+    trace = api("repos/mmyyrroonn/Nautilus-Perps/issues/43/comments", "app43-startup-proof-dependency-start", "POST", {
+        "body": f"原生[#113/PR114](https://github.com/mmyyrroonn/nautilus_trader/pull/114)已完成并合并；下一有限依赖为[#{issue['number']}]({issue['html_url']})，已经重新fetch最新`main@{BASE}`并新建独立分支。只复用在原完整读取事务内严格来源绑定的账户proof，仍保留实际三empty reads与原全部TTL/quota/deadline/Unknown债务。旧currenttrusted不能事后封存；12个仅未来HTTP故障的fallback验收需normal同值native新seq并真实读取坏response，明确触发条件变化。fixture ACK/execution/delivery时序独立修正，当前没有新的paired PASS。",
+    })
+    result = {"issue": issue["number"], "url": issue["html_url"], "base": BASE,
+              "branch": "feature/entropy-startup-account-proof", "app_trace": trace["html_url"]}
+    Path(__file__).with_name("native-startup-proof-issue-result.json").write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(result))
+
+
+if __name__ == "__main__":
+    main()

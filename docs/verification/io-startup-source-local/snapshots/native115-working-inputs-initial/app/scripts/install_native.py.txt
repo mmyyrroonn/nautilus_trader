@@ -1,0 +1,209 @@
+"""Install a source-bound fork wheel into the exact application interpreter."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import subprocess
+import sys
+import tomllib
+import urllib.request
+import uuid
+import zipfile
+from datetime import UTC, datetime
+from pathlib import Path
+from urllib.parse import urlparse
+
+from packaging.requirements import Requirement
+from packaging.tags import sys_tags
+from verify_native_install import digest, verify
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def reject_shadow_dependency() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    requirements = list(project["project"].get("dependencies", []))
+    for group in project.get("dependency-groups", {}).values():
+        requirements.extend(item for item in group if isinstance(item, str))
+    if any(Requirement(item).name.replace("_", "-").lower() == "nautilus-trader"
+           for item in requirements):
+        raise ValueError("uv project metadata declares a competing native dependency")
+    lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
+    if any(item.get("name", "").replace("_", "-").lower() == "nautilus-trader"
+           for item in lock.get("package", [])):
+        raise ValueError("uv.lock contains a competing native package")
+
+
+def fetch(url: str, destination: Path) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
+        raise ValueError("formal artifact URLs must be credential-free HTTPS")
+    with urllib.request.urlopen(url, timeout=120) as response:
+        if urlparse(response.geturl()).scheme != "https":
+            raise ValueError("artifact URL redirected away from HTTPS")
+        with destination.open("wb") as output:
+            for chunk in iter(lambda: response.read(1024 * 1024), b""):
+                output.write(chunk)
+
+
+def choose_artifact(lock: dict) -> dict:
+    if lock.get("schema_version") != 1:
+        raise ValueError("unsupported native candidate lock schema")
+    matches = [
+        item for item in lock.get("artifacts", [])
+        if set(item.get("tags", [])).intersection(str(tag) for tag in sys_tags())
+    ]
+    if len(matches) != 1:
+        raise ValueError(f"expected one artifact for this Python ABI/platform, found {len(matches)}")
+    return matches[0]
+
+
+def check_provenance(provenance: Path, wheel: Path, expected_sha: str, *, allow_dirty: bool) -> dict:
+    record = json.loads(provenance.read_text(encoding="utf-8"))
+    source = record.get("declared_native", {})
+    if record.get("source_binding") != "verified":
+        raise ValueError("source-to-wheel binding is not verified")
+    if source.get("dirty_count") and not allow_dirty:
+        raise ValueError("native source is dirty; only an explicit local experiment may use it")
+    if record.get("wheel", {}).get("sha256") != expected_sha or digest(wheel) != expected_sha:
+        raise ValueError("wheel SHA-256 differs from the pinned candidate")
+    if record["wheel"].get("name", "").replace("_", "-").lower() != "nautilus-trader":
+        raise ValueError("candidate is not nautilus-trader")
+    if record["wheel"].get("version") != "2.0.0rc4":
+        raise ValueError("unexpected native version")
+    if not set(record["wheel"].get("tags", [])).intersection(str(tag) for tag in sys_tags()):
+        raise ValueError("wheel ABI or platform is incompatible with this interpreter")
+    with zipfile.ZipFile(wheel) as archive:
+        metadata_files = [name for name in archive.namelist() if name.endswith(".dist-info/WHEEL")]
+        if len(metadata_files) != 1:
+            raise ValueError("candidate wheel has no unique WHEEL metadata")
+        wheel_tags = {
+            line.removeprefix("Tag:").strip()
+            for line in archive.read(metadata_files[0]).decode("utf-8").splitlines()
+            if line.startswith("Tag:")
+        }
+        if wheel_tags != set(record["wheel"]["tags"]) or not wheel_tags.intersection(
+            str(tag) for tag in sys_tags()
+        ):
+            raise ValueError("wheel ABI or platform metadata mismatch")
+        for entry in record.get("embedded_native_objects", []) + record.get("embedded_adapter_stubs", []):
+            try:
+                actual = hashlib.sha256(archive.read(entry["path"])).hexdigest()
+            except KeyError as exc:
+                raise ValueError("manifest names a missing wheel member") from exc
+            if actual != entry["sha256"]:
+                raise ValueError("embedded binary or stub SHA-256 mismatch")
+    return record
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--python", type=Path, required=True)
+    parser.add_argument("--lock", type=Path, help="formal URL and SHA-256 lock")
+    parser.add_argument("--native-root", type=Path, help="source checkout for a local override")
+    parser.add_argument("--wheel", type=Path, help="explicit local experiment wheel")
+    parser.add_argument("--provenance", type=Path, help="explicit local experiment provenance")
+    parser.add_argument("--sha256", help="explicit local experiment expected wheel SHA-256")
+    parser.add_argument("--local-override", action="store_true")
+    parser.add_argument("--additional-adapter", action="append", default=[],
+                        help="require this adapter's installed stub and exports")
+    parser.add_argument("--output", type=Path, required=True)
+    args = parser.parse_args()
+    try:
+        interpreter = Path(os.path.abspath(args.python))
+        if not interpreter.is_file():
+            raise ValueError("application interpreter is missing")
+        if Path(os.path.abspath(sys.executable)) != interpreter:
+            raise ValueError("run this script with --python as its actual interpreter")
+        if sys.prefix == sys.base_prefix:
+            raise ValueError("application interpreter must be a virtual environment")
+        if sys.version_info[:3] != (3, 12, 9):
+            raise ValueError("application CPython 3.12.9 is required")
+        reject_shadow_dependency()
+        uv = subprocess.check_output(["uv", "--version"], text=True).strip()
+        if not uv.startswith("uv 0.12.6 "):
+            raise ValueError("uv 0.12.6 is required")
+        if args.lock:
+            if args.local_override or args.wheel or args.provenance or args.sha256 or args.native_root:
+                raise ValueError("formal lock and local override cannot be combined")
+            lock_path = args.lock.resolve(strict=True)
+            lock = json.loads(lock_path.read_text(encoding="utf-8"))
+            artifact = choose_artifact(lock)
+            cache = ROOT / ".native-cache" / artifact["sha256"]
+            cache.mkdir(parents=True, exist_ok=True)
+            wheel = cache / artifact["filename"]
+            provenance = cache / "native-provenance.json"
+            if not wheel.is_file() or digest(wheel) != artifact["sha256"]:
+                fetch(artifact["url"], wheel)
+            if not provenance.is_file() or digest(provenance) != artifact["provenance_sha256"]:
+                fetch(artifact["provenance_url"], provenance)
+            if digest(provenance) != artifact["provenance_sha256"]:
+                raise ValueError("native provenance SHA-256 mismatch")
+            expected_sha = artifact["sha256"]
+            source = lock["native"]
+            allow_dirty = False
+        else:
+            if not (args.local_override and args.wheel and args.provenance and args.sha256 and args.native_root):
+                raise ValueError("supply a formal --lock or explicit --local-override inputs")
+            wheel = args.wheel.resolve(strict=True)
+            provenance = args.provenance.resolve(strict=True)
+            expected_sha = args.sha256.lower()
+            source = None
+            allow_dirty = True
+        record = check_provenance(provenance, wheel, expected_sha, allow_dirty=allow_dirty)
+        if args.native_root:
+            root = args.native_root.resolve(strict=True)
+            identity_module = root / "scripts" / "adapter-evidence" / "_identity.py"
+            if not identity_module.is_file():
+                raise ValueError("native checkout lacks the identity module")
+            code = (
+                "import pathlib,sys; sys.path.insert(0,sys.argv[1]); "
+                "from _identity import capture_identity,fingerprint; "
+                "print(fingerprint(capture_identity(pathlib.Path(sys.argv[2]))))"
+            )
+            actual = subprocess.check_output(
+                [str(interpreter), "-c", code, str(identity_module.parent), str(root)],
+                text=True,
+            ).strip()
+            if actual != record.get("source_fingerprint_sha256"):
+                raise ValueError("native source changed since this wheel was built")
+        if source:
+            actual_build = {
+                **record["declared_build"],
+                "builder_sha256": record["build"]["builder_sha256"],
+            }
+            if actual_build != lock.get("build"):
+                raise ValueError("native build inputs differ from formal lock")
+        if source and (
+            record["declared_native"].get("commit") != source.get("commit")
+            or record["declared_native"].get("tree") != source.get("tree")
+            or record.get("source_fingerprint_sha256") != source.get("fingerprint_sha256")
+        ):
+            raise ValueError("native source identity differs from the formal lock")
+        subprocess.run(
+            ["uv", "pip", "install", "--python", str(interpreter), "--no-deps",
+             "--reinstall-package", "nautilus-trader", str(wheel)],
+            check=True,
+        )
+        installed = verify(
+            wheel, expected_sha, provenance=provenance,
+            require_source_binding=True, require_ondo=True,
+            additional_adapters=tuple(args.additional_adapter),
+        )
+        installed["run_id"] = uuid.uuid4().hex
+        installed["generated_at"] = datetime.now(UTC).isoformat()
+        installed["candidate_lock_sha256"] = digest(args.lock) if args.lock else None
+        installed["mode"] = "formal" if args.lock else "local-override"
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(installed, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        print(f"installed source-bound native candidate: {expected_sha}")
+        return 0
+    except (OSError, ValueError, KeyError, subprocess.CalledProcessError, zipfile.BadZipFile) as exc:
+        parser.exit(2, f"native installation refused: {exc}\n")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

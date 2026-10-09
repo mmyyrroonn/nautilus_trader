@@ -1,0 +1,12 @@
+{
+  "utc": "2026-10-09T10:10:05.524452+00:00",
+  "reason": "Include the new real-loopback chronology test in current app candidate input identity; previous captures are preserved.",
+  "before": {
+    "path": "E:\\persarb\\_tmp\\entropy115-validation\\capture_app_candidate.py",
+    "sha256": "06137dc0392cc808eb1aa463df790920ed49405b3d19fe210c7fcf2ec18b4ef5"
+  },
+  "after": {
+    "path": "E:\\persarb\\_tmp\\entropy115-validation\\capture_app_candidate_v2.py",
+    "sha256": "5173e4c056f02f8d6d47c3222252f03b3117594ef1d009f701ebea62444d3d17"
+  }
+}

@@ -1,0 +1,26 @@
+﻿{
+    "executable":  "E:/persarb/worktrees/entropy-execution-app/.venv/Scripts/python.exe",
+    "argv":  [
+                 "E:/persarb/_tmp/entropy115-validation/reviewer-normal-startup-readonly-native115.py",
+                 "E:/persarb/_tmp/entropy115-validation/reviewer-native115-installed-readonly-20261009T100005Z/native",
+                 "E:/persarb/_tmp/entropy115-wheel-nextest-20261009/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+                 "7ea01172ddb8f7bc985edcf5641b62b1d4fc0e4704d79a68d0dc615d3926d748",
+                 "E:/persarb/_tmp/entropy115-wheel-nextest-20261009/native-provenance.json",
+                 "--native-commit",
+                 "617ffd42eeed6e8e5fff2ec36c10e25f0de1fcbe",
+                 "--native-tree",
+                 "834cd4329cbbd8c1ba7f4fe317b0d18a887f8e91",
+                 "--source-fingerprint",
+                 "739bb0507e1e320f4d35467537d02eee1139a478c6a5f7ccda4090e2b2288905",
+                 "--pyd-sha256",
+                 "2ab428c99dd5c676b1afa09a34e66ee3ef4d37f308f4a413b3f1ea136801fa81"
+             ],
+    "cwd":  "E:/persarb/worktrees/entropy-execution-app",
+    "started_utc":  "2026-10-09T10:00:05.0868657Z",
+    "finished_utc":  "2026-10-09T10:00:08.5156641Z",
+    "exit_code":  0,
+    "runner_sha256":  "cfdd0109e4843771b849d8b3de06b71d60ff56c9165d35302f2131dd73f3a445",
+    "stdout_sha256":  "f4cb0874541c8b8baa1ea91499d5f9df287fe5863e57bebc513492c4a7e93af4",
+    "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "no_git_cargo_build_install":  true
+}

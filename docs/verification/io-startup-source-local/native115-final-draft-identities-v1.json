@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "captured_utc": "2026-10-09T10:21:33.0834222Z",
+  "status": "drafts_frozen_for_root_review",
+  "encoding": "UTF-8",
+  "implementation": {
+    "baseline": "aadad78fab77467f4a1467a252947ebb84f5361d",
+    "commit": "617ffd42eeed6e8e5fff2ec36c10e25f0de1fcbe",
+    "tree": "834cd4329cbbd8c1ba7f4fe317b0d18a887f8e91",
+    "source_fingerprint": "739bb0507e1e320f4d35467537d02eee1139a478c6a5f7ccda4090e2b2288905",
+    "wheel_sha256": "7ea01172ddb8f7bc985edcf5641b62b1d4fc0e4704d79a68d0dc615d3926d748",
+    "installed_pyd_sha256": "2ab428c99dd5c676b1afa09a34e66ee3ef4d37f308f4a413b3f1ea136801fa81"
+  },
+  "drafts": [
+    {
+      "path": "E:/persarb/_tmp/entropy115-validation/native115-contract-final-draft-v1.md",
+      "planned_repo_path": "docs/verification/io-startup-source-contract-20261009.md",
+      "bytes": 9426,
+      "sha256": "c6450d54ef70dbdd251ad7bb2a83f5f268928352f58bb533d727ee732f6e9b23"
+    },
+    {
+      "path": "E:/persarb/_tmp/entropy115-validation/native115-acceptance-final-draft-v1.md",
+      "planned_repo_path": "docs/verification/io-startup-source-acceptance-20261009.md",
+      "bytes": 12117,
+      "sha256": "e6743ad01fd4a286865e761273a106917742c17cc1a00b0c4949c7c300ce23c6"
+    }
+  ],
+  "selected_read_inputs": [
+    {
+      "path": "E:/persarb/worktrees/entropy-startup-account-proof/crates/adapters/hyperliquid/src/account_scope.rs",
+      "sha256": "2b176ca4b355955268fe26a218a3019b5195ee4a3e87edd6c24e604f4553d0ce"
+    },
+    {
+      "path": "E:/persarb/worktrees/entropy-startup-account-proof/crates/adapters/hyperliquid/src/execution_scope.rs",
+      "sha256": "afc9ba90c3c7a2b57e6e41212704d333e964b4934b88653960cbca599a16b4d1"
+    },
+    {
+      "path": "E:/persarb/_tmp/entropy115-validation/native115-prepackage-issue-v1-response.json",
+      "bytes": 6291,
+      "sha256": "d2bc240c617fc651a396716858274fd8f707e8febf540269719377386d179740"
+    },
+    {
+      "path": "E:/persarb/_tmp/entropy115-validation/native115-full-hyperliquid-regression-v6.json",
+      "bytes": 873,
+      "sha256": "859dd6fd344c1c40bd4c59c10ea8424c5a9ed2cadd7d63bd8d0c1705a980b267"
+    },
+    {
+      "path": "E:/persarb/_tmp/entropy115-validation/reviewer-native115-formatted-v6-style.md",
+      "bytes": 3912,
+      "sha256": "90d21838c9e3d1d184fc5df8f3ba3df02198b7c3dcee047387b2a7e2c2fbe9fb"
+    },
+    {
+      "path": "E:/persarb/_tmp/entropy115-validation/reviewer-native115-installed-readonly-final.md",
+      "bytes": 4601,
+      "sha256": "b068fc9b31457a095c7dffb5e4e358eabd1d7108f86f332a641d1f74c11e6d1f"
+    },
+    {
+      "path": "E:/persarb/_tmp/entropy115-validation/app43-native115-chronology-first-paired.json",
+      "bytes": 1107,
+      "sha256": "97cee3e78bfd0c2fbded23a7ac72608bd2b9ba3c1fb9ecc8858b263cfe1d3fad"
+    },
+    {
+      "path": "E:/persarb/_tmp/app43-native115-chronology-first-paired-20261009/paired/summary.json",
+      "bytes": 29516,
+      "sha256": "415b25ecd13800400019112922dd4331db79320f34f4fa5c3fe3e28438794459"
+    }
+  ],
+  "claims": {
+    "native_regression": "1387 passed, 0 failed, 18 ignored; new 22 included",
+    "independent_direct": "184 v5 passed and overlapping 7 v6 passed; counts are not additive",
+    "installed_python": "242 passed",
+    "installed_readonly": "passed with original 30-second account TTL; no separate consumed-reuse flag assertion",
+    "application_pure": "156 passed, 7 deselected",
+    "corrected_installed_paired": "failed; four fills and zero local positions do not prove complete fresh flatness",
+    "test_inclusive_clippy": "failed with 10 inherited diagnostics",
+    "make_checks": "two launch failures, exit 127",
+    "remote_ci": "not asserted at draft time"
+  },
+  "limits": {
+    "draft_author_executed_acceptance": false,
+    "production_or_test_edits": false,
+    "git_cargo_gh_build_install_or_native_import": false,
+    "archive_links": "planned root archive paths; root must review and map actual evidence before publication",
+    "current_inputs": "30 native sources frozen; earlier nine application inputs changed under later authorization; corrected paired has its own 57-input captures",
+    "not_certified": ["application #43 E6", "mainnet", "real-capital acceptance", "kernel isolation", "whole-account or historical completeness", "funding or run PnL", "generic cold native restoration", "native Portfolio authority", "arbitrary post-prepare Engine Cache mutation"]
+  }
+}

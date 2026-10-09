@@ -1,0 +1,37 @@
+{
+  "issue": 115,
+  "revision": "author-production-v1-pre-format",
+  "baseline_main": "aadad78fab77467f4a1467a252947ebb84f5361d",
+  "baseline_authority": "Fresh main/worktree/branch supplied by root; no child Git operations",
+  "worktree": "E:/persarb/worktrees/entropy-startup-account-proof",
+  "branch": "feature/entropy-startup-account-proof",
+  "utc": "2026-10-09T09:07:08.6404379Z",
+  "files": [
+    {
+      "path": "crates/adapters/hyperliquid/src/account_scope.rs",
+      "bytes": 69164,
+      "sha256": "e090ecbbd834ae4e760b6f9d098aa8a9f6fa75427e8dc820d0d254719d4d3095"
+    },
+    {
+      "path": "crates/adapters/hyperliquid/src/execution_scope.rs",
+      "bytes": 185419,
+      "sha256": "e48bf6a15c5929730d8c2950b2ac8199e1c03b211e612f42f0db0cde4c2c6d3a"
+    }
+  ],
+  "frozen": true,
+  "checks_run": [],
+  "unrun": [
+    "Cargo compilation",
+    "Rust format",
+    "native tests",
+    "Clippy",
+    "Python ABI/stubs",
+    "wheel build/install",
+    "application paired acceptance"
+  ],
+  "ownership": [
+    "account_scope.rs",
+    "execution_scope.rs"
+  ],
+  "execution_rs_changed": false
+}

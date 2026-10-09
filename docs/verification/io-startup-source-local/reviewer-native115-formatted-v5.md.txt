@@ -1,0 +1,51 @@
+# Native115 independent final formatted v5 source review
+
+2026-10-09 UTC. **Source recommendation: the reviewed v5 closes the three identified source-contract gaps; no remaining production blocker was found in this focused review.** This permits proceeding to implementation commit and required validation, not binary/wheel/paired or PR acceptance. Independent product tests in this phase: **0**. No Cargo, Git, GitHub, format, build, install, stubs, native imports or runtime tests were run, and no production/test files were edited.
+
+## Exact bytes and change verification
+
+Root manifest: `native115-formatted-v5.json`, captured 09:29:51-52Z, with complete snapshots under `snapshots/native115-formatted-v5`. Independent pre-review identity: `reviewer-native115-formatted-v5-pre.json`, SHA-256 `fce99e29a3c997e0f59d2352ef49cc1271e6812e84beefc7f003ab2ab274fb23`. All 39 actual current files and snapshot copies matched their expected hashes. The final companion JSON records the after-review comparison. Parent-reported fresh main base/head was not independently queried with Git.
+
+| Reviewed file under `crates/adapters/hyperliquid/` | SHA-256 |
+|---|---|
+| `src/account_scope.rs` | `2b176ca4b355955268fe26a218a3019b5195ee4a3e87edd6c24e604f4553d0ce` |
+| `src/execution_scope.rs` | `afc9ba90c3c7a2b57e6e41212704d333e964b4934b88653960cbca599a16b4d1` |
+| `tests/entropy_account/startup.rs` | `5a7b86d8b68e7f5929d43594c4f7c281cd972a70b8c10a8b01e0ce1af64db615` |
+| `tests/entropy_account/startup_source_reuse.rs` | `6c4c61de2d84ce81e351604801c20db964f24b8f658f6e80c4e2bd693466487a` |
+| `tests/entropy_account/execution.rs` | `d3958d96f3f48ada888b671ebc9de1f2ee361f6739d4f9c47b66b5c0b98dc1fb` |
+
+I verified the complete execution_scope.rs v2/v5 texts are identical after removing exactly one added four-line strict fallback gate. account_scope.rs is byte-identical to reviewed v2. Thus the prior full source review remains applicable with the explicitly resolved difference below. Prior v0/v1/v2 reports and all root failed evidence are preserved.
+
+## Closed fallback source gap
+
+`execution_scope.rs:1522-1526` now requires captured.startup_source.is_some() immediately after the ordinary fallback full-account read and final startup boundary. The existing before/captured reader, sequence, private-source, execution, metadata and full native instrument continuity checks remain afterward. Missing or invalid original seal may still take the genuine complete read while current source eligibility permits it. That read must itself form a strict original transaction seal; otherwise startup is finite Unknown and cannot emit flat reports or proceed to the three history reads.
+
+This closes the observed selected-row counterproof path: newly received HTTP meta rows incompatible with normal metadata/native Cache origin prevent strict sealing, and absence of the seal prevents the startup report. Exact private funds mismatch likewise cannot obtain report authority via the weaker legacy publication. It does not require retrospectively sealing a snapshot or changing ordinary legacy account publication into a broad generic recovery rewrite. A legacy account may remain trusted while strict startup is refused; execution recovery is invalidated on the startup error and old financial/debt facts are retained.
+
+Normal late Cache population alone cannot create retrospective account authority. A lifecycle with no qualified normal Engine Cache origin must remain strict Unknown until the ordinary origin/full-source requirements are genuinely established. A healthy coherent full read after an earlier connect crossing frame can form a new seal; an incomplete or crossing fallback cannot.
+
+## Prior time gaps remain closed
+
+`account_scope.rs:671-690` constructs all raw/context/account candidate copies before final scalar timestamp qualification and publication by move. Original start/source/transport receipt are not renewed; its verification end reflects the actual final boundary.
+
+`execution_scope.rs:1810-1849` holds ingress -> account -> execution guards through the finish closure's large comparisons/report construction, then resamples time and checks unchanged source/private TTL, metadata TTL, original seal freshness, current epoch/applied state and the same initial recovery deadline. No large copy, serialization, await or callback follows that last qualification. No deterministic exact private mutex-wait integration result is asserted by this source conclusion.
+
+## Original source, Cache and bounded refusal contracts
+
+The optional seal remains private and runtime-scoped, created only during the real full role/mode brackets/collateral/meta/io clearinghouse transaction with retained bounded actual requests/raw bodies/transport receipts. It captures reader generation/epoch/received/applied sequence, complete private financial/position source, account/hard revisions, immutable policy and normal metadata/native object context. It does not borrow a trusted diagnostic, metadata origin alone or old journal state as account proof.
+
+Identical and funds-only frames cannot bypass source sequence/full private comparison even when general account revision and positions stay unchanged. Normal metadata verification/once-only Cache binding mirrors context and clears prior seal; financial/hard invalidation and normal stop/shutdown revoke it. Historical retained diagnostics confer no authority. Startup independently requires original descriptor-zero freshness, no actions/intents/fills/reservations/source or projection debt, current recovery and epoch, full io flat source and all-account/all-strategy Cache history exclusions. Full serialized HTTP/Engine instruments are compared, rather than ID-only InstrumentAny equality.
+
+Every successful startup still fetches three real complete explicit empty arrays. Repeated mass calls repeat those reads, keep original source/window timestamps and reports_complete=false, and add no AccountState solely to renew freshness. The narrow change introduces no order send, fill/cache adoption, reserve release, debt clearing or extension of old finite economics coverage. Account 2s, metadata 30s, recovery 3s, native limiter and action/caps remain unchanged.
+
+## Negative assertions and root evidence
+
+The three new selected-row cases at `startup_source_reuse.rs:571-641` retain actual HTTP-only szDecimals=5, onlyIsolated=false and marginMode=cross contradictions with valid collateral0/universe and unchanged ordinary Cache/native proofs. They require actual meta/spotMeta response, null seal, Err, unchanged action/fill/intent/debt/policy facts, no financial projection and no startup history requests. Comparing their pre-gate archived body with v5 shows only formatting/optional trailing-comma differences; the refusal and source assertions are unweakened. Old Cache/provider wrong_metadata early refusal is still separate from the eleven adapted future-HTTP negatives and the actual HTTP metadata cases.
+
+I read the root's preserved pre-gate log/command evidence: UTC09:29:07.666068-09:29:11.594804, exit101, 0 pass/3 fail. The actual field contradictions were observed and startup admitted an unsealed report, confirming the prior source-path finding. This is **root execution evidence**, not my independent test execution. Log SHA-256 `c598777e73640d056f9f25959ee373464ac62fbb9e73b403fede5a183cc177cf`; command JSON SHA-256 `87da37da7721ae44d0ff6be6198cf0496ec8a4f2b119308bc6e10cb6fd4319c9`. The first v2 compile E0716 and subsequent v3 root 19-pass run are distinct; no v2 test success is invented, and no root counts are added to independent tests.
+
+## Remaining acceptance and unknowns
+
+The root's focused22 run is a separate validation phase; full regression, strict relevant checks, independently authorized stable copied binaries, clean-source final wheel and normal installed-node acceptance remain required. The bounded app paired run must independently prove its own outcome; 182 request-weight savings are source-derived and not a measured bucket balance or liveness guarantee.
+
+Role/mode/history requests remain non-atomic; silent unrequested remote changes remain unobservable. Isolated unapplied ingress, exact private lock-wait and same-received-sequence financial mutation remain compositional limits unless separately exercised through legitimate normal paths. Generic cold adoption, arbitrary post-prepare cross-Send Engine Cache mutation, kernel isolation, whole-account funding/economics/run PnL and real venues remain outside this narrow approval. Nothing clears the original immutable native113 failed-source debt or upgrades old failed-run evidence.

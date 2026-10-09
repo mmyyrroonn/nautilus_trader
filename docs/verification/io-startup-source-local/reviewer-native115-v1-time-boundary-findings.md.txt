@@ -1,0 +1,28 @@
+# Native115 v1 focused time-boundary review
+
+Read-only finding report, 2026-10-09 UTC. This is not a full or final source approval. The parent supplied frozen pre-format v1; independent product tests: 0. No source edits, Cargo, Git, formatting, builds, installs, native imports or execution occurred. The source author/root may revise these bytes after the recorded observations; post-fix qualification requires a new exact frozen manifest.
+
+Observed pre-format source identities:
+
+- `E:/persarb/worktrees/entropy-startup-account-proof/crates/adapters/hyperliquid/src/execution_scope.rs`: `e48bf6a15c5929730d8c2950b2ac8199e1c03b211e612f42f0db0cde4c2c6d3a`.
+- `E:/persarb/worktrees/entropy-startup-account-proof/crates/adapters/hyperliquid/src/account_scope.rs`: `e090ecbbd834ae4e760b6f9d098aa8a9f6fa75427e8dc820d0d254719d4d3095`.
+
+I read both with Get-Content/rg and obtained their actual hashes with Get-FileHash. Root's later formatted capture, rather than these superseded pre-format bytes, must bind formal review and executable evidence.
+
+## Finding 1: final startup freshness uses a time preceding extra waits/copies
+
+`execution_scope.rs:1641` samples `now` after ingress/account/execution guards, but before HTTP asset-index and cached-instrument access, complete HTTP/Engine serialization, policy serialization, seal filtering and the potentially 4 MiB seal clone. At approximately 1765, startup_source_matches receives that earlier now. Snapshot trust and metadata TTL checks also use the same earlier time. The final mass-status closure checks the 3-second recovery deadline, which cannot guarantee the distinct 2-second account or metadata validity after those additional waits.
+
+Confirm this as a source-contract gap before acceptance. Construct the heavy boundary copies first, then resample time and revalidate the unchanged account source/start/receipt and private source trust, all metadata TTLs and the original seal under the same held guards. Avoid self-locking account from a callback while its guard is held. Any further large comparison or copy inside the finish closure must precede the final freshness qualification; do not move the 4 MiB clone after that point. Keep the guards through report creation and no await. No deterministic exact lock-wait startup integration result is claimed here.
+
+## Finding 2: seal's original publication sample precedes raw-source cloning
+
+`account_scope.rs:604` samples boundary_time after exact financial/native validations, then constructs and assigns FullAccountSourceSeal with a sources mutex lock/clone, metadata-context clone, account snapshot serialization and potentially 4 MiB raw source copy. Thus the recorded final verification time and eligibility precede those operations.
+
+This is narrower than Finding 1: later strict reuse can still reject an expired seal, so this observation alone does not establish a reusable expired grant. Nevertheless, the original-transaction seal contract should place its final qualification after all original-source/object waits and heavy candidate construction. Build the detached candidate first, then sample the actual final time under ingress/account guards, validate the unchanged source and private facts/TTLs, set its true verification end and publish by moving it. This keeps original HTTP start/source/receive intact; it must not renew them.
+
+## Other bounded observations
+
+The inspected optional origin is captured inside the original actual complete HTTP group, retains actual transport receipt/raw requests and responses, captures received/applied sequence, and compares complete serialized private financial source facts. It is not a final review of lifecycle, all invalidation paths or tests. The optional stronger seal must not be confused with replacing inherited ordinary legacy Ready semantics; seal failure means no reuse authority unless the existing legacy path itself requires broader refusal.
+
+The previously resolved test distinction remains: eleven future-HTTP negatives use genuine applied identical private ingress to force a full read and actual faulty target receipt. The old wrong_metadata provider/Engine Cache early refusal is retained; a separate HTTP-only metadata negative covers actual bad-meta fallback. Any future report must disclose these setup changes rather than declaring all old triggers unchanged.

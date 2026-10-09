@@ -1,0 +1,135 @@
+[1m2026-10-09T10:00:07.341749400Z[0m [36m[INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: =================================================================[0m
+[1m2026-10-09T10:00:07.341846700Z[0m [36m[INFO] IO-115.IO-NATIVE115-STARTUP-READONLY:  NAUTILUS TRADER - Automated Algorithmic Trading Platform[0m
+[1m2026-10-09T10:00:07.341847700Z[0m [36m[INFO] IO-115.IO-NATIVE115-STARTUP-READONLY:  by Nautech Systems Pty Ltd.[0m
+[1m2026-10-09T10:00:07.341848000Z[0m [36m[INFO] IO-115.IO-NATIVE115-STARTUP-READONLY:  Copyright (C) 2015-2026. All rights reserved.[0m
+[1m2026-10-09T10:00:07.341848300Z[0m [36m[INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: =================================================================[0m
+[1m2026-10-09T10:00:07.341848800Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣀⣀⡤⠤⠤⠤⠤⠤⠤⠤⢤⡀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-09T10:00:07.341849600Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: ⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⠤⠖⠚⠉⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣸⠁⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-09T10:00:07.341850000Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: ⠀⠀⠀⠀⠀⠀⢀⣠⠖⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⡴⠚⠁⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-09T10:00:07.341850200Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: ⠀⠀⠀⠀⢀⡴⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⡞⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-09T10:00:07.341850500Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: ⠀⠀⠀⣠⠏⠀⠀⠀⠀⠀⠀⠀⠀⢀⣠⠤⠖⠒⠒⠒⠒⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-09T10:00:07.341850800Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: ⠀⠀⠀⡇⠀⠀⠀⠀⠀⠀⠀⢀⡖⠋⣠⢴⢪⠞⣩⢟⡭⠵⢤⣤⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-09T10:00:07.341851000Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: ⠀⠀⣦⡙⠦⣄⡀⠀⢀⣠⠴⠋⢠⡐⣇⢸⡘⢦⡇⣏⡴⣋⡭⠖⠮⢥⡀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-09T10:00:07.341851200Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: ⠀⠀⢸⡉⠓⠦⠭⠭⠭⠴⣺⠃⠸⣷⢬⣓⣛⠒⠩⣌⢡⡷⢒⣫⠭⣝⡛⠆⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-09T10:00:07.341851500Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: ⠀⠀⠀⠙⠦⢤⣀⣠⠤⠞⣡⠞⡆⠺⣭⣭⡷⢇⣷⡻⠡⠾⣛⣒⠦⢤⡙⡆⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-09T10:00:07.341851700Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: ⠀⠀⠀⠈⠳⣖⠒⠒⠒⠋⠁⣠⠇⡼⢦⠀⣌⡉⢥⣄⣛⡻⢥⡈⠉⢳⡙⠇⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-09T10:00:07.341851900Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: ⠀⠀⠀⠀⠀⠈⠙⣒⣒⣒⣋⡥⠞⠁⣸⠃⡇⠙⢦⢹⠀⠙⡆⢳⢀⡴⠃⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-09T10:00:07.341852200Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: ⠀⠀⠀⠀⠀⠀⠀⠈⠙⠒⠦⠤⠴⣚⣡⠞⠁⣠⠏⡼⢀⣠⠇⠞⠋⠀⠀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-09T10:00:07.341852400Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: ⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠉⠉⠉⠉⠑⠚⠋⠉⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[0m
+[1m2026-10-09T10:00:07.341852600Z[0m [36m[INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: =================================================================[0m
+[1m2026-10-09T10:00:07.341852900Z[0m [36m[INFO] IO-115.IO-NATIVE115-STARTUP-READONLY:  SYSTEM SPECIFICATION[0m
+[1m2026-10-09T10:00:07.341853200Z[0m [36m[INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: =================================================================[0m
+[1m2026-10-09T10:00:07.341854100Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: CPU architecture: AMD Ryzen 9 9950X 16-Core Processor            [0m
+[1m2026-10-09T10:00:07.341857100Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: CPU(s): 32 @ 4300 MHz[0m
+[1m2026-10-09T10:00:07.341857800Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: OS: kernel-26300 Windows 11 Pro[0m
+[1m2026-10-09T10:00:07.341905700Z[0m [36m[INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: =================================================================[0m
+[1m2026-10-09T10:00:07.341907100Z[0m [36m[INFO] IO-115.IO-NATIVE115-STARTUP-READONLY:  MEMORY USAGE[0m
+[1m2026-10-09T10:00:07.341907300Z[0m [36m[INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: =================================================================[0m
+[1m2026-10-09T10:00:07.341909800Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: RAM-Total: 93.65 GiB[0m
+[1m2026-10-09T10:00:07.341910400Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: RAM-Used: 28.64 GiB (30.58%)[0m
+[1m2026-10-09T10:00:07.341911100Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: RAM-Avail: 65.01 GiB (69.42%)[0m
+[1m2026-10-09T10:00:07.341921100Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: Swap-Total: 6.00 GiB[0m
+[1m2026-10-09T10:00:07.341922200Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: Swap-Used: 0.00 GiB (0.00%)[0m
+[1m2026-10-09T10:00:07.341923100Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: Swap-Avail: 6.00 GiB (100.00%)[0m
+[1m2026-10-09T10:00:07.341926800Z[0m [36m[INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: =================================================================[0m
+[1m2026-10-09T10:00:07.341927100Z[0m [36m[INFO] IO-115.IO-NATIVE115-STARTUP-READONLY:  IDENTIFIERS[0m
+[1m2026-10-09T10:00:07.341927400Z[0m [36m[INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: =================================================================[0m
+[1m2026-10-09T10:00:07.341931600Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: trader_id: IO-115[0m
+[1m2026-10-09T10:00:07.341932100Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: machine_id: 主力机器[0m
+[1m2026-10-09T10:00:07.341934300Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: instance_id: 4dcb2e31-2654-4455-a1d2-eed93419c408[0m
+[1m2026-10-09T10:00:07.341935300Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: PID: 20268[0m
+[1m2026-10-09T10:00:07.341935600Z[0m [36m[INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: =================================================================[0m
+[1m2026-10-09T10:00:07.341936000Z[0m [36m[INFO] IO-115.IO-NATIVE115-STARTUP-READONLY:  VERSIONING[0m
+[1m2026-10-09T10:00:07.341936300Z[0m [36m[INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: =================================================================[0m
+[1m2026-10-09T10:00:07.341965200Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: nautilus_trader: 2.0.0rc4[0m
+[1m2026-10-09T10:00:07.341965800Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: nautilus_core: 0.63.0[0m
+[1m2026-10-09T10:00:07.341973200Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: python: 3.12.9[0m
+[1m2026-10-09T10:00:07.342002600Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: git_commit: 617ffd42eeed[0m
+[1m2026-10-09T10:00:07.342003200Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: rustc: 1.98.0 (88d9e12ae 2026-08-18)[0m
+[1m2026-10-09T10:00:07.342003600Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: target: x86_64-pc-windows-msvc[0m
+[1m2026-10-09T10:00:07.342003900Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: profile: debug[0m
+[1m2026-10-09T10:00:07.342004400Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: panic: unwind[0m
+[1m2026-10-09T10:00:07.342004700Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: precision: high (128-bit, 16 dp)[0m
+[1m2026-10-09T10:00:07.342005100Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: allocator: mimalloc 0.1.52[0m
+[1m2026-10-09T10:00:07.342005400Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: cargo_lock: d964b5bd[0m
+[1m2026-10-09T10:00:07.342005800Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: rust_decimal: 1.42.1[0m
+[1m2026-10-09T10:00:07.342028000Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: rustls: 0.23.45[0m
+[1m2026-10-09T10:00:07.342028400Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: aws_lc_rs: 1.18.0[0m
+[1m2026-10-09T10:00:07.342028800Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: tokio: 1.53.1[0m
+[1m2026-10-09T10:00:07.342029500Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: pyo3: 0.29.2[0m
+[1m2026-10-09T10:00:07.342029900Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: pyo3_async_runtimes: 0.29.0[0m
+[1m2026-10-09T10:00:07.386930600Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: numpy: 2.5.2[0m
+[1m2026-10-09T10:00:07.578982800Z[0m [INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: pandas: 3.0.5[0m
+[1m2026-10-09T10:00:07.579388700Z[0m [36m[INFO] IO-115.IO-NATIVE115-STARTUP-READONLY: =================================================================[0m
+[1m2026-10-09T10:00:07.579436700Z[0m [INFO] IO-115.nautilus_system::kernel: Building system kernel[0m
+[1m2026-10-09T10:00:07.581471100Z[0m [INFO] IO-115.nautilus_live::node::builder: Registered DataClient-HYPERLIQUID[0m
+[1m2026-10-09T10:00:07.582762200Z[0m [INFO] IO-115.nautilus_execution::engine: Subscribed to instrument updates for venue HYPERLIQUID[0m
+[1m2026-10-09T10:00:07.582769900Z[0m [INFO] IO-115.nautilus_live::node::builder: Registered ExecutionClient-HYPERLIQUID[0m
+[1m2026-10-09T10:00:07.582901800Z[0m [INFO] IO-115.nautilus_live::node::builder: Built successfully[0m
+[1m2026-10-09T10:00:07.584665500Z[0m [INFO] IO-115.nautilus_live::node: Event loop starting[0m
+[1m2026-10-09T10:00:07.584683000Z[0m [INFO] IO-115.nautilus_system::kernel: Starting[0m
+[1m2026-10-09T10:00:07.584718100Z[0m [INFO] IO-115.nautilus_hyperliquid::data: Starting Hyperliquid data client: client_id=HYPERLIQUID, environment=Testnet, proxy_url=None[0m
+[1m2026-10-09T10:00:07.584802700Z[0m [INFO] IO-115.nautilus_hyperliquid::execution: Started: client_id=HYPERLIQUID, account_id=HYPERLIQUID-ENTROPY115, environment=Testnet, vault_address=None, proxy_url=None[0m
+[1m2026-10-09T10:00:07.584817700Z[0m [INFO] IO-115.nautilus_execution::engine: Started[0m
+[1m2026-10-09T10:00:07.584821500Z[0m [INFO] IO-115.nautilus_risk::engine: Started[0m
+[1m2026-10-09T10:00:07.584822400Z[0m [INFO] IO-115.nautilus_system::kernel: Initializing trader[0m
+[1m2026-10-09T10:00:07.584826800Z[0m [INFO] IO-115.nautilus_system::kernel: Started[0m
+[1m2026-10-09T10:00:07.584858900Z[0m [INFO] IO-115.nautilus_system::kernel: Connecting data clients...[0m
+[1m2026-10-09T10:00:07.593753200Z[0m [INFO] IO-115.nautilus_hyperliquid::data: Connected: client_id=HYPERLIQUID[0m
+[1m2026-10-09T10:00:07.593999600Z[0m [INFO] IO-115.nautilus_system::kernel: Connecting execution clients...[0m
+[1m2026-10-09T10:00:07.594029600Z[0m [INFO] IO-115.nautilus_hyperliquid::execution: Connecting Hyperliquid execution client[0m
+[1m2026-10-09T10:00:07.607131400Z[0m [INFO] IO-115.nautilus_portfolio::portfolio: Updated AccountState(account_id=HYPERLIQUID-ENTROPY115, account_type=MARGIN, base_currency=None, is_reported=true, balances=[AccountBalance(total=100.00000000 USDC, locked=0.00000000 USDC, free=100.00000000 USDC)], margins=[], event_id=47a1eeb7-2704-46c7-bc77-f0defa385bcd)[0m
+[1m2026-10-09T10:00:07.620006900Z[0m [INFO] IO-115.nautilus_hyperliquid::execution: Account HYPERLIQUID-ENTROPY115 registered[0m
+[1m2026-10-09T10:00:07.728738300Z[0m [INFO] IO-115.nautilus_hyperliquid::execution: Connected: client_id=HYPERLIQUID[0m
+[1m2026-10-09T10:00:07.728772700Z[0m [INFO] IO-115.nautilus_live::node: Awaiting engine connections (8s timeout)...[0m
+[1m2026-10-09T10:00:07.728817600Z[0m [INFO] IO-115.nautilus_live::node: All engine clients connected[0m
+[1m2026-10-09T10:00:07.728870900Z[0m [INFO] IO-115.nautilus_portfolio::portfolio: Updated AccountState(account_id=HYPERLIQUID-ENTROPY115, account_type=MARGIN, base_currency=None, is_reported=true, balances=[AccountBalance(total=100.00000000 USDC, locked=0.00000000 USDC, free=100.00000000 USDC)], margins=[], event_id=66db62dd-bc2b-41cd-b5ca-21d6ecf0d863)[0m
+[1m2026-10-09T10:00:07.728906500Z[0m [94m[INFO] IO-115.nautilus_live::node: Starting execution state reconciliation...[0m
+[1m2026-10-09T10:00:07.728925400Z[0m [94m[INFO] IO-115.nautilus_live::node: Requesting mass status from HYPERLIQUID...[0m
+[1m2026-10-09T10:00:07.731704200Z[0m [94m[INFO] IO-115.nautilus_live::node: Reconciling ExecutionMassStatus for HYPERLIQUID[0m
+[1m2026-10-09T10:00:07.731793900Z[0m [94m[INFO] IO-115.nautilus_live::execution::manager: Reconciling ExecutionMassStatus for HYPERLIQUID[0m
+[1m2026-10-09T10:00:07.731797000Z[0m [94m[INFO] IO-115.nautilus_live::execution::manager: Received 0 order(s), 0 fill(s), 1 position(s)[0m
+[1m2026-10-09T10:00:07.731916100Z[0m [94m[INFO] IO-115.nautilus_live::execution::manager: Reconciliation complete for HYPERLIQUID: reconciled=0, external=0, open=0, fills=0, positions=0, skipped=0, filtered=0[0m
+[1m2026-10-09T10:00:07.731922900Z[0m [94m[INFO] IO-115.nautilus_live::node: Reconciliation for HYPERLIQUID succeeded[0m
+[1m2026-10-09T10:00:07.731944300Z[0m [INFO] IO-115.nautilus_portfolio::portfolio: Initialized 0 open orders[0m
+[1m2026-10-09T10:00:07.731960600Z[0m [INFO] IO-115.nautilus_portfolio::portfolio: Initialized 0 open positions[0m
+[1m2026-10-09T10:00:07.731976400Z[0m [INFO] IO-115.nautilus_portfolio::portfolio: Initialized 0 Wallet reservations[0m
+[1m2026-10-09T10:00:07.731977400Z[0m [94m[INFO] IO-115.nautilus_live::node: Startup reconciliation completed in 0.00s[0m
+[1m2026-10-09T10:00:07.731983200Z[0m [INFO] IO-115.nautilus_system::kernel: Starting trader...[0m
+[1m2026-10-09T10:00:07.732000900Z[0m [INFO] IO-115.nautilus_execution::order_emulator::emulator: Started[0m
+[1m2026-10-09T10:00:07.732010600Z[0m [INFO] IO-115.nautilus_system::trader: Starting[0m
+[1m2026-10-09T10:00:07.732019300Z[0m [INFO] IO-115.nautilus_system::trader: Running[0m
+[1m2026-10-09T10:00:07.732020200Z[0m [INFO] IO-115.nautilus_system::kernel: Trader started[0m
+[1m2026-10-09T10:00:07.746237600Z[0m [INFO] IO-115.nautilus_live::node: Received stop signal from handle[0m
+[1m2026-10-09T10:00:07.746256900Z[0m [INFO] IO-115.nautilus_system::kernel: Stopping trader...[0m
+[1m2026-10-09T10:00:07.746263100Z[0m [INFO] IO-115.nautilus_system::trader: Stopping[0m
+[1m2026-10-09T10:00:07.746277600Z[0m [INFO] IO-115.nautilus_system::trader: Stopped[0m
+[1m2026-10-09T10:00:07.746282300Z[0m [INFO] IO-115.nautilus_live::node: Awaiting residual events (0ns)...[0m
+[1m2026-10-09T10:00:07.761443700Z[0m [INFO] IO-115.nautilus_system::kernel: Disconnecting clients...[0m
+[1m2026-10-09T10:00:07.761582000Z[0m [INFO] IO-115.nautilus_hyperliquid::execution: Disconnecting Hyperliquid execution client[0m
+[1m2026-10-09T10:00:07.887985100Z[0m [INFO] IO-115.nautilus_hyperliquid::data: Disconnected: client_id=HYPERLIQUID[0m
+[1m2026-10-09T10:00:07.888032400Z[0m [INFO] IO-115.nautilus_hyperliquid::execution: Disconnected: client_id=HYPERLIQUID[0m
+[1m2026-10-09T10:00:07.888047600Z[0m [INFO] IO-115.nautilus_live::node: Awaiting engine disconnections (5s timeout)...[0m
+[1m2026-10-09T10:00:07.888068600Z[0m [INFO] IO-115.nautilus_live::node: All engine clients disconnected[0m
+[1m2026-10-09T10:00:07.888320400Z[0m [INFO] IO-115.nautilus_hyperliquid::data: Stopping Hyperliquid data client HYPERLIQUID[0m
+[1m2026-10-09T10:00:07.888366100Z[0m [INFO] IO-115.nautilus_hyperliquid::execution: Stopping Hyperliquid execution client[0m
+[1m2026-10-09T10:00:07.888388100Z[0m [INFO] IO-115.nautilus_hyperliquid::execution: Hyperliquid execution client stopped[0m
+[1m2026-10-09T10:00:07.888417700Z[0m [INFO] IO-115.nautilus_execution::engine: Stopped[0m
+[1m2026-10-09T10:00:07.888421600Z[0m [INFO] IO-115.nautilus_risk::engine: Stopped[0m
+[1m2026-10-09T10:00:07.888424300Z[0m [INFO] IO-115.nautilus_execution::order_emulator::emulator: Stopped[0m
+[1m2026-10-09T10:00:07.888442400Z[0m [INFO] IO-115.nautilus_system::kernel: Stopped[0m
+[1m2026-10-09T10:00:07.888461900Z[0m [INFO] IO-115.nautilus_live::node: Event loop stopped[0m
+[1m2026-10-09T10:00:07.888774600Z[0m [INFO] IO-115.nautilus_system::kernel: Disposing[0m
+[1m2026-10-09T10:00:07.888797500Z[0m [INFO] IO-115.nautilus_system::trader: Disposing[0m
+[1m2026-10-09T10:00:07.888818600Z[0m [INFO] IO-115.nautilus_system::trader: Disposed[0m
+[1m2026-10-09T10:00:07.888824400Z[0m [INFO] IO-115.nautilus_hyperliquid::data: Stopping Hyperliquid data client HYPERLIQUID[0m
+[1m2026-10-09T10:00:07.888838000Z[0m [INFO] IO-115.nautilus_execution::engine: Stopped[0m
+[1m2026-10-09T10:00:07.888840400Z[0m [INFO] IO-115.nautilus_risk::engine: Stopped[0m
+[1m2026-10-09T10:00:07.888841500Z[0m [INFO] IO-115.nautilus_execution::order_emulator::emulator: Stopped[0m
+[1m2026-10-09T10:00:07.888885300Z[0m [INFO] IO-115.nautilus_hyperliquid::data: Stopping Hyperliquid data client HYPERLIQUID[0m
+[1m2026-10-09T10:00:07.888895700Z[0m [INFO] IO-115.nautilus_execution::engine: Disposed[0m
+[1m2026-10-09T10:00:07.888898200Z[0m [INFO] IO-115.nautilus_risk::engine: Disposed[0m
+[1m2026-10-09T10:00:07.888920900Z[0m [INFO] IO-115.nautilus_execution::order_emulator::emulator: Disposed[0m
+[1m2026-10-09T10:00:07.888961400Z[0m [INFO] IO-115.nautilus_common::cache: Reset cache[0m
+[1m2026-10-09T10:00:07.889011000Z[0m [INFO] IO-115.nautilus_system::kernel: Disposed[0m
+{"status": "PASS", "result": "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-installed-readonly-20261009T100005Z\\native\\result.json"}

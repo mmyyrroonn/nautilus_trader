@@ -1,0 +1,181 @@
+{
+  "copied_utc": "2026-10-09T08:51:49.920831+00:00",
+  "main": "aadad78fab77467f4a1467a252947ebb84f5361d",
+  "files": [
+    {
+      "path": "run_capture.py",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\run_capture.py",
+      "sha256": "574ac137a1100be3df0234fa85050e5acf643a650355e65f166dd11a7ad82dd9"
+    },
+    {
+      "path": "github113.py",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\github113.py",
+      "sha256": "cf2c4c8b0e932b0e047c34aed59a934284db0f8499b40992ce0207cf20e70a19"
+    },
+    {
+      "path": "io-next-startup-proof-diagnosis-20261009.md",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\io-next-startup-proof-diagnosis-20261009.md",
+      "sha256": "499f3e3f04ef3fca48e95be77355b15c4e5fd08d276c5db8f531ec9afcac50d2"
+    },
+    {
+      "path": "next-dependency-app43-native113-first-paired-20261009.md",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\next-dependency-app43-native113-first-paired-20261009.md",
+      "sha256": "10cf4bab2b184d90bedc1c84dc991ed4b9b884d977b3bae917cef17ab60c1e77"
+    },
+    {
+      "path": "next-dependency-app43-native113-first-paired-20261009.json",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\next-dependency-app43-native113-first-paired-20261009.json",
+      "sha256": "1775e4954530bd28b27ebfe676e97fa232ccca9cd5f8349a7b568e2105885be9"
+    },
+    {
+      "path": "next-startup-proof-independent-review-20261009.md",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\next-startup-proof-independent-review-20261009.md",
+      "sha256": "b97c001334ef773b564f423ee2d3cf0c7446084d882a2c54a58ce315a974a8bd"
+    },
+    {
+      "path": "next-startup-proof-independent-review-20261009-final.json",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\next-startup-proof-independent-review-20261009-final.json",
+      "sha256": "5e46d82caaaf010f8dfa2bbb22688bdbe52c11c7c670ddfdad03ba9ab6652bdf"
+    },
+    {
+      "path": "next-startup-reuse-test-design-20261009.md",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\next-startup-reuse-test-design-20261009.md",
+      "sha256": "f6c8a9110ea3fe0eeae2d8c890d569a6e979e5333479f845cd39843c0a86dab5"
+    },
+    {
+      "path": "next-app43-fixture-chronology-design.md",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\next-app43-fixture-chronology-design.md",
+      "sha256": "0f2d9fb07cc8966c8d93ed4029620bfae94f1cb970ad58a0d566842b7f848efc"
+    },
+    {
+      "path": "next-startup-seal-contract-proposal-20261009.md",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\next-startup-seal-contract-proposal-20261009.md",
+      "sha256": "2cf1832f2e5d9540e197e5a81b448b9f97c12900bb332e7635075c1cb42ed47b"
+    },
+    {
+      "path": "native113-final-documentation-commit.json",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\native113-final-documentation-commit.json",
+      "sha256": "2f72fc9780ef9f1ef7a01271581bb54c7ce79301cc7a911ff98234985c880f3a"
+    },
+    {
+      "path": "native113-final-reviewed-ci-merge-transport-recovered.json",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\native113-final-reviewed-ci-merge-transport-recovered.json",
+      "sha256": "b8faacc219315a1520d2588f9e51fab608adc8d1ce7bdb161cfdbfd4fadd1c63"
+    },
+    {
+      "path": "native113-final-reviewed-ci-merge-transport-recovered.log",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\native113-final-reviewed-ci-merge-transport-recovered.log",
+      "sha256": "bdbc0c7dcdc134afb7dc0d01b457aec10ea45e7c63056dab3e953acf518b2420"
+    },
+    {
+      "path": "native-next-startup-proof-fresh-main-fetch.json",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\native-next-startup-proof-fresh-main-fetch.json",
+      "sha256": "552283b8833727510dff7882619ff919dc4d160390d50adb0e5a41918ac7d6a2"
+    },
+    {
+      "path": "native-next-startup-proof-fresh-main-fetch.log",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\native-next-startup-proof-fresh-main-fetch.log",
+      "sha256": "74491f36574953eb295220561786d4c2790f525a57fcb6d47dbee92b92d7eb6e"
+    },
+    {
+      "path": "native-next-startup-proof-worktree-create.json",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\native-next-startup-proof-worktree-create.json",
+      "sha256": "259255dde9d33b0a593b0a83a09740b6db42fdb8c7960a6d333fd1a58dc9dabb"
+    },
+    {
+      "path": "native-next-startup-proof-worktree-create.log",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\native-next-startup-proof-worktree-create.log",
+      "sha256": "e7a376a5e79ffa214f7dfa43ade66c41137bd80844a4be2489e9ea15b91ec721"
+    },
+    {
+      "path": "native-next-startup-proof-issue-start.json",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\native-next-startup-proof-issue-start.json",
+      "sha256": "31d43de3459c410f7e46c56a2724736b6fc44455b094920f0e74098375876c2f"
+    },
+    {
+      "path": "native-next-startup-proof-issue-start.log",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\native-next-startup-proof-issue-start.log",
+      "sha256": "fc517cb0dcb86279912c165e441264814594f3bbda6321f5a208d30d5d50bccc"
+    },
+    {
+      "path": "native-startup-proof-issue-result.json",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\native-startup-proof-issue-result.json",
+      "sha256": "6e428e43b078ca7dbcff968ee8d485a711f9504a55f1e7680033d99880703007"
+    },
+    {
+      "path": "start_startup_proof_issue.py",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\start_startup_proof_issue.py",
+      "sha256": "2b4efad6e409f45c3690adf0dd6e133da97b31b44103874c5085dc0ca32934d1"
+    },
+    {
+      "path": "native-startup-proof-current-main-guard-command.json",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\native-startup-proof-current-main-guard-command.json",
+      "sha256": "70f5b306862462d24d4582c6fb7333145259151204ae05801c4bde86e69bf14f"
+    },
+    {
+      "path": "native-startup-proof-current-main-guard-response.json",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\native-startup-proof-current-main-guard-response.json",
+      "sha256": "7436318706fff6ddb27566a54d7fd09b579b37fb2419af7d93331bb7b8c68c20"
+    },
+    {
+      "path": "native-startup-proof-current-main-guard-stderr.log",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\native-startup-proof-current-main-guard-stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-startup-proof-existing-issues-command.json",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\native-startup-proof-existing-issues-command.json",
+      "sha256": "bc1ec72f2882fd38c09fc2981e7f6baec14cb685e729c0cb7bfd41ee38bba4c4"
+    },
+    {
+      "path": "native-startup-proof-existing-issues-response.json",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\native-startup-proof-existing-issues-response.json",
+      "sha256": "a1dbc9dc90e132722c052dbed063b00f62fc3be14f6afdb76927a5c6582de6f7"
+    },
+    {
+      "path": "native-startup-proof-existing-issues-stderr.log",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\native-startup-proof-existing-issues-stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "native-startup-proof-issue-create-command.json",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\native-startup-proof-issue-create-command.json",
+      "sha256": "78a0d613cec506555871c8e55f2349a8463dd5dc520816aa2f67e8b4533e0bb7"
+    },
+    {
+      "path": "native-startup-proof-issue-create-input.json",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\native-startup-proof-issue-create-input.json",
+      "sha256": "e5c924d78748970e25379aa45807ac95d92903c2058cafea88ea733280901193"
+    },
+    {
+      "path": "native-startup-proof-issue-create-response.json",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\native-startup-proof-issue-create-response.json",
+      "sha256": "d176eaa3a97b5d3822331d3e3c8c9258249a59b3f72efefe327fb4c1e9398c18"
+    },
+    {
+      "path": "native-startup-proof-issue-create-stderr.log",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\native-startup-proof-issue-create-stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "app43-startup-proof-dependency-start-command.json",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\app43-startup-proof-dependency-start-command.json",
+      "sha256": "1fd0117b01771056d081ec69dc0b8a67096fe113335ae75618e01044ec3c46d5"
+    },
+    {
+      "path": "app43-startup-proof-dependency-start-input.json",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\app43-startup-proof-dependency-start-input.json",
+      "sha256": "16cb743949acffdcea02b66bc0dc223a8ff89a9df33478eef5c02ec5d8bc1d61"
+    },
+    {
+      "path": "app43-startup-proof-dependency-start-response.json",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\app43-startup-proof-dependency-start-response.json",
+      "sha256": "6bed162ca3071e34a5cdf72db996a36033669cba7f6ecec9b0c0cadf29a474f7"
+    },
+    {
+      "path": "app43-startup-proof-dependency-start-stderr.log",
+      "source": "E:\\persarb\\_tmp\\entropy113-validation\\app43-startup-proof-dependency-start-stderr.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ]
+}

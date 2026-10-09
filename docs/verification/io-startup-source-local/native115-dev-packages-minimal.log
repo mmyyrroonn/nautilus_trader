@@ -1,0 +1,24 @@
+Resolved 19 packages in 12ms
+warning: Failed to hardlink files; falling back to full copy. This may lead to degraded performance.
+         If the cache and target directories are on different filesystems, hardlinking may not be supported.
+         If this is intentional, set `export UV_LINK_MODE=copy` or use `--link-mode=copy` to suppress this warning.
+Installed 19 packages in 1.19s
+ + click==8.5.0
+ + colorama==0.4.6
+ + h11==0.16.0
+ + iniconfig==2.3.1
+ + maturin==1.15.0
+ + numpy==2.5.2
+ + orjson==3.12.0
+ + packaging==26.3
+ + pandas==3.0.5
+ + pluggy==1.6.0
+ + pygments==2.21.0
+ + pytest==9.1.1
+ + pytest-asyncio==1.4.0
+ + python-dateutil==2.9.0.post0
+ + ruff==0.16.4
+ + six==1.17.0
+ + typing-extensions==4.16.0
+ + tzdata==2026.4
+ + uvicorn==0.52.4

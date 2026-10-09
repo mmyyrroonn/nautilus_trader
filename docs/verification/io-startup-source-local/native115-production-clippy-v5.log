@@ -1,0 +1,16 @@
+   Compiling nautilus-core v0.63.0 (E:\persarb\worktrees\entropy-startup-account-proof\crates\core)
+   Compiling nautilus-common v0.63.0 (E:\persarb\worktrees\entropy-startup-account-proof\crates\common)
+   Compiling nautilus-persistence-macros v0.63.0 (E:\persarb\worktrees\entropy-startup-account-proof\crates\persistence\macros)
+    Checking nautilus-model v0.63.0 (E:\persarb\worktrees\entropy-startup-account-proof\crates\model)
+    Checking nautilus-cryptography v0.63.0 (E:\persarb\worktrees\entropy-startup-account-proof\crates\cryptography)
+warning: linker stdout: 正在创建库 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-e8531d52ba21303c.dll.lib 和对象 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-e8531d52ba21303c.dll.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-persistence-macros` (lib) generated 1 warning
+    Checking nautilus-network v0.63.0 (E:\persarb\worktrees\entropy-startup-account-proof\crates\network)
+    Checking nautilus-execution v0.63.0 (E:\persarb\worktrees\entropy-startup-account-proof\crates\execution)
+    Checking nautilus-live v0.63.0 (E:\persarb\worktrees\entropy-startup-account-proof\crates\live)
+    Checking nautilus-hyperliquid v0.63.0 (E:\persarb\worktrees\entropy-startup-account-proof\crates\adapters\hyperliquid)
+    Finished `nextest` profile [unoptimized] target(s) in 21.46s

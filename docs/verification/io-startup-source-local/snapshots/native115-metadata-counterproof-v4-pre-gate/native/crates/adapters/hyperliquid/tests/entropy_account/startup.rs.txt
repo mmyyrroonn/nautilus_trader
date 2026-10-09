@@ -1,0 +1,945 @@
+// -------------------------------------------------------------------------------------------------
+//  Copyright (C) 2015-2026 Nautech Systems Pty Ltd. All rights reserved.
+//  https://nautechsystems.io
+//
+//  Licensed under the GNU Lesser General Public License Version 3.0 (the "License");
+//  You may not use this file except in compliance with the License.
+//  You may obtain a copy of the License at https://www.gnu.org/licenses/lgpl-3.0.en.html
+//
+//  Unless required by applicable law or agreed to in writing, software
+//  distributed under the License is distributed on an "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+//  See the License for the specific language governing permissions and
+//  limitations under the License.
+// -------------------------------------------------------------------------------------------------
+
+//! Normal native mass-status startup proofs from finite synthetic HTTP/WebSocket observations.
+
+use nautilus_model::{enums::PositionSide, reports::ExecutionMassStatus};
+
+use super::*;
+
+const FIRST: &str = "io:SNDK-USD-PERP.HYPERLIQUID";
+const SECOND: &str = "io:TSLA-USD-PERP.HYPERLIQUID";
+
+fn override_response(harness: &Harness, kind: &str, delay_ms: u64, body: String) {
+    harness
+        .peer
+        .state
+        .data
+        .lock()
+        .execution
+        .as_mut()
+        .unwrap()
+        .startup_responses
+        .insert(kind.to_string(), (delay_ms, body));
+}
+
+async fn mass(harness: &Harness) -> anyhow::Result<Option<ExecutionMassStatus>> {
+    tokio::time::timeout(
+        Duration::from_secs(4),
+        harness.client.generate_mass_status(None),
+    )
+    .await
+    .expect("normal startup mass-status call exceeded the finite test deadline")
+}
+
+fn assert_no_financial_projection(harness: &Harness) {
+    assert_eq!(harness.fill_events, 0);
+    assert!(
+        harness
+            .cache
+            .borrow()
+            .orders(None, None, None, None, None)
+            .is_empty()
+    );
+    assert!(
+        harness
+            .cache
+            .borrow()
+            .positions(None, None, None, None, None)
+            .is_empty()
+    );
+    assert_eq!(
+        harness.portfolio.net_position(&InstrumentId::from(FIRST)),
+        Decimal::ZERO
+    );
+    assert_eq!(
+        harness.portfolio.net_position(&InstrumentId::from(SECOND)),
+        Decimal::ZERO
+    );
+    assert_eq!(harness.peer.state.writes.load(Ordering::SeqCst), 0);
+}
+
+async fn rejected_without_projection(harness: &mut Harness) {
+    let result = mass(harness).await;
+    assert!(
+        result.is_err(),
+        "unsupported startup returned a mass-status witness: {result:?}"
+    );
+    harness.apply_events();
+    assert_no_financial_projection(harness);
+}
+
+async fn await_request(peer: &Peer, kind: &str, after: usize) {
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if peer
+                .state
+                .data
+                .lock()
+                .requests
+                .iter()
+                .skip(after)
+                .any(|row| row["type"] == kind)
+            {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    })
+    .await
+    .expect("expected actual startup HTTP request did not arrive");
+}
+
+#[rstest]
+#[case(false, false)]
+#[case(false, true)]
+#[case(true, false)]
+#[tokio::test]
+async fn fresh_origin_actual_empty_scope_returns_selected_flat_reports_without_cache_adjustment(
+    #[case] two_instruments: bool,
+    #[case] precreate_empty: bool,
+) {
+    let peer = Peer::start(clearinghouse("100", "100", "0", "100", false)).await;
+    let directory = TempDir::new().unwrap();
+    let mut selected = policy(&directory);
+    {
+        let mut data = peer.state.data.lock();
+        data.execution = Some(PeerExecution::default());
+        if two_instruments {
+            let mut metadata = json!({"universe":[{"name":"io:SNDK","szDecimals":4,
+                "maxLeverage":10,"onlyIsolated":true,"marginMode":"strictIsolated"}],
+                "collateralToken":0});
+            metadata["universe"].as_array_mut().unwrap().push(json!({"name":"io:TSLA",
+                "szDecimals":4,"maxLeverage":10,"onlyIsolated":true,"marginMode":"strictIsolated"}));
+            data.meta_override = Some(metadata);
+            let mut asset = data.execution.as_ref().unwrap().asset_data.clone();
+            asset["coin"] = json!("io:TSLA");
+            data.execution
+                .as_mut()
+                .unwrap()
+                .asset_data_by_coin
+                .insert("io:TSLA".into(), asset);
+            selected["symbols"]
+                .as_array_mut()
+                .unwrap()
+                .push(json!({"instrument_id":SECOND,
+                "max_quantity":"1","min_price":"95","max_price":"105"}));
+        }
+    }
+    let path = directory.path().join("io-intents.jsonl");
+    if precreate_empty {
+        std::fs::write(&path, []).unwrap();
+        assert_eq!(path.metadata().unwrap().len(), 0);
+    } else {
+        assert!(
+            !path.exists(),
+            "journal must genuinely have no previous lifecycle"
+        );
+    }
+    let mut config = execution_config(&peer, 30000);
+    config.io_execution_policy_json = Some(selected.to_string());
+    let mut harness = Harness::from_parts(peer, directory, config).await;
+    assert_eq!(harness.scope()["fresh_journal_origin"], true);
+    assert!(
+        path.metadata().unwrap().len() > 0,
+        "normal connect persists its empty verification record"
+    );
+    let requested_after = harness.peer.state.data.lock().requests.len();
+    let report = mass(&harness)
+        .await
+        .unwrap()
+        .expect("eligible fresh native client must return a report");
+    assert_eq!(report.client_id, *HYPERLIQUID_CLIENT_ID);
+    assert_eq!(report.account_id, AccountId::from("HYPERLIQUID-ENTROPY"));
+    assert_eq!(report.venue, *HYPERLIQUID_VENUE);
+    assert!(
+        !report.reports_complete(),
+        "selected current scope cannot claim complete venue history"
+    );
+    let window = report
+        .lookback_start()
+        .expect("startup report needs an explicit source window");
+    assert!(window.as_u64() > 0 && window <= report.ts_init);
+    assert_eq!(
+        window.as_u64(),
+        harness.scope()["account"]["http_verification_started_time_ms"]
+            .as_u64()
+            .expect("startup window has actual local native verification start")
+            * 1_000_000
+    );
+    assert!(report.order_reports().is_empty() && report.fill_reports().is_empty());
+    let positions = report.position_reports();
+    assert_eq!(positions.len(), if two_instruments { 2 } else { 1 });
+    for id in if two_instruments {
+        vec![FIRST, SECOND]
+    } else {
+        vec![FIRST]
+    } {
+        let reports = positions
+            .get(&InstrumentId::from(id))
+            .expect("every selected ID needs its own native FlatReport");
+        assert_eq!(reports.len(), 1);
+        let flat = &reports[0];
+        assert_eq!(flat.account_id, report.account_id);
+        assert_eq!(flat.instrument_id, InstrumentId::from(id));
+        assert_eq!(flat.position_side, PositionSide::Flat);
+        assert_eq!(flat.quantity.as_decimal(), Decimal::ZERO);
+        assert_eq!(flat.quantity.precision, 4);
+        assert!(flat.ts_last.as_u64() > 0 && flat.ts_last <= flat.ts_init);
+        assert_eq!(
+            flat.ts_last.as_u64(),
+            harness.scope()["account"]["http_source_time_ms"]
+                .as_u64()
+                .expect("normal complete scope has actual HTTP source time")
+                * 1_000_000
+        );
+        assert!(flat.venue_position_id.is_none() && flat.avg_px_open.is_none());
+        harness
+            .engine
+            .reconcile_execution_report(&ExecutionReport::Position(Box::new(flat.clone())));
+    }
+    harness.apply_events();
+    assert_no_financial_projection(&harness);
+    let requests = harness.peer.state.data.lock().requests[requested_after..].to_vec();
+    for kind in ["frontendOpenOrders", "userFills", "historicalOrders"] {
+        assert!(
+            requests
+                .iter()
+                .any(|row| row["type"] == kind && row["user"] == USER),
+            "actual full scoped/window source {kind} was not read: {requests:?}"
+        );
+    }
+    assert!(
+        requests
+            .iter()
+            .filter(|row| row["type"] == "frontendOpenOrders")
+            .all(|row| row["dex"] == "io")
+    );
+    harness.stop().await;
+}
+
+#[rstest]
+#[case("frontendOpenOrders", "null")]
+#[case("frontendOpenOrders", "{}")]
+#[case("frontendOpenOrders", "[{}]")]
+#[case("userFills", "null")]
+#[case("userFills", "{}")]
+#[case("userFills", "[{}]")]
+#[case("historicalOrders", "null")]
+#[case("historicalOrders", "{}")]
+#[case("historicalOrders", "[{}]")]
+#[case("historicalOrders", "[")]
+#[tokio::test]
+async fn missing_invalid_or_nonempty_window_cannot_be_interpreted_as_empty(
+    #[case] kind: &str,
+    #[case] body: &str,
+) {
+    let mut harness = Harness::new().await;
+    override_response(&harness, kind, 0, body.to_string());
+    rejected_without_projection(&mut harness).await;
+    harness.stop().await;
+}
+
+fn actual_foreign_fill() -> Value {
+    json!({"coin":"io:OTHER","px":"100","sz":"0.2","side":"B","time":now_ms(),
+        "startPosition":"0","dir":"Open Long","closedPnl":"0","hash":format!("0x{:064x}",77),
+        "oid":70077,"crossed":true,"fee":"0.001","tid":77,"feeToken":"USDC","cloid":null})
+}
+
+fn actual_foreign_order() -> Value {
+    json!({"coin":"io:OTHER","side":"B","limitPx":"100","sz":"0.2","origSz":"0.2",
+        "oid":70077,"timestamp":now_ms(),"cloid":null,"reduceOnly":false,
+        "orderType":"Limit","tif":"Gtc","isPositionTpsl":false,"isTrigger":false,
+        "triggerCondition":"N/A","triggerPx":"0","children":[]})
+}
+
+#[rstest]
+#[case("frontendOpenOrders", "foreign_order")]
+#[case("historicalOrders", "foreign_history")]
+#[case("userFills", "foreign_fill")]
+#[case("userFills", "other_dex_fill")]
+#[case("userFills", "saturated")]
+#[case("historicalOrders", "response_cap")]
+#[tokio::test]
+async fn successful_but_nonempty_foreign_saturated_or_oversized_sources_refuse_startup(
+    #[case] kind: &str,
+    #[case] fault: &str,
+) {
+    let mut harness = Harness::new().await;
+    let body = match fault {
+        "foreign_order" => json!([actual_foreign_order()]).to_string(),
+        "foreign_history" => json!([{"order":actual_foreign_order(),"status":"canceled",
+            "statusTimestamp":now_ms()}])
+        .to_string(),
+        "foreign_fill" => json!([actual_foreign_fill()]).to_string(),
+        "other_dex_fill" => {
+            let mut fill = actual_foreign_fill();
+            fill["coin"] = json!("BTC");
+            json!([fill]).to_string()
+        }
+        "saturated" => Value::Array(vec![actual_foreign_fill(); 2000]).to_string(),
+        "response_cap" => format!("[\"{}\"]", "x".repeat(2 * 1024 * 1024)),
+        _ => unreachable!(),
+    };
+    override_response(&harness, kind, 0, body);
+    rejected_without_projection(&mut harness).await;
+    harness.stop().await;
+}
+
+#[rstest]
+#[case("missing_positions")]
+#[case("null_positions")]
+#[case("invalid_positions")]
+#[case("unselected_position")]
+#[case("wrong_mode")]
+#[case("wrong_role")]
+#[case("wrong_collateral")]
+#[case("wrong_token")]
+#[case("wrong_metadata")]
+#[case("missing_source_time")]
+#[case("stale_source_time")]
+#[case("unrepresentable_balance")]
+#[tokio::test]
+async fn current_complete_account_mode_metadata_and_source_are_required(#[case] fault: &str) {
+    let mut harness = Harness::new().await;
+    // Preserve the original observable Cache mismatch case. The other faults
+    // affect future HTTP only, so first invalidate the sealed source through a
+    // genuine applied identical private frame without invalidating current trust.
+    if fault != "wrong_metadata" {
+        super::startup_source_reuse::invalidate_seal_with_identical_frame(&harness).await;
+    }
+    let requested_after = harness.peer.state.data.lock().requests.len();
+    {
+        let mut data = harness.peer.state.data.lock();
+        match fault {
+            "missing_positions" => {
+                data.io.as_object_mut().unwrap().remove("assetPositions");
+            }
+            "null_positions" => data.io["assetPositions"] = Value::Null,
+            "invalid_positions" => data.io["assetPositions"] = json!({}),
+            "unselected_position" => {
+                data.io = clearinghouse("100", "100", "0", "100", true);
+                data.io["assetPositions"][0]["position"]["coin"] = json!("io:OTHER");
+            }
+            "wrong_mode" => data.mode = json!("unifiedAccount"),
+            "wrong_role" => data.role = json!({"role":"agent","data":{"user":USER}}),
+            "wrong_collateral" => data.collateral = 1,
+            "wrong_token" => data.token_id = "0x00000000000000000000000000000000".into(),
+            "wrong_metadata" => {
+                data.meta_override = Some(json!({"universe":[{"name":"io:SNDK",
+                "szDecimals":3,"maxLeverage":10,"onlyIsolated":false,"marginMode":"cross"}],"collateralToken":0}));
+            }
+            "missing_source_time" => data.missing_time = true,
+            "stale_source_time" => data.time_offset_ms = 100000,
+            "unrepresentable_balance" => {
+                let source = format!(
+                    "100.{}1",
+                    "0".repeat(usize::from(Currency::USDC().precision))
+                );
+                let exact = Decimal::from_str_exact(&source).unwrap();
+                assert_ne!(
+                    Money::from_decimal(exact, Currency::USDC())
+                        .ok()
+                        .map(|value| value.as_decimal()),
+                    Some(exact),
+                    "negative source must actually exceed native USDC representability"
+                );
+                data.io = clearinghouse(&source, &source, "0", &source, false);
+            }
+            _ => unreachable!(),
+        }
+    }
+    if fault == "wrong_metadata" {
+        let mut provider =
+            HyperliquidHttpClient::new(HyperliquidEnvironment::Testnet, 2, None).unwrap();
+        provider.set_base_info_url(format!("http://{}/info", harness.peer.addr));
+        for instrument in provider.request_instruments().await.unwrap() {
+            harness
+                .cache
+                .borrow_mut()
+                .add_instrument(instrument)
+                .unwrap();
+        }
+    }
+    rejected_without_projection(&mut harness).await;
+    if fault != "wrong_metadata" {
+        let endpoint = match fault {
+            "wrong_mode" => "userAbstraction",
+            "wrong_role" => "userRole",
+            "wrong_collateral" | "wrong_token" => "spotMeta",
+            _ => "clearinghouseState",
+        };
+        let actual = super::startup_source_reuse::assert_actual_fault_response(
+            &harness,
+            endpoint,
+            requested_after,
+        );
+        match fault {
+            "wrong_mode" => assert_eq!(actual, "unifiedAccount"),
+            "wrong_role" => assert_eq!(actual["role"], "agent"),
+            "wrong_collateral" => assert_eq!(
+                super::startup_source_reuse::assert_actual_fault_response(
+                    &harness,
+                    "meta",
+                    requested_after,
+                )["collateralToken"],
+                1
+            ),
+            "wrong_token" => assert_eq!(
+                actual["tokens"][0]["tokenId"],
+                "0x00000000000000000000000000000000"
+            ),
+            "missing_positions" => assert!(actual.get("assetPositions").is_none()),
+            "null_positions" => assert!(actual["assetPositions"].is_null()),
+            "invalid_positions" => assert!(actual["assetPositions"].is_object()),
+            "unselected_position" => {
+                assert_eq!(actual["assetPositions"][0]["position"]["coin"], "io:OTHER")
+            }
+            "missing_source_time" => assert!(actual.get("time").is_none()),
+            "stale_source_time" => assert!(now_ms() - actual["time"].as_u64().unwrap() >= 100000),
+            "unrepresentable_balance" => assert_eq!(
+                actual["marginSummary"]["accountValue"],
+                harness.peer.state.data.lock().io["marginSummary"]["accountValue"]
+            ),
+            _ => unreachable!(),
+        }
+    }
+    harness.stop().await;
+}
+
+#[rstest]
+#[case("empty_record")]
+#[case("tainted")]
+#[case("truncated_record")]
+#[tokio::test]
+async fn nonempty_original_journal_never_becomes_a_fresh_origin(#[case] fault: &str) {
+    let peer = Peer::start(clearinghouse("100", "100", "0", "100", false)).await;
+    peer.state.data.lock().execution = Some(PeerExecution::default());
+    let directory = TempDir::new().unwrap();
+    let path = directory.path().join("io-intents.jsonl");
+    let empty = json!({"schema_version":1,"address":USER,"account_id":"HYPERLIQUID-ENTROPY",
+        "strategy_id":"ENTROPY-001","actions":0,"intents":{},"fills":{}})
+    .to_string();
+    let raw = match fault {
+        "empty_record" => format!("{empty}\n"),
+        "tainted" => "not-json\n".to_string(),
+        "truncated_record" => empty,
+        _ => unreachable!(),
+    };
+    std::fs::write(&path, raw).unwrap();
+    let original = std::fs::read(&path).unwrap();
+    let mut config = execution_config(&peer, 30000);
+    config.io_execution_policy_json = Some(policy(&directory).to_string());
+    let mut harness = Harness::from_parts_wait(peer, directory, config, false).await;
+    rejected_without_projection(&mut harness).await;
+    harness.stop().await;
+    let Harness {
+        directory,
+        client,
+        factory,
+        ..
+    } = harness;
+    drop(client);
+    drop(factory);
+    assert!(
+        std::fs::read(&path).unwrap().starts_with(&original),
+        "rejected old journal cannot be erased"
+    );
+    drop(directory);
+}
+
+#[tokio::test]
+async fn account_only_io_client_cannot_guess_a_selected_startup_universe() {
+    let peer = Peer::start(clearinghouse("100", "100", "0", "100", false)).await;
+    let directory = TempDir::new().unwrap();
+    let config = execution_config(&peer, 30000);
+    let mut harness = Harness::from_parts(peer, directory, config).await;
+    rejected_without_projection(&mut harness).await;
+    harness.stop().await;
+}
+
+#[rstest]
+#[case("frontendOpenOrders")]
+#[case("userFills")]
+#[case("historicalOrders")]
+#[tokio::test]
+async fn actual_window_endpoint_failure_is_not_an_empty_mass_status(#[case] kind: &str) {
+    let mut harness = Harness::new().await;
+    harness.peer.state.data.lock().failed_endpoint = Some(kind.to_string());
+    rejected_without_projection(&mut harness).await;
+    harness.stop().await;
+}
+
+#[rstest]
+#[case("private_funds")]
+#[case("private_identical_snapshot")]
+#[case("private_unknown_fill")]
+#[case("reader_close")]
+#[case("private_user_asset")]
+#[case("native_cache_metadata")]
+#[tokio::test]
+async fn delayed_window_does_not_borrow_new_proof_or_reader_authority(#[case] fault: &str) {
+    let mut harness = Harness::new().await;
+    override_response(&harness, "historicalOrders", 200, "[]".into());
+    let after = harness.peer.state.data.lock().requests.len();
+    let peer = &harness.peer;
+    let client = &harness.client;
+    let original_io = peer.state.data.lock().io.clone();
+    let connections_before = peer.state.connections.load(Ordering::SeqCst);
+    let mutate = async {
+        await_request(peer, "historicalOrders", after).await;
+        match fault {
+            "private_identical_snapshot" => {
+                peer.state
+                    .instructions
+                    .send(PeerInstruction::Frame(peer.state.clearinghouse_frame()))
+                    .unwrap();
+            }
+            "private_funds" => {
+                let mut changed = clearinghouse("99", "99", "0", "99", false);
+                changed["time"] = json!(now_ms());
+                peer.state.data.lock().io = changed;
+                peer.state
+                    .instructions
+                    .send(PeerInstruction::Frame(peer.state.clearinghouse_frame()))
+                    .unwrap();
+            }
+            "private_unknown_fill" => {
+                peer.state
+                    .instructions
+                    .send(PeerInstruction::Frame(json!({"channel":"user",
+                    "data":{"fills":[actual_foreign_fill()]}})))
+                    .unwrap();
+            }
+            "reader_close" => {
+                peer.state
+                    .instructions
+                    .send(PeerInstruction::Close)
+                    .unwrap();
+            }
+            "private_user_asset" => {
+                peer.state.data.lock().meta_override = Some(json!({"universe":[{"name":"io:SNDK",
+                    "szDecimals":3,"maxLeverage":10,"onlyIsolated":true,"marginMode":"strictIsolated"}],"collateralToken":0}));
+                peer.state
+                    .instructions
+                    .send(PeerInstruction::Frame(json!({"channel":"activeAssetData",
+                    "data":{"user":USER,"coin":"io:SNDK","leverage":{"type":"isolated","value":2},
+                    "maxTradeSzs":["1","1"],"availableToTrade":["100","100"],"markPx":"100"}})))
+                    .unwrap();
+            }
+            "native_cache_metadata" => {
+                peer.state.data.lock().meta_override = Some(json!({"universe":[{"name":"io:SNDK",
+                    "szDecimals":3,"maxLeverage":10,"onlyIsolated":true,"marginMode":"strictIsolated"}],"collateralToken":0}));
+                let mut provider =
+                    HyperliquidHttpClient::new(HyperliquidEnvironment::Testnet, 2, None).unwrap();
+                provider.set_base_info_url(format!("http://{}/info", peer.addr));
+                for instrument in provider.request_instruments().await.unwrap() {
+                    harness
+                        .cache
+                        .borrow_mut()
+                        .add_instrument(instrument)
+                        .unwrap();
+                }
+            }
+            _ => unreachable!(),
+        }
+    };
+    let (result, ()) = tokio::join!(
+        tokio::time::timeout(Duration::from_secs(4), client.generate_mass_status(None)),
+        mutate
+    );
+    assert!(
+        result
+            .expect("raced normal mass status exceeded finite deadline")
+            .is_err()
+    );
+    if fault == "private_identical_snapshot" {
+        assert_eq!(
+            peer.state.data.lock().io,
+            original_io,
+            "identical private snapshot race must not alter financial facts"
+        );
+        assert_eq!(
+            peer.state.connections.load(Ordering::SeqCst),
+            connections_before,
+            "identical private snapshot race must remain on the same reader connection"
+        );
+    }
+    harness.apply_events();
+    assert_no_financial_projection(&harness);
+    harness.stop().await;
+}
+
+#[tokio::test]
+async fn bounded_startup_deadline_refuses_late_successful_history_response() {
+    let mut harness = Harness::new().await;
+    override_response(&harness, "historicalOrders", 5000, "[]".into());
+    let started = tokio::time::Instant::now();
+    rejected_without_projection(&mut harness).await;
+    assert!(started.elapsed() < Duration::from_secs(4));
+    harness.stop().await;
+}
+
+#[rstest]
+#[case("ENTROPY-001", FIRST)]
+#[case("EXTERNAL", FIRST)]
+#[case("OTHER-001", FIRST)]
+#[case("OTHER-001", "io:OTHER-USD-PERP.HYPERLIQUID")]
+#[tokio::test]
+async fn ordinary_routed_unbound_cached_order_from_any_strategy_blocks_flat_startup(
+    #[case] strategy: &str,
+    #[case] instrument_id: &str,
+) {
+    let mut harness = Harness::new().await;
+    let order = OrderTestBuilder::new(OrderType::Limit)
+        .trader_id(TraderId::from("TESTER-001"))
+        .strategy_id(StrategyId::from(strategy))
+        .instrument_id(InstrumentId::from(instrument_id))
+        .client_order_id(ClientOrderId::from("E-STARTUP-CACHED"))
+        .side(OrderSide::Buy)
+        .quantity(Quantity::from("0.2"))
+        .price(Price::from("100"))
+        .time_in_force(TimeInForce::Gtc)
+        .post_only(false)
+        .build();
+    harness
+        .cache
+        .borrow_mut()
+        .add_order(order, None, Some(ClientId::from("HYPERLIQUID")), false)
+        .unwrap();
+    let result = mass(&harness).await;
+    assert!(
+        result.is_err(),
+        "unbound routed cache history cannot be assigned account-flatness"
+    );
+    harness.apply_events();
+    assert_eq!(
+        harness
+            .cache
+            .borrow()
+            .orders(None, None, None, None, None)
+            .len(),
+        1
+    );
+    assert!(
+        harness
+            .cache
+            .borrow()
+            .positions(None, None, None, None, None)
+            .is_empty()
+    );
+    assert_eq!(harness.fill_events, 0);
+    assert_eq!(harness.peer.state.writes.load(Ordering::SeqCst), 0);
+    harness.stop().await;
+}
+
+async fn canceled_normal_order(harness: &mut Harness) -> OrderAny {
+    let order = harness.order(
+        "E-STARTUP-OLD-TERMINAL",
+        OrderSide::Buy,
+        "0.2",
+        "100",
+        false,
+        TimeInForce::Gtc,
+    );
+    harness.submit(&order).unwrap();
+    harness
+        .wait_status(order.client_order_id(), OrderStatus::Accepted)
+        .await;
+    harness.wait_ready().await;
+    let oid = harness
+        .cache
+        .borrow()
+        .order(&order.client_order_id())
+        .unwrap()
+        .venue_order_id();
+    harness
+        .client
+        .cancel_order(CancelOrder::new(
+            order.trader_id(),
+            Some(ClientId::from("HYPERLIQUID")),
+            order.strategy_id(),
+            order.instrument_id(),
+            order.client_order_id(),
+            oid,
+            UUID4::new(),
+            UnixNanos::from(now_ms() * 1_000_000),
+            None,
+            None,
+        ))
+        .unwrap();
+    harness.wait_posts(2).await;
+    harness.wait_ready().await;
+    harness
+        .wait_status(order.client_order_id(), OrderStatus::Canceled)
+        .await;
+    harness
+        .cache
+        .borrow()
+        .order(&order.client_order_id())
+        .unwrap()
+        .clone()
+}
+
+#[tokio::test]
+async fn native_actual_canceled_order_history_blocks_even_a_separate_fresh_journal() {
+    let mut original = Harness::new().await;
+    let old = canceled_normal_order(&mut original).await;
+    assert_eq!(
+        old.account_id(),
+        Some(AccountId::from("HYPERLIQUID-ENTROPY"))
+    );
+    original.stop().await;
+    drop(original);
+    let mut harness = Harness::new().await;
+    assert_eq!(harness.scope()["actions"], 0);
+    assert_eq!(harness.scope()["fresh_journal_origin"], true);
+    harness
+        .cache
+        .borrow_mut()
+        .add_order(
+            old.clone(),
+            None,
+            Some(ClientId::from("HYPERLIQUID")),
+            false,
+        )
+        .unwrap();
+    assert!(
+        mass(&harness).await.is_err(),
+        "same-account native closed order history is not fresh"
+    );
+    harness.apply_events();
+    assert_eq!(
+        harness
+            .cache
+            .borrow()
+            .order(&old.client_order_id())
+            .unwrap()
+            .status(),
+        OrderStatus::Canceled
+    );
+    assert_eq!(harness.fill_events, 0);
+    assert!(
+        harness
+            .cache
+            .borrow()
+            .positions(None, None, None, None, None)
+            .is_empty()
+    );
+    assert_eq!(harness.peer.state.writes.load(Ordering::SeqCst), 0);
+    harness.stop().await;
+}
+
+#[tokio::test]
+async fn original_native_terminal_journal_cannot_restart_as_fresh_with_an_empty_cache() {
+    let mut original = Harness::new().await;
+    let old = canceled_normal_order(&mut original).await;
+    original.stop().await;
+    let Harness {
+        peer,
+        directory,
+        client,
+        factory,
+        ..
+    } = original;
+    drop(client);
+    drop(factory);
+    let journal = std::fs::read(directory.path().join("io-intents.jsonl")).unwrap();
+    assert!(!journal.is_empty());
+    let mut config = execution_config(&peer, 30000);
+    config.io_execution_policy_json = Some(policy(&directory).to_string());
+    let mut harness = Harness::from_parts_wait(peer, directory, config, false).await;
+    assert!(mass(&harness).await.is_err());
+    harness.apply_events();
+    assert_eq!(harness.fill_events, 0);
+    assert!(
+        harness
+            .cache
+            .borrow()
+            .orders(None, None, None, None, None)
+            .is_empty()
+    );
+    assert!(
+        harness
+            .cache
+            .borrow()
+            .positions(None, None, None, None, None)
+            .is_empty()
+    );
+    assert_eq!(harness.scope()["fresh_journal_origin"], false);
+    assert_eq!(
+        harness.scope()["owned_intents"][old.client_order_id().as_str()]["phase"],
+        "terminal"
+    );
+    assert_eq!(harness.peer.state.writes.load(Ordering::SeqCst), 2);
+    harness.stop().await;
+}
+
+#[tokio::test]
+async fn durable_actual_fill_cold_debt_cannot_return_startup_flat_or_reapply_financial_facts() {
+    let mut original = Harness::new().await;
+    let order = original.order(
+        "E-STARTUP-COLD-FILL",
+        OrderSide::Buy,
+        "0.2",
+        "100",
+        false,
+        TimeInForce::Gtc,
+    );
+    original.submit(&order).unwrap();
+    original
+        .wait_status(order.client_order_id(), OrderStatus::Accepted)
+        .await;
+    original.wait_ready().await;
+    let fill = original.fill(0, 801, "0.2", "100", "0.002", "0");
+    original.set_position("0.2");
+    original.terminal(0, "filled");
+    original.send_fill(fill);
+    original
+        .wait_status(order.client_order_id(), OrderStatus::Filled)
+        .await;
+    original.refresh_owned(&order).await;
+    assert_eq!(
+        original.portfolio.net_position(&order.instrument_id()),
+        Decimal::from_str_exact("0.2").unwrap()
+    );
+    original.stop().await;
+    let Harness {
+        peer,
+        directory,
+        client,
+        factory,
+        ..
+    } = original;
+    drop(client);
+    drop(factory);
+    let mut config = execution_config(&peer, 30000);
+    config.io_execution_policy_json = Some(policy(&directory).to_string());
+    let mut harness = Harness::from_parts_wait(peer, directory, config, false).await;
+    assert_eq!(harness.scope()["native_projection_recovery_required"], true);
+    let before = harness.scope();
+    assert!(mass(&harness).await.is_err());
+    assert_eq!(harness.scope()["actual_fills"], before["actual_fills"]);
+    assert_eq!(harness.scope()["owned_intents"], before["owned_intents"]);
+    assert_eq!(
+        harness.portfolio.net_position(&order.instrument_id()),
+        Decimal::ZERO
+    );
+    assert!(
+        harness
+            .cache
+            .borrow()
+            .positions(None, None, None, None, None)
+            .is_empty()
+    );
+    assert_eq!(harness.peer.state.writes.load(Ordering::SeqCst), 1);
+    harness.stop().await;
+}
+
+#[tokio::test]
+async fn account_ttl_expiry_during_successful_window_reads_is_not_a_flat_witness() {
+    let mut harness = Harness::with_configuration(
+        "100",
+        |_| {},
+        |config, _| {
+            config.account_snapshot_max_age_ms = 500;
+        },
+    )
+    .await;
+    override_response(&harness, "historicalOrders", 600, "[]".into());
+    rejected_without_projection(&mut harness).await;
+    harness.stop().await;
+}
+
+#[tokio::test]
+async fn preparing_normal_owned_action_during_history_reads_rejects_report_without_releasing_budget()
+ {
+    let mut harness = Harness::new().await;
+    override_response(&harness, "historicalOrders", 200, "[]".into());
+    let after = harness.peer.state.data.lock().requests.len();
+    let order = harness.order(
+        "E-STARTUP-RACED-ACTION",
+        OrderSide::Buy,
+        "0.2",
+        "100",
+        false,
+        TimeInForce::Gtc,
+    );
+    let race = async {
+        await_request(&harness.peer, "historicalOrders", after).await;
+        harness.submit(&order).unwrap();
+    };
+    let (result, ()) = tokio::join!(mass(&harness), race);
+    assert!(result.is_err());
+    harness.wait_posts(1).await;
+    harness.apply_events();
+    let scope = harness.scope();
+    assert!(
+        Decimal::from_str_exact(
+            scope["owned_intents"][order.client_order_id().as_str()]["reservation"]
+                .as_str()
+                .unwrap()
+        )
+        .unwrap()
+            > Decimal::ZERO
+    );
+    assert_eq!(harness.peer.state.writes.load(Ordering::SeqCst), 1);
+    assert_eq!(harness.fill_events, 0);
+    assert!(
+        harness
+            .cache
+            .borrow()
+            .positions(None, None, None, None, None)
+            .is_empty()
+    );
+    harness.stop().await;
+}
+
+#[tokio::test]
+async fn unknown_actual_submit_is_not_retried_or_freed_by_startup_mass_status() {
+    let mut harness = Harness::with_balance("100", |peer| {
+        peer.acknowledge_posts = false;
+        peer.observable_orders = false;
+    })
+    .await;
+    let order = harness.order(
+        "E-STARTUP-UNKNOWN",
+        OrderSide::Buy,
+        "0.2",
+        "100",
+        false,
+        TimeInForce::Gtc,
+    );
+    harness.submit(&order).unwrap();
+    harness.wait_posts(1).await;
+    let reserved =
+        harness.scope()["owned_intents"][order.client_order_id().as_str()]["reservation"]
+            .as_str()
+            .unwrap()
+            .to_string();
+    assert!(Decimal::from_str_exact(&reserved).unwrap() > Decimal::ZERO);
+    assert!(mass(&harness).await.is_err());
+    assert_eq!(
+        harness.scope()["owned_intents"][order.client_order_id().as_str()]["reservation"],
+        reserved
+    );
+    assert_eq!(harness.peer.state.writes.load(Ordering::SeqCst), 1);
+    assert_eq!(harness.fill_events, 0);
+    assert_eq!(
+        harness.portfolio.net_position(&order.instrument_id()),
+        Decimal::ZERO
+    );
+    harness.stop().await;
+}

@@ -1,0 +1,118 @@
+"""Record exact authorized source bytes without reading credentials or environment."""
+
+import argparse
+import datetime as dt
+import hashlib
+import json
+import shutil
+import subprocess
+from pathlib import Path
+
+
+NATIVE = Path("E:/persarb/worktrees/entropy-startup-account-proof")
+APP = Path("E:/persarb/worktrees/entropy-execution-app")
+DIRECTORY = Path(__file__).resolve().parent
+NATIVE_INPUTS = (
+    ".gitattributes",
+    "python/pyproject.toml", "python/uv.lock",
+    "Cargo.toml",
+    "Cargo.lock",
+    "AGENTS.md",
+    "AI_POLICY.md",
+    "CONTRIBUTING.md",
+    "docs/developer_guide/coding_standards.md",
+    "crates/adapters/hyperliquid/src/execution_scope.rs",
+    "crates/adapters/hyperliquid/src/execution.rs",
+    "crates/adapters/hyperliquid/src/http/client.rs",
+    "crates/adapters/hyperliquid/src/account_scope.rs",
+    "crates/adapters/hyperliquid/src/websocket/client.rs",
+    "crates/adapters/hyperliquid/src/economics_scope.rs",
+    "crates/adapters/hyperliquid/src/http/rate_limits.rs",
+    "crates/common/src/runner.rs", "crates/live/src/runner.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account/execution.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account/startup.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account/startup_source_reuse.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs",
+    "crates/live/src/node/mod.rs",
+    "crates/live/src/execution/manager.rs",
+    "crates/model/src/reports/mass_status.rs",
+    "python/generate_stubs.py",
+    "scripts/adapter-evidence/build_native.py",
+    "python/nautilus_trader/adapters/hyperliquid/__init__.py",
+    "python/nautilus_trader/adapters/hyperliquid/__init__.pyi",
+)
+APP_INPUTS = (
+    "CLAUDE.md",
+    "AGENTS.md",
+    "src/entropy_execution.py",
+    "src/entropy_execution_config.py",
+    "src/entropy_execution_core.py",
+    "src/entropy_execution_report.py",
+    "tests/entropy_execution_peer.py",
+    "tests/test_entropy_execution_native.py",
+    "scripts/install_native.py",
+)
+
+
+def git(root, *arguments):
+    completed = subprocess.run(
+        ["git", *arguments], cwd=root, capture_output=True, check=True
+    )
+    return completed.stdout.decode("utf-8").strip()
+
+
+def file_identity(root, relative):
+    path = root / relative
+    data = path.read_bytes()
+    return {
+        "path": str(path),
+        "size": len(data),
+        "sha256": hashlib.sha256(data).hexdigest(),
+    }
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("label")
+    parser.add_argument("--snapshot", action="store_true")
+    args = parser.parse_args()
+    output = DIRECTORY / (args.label + ".json")
+    if output.exists():
+        raise SystemExit(f"Capture already exists: {output}")
+    record = {"started_utc": dt.datetime.now(dt.timezone.utc).isoformat()}
+    for name, root, inputs in (
+        ("native", NATIVE, NATIVE_INPUTS),
+        ("app", APP, APP_INPUTS),
+    ):
+        record[name] = {
+            "root": str(root),
+            "head": git(root, "rev-parse", "HEAD"),
+            "tree": git(root, "rev-parse", "HEAD^{tree}"),
+            "status": git(root, "status", "--short"),
+            "files": [file_identity(root, relative) for relative in inputs if (root / relative).is_file()],
+            "missing_inputs": [relative for relative in inputs if not (root / relative).is_file()],
+        }
+    record["finished_utc"] = dt.datetime.now(dt.timezone.utc).isoformat()
+    if args.snapshot:
+        snapshot = DIRECTORY / "snapshots" / args.label
+        if snapshot.exists():
+            raise SystemExit(f"Snapshot already exists: {snapshot}")
+        snapshot.mkdir(parents=True)
+        for name, root in (("native", NATIVE), ("app", APP)):
+            for item in record[name]["files"]:
+                source = Path(item["path"])
+                target = snapshot / name / source.relative_to(root)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source, target)
+                if hashlib.sha256(target.read_bytes()).hexdigest() != item["sha256"]:
+                    raise SystemExit(f"Source changed while snapshotting: {source}")
+        record["snapshot_directory"] = str(snapshot)
+    output.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({"output": str(output), "heads": {
+        name: record[name]["head"] for name in ("native", "app")
+    }}))
+
+
+if __name__ == "__main__":
+    main()

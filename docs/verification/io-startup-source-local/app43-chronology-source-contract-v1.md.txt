@@ -1,0 +1,33 @@
+﻿# App43 synthetic venue chronology, source revision v1
+
+Authorized by root after the fresh app-main guard and native115 installed-wheel/read-only verification. This revision changes only `tests/entropy_execution_peer.py` and adds `tests/test_entropy_execution_peer.py`. Source froze at 2026-10-09 10:07:29 UTC. No agent test, formatting, native build/import/install, Git/GitHub, environment, or real-venue action occurred. No native or application pass is claimed.
+
+## Executed source and delayed publication
+
+Normal HL order handling validates the existing asset/one-order/client identity and records its received attempt within the existing six-action cap. Rejection, reduce-only cleanup rejection, and the explicitly unexecuted missing-response fault are classified before creating an order, executed fill, position mutation, or publication task. Missing result remains ambiguous to the native client; the fixture's unexecuted scenario does not release native/app worst reservations.
+
+`hl_execute` performs a real synthetic execution before its truthful Filled ACK. It freezes the order ID, independently allocated positive trade ID, actual execution time, quantity, price, fee/builder fee, prior signed position, and raw fill. It updates the venue position once, rejects a reduce-only change that increases or flips the position, and creates terminal status with `statusTimestamp` equal to execution time. ACKs now use the existing bounded `send_frame` path, preserving actual ACK content in existing peer frame evidence.
+
+`hl_fill` retains the existing150ms delay solely for publication. It publishes a detached copy of that exact fill to HTTP history and user WS and collects a new current clearinghouse snapshot. It does not allocate a new identity or timestamp, apply a position delta, change fee, or rewrite terminal status. A passive bounded execution record retains the same frozen row and actual publication collection time for black-box test assertions. It is not native financial/proof authority. All genuine HTTP/periodic private current account snapshots reflect the already executed position throughout the delay. No immediate fabricated private event or suppressed periodic frame was added.
+
+The Aster NEW, later actual trade, partial quantity, and later IOC expiry paths were not changed. No production runtime/config/core/report, native code, existing guard test, or seven installed-native acceptance assertion was changed. No timeout, TTL, quota, request cap, response cap, or retry parameter was changed.
+
+## Four standalone black-box contract cases
+
+Tests run their own actual numeric127.0.0.1 HTTP and WS clients against the normal server. They never invoke `hl_action`, `hl_execute`, or `hl_fill` directly and do not import native code or manufacture Cache/Portfolio events.
+
+1. Entry plus reduce-only close execute while both raw publications are pending. ACK identity/full quantity, prepublication real account quantity, exact status, deliberately unavailable raw fill history, and eventual raw WS/HTTP equality are checked. The two pending executions must have distinct OID/TID. Terminal/fill times and prior position/fee remain exact. Final true account position is zero without delayed double application.
+2. Rejected entry creates no executed order/fill or Filled ACK.
+3. Cleanup rejection preserves its already executed/published actual entry and refuses the attempted close without phantom executed facts.
+4. Missing response produces no ACK/phantom order/fill and leaves actual account state unchanged. This is fixture correctness only, not proof that a production lost response is safe.
+
+All client reads use bounded transport observation. Negative cases observe the original delay horizon with a finite200ms missing-frame bound; this is not a changed native/action/recovery timeout. The chronology test deliberately requires both orders to reach normal execution before publication and may fail if that actual overlap is not observed; it does not prefill quota or stretch publication delay. Each case checks normal server errors and complete server/task/socket teardown.
+
+## Identity and official acceptance
+
+Original peer exact bytes are preserved in `app43-chronology-v1-before/entropy_execution_peer.py`, SHA256 `e288616d1ae21a79457f2a7ad49ce5859f9d22da585f31ecc95d08253eb7bc3a`. Final two source files are preserved in `app43-chronology-v1-frozen/`. The separate JSON manifest records exact source hashes, UTC, proposed commands, count and zero agent execution.
+
+- Peer SHA256: `11930d360dabe0c8751b0f2451c1f8570489311a8526b419a72b25781075515d`.
+- New test SHA256: `a6914257d27df9a3575bd2ce7257d43fd682a939365c1c84530d4bada8d8b809`.
+
+Root owns actual four-case execution, Ruff, unchanged152 existing guards, source-bound installed paired/all-seven native acceptance, and independent review. Historical failure artifacts remain unchanged. Correct execution chronology cannot promise a native warm success: ordinary aggregate ACK recovery may still read actual open/fill/status before publication, preserve AwaitingOwnedActualFills, and consume quota. Genuine private source changes can still supersede a query; original source-debt and fail-closed readiness rules remain enforced. No request savings, token balance, cold-cache recovery, account-wide flatness, or economic completeness is inferred.

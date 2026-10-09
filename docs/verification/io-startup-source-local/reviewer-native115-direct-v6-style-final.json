@@ -1,0 +1,12 @@
+﻿{
+    "report":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-direct-v6-style-final.md",
+    "report_sha256":  "4066f8e75d33c490cd6a68eda2942bcb565ddd9e8a20eed6b00bfe0433502401",
+    "result":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-direct-v6-style-20261009T095338Z/result.json",
+    "result_sha256":  "54a9be23f06e17655e64d5c8eac5bf0c338ae45b1706466b18584c40c337db39",
+    "actual_passed":  7,
+    "actual_failed":  0,
+    "actual_ignored":  0,
+    "source_inputs_unchanged":  39,
+    "copied_binaries_unchanged":  2,
+    "overlap_with_prior_v5_184":  true
+}

@@ -1,0 +1,6 @@
+{
+  "utc": "2026-10-09T10:10:47.706431+00:00",
+  "before_sha256": "a6914257d27df9a3575bd2ce7257d43fd682a939365c1c84530d4bada8d8b809",
+  "after_sha256": "084a3c660045b445443b608b5d4fc44296ce1e20255ce808a3f90e2d60a02ce6",
+  "changes": "Combine nested async contexts; same acquisition and reverse close order, no assertions/observations changed."
+}

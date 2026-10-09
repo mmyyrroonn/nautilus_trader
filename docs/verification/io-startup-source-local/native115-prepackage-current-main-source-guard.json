@@ -1,0 +1,16 @@
+{
+  "utc": "2026-10-09T10:16:09.917000+00:00",
+  "head": "617ffd42eeed6e8e5fff2ec36c10e25f0de1fcbe",
+  "origin_main": "aadad78fab77467f4a1467a252947ebb84f5361d",
+  "merge_base": "aadad78fab77467f4a1467a252947ebb84f5361d",
+  "native_30_source_sha_unchanged": true,
+  "status": "",
+  "actual_changed_paths": [
+    ".gitattributes",
+    "crates/adapters/hyperliquid/src/account_scope.rs",
+    "crates/adapters/hyperliquid/src/execution_scope.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account/execution.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account/startup.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account/startup_source_reuse.rs"
+  ]
+}

@@ -1,0 +1,149 @@
+﻿[
+    {
+        "executable":  "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v6\\entropy_account-69bad49fe9dc76e8.exe",
+        "argv":  [
+                     "execution::startup_source_reuse::original_sealed_source_reuses_only_account_group_and_keeps_actual_report_times::case_1",
+                     "--exact",
+                     "--test-threads=1",
+                     "--nocapture"
+                 ],
+        "cwd":  "E:\\persarb\\worktrees\\entropy-startup-account-proof",
+        "started_utc":  "2026-10-09T09:53:38.5377111Z",
+        "finished_utc":  "2026-10-09T09:53:38.7295931Z",
+        "exit_code":  0,
+        "passed":  1,
+        "failed":  0,
+        "ignored":  0,
+        "expected_count_matches":  true,
+        "stdout":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-direct-v6-style-20261009T095338Z/01.stdout.log",
+        "stdout_sha256":  "e3c6a0613ba30462040d3b073373bf917d064440ee82d375e9133ca0e7112684",
+        "stderr":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-direct-v6-style-20261009T095338Z/01.stderr.log",
+        "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+        "executable":  "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v6\\entropy_account-69bad49fe9dc76e8.exe",
+        "argv":  [
+                     "execution::startup_source_reuse::original_sealed_source_reuses_only_account_group_and_keeps_actual_report_times::case_2",
+                     "--exact",
+                     "--test-threads=1",
+                     "--nocapture"
+                 ],
+        "cwd":  "E:\\persarb\\worktrees\\entropy-startup-account-proof",
+        "started_utc":  "2026-10-09T09:53:38.7405949Z",
+        "finished_utc":  "2026-10-09T09:53:38.9275955Z",
+        "exit_code":  0,
+        "passed":  1,
+        "failed":  0,
+        "ignored":  0,
+        "expected_count_matches":  true,
+        "stdout":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-direct-v6-style-20261009T095338Z/02.stdout.log",
+        "stdout_sha256":  "9fadd76dc6488ce18bdccfbe246eb58369cb93cdd1c83893034ec3be19317eb2",
+        "stderr":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-direct-v6-style-20261009T095338Z/02.stderr.log",
+        "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+        "executable":  "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v6\\entropy_account-69bad49fe9dc76e8.exe",
+        "argv":  [
+                     "execution::startup_source_reuse::original_sealed_source_reuses_only_account_group_and_keeps_actual_report_times::case_3",
+                     "--exact",
+                     "--test-threads=1",
+                     "--nocapture"
+                 ],
+        "cwd":  "E:\\persarb\\worktrees\\entropy-startup-account-proof",
+        "started_utc":  "2026-10-09T09:53:38.9316925Z",
+        "finished_utc":  "2026-10-09T09:53:39.1010622Z",
+        "exit_code":  0,
+        "passed":  1,
+        "failed":  0,
+        "ignored":  0,
+        "expected_count_matches":  true,
+        "stdout":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-direct-v6-style-20261009T095338Z/03.stdout.log",
+        "stdout_sha256":  "948e06ae2a878535af5870f7f9e153ffb63a5a2c45db3ea5a8cfef5d7e3d21d6",
+        "stderr":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-direct-v6-style-20261009T095338Z/03.stderr.log",
+        "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+        "executable":  "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v6\\entropy_account-69bad49fe9dc76e8.exe",
+        "argv":  [
+                     "execution::startup_source_reuse::repeated_mass_calls_read_three_new_empty_arrays_without_renewing_original_seal",
+                     "--exact",
+                     "--test-threads=1",
+                     "--nocapture"
+                 ],
+        "cwd":  "E:\\persarb\\worktrees\\entropy-startup-account-proof",
+        "started_utc":  "2026-10-09T09:53:39.1052168Z",
+        "finished_utc":  "2026-10-09T09:53:39.3062819Z",
+        "exit_code":  0,
+        "passed":  1,
+        "failed":  0,
+        "ignored":  0,
+        "expected_count_matches":  true,
+        "stdout":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-direct-v6-style-20261009T095338Z/04.stdout.log",
+        "stdout_sha256":  "ac3279aa221345adc6a9682e0f087e012dd8262ed5af6d5782525cef52242863",
+        "stderr":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-direct-v6-style-20261009T095338Z/04.stderr.log",
+        "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+        "executable":  "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v6\\entropy_account-69bad49fe9dc76e8.exe",
+        "argv":  [
+                     "execution::startup_source_reuse::actual_identical_applied_frame_preserves_trust_but_requires_complete_full_read",
+                     "--exact",
+                     "--test-threads=1",
+                     "--nocapture"
+                 ],
+        "cwd":  "E:\\persarb\\worktrees\\entropy-startup-account-proof",
+        "started_utc":  "2026-10-09T09:53:39.3102802Z",
+        "finished_utc":  "2026-10-09T09:53:39.4966945Z",
+        "exit_code":  0,
+        "passed":  1,
+        "failed":  0,
+        "ignored":  0,
+        "expected_count_matches":  true,
+        "stdout":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-direct-v6-style-20261009T095338Z/05.stdout.log",
+        "stdout_sha256":  "57591f45d699d35399a9d9b3ac13e824acb81eee9c291587d1d31e9c61fa246b",
+        "stderr":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-direct-v6-style-20261009T095338Z/05.stderr.log",
+        "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+        "executable":  "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v6\\entropy_account-69bad49fe9dc76e8.exe",
+        "argv":  [
+                     "execution::startup_source_reuse::actual_connect_crossing_identical_source_has_no_seal_and_startup_requires_full_read",
+                     "--exact",
+                     "--test-threads=1",
+                     "--nocapture"
+                 ],
+        "cwd":  "E:\\persarb\\worktrees\\entropy-startup-account-proof",
+        "started_utc":  "2026-10-09T09:53:39.5006942Z",
+        "finished_utc":  "2026-10-09T09:53:40.3038099Z",
+        "exit_code":  0,
+        "passed":  1,
+        "failed":  0,
+        "ignored":  0,
+        "expected_count_matches":  true,
+        "stdout":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-direct-v6-style-20261009T095338Z/06.stdout.log",
+        "stdout_sha256":  "aa857c649cca4624d156f060bfe3fffb844170a8046326e4c10bbbf908007049",
+        "stderr":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-direct-v6-style-20261009T095338Z/06.stderr.log",
+        "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+        "executable":  "E:\\persarb\\_tmp\\entropy115-validation\\verified-bin\\native115-stable-binaries-v6\\entropy_account-69bad49fe9dc76e8.exe",
+        "argv":  [
+                     "execution::startup::current_complete_account_mode_metadata_and_source_are_required::case_04",
+                     "--exact",
+                     "--test-threads=1",
+                     "--nocapture"
+                 ],
+        "cwd":  "E:\\persarb\\worktrees\\entropy-startup-account-proof",
+        "started_utc":  "2026-10-09T09:53:40.3078093Z",
+        "finished_utc":  "2026-10-09T09:53:40.4938103Z",
+        "exit_code":  0,
+        "passed":  1,
+        "failed":  0,
+        "ignored":  0,
+        "expected_count_matches":  true,
+        "stdout":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-direct-v6-style-20261009T095338Z/07.stdout.log",
+        "stdout_sha256":  "30d5a142722ec33a37f1b346d444a1f3a55d8760d02e6b82152a75e65dce1ccf",
+        "stderr":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-direct-v6-style-20261009T095338Z/07.stderr.log",
+        "stderr_sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+]

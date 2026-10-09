@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "gh",
+    "api",
+    "repos/mmyyrroonn/nautilus_trader/issues/115/comments",
+    "--method",
+    "POST",
+    "--input",
+    "E:\\persarb\\_tmp\\entropy115-validation\\native115-actual-app-retry-progress-v1-input.json"
+  ],
+  "started_utc": "2026-10-09T10:16:55.787474+00:00",
+  "finished_utc": "2026-10-09T10:17:00.868901+00:00",
+  "exit_code": 1,
+  "attempts": 1
+}

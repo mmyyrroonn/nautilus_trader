@@ -1,0 +1,12 @@
+﻿{
+    "report":  "E:/persarb/_tmp/entropy115-validation/reviewer-app43-chronology-v1.md",
+    "sha256":  "de004cbef236e5d9d9cae9ea16777f7e28e21ae64c31f93303cd0c45f5110aee",
+    "result":  "E:/persarb/_tmp/entropy115-validation/reviewer-app43-chronology-v1-source/result.json",
+    "result_sha256":  "3f85f4d1997b0cd4d309cf91b91e327af53a8c5459370b04362755d398717fcb",
+    "source_review_only":  true,
+    "independent_test_executions":  0,
+    "blockers":  [
+
+                 ],
+    "style_addendum_pending":  true
+}

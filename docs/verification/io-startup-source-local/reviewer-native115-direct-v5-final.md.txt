@@ -1,0 +1,47 @@
+# Native115 v5 independent copied-native execution
+
+**184 distinct tests passed, 0 failed, 0 ignored**, UTC 2026-10-09T09:40:06.1682861Z through 09:41:25.5153736Z. Every actual process exit was 0 and every per-filter expected count matched the test program's own result. No retries occurred. This is independent execution of authorized immutable copied native test programs, not a restatement of root Cargo results. No Cargo, Git, GitHub, formatting, build, installation, native Python import, source/test edits or real venue access occurred.
+
+## Bound inputs and artifacts
+
+Evidence directory: `E:/persarb/_tmp/entropy115-validation/reviewer-native115-direct-v5-20261009T094006Z`.
+
+Structured result `result.json` SHA-256: `42bd49e57e286d9b450eed3dfc05312fbd749c74199ec5055ad6448580b4a1c1`. It records exact argv/cwd, UTC start/end, exits, counts and separate unmodified stdout/stderr bytes plus their hashes for every process. Working directory was `E:/persarb/worktrees/entropy-startup-account-proof`. Direct executable arguments used each stated test filter, `--test-threads=1`, and `--exact` for individual cases; integrations used `--nocapture`. PowerShell orchestration launched Process directly with separate redirected raw byte streams; no shell execution or rebuilding occurred inside the test program invocation.
+
+Source manifest `native115-formatted-v5.json` SHA-256: `a14294cc3032ce47af2ce33ab1a04ed51bb1538179fc7f7fefcd1e0031b76809`. Binary manifest `native115-stable-binaries-v5.json` binds the root's original full build/run to copies under `verified-bin/native115-stable-binaries-v5`:
+
+- `entropy_account-69bad49fe9dc76e8.exe`: `bc59a1a9e62aefa277495d606a60088be32dc808e34df3279ebeb8563c58d7b4`.
+- `nautilus_hyperliquid-1fcbc36810deefe5.exe`: `204914f7b6a834a1d44c16a221abf3ed9dd93a74522f7788e8e7d9c486a568f0`.
+
+All **39 selected source/artifact inputs plus both copied executable files**, 41 total, matched the expected bytes before execution and were unchanged after all processes closed. This includes the actual production and test sources, dependencies/locks, selected generated stub and frozen app inputs. No source fingerprint or Git identity helper was invoked. Root is free to apply later test style fixes after this completed capture; these v5 executables are not thereby relabeled as final v6 test-source artifacts.
+
+## Independent counts, without overlap
+
+| Executed filter/group | Passed |
+|---|---:|
+| `execution::startup_source_reuse::` | 22 |
+| `execution::startup::` | 55 |
+| `execution::io_query_recovery::` | 64 |
+| Four distinct exact prior durable restart/Unknown OID/leverage/funding recovery cases | 4 |
+| `execution_scope::tests::` | 30 |
+| Six distinct exact account-source/economic replay/capacity cases | 6 |
+| Three exact private ingress contiguous-application/old-epoch/lock-serialization mechanism cases | 3 |
+| **Distinct total** | **184** |
+
+Filters are disjoint; individual exact cases are outside the selected module prefixes. Detailed names and commands are in result.json. This total is not added to the root's overlapping full regression, prior source-only reviews, old native113 results or future installed-node probes. Discovery `--list` calls were not counted as tests.
+
+The new22 include preserved original source/raw correlation, genuine reuse and coherent fallback, unchanged timestamps/no additional AccountState, repeated actual empty-array requests, source crossing/expiry/deadline refusal and all three actual selected-row HTTP counterproof negatives. The old55 retain the existing exclusion/assertion contract with the explicitly documented eleven future-HTTP setup changes and separate old Cache metadata refusal; their source bytes/trigger semantics are not described as unchanged from native111.
+
+## Actual history deadline branch observed
+
+The independent warm64 run recorded `hard_history_bounded_outcome` with **history_requests=1** and actual_request_count=26. Its two new coverage endpoints, userFunding and userNonFundingLedgerUpdates, have generation1/epoch0, identical finite start/end, pages0/records0, complete=false and the exact diagnostic `Economic history total deadline exhausted (quota/retries/metadata included)`. Proof remained false and signed_writes=0. The compact parsed outcome and originating stderr SHA are saved as `hard-history-observed-outcome.json`.
+
+Thus this execution exercised the actual history-request/Unknown deadline branch. It **did not independently execute the alternative zero-history-HTTP quota-before-request outcome**, and no claim of that branch's actual pass or internal limiter balance is made. The product's existing budget/refusal and original raw/receipt invariants remain tested without extending limits.
+
+## Acceptance limits and next binding
+
+The source review's original transaction provenance, strict full-read seal qualification and final TTL fixes remain the reviewed v5 production. These tests support the finite scoped contract but do not prove remote read atomicity, uninterrupted readiness or actual paired liveness. Exact startup private lock-wait/unapplied-actor integration is not claimed by separate ingress mechanism tests; those remain compositional support and source audit.
+
+No final installed wheel/ABI or normal LiveNode acceptance is asserted by this native executable result. Root reported two new test-style Clippy diagnostics and will fix them after this capture; final source/test identity and required regression must be rebound honestly. The already reviewed production remains v5 unless separately changed. The root full command has 1387 passes and 12 native ignored cases plus 6 ignored doctests (18 across all result summaries); those are root evidence, not additional independent passes.
+
+Kernel isolation, generic cold/native Cache restoration, arbitrary post-prepare cross-Send Cache mutation, whole-account/funding/run PnL and real venue behavior remain unknown or separate. No source-derived 182 request-weight omission is promoted to measured bucket savings or app43 completion. Original failed sources and immutable debt are untouched.

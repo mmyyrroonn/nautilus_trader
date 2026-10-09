@@ -1,0 +1,9 @@
+﻿# Independent App43 chronology final-v2 style addendum
+
+The final peer remains SHA256 11930d360dabe0c8751b0f2451c1f8570489311a8526b419a72b25781075515d. The final new test is SHA256 c649d24c2c68beb5758442e3eb5abfdd455b070627c179c734f66b8719eac35a. Independent static review compared final live files against immutable v1 source; 32 source/lineage inputs matched before and after the comparison (UTC10:12:42.428451 to10:12:42.441452).
+
+Only import ordering, formatting and directly nested async context managers changed in the new test. Static AST comparison, normalized solely by sorting import declarations and flattening directly nested async-with nodes, proves all remaining module/function business AST unchanged. Context entry remains peer then WS, and exit remains WS then peer. Assertions, wire requests, fault variants, timers and finite limits are unchanged. Peer bytes and the protected existing native/application inputs remain unchanged.
+
+No blocker is introduced by final-v2 styles; the source conclusion and bounded limitations from reviewer-app43-chronology-v1.md carry forward. Root's 156 actual tests include the four expanded wire cases and are not counted as independent reviewer execution. Reviewer pytest/native executions =0. These source reviews do not claim a paired application pass; the subsequent recorded paired failure is reviewed separately. Old v1 reports/source bytes are preserved.
+
+Evidence: reviewer-app43-chronology-v2-style-source/result.json, before.json, after.json and exact test-v2-reviewed.py.txt. No format/test/Git/Cargo/build/install or production/test source mutation was performed by this reviewer.

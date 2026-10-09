@@ -1,0 +1,30 @@
+{
+  "started_utc": "2026-10-09T10:11:20.285522+00:00",
+  "finished_utc": "2026-10-09T10:11:20.318523+00:00",
+  "review_type": "Static source review only; no tests/native import/format/Git/build/install",
+  "inputs": 32,
+  "protected_existing_source_count": 29,
+  "all_before_after_match": true,
+  "peer_changed_methods": [
+    "__init__",
+    "hl_action",
+    "hl_fill"
+  ],
+  "peer_added_methods": [
+    "hl_execute"
+  ],
+  "all_other_existing_methods_ast_unchanged": true,
+  "aster_methods_unchanged": [
+    "aster_response",
+    "aster_order",
+    "aster_fill"
+  ],
+  "source_review_blockers": [],
+  "actual_test_executions": 0,
+  "limitations": [
+    "Overlap prepublication checks require loopback round trips within unchanged 150ms and may fail on slow scheduling",
+    "Missing-response fault is deliberately unexecuted; not execution-after-lost-ACK coverage",
+    "No generic arbitrary netting/market/liquidation/economic venue simulation",
+    "Wire tests also inspect fixture records for provenance; not native strategy integration"
+  ]
+}

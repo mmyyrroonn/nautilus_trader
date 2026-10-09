@@ -1,0 +1,2022 @@
+{
+  "revision": "native115-paired-next-dependency-analysis-v1",
+  "created_utc": "2026-10-09T10:19:50.004248+00:00",
+  "scope": "Read-only source and preserved actual artifact analysis; no tests or source edits",
+  "actual_result": "FAIL; four ordinary native fills applied and net positions zero; current HL flat proof Unknown",
+  "controller": {
+    "state": "StoppedUnknown",
+    "positions": {
+      "aster": "0.00",
+      "entropy": "0.0000"
+    },
+    "gross_reserved_usd": "0.0000",
+    "unhedged_reserved_usd": "0.0000",
+    "orders_terminal": true,
+    "owned_flat_verified": "Unknown",
+    "reasons": [
+      "cleanup_not_currently_proven_or_budget_exhausted",
+      "cleanup_deadline_exhausted"
+    ],
+    "entry_orders": 2,
+    "cleanup_orders": 2,
+    "loss_usd": "0.00640000"
+  },
+  "fills": [
+    {
+      "account_id": "HYPERLIQUID-ENTROPY43",
+      "client_order_id": "ENTROPY43_LOCAL-entropy-1",
+      "fee": "0.00100000",
+      "fee_currency": "USDC",
+      "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+      "leg": "entropy",
+      "native_applied": true,
+      "price": "100.00",
+      "quantity": "0.1200",
+      "received_ns": 1791540708819863700,
+      "side": "BUY",
+      "source_reference": "native-order-filled:b998ee99-efbb-47ef-b478-c1adc022e2cd",
+      "trade_id": "io:io:SNDK:70001:60001",
+      "venue_order_id": "70001"
+    },
+    {
+      "account_id": "ASTER-ENTROPY43",
+      "client_order_id": "ENTROPY43_LOCAL-aster-2",
+      "fee": "0.00100000",
+      "fee_currency": "USD1",
+      "instrument_id": "SNDKUSD1-PERP.ASTER",
+      "leg": "aster",
+      "native_applied": true,
+      "price": "100.10000",
+      "quantity": "0.12",
+      "received_ns": 1791540709096698600,
+      "side": "SELL",
+      "source_reference": "native-order-filled:f41ba0e1-5af2-4c15-ad82-fd49d2287d07",
+      "trade_id": "90000",
+      "venue_order_id": "80001"
+    },
+    {
+      "account_id": "HYPERLIQUID-ENTROPY43",
+      "client_order_id": "ENTROPY43_LOCAL-entropy-3",
+      "fee": "0.00100000",
+      "fee_currency": "USDC",
+      "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+      "leg": "entropy",
+      "native_applied": true,
+      "price": "99.99",
+      "quantity": "0.1200",
+      "received_ns": 1791540709307799000,
+      "side": "SELL",
+      "source_reference": "native-order-filled:64520256-eb1c-4d0b-aca0-a71f5b2c62f3",
+      "trade_id": "io:io:SNDK:70002:60002",
+      "venue_order_id": "70002"
+    },
+    {
+      "account_id": "ASTER-ENTROPY43",
+      "client_order_id": "ENTROPY43_LOCAL-aster-5",
+      "fee": "0.00100000",
+      "fee_currency": "USD1",
+      "instrument_id": "SNDKUSD1-PERP.ASTER",
+      "leg": "aster",
+      "native_applied": true,
+      "price": "100.11000",
+      "quantity": "0.12",
+      "received_ns": 1791540709521156100,
+      "side": "BUY",
+      "source_reference": "native-order-filled:bcebf642-74b0-43aa-b357-fd59f1de2667",
+      "trade_id": "90001",
+      "venue_order_id": "80002"
+    }
+  ],
+  "native_cache_positions": {
+    "aster": [
+      "Position(FLAT SNDKUSD1-PERP.ASTER, id=SNDKUSD1-PERP.ASTER-ENTROPY-043)"
+    ],
+    "entropy": [
+      "Position(FLAT io:SNDK-USD-PERP.HYPERLIQUID, id=io:SNDK-USD-PERP.HYPERLIQUID-ENTROPY-043)"
+    ]
+  },
+  "native_portfolio_net_positions": {
+    "aster": "0",
+    "entropy": "0"
+  },
+  "scope_transitions": [
+    {
+      "observed_ms": 1791540708545,
+      "diagnostic": "Complete bounded owned io recovery for HYPERLIQUID-ENTROPY43; REST requests are non-atomic; leverage proof source time unknown",
+      "query_in_flight": false,
+      "query_completed": 0,
+      "account_trusted": true,
+      "recovery_complete": true,
+      "received_sequence": 6,
+      "account_http_received_ms": 1791540708399,
+      "has_debt": false
+    },
+    {
+      "observed_ms": 1791540708733,
+      "diagnostic": "io RecoveryIncomplete: Verified owned filled marker awaits complete actual fills",
+      "query_in_flight": false,
+      "query_completed": 0,
+      "account_trusted": true,
+      "recovery_complete": false,
+      "received_sequence": 7,
+      "account_http_received_ms": 1791540708399,
+      "has_debt": false
+    },
+    {
+      "observed_ms": 1791540708820,
+      "diagnostic": "Actual io fill requires new complete scoped account absorption",
+      "query_in_flight": false,
+      "query_completed": 0,
+      "account_trusted": false,
+      "recovery_complete": false,
+      "received_sequence": 8,
+      "account_http_received_ms": 1791540708399,
+      "has_debt": false
+    },
+    {
+      "observed_ms": 1791540708938,
+      "diagnostic": "Bounded live owned warm io recovery; historical coverage remains independent",
+      "query_in_flight": false,
+      "query_completed": 1,
+      "account_trusted": true,
+      "recovery_complete": true,
+      "received_sequence": 9,
+      "account_http_received_ms": 1791540708855,
+      "has_debt": false
+    },
+    {
+      "observed_ms": 1791540709235,
+      "diagnostic": "io RecoveryIncomplete: Verified owned filled marker awaits complete actual fills",
+      "query_in_flight": false,
+      "query_completed": 1,
+      "account_trusted": true,
+      "recovery_complete": false,
+      "received_sequence": 10,
+      "account_http_received_ms": 1791540708855,
+      "has_debt": false
+    },
+    {
+      "observed_ms": 1791540709308,
+      "diagnostic": "Actual io fill requires new complete scoped account absorption",
+      "query_in_flight": false,
+      "query_completed": 1,
+      "account_trusted": false,
+      "recovery_complete": false,
+      "received_sequence": 11,
+      "account_http_received_ms": 1791540708855,
+      "has_debt": false
+    },
+    {
+      "observed_ms": 1791540709443,
+      "diagnostic": "io bounded warm account query is pending",
+      "query_in_flight": true,
+      "query_completed": 1,
+      "account_trusted": false,
+      "recovery_complete": false,
+      "received_sequence": 12,
+      "account_http_received_ms": 1791540708855,
+      "has_debt": false
+    },
+    {
+      "observed_ms": 1791540712437,
+      "diagnostic": "io warm RecoveryIncomplete: io warm recovery total deadline exhausted",
+      "query_in_flight": false,
+      "query_completed": 2,
+      "account_trusted": false,
+      "recovery_complete": false,
+      "received_sequence": 15,
+      "account_http_received_ms": 1791540708855,
+      "has_debt": true
+    }
+  ],
+  "queries": [
+    {
+      "ms": 1791540708545,
+      "baseline_generation": 4,
+      "baseline_source_reference": "f33cde618cd3736d624351c96bd010176fd891266641c2138919b23bbcc4fabd",
+      "leg": "aster",
+      "read_action": 1
+    },
+    {
+      "ms": 1791540708844,
+      "baseline_generation": 0,
+      "baseline_source_reference": "b6081c590571d5cc95fccf7b258d1fb8c1007a28a2f545b6d01912006205aa60",
+      "leg": "entropy",
+      "read_action": 2
+    },
+    {
+      "ms": 1791540709143,
+      "baseline_generation": 9,
+      "baseline_source_reference": "4afadcb243968665e1e76b1c8678da0b7682f2533d5a27486c31c118749d4a9d",
+      "leg": "aster",
+      "read_action": 3
+    },
+    {
+      "ms": 1791540709348,
+      "baseline_generation": 0,
+      "baseline_source_reference": "02d9cdaf4f7bfc2979dec567ea910130d9a971ca00387ec7f7c7357dfe84941a",
+      "leg": "entropy",
+      "read_action": 4
+    },
+    {
+      "ms": 1791540709647,
+      "baseline_generation": 15,
+      "baseline_source_reference": "0a6cc4375b80cf74082e3cd10802c3c1561eb3c8a9c70f122717d71f62c3c6cd",
+      "leg": "aster",
+      "read_action": 5
+    },
+    {
+      "ms": 1791540710750,
+      "baseline_generation": 17,
+      "baseline_source_reference": "15584b7df91bd987d2e935f62ef589dab741ddb71595b8fe8e96e16ca9293678",
+      "leg": "aster",
+      "read_action": 6
+    },
+    {
+      "ms": 1791540711839,
+      "baseline_generation": 19,
+      "baseline_source_reference": "d55d8b131e9440dc2df9ef69f4f169fe18178ea47570e051a8141c862fbf0d5c",
+      "leg": "aster",
+      "read_action": 7
+    },
+    {
+      "ms": 1791540712535,
+      "baseline_generation": 0,
+      "baseline_source_reference": "c00ca9cac8bd982e6d5ecc10574fdfdcbaac7582042fff7958da13603f92e230",
+      "leg": "entropy",
+      "read_action": 8
+    },
+    {
+      "ms": 1791540712945,
+      "baseline_generation": 21,
+      "baseline_source_reference": "7987c69ab96a89c00f22f0bc6880a46738d8e72b509a23c3ae7bfd363ec56b3c",
+      "leg": "aster",
+      "read_action": 9
+    },
+    {
+      "ms": 1791540714046,
+      "baseline_generation": 23,
+      "baseline_source_reference": "cda3760db2fed67c084a0a7c273456a7836a13adafe52f73248acef2bf8157dd",
+      "leg": "aster",
+      "read_action": 10
+    },
+    {
+      "ms": 1791540715141,
+      "baseline_generation": 25,
+      "baseline_source_reference": "74e3ca5115191c686addbb7b8139633f8909adf842d0d9c4f1795185b37f7c05",
+      "leg": "aster",
+      "read_action": 11
+    },
+    {
+      "ms": 1791540715640,
+      "baseline_generation": 0,
+      "baseline_source_reference": "87f654de5cfac4fd0859773a39a15aacb7e7226a278e268fcfc26bb3afd5044f",
+      "leg": "entropy",
+      "read_action": 12
+    },
+    {
+      "ms": 1791540716237,
+      "baseline_generation": 27,
+      "baseline_source_reference": "887d43343a8d1c7823165d3b2361a78f49caeec49ebc558a4f965ef44ca8cca3",
+      "leg": "aster",
+      "read_action": 13
+    },
+    {
+      "ms": 1791540717248,
+      "baseline_generation": 29,
+      "baseline_source_reference": "26b58491346029f63ec0def87a0652d9d852170d16fd551fe8f067d66507bcb2",
+      "leg": "aster",
+      "read_action": 14
+    },
+    {
+      "ms": 1791540718338,
+      "baseline_generation": 31,
+      "baseline_source_reference": "903f4feaa1c60feb03cbbc80b582e2dc50cc6c5b06955133bee0c3e07d889855",
+      "leg": "aster",
+      "read_action": 15
+    },
+    {
+      "ms": 1791540718750,
+      "baseline_generation": 0,
+      "baseline_source_reference": "3e5313bf9cbf85e6f1b503a2f63174abd676531cb964137a4728d87b863e6e06",
+      "leg": "entropy",
+      "read_action": 16
+    },
+    {
+      "ms": 1791540719445,
+      "baseline_generation": 33,
+      "baseline_source_reference": "eba9340bc55f7bc04ffcfcef9236c037e02ffa65f486199b2b54f09be56408f9",
+      "leg": "aster",
+      "read_action": 17
+    },
+    {
+      "ms": 1791540720534,
+      "baseline_generation": 35,
+      "baseline_source_reference": "d9a976f41b1fece211f0eed78dd53dc3c2d6f197a7d29ec5e1b5cd3734ed55d6",
+      "leg": "aster",
+      "read_action": 18
+    },
+    {
+      "ms": 1791540721649,
+      "baseline_generation": 37,
+      "baseline_source_reference": "3764b7dc125cfc9492cd20dd4984783884703ce70766d7d7415cb83142999ee7",
+      "leg": "aster",
+      "read_action": 19
+    },
+    {
+      "ms": 1791540721949,
+      "baseline_generation": 0,
+      "baseline_source_reference": "3f0895f0ae7d8422663c29f37f7e245f99ee544a4501d20ad9c6f8fddbb02109",
+      "leg": "entropy",
+      "read_action": 20
+    },
+    {
+      "ms": 1791540722738,
+      "baseline_generation": 39,
+      "baseline_source_reference": "eab15a4b501bbd38ca909dbe3c85cd41e81163a8b22e3cdf569a0f826405908c",
+      "leg": "aster",
+      "read_action": 21
+    }
+  ],
+  "private_source_frames": [
+    {
+      "source_ms": 1791540708372,
+      "signed_position": "0"
+    },
+    {
+      "source_ms": 1791540708811,
+      "signed_position": "0.12"
+    },
+    {
+      "source_ms": 1791540709299,
+      "signed_position": "0"
+    },
+    {
+      "source_ms": 1791540709444,
+      "signed_position": "0"
+    },
+    {
+      "source_ms": 1791540710447,
+      "signed_position": "0"
+    },
+    {
+      "source_ms": 1791540711540,
+      "signed_position": "0"
+    },
+    {
+      "source_ms": 1791540712644,
+      "signed_position": "0"
+    },
+    {
+      "source_ms": 1791540713747,
+      "signed_position": "0"
+    },
+    {
+      "source_ms": 1791540714838,
+      "signed_position": "0"
+    },
+    {
+      "source_ms": 1791540715844,
+      "signed_position": "0"
+    },
+    {
+      "source_ms": 1791540716945,
+      "signed_position": "0"
+    },
+    {
+      "source_ms": 1791540718039,
+      "signed_position": "0"
+    },
+    {
+      "source_ms": 1791540719049,
+      "signed_position": "0"
+    },
+    {
+      "source_ms": 1791540720127,
+      "signed_position": "0"
+    },
+    {
+      "source_ms": 1791540721135,
+      "signed_position": "0"
+    },
+    {
+      "source_ms": 1791540722139,
+      "signed_position": "0"
+    },
+    {
+      "source_ms": 1791540723244,
+      "signed_position": "0"
+    }
+  ],
+  "close_failed_source_debt": {
+    "identity": {
+      "account_id": "HYPERLIQUID-ENTROPY43",
+      "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+      "epoch": 0,
+      "generation": 1,
+      "policy": {
+        "action_timeout_ms": 2000,
+        "fee_buffer_bps": "100",
+        "journal_path": "E:\\persarb\\_tmp\\app43-native115-chronology-first-paired-20261009\\paired\\native-io-intents.jsonl",
+        "margin_buffer": "1",
+        "max_actions": 6,
+        "max_gross_notional": "40",
+        "max_leverage": 1,
+        "max_open_orders": 2,
+        "max_order_notional": "20",
+        "metadata_max_age_ms": 30000,
+        "recovery_max_attempts": 2,
+        "recovery_retry_delay_ms": 10,
+        "recovery_timeout_ms": 3000,
+        "schema_version": 1,
+        "strategy_id": "ENTROPY-043",
+        "symbols": [
+          {
+            "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+            "max_price": "105",
+            "max_quantity": "0.12",
+            "min_price": "95"
+          }
+        ]
+      },
+      "query_token": 10,
+      "received_sequence": 12
+    },
+    "kind": "unknown_sources",
+    "original_sources": [
+      {
+        "raw_text": "[]",
+        "received_ms": 1791540709364,
+        "request_json": "{\"type\":\"frontendOpenOrders\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\"}"
+      },
+      {
+        "raw_text": "[{\"coin\":\"io:SNDK\",\"px\":\"100\",\"sz\":\"0.12\",\"side\":\"B\",\"time\":1791540708643,\"startPosition\":\"0\",\"dir\":\"Open Long\",\"closedPnl\":\"0\",\"hash\":\"0x000000000000000000000000000000000000000000000000000000000000ea61\",\"oid\":70001,\"crossed\":true,\"fee\":\"0.001\",\"builderFee\":\"0.0002\",\"tid\":60001,\"feeToken\":\"USDC\",\"cloid\":\"0x765fde8d8d4a9ae99a37a1f3deb3a35e\"},{\"coin\":\"io:SNDK\",\"px\":\"99.99\",\"sz\":\"0.12\",\"side\":\"A\",\"time\":1791540709146,\"startPosition\":\"0.12\",\"dir\":\"Close Long\",\"closedPnl\":\"0\",\"hash\":\"0x000000000000000000000000000000000000000000000000000000000000ea62\",\"oid\":70002,\"crossed\":true,\"fee\":\"0.001\",\"builderFee\":\"0.0002\",\"tid\":60002,\"feeToken\":\"USDC\",\"cloid\":\"0x782dac5589d929429784b00b34589629\"}]",
+        "received_ms": 1791540709365,
+        "request_json": "{\"type\":\"userFills\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}"
+      },
+      {
+        "raw_text": "{\"status\":\"order\",\"order\":{\"order\":{\"coin\":\"io:SNDK\",\"side\":\"A\",\"limitPx\":\"99.99\",\"sz\":\"0\",\"origSz\":\"0.12\",\"oid\":70002,\"timestamp\":1791540709146,\"cloid\":\"0x782dac5589d929429784b00b34589629\",\"reduceOnly\":true,\"orderType\":\"Limit\",\"tif\":\"Ioc\"},\"status\":\"filled\",\"statusTimestamp\":1791540709146}}",
+        "received_ms": 1791540709365,
+        "request_json": "{\"type\":\"orderStatus\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"oid\":\"0x782dac5589d929429784b00b34589629\"}"
+      },
+      {
+        "raw_text": "{\"role\":\"user\"}",
+        "received_ms": 1791540711175,
+        "request_json": "{\"type\":\"userRole\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}"
+      },
+      {
+        "raw_text": "\"disabled\"",
+        "received_ms": 1791540712170,
+        "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}"
+      }
+    ],
+    "unavailable_sources": [
+      {
+        "diagnostic": "Request began but no complete bounded raw body was received",
+        "received_ms": null,
+        "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}"
+      }
+    ]
+  },
+  "requests": [
+    {
+      "index": 0,
+      "request": {
+        "type": "spotMeta"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "universe": [],
+        "tokens": [
+          {
+            "name": "USDC",
+            "index": 0,
+            "szDecimals": 8,
+            "weiDecimals": 8,
+            "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+            "isCanonical": true,
+            "fullName": "USD Coin"
+          }
+        ]
+      },
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 1,
+      "request": {
+        "type": "allPerpMetas"
+      },
+      "response_status": "200 OK",
+      "response_body": [
+        {
+          "universe": [],
+          "collateralToken": 0
+        },
+        {
+          "universe": [
+            {
+              "name": "io:SNDK",
+              "szDecimals": 4,
+              "maxLeverage": 10,
+              "onlyIsolated": true,
+              "marginMode": "strictIsolated"
+            }
+          ],
+          "collateralToken": 0
+        }
+      ],
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 2,
+      "request": {
+        "type": "outcomeMeta"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "outcomes": [],
+        "questions": []
+      },
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 3,
+      "request": {
+        "type": "allPerpMetas"
+      },
+      "response_status": "200 OK",
+      "response_body": [
+        {
+          "universe": [],
+          "collateralToken": 0
+        },
+        {
+          "universe": [
+            {
+              "name": "io:SNDK",
+              "szDecimals": 4,
+              "maxLeverage": 10,
+              "onlyIsolated": true,
+              "marginMode": "strictIsolated"
+            }
+          ],
+          "collateralToken": 0
+        }
+      ],
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 4,
+      "request": {
+        "type": "perpDexs"
+      },
+      "response_status": "200 OK",
+      "response_body": [
+        null,
+        {
+          "name": "io",
+          "fullName": "Synthetic Entropy"
+        }
+      ],
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 5,
+      "request": {
+        "type": "spotMeta"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "universe": [],
+        "tokens": [
+          {
+            "name": "USDC",
+            "index": 0,
+            "szDecimals": 8,
+            "weiDecimals": 8,
+            "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+            "isCanonical": true,
+            "fullName": "USD Coin"
+          }
+        ]
+      },
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 6,
+      "request": {
+        "type": "allPerpMetas"
+      },
+      "response_status": "200 OK",
+      "response_body": [
+        {
+          "universe": [],
+          "collateralToken": 0
+        },
+        {
+          "universe": [
+            {
+              "name": "io:SNDK",
+              "szDecimals": 4,
+              "maxLeverage": 10,
+              "onlyIsolated": true,
+              "marginMode": "strictIsolated"
+            }
+          ],
+          "collateralToken": 0
+        }
+      ],
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 7,
+      "request": {
+        "type": "outcomeMeta"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "outcomes": [],
+        "questions": []
+      },
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 8,
+      "request": {
+        "type": "spotMeta"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "universe": [],
+        "tokens": [
+          {
+            "name": "USDC",
+            "index": 0,
+            "szDecimals": 8,
+            "weiDecimals": 8,
+            "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+            "isCanonical": true,
+            "fullName": "USD Coin"
+          }
+        ]
+      },
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 9,
+      "request": {
+        "type": "allPerpMetas"
+      },
+      "response_status": "200 OK",
+      "response_body": [
+        {
+          "universe": [],
+          "collateralToken": 0
+        },
+        {
+          "universe": [
+            {
+              "name": "io:SNDK",
+              "szDecimals": 4,
+              "maxLeverage": 10,
+              "onlyIsolated": true,
+              "marginMode": "strictIsolated"
+            }
+          ],
+          "collateralToken": 0
+        }
+      ],
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 10,
+      "request": {
+        "type": "outcomeMeta"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "outcomes": [],
+        "questions": []
+      },
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 11,
+      "request": {
+        "type": "userRole",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "role": "user"
+      },
+      "source_derived_base_weight": 60,
+      "native_received_ms": null
+    },
+    {
+      "index": 12,
+      "request": {
+        "type": "userAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": "disabled",
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 13,
+      "request": {
+        "type": "userDexAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": false,
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 14,
+      "request": {
+        "type": "meta",
+        "dex": "io"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "universe": [
+          {
+            "name": "io:SNDK",
+            "szDecimals": 4,
+            "maxLeverage": 10,
+            "onlyIsolated": true,
+            "marginMode": "strictIsolated"
+          }
+        ],
+        "collateralToken": 0
+      },
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 15,
+      "request": {
+        "type": "spotMeta"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "universe": [],
+        "tokens": [
+          {
+            "name": "USDC",
+            "index": 0,
+            "szDecimals": 8,
+            "weiDecimals": 8,
+            "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+            "isCanonical": true,
+            "fullName": "USD Coin"
+          }
+        ]
+      },
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 16,
+      "request": {
+        "type": "clearinghouseState",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "dex": "io"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "marginSummary": {
+          "accountValue": "100",
+          "totalNtlPos": "0",
+          "totalRawUsd": "100",
+          "totalMarginUsed": "0"
+        },
+        "crossMarginSummary": {
+          "accountValue": "0",
+          "totalNtlPos": "0",
+          "totalRawUsd": "0",
+          "totalMarginUsed": "0"
+        },
+        "crossMaintenanceMarginUsed": "0",
+        "withdrawable": "100",
+        "assetPositions": [],
+        "time": 1791540708284
+      },
+      "source_derived_base_weight": 2,
+      "native_received_ms": null
+    },
+    {
+      "index": 17,
+      "request": {
+        "type": "userAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": "disabled",
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 18,
+      "request": {
+        "type": "userDexAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": false,
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 19,
+      "request": {
+        "type": "perpDexs"
+      },
+      "response_status": "200 OK",
+      "response_body": [
+        null,
+        {
+          "name": "io",
+          "fullName": "Synthetic Entropy"
+        }
+      ],
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 20,
+      "request": {
+        "type": "meta",
+        "dex": "io"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "universe": [
+          {
+            "name": "io:SNDK",
+            "szDecimals": 4,
+            "maxLeverage": 10,
+            "onlyIsolated": true,
+            "marginMode": "strictIsolated"
+          }
+        ],
+        "collateralToken": 0
+      },
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 21,
+      "request": {
+        "type": "spotMeta"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "universe": [],
+        "tokens": [
+          {
+            "name": "USDC",
+            "index": 0,
+            "szDecimals": 8,
+            "weiDecimals": 8,
+            "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+            "isCanonical": true,
+            "fullName": "USD Coin"
+          }
+        ]
+      },
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 22,
+      "request": {
+        "type": "activeAssetData",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "coin": "io:SNDK"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "coin": "io:SNDK",
+        "leverage": {
+          "type": "isolated",
+          "value": 1
+        },
+        "maxTradeSzs": [
+          "1",
+          "1"
+        ],
+        "availableToTrade": [
+          "100",
+          "100"
+        ],
+        "markPx": "100"
+      },
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 23,
+      "request": {
+        "type": "activeAssetData",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "coin": "io:SNDK"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "coin": "io:SNDK",
+        "leverage": {
+          "type": "isolated",
+          "value": 1
+        },
+        "maxTradeSzs": [
+          "1",
+          "1"
+        ],
+        "availableToTrade": [
+          "100",
+          "100"
+        ],
+        "markPx": "100"
+      },
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 24,
+      "request": {
+        "type": "frontendOpenOrders",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "dex": "io"
+      },
+      "response_status": "200 OK",
+      "response_body": [],
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 25,
+      "request": {
+        "type": "userFills",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": [],
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 26,
+      "request": {
+        "type": "userRole",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "role": "user"
+      },
+      "source_derived_base_weight": 60,
+      "native_received_ms": null
+    },
+    {
+      "index": 27,
+      "request": {
+        "type": "userAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": "disabled",
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 28,
+      "request": {
+        "type": "userDexAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": false,
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 29,
+      "request": {
+        "type": "meta",
+        "dex": "io"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "universe": [
+          {
+            "name": "io:SNDK",
+            "szDecimals": 4,
+            "maxLeverage": 10,
+            "onlyIsolated": true,
+            "marginMode": "strictIsolated"
+          }
+        ],
+        "collateralToken": 0
+      },
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 30,
+      "request": {
+        "type": "spotMeta"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "universe": [],
+        "tokens": [
+          {
+            "name": "USDC",
+            "index": 0,
+            "szDecimals": 8,
+            "weiDecimals": 8,
+            "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+            "isCanonical": true,
+            "fullName": "USD Coin"
+          }
+        ]
+      },
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 31,
+      "request": {
+        "type": "clearinghouseState",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "dex": "io"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "marginSummary": {
+          "accountValue": "100",
+          "totalNtlPos": "0",
+          "totalRawUsd": "100",
+          "totalMarginUsed": "0"
+        },
+        "crossMarginSummary": {
+          "accountValue": "0",
+          "totalNtlPos": "0",
+          "totalRawUsd": "0",
+          "totalMarginUsed": "0"
+        },
+        "crossMaintenanceMarginUsed": "0",
+        "withdrawable": "100",
+        "assetPositions": [],
+        "time": 1791540708398
+      },
+      "source_derived_base_weight": 2,
+      "native_received_ms": null
+    },
+    {
+      "index": 32,
+      "request": {
+        "type": "userAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": "disabled",
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 33,
+      "request": {
+        "type": "userDexAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": false,
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 34,
+      "request": {
+        "type": "meta",
+        "dex": "io"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "universe": [
+          {
+            "name": "io:SNDK",
+            "szDecimals": 4,
+            "maxLeverage": 10,
+            "onlyIsolated": true,
+            "marginMode": "strictIsolated"
+          }
+        ],
+        "collateralToken": 0
+      },
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 35,
+      "request": {
+        "type": "spotMeta"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "universe": [],
+        "tokens": [
+          {
+            "name": "USDC",
+            "index": 0,
+            "szDecimals": 8,
+            "weiDecimals": 8,
+            "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+            "isCanonical": true,
+            "fullName": "USD Coin"
+          }
+        ]
+      },
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 36,
+      "request": {
+        "type": "userFunding",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "startTime": 1791540706898,
+        "endTime": 1791540708401
+      },
+      "response_status": "200 OK",
+      "response_body": [],
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 37,
+      "request": {
+        "type": "userNonFundingLedgerUpdates",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "startTime": 1791540706898,
+        "endTime": 1791540708401
+      },
+      "response_status": "200 OK",
+      "response_body": [],
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 38,
+      "request": {
+        "type": "frontendOpenOrders",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "dex": "io"
+      },
+      "response_status": "200 OK",
+      "response_body": [],
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 39,
+      "request": {
+        "type": "userFills",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": [],
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 40,
+      "request": {
+        "type": "historicalOrders",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": [],
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 41,
+      "request": {
+        "type": "frontendOpenOrders",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "dex": "io"
+      },
+      "response_status": "200 OK",
+      "response_body": [],
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 42,
+      "request": {
+        "type": "userFills",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": [],
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 43,
+      "request": {
+        "type": "orderStatus",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "oid": "0x765fde8d8d4a9ae99a37a1f3deb3a35e"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "status": "order",
+        "order": {
+          "order": {
+            "coin": "io:SNDK",
+            "side": "B",
+            "limitPx": "100",
+            "sz": "0",
+            "origSz": "0.12",
+            "oid": 70001,
+            "timestamp": 1791540708643,
+            "cloid": "0x765fde8d8d4a9ae99a37a1f3deb3a35e",
+            "reduceOnly": false,
+            "orderType": "Limit",
+            "tif": "Ioc"
+          },
+          "status": "filled",
+          "statusTimestamp": 1791540708643
+        }
+      },
+      "source_derived_base_weight": 2,
+      "native_received_ms": null
+    },
+    {
+      "index": 44,
+      "request": {
+        "type": "frontendOpenOrders",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "dex": "io"
+      },
+      "response_status": "200 OK",
+      "response_body": [],
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 45,
+      "request": {
+        "type": "userFills",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": [],
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 46,
+      "request": {
+        "type": "orderStatus",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "oid": "0x765fde8d8d4a9ae99a37a1f3deb3a35e"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "status": "order",
+        "order": {
+          "order": {
+            "coin": "io:SNDK",
+            "side": "B",
+            "limitPx": "100",
+            "sz": "0",
+            "origSz": "0.12",
+            "oid": 70001,
+            "timestamp": 1791540708643,
+            "cloid": "0x765fde8d8d4a9ae99a37a1f3deb3a35e",
+            "reduceOnly": false,
+            "orderType": "Limit",
+            "tif": "Ioc"
+          },
+          "status": "filled",
+          "statusTimestamp": 1791540708643
+        }
+      },
+      "source_derived_base_weight": 2,
+      "native_received_ms": null
+    },
+    {
+      "index": 47,
+      "request": {
+        "type": "frontendOpenOrders",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "dex": "io"
+      },
+      "response_status": "200 OK",
+      "response_body": [],
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 48,
+      "request": {
+        "type": "userFills",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": [
+        {
+          "coin": "io:SNDK",
+          "px": "100",
+          "sz": "0.12",
+          "side": "B",
+          "time": 1791540708643,
+          "startPosition": "0",
+          "dir": "Open Long",
+          "closedPnl": "0",
+          "hash": "0x000000000000000000000000000000000000000000000000000000000000ea61",
+          "oid": 70001,
+          "crossed": true,
+          "fee": "0.001",
+          "builderFee": "0.0002",
+          "tid": 60001,
+          "feeToken": "USDC",
+          "cloid": "0x765fde8d8d4a9ae99a37a1f3deb3a35e"
+        }
+      ],
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 49,
+      "request": {
+        "type": "orderStatus",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "oid": "0x765fde8d8d4a9ae99a37a1f3deb3a35e"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "status": "order",
+        "order": {
+          "order": {
+            "coin": "io:SNDK",
+            "side": "B",
+            "limitPx": "100",
+            "sz": "0",
+            "origSz": "0.12",
+            "oid": 70001,
+            "timestamp": 1791540708643,
+            "cloid": "0x765fde8d8d4a9ae99a37a1f3deb3a35e",
+            "reduceOnly": false,
+            "orderType": "Limit",
+            "tif": "Ioc"
+          },
+          "status": "filled",
+          "statusTimestamp": 1791540708643
+        }
+      },
+      "source_derived_base_weight": 2,
+      "native_received_ms": null
+    },
+    {
+      "index": 50,
+      "request": {
+        "type": "userRole",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "role": "user"
+      },
+      "source_derived_base_weight": 60,
+      "native_received_ms": null
+    },
+    {
+      "index": 51,
+      "request": {
+        "type": "userAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": "disabled",
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 52,
+      "request": {
+        "type": "userDexAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": false,
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 53,
+      "request": {
+        "type": "meta",
+        "dex": "io"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "universe": [
+          {
+            "name": "io:SNDK",
+            "szDecimals": 4,
+            "maxLeverage": 10,
+            "onlyIsolated": true,
+            "marginMode": "strictIsolated"
+          }
+        ],
+        "collateralToken": 0
+      },
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 54,
+      "request": {
+        "type": "spotMeta"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "universe": [],
+        "tokens": [
+          {
+            "name": "USDC",
+            "index": 0,
+            "szDecimals": 8,
+            "weiDecimals": 8,
+            "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+            "isCanonical": true,
+            "fullName": "USD Coin"
+          }
+        ]
+      },
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 55,
+      "request": {
+        "type": "clearinghouseState",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "dex": "io"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "marginSummary": {
+          "accountValue": "100",
+          "totalNtlPos": "12.00",
+          "totalRawUsd": "100",
+          "totalMarginUsed": "0"
+        },
+        "crossMarginSummary": {
+          "accountValue": "0",
+          "totalNtlPos": "0",
+          "totalRawUsd": "0",
+          "totalMarginUsed": "0"
+        },
+        "crossMaintenanceMarginUsed": "0",
+        "withdrawable": "100",
+        "assetPositions": [
+          {
+            "type": "oneWay",
+            "position": {
+              "coin": "io:SNDK",
+              "szi": "0.12",
+              "marginUsed": "0",
+              "leverage": {
+                "type": "isolated",
+                "value": 1
+              },
+              "cumFunding": {
+                "allTime": "0",
+                "sinceOpen": "0",
+                "sinceChange": "0"
+              },
+              "entryPx": "100",
+              "liquidationPx": null,
+              "maxLeverage": 10,
+              "positionValue": "12.00",
+              "returnOnEquity": "0",
+              "unrealizedPnl": "0"
+            }
+          }
+        ],
+        "time": 1791540708855
+      },
+      "source_derived_base_weight": 2,
+      "native_received_ms": null
+    },
+    {
+      "index": 56,
+      "request": {
+        "type": "userAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": "disabled",
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 57,
+      "request": {
+        "type": "userDexAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": false,
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 58,
+      "request": {
+        "type": "frontendOpenOrders",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "dex": "io"
+      },
+      "response_status": "200 OK",
+      "response_body": [],
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 59,
+      "request": {
+        "type": "userFills",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": [
+        {
+          "coin": "io:SNDK",
+          "px": "100",
+          "sz": "0.12",
+          "side": "B",
+          "time": 1791540708643,
+          "startPosition": "0",
+          "dir": "Open Long",
+          "closedPnl": "0",
+          "hash": "0x000000000000000000000000000000000000000000000000000000000000ea61",
+          "oid": 70001,
+          "crossed": true,
+          "fee": "0.001",
+          "builderFee": "0.0002",
+          "tid": 60001,
+          "feeToken": "USDC",
+          "cloid": "0x765fde8d8d4a9ae99a37a1f3deb3a35e"
+        }
+      ],
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 60,
+      "request": {
+        "type": "orderStatus",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "oid": "0x782dac5589d929429784b00b34589629"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "status": "order",
+        "order": {
+          "order": {
+            "coin": "io:SNDK",
+            "side": "A",
+            "limitPx": "99.99",
+            "sz": "0",
+            "origSz": "0.12",
+            "oid": 70002,
+            "timestamp": 1791540709146,
+            "cloid": "0x782dac5589d929429784b00b34589629",
+            "reduceOnly": true,
+            "orderType": "Limit",
+            "tif": "Ioc"
+          },
+          "status": "filled",
+          "statusTimestamp": 1791540709146
+        }
+      },
+      "source_derived_base_weight": 2,
+      "native_received_ms": null
+    },
+    {
+      "index": 61,
+      "request": {
+        "type": "frontendOpenOrders",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "dex": "io"
+      },
+      "response_status": "200 OK",
+      "response_body": [],
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 62,
+      "request": {
+        "type": "userFills",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": [
+        {
+          "coin": "io:SNDK",
+          "px": "100",
+          "sz": "0.12",
+          "side": "B",
+          "time": 1791540708643,
+          "startPosition": "0",
+          "dir": "Open Long",
+          "closedPnl": "0",
+          "hash": "0x000000000000000000000000000000000000000000000000000000000000ea61",
+          "oid": 70001,
+          "crossed": true,
+          "fee": "0.001",
+          "builderFee": "0.0002",
+          "tid": 60001,
+          "feeToken": "USDC",
+          "cloid": "0x765fde8d8d4a9ae99a37a1f3deb3a35e"
+        }
+      ],
+      "source_derived_base_weight": 20,
+      "native_received_ms": null
+    },
+    {
+      "index": 63,
+      "request": {
+        "type": "orderStatus",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "oid": "0x782dac5589d929429784b00b34589629"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "status": "order",
+        "order": {
+          "order": {
+            "coin": "io:SNDK",
+            "side": "A",
+            "limitPx": "99.99",
+            "sz": "0",
+            "origSz": "0.12",
+            "oid": 70002,
+            "timestamp": 1791540709146,
+            "cloid": "0x782dac5589d929429784b00b34589629",
+            "reduceOnly": true,
+            "orderType": "Limit",
+            "tif": "Ioc"
+          },
+          "status": "filled",
+          "statusTimestamp": 1791540709146
+        }
+      },
+      "source_derived_base_weight": 2,
+      "native_received_ms": null
+    },
+    {
+      "index": 64,
+      "request": {
+        "type": "frontendOpenOrders",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "dex": "io"
+      },
+      "response_status": "200 OK",
+      "response_body": [],
+      "source_derived_base_weight": 20,
+      "native_received_ms": 1791540709364
+    },
+    {
+      "index": 65,
+      "request": {
+        "type": "userFills",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": [
+        {
+          "coin": "io:SNDK",
+          "px": "100",
+          "sz": "0.12",
+          "side": "B",
+          "time": 1791540708643,
+          "startPosition": "0",
+          "dir": "Open Long",
+          "closedPnl": "0",
+          "hash": "0x000000000000000000000000000000000000000000000000000000000000ea61",
+          "oid": 70001,
+          "crossed": true,
+          "fee": "0.001",
+          "builderFee": "0.0002",
+          "tid": 60001,
+          "feeToken": "USDC",
+          "cloid": "0x765fde8d8d4a9ae99a37a1f3deb3a35e"
+        },
+        {
+          "coin": "io:SNDK",
+          "px": "99.99",
+          "sz": "0.12",
+          "side": "A",
+          "time": 1791540709146,
+          "startPosition": "0.12",
+          "dir": "Close Long",
+          "closedPnl": "0",
+          "hash": "0x000000000000000000000000000000000000000000000000000000000000ea62",
+          "oid": 70002,
+          "crossed": true,
+          "fee": "0.001",
+          "builderFee": "0.0002",
+          "tid": 60002,
+          "feeToken": "USDC",
+          "cloid": "0x782dac5589d929429784b00b34589629"
+        }
+      ],
+      "source_derived_base_weight": 20,
+      "native_received_ms": 1791540709365
+    },
+    {
+      "index": 66,
+      "request": {
+        "type": "orderStatus",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "oid": "0x782dac5589d929429784b00b34589629"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "status": "order",
+        "order": {
+          "order": {
+            "coin": "io:SNDK",
+            "side": "A",
+            "limitPx": "99.99",
+            "sz": "0",
+            "origSz": "0.12",
+            "oid": 70002,
+            "timestamp": 1791540709146,
+            "cloid": "0x782dac5589d929429784b00b34589629",
+            "reduceOnly": true,
+            "orderType": "Limit",
+            "tif": "Ioc"
+          },
+          "status": "filled",
+          "statusTimestamp": 1791540709146
+        }
+      },
+      "source_derived_base_weight": 2,
+      "native_received_ms": 1791540709365
+    },
+    {
+      "index": 67,
+      "request": {
+        "type": "userRole",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": {
+        "role": "user"
+      },
+      "source_derived_base_weight": 60,
+      "native_received_ms": 1791540711175
+    },
+    {
+      "index": 68,
+      "request": {
+        "type": "userAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "response_status": "200 OK",
+      "response_body": "disabled",
+      "source_derived_base_weight": 20,
+      "native_received_ms": 1791540712170
+    }
+  ],
+  "segments": [
+    {
+      "label": "all_peer_startup_sources_multiple_clients",
+      "first_index": 0,
+      "last_index": 40,
+      "observed_requests": 41,
+      "source_derived_base_weight": 864,
+      "types": {
+        "spotMeta": 7,
+        "allPerpMetas": 4,
+        "outcomeMeta": 3,
+        "perpDexs": 2,
+        "userRole": 2,
+        "userAbstraction": 4,
+        "userDexAbstraction": 4,
+        "meta": 4,
+        "clearinghouseState": 2,
+        "activeAssetData": 2,
+        "frontendOpenOrders": 2,
+        "userFills": 2,
+        "userFunding": 1,
+        "userNonFundingLedgerUpdates": 1,
+        "historicalOrders": 1
+      }
+    },
+    {
+      "label": "entry_ack_automatic_two_attempts",
+      "first_index": 41,
+      "last_index": 46,
+      "observed_requests": 6,
+      "source_derived_base_weight": 84,
+      "types": {
+        "frontendOpenOrders": 2,
+        "userFills": 2,
+        "orderStatus": 2
+      }
+    },
+    {
+      "label": "entry_owned_warm_success",
+      "first_index": 47,
+      "last_index": 57,
+      "observed_requests": 11,
+      "source_derived_base_weight": 224,
+      "types": {
+        "frontendOpenOrders": 1,
+        "userFills": 1,
+        "orderStatus": 1,
+        "userRole": 1,
+        "userAbstraction": 2,
+        "userDexAbstraction": 2,
+        "meta": 1,
+        "spotMeta": 1,
+        "clearinghouseState": 1
+      }
+    },
+    {
+      "label": "close_ack_automatic_two_attempts",
+      "first_index": 58,
+      "last_index": 63,
+      "observed_requests": 6,
+      "source_derived_base_weight": 84,
+      "types": {
+        "frontendOpenOrders": 2,
+        "userFills": 2,
+        "orderStatus": 2
+      }
+    },
+    {
+      "label": "close_owned_warm_received_before_deadline",
+      "first_index": 64,
+      "last_index": 68,
+      "observed_requests": 5,
+      "source_derived_base_weight": 122,
+      "types": {
+        "frontendOpenOrders": 1,
+        "userFills": 1,
+        "orderStatus": 1,
+        "userRole": 1,
+        "userAbstraction": 1
+      }
+    }
+  ],
+  "total_observed_hl_requests": 69,
+  "aggregate_source_derived_base_weight": 1378,
+  "aggregate_weight_caveat": "Multiple native clients/providers; not a measured single limiter debit/token balance. No item extra for observed small history responses.",
+  "complete_close_warm_source_derived_minimum": 264,
+  "received_close_warm_base_weight": 122,
+  "unreceived_remaining_source_derived_minimum": 142,
+  "close_status_to_role_gap_ms": 1810,
+  "role_to_mode_gap_ms": 995,
+  "source_inference": "Quota wait is strongly consistent with normal peer no delay/all200 and native limiter acquire before HTTP, but uninstrumented token state and scheduler waits prevent asserting exact balance or sole causal attribution.",
+  "final_owner_gate_observed": false,
+  "source_reuse_proposal": "New issue/worktree from future merged main: independently sealed current nonfinancial role/mode/collateral/selected metadata source subset reusable only within original source TTL/exact reader/policy/hard origin and explicit authorized owned changes; retain fresh full current financial HTTP, exact raw order/fill checks, current flat leverage counterproofs and owner fence. Must independently design proof safety before coding.",
+  "immutable_debt_policy": "Do not clear, reattribute, or retry this failed journal into Ready. Any new acceptance uses a fresh unique run and exact candidate.",
+  "agent_test_runs": 0,
+  "source_changes": 0,
+  "identities": [
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native115-chronology-first-paired-20261009\\paired\\events.jsonl",
+      "sha256": "6bd7673fafd4eadecfb859d1fc55e13a9541cf76e6fb625f3eac3dc91ac57606",
+      "bytes": 247572
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native115-chronology-first-paired-20261009\\paired\\peer-evidence.json",
+      "sha256": "d1a8639283ced24688844360cc1539cef1772655f2dc09816530ef8d081b8092",
+      "bytes": 299686
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native115-chronology-first-paired-20261009\\paired\\summary.json",
+      "sha256": "415b25ecd13800400019112922dd4331db79320f34f4fa5c3fe3e28438794459",
+      "bytes": 29516
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native115-chronology-first-paired-20261009\\paired\\economic-report.json",
+      "sha256": "17cc21096867fb8dc8f2dd0a976e3adb8dfa0fe43e24e48627774ec8f8ede090",
+      "bytes": 24382
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native115-chronology-first-paired-20261009\\paired\\native-io-intents.jsonl",
+      "sha256": "32b09c1122ac64f66dfcc478f14a0af341f331214572f36d36096b20ede7cea3",
+      "bytes": 28062
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native115-chronology-first-paired-20261009\\paired\\manifest.json",
+      "sha256": "4aa0bd6b17847d699ef5920eefb351fa0ba25f8be88f0f71fd326f754149692d",
+      "bytes": 17885
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native115-chronology-first-paired-20261009\\paired\\plan.json",
+      "sha256": "088e50568d6afd61348df15280d884b03b08f5d12fc74f37e83a2e6b4c621953",
+      "bytes": 2208
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native115-chronology-first-paired-20261009\\paired\\child-command.json",
+      "sha256": "709866110cee4f18139fad1235389c95cb342d434dd03f8a2d54b3594b3ca128",
+      "bytes": 605
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native115-chronology-first-paired-20261009\\paired\\child-stdout.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native115-chronology-first-paired-20261009\\paired\\child-stderr.log",
+      "sha256": "fc45853ade27a3f1ee021f3e83e3ea31abe410c40c481af7fab3a50d1d16c7c1",
+      "bytes": 31645
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy115-validation\\app43-native115-chronology-first-paired.json",
+      "sha256": "97cee3e78bfd0c2fbded23a7ac72608bd2b9ba3c1fb9ecc8858b263cfe1d3fad",
+      "bytes": 1107
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy115-validation\\native115-app-chronology-v2-after-first-paired.json",
+      "sha256": "9ab6fe5b15104c00bdf1f7678e15644dcaa1146e33c9ff457b1c83f57dabe684",
+      "bytes": 14355
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\src\\account_scope.rs",
+      "sha256": "2b176ca4b355955268fe26a218a3019b5195ee4a3e87edd6c24e604f4553d0ce",
+      "bytes": 71506
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+      "sha256": "afc9ba90c3c7a2b57e6e41212704d333e964b4934b88653960cbca599a16b4d1",
+      "bytes": 187538
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\src\\execution.rs",
+      "sha256": "2b1e30b896b60b01edd257947426c5f132b841dc7fe7771602f1e810c81c3316",
+      "bytes": 250478
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\src\\http\\client.rs",
+      "sha256": "ba66b53fcc6a6d1fb6e8bb34ac6faf677cd9e7eb6ffe89eea9e2c11ea398eab2",
+      "bytes": 176208
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\src\\http\\rate_limits.rs",
+      "sha256": "47dd217c00b7a28358b2f28b7e1803c72e5817212300a2e62c2f0a419047dafc",
+      "bytes": 15968
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution.py",
+      "sha256": "fbde3f919a6813a47aeb8c388ac3689a33689139d876c6e7e6551d7a364ab882",
+      "bytes": 73521
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\entropy_execution_peer.py",
+      "sha256": "11930d360dabe0c8751b0f2451c1f8570489311a8526b419a72b25781075515d",
+      "bytes": 30306
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\test_entropy_execution_peer.py",
+      "sha256": "c649d24c2c68beb5758442e3eb5abfdd455b070627c179c734f66b8719eac35a",
+      "bytes": 7419
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\test_entropy_execution_native.py",
+      "sha256": "9a975f5cca43b6b7cb778435a170b3a1223cf0db351417b7bfdd4f9788124120",
+      "bytes": 31959
+    }
+  ]
+}

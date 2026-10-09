@@ -1,0 +1,18 @@
+unformatted: File would be reformatted
+   --> tests\test_entropy_execution_peer.py:125:26
+    |
+124 |                     assert statuses(ack) == [
+    -                         {"filled": {
+    -                             "oid": fill["oid"], "totalSz": "0.12", "avgPx": "100"
+    -                         }}
+125 +                         {
+126 +                             "filled": {
+127 +                                 "oid": fill["oid"],
+128 +                                 "totalSz": "0.12",
+129 +                                 "avgPx": "100",
+130 +                             }
+131 +                         }
+132 |                     ]
+    |
+
+1 file would be reformatted, 1 file already formatted

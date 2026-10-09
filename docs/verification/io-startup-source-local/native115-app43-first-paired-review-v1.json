@@ -1,0 +1,14 @@
+﻿{
+    "report":  "E:/persarb/_tmp/entropy115-validation/native115-app43-first-paired-review-v1.md",
+    "report_sha256":  "576e892d3122f2e9bb8d191aeba5bd544988abe5be77666dff7cac72f7fdcb7a",
+    "extracted_result":  "E:/persarb/_tmp/entropy115-validation/reviewer-native115-app43-first-paired-v1/result.json",
+    "extracted_result_sha256":  "c8db4689e5357c84271cfeeada38709df38cedae67592aacb8de666cdc92e442",
+    "frozen_inputs_unchanged":  57,
+    "evidence_plus_inputs_unchanged":  73,
+    "reviewer_tests_executed":  0,
+    "actual_parent_paired_outcome":  "FAIL",
+    "controller_state":  "StoppedUnknown",
+    "native_cache_pf_physical_positions_flat":  true,
+    "current_fresh_complete_proof_unavailable":  true,
+    "unchanged_limits":  true
+}
