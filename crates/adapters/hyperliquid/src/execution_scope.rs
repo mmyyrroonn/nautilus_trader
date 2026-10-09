@@ -24,11 +24,18 @@ use std::{
 };
 
 use anyhow::Context;
-use nautilus_core::serialization::{deserialize_decimal_from_str, serialize_decimal_as_str};
+use nautilus_core::{
+    UnixNanos,
+    serialization::{deserialize_decimal_from_str, serialize_decimal_as_str},
+};
+use nautilus_live::{ExecutionClientCore, ExecutionEventEmitter};
 use nautilus_model::{
-    enums::{OrderSide, OrderType, TimeInForce},
+    enums::{OrderSide, OrderType, PositionSide, TimeInForce},
     identifiers::{AccountId, ClientOrderId, InstrumentId, StrategyId},
+    instruments::Instrument,
     orders::{Order, OrderAny},
+    reports::{ExecutionMassStatus, PositionStatusReport},
+    types::{Currency, Money, Quantity},
 };
 use parking_lot::Mutex;
 use rust_decimal::Decimal;
@@ -173,7 +180,7 @@ impl IoExecutionPolicy {
     }
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub(crate) struct IoInstrumentProof {
     pub instrument_id: String,
     pub coin: String,
@@ -322,6 +329,7 @@ pub(crate) struct IoExecutionState {
     journal: File,
     journal_tainted: bool,
     native_projection_recovery_required: bool,
+    fresh_journal_origin: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -365,7 +373,302 @@ pub(crate) struct IoPreparedAction {
     pub action_token: usize,
 }
 
+/// Detached boundary for the three empty-history reads, never an admission token.
+struct IoStartupBoundary {
+    generation: u64,
+    epoch: u64,
+    received_sequence: u64,
+    account_revision: u64,
+    execution_revision: u64,
+    account: HyperliquidAccountScopeSnapshot,
+    private_funds: Value,
+    metadata: BTreeMap<String, IoInstrumentProof>,
+    native_instruments: BTreeMap<String, (Value, Value)>,
+}
+
+const IO_STARTUP_HISTORY_MAX_BYTES: usize = 1024 * 1024;
+
 impl IoExecutionRuntime {
+    /// Proves only a fresh client's current selected flat startup projection.
+    /// Durable cold recovery and full venue/history completeness remain unknown.
+    pub(crate) async fn startup_mass_status(
+        &self,
+        http: &HyperliquidHttpClient,
+        emitter: &ExecutionEventEmitter,
+        core: &ExecutionClientCore,
+    ) -> anyhow::Result<ExecutionMassStatus> {
+        let deadline = tokio::time::Instant::now()
+            + std::time::Duration::from_millis(self.policy.recovery_timeout_ms);
+        let result = tokio::time::timeout_at(deadline, async {
+            let before = self.startup_boundary(http, core, Ok)?;
+            crate::account_scope::refresh_account_scope(
+                &self.account.state,
+                http,
+                &self.account.ws,
+                emitter,
+            )
+            .await?;
+            // Account refresh deliberately changes its revision. Reader identity,
+            // execution facts, selection and native instruments must not change.
+            let captured = self.startup_boundary(http, core, Ok)?;
+            anyhow::ensure!(
+                before.generation == captured.generation
+                    && before.epoch == captured.epoch
+                    && before.received_sequence == captured.received_sequence
+                    && before.execution_revision == captured.execution_revision
+                    && before.private_funds == captured.private_funds
+                    && before.metadata == captured.metadata
+                    && before.native_instruments == captured.native_instruments,
+                "io startup origin/metadata changed during account refresh"
+            );
+            for request in [
+                InfoRequest::frontend_open_orders_for_dex(&captured.account.address, Some("io")),
+                InfoRequest::user_fills(&captured.account.address),
+                InfoRequest::historical_orders(&captured.account.address),
+            ] {
+                let body = http
+                    .io_startup_history_body(&request, IO_STARTUP_HISTORY_MAX_BYTES)
+                    .await?;
+                let rows: Vec<Box<serde_json::value::RawValue>> =
+                    serde_json::from_str(&body.raw_text)
+                        .context("io startup requires an explicit complete history array")?;
+                anyhow::ensure!(
+                    rows.is_empty(),
+                    "io startup history is nonempty; current flatness cannot prove cold projection"
+                );
+                anyhow::ensure!(
+                    body.received_ms >= captured.account.http_verification_started_time_ms,
+                    "io startup history receipt predates the current observation"
+                );
+            }
+            // No await between this final linearization boundary and report creation.
+            // It takes ingress -> account -> execution and samples TTL after waits.
+            self.startup_boundary(http, core, |current| {
+                anyhow::ensure!(
+                    tokio::time::Instant::now() < deadline
+                        && current.generation == captured.generation
+                        && current.epoch == captured.epoch
+                        && current.received_sequence == captured.received_sequence
+                        && current.account_revision == captured.account_revision
+                        && current.execution_revision == captured.execution_revision
+                        && current.private_funds == captured.private_funds
+                        && serde_json::to_value(&current.account)?
+                            == serde_json::to_value(&captured.account)?
+                        && current.metadata == captured.metadata
+                        && current.native_instruments == captured.native_instruments,
+                    "io startup empty-history reads were superseded or expired"
+                );
+                let source = UnixNanos::from(
+                    current
+                        .account
+                        .http_source_time_ms
+                        .checked_mul(1_000_000)
+                        .context("io startup source timestamp overflow")?,
+                );
+                let received = UnixNanos::from(
+                    now_ms()
+                        .checked_mul(1_000_000)
+                        .context("io startup receive timestamp overflow")?,
+                );
+                let observation_start = UnixNanos::from(
+                    current
+                        .account
+                        .http_verification_started_time_ms
+                        .checked_mul(1_000_000)
+                        .context("io startup observation timestamp overflow")?,
+                );
+                let mut report = ExecutionMassStatus::new(
+                    core.client_id,
+                    core.account_id,
+                    core.venue,
+                    received,
+                    None,
+                );
+                report.set_report_window(Some(observation_start), false);
+                report.add_position_reports(
+                    current
+                        .metadata
+                        .values()
+                        .map(|meta| {
+                            PositionStatusReport::new(
+                                core.account_id,
+                                InstrumentId::from(meta.instrument_id.as_str()),
+                                PositionSide::Flat,
+                                Quantity::zero(meta.size_decimals as u8),
+                                source,
+                                received,
+                                None,
+                                None,
+                                None,
+                            )
+                        })
+                        .collect(),
+                );
+                Ok::<_, anyhow::Error>(report)
+            })
+        })
+        .await;
+        let result = result.unwrap_or_else(|_| {
+            Err(anyhow::anyhow!(
+                "io startup reconciliation total deadline exhausted"
+            ))
+        });
+        if let Err(error) = &result {
+            self.invalidate(&format!("io startup reconciliation incomplete: {error}"));
+        }
+        result
+    }
+
+    fn startup_boundary<T>(
+        &self,
+        http: &HyperliquidHttpClient,
+        core: &ExecutionClientCore,
+        finish: impl FnOnce(IoStartupBoundary) -> anyhow::Result<T>,
+    ) -> anyhow::Result<T> {
+        let ingress = self.account.ws.private_ingress_guard();
+        let account = self.account.state.lock();
+        let state = self.state.lock();
+        let now = now_ms();
+        let epoch = self.account.ws.connection_epoch();
+        anyhow::ensure!(
+            ingress.is_applied(epoch),
+            "io startup private ingress is not completely applied"
+        );
+        let snapshot = account
+            .snapshot(now, self.account.ws.is_active(), epoch)
+            .context("io startup has no complete current account proof")?;
+        let private_funds = serde_json::to_value(
+            account
+                .private_funds_witness()
+                .context("io startup has no complete current private funds witness")?,
+        )?;
+        anyhow::ensure!(
+            snapshot.trusted
+                && snapshot.flat == Some(true)
+                && snapshot.positions.is_empty()
+                && snapshot.dex == "io"
+                && snapshot.private_stream_epoch == epoch
+                && snapshot.address == state.facts.address
+                && state.facts.account_id == core.account_id.to_string(),
+            "io startup requires a trusted full io empty-position account proof"
+        );
+        for amount in [snapshot.equity, snapshot.used, snapshot.free] {
+            anyhow::ensure!(
+                Money::from_decimal(amount, Currency::USDC())?.as_decimal() == amount,
+                "io startup balance cannot roundtrip at native USDC precision"
+            );
+        }
+        anyhow::ensure!(
+            state.fresh_journal_origin
+                && !state.journal_tainted
+                && !state.native_projection_recovery_required
+                && state.recovery_complete
+                && state.recovered_epoch == Some(epoch)
+                && state.facts.actions == 0
+                && state.facts.intents.is_empty()
+                && state.facts.fills.is_empty(),
+            "io startup requires fresh journal origin and zero owned execution history/debt"
+        );
+        let cache = core.cache();
+        anyhow::ensure!(
+            cache
+                .orders_refs(None, None, None, Some(&core.account_id), None)
+                .is_empty()
+                && cache
+                    .positions_refs(None, None, None, Some(&core.account_id), None)
+                    .is_empty(),
+            "io startup refuses all existing same-account cache order/position history"
+        );
+        anyhow::ensure!(
+            cache
+                .orders_refs(Some(&core.venue), None, None, None, None)
+                .iter()
+                .all(|order| {
+                    order.account_id().is_some()
+                        || !(order.instrument_id().symbol.as_str().starts_with("io:")
+                            || cache
+                                .instrument(&order.instrument_id())
+                                .is_some_and(|instrument| {
+                                    instrument.raw_symbol().as_str().starts_with("io:")
+                                }))
+                }),
+            "io startup refuses routed io cache history without a bound account"
+        );
+        let mut native_instruments = BTreeMap::new();
+        anyhow::ensure!(
+            state.metadata.len() == self.policy.symbols.len(),
+            "io startup selected metadata is incomplete"
+        );
+        for symbol in &self.policy.symbols {
+            let meta = state
+                .metadata
+                .get(&symbol.instrument_id)
+                .context("io startup selected metadata is missing")?;
+            let coin = coin_from_instrument(&symbol.instrument_id)?;
+            let id = InstrumentId::from(symbol.instrument_id.as_str());
+            anyhow::ensure!(
+                meta.instrument_id == symbol.instrument_id
+                    && meta.coin == coin
+                    && meta.margin_mode == "strictIsolated"
+                    && meta.actual_leverage > 0
+                    && meta.actual_leverage <= self.policy.max_leverage
+                    && meta.size_decimals <= 6
+                    && meta.received_ms <= now
+                    && now - meta.received_ms <= self.policy.metadata_max_age_ms
+                    && meta.verification_started_ms <= now
+                    && now - meta.verification_started_ms <= self.policy.metadata_max_age_ms
+                    && http.get_asset_index(&format!("{coin}-USD-PERP")) == Some(meta.asset),
+                "io startup selected native metadata is stale or inconsistent"
+            );
+            let native = http
+                .io_cached_instrument(&coin)
+                .context("io startup native HTTP instrument is missing")?;
+            let cached = cache
+                .instrument(&id)
+                .context("io startup native cache instrument is missing")?;
+            for instrument in [&native, cached] {
+                anyhow::ensure!(
+                    instrument.id() == id
+                        && id.venue == core.venue
+                        && instrument.raw_symbol().as_str() == coin
+                        && u32::from(instrument.size_precision()) == meta.size_decimals
+                        && matches!(
+                            instrument,
+                            nautilus_model::instruments::InstrumentAny::CryptoPerpetual(_)
+                        )
+                        && instrument.quote_currency().code.as_str() == "USD"
+                        && instrument.settlement_currency() == Currency::USDC()
+                        && !instrument.is_inverse()
+                        && instrument.size_increment().as_decimal()
+                            == Decimal::new(1, meta.size_decimals),
+                    "io startup native instrument identity/precision is inconsistent"
+                );
+            }
+            // InstrumentAny equality compares only IDs. Preserve every serialized
+            // native field independently for both caches across the HTTP waits.
+            native_instruments.insert(
+                symbol.instrument_id.clone(),
+                (serde_json::to_value(native)?, serde_json::to_value(cached)?),
+            );
+        }
+        // Keep all three proof guards alive through the caller's final comparison
+        // and report construction; copying a boundary must not release the fence.
+        finish(IoStartupBoundary {
+            generation: ingress.generation(),
+            epoch,
+            // A fully applied newer frame is still a different observation.
+            // Same-position financial changes deliberately do not bump the
+            // general account revision, so fence the actual ingress sequence.
+            received_sequence: ingress.received_sequence(),
+            account_revision: account.revision(),
+            execution_revision: state.revision,
+            account: snapshot,
+            private_funds,
+            metadata: state.metadata.clone(),
+            native_instruments,
+        })
+    }
+
     pub(crate) fn diagnostics(&self) -> IoExecutionDiagnostics {
         IoExecutionDiagnostics {
             policy: self.policy.clone(),
@@ -388,6 +691,14 @@ impl IoExecutionRuntime {
         journal.try_lock().map_err(|error| {
             anyhow::anyhow!("io journal is already owned by another writer: {error}")
         })?;
+        // Capture origin from the exclusively locked descriptor, before replay or
+        // connect recovery writes. Empty later records never make a restart fresh.
+        let journal_origin_bytes = journal.metadata()?.len();
+        anyhow::ensure!(
+            journal_origin_bytes <= 16 * 1024 * 1024,
+            "io journal exceeds finite recovery bound"
+        );
+        let fresh_journal_origin = journal_origin_bytes == 0;
         let mut facts = JournalFacts {
             schema_version: 1,
             address: address.to_string(),
@@ -399,10 +710,6 @@ impl IoExecutionRuntime {
         };
         let mut tainted = false;
         if policy.journal_path.exists() {
-            anyhow::ensure!(
-                policy.journal_path.metadata()?.len() <= 16 * 1024 * 1024,
-                "io journal exceeds finite recovery bound"
-            );
             let mut replay = journal.try_clone()?;
             replay.rewind()?;
             let mut replay = BufReader::new(replay);
@@ -467,6 +774,7 @@ impl IoExecutionRuntime {
                 journal,
                 journal_tainted: tainted,
                 native_projection_recovery_required,
+                fresh_journal_origin,
             })),
             account,
         })
@@ -482,7 +790,7 @@ impl IoExecutionRuntime {
         );
         let latest_private_funds = account_guard.private_funds_witness();
         let state = self.state.lock();
-        serde_json::to_string(&json!({"policy":*self.policy,"account":account,"latest_private_funds":latest_private_funds,"metadata":state.metadata,"recovery_complete":state.recovery_complete,"recovered_epoch":state.recovered_epoch,"diagnostic":state.diagnostic,"journal_tainted":state.journal_tainted,"native_projection_recovery_required":state.native_projection_recovery_required,"actions":state.facts.actions,"owned_intents":state.facts.intents,"actual_fills":state.facts.fills,"margin_basis":"conservative full-notional entry estimate using minimum HTTP/private free and withdrawable; isolated total maintenance unknown; non-atomic source observations","user_asset_source_time_ms":null})).map_err(Into::into)
+        serde_json::to_string(&json!({"policy":*self.policy,"account":account,"latest_private_funds":latest_private_funds,"metadata":state.metadata,"recovery_complete":state.recovery_complete,"recovered_epoch":state.recovered_epoch,"diagnostic":state.diagnostic,"journal_tainted":state.journal_tainted,"fresh_journal_origin":state.fresh_journal_origin,"native_projection_recovery_required":state.native_projection_recovery_required,"actions":state.facts.actions,"owned_intents":state.facts.intents,"actual_fills":state.facts.fills,"margin_basis":"conservative full-notional entry estimate using minimum HTTP/private free and withdrawable; isolated total maintenance unknown; non-atomic source observations","user_asset_source_time_ms":null})).map_err(Into::into)
     }
 
     pub(crate) fn invalidate(&self, reason: &str) {
@@ -2613,9 +2921,77 @@ impl IoExecutionRuntime {
 
 #[cfg(test)]
 mod tests {
+    use nautilus_network::websocket::TransportBackend;
     use rstest::rstest;
 
     use super::*;
+    use crate::{
+        account_scope::AccountScopeState, common::enums::HyperliquidEnvironment,
+        websocket::client::HyperliquidWebSocketClient,
+    };
+
+    fn origin_runtime(path: &std::path::Path) -> IoExecutionRuntime {
+        let mut configured = policy_value();
+        configured["journal_path"] = json!(path);
+        let facts = journal();
+        let account_id = AccountId::from(facts.account_id.as_str());
+        let ws = HyperliquidWebSocketClient::new(
+            Some("ws://127.0.0.1:1".into()),
+            HyperliquidEnvironment::Testnet,
+            Some(account_id),
+            TransportBackend::Tungstenite,
+            None,
+        );
+        IoExecutionRuntime::new(
+            IoExecutionPolicy::parse(&configured.to_string()).unwrap(),
+            AccountScopeDiagnostics {
+                state: Arc::new(Mutex::new(AccountScopeState::new(
+                    facts.address.clone(),
+                    1000,
+                ))),
+                ws,
+            },
+            &facts.address,
+            account_id,
+        )
+        .unwrap()
+    }
+
+    #[rstest]
+    fn fresh_origin_survives_same_client_empty_persist_but_never_reopens_fresh() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("fresh-origin.ndjson");
+        let runtime = origin_runtime(&path);
+        assert!(runtime.state.lock().fresh_journal_origin);
+        runtime.state.lock().persist().unwrap();
+        assert!(runtime.state.lock().journal.metadata().unwrap().len() > 0);
+        assert!(runtime.state.lock().fresh_journal_origin);
+        assert_eq!(
+            serde_json::from_str::<Value>(&runtime.snapshot_json().unwrap()).unwrap()["fresh_journal_origin"],
+            true
+        );
+        drop(runtime);
+        let restarted = origin_runtime(&path);
+        let state = restarted.state.lock();
+        assert!(!state.fresh_journal_origin);
+        assert_eq!(state.facts.actions, 0);
+        assert!(state.facts.intents.is_empty());
+        assert!(state.facts.fills.is_empty());
+        assert!(!state.journal_tainted);
+    }
+
+    #[rstest]
+    fn nonempty_unparseable_journal_cannot_acquire_fresh_origin() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("tainted-origin.ndjson");
+        std::fs::write(&path, b"{\"schema_version\":").unwrap();
+        let runtime = origin_runtime(&path);
+        let state = runtime.state.lock();
+        assert!(!state.fresh_journal_origin);
+        assert!(state.journal_tainted);
+        assert!(state.facts.intents.is_empty());
+        assert!(state.facts.fills.is_empty());
+    }
 
     fn policy_value() -> Value {
         json!({"schema_version":1,"strategy_id":"ENTROPY-001",
@@ -2863,6 +3239,7 @@ mod tests {
             journal: file,
             journal_tainted: false,
             native_projection_recovery_required: false,
+            fresh_journal_origin: false,
         };
         assert!(state.persist().is_err());
         assert!(state.journal_tainted);

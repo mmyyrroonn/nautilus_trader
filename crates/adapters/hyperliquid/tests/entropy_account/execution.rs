@@ -42,6 +42,9 @@ use super::*;
 #[path = "economics.rs"]
 mod economics;
 
+#[path = "startup.rs"]
+mod startup;
+
 #[derive(Debug)]
 pub(super) struct PeerExecution {
     pub posts: Vec<Value>,
@@ -53,6 +56,8 @@ pub(super) struct PeerExecution {
     pub funding_pages: VecDeque<String>,
     pub ledger_pages: VecDeque<String>,
     pub history_delay_ms: u64,
+    pub startup_responses: BTreeMap<String, (u64, String)>,
+    pub asset_data_by_coin: BTreeMap<String, Value>,
 }
 
 impl Default for PeerExecution {
@@ -68,8 +73,19 @@ impl Default for PeerExecution {
             funding_pages: VecDeque::from(["[]".to_string()]),
             ledger_pages: VecDeque::from(["[]".to_string()]),
             history_delay_ms: 0,
+            startup_responses: BTreeMap::new(),
+            asset_data_by_coin: BTreeMap::new(),
         }
     }
+}
+
+pub(super) fn startup_info_response(state: &PeerState, request: &Value) -> Option<(u64, String)> {
+    let data = state.data.lock();
+    data.execution
+        .as_ref()?
+        .startup_responses
+        .get(request["type"].as_str()?)
+        .cloned()
 }
 
 pub(super) fn economic_info_response(state: &PeerState, request: &Value) -> Option<(u64, String)> {
@@ -109,7 +125,13 @@ pub(super) fn info_response(state: &PeerState, request: &Value) -> Option<Value>
     let data = state.data.lock();
     let execution = data.execution.as_ref()?;
     match request["type"].as_str()? {
-        "activeAssetData" => Some(execution.asset_data.clone()),
+        "activeAssetData" => Some(
+            execution
+                .asset_data_by_coin
+                .get(request["coin"].as_str()?)
+                .unwrap_or(&execution.asset_data)
+                .clone(),
+        ),
         "frontendOpenOrders" | "openOrders" => Some(json!(
             execution
                 .orders
@@ -258,6 +280,15 @@ impl Harness {
         directory: TempDir,
         config: HyperliquidExecutionClientConfig,
     ) -> Self {
+        Self::from_parts_wait(peer, directory, config, true).await
+    }
+
+    async fn from_parts_wait(
+        peer: Peer,
+        directory: TempDir,
+        config: HyperliquidExecutionClientConfig,
+        wait_for_ready: bool,
+    ) -> Self {
         let execution_enabled = config.io_execution_policy_json.is_some();
         let economics_enabled = config.io_economics_policy_json.is_some();
         let cache = Rc::new(RefCell::new(Cache::default()));
@@ -300,7 +331,7 @@ impl Harness {
             receiver,
             fill_events: 0,
         };
-        if execution_enabled && !economics_enabled {
+        if wait_for_ready && execution_enabled && !economics_enabled {
             result.wait_ready().await;
         }
         result

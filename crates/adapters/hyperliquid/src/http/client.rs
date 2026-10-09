@@ -1831,6 +1831,16 @@ impl HyperliquidHttpClient {
         self.inner.send_info_request(request).await
     }
 
+    /// Bounded original array body for the conservative fresh-flat startup proof.
+    /// The caller applies one deadline across all requests, including quota/retries.
+    pub(crate) async fn io_startup_history_body(
+        &self,
+        request: &InfoRequest,
+        max_bytes: usize,
+    ) -> Result<EconomicHistoryBody> {
+        self.inner.economic_history_body(request, max_bytes).await
+    }
+
     /// Original funding body; caller's total deadline includes quota and retries.
     pub(crate) async fn info_user_funding_body(
         &self,

@@ -1,0 +1,64 @@
+﻿{
+    "finished_utc":  "2026-10-09T04:33:48.8373242Z",
+    "changed_files":  [
+                          {
+                              "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\startup.rs",
+                              "new_sha256":  "248e423dab7a105c93c99e0256f4cd060df6b63adf47bafa2bbbf4665da223a8",
+                              "old_sha256":  "c9c5b31f5adb3cdc808537fe15fe3abab6aeee243d50db4d53c190c8a8359c20",
+                              "byte_delta":  1
+                          }
+                      ],
+    "independent_native_tests_executed":  false,
+    "actual_checks":  [
+                          {
+                              "expected":  "bd3e1b4b4a1c25a2acaf1053d245c2ccd51e7e17a6068846be41caed4557ced1",
+                              "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+                              "actual":  "bd3e1b4b4a1c25a2acaf1053d245c2ccd51e7e17a6068846be41caed4557ced1",
+                              "matches":  true
+                          },
+                          {
+                              "expected":  "37ffc31a63db29877d4d6bd286a4f48e6edf63866be58eaf67f7e58c97cd78f0",
+                              "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\adapters\\hyperliquid\\src\\execution.rs",
+                              "actual":  "37ffc31a63db29877d4d6bd286a4f48e6edf63866be58eaf67f7e58c97cd78f0",
+                              "matches":  true
+                          },
+                          {
+                              "expected":  "028af06905f49846751ad4f9e49a168417db7c03946de5723a1c6cebdeff6d6a",
+                              "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\adapters\\hyperliquid\\src\\http\\client.rs",
+                              "actual":  "028af06905f49846751ad4f9e49a168417db7c03946de5723a1c6cebdeff6d6a",
+                              "matches":  true
+                          },
+                          {
+                              "expected":  "edfa6945224f6575baa4872668f6022df0911675e5ee442004f78813c485b69f",
+                              "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\adapters\\hyperliquid\\src\\account_scope.rs",
+                              "actual":  "edfa6945224f6575baa4872668f6022df0911675e5ee442004f78813c485b69f",
+                              "matches":  true
+                          },
+                          {
+                              "expected":  "15a9fdde9cf9df8e491a63dde625de7029ac85868f19a8dc775d56f2ea160b9a",
+                              "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\adapters\\hyperliquid\\src\\websocket\\client.rs",
+                              "actual":  "15a9fdde9cf9df8e491a63dde625de7029ac85868f19a8dc775d56f2ea160b9a",
+                              "matches":  true
+                          },
+                          {
+                              "expected":  "2b9ad3bc8dd6904683ccaa10b99396c3504923dc44c4dddf5590d6f792cbd9f3",
+                              "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\adapters\\hyperliquid\\tests\\entropy_account.rs",
+                              "actual":  "2b9ad3bc8dd6904683ccaa10b99396c3504923dc44c4dddf5590d6f792cbd9f3",
+                              "matches":  true
+                          },
+                          {
+                              "expected":  "61dbce3a6438ae76d30c9d3eca493e6be24e8de13e5e1bf57207084bcff13298",
+                              "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\execution.rs",
+                              "actual":  "61dbce3a6438ae76d30c9d3eca493e6be24e8de13e5e1bf57207084bcff13298",
+                              "matches":  true
+                          },
+                          {
+                              "expected":  "248e423dab7a105c93c99e0256f4cd060df6b63adf47bafa2bbbf4665da223a8",
+                              "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\startup.rs",
+                              "actual":  "248e423dab7a105c93c99e0256f4cd060df6b63adf47bafa2bbbf4665da223a8",
+                              "matches":  true
+                          }
+                      ],
+    "started_utc":  "2026-10-09T04:33:48.6048094Z",
+    "source_capture_sha256":  "4c5f39a5edd905fcacf848e00e3242e4b527c25b89313235317b3fa010c3cf41"
+}

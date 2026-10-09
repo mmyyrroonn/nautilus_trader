@@ -1,0 +1,7 @@
+# Final lint source addendum
+
+Read `final-lint-fixed-inputs.json` (capture 2026-10-09T04:30:22.933028Z–04:30:23.061027Z) and compared it independently with the previously reviewed `frozen-ingress-fence.json`. The only changed declared native file is `tests/entropy_account/startup.rs`, one byte longer, with SHA256 `248e423dab7a105c93c99e0256f4cd060df6b63adf47bafa2bbbf4665da223a8`. Reading the corrected wrong_metadata match arm confirms the extra semicolon after the assignment; its test behavior is equivalent. All four modified production files retain the exact reviewed hashes. Actual source checks and UTC are in `reviewer-final-lint-source-check.json`.
+
+The root's reported full native regression is 1301 PASS / 12 existing ignored / 0 FAIL (`native111-regression-boundaries.json`), not this reviewer's independent execution. The strict test Clippy status is still incomplete: dependency documentation lint failures and ten existing Hyperliquid test lints were reported. Production-only Clippy passed according to root evidence. A Windows make format/precommit launcher exit 127 is a retained failure, not a full check pass. No production policy, upstream workflow or baseline lint suppression was introduced by this reviewer.
+
+This addendum leaves the previous narrow source review conclusion unchanged. It does not bind the earlier regression executable to the one-byte final test change. Stable rebuilt executable identities and the final source-bound installed wheel are still required before independent acceptance; no extra test count is claimed here.

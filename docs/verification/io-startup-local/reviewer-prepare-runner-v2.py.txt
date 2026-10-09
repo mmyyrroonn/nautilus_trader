@@ -1,0 +1,28 @@
+from pathlib import Path
+source = Path('E:/persarb/_tmp/entropy111-validation/reviewer-normal-startup-readonly.py').read_text()
+old = '        async with peer:\n'
+assert source.count(old) == 1
+source = source.replace(old, '        await peer.__aenter__()\n        try:\n')
+old = '        assert peer.sessions == set() and peer.errors == [] and peer.actions == 0\n'
+assert source.count(old) == 1
+source = source.replace(old, '''        except BaseException as original:
+            result['original_error_before_peer_teardown'] = f'{type(original).__name__}: {original}'
+            traceback.print_exc()
+            raise
+        finally:
+            # Stop normal native clients before closing their venue-side peers,
+            # including failures inside the observational assertions.
+            if handle is not None:
+                handle.stop()
+            if task is not None and not task.done():
+                await asyncio.wait_for(task, 12)
+            if node is not None:
+                node.dispose()
+                node = None
+            await peer.__aexit__(None, None, None)
+        assert peer.sessions == set() and peer.errors == [] and peer.actions == 0
+''')
+old = "            runtime = json.loads(factory.execution_scope_snapshot_json())\n"
+assert source.count(old) == 1
+source = source.replace(old, old+"            write(directory, 'startup-observed.json', {'account_scope': proof, 'execution_scope': runtime, 'node_state': str(handle.state), 'portfolio_initialized': portfolio.is_initialized()})\n")
+Path('E:/persarb/_tmp/entropy111-validation/reviewer-normal-startup-readonly-v2.py').write_text(source, encoding='utf-8')

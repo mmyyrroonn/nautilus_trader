@@ -1,0 +1,313 @@
+{
+  "captured_utc": "2026-10-09T04:35:38.221084+00:00",
+  "stubs": [
+    {
+      "path": "python/nautilus_trader/__init__.pyi",
+      "baseline_sha256": "5f2798642b839518ef3f4eec3686dfb2e51cec8eddce5d82f096da382abd8e82",
+      "generated_sha256": "5f2798642b839518ef3f4eec3686dfb2e51cec8eddce5d82f096da382abd8e82",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/_libnautilus/__init__.pyi",
+      "baseline_sha256": "25b12b2134dbce6a63864ab63075b6fb96b70d21c21ec0522ccbd53994cbba56",
+      "generated_sha256": "25b12b2134dbce6a63864ab63075b6fb96b70d21c21ec0522ccbd53994cbba56",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/adapters/__init__.pyi",
+      "baseline_sha256": "b6f46e5fd703208605a3892ee1e09d7d361f68b3d58d0f435db30063765e2324",
+      "generated_sha256": "b6f46e5fd703208605a3892ee1e09d7d361f68b3d58d0f435db30063765e2324",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/adapters/architect_ax/__init__.pyi",
+      "baseline_sha256": "e7734c547cd35be5cf5367575f34a105b5714ca11e29c4688078264d62c9bb93",
+      "generated_sha256": "e7734c547cd35be5cf5367575f34a105b5714ca11e29c4688078264d62c9bb93",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/adapters/aster/__init__.pyi",
+      "baseline_sha256": "3dc13e6d8cfca549f5d0396effbd3c14069075666f9b3cbb544332161fb179bf",
+      "generated_sha256": "3dc13e6d8cfca549f5d0396effbd3c14069075666f9b3cbb544332161fb179bf",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/adapters/backpack/__init__.pyi",
+      "baseline_sha256": "1498096ee67e641cdc27ecab2ffecacf771d4552c79ce24ffbc2bf50154abc11",
+      "generated_sha256": "1498096ee67e641cdc27ecab2ffecacf771d4552c79ce24ffbc2bf50154abc11",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/adapters/betfair/__init__.pyi",
+      "baseline_sha256": "531091ad2a75b53f42e7da0029f9551f5779d5d3dce6adc24eaa85f159221637",
+      "generated_sha256": "531091ad2a75b53f42e7da0029f9551f5779d5d3dce6adc24eaa85f159221637",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/adapters/binance/__init__.pyi",
+      "baseline_sha256": "2e3e9c4253a8cac2414d456598f7ae682fe3e889871e83d241cb99f3b77c7368",
+      "generated_sha256": "2e3e9c4253a8cac2414d456598f7ae682fe3e889871e83d241cb99f3b77c7368",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/adapters/bitmex/__init__.pyi",
+      "baseline_sha256": "f44f4d8bd628688dce3405c62a3aa5f2572c3f0aad508807999b95aaa1e7d4db",
+      "generated_sha256": "f44f4d8bd628688dce3405c62a3aa5f2572c3f0aad508807999b95aaa1e7d4db",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/adapters/blockchain/__init__.pyi",
+      "baseline_sha256": "e7a9a7d88d3cf63fb924e64c065f39f7c83f27d2ca8635e9768412bfc30eb79f",
+      "generated_sha256": "e7a9a7d88d3cf63fb924e64c065f39f7c83f27d2ca8635e9768412bfc30eb79f",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/adapters/bybit/__init__.pyi",
+      "baseline_sha256": "10c5adb89788504f3bb4bd457e911182087183fd512cba7df87d62e723b9f86c",
+      "generated_sha256": "10c5adb89788504f3bb4bd457e911182087183fd512cba7df87d62e723b9f86c",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/adapters/coinbase/__init__.pyi",
+      "baseline_sha256": "563f757b9ce7e62e34ac7f0c9a674b4d7b02e3fcb3e9dcf3c2de8d4aa81263f6",
+      "generated_sha256": "563f757b9ce7e62e34ac7f0c9a674b4d7b02e3fcb3e9dcf3c2de8d4aa81263f6",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/adapters/databento/__init__.pyi",
+      "baseline_sha256": "e4996914215dd9b1e2a24f9fd7c45d2c085e03d77034d617870d5c5a823b6148",
+      "generated_sha256": "e4996914215dd9b1e2a24f9fd7c45d2c085e03d77034d617870d5c5a823b6148",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/adapters/deribit/__init__.pyi",
+      "baseline_sha256": "052e4de1171ccb3f3e2d29d877d9f33fce52dd9f203880c52b7b399361d9e663",
+      "generated_sha256": "052e4de1171ccb3f3e2d29d877d9f33fce52dd9f203880c52b7b399361d9e663",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/adapters/derive/__init__.pyi",
+      "baseline_sha256": "2ef1919968809db7627dbb1ffd7d9d1b98fe251d55dc311422fb3bccbe0e8bd7",
+      "generated_sha256": "2ef1919968809db7627dbb1ffd7d9d1b98fe251d55dc311422fb3bccbe0e8bd7",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/adapters/dydx/__init__.pyi",
+      "baseline_sha256": "52888fdf72d97aadf496dc0e888e57e8eb1cec26ae9fa97815705002f51d5ceb",
+      "generated_sha256": "52888fdf72d97aadf496dc0e888e57e8eb1cec26ae9fa97815705002f51d5ceb",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/adapters/hyperliquid/__init__.pyi",
+      "baseline_sha256": "016760dd07b4e7498769088ce6a7ac85100ba3fcaf07a0abd33e8e51614d7cfd",
+      "generated_sha256": "016760dd07b4e7498769088ce6a7ac85100ba3fcaf07a0abd33e8e51614d7cfd",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/adapters/interactive_brokers/__init__.pyi",
+      "baseline_sha256": "edf80aacbf93888ad7f9b518f660e0b1f874263e16d5dcbe9c582d601cfec7f6",
+      "generated_sha256": "edf80aacbf93888ad7f9b518f660e0b1f874263e16d5dcbe9c582d601cfec7f6",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/adapters/kraken/__init__.pyi",
+      "baseline_sha256": "f7cdfd712d3188a0bc816e02ab7a31ca2ce5fececc4df7c81b41cfd791853737",
+      "generated_sha256": "f7cdfd712d3188a0bc816e02ab7a31ca2ce5fececc4df7c81b41cfd791853737",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/adapters/lighter/__init__.pyi",
+      "baseline_sha256": "425f451b5fac36359dbad8d0f11779f892ce6801897c1d4768fabe911f5a7b00",
+      "generated_sha256": "425f451b5fac36359dbad8d0f11779f892ce6801897c1d4768fabe911f5a7b00",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/adapters/okx/__init__.pyi",
+      "baseline_sha256": "de8fda7bee851ec3faa58bcb81fb48a812c1ca391e5cb6b879b4bd97f7eac707",
+      "generated_sha256": "de8fda7bee851ec3faa58bcb81fb48a812c1ca391e5cb6b879b4bd97f7eac707",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/adapters/ondo/__init__.pyi",
+      "baseline_sha256": "53323ad230833c03f4f6121061a256b059cc40b022d0b927d94903444b0bc187",
+      "generated_sha256": "53323ad230833c03f4f6121061a256b059cc40b022d0b927d94903444b0bc187",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/adapters/polymarket/__init__.pyi",
+      "baseline_sha256": "62d7f08ea762f17435fe471bc4ba732a65da58599cc74df694fcacb80ac843a0",
+      "generated_sha256": "62d7f08ea762f17435fe471bc4ba732a65da58599cc74df694fcacb80ac843a0",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/adapters/sandbox/__init__.pyi",
+      "baseline_sha256": "bc89c0b96a747963eff82153ba7eae5cd5ab5ef4f37efdd8285bd0803252ddd6",
+      "generated_sha256": "bc89c0b96a747963eff82153ba7eae5cd5ab5ef4f37efdd8285bd0803252ddd6",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/adapters/tardis/__init__.pyi",
+      "baseline_sha256": "dc5f6d93e6bc60a96e9041ef2cabf044efc73430dde84c9aae703d4fba00aba0",
+      "generated_sha256": "dc5f6d93e6bc60a96e9041ef2cabf044efc73430dde84c9aae703d4fba00aba0",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/analysis/__init__.pyi",
+      "baseline_sha256": "f0be68bcd8115940a899763ef8b7dd68f4957b207ba46b15b3a775d5e9d2a157",
+      "generated_sha256": "f0be68bcd8115940a899763ef8b7dd68f4957b207ba46b15b3a775d5e9d2a157",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/backtest/__init__.pyi",
+      "baseline_sha256": "85744bbfb88c06cb1e0170726dcc297270e8259f49b21726be11741ee926e369",
+      "generated_sha256": "85744bbfb88c06cb1e0170726dcc297270e8259f49b21726be11741ee926e369",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/common/__init__.pyi",
+      "baseline_sha256": "5884a639aeb8c12a4afded3d25424de8a289956d4f0ec1506d707edcf349be77",
+      "generated_sha256": "5884a639aeb8c12a4afded3d25424de8a289956d4f0ec1506d707edcf349be77",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/config/__init__.pyi",
+      "baseline_sha256": "8bba0a5bf4b17a6aba56c03b72a931c2ee01ae0d685c87eca64edc2d753446a2",
+      "generated_sha256": "8bba0a5bf4b17a6aba56c03b72a931c2ee01ae0d685c87eca64edc2d753446a2",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/core/__init__.pyi",
+      "baseline_sha256": "85f7c8127790c950d98635e5e7a2fa5cb7b1075468f1a1f3287e0a8cee22d7ae",
+      "generated_sha256": "85f7c8127790c950d98635e5e7a2fa5cb7b1075468f1a1f3287e0a8cee22d7ae",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/cryptography/__init__.pyi",
+      "baseline_sha256": "dec4650816cd9ac72e925e5beb2b288c0d87b9c5cf6b45f88e3a07889860fa60",
+      "generated_sha256": "dec4650816cd9ac72e925e5beb2b288c0d87b9c5cf6b45f88e3a07889860fa60",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/data/__init__.pyi",
+      "baseline_sha256": "88c86ad53d922c4efe44a9307353dea6eb83cc4b721a24985348bb4b72266c44",
+      "generated_sha256": "88c86ad53d922c4efe44a9307353dea6eb83cc4b721a24985348bb4b72266c44",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/execution/__init__.pyi",
+      "baseline_sha256": "a124cb79e64140b38166a872eaca09bd96ff834e43fbd7f962496ab648e3f021",
+      "generated_sha256": "a124cb79e64140b38166a872eaca09bd96ff834e43fbd7f962496ab648e3f021",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/indicators/__init__.pyi",
+      "baseline_sha256": "9cb2e0fa46e828614e1029bac627bce8a16a81a012c97135dc6d1e63c2053ae3",
+      "generated_sha256": "9cb2e0fa46e828614e1029bac627bce8a16a81a012c97135dc6d1e63c2053ae3",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/infrastructure/__init__.pyi",
+      "baseline_sha256": "574040e76bfc1ea1f2890f3e06c8e81562f8592f1ab80abc05cdcdfb864b6830",
+      "generated_sha256": "574040e76bfc1ea1f2890f3e06c8e81562f8592f1ab80abc05cdcdfb864b6830",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/live/__init__.pyi",
+      "baseline_sha256": "c86031246a558d97f688b0d0eb6a833097e03d86fe391f1c3c629d5c9994665b",
+      "generated_sha256": "c86031246a558d97f688b0d0eb6a833097e03d86fe391f1c3c629d5c9994665b",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/model/__init__.pyi",
+      "baseline_sha256": "b3a278b8fe922b48c3e8f095a8c809d071455cc08f805cc15e7cfe2420e9e2f1",
+      "generated_sha256": "b3a278b8fe922b48c3e8f095a8c809d071455cc08f805cc15e7cfe2420e9e2f1",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/network/__init__.pyi",
+      "baseline_sha256": "2b9c0be9faf29afdcefc1c25705d4c8fca104d19180d5f4569d52ae2ed1bf81c",
+      "generated_sha256": "2b9c0be9faf29afdcefc1c25705d4c8fca104d19180d5f4569d52ae2ed1bf81c",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/persistence/__init__.pyi",
+      "baseline_sha256": "2414ba3f1d3df90ac03df33b403350ebf39390f50b440eb726423956d1881489",
+      "generated_sha256": "2414ba3f1d3df90ac03df33b403350ebf39390f50b440eb726423956d1881489",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/portfolio/__init__.pyi",
+      "baseline_sha256": "007d840925577c3a5eafa76e98b38ce823143bf9ab6b6745e99ab623d73de4be",
+      "generated_sha256": "007d840925577c3a5eafa76e98b38ce823143bf9ab6b6745e99ab623d73de4be",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/risk/__init__.pyi",
+      "baseline_sha256": "4509c346a6e95bfe6257f5f16ae187be6ef961a28b74b9fbe7b51e1a79675e1d",
+      "generated_sha256": "4509c346a6e95bfe6257f5f16ae187be6ef961a28b74b9fbe7b51e1a79675e1d",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/serialization/__init__.pyi",
+      "baseline_sha256": "a78faa96dcd9fe61dcb95269b97e4ed51cd3e0070cdecc854c384824710adf4b",
+      "generated_sha256": "a78faa96dcd9fe61dcb95269b97e4ed51cd3e0070cdecc854c384824710adf4b",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/testkit/__init__.pyi",
+      "baseline_sha256": "d871bd237fedeac03faa7778e56c43f665e663156a641b032c39e515a4e5759f",
+      "generated_sha256": "d871bd237fedeac03faa7778e56c43f665e663156a641b032c39e515a4e5759f",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    },
+    {
+      "path": "python/nautilus_trader/trading/__init__.pyi",
+      "baseline_sha256": "47f007c315726d60083115d42133da18162a3d0d9a0eb6de3d0f8754f71f6a7e",
+      "generated_sha256": "47f007c315726d60083115d42133da18162a3d0d9a0eb6de3d0f8754f71f6a7e",
+      "public_ast_equal": true,
+      "normalized_text_equal": true
+    }
+  ]
+}

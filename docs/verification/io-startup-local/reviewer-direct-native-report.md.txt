@@ -1,0 +1,18 @@
+# Independent native execution: final #111 candidate
+
+The requested 64 distinct cases passed independently: 55 startup integration cases, two journal-origin cases, six private-ingress mechanism cases and one prior actual-fill cold-restart rejection. The origin command also ran 28 other execution_scope unit cases, all passing. Actual total is 92 distinct native test cases, zero native test failures or ignores. These counts are not added to the root's overlapping 1301-case regression.
+
+Source identity supplied by root is clean commit `6f46bad474f850b9279a3a8950f5b300570f179d`, tree `a42012494565dbe33e949e0d0e7db200305965b0`. The reviewer independently hashed all declared source/app inputs and executable bytes before and after actual direct execution; they matched the supplied capture and remained unchanged. No Git object identity was recomputed, and no Git/helper, Cargo, build/install, product source mutation or actual venue operation was performed.
+
+Executable identities:
+
+- `entropy_account-69bad49fe9dc76e8.exe`: SHA256 `54bc216651f2d99933347023ec7400302d729367b43e6e17f57fae4a2b9509cf`.
+- `nautilus_hyperliquid-1fcbc36810deefe5.exe`: SHA256 `52ebd610eabccb706a9bbf5de38a2827529108859b2177357b7f8718fe38ff59`.
+
+`reviewer-direct-native-result.json` records the first execution with exact argv/UTC/log identities and `reviewer-direct-native-continuation-result.json` records the remaining execution and unchanged source/executable/original evidence hashes. Raw stdout logs are `reviewer-direct-native-startup.log`, `reviewer-direct-native-origin.log`, `reviewer-direct-native-private-ingress.log` and `reviewer-direct-native-old-cold-fill.log`. Both delayed actual-funds and identical private-frame startup cases passed with rejection, as did actual fresh one/two-selection positive cases, old-origin/history/cache/unknown-action/mode/source/deadline refusals and the prior cold-fill negative guard.
+
+## Retained reviewer harness error
+
+The first reviewer script supplied both `execution_scope::tests::` and `fresh_origin` filters expecting their intersection. Rust libtest treats multiple filters as a union, so it actually ran 30 execution_scope tests, all passing, including both requested origin cases. The reviewer script then exited 1 because its expected-count assertion was two. That original FAIL result and raw output remain unchanged; it is a reviewer harness counting failure, not a native test failure. A separate continuation script validated the actual 55/30 outcomes and ran only the remaining six ingress and one cold-fill case. No already-passing test was rerun or silently discarded to obtain acceptance.
+
+The pure ingress mechanism cases exercise contiguous actor application, lock serialization, explicit opt-in, reader/epoch changes, unknown/private channel fencing and economic bound retention. This supplements the final source fence review; it does not invent a new deterministic startup-only unapplied-frame integration case. Final normal installed-wheel startup acceptance remains unexecuted pending root's exact wheel/install identity. Kernel isolation, real venue behavior, full account/history completeness, funding, run PnL and durable cold Cache restoration remain unverified.

@@ -1,0 +1,37 @@
+{
+    "captured_utc":  "2026-10-09T04:24:32.6237076Z",
+    "issue":  111,
+    "source_frozen":  true,
+    "actual_parent_failure_log":  "E:/persarb/_tmp/entropy111-validation/native111-startup-boxed-report.log",
+    "actual_parent_prior_result":  "49 PASS / 5 FAIL",
+    "checks_run_by_implementation_agent":  [
+
+                                           ],
+    "files":  [
+                  {
+                      "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+                      "bytes":  128833,
+                      "sha256":  "e4183900fc52b03fe968b4301a0e585b6a664c9eb35183d7557cbd1e4cadf04f",
+                      "owner":  "implementation-agent"
+                  },
+                  {
+                      "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\adapters\\hyperliquid\\src\\execution.rs",
+                      "bytes":  240623,
+                      "sha256":  "37ffc31a63db29877d4d6bd286a4f48e6edf63866be58eaf67f7e58c97cd78f0",
+                      "owner":  "implementation-agent"
+                  },
+                  {
+                      "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\adapters\\hyperliquid\\src\\http\\client.rs",
+                      "bytes":  174885,
+                      "sha256":  "028af06905f49846751ad4f9e49a168417db7c03946de5723a1c6cebdeff6d6a",
+                      "owner":  "implementation-agent"
+                  },
+                  {
+                      "path":  "E:\\persarb\\worktrees\\entropy-io-startup\\crates\\adapters\\hyperliquid\\src\\websocket\\client.rs",
+                      "bytes":  131462,
+                      "sha256":  "15a9fdde9cf9df8e491a63dde625de7029ac85868f19a8dc775d56f2ea160b9a",
+                      "owner":  "root"
+                  }
+              ],
+    "report":  "E:/persarb/_tmp/entropy111-validation/native111-startup-race-fix.md"
+}

@@ -1,0 +1,23 @@
+{
+  "argv": [
+    "E:/persarb/worktrees/entropy-io-startup/.venv/Scripts/python.exe",
+    "-m",
+    "pytest",
+    "--import-mode=importlib",
+    "-o",
+    "pythonpath=",
+    "python/tests/unit/test_entropy_account_config.py",
+    "python/tests/unit/test_entropy_execution_config.py",
+    "python/tests/unit/test_entropy_economics_config.py",
+    "python/tests/unit/test_config_readback_contracts.py",
+    "python/tests/unit/test_generate_stubs.py",
+    "python/tests/unit/test_aster_selected_scope_config.py",
+    "-q"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-io-startup",
+  "started_utc": "2026-10-09T04:41:40.502658+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T04:42:04.938870+00:00"
+}

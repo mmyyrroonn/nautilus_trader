@@ -1,0 +1,62 @@
+"""Finish remaining independent tests; preserve first harness counting failure."""
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+ROOT = Path('E:/persarb/_tmp/entropy111-validation')
+def utc():
+    return dt.datetime.now(dt.timezone.utc).isoformat()
+def identity(path):
+    path = Path(path).resolve(strict=True)
+    h = hashlib.sha256()
+    with path.open('rb') as f:
+        while b := f.read(1024 * 1024):
+            h.update(b)
+    return {'path': str(path), 'size': path.stat().st_size, 'sha256': h.hexdigest()}
+def main():
+    source = json.loads((ROOT/'clean-wheel-build-source.json').read_text())
+    manifest = json.loads((ROOT/'native111-final-native-binaries.json').read_text())
+    first_path = ROOT/'reviewer-direct-native-result.json'
+    first = json.loads(first_path.read_text())
+    assert first['source_and_executable_bytes_unchanged'] and first['status'] == 'FAIL'
+    assert len(first['runs']) == 2
+    assert [len(run['passing_cases']) for run in first['runs']] == [55, 30]
+    assert all(run['exit_code'] == 0 for run in first['runs'])
+    paths = [Path(__file__), first_path, ROOT/'reviewer-direct-native.py', ROOT/'clean-wheel-build-source.json', ROOT/'native111-final-native-binaries.json']
+    paths += [Path(f['path']) for f in source['native']['files'] + source['app']['files'] + manifest['executables']]
+    paths += [Path(run['raw_log']['path']) for run in first['runs']]
+    before = [identity(path) for path in paths]
+    expected = {f['path'].replace('\\','/').lower():f['sha256'] for f in source['native']['files']+source['app']['files']+manifest['executables']}
+    assert all(f['sha256'] == expected.get(f['path'].replace('\\','/').lower(),f['sha256']) for f in before)
+    unit, integration = [f['path'] for f in manifest['executables']]
+    evidence = {'started_utc':utc(),'argv':sys.argv,'before':before,'prior_harness_failure':identity(first_path),'correction':'libtest multiple filters match OR, not AND. Original expected-count assertion failed; native origin command actually passed 30 execution_scope cases including both requested origin cases. No repeat of passing tests.','runs':[],'source_commit':manifest['commit'],'source_tree':manifest['tree']}
+    try:
+        names = set(name for run in first['runs'] for name in run['passing_cases'])
+        assert len(names) == 85
+        for label,argv,count in [('private-ingress',[unit,'private_ingress'],6),('old-cold-fill',[integration,'--exact','execution::durable_actual_fill_does_not_claim_native_cache_restored_after_fresh_factory_restart'],1)]:
+            started=utc()
+            run=subprocess.run(argv,cwd='E:/persarb/worktrees/entropy-io-startup',stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True,encoding='utf-8',errors='replace',timeout=60,check=False)
+            log=ROOT/f'reviewer-direct-native-{label}.log'
+            log.write_text(run.stdout,encoding='utf-8')
+            passing=re.findall(r'^test (.+?) \.\.\. ok$',run.stdout,re.MULTILINE)
+            summary=re.search(r'test result: (\w+)\. (\d+) passed; (\d+) failed; (\d+) ignored;',run.stdout)
+            evidence['runs'].append({'label':label,'argv':argv,'cwd':'E:/persarb/worktrees/entropy-io-startup','started_utc':started,'finished_utc':utc(),'exit_code':run.returncode,'passing_cases':passing,'summary':summary.group(0) if summary else None,'raw_log':identity(log)})
+            assert run.returncode == 0 and summary and int(summary[2]) == count and int(summary[3]) == 0 and int(summary[4]) == 0
+            assert len(set(passing)) == count and not names.intersection(passing)
+            names.update(passing)
+            print(json.dumps({'label':label,'passed':count,'exit':run.returncode}),flush=True)
+        evidence.update(status='PASS',unique_native_passing_cases=len(names),requested_subset_passing_cases=64,additional_execution_scope_passing_cases=28,counts_note='55 startup + 30 execution_scope (2 requested origins within) + 6 ingress + 1 prior cold-fill; no overlaps and no repeat runs')
+    except BaseException as exc:
+        evidence.update(status='FAIL',failure=f'{type(exc).__name__}: {exc}')
+        raise
+    finally:
+        after=[identity(path) for path in paths]
+        evidence.update(finished_utc=utc(),after=after,source_executable_and_prior_evidence_bytes_unchanged=before==after)
+        (ROOT/'reviewer-direct-native-continuation-result.json').write_text(json.dumps(evidence,indent=2)+'\n',encoding='utf-8')
+        assert before == after
+if __name__ == '__main__':
+    main()

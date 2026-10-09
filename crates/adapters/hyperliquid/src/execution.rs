@@ -2591,10 +2591,16 @@ impl ExecutionClient for HyperliquidExecutionClient {
         &self,
         lookback_mins: Option<u64>,
     ) -> anyhow::Result<Option<ExecutionMassStatus>> {
-        anyhow::ensure!(
-            self.account_scope.is_none(),
-            "io mass reconciliation is unsupported until scoped recovery is implemented"
-        );
+        if self.account_scope.is_some() {
+            let runtime = self
+                .io_execution
+                .as_ref()
+                .context("io startup reconciliation requires an explicit execution policy")?;
+            return runtime
+                .startup_mass_status(&self.http_client, &self.emitter, &self.core)
+                .await
+                .map(Some);
+        }
         let ts_init = self.clock.get_time_ns();
         let account_address = self.get_account_address()?;
 

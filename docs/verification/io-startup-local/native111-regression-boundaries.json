@@ -1,0 +1,110 @@
+{
+  "log_sha256": "4814a992f293d483daa6e8118ed2981279e38279c46541f8d349ef28a39eaeec",
+  "groups": [
+    [
+      867,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0
+    ],
+    [
+      46,
+      0,
+      0
+    ],
+    [
+      40,
+      0,
+      0
+    ],
+    [
+      147,
+      0,
+      0
+    ],
+    [
+      102,
+      0,
+      1
+    ],
+    [
+      46,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      5
+    ],
+    [
+      0,
+      0,
+      6
+    ],
+    [
+      53,
+      0,
+      0
+    ]
+  ],
+  "passed": 1301,
+  "failed": 0,
+  "ignored": 12,
+  "executables": [
+    {
+      "path": "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\nautilus_hyperliquid-1fcbc36810deefe5.exe",
+      "sha256": "52ebd610eabccb706a9bbf5de38a2827529108859b2177357b7f8718fe38ff59",
+      "size": 30369792
+    },
+    {
+      "path": "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\catalog-8900e4969d0b2022.exe",
+      "sha256": "2169e77eba8524e4a5ff3023efd8be8aa2f838266dcc7597ced7dad74f02073a",
+      "size": 835584
+    },
+    {
+      "path": "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\data_client-7c15ddd46a987576.exe",
+      "sha256": "10d49a1e4a9033d6c1e5701e9917bd4044facfa66c1e2ba63d2fdc0a907fa747",
+      "size": 19512320
+    },
+    {
+      "path": "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\dispatch-22d09f1b15f198a6.exe",
+      "sha256": "ba824baebdb8233ea2e97e1dc00d2553cb3718ce7bc118a30e5bb24c1e7a8068",
+      "size": 3634688
+    },
+    {
+      "path": "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\entropy_account-69bad49fe9dc76e8.exe",
+      "sha256": "acb5f19cafd1fb01fca46e00c0dd2423dc2fbb2f2ad39fb4aac59921ab4fbbf9",
+      "size": 28637184
+    },
+    {
+      "path": "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\exec_client-150a1c1d81fd9815.exe",
+      "sha256": "9394ef1f1d49b692fdc6a37e4365ad49eb39c9a7fe4e7a8afebed2b37acdab15",
+      "size": 24755200
+    },
+    {
+      "path": "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\http-b0ae1be904965f24.exe",
+      "sha256": "0d0d2689b301a05a6d8e3819a07c3d3a8b77829a4f117bd7c36b9804fa3c9577",
+      "size": 13352960
+    },
+    {
+      "path": "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\live_mainnet_smoke-d81c01db87ff5165.exe",
+      "sha256": "84caed096d4ce4136d593abf8d7729668cf97c8e1d6a085eb1ec9920a5d1c4d3",
+      "size": 15739392
+    },
+    {
+      "path": "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\live_soak-01f7a1a72b3cf620.exe",
+      "sha256": "0c99690f3eec812d9e6440524aeec43e852dd8ce5792dfbdf5a4c8ade013dff8",
+      "size": 16445440
+    },
+    {
+      "path": "E:\\persarb\\nautilus_trader\\target\\nextest\\deps\\websocket-6b79a96a3b9ad5a0.exe",
+      "sha256": "e55aeb65cce924eab8db5b84dbf647d3d0d4cd78c3fcb645a6def86244a51206",
+      "size": 14600704
+    }
+  ]
+}

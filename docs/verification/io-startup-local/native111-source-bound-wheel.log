@@ -1,0 +1,56 @@
+🍹 Building a mixed python/rust project
+🐍 Found CPython 3.12 at E:\persarb\worktrees\entropy-io-startup\.venv\Scripts\python.exe
+🔗 Found pyo3 bindings
+📡 Using build options features from pyproject.toml
+   Compiling nautilus-core v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\core)
+   Compiling pyo3-ffi v0.29.2
+   Compiling nautilus-common v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\common)
+   Compiling nautilus-serialization v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\serialization)
+   Compiling pyo3 v0.29.2
+   Compiling pyo3-stub-gen v0.20.0 (E:\persarb\worktrees\entropy-io-startup\patches\pyo3-stub-gen)
+   Compiling pyo3-async-runtimes v0.29.0
+   Compiling nautilus-model v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\model)
+   Compiling nautilus-cryptography v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\cryptography)
+   Compiling nautilus-network v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\network)
+   Compiling nautilus-indicators v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\indicators)
+   Compiling nautilus-analysis v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\analysis)
+   Compiling nautilus-portfolio v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\portfolio)
+   Compiling nautilus-execution v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\execution)
+   Compiling nautilus-persistence v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\persistence)
+   Compiling nautilus-infrastructure v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\infrastructure)
+   Compiling nautilus-trading v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\trading)
+   Compiling nautilus-risk v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\risk)
+   Compiling nautilus-data v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\data)
+   Compiling nautilus-testkit v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\testkit)
+   Compiling nautilus-system v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\system)
+   Compiling nautilus-live v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\live)
+   Compiling nautilus-backtest v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\backtest)
+   Compiling nautilus-sandbox v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\adapters\sandbox)
+   Compiling nautilus-binance v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\adapters\binance)
+   Compiling nautilus-coinbase v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\adapters\coinbase)
+   Compiling nautilus-betfair v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\adapters\betfair)
+   Compiling nautilus-okx v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\adapters\okx)
+   Compiling nautilus-backpack v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\adapters\backpack)
+   Compiling nautilus-dydx v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\adapters\dydx)
+   Compiling nautilus-derive v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\adapters\derive)
+   Compiling nautilus-polymarket v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\adapters\polymarket)
+   Compiling nautilus-kraken v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\adapters\kraken)
+   Compiling nautilus-blockchain v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\adapters\blockchain)
+   Compiling nautilus-bybit v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\adapters\bybit)
+   Compiling nautilus-architect-ax v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\adapters\architect_ax)
+   Compiling nautilus-bitmex v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\adapters\bitmex)
+   Compiling nautilus-hyperliquid v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\adapters\hyperliquid)
+   Compiling nautilus-deribit v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\adapters\deribit)
+   Compiling nautilus-ondo v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\adapters\ondo)
+   Compiling nautilus-tardis v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\adapters\tardis)
+   Compiling nautilus-lighter v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\adapters\lighter)
+   Compiling nautilus-interactive-brokers v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\adapters\interactive_brokers)
+   Compiling nautilus-databento v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\adapters\databento)
+   Compiling nautilus-aster v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\adapters\aster)
+   Compiling nautilus-pyo3 v0.63.0 (E:\persarb\worktrees\entropy-io-startup\crates\pyo3)
+    Finished `nextest` profile [unoptimized] target(s) in 1m 46s
+📦 Including files matching "**/*.pyi"
+📦 Built wheel for CPython 3.12 to E:\persarb\_tmp\entropy111-wheel-nextest-20261009\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl
+wrote E:\persarb\_tmp\entropy111-wheel-nextest-20261009\native-provenance.json
+source-bound wheel: E:\persarb\_tmp\entropy111-wheel-nextest-20261009\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl
+wheel SHA-256: 5aacb4129526edfdabe77739781fa9518a6b21224fdc59d0fa8b5e99006801fb

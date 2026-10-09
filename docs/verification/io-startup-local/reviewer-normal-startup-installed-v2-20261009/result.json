@@ -1,0 +1,23 @@
+{
+  "started_utc": "2026-10-09T04:43:14.302539+00:00",
+  "argv": [
+    "E:/persarb/_tmp/entropy111-validation/reviewer-normal-startup-readonly-v2.py",
+    "E:/persarb/_tmp/entropy111-validation/reviewer-normal-startup-installed-v2-20261009",
+    "E:/persarb/_tmp/entropy111-wheel-nextest-20261009/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+    "5aacb4129526edfdabe77739781fa9518a6b21224fdc59d0fa8b5e99006801fb",
+    "E:/persarb/_tmp/entropy111-wheel-nextest-20261009/native-provenance.json",
+    "--native-commit",
+    "6f46bad474f850b9279a3a8950f5b300570f179d",
+    "--native-tree",
+    "a42012494565dbe33e949e0d0e7db200305965b0"
+  ],
+  "cwd": "E:\\persarb",
+  "status": "FAIL",
+  "strategy_count": 0,
+  "orders_authorized": false,
+  "native_host_egress_isolation_verified": false,
+  "original_error_before_peer_teardown": "AssertionError: ",
+  "failure": "AssertionError: ",
+  "finished_utc": "2026-10-09T04:43:16.415540+00:00",
+  "dependencies_unchanged": true
+}

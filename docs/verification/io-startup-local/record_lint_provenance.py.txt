@@ -1,0 +1,78 @@
+"""Map actual Clippy diagnostics to unchanged lines in the fetched main baseline."""
+
+import datetime as dt
+import difflib
+import hashlib
+import json
+import re
+import subprocess
+from pathlib import Path
+
+
+ROOT = Path("E:/persarb/worktrees/entropy-io-startup")
+DIRECTORY = Path(__file__).resolve().parent
+BASE = "9ff73d1205b4199f9b44686fdf785382388e67e2"
+LOGS = (
+    "native111-hyperliquid-clippy.log",
+    "native111-targeted-clippy-final.log",
+)
+
+
+def main():
+    record = {
+        "captured_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "base": BASE,
+        "note": "Source comparison, not an actual baseline Clippy rerun or full Clippy pass.",
+        "logs": [],
+    }
+    for name in LOGS:
+        raw = (DIRECTORY / name).read_bytes()
+        locations = re.findall(r"--> (crates[^\r\n]+\.rs):(\d+):\d+", raw.decode("utf-8"))
+        rows = []
+        for relative, number in locations:
+            relative = relative.replace("\\", "/")
+            path = (ROOT / relative).resolve(strict=True)
+            if not path.is_relative_to(ROOT):
+                raise ValueError("Diagnostic path escaped the native checkout")
+            before = subprocess.run(
+                ["git", "show", f"{BASE}:{relative}"],
+                cwd=ROOT,
+                capture_output=True,
+                check=True,
+            ).stdout
+            after = path.read_bytes()
+            old_lines = before.decode("utf-8").splitlines()
+            new_lines = after.decode("utf-8").splitlines()
+            index = int(number) - 1
+            old_index = None
+            for tag, i1, _i2, j1, j2 in difflib.SequenceMatcher(
+                a=old_lines, b=new_lines, autojunk=False
+            ).get_opcodes():
+                if tag == "equal" and j1 <= index < j2:
+                    old_index = i1 + index - j1
+                    break
+            rows.append({
+                "path": relative,
+                "current_line": index + 1,
+                "baseline_line": None if old_index is None else old_index + 1,
+                "in_unchanged_hunk": old_index is not None,
+                "whole_file_lines_equal": old_lines == new_lines,
+                "baseline_sha256": hashlib.sha256(before).hexdigest(),
+                "current_sha256": hashlib.sha256(after).hexdigest(),
+            })
+        if not rows or not all(row["in_unchanged_hunk"] for row in rows):
+            raise ValueError(f"Unproven inherited diagnostic in {name}")
+        record["logs"].append({
+            "name": name,
+            "sha256": hashlib.sha256(raw).hexdigest(),
+            "diagnostic_locations": rows,
+        })
+    output = DIRECTORY / "inherited-lint-source-comparison.json"
+    if output.exists():
+        raise ValueError("Source comparison already recorded")
+    output.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({"output": str(output), "all_locations_in_unchanged_baseline_hunks": True}))
+
+
+if __name__ == "__main__":
+    main()

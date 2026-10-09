@@ -151,6 +151,9 @@ impl PrivateIngressState {
     pub(crate) fn generation(&self) -> u64 {
         self.generation
     }
+    pub(crate) fn received_sequence(&self) -> u64 {
+        self.received
+    }
     pub(crate) fn is_applied(&self, epoch: u64) -> bool {
         self.enabled && !self.failed && self.epoch == epoch && self.received == self.applied
     }

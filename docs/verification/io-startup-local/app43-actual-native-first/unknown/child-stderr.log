@@ -1,0 +1,17 @@
+Traceback (most recent call last):
+  File "E:\persarb\worktrees\entropy-execution-app\tests\test_entropy_execution_native.py", line 328, in _child_main
+    record = asyncio.run(
+             ^^^^^^^^^^^^
+  File "C:\Users\myron\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\asyncio\runners.py", line 195, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "C:\Users\myron\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\myron\AppData\Roaming\uv\python\cpython-3.12.9-windows-x86_64-none\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "E:\persarb\worktrees\entropy-execution-app\tests\test_entropy_execution_native.py", line 240, in child_case
+    assert controller["orders_terminal"] is False
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

@@ -1,0 +1,33 @@
+"""Capture an actual argv, UTC interval, raw combined output, and exit code."""
+
+import argparse
+import datetime as dt
+import json
+import os
+import subprocess
+from pathlib import Path
+
+parser = argparse.ArgumentParser()
+parser.add_argument("name")
+parser.add_argument("argv", nargs=argparse.REMAINDER)
+args = parser.parse_args()
+argv = args.argv[1:] if args.argv[:1] == ["--"] else args.argv
+directory = Path(__file__).resolve().parent
+started = dt.datetime.now(dt.timezone.utc).isoformat()
+record = {"argv": argv, "cwd": str(Path.cwd()), "started_utc": started,
+          "cargo_target_dir": os.environ.get("CARGO_TARGET_DIR"),
+          "pyo3_python": os.environ.get("PYO3_PYTHON")}
+with (directory / (args.name + ".log")).open("wb") as log:
+    try:
+        process = subprocess.run(argv, stdout=log, stderr=subprocess.STDOUT, check=False)
+        returncode = process.returncode
+    except OSError as error:
+        returncode = 127
+        record["launch_error"] = str(error)
+        log.write(f"Command could not be launched: {argv!r}\n{error}\n".encode("utf-8"))
+record.update(exit_code=returncode, finished_utc=dt.datetime.now(dt.timezone.utc).isoformat())
+(directory / (args.name + ".json")).write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+print(json.dumps(record))
+lines = (directory / (args.name + ".log")).read_text(encoding="utf-8", errors="replace").splitlines()
+print("\n".join(lines[-90:]))
+raise SystemExit(returncode)
