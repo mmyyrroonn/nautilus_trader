@@ -57,7 +57,7 @@ The archive keeps the first failures under their original versions and identitie
 
 ## Independent installed readonly evidence
 
-The independent reviewer ran one normal installed `TradingNode` with actual normal Hyperliquid data/execution factories, reconciliation enabled and synthetic loopback credentials. It remained RUNNING, made **37 HTTP requests**, **3 readonly subscriptions**, and emitted **2 AccountState events**, with **0 actions, orders or fills**. Ordinary Cache orders/positions and selected Portfolio positions remained zero. Normal stop/dispose left no peer sockets and the factory diagnostic getter returned `None`.
+The independent reviewer ran one normal installed `LiveNode` with actual normal Hyperliquid data/execution factories, reconciliation enabled and synthetic loopback credentials. It remained RUNNING, made **37 HTTP requests**, **3 readonly subscriptions**, and emitted **2 AccountState events**, with **0 actions, orders or fills**. Ordinary Cache orders/positions and selected Portfolio positions remained zero. Normal stop/dispose left no peer sockets and the factory diagnostic getter returned `None`.
 
 Its 60 captured source/install/artifact/procedure inputs were unchanged. The reviewer checked wheel/native/stub bytes and recorded provenance; it did not independently recompute the Git tree. The observed original startup-source diagnostic was non-null with reader generation 1, epoch 0 and applied ingress. The procedure did **not** separately assert a consumed reuse-branch flag; direct native tests supply that distinct branch evidence.
 
