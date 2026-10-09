@@ -461,6 +461,7 @@ struct IoStartupBoundary {
     private_funds: Value,
     metadata: BTreeMap<String, IoInstrumentProof>,
     native_instruments: BTreeMap<String, (Value, Value)>,
+    startup_source: Option<crate::account_scope::FullAccountSourceSeal>,
 }
 
 const IO_STARTUP_HISTORY_MAX_BYTES: usize = 1024 * 1024;
@@ -525,7 +526,7 @@ impl IoExecutionRuntime {
         core: &ExecutionClientCore,
     ) -> anyhow::Result<()> {
         let ingress = self.account.ws.private_ingress_guard();
-        let account = self.account.state.lock();
+        let mut account = self.account.state.lock();
         let mut state = self.state.lock();
         let instruments = warm_native_instruments(self, &state, http, core, now_ms())?;
         let origin = state
@@ -547,6 +548,9 @@ impl IoExecutionRuntime {
             "io native Cache binding differs from normal verified HTTP metadata"
         );
         origin.native_instruments = Some(instruments);
+        account.set_startup_metadata_context(
+            json!({"metadata":state.metadata,"origin":state.metadata_origin}),
+        );
         Ok(())
     }
 
@@ -1502,27 +1506,36 @@ impl IoExecutionRuntime {
         let deadline = tokio::time::Instant::now()
             + std::time::Duration::from_millis(self.policy.recovery_timeout_ms);
         let result = tokio::time::timeout_at(deadline, async {
-            let before = self.startup_boundary(http, core, Ok)?;
-            crate::account_scope::refresh_account_scope(
-                &self.account.state,
-                http,
-                &self.account.ws,
-                emitter,
-            )
-            .await?;
-            // Account refresh deliberately changes its revision. Reader identity,
-            // execution facts, selection and native instruments must not change.
-            let captured = self.startup_boundary(http, core, Ok)?;
-            anyhow::ensure!(
-                before.generation == captured.generation
-                    && before.epoch == captured.epoch
-                    && before.received_sequence == captured.received_sequence
-                    && before.execution_revision == captured.execution_revision
-                    && before.private_funds == captured.private_funds
-                    && before.metadata == captured.metadata
-                    && before.native_instruments == captured.native_instruments,
-                "io startup origin/metadata changed during account refresh"
-            );
+            let before = self.startup_boundary(http, core, deadline, Ok)?;
+            let captured = if before.startup_source.is_some() {
+                before
+            } else {
+                crate::account_scope::refresh_account_scope(
+                    &self.account.state,
+                    http,
+                    &self.account.ws,
+                    emitter,
+                )
+                .await?;
+                // Account refresh deliberately changes its revision. Reader identity,
+                // execution facts, selection and native instruments must not change.
+                let captured = self.startup_boundary(http, core, deadline, Ok)?;
+                anyhow::ensure!(
+                    captured.startup_source.is_some(),
+                    "io startup full account read did not produce a qualified complete source"
+                );
+                anyhow::ensure!(
+                    before.generation == captured.generation
+                        && before.epoch == captured.epoch
+                        && before.received_sequence == captured.received_sequence
+                        && before.execution_revision == captured.execution_revision
+                        && before.private_funds == captured.private_funds
+                        && before.metadata == captured.metadata
+                        && before.native_instruments == captured.native_instruments,
+                    "io startup origin/metadata changed during account refresh"
+                );
+                captured
+            };
             for request in [
                 InfoRequest::frontend_open_orders_for_dex(&captured.account.address, Some("io")),
                 InfoRequest::user_fills(&captured.account.address),
@@ -1545,7 +1558,7 @@ impl IoExecutionRuntime {
             }
             // No await between this final linearization boundary and report creation.
             // It takes ingress -> account -> execution and samples TTL after waits.
-            self.startup_boundary(http, core, |current| {
+            self.startup_boundary(http, core, deadline, |current| {
                 anyhow::ensure!(
                     tokio::time::Instant::now() < deadline
                         && current.generation == captured.generation
@@ -1557,7 +1570,8 @@ impl IoExecutionRuntime {
                         && serde_json::to_value(&current.account)?
                             == serde_json::to_value(&captured.account)?
                         && current.metadata == captured.metadata
-                        && current.native_instruments == captured.native_instruments,
+                        && current.native_instruments == captured.native_instruments
+                        && current.startup_source == captured.startup_source,
                     "io startup empty-history reads were superseded or expired"
                 );
                 let source = UnixNanos::from(
@@ -1625,6 +1639,7 @@ impl IoExecutionRuntime {
         &self,
         http: &HyperliquidHttpClient,
         core: &ExecutionClientCore,
+        deadline: tokio::time::Instant,
         finish: impl FnOnce(IoStartupBoundary) -> anyhow::Result<T>,
     ) -> anyhow::Result<T> {
         let ingress = self.account.ws.private_ingress_guard();
@@ -1639,11 +1654,10 @@ impl IoExecutionRuntime {
         let snapshot = account
             .snapshot(now, self.account.ws.is_active(), epoch)
             .context("io startup has no complete current account proof")?;
-        let private_funds = serde_json::to_value(
-            account
-                .private_funds_witness()
-                .context("io startup has no complete current private funds witness")?,
-        )?;
+        account
+            .private_funds_witness()
+            .context("io startup has no complete current private funds witness")?;
+        let private_funds = account.private_source_facts()?;
         anyhow::ensure!(
             snapshot.trusted
                 && snapshot.flat == Some(true)
@@ -1668,7 +1682,9 @@ impl IoExecutionRuntime {
                 && state.recovered_epoch == Some(epoch)
                 && state.facts.actions == 0
                 && state.facts.intents.is_empty()
-                && state.facts.fills.is_empty(),
+                && state.facts.fills.is_empty()
+                && state.facts.recovery_source_debt.is_none()
+                && !state.query_in_flight,
             "io startup requires fresh journal origin and zero owned execution history/debt"
         );
         let cache = core.cache();
@@ -1753,9 +1769,48 @@ impl IoExecutionRuntime {
                 (serde_json::to_value(native)?, serde_json::to_value(cached)?),
             );
         }
+        let policy = serde_json::to_value(&*self.policy)?;
+        let startup_source = if account.startup_source_matches(
+            ingress.generation(),
+            epoch,
+            ingress.received_sequence(),
+            &policy,
+            now,
+        )? {
+            account
+                .startup_source()
+                .filter(|seal| {
+                    state.metadata_origin.as_ref().is_some_and(|origin| {
+                        origin.generation == ingress.generation()
+                            && origin.epoch == epoch
+                            && origin.hard_revision == account.hard_revision()
+                            && seal.metadata_context
+                                == json!({"metadata":state.metadata,"origin":state.metadata_origin})
+                            && origin.native_instruments.as_ref() == Some(&native_instruments)
+                            && native_instruments.iter().all(|(id, (http, _))| {
+                                seal.native_http.get(id) == Some(http)
+                                    && origin.native_http.get(id) == Some(http)
+                            })
+                            && seal
+                                .metadata
+                                .get("universe")
+                                .and_then(Value::as_array)
+                                .is_some_and(|rows| {
+                                    state.metadata.values().all(|meta| {
+                                        rows.get(meta.universe_index)
+                                            == origin.selected_rows.get(&meta.instrument_id)
+                                    })
+                                })
+                    })
+                })
+                .cloned()
+        } else {
+            None
+        };
         // Keep all three proof guards alive through the caller's final comparison
         // and report construction; copying a boundary must not release the fence.
-        finish(IoStartupBoundary {
+        let sealed = startup_source.is_some();
+        let result = finish(IoStartupBoundary {
             generation: ingress.generation(),
             epoch,
             // A fully applied newer frame is still a different observation.
@@ -1768,7 +1823,30 @@ impl IoExecutionRuntime {
             private_funds,
             metadata: state.metadata.clone(),
             native_instruments,
-        })
+            startup_source,
+        })?;
+        // The callback may compare large raw sources or construct reports. Keep
+        // all guards held and qualify their unchanged identities after that work.
+        let final_now = now_ms();
+        anyhow::ensure!(
+            self.account.ws.connection_epoch() == epoch
+                && ingress.is_applied(epoch)
+                && account.current_source_is_fresh(final_now, self.account.ws.is_active(), epoch)
+                && state.metadata.values().all(|meta| {
+                    meta.received_ms <= final_now
+                        && final_now - meta.received_ms <= self.policy.metadata_max_age_ms
+                        && meta.verification_started_ms <= final_now
+                        && final_now - meta.verification_started_ms
+                            <= self.policy.metadata_max_age_ms
+                })
+                && (!sealed
+                    || account.startup_source().is_some_and(|seal| {
+                        seal.is_fresh(final_now, account.maximum_age_ms())
+                    }))
+                && tokio::time::Instant::now() < deadline,
+            "io startup source or deadline expired at the final report boundary"
+        );
+        Ok(result)
     }
 
     pub(crate) fn diagnostics(&self) -> IoExecutionDiagnostics {
@@ -1866,6 +1944,10 @@ impl IoExecutionRuntime {
             }
         }
         account.ws.install_io_private_ingress()?;
+        account
+            .state
+            .lock()
+            .enable_startup_source(serde_json::to_value(&policy)?)?;
         Ok(Self {
             policy: Arc::new(policy),
             state: Arc::new(Mutex::new(IoExecutionState {
@@ -1891,8 +1973,12 @@ impl IoExecutionRuntime {
     }
 
     pub(crate) fn snapshot_json(&self) -> anyhow::Result<String> {
-        // Match final writer lock order: account proof before execution state.
+        // Match the startup/writer ingress -> account -> execution lock order.
+        let ingress = self.account.ws.private_ingress_guard();
         let account_guard = self.account.state.lock();
+        let startup_account_source = account_guard.startup_source();
+        let epoch = self.account.ws.connection_epoch();
+        let startup_private_ingress = json!({"generation":ingress.generation(),"epoch":epoch,"received_sequence":ingress.received_sequence(),"is_applied":ingress.is_applied(epoch)});
         let account = account_guard.snapshot(
             now_ms(),
             self.account.ws.is_active(),
@@ -1900,7 +1986,7 @@ impl IoExecutionRuntime {
         );
         let latest_private_funds = account_guard.private_funds_witness();
         let state = self.state.lock();
-        serde_json::to_string(&json!({"policy":*self.policy,"account":account,"latest_private_funds":latest_private_funds,"metadata":state.metadata,"warm_metadata_origin":state.metadata_origin,"query_in_flight":state.query_in_flight,"query_token":state.query_token,"query_completed":state.query_completed,"last_query_warm":state.last_query_warm,"recovery_source_debt":state.facts.recovery_source_debt,"recovery_complete":state.recovery_complete,"recovered_epoch":state.recovered_epoch,"diagnostic":state.diagnostic,"journal_tainted":state.journal_tainted,"fresh_journal_origin":state.fresh_journal_origin,"native_projection_recovery_required":state.native_projection_recovery_required,"actions":state.facts.actions,"owned_intents":state.facts.intents,"actual_fills":state.facts.fills,"margin_basis":"conservative full-notional entry estimate using minimum HTTP/private free and withdrawable; isolated total maintenance unknown; non-atomic source observations","user_asset_source_time_ms":null})).map_err(Into::into)
+        serde_json::to_string(&json!({"policy":*self.policy,"account":account,"startup_account_source":startup_account_source,"startup_private_ingress":startup_private_ingress,"latest_private_funds":latest_private_funds,"metadata":state.metadata,"warm_metadata_origin":state.metadata_origin,"query_in_flight":state.query_in_flight,"query_token":state.query_token,"query_completed":state.query_completed,"last_query_warm":state.last_query_warm,"recovery_source_debt":state.facts.recovery_source_debt,"recovery_complete":state.recovery_complete,"recovered_epoch":state.recovered_epoch,"diagnostic":state.diagnostic,"journal_tainted":state.journal_tainted,"fresh_journal_origin":state.fresh_journal_origin,"native_projection_recovery_required":state.native_projection_recovery_required,"actions":state.facts.actions,"owned_intents":state.facts.intents,"actual_fills":state.facts.fills,"margin_basis":"conservative full-notional entry estimate using minimum HTTP/private free and withdrawable; isolated total maintenance unknown; non-atomic source observations","user_asset_source_time_ms":null})).map_err(Into::into)
     }
 
     pub(crate) fn invalidate(&self, reason: &str) {
@@ -2513,7 +2599,7 @@ impl IoExecutionRuntime {
             );
         }
         let ingress = self.account.ws.private_ingress_guard();
-        let proof_guard = self.account.state.lock();
+        let mut proof_guard = self.account.state.lock();
         let current = proof_guard
             .snapshot(
                 now_ms(),
@@ -2545,6 +2631,9 @@ impl IoExecutionRuntime {
             native_http,
             native_instruments: None,
         });
+        proof_guard.set_startup_metadata_context(
+            json!({"metadata":state.metadata,"origin":state.metadata_origin}),
+        );
         state.diagnostic =
             "io metadata is complete; owned order/fill/position recovery required".into();
         Ok(())

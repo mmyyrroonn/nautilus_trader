@@ -16,3 +16,4 @@ docs/verification/aster-selected-scope-local/** -text -whitespace
 
 docs/verification/io-startup-local/** -text -whitespace
 docs/verification/io-warm-recovery-local/** -text -whitespace
+docs/verification/io-startup-source-local/** -text -whitespace

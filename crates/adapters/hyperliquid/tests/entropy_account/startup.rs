@@ -314,6 +314,13 @@ async fn successful_but_nonempty_foreign_saturated_or_oversized_sources_refuse_s
 #[tokio::test]
 async fn current_complete_account_mode_metadata_and_source_are_required(#[case] fault: &str) {
     let mut harness = Harness::new().await;
+    // Preserve the original observable Cache mismatch case. The other faults
+    // affect future HTTP only, so first invalidate the sealed source through a
+    // genuine applied identical private frame without invalidating current trust.
+    if fault != "wrong_metadata" {
+        super::startup_source_reuse::invalidate_seal_with_identical_frame(&harness).await;
+    }
+    let requested_after = harness.peer.state.data.lock().requests.len();
     {
         let mut data = harness.peer.state.data.lock();
         match fault {
@@ -367,6 +374,48 @@ async fn current_complete_account_mode_metadata_and_source_are_required(#[case] 
         }
     }
     rejected_without_projection(&mut harness).await;
+    if fault != "wrong_metadata" {
+        let endpoint = match fault {
+            "wrong_mode" => "userAbstraction",
+            "wrong_role" => "userRole",
+            "wrong_collateral" | "wrong_token" => "spotMeta",
+            _ => "clearinghouseState",
+        };
+        let actual = super::startup_source_reuse::assert_actual_fault_response(
+            &harness,
+            endpoint,
+            requested_after,
+        );
+        match fault {
+            "wrong_mode" => assert_eq!(actual, "unifiedAccount"),
+            "wrong_role" => assert_eq!(actual["role"], "agent"),
+            "wrong_collateral" => assert_eq!(
+                super::startup_source_reuse::assert_actual_fault_response(
+                    &harness,
+                    "meta",
+                    requested_after,
+                )["collateralToken"],
+                1
+            ),
+            "wrong_token" => assert_eq!(
+                actual["tokens"][0]["tokenId"],
+                "0x00000000000000000000000000000000"
+            ),
+            "missing_positions" => assert!(actual.get("assetPositions").is_none()),
+            "null_positions" => assert!(actual["assetPositions"].is_null()),
+            "invalid_positions" => assert!(actual["assetPositions"].is_object()),
+            "unselected_position" => {
+                assert_eq!(actual["assetPositions"][0]["position"]["coin"], "io:OTHER");
+            }
+            "missing_source_time" => assert!(actual.get("time").is_none()),
+            "stale_source_time" => assert!(now_ms() - actual["time"].as_u64().unwrap() >= 100000),
+            "unrepresentable_balance" => assert_eq!(
+                actual["marginSummary"]["accountValue"],
+                harness.peer.state.data.lock().io["marginSummary"]["accountValue"]
+            ),
+            _ => unreachable!(),
+        }
+    }
     harness.stop().await;
 }
 

@@ -15,7 +15,10 @@
 
 //! Explicit io standard-account proof, independent of the default perpetual and spot accounts.
 
-use std::{collections::BTreeSet, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use anyhow::Context;
 use nautilus_core::{Params, time::get_atomic_clock_realtime};
@@ -147,6 +150,49 @@ pub(crate) struct AccountScopeState {
     stream_epoch: Option<u64>,
     attribution_generation: Option<u64>,
     attribution_universe: BTreeSet<String>,
+    startup_policy: Option<Value>,
+    startup_metadata_context: Option<Value>,
+    startup_source: Option<FullAccountSourceSeal>,
+}
+
+/// Original complete HTTP transaction provenance, never reconstructed from trust.
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+pub(crate) struct FullAccountSourceSeal {
+    policy: Value,
+    generation: u64,
+    epoch: u64,
+    received_sequence: u64,
+    account_revision: u64,
+    hard_revision: u64,
+    verification_started_ms: u64,
+    verification_finished_ms: u64,
+    http_source_time_ms: u64,
+    http_received_time_ms: u64,
+    private_facts: Value,
+    pub(crate) native_http: BTreeMap<String, Value>,
+    pub(crate) metadata: Value,
+    spot_metadata: Value,
+    pub(crate) metadata_context: Value,
+    sources: IoObservationSourceGroup,
+    account_facts: Value,
+}
+
+impl FullAccountSourceSeal {
+    pub(crate) fn is_fresh(&self, now: u64, maximum_age: u64) -> bool {
+        fresh(self.verification_started_ms, now, maximum_age)
+            && fresh(self.verification_finished_ms, now, maximum_age)
+            && fresh(self.http_source_time_ms, now, maximum_age)
+            && fresh(self.http_received_time_ms, now, maximum_age)
+    }
+}
+
+#[derive(Serialize)]
+struct PrivateAccountSourceFacts<'a> {
+    facts: &'a Option<ScopedClearinghouse>,
+    received_time_ms: Option<u64>,
+    source_time_ms: Option<u64>,
+    acknowledgements: u8,
+    stream_epoch: Option<u64>,
 }
 
 /// Detached latest private financial facts; source time is never synthesized.
@@ -161,6 +207,90 @@ pub(crate) struct PrivateFundsWitness {
 }
 
 impl AccountScopeState {
+    /// Rechecks source freshness without copying facts under the existing guard.
+    pub(crate) fn current_source_is_fresh(&self, now: u64, ws_active: bool, epoch: u64) -> bool {
+        self.diagnostic.is_none()
+            && ws_active
+            && self.stream_epoch == Some(epoch)
+            && self.acknowledgements == ALL_PRIVATE_ACKS
+            && self.facts.as_ref().is_some_and(|facts| {
+                facts.private_stream_epoch == epoch
+                    && fresh(facts.http_source_time_ms, now, self.max_age_ms)
+                    && fresh(facts.http_received_time_ms, now, self.max_age_ms)
+                    && fresh(
+                        facts.http_verification_started_time_ms,
+                        now,
+                        self.max_age_ms,
+                    )
+            })
+            && self
+                .ws_received_time_ms
+                .is_some_and(|time| fresh(time, now, self.max_age_ms))
+            && self
+                .ws_source_time_ms
+                .is_none_or(|time| fresh(time, now, self.max_age_ms))
+    }
+
+    pub(crate) fn set_startup_metadata_context(&mut self, context: Value) {
+        if self.startup_policy.is_some() {
+            self.startup_source = None;
+            self.startup_metadata_context = Some(context);
+        }
+    }
+
+    pub(crate) fn enable_startup_source(&mut self, policy: Value) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.startup_policy
+                .as_ref()
+                .is_none_or(|current| current == &policy),
+            "io startup source policy is immutable"
+        );
+        self.startup_policy = Some(policy);
+        Ok(())
+    }
+
+    pub(crate) fn startup_source(&self) -> Option<&FullAccountSourceSeal> {
+        self.startup_source.as_ref()
+    }
+
+    pub(crate) fn private_source_facts(&self) -> anyhow::Result<Value> {
+        serde_json::to_value(PrivateAccountSourceFacts {
+            facts: &self.ws_facts,
+            received_time_ms: self.ws_received_time_ms,
+            source_time_ms: self.ws_source_time_ms,
+            acknowledgements: self.acknowledgements,
+            stream_epoch: self.stream_epoch,
+        })
+        .map_err(Into::into)
+    }
+
+    pub(crate) fn startup_source_matches(
+        &self,
+        generation: u64,
+        epoch: u64,
+        received_sequence: u64,
+        policy: &Value,
+        now: u64,
+    ) -> anyhow::Result<bool> {
+        let Some(seal) = &self.startup_source else {
+            return Ok(false);
+        };
+        Ok(seal.generation == generation
+            && seal.epoch == epoch
+            && seal.received_sequence == received_sequence
+            && seal.account_revision == self.version
+            && seal.hard_revision == self.hard_revision
+            && &seal.policy == policy
+            && self.startup_metadata_context.as_ref() == Some(&seal.metadata_context)
+            && seal.private_facts == self.private_source_facts()?
+            && self.facts.as_ref().map(serde_json::to_value).transpose()?
+                == Some(seal.account_facts.clone())
+            && fresh(seal.verification_started_ms, now, self.max_age_ms)
+            && fresh(seal.verification_finished_ms, now, self.max_age_ms)
+            && fresh(seal.http_source_time_ms, now, self.max_age_ms)
+            && fresh(seal.http_received_time_ms, now, self.max_age_ms))
+    }
+
     pub(crate) fn revision(&self) -> u64 {
         self.version
     }
@@ -200,6 +330,9 @@ impl AccountScopeState {
             stream_epoch: None,
             attribution_generation: None,
             attribution_universe: BTreeSet::new(),
+            startup_policy: None,
+            startup_metadata_context: None,
+            startup_source: None,
         }
     }
 
@@ -217,6 +350,7 @@ impl AccountScopeState {
     }
 
     fn invalidate_funds(&mut self, reason: &str, reset_stream: bool) {
+        self.startup_source = None;
         self.version = self.version.wrapping_add(1);
         self.diagnostic = Some(reason.to_string());
         self.refresh_pending = false;
@@ -412,28 +546,60 @@ pub(crate) async fn refresh_account_scope(
     emitter: &ExecutionEventEmitter,
 ) -> anyhow::Result<()> {
     let started = now_ms();
-    let (generation, epoch) = ws.private_source_identity();
-    let (address, version, max_age) = {
+    let (
+        generation,
+        epoch,
+        received_sequence,
+        applied,
+        address,
+        version,
+        hard_revision,
+        max_age,
+        policy,
+        private_facts,
+        native_http,
+        metadata_context,
+    ) = {
+        let ingress = ws.private_ingress_guard();
+        let epoch = ws.connection_epoch();
         let mut guard = state.lock();
         guard.invalidate_financial("io account proof refresh is pending");
         guard.refresh_pending = true;
-        (guard.address.clone(), guard.version, guard.max_age_ms)
+        let native_http = guard
+            .startup_policy
+            .as_ref()
+            .and_then(|policy| startup_native_http(http, policy));
+        (
+            ingress.generation(),
+            epoch,
+            ingress.received_sequence(),
+            ingress.is_applied(epoch),
+            guard.address.clone(),
+            guard.version,
+            guard.hard_revision,
+            guard.max_age_ms,
+            guard.startup_policy.clone(),
+            guard.private_source_facts()?,
+            native_http,
+            guard.startup_metadata_context.clone(),
+        )
     };
+    let sources = policy.as_ref().map(|_| IoObservationSources::default());
     let result = async {
-        let role = http.account_scope_info(&InfoRequest::account_mode(&address, HyperliquidInfoRequestType::UserRole)).await?;
+        let role = full_account_read(http, &InfoRequest::account_mode(&address, HyperliquidInfoRequestType::UserRole), sources.as_ref()).await?;
         validate_role(&role)?;
-        validate_account_mode(http, &address).await?;
-        let meta = http.account_scope_info(&InfoRequest::meta_for_dex("io")).await?;
-        let spot = http.account_scope_info(&InfoRequest::spot_meta()).await?;
+        full_account_mode(http, &address, sources.as_ref()).await?;
+        let meta = full_account_read(http, &InfoRequest::meta_for_dex("io"), sources.as_ref()).await?;
+        let spot = full_account_read(http, &InfoRequest::spot_meta(), sources.as_ref()).await?;
         let universe = validate_collateral(&meta, &spot)?;
         let attribution_universe = active_attribution_universe(&meta, &universe);
-        let raw = http.account_scope_info(&InfoRequest::clearinghouse_state_for_dex(&address, Some("io"))).await?;
-        let received = now_ms();
+        let raw = full_account_read(http, &InfoRequest::clearinghouse_state_for_dex(&address, Some("io")), sources.as_ref()).await?;
+        let received = sources.as_ref().and_then(|sources| sources.lock().original_sources.last().map(|source| source.received_ms)).unwrap_or_else(now_ms);
         let source = raw.get("time").and_then(Value::as_u64).context("io HTTP clearinghouse source time is missing")?;
         let facts = parse_clearinghouse(&raw, Some(source), &universe)?;
         // The API has no atomic mode/state snapshot; repeat both mode facts to
         // catch an observed transition, while retaining the bounded limitation.
-        validate_account_mode(http, &address).await?;
+        full_account_mode(http, &address, sources.as_ref()).await?;
         let finished = now_ms();
         anyhow::ensure!(fresh(source, finished, max_age) && fresh(started, finished, max_age), "io account proof source or verification interval is stale");
         let snapshot = HyperliquidAccountScopeSnapshot {
@@ -458,7 +624,8 @@ pub(crate) async fn refresh_account_scope(
         info.insert("cross_maintenance_margin_used".to_string(), Value::String(facts.cross_maintenance.to_string()));
         info.insert("total_maintenance_margin".to_string(), Value::String("unknown; isolated total is not supplied".to_string()));
         info.insert("money_precision_policy".to_string(), Value::String("USDC Money precision for equity and used; free derived by checked fixed-point subtraction; exact raw facts retained in scope snapshot".to_string()));
-        let current_identity = ws.private_source_identity();
+        let ingress = ws.private_ingress_guard();
+        let current_identity = (ingress.generation(), ws.connection_epoch());
         let mut guard = state.lock();
         anyhow::ensure!(guard.version == version && guard.stream_epoch == Some(epoch) && ws.connection_epoch() == epoch && ws.is_active(), "io proof was invalidated while HTTP refresh was pending");
         anyhow::ensure!(current_identity == (generation, epoch), "io metadata proof belongs to an earlier reader generation");
@@ -474,7 +641,61 @@ pub(crate) async fn refresh_account_scope(
         // position reconciliation succeeds under the captured funds revision.
         guard.attribution_generation = Some(generation);
         guard.attribution_universe = attribution_universe;
+        // Optional sealing is stronger than legacy publication. A crossing
+        // identical frame prevents reuse without inventing a financial conflict.
+        if let (Some(policy), Some(native_http), Some(sources), Some(metadata_context)) = (&policy, &native_http, &sources, &metadata_context) {
+            let full_private_match = guard.ws_facts.as_ref().is_some_and(|private| {
+                private.balance == facts.balance && private.equity == facts.equity
+                    && private.withdrawable == facts.withdrawable && private.used == facts.used
+                    && private.free == facts.free && private.cross_maintenance == facts.cross_maintenance
+                    && private.positions == facts.positions
+            });
+            let continuous = applied && ingress.is_applied(epoch)
+                && ingress.received_sequence() == received_sequence
+                && guard.hard_revision == hard_revision
+                && guard.private_source_facts()? == private_facts
+                && guard.startup_policy.as_ref() == Some(policy)
+                && guard.startup_metadata_context.as_ref() == Some(metadata_context)
+                && metadata_context.get("origin").is_some_and(|origin| {
+                    origin.get("generation").and_then(Value::as_u64) == Some(generation)
+                        && origin.get("epoch").and_then(Value::as_u64) == Some(epoch)
+                        && origin.get("hard_revision").and_then(Value::as_u64) == Some(hard_revision)
+                        && origin.get("native_instruments").is_some_and(Value::is_object)
+                })
+                && startup_metadata_compatible(http, metadata_context, &meta, native_http)
+                && startup_native_http(http, policy).as_ref() == Some(native_http)
+                && full_private_match
+                && [facts.equity, facts.used, facts.free].into_iter().all(|amount| {
+                    Money::from_decimal(amount, Currency::USDC()).is_ok_and(|money| money.as_decimal() == amount)
+                });
+            let mut candidate = FullAccountSourceSeal {
+                policy: policy.clone(), generation, epoch, received_sequence,
+                account_revision: version, hard_revision,
+                verification_started_ms: started, verification_finished_ms: finished,
+                http_source_time_ms: source, http_received_time_ms: received,
+                private_facts: private_facts.clone(), native_http: native_http.clone(),
+                metadata: meta, spot_metadata: spot, sources: sources.lock().clone(),
+                metadata_context: metadata_context.clone(),
+                account_facts: serde_json::to_value(&snapshot)?,
+            };
+            // All candidate copies and lock waits precede the final time sample
+            let boundary_time = now_ms();
+            if continuous
+                && fresh(source, boundary_time, max_age)
+                && fresh(received, boundary_time, max_age)
+                && fresh(started, boundary_time, max_age)
+                && guard.current_source_is_fresh(boundary_time, ws.is_active(), epoch)
+            {
+                candidate.verification_finished_ms = boundary_time;
+                guard.startup_source = Some(candidate);
+            }
+        }
+        if policy.is_some() {
+            emitter.emit_account_state(vec![balance], vec![], true, (source * 1_000_000).into(), Some(info));
+            return Ok(());
+        }
         drop(guard);
+        drop(ingress);
         emitter.emit_account_state(vec![balance], vec![], true, (source * 1_000_000).into(), Some(info));
         Ok::<_, anyhow::Error>(())
     }.await;
@@ -484,6 +705,96 @@ pub(crate) async fn refresh_account_scope(
             .invalidate(&format!("io HTTP account proof failed: {e}"), false);
     }
     result
+}
+
+fn startup_native_http(
+    http: &HyperliquidHttpClient,
+    policy: &Value,
+) -> Option<BTreeMap<String, Value>> {
+    policy
+        .get("symbols")?
+        .as_array()?
+        .iter()
+        .map(|symbol| {
+            let id = symbol.get("instrument_id")?.as_str()?;
+            let coin = id.strip_suffix("-USD-PERP.HYPERLIQUID")?;
+            let native = http.io_cached_instrument(coin)?;
+            Some((id.to_string(), serde_json::to_value(native).ok()?))
+        })
+        .collect()
+}
+
+fn startup_metadata_compatible(
+    http: &HyperliquidHttpClient,
+    context: &Value,
+    metadata: &Value,
+    native_http: &BTreeMap<String, Value>,
+) -> bool {
+    let Some(origin) = context.get("origin") else {
+        return false;
+    };
+    let Some(proofs) = context.get("metadata").and_then(Value::as_object) else {
+        return false;
+    };
+    let Some(rows) = metadata.get("universe").and_then(Value::as_array) else {
+        return false;
+    };
+    proofs.len() == native_http.len()
+        && proofs.iter().all(|(id, proof)| {
+            let Some(index) = proof
+                .get("universe_index")
+                .and_then(Value::as_u64)
+                .and_then(|index| usize::try_from(index).ok())
+            else {
+                return false;
+            };
+            let Some(coin) = proof.get("coin").and_then(Value::as_str) else {
+                return false;
+            };
+            let Some(asset) = proof
+                .get("asset")
+                .and_then(Value::as_u64)
+                .and_then(|asset| u32::try_from(asset).ok())
+            else {
+                return false;
+            };
+            proof.get("instrument_id").and_then(Value::as_str) == Some(id.as_str())
+                && rows.get(index)
+                    == origin
+                        .get("selected_rows")
+                        .and_then(|selected| selected.get(id))
+                && native_http.get(id)
+                    == origin.get("native_http").and_then(|native| native.get(id))
+                && origin
+                    .get("native_instruments")
+                    .and_then(|native| native.get(id))
+                    .and_then(Value::as_array)
+                    .is_some_and(|pair| pair.len() == 2 && pair.first() == native_http.get(id))
+                && http.get_asset_index(&format!("{coin}-USD-PERP")) == Some(asset)
+        })
+}
+
+async fn full_account_read(
+    http: &HyperliquidHttpClient,
+    request: &InfoRequest,
+    sources: Option<&IoObservationSources>,
+) -> anyhow::Result<Value> {
+    match sources {
+        Some(sources) => bounded_scope_observation(http, request, sources).await,
+        None => http.account_scope_info(request).await.map_err(Into::into),
+    }
+}
+
+async fn full_account_mode(
+    http: &HyperliquidHttpClient,
+    address: &str,
+    sources: Option<&IoObservationSources>,
+) -> anyhow::Result<()> {
+    if let Some(sources) = sources {
+        observe_account_mode(http, address, sources).await
+    } else {
+        validate_account_mode(http, address).await
+    }
 }
 
 /// Complete uncommitted HTTP observation, never an admission token.
@@ -924,13 +1235,19 @@ fn active_attribution_universe(meta: &Value, universe: &BTreeSet<String>) -> BTr
         .collect()
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize)]
 struct ScopedClearinghouse {
+    #[serde(serialize_with = "serialize_decimal_as_str")]
     balance: Decimal,
+    #[serde(serialize_with = "serialize_decimal_as_str")]
     equity: Decimal,
+    #[serde(serialize_with = "serialize_decimal_as_str")]
     withdrawable: Decimal,
+    #[serde(serialize_with = "serialize_decimal_as_str")]
     used: Decimal,
+    #[serde(serialize_with = "serialize_decimal_as_str")]
     free: Decimal,
+    #[serde(serialize_with = "serialize_decimal_as_str")]
     cross_maintenance: Decimal,
     positions: Vec<HyperliquidAccountScopePosition>,
 }

@@ -47,6 +47,9 @@ mod economics;
 #[path = "startup.rs"]
 mod startup;
 
+#[path = "startup_source_reuse.rs"]
+mod startup_source_reuse;
+
 #[path = "io_query_recovery.rs"]
 mod io_query_recovery;
 
