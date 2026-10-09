@@ -294,7 +294,12 @@ impl MockVenue {
 
     /// Pushes a frame to every open user data stream socket.
     pub(crate) fn push_ws(&self, frame: &Value) {
-        let _ = self.ws_events.send(WsCommand::Send(frame.to_string()));
+        self.push_raw_ws(&frame.to_string());
+    }
+
+    /// Pushes the original wire bytes, including intentionally malformed private ingress.
+    pub(crate) fn push_raw_ws(&self, frame: &str) {
+        let _ = self.ws_events.send(WsCommand::Send(frame.to_owned()));
     }
 
     /// Drops every open user data stream socket, simulating an outage.
