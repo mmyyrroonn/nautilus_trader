@@ -547,6 +547,7 @@ impl AsterHttpClient {
                     params,
                     counts_against_order_quota,
                     None,
+                    None,
                     deadline,
                 )
                 .await;
@@ -557,7 +558,7 @@ impl AsterHttpClient {
         let operation = || {
             let params = params.clone();
             async move {
-                self.send_signed(Method::GET, path, params, false, None, deadline)
+                self.send_signed(Method::GET, path, params, false, None, None, deadline)
                     .await
             }
         };
@@ -603,6 +604,7 @@ impl AsterHttpClient {
         })
     }
 
+    #[expect(clippy::too_many_arguments)]
     async fn send_signed<T: DeserializeOwned>(
         &self,
         method: Method,
@@ -610,6 +612,7 @@ impl AsterHttpClient {
         params: AsterParams,
         counts_against_order_quota: bool,
         admission: Option<&(dyn Fn() -> Result<(), String> + Send + Sync)>,
+        commit: Option<&(dyn Fn() -> Result<(), String> + Send + Sync)>,
         deadline: Option<Instant>,
     ) -> AsterHttpResult<T> {
         if !self.has_credentials() {
@@ -691,6 +694,10 @@ impl AsterHttpClient {
                 }
                 if let Some(admission) = admission {
                     admission().map_err(AsterHttpError::ValidationError)?;
+                }
+                if let Some(commit) = commit {
+                    // All waits and signing have completed; consume the native witness once
+                    commit().map_err(AsterHttpError::ValidationError)?;
                 }
                 if is_get {
                     Ok((format!("{}{path}?{payload}", self.inner.base_url), None))
@@ -786,6 +793,33 @@ impl AsterHttpClient {
             params,
             true,
             Some(&admission),
+            None,
+            self.request_deadline(),
+        )
+        .await
+    }
+
+    /// Submits an admitted order with one final native dispatch commitment.
+    ///
+    /// The commitment runs only after quota waits, signing and final admission, immediately
+    /// before the prepared transport receives the request. POST is never retried.
+    pub(crate) async fn submit_order_admitted_and_committed<F, C>(
+        &self,
+        params: AsterParams,
+        admission: F,
+        commit: C,
+    ) -> AsterHttpResult<AsterOrder>
+    where
+        F: Fn() -> Result<(), String> + Send + Sync,
+        C: Fn() -> Result<(), String> + Send + Sync,
+    {
+        self.send_signed(
+            Method::POST,
+            ASTER_ORDER_PATH,
+            params,
+            true,
+            Some(&admission),
+            Some(&commit),
             self.request_deadline(),
         )
         .await

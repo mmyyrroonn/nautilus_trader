@@ -1,0 +1,30 @@
+import datetime as dt
+import hashlib
+import json
+import shutil
+import subprocess
+from pathlib import Path
+
+root = Path(__file__).parent
+source = Path("E:/persarb/nautilus_trader/target/nextest/deps/exec_client-780bac51ce8678c2.exe")
+copy = root / "reconnect-diagnostics-current.exe"
+shutil.copyfile(source, copy)
+digest = hashlib.sha256(copy.read_bytes()).hexdigest()
+records = []
+for attempt in range(1, 9):
+    argv = [str(copy), "test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once", "--exact", "--nocapture"]
+    row = {"argv": argv, "started_utc": dt.datetime.now(dt.timezone.utc).isoformat(), "exe_sha256": digest}
+    result = subprocess.run(argv, cwd="E:/persarb/worktrees/entropy-aster-proof", capture_output=True, timeout=25)
+    row.update(exit_code=result.returncode, finished_utc=dt.datetime.now(dt.timezone.utc).isoformat())
+    log = root / f"recovery-order-diagnostic-attempt-{attempt}.log"
+    log.write_bytes(result.stdout + result.stderr)
+    row["raw_log"] = log.name
+    records.append(row)
+    if result.returncode:
+        break
+(root / "recovery-order-diagnostic-probe.json").write_text(json.dumps({
+    "note": "Bounded reproduction to collect failing event order; first failure stops, no retry-until-pass acceptance.",
+    "source_exe": str(source), "copied_exe_sha256": digest,
+    "final_exe_sha256": hashlib.sha256(copy.read_bytes()).hexdigest(), "attempts": records,
+}, indent=2) + "\n", encoding="utf-8")
+print(json.dumps({"attempts": len(records), "last_exit_code": records[-1]["exit_code"], "last_log": records[-1]["raw_log"]}))

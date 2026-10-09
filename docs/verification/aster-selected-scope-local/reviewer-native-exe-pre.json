@@ -1,0 +1,20 @@
+{
+    "executable_identities":  [
+                                  {
+                                      "path":  "E:/persarb/nautilus_trader/target/nextest/deps/nautilus_aster-13029d0434076b74.exe",
+                                      "sha256":  "4f38e36fe1525a563522754d2ed97ba0e3a50eb14584a67150e5d3f07f328f04",
+                                      "bytes":  22021120
+                                  },
+                                  {
+                                      "path":  "E:/persarb/nautilus_trader/target/nextest/deps/selected_scope-c23cd16123685453.exe",
+                                      "sha256":  "f479255d068e37d2d218c5b3dbdee924bfb68ce24dd2e6b840fb44f3ed30703a",
+                                      "bytes":  18238464
+                                  },
+                                  {
+                                      "path":  "E:/persarb/nautilus_trader/target/nextest/deps/nautilus_binance-fe2cc5e2ea07ef12.exe",
+                                      "sha256":  "71cef423432464aaee71e2a470ff5433301abf114620ee47e8052cfa1fde2f88",
+                                      "bytes":  26300928
+                                  }
+                              ],
+    "utc":  "2026-10-09T02:45:50.7276210Z"
+}

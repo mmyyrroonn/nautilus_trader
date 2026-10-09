@@ -1,0 +1,138 @@
+{
+    "sources":  [
+                    {
+                        "root":  "E:/persarb/worktrees/entropy-aster-proof",
+                        "path":  "crates/adapters/aster/src/scope.rs",
+                        "sha256":  "63f8840d0b6b49a6fe8bb5fc5d9393e176975b027d222201154c6ee342bfb916",
+                        "bytes":  9277
+                    },
+                    {
+                        "root":  "E:/persarb/worktrees/entropy-aster-proof",
+                        "path":  "crates/adapters/aster/src/execution.rs",
+                        "sha256":  "ad7b1d419a6adad1815b93d62c2c2c7813e66911ed5d4b887ba1c343038e792f",
+                        "bytes":  349301
+                    },
+                    {
+                        "root":  "E:/persarb/worktrees/entropy-aster-proof",
+                        "path":  "crates/adapters/aster/src/config.rs",
+                        "sha256":  "9558b90efa93dd2b79286c93b01433e251b65767dcade88e4a968563b868a502",
+                        "bytes":  26192
+                    },
+                    {
+                        "root":  "E:/persarb/worktrees/entropy-aster-proof",
+                        "path":  "crates/adapters/aster/src/factories.rs",
+                        "sha256":  "7cf73342c3583bdbdb708ae5d0be8f5cee1678c51661bff2e3f9375fdb13c3c5",
+                        "bytes":  16791
+                    },
+                    {
+                        "root":  "E:/persarb/worktrees/entropy-aster-proof",
+                        "path":  "crates/adapters/aster/src/http/client.rs",
+                        "sha256":  "0e1e2a46f1b3fde6d53213007f611ca3eb7c01a1c2af2da856d3497e103d6a6a",
+                        "bytes":  79916
+                    },
+                    {
+                        "root":  "E:/persarb/worktrees/entropy-aster-proof",
+                        "path":  "crates/adapters/aster/src/python/config.rs",
+                        "sha256":  "a6e7a2565dfbb2ac16704342de3079dd4252dff9abfa22aa28c9476989056b1b",
+                        "bytes":  8086
+                    },
+                    {
+                        "root":  "E:/persarb/worktrees/entropy-aster-proof",
+                        "path":  "crates/adapters/aster/src/python/factories.rs",
+                        "sha256":  "0aea44b107be71120fd028a3fca896c1539de8320289f45ea8a2bd4d80d481c9",
+                        "bytes":  1971
+                    },
+                    {
+                        "root":  "E:/persarb/worktrees/entropy-aster-proof",
+                        "path":  "crates/adapters/aster/src/websocket/mod.rs",
+                        "sha256":  "4bc40d112073610b840c05d9b927f880333d48e77ad6d7d277eda3d007f959b9",
+                        "bytes":  16119
+                    },
+                    {
+                        "root":  "E:/persarb/worktrees/entropy-aster-proof",
+                        "path":  "crates/adapters/binance/src/futures/websocket/streams/client.rs",
+                        "sha256":  "f92eaaf039f87b9224960fa05936b10c52c7146ff69f2df4235163a351c4fa68",
+                        "bytes":  37099
+                    },
+                    {
+                        "root":  "E:/persarb/worktrees/entropy-aster-proof",
+                        "path":  "crates/adapters/aster/tests/selected_scope.rs",
+                        "sha256":  "f0f78e5e96a82c0bd6a59e9d2a5c43c06909fbebfd2ae212884124f2ca575e55",
+                        "bytes":  22631
+                    },
+                    {
+                        "root":  "E:/persarb/worktrees/entropy-aster-proof",
+                        "path":  "python/tests/unit/test_aster_selected_scope_config.py",
+                        "sha256":  "8043d0aea2909acc5b8a1bfdf274f352758b978705a93791f05962b06cab2011",
+                        "bytes":  5542
+                    },
+                    {
+                        "root":  "E:/persarb/worktrees/entropy-execution-app",
+                        "path":  "src/entropy_execution_config.py",
+                        "sha256":  "bcec8d1b94b1d6a86ba6a822122ca5f9a26809c568200071ca42f04e1aeb1ea4",
+                        "bytes":  12145
+                    },
+                    {
+                        "root":  "E:/persarb/worktrees/entropy-execution-app",
+                        "path":  "src/entropy_execution_core.py",
+                        "sha256":  "7e64abe5be8a11b97935586f453c91cd48fa3cbb4587c97aae8f83251916a958",
+                        "bytes":  33246
+                    },
+                    {
+                        "root":  "E:/persarb/worktrees/entropy-execution-app",
+                        "path":  "src/entropy_execution_report.py",
+                        "sha256":  "a133936adb052546118bcca6c07e3deda40bd9f914159dfc60b02c6ab5d88f13",
+                        "bytes":  18415
+                    },
+                    {
+                        "root":  "E:/persarb/worktrees/entropy-execution-app",
+                        "path":  "src/entropy_execution.py",
+                        "sha256":  "6a3c41a37d65c72edc0fb12fc9a45386fe960e3fa39b172c4d331bb0c0734276",
+                        "bytes":  59904
+                    },
+                    {
+                        "root":  "E:/persarb/worktrees/entropy-execution-app",
+                        "path":  "config/entropy-loopback-execution.example.toml",
+                        "sha256":  "15b454493fcc39d2f074871b6a178322e17bc852a420fe5f312a5bf7285e8a27",
+                        "bytes":  2322
+                    },
+                    {
+                        "root":  "E:/persarb/worktrees/entropy-execution-app",
+                        "path":  "tests/test_entropy_execution_config.py",
+                        "sha256":  "ed60ef18a1eb103ff250f594c2c67d2a13dcd992368c50b8bc05d71db9f01134",
+                        "bytes":  5160
+                    },
+                    {
+                        "root":  "E:/persarb/worktrees/entropy-execution-app",
+                        "path":  "tests/test_entropy_execution_core.py",
+                        "sha256":  "7482878d25bdc419b26bac24ae85a0b9ba0392e00d7f9ed22faba5da92ce4305",
+                        "bytes":  16444
+                    },
+                    {
+                        "root":  "E:/persarb/worktrees/entropy-execution-app",
+                        "path":  "tests/test_entropy_execution_report.py",
+                        "sha256":  "bb67ffabf1ec7be1bc0e8a85897fcca3e13ee1882b939f621e1574fcec5440be",
+                        "bytes":  12806
+                    },
+                    {
+                        "root":  "E:/persarb/worktrees/entropy-execution-app",
+                        "path":  "tests/test_entropy_execution_native.py",
+                        "sha256":  "ecdeb34c89f047e082c5e58f8da1e19f383c10635239886ce0457e9a9f273146",
+                        "bytes":  21198
+                    },
+                    {
+                        "root":  "E:/persarb/worktrees/entropy-execution-app",
+                        "path":  "tests/entropy_execution_peer.py",
+                        "sha256":  "121cf79f13142613db3e1d39753a46aee2e541e732509baa032b2cb3720b55d8",
+                        "bytes":  28519
+                    }
+                ],
+    "native_artifact_executions":  "not run by reviewer yet",
+    "utc":  "2026-10-09T02:41:31.9199834Z",
+    "app_pure_commands":  [
+                              "reviewer-app-pure-fixed.json",
+                              "reviewer-app-runtime-guards-fixed.json",
+                              "reviewer-app-preview-fixed.json"
+                          ],
+    "app_actual_installed_cases":  "7 deselected, not passed"
+}

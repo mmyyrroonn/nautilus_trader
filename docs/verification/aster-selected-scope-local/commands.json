@@ -1,0 +1,1564 @@
+[
+  {
+    "record": "aster-selected-config-format-check-final-fixed.json",
+    "argv": [
+      "E:/persarb/worktrees/entropy-aster-proof/.venv/Scripts/python.exe",
+      "-m",
+      "ruff",
+      "format",
+      "--check",
+      "--config",
+      "python/pyproject.toml",
+      "python/tests/unit/test_aster_selected_scope_config.py"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:43:36.866774+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 1,
+    "finished_utc": "2026-10-09T02:43:36.931355+00:00"
+  },
+  {
+    "record": "aster-selected-config-format-check-fixed.json",
+    "argv": [
+      "E:/persarb/worktrees/entropy-aster-proof/.venv/Scripts/python.exe",
+      "-m",
+      "ruff",
+      "format",
+      "--check",
+      "--config",
+      "python/pyproject.toml",
+      "python/tests/unit/test_aster_selected_scope_config.py"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:43:21.246355+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T02:43:21.313434+00:00"
+  },
+  {
+    "record": "aster-selected-config-format-check-validated-fixed.json",
+    "argv": [
+      "E:/persarb/worktrees/entropy-aster-proof/.venv/Scripts/python.exe",
+      "-m",
+      "ruff",
+      "format",
+      "--check",
+      "--config",
+      "python/pyproject.toml",
+      "python/tests/unit/test_aster_selected_scope_config.py"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:43:53.766427+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T02:43:53.831577+00:00"
+  },
+  {
+    "record": "aster-selected-config-format-final-fixed.json",
+    "argv": [
+      "E:/persarb/worktrees/entropy-aster-proof/.venv/Scripts/python.exe",
+      "-m",
+      "ruff",
+      "format",
+      "--config",
+      "python/pyproject.toml",
+      "python/tests/unit/test_aster_selected_scope_config.py"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:43:45.409215+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T02:43:45.476292+00:00"
+  },
+  {
+    "record": "aster-selected-config-format-fixed.json",
+    "argv": [
+      "E:/persarb/worktrees/entropy-aster-proof/.venv/Scripts/python.exe",
+      "-m",
+      "ruff",
+      "format",
+      "--config",
+      "python/pyproject.toml",
+      "python/tests/unit/test_aster_selected_scope_config.py"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:43:13.003304+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T02:43:13.094468+00:00"
+  },
+  {
+    "record": "aster-selected-config-ruff-before-fixed.json",
+    "argv": [
+      "E:/persarb/worktrees/entropy-aster-proof/.venv/Scripts/python.exe",
+      "-m",
+      "ruff",
+      "check",
+      "--config",
+      "python/pyproject.toml",
+      "python/tests/unit/test_aster_selected_scope_config.py"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:42:14.218982+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 1,
+    "finished_utc": "2026-10-09T02:42:14.319010+00:00"
+  },
+  {
+    "record": "aster-selected-config-ruff-check-final-fixed.json",
+    "argv": [
+      "E:/persarb/worktrees/entropy-aster-proof/.venv/Scripts/python.exe",
+      "-m",
+      "ruff",
+      "check",
+      "--config",
+      "python/pyproject.toml",
+      "python/tests/unit/test_aster_selected_scope_config.py"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:43:36.866274+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T02:43:36.933856+00:00"
+  },
+  {
+    "record": "aster-selected-config-ruff-check-fixed.json",
+    "argv": [
+      "E:/persarb/worktrees/entropy-aster-proof/.venv/Scripts/python.exe",
+      "-m",
+      "ruff",
+      "check",
+      "--config",
+      "python/pyproject.toml",
+      "python/tests/unit/test_aster_selected_scope_config.py"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:43:21.246355+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 1,
+    "finished_utc": "2026-10-09T02:43:21.317930+00:00"
+  },
+  {
+    "record": "aster-selected-config-ruff-check-validated-fixed.json",
+    "argv": [
+      "E:/persarb/worktrees/entropy-aster-proof/.venv/Scripts/python.exe",
+      "-m",
+      "ruff",
+      "check",
+      "--config",
+      "python/pyproject.toml",
+      "python/tests/unit/test_aster_selected_scope_config.py"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:43:53.766427+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T02:43:53.837076+00:00"
+  },
+  {
+    "record": "aster109-normal-readonly-final.json",
+    "argv": [
+      "E:/persarb/worktrees/entropy-execution-app/.venv/Scripts/python.exe",
+      "E:/persarb/_tmp/entropy43-validation/aster109_normal_readonly.py",
+      "E:/persarb/_tmp/entropy43-validation/aster109-agent-readonly-final",
+      "E:/persarb/_tmp/entropy109-wheel-nextest-20261009/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+      "da0cc0df4fc70cefe52c80ddb6c5514c1566c73a7cac32e460ca5d59298b72cf",
+      "E:/persarb/_tmp/entropy109-wheel-nextest-20261009/native-provenance.json"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-execution-app",
+    "started_utc": "2026-10-09T03:35:13.624325+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:35:16.746818+00:00"
+  },
+  {
+    "record": "aster109-normal-readonly-initial.json",
+    "argv": [
+      "E:/persarb/worktrees/entropy-execution-app/.venv/Scripts/python.exe",
+      "E:/persarb/_tmp/entropy43-validation/aster109_normal_readonly.py",
+      "E:/persarb/_tmp/entropy43-validation/aster109-agent-readonly-initial",
+      "E:/persarb/_tmp/entropy109-wheel-nextest-20261009/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+      "da0cc0df4fc70cefe52c80ddb6c5514c1566c73a7cac32e460ca5d59298b72cf",
+      "E:/persarb/_tmp/entropy109-wheel-nextest-20261009/native-provenance.json"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-execution-app",
+    "started_utc": "2026-10-09T03:34:24.946679+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:34:28.043522+00:00"
+  },
+  {
+    "record": "native-adapter-final-chronology-regression.json",
+    "argv": [
+      "cargo",
+      "test",
+      "-p",
+      "nautilus-aster",
+      "-p",
+      "nautilus-binance",
+      "-p",
+      "nautilus-hyperliquid",
+      "--lib",
+      "--tests",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T03:12:08.075795+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:13:58.799566+00:00"
+  },
+  {
+    "record": "native-adapter-regression-final.json",
+    "argv": [
+      "cargo",
+      "test",
+      "-p",
+      "nautilus-aster",
+      "-p",
+      "nautilus-binance",
+      "-p",
+      "nautilus-hyperliquid",
+      "--lib",
+      "--tests",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:39:57.831228+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 101,
+    "finished_utc": "2026-10-09T02:41:37.622564+00:00"
+  },
+  {
+    "record": "native-adapter-regression-peer-fix.json",
+    "argv": [
+      "cargo",
+      "test",
+      "-p",
+      "nautilus-aster",
+      "-p",
+      "nautilus-binance",
+      "-p",
+      "nautilus-hyperliquid",
+      "--lib",
+      "--tests",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:42:10.670546+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T02:44:45.227686+00:00"
+  },
+  {
+    "record": "native-aster-binance-final-source.json",
+    "argv": [
+      "cargo",
+      "test",
+      "-p",
+      "nautilus-aster",
+      "-p",
+      "nautilus-binance",
+      "--lib",
+      "--tests",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:48:05.807938+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 101,
+    "finished_utc": "2026-10-09T02:49:33.672612+00:00"
+  },
+  {
+    "record": "native-check-hook.json",
+    "argv": [
+      "cargo",
+      "check",
+      "-p",
+      "nautilus-aster",
+      "--lib",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:06:44.848033+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T02:06:48.099722+00:00"
+  },
+  {
+    "record": "native-check-initial.json",
+    "argv": [
+      "cargo",
+      "check",
+      "-p",
+      "nautilus-aster",
+      "--lib",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:03:59.280870+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 101,
+    "finished_utc": "2026-10-09T02:04:47.537625+00:00"
+  },
+  {
+    "record": "native-chronology-peer-format.json",
+    "argv": [
+      "cargo",
+      "+nightly",
+      "fmt",
+      "-p",
+      "nautilus-aster",
+      "-p",
+      "nautilus-binance"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T03:10:11.452517+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:10:12.574876+00:00"
+  },
+  {
+    "record": "native-chronology-peers-initial.json",
+    "argv": [
+      "cargo",
+      "test",
+      "-p",
+      "nautilus-aster",
+      "-p",
+      "nautilus-binance",
+      "--test",
+      "selected_scope",
+      "--test",
+      "exec_client",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T03:10:12.639791+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:10:40.724129+00:00"
+  },
+  {
+    "record": "native-clippy-libraries-final.json",
+    "argv": [
+      "cargo",
+      "clippy",
+      "-p",
+      "nautilus-aster",
+      "-p",
+      "nautilus-binance",
+      "--lib",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'",
+      "--",
+      "-D",
+      "warnings"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:45:19.486520+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 101,
+    "finished_utc": "2026-10-09T02:45:53.397220+00:00"
+  },
+  {
+    "record": "native-clippy-libraries-style-fixed.json",
+    "argv": [
+      "cargo",
+      "clippy",
+      "-p",
+      "nautilus-aster",
+      "-p",
+      "nautilus-binance",
+      "--lib",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'",
+      "--",
+      "-D",
+      "warnings"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:46:51.297002+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T02:46:53.683003+00:00"
+  },
+  {
+    "record": "native-clippy-tests-clean-final.json",
+    "argv": [
+      "cargo",
+      "clippy",
+      "-p",
+      "nautilus-aster",
+      "-p",
+      "nautilus-binance",
+      "--lib",
+      "--tests",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'",
+      "--",
+      "-D",
+      "warnings"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:48:04.382145+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T02:48:05.741396+00:00"
+  },
+  {
+    "record": "native-clippy-tests-style-fixed.json",
+    "argv": [
+      "cargo",
+      "clippy",
+      "-p",
+      "nautilus-aster",
+      "-p",
+      "nautilus-binance",
+      "--lib",
+      "--tests",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'",
+      "--",
+      "-D",
+      "warnings"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:46:53.747036+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 101,
+    "finished_utc": "2026-10-09T02:47:34.782661+00:00"
+  },
+  {
+    "record": "native-config-ruff-format.json",
+    "argv": [
+      ".venv/Scripts/ruff.exe",
+      "format",
+      "--check",
+      "python/tests/unit/test_aster_selected_scope_config.py",
+      "--config",
+      "python/pyproject.toml"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:41:38.723746+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 1,
+    "finished_utc": "2026-10-09T02:41:38.745299+00:00"
+  },
+  {
+    "record": "native-config-ruff.json",
+    "argv": [
+      ".venv/Scripts/ruff.exe",
+      "check",
+      "python/tests/unit/test_aster_selected_scope_config.py",
+      "--config",
+      "python/pyproject.toml"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:41:38.369496+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 1,
+    "finished_utc": "2026-10-09T02:41:38.663720+00:00"
+  },
+  {
+    "record": "native-config-test-lf-format.json",
+    "argv": [
+      ".\\.venv\\Scripts\\python.exe",
+      "-m",
+      "ruff",
+      "format",
+      "--config",
+      "format.line-ending='lf'",
+      "python/tests/unit/test_aster_selected_scope_config.py"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T03:26:51.037190+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:26:51.103126+00:00"
+  },
+  {
+    "record": "native-final-chronology-clippy.json",
+    "argv": [
+      "cargo",
+      "clippy",
+      "-p",
+      "nautilus-aster",
+      "-p",
+      "nautilus-binance",
+      "--lib",
+      "--tests",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'",
+      "--",
+      "-D",
+      "warnings"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T03:12:03.823993+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:12:08.010481+00:00"
+  },
+  {
+    "record": "native-final-chronology-format.json",
+    "argv": [
+      "cargo",
+      "+nightly",
+      "fmt",
+      "-p",
+      "nautilus-aster",
+      "-p",
+      "nautilus-binance"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T03:12:02.659469+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:12:03.760002+00:00"
+  },
+  {
+    "record": "native-final-format-lf-check.json",
+    "argv": [
+      ".\\.venv\\Scripts\\python.exe",
+      "-m",
+      "ruff",
+      "format",
+      "--check",
+      "--config",
+      "format.line-ending='lf'",
+      "python/tests/unit/test_aster_selected_scope_config.py",
+      "python/nautilus_trader/adapters/aster/__init__.pyi"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T03:26:33.915031+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 1,
+    "finished_utc": "2026-10-09T03:26:33.979760+00:00"
+  },
+  {
+    "record": "native-final-format-lf-corrected.json",
+    "argv": [
+      ".\\.venv\\Scripts\\python.exe",
+      "-m",
+      "ruff",
+      "format",
+      "--check",
+      "--config",
+      "format.line-ending='lf'",
+      "python/tests/unit/test_aster_selected_scope_config.py",
+      "python/nautilus_trader/adapters/aster/__init__.pyi"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T03:26:51.163333+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:26:51.228674+00:00"
+  },
+  {
+    "record": "native-final-ruff-format.json",
+    "argv": [
+      ".venv/Scripts/ruff.exe",
+      "format",
+      "--check",
+      "python/tests/unit/test_aster_selected_scope_config.py",
+      "python/nautilus_trader/adapters/aster/__init__.pyi",
+      "--config",
+      "python/pyproject.toml"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T03:18:57.722767+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:18:57.744797+00:00"
+  },
+  {
+    "record": "native-final-ruff.json",
+    "argv": [
+      ".venv/Scripts/ruff.exe",
+      "check",
+      "python/tests/unit/test_aster_selected_scope_config.py",
+      "python/nautilus_trader/adapters/aster/__init__.pyi",
+      "--config",
+      "python/pyproject.toml"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T03:18:57.631696+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:18:57.658663+00:00"
+  },
+  {
+    "record": "native-official-stubs.json",
+    "argv": [
+      "E:/persarb/worktrees/entropy-aster-proof/.venv/Scripts/python.exe",
+      "python/generate_stubs.py"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T03:14:54.857391+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": "E:/persarb/worktrees/entropy-aster-proof/.venv/Scripts/python.exe",
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:17:32.888941+00:00"
+  },
+  {
+    "record": "native-reconnect-flat-baseline.json",
+    "argv": [
+      "cargo",
+      "test",
+      "-p",
+      "nautilus-aster",
+      "-p",
+      "nautilus-binance",
+      "--test",
+      "exec_client",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'",
+      "test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once",
+      "--",
+      "--exact",
+      "--nocapture"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy109-baseline",
+    "started_utc": "2026-10-09T02:51:37.651791+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T02:52:25.471321+00:00"
+  },
+  {
+    "record": "native-reconnect-flat-diagnostics.json",
+    "argv": [
+      "cargo",
+      "test",
+      "-p",
+      "nautilus-aster",
+      "-p",
+      "nautilus-binance",
+      "--test",
+      "exec_client",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'",
+      "test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once",
+      "--",
+      "--exact",
+      "--nocapture"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:53:58.870820+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T02:54:24.582117+00:00"
+  },
+  {
+    "record": "native-reconnect-flat-isolate.json",
+    "argv": [
+      "cargo",
+      "test",
+      "-p",
+      "nautilus-aster",
+      "-p",
+      "nautilus-binance",
+      "--test",
+      "exec_client",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'",
+      "test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once",
+      "--",
+      "--exact",
+      "--nocapture"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:50:09.152099+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 101,
+    "finished_utc": "2026-10-09T02:50:11.537974+00:00"
+  },
+  {
+    "record": "native-recovery-order-clippy.json",
+    "argv": [
+      "cargo",
+      "clippy",
+      "-p",
+      "nautilus-aster",
+      "-p",
+      "nautilus-binance",
+      "--lib",
+      "--tests",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'",
+      "--",
+      "-D",
+      "warnings"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T03:03:46.680833+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:03:50.705608+00:00"
+  },
+  {
+    "record": "native-recovery-order-format.json",
+    "argv": [
+      "cargo",
+      "+nightly",
+      "fmt",
+      "-p",
+      "nautilus-aster",
+      "-p",
+      "nautilus-binance"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T03:03:45.613406+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:03:46.621275+00:00"
+  },
+  {
+    "record": "native-scope-peer-bridge.json",
+    "argv": [
+      "cargo",
+      "test",
+      "-p",
+      "nautilus-aster",
+      "--test",
+      "selected_scope",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:28:31.335865+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 101,
+    "finished_utc": "2026-10-09T02:28:35.164620+00:00"
+  },
+  {
+    "record": "native-scope-peer-formatted.json",
+    "argv": [
+      "cargo",
+      "test",
+      "-p",
+      "nautilus-aster",
+      "--test",
+      "selected_scope",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:13:45.192574+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 101,
+    "finished_utc": "2026-10-09T02:13:48.672551+00:00"
+  },
+  {
+    "record": "native-scope-peer-initial.json",
+    "argv": [
+      "cargo",
+      "test",
+      "-p",
+      "nautilus-aster",
+      "--test",
+      "selected_scope",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:08:33.389675+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 101,
+    "finished_utc": "2026-10-09T02:09:51.340806+00:00"
+  },
+  {
+    "record": "native-scope-peer-money-fix.json",
+    "argv": [
+      "cargo",
+      "test",
+      "-p",
+      "nautilus-aster",
+      "--test",
+      "selected_scope",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:34:38.350975+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 101,
+    "finished_utc": "2026-10-09T02:34:53.521956+00:00"
+  },
+  {
+    "record": "native-scope-peer-native-handler.json",
+    "argv": [
+      "cargo",
+      "test",
+      "-p",
+      "nautilus-aster",
+      "--test",
+      "selected_scope",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:29:56.918464+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 101,
+    "finished_utc": "2026-10-09T02:30:13.507265+00:00"
+  },
+  {
+    "record": "native-scope-peer-precision-final.json",
+    "argv": [
+      "cargo",
+      "test",
+      "-p",
+      "nautilus-aster",
+      "--test",
+      "selected_scope",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:39:29.296050+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T02:39:37.034404+00:00"
+  },
+  {
+    "record": "native-scope-peer-review-fixes.json",
+    "argv": [
+      "cargo",
+      "test",
+      "-p",
+      "nautilus-aster",
+      "--test",
+      "selected_scope",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:26:42.565005+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 101,
+    "finished_utc": "2026-10-09T02:26:46.493554+00:00"
+  },
+  {
+    "record": "native-stubs-line-ending-format.json",
+    "argv": [
+      "E:\\persarb\\worktrees\\entropy-aster-proof\\.venv\\Scripts\\ruff.exe",
+      "format",
+      "python/nautilus_trader",
+      "--config",
+      "python/pyproject.toml",
+      "--config",
+      "format.line-ending=\"lf\""
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T03:20:03.553658+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:20:03.607808+00:00"
+  },
+  {
+    "record": "native109-app-install.json",
+    "argv": [
+      "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Scripts\\python.exe",
+      "scripts/install_native.py",
+      "--python",
+      "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Scripts\\python.exe",
+      "--local-override",
+      "--native-root",
+      "E:\\persarb\\worktrees\\entropy-aster-proof",
+      "--wheel",
+      "E:\\persarb\\_tmp\\entropy109-wheel-nextest-20261009\\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+      "--provenance",
+      "E:\\persarb\\_tmp\\entropy109-wheel-nextest-20261009\\native-provenance.json",
+      "--sha256",
+      "da0cc0df4fc70cefe52c80ddb6c5514c1566c73a7cac32e460ca5d59298b72cf",
+      "--additional-adapter",
+      "hyperliquid",
+      "--additional-adapter",
+      "aster",
+      "--output",
+      "E:\\persarb\\_tmp\\entropy43-validation\\native109-app-installed.json"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-execution-app",
+    "started_utc": "2026-10-09T03:29:31.972019+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:29:35.732467+00:00"
+  },
+  {
+    "record": "native109-installed-python-initial.json",
+    "argv": [
+      "E:\\persarb\\worktrees\\entropy-aster-proof\\.venv\\Scripts\\python.exe",
+      "-m",
+      "pytest",
+      "--import-mode=importlib",
+      "-o",
+      "pythonpath=",
+      "python/tests/unit/test_entropy_account_config.py",
+      "python/tests/unit/test_entropy_execution_config.py",
+      "python/tests/unit/test_entropy_economics_config.py",
+      "python/tests/unit/test_config_readback_contracts.py",
+      "python/tests/unit/test_generate_stubs.py",
+      "python/tests/unit/test_aster_selected_scope_config.py",
+      "-q"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T03:29:49.820519+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:30:13.883371+00:00"
+  },
+  {
+    "record": "native109-markdown-check.json",
+    "argv": [
+      "cmd",
+      "/d",
+      "/c",
+      "npx",
+      "--offline",
+      "--yes",
+      "markdownlint-cli2@0.23.2",
+      "--config",
+      ".markdownlint.jsonc",
+      "docs/verification/aster-selected-scope-contract-20261009.md",
+      "docs/verification/aster-selected-scope-acceptance-20261009.md"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T03:40:21.818757+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:40:33.901055+00:00"
+  },
+  {
+    "record": "native109-nightly-format-check.json",
+    "argv": [
+      "cargo",
+      "+nightly",
+      "fmt",
+      "--check",
+      "-p",
+      "nautilus-aster",
+      "-p",
+      "nautilus-binance"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T03:40:05.842430+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:40:06.850720+00:00"
+  },
+  {
+    "record": "native109-proof-install.json",
+    "argv": [
+      "E:\\persarb\\worktrees\\entropy-aster-proof\\.venv\\Scripts\\python.exe",
+      "scripts/install_native.py",
+      "--python",
+      "E:\\persarb\\worktrees\\entropy-aster-proof\\.venv\\Scripts\\python.exe",
+      "--local-override",
+      "--native-root",
+      "E:\\persarb\\worktrees\\entropy-aster-proof",
+      "--wheel",
+      "E:\\persarb\\_tmp\\entropy109-wheel-nextest-20261009\\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+      "--provenance",
+      "E:\\persarb\\_tmp\\entropy109-wheel-nextest-20261009\\native-provenance.json",
+      "--sha256",
+      "da0cc0df4fc70cefe52c80ddb6c5514c1566c73a7cac32e460ca5d59298b72cf",
+      "--additional-adapter",
+      "hyperliquid",
+      "--additional-adapter",
+      "aster",
+      "--output",
+      "E:\\persarb\\_tmp\\entropy43-validation\\native109-proof-installed.json"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-execution-app",
+    "started_utc": "2026-10-09T03:29:27.089331+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:29:31.911479+00:00"
+  },
+  {
+    "record": "native109-source-bound-wheel.json",
+    "argv": [
+      "E:\\persarb\\worktrees\\entropy-aster-proof\\.venv\\Scripts\\python.exe",
+      "scripts/adapter-evidence/build_native.py",
+      "--python",
+      "E:\\persarb\\worktrees\\entropy-aster-proof\\.venv\\Scripts\\python.exe",
+      "--native-root",
+      "E:\\persarb\\worktrees\\entropy-aster-proof",
+      "--output-dir",
+      "E:\\persarb\\_tmp\\entropy109-wheel-nextest-20261009",
+      "--profile",
+      "nextest"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T03:27:01.689793+00:00",
+    "cargo_target_dir": "E:\\persarb\\nautilus_trader\\target",
+    "pyo3_python": "E:\\persarb\\worktrees\\entropy-aster-proof\\.venv\\Scripts\\python.exe",
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:29:04.243924+00:00"
+  },
+  {
+    "record": "native109-table-check.json",
+    "argv": [
+      "E:\\persarb\\worktrees\\entropy-aster-proof\\.venv\\Scripts\\python.exe",
+      "scripts/check-markdown-tables.py",
+      "docs/verification/aster-selected-scope-contract-20261009.md",
+      "docs/verification/aster-selected-scope-acceptance-20261009.md"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T03:40:21.716540+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:40:21.762295+00:00"
+  },
+  {
+    "record": "required-make-format.json",
+    "argv": [
+      "make",
+      "format"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:41:38.248381+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "launch_error": "[WinError 2] \u7cfb\u7edf\u627e\u4e0d\u5230\u6307\u5b9a\u7684\u6587\u4ef6\u3002",
+    "exit_code": 127,
+    "finished_utc": "2026-10-09T02:41:38.249879+00:00"
+  },
+  {
+    "record": "required-make-pre-commit.json",
+    "argv": [
+      "make",
+      "pre-commit"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:41:38.308923+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "launch_error": "[WinError 2] \u7cfb\u7edf\u627e\u4e0d\u5230\u6307\u5b9a\u7684\u6587\u4ef6\u3002",
+    "exit_code": 127,
+    "finished_utc": "2026-10-09T02:41:38.310422+00:00"
+  },
+  {
+    "record": "reviewer-aster109-normal-bound-post.json",
+    "started_utc": "2026-10-09T03:37:59.342970+00:00",
+    "before": [
+      {
+        "path": "E:\\persarb\\_tmp\\entropy43-validation\\aster109_normal_readonly.py",
+        "sha256": "383c99088629d568d3866fcd4ea83a0ef51c1fb9ffc1a587c4832da9decc494a",
+        "bytes": 10479
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution.py",
+        "sha256": "6a3c41a37d65c72edc0fb12fc9a45386fe960e3fa39b172c4d331bb0c0734276",
+        "bytes": 59904
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\entropy_execution_peer.py",
+        "sha256": "e288616d1ae21a79457f2a7ad49ce5859f9d22da585f31ecc95d08253eb7bc3a",
+        "bytes": 28922
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy109-wheel-nextest-20261009\\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+        "sha256": "da0cc0df4fc70cefe52c80ddb6c5514c1566c73a7cac32e460ca5d59298b72cf",
+        "bytes": 109417293
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy109-wheel-nextest-20261009\\native-provenance.json",
+        "sha256": "198f1db53003cdba796cb99461c6209e95dfbf874dbfcb97f21d1f72829c28b0",
+        "bytes": 8168
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\_libnautilus.cp312-win_amd64.pyd",
+        "sha256": "62eaea08f84ae9fa7cc21e374d38fc8fc6b4d877d6a24c4e85919618de139138",
+        "bytes": 389675520
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\aster\\__init__.pyi",
+        "sha256": "3dc13e6d8cfca549f5d0396effbd3c14069075666f9b3cbb544332161fb179bf",
+        "bytes": 3854
+      }
+    ],
+    "argv": [
+      "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Scripts\\python.exe",
+      "-I",
+      "E:\\persarb\\_tmp\\entropy43-validation\\aster109_normal_readonly.py",
+      "E:\\persarb\\_tmp\\entropy43-validation\\reviewer-aster109-normal-readonly-bound",
+      "E:\\persarb\\_tmp\\entropy109-wheel-nextest-20261009\\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+      "da0cc0df4fc70cefe52c80ddb6c5514c1566c73a7cac32e460ca5d59298b72cf",
+      "E:\\persarb\\_tmp\\entropy109-wheel-nextest-20261009\\native-provenance.json"
+    ],
+    "cwd": "E:\\persarb\\_tmp\\entropy43-validation",
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:38:02.768616+00:00",
+    "after": [
+      {
+        "path": "E:\\persarb\\_tmp\\entropy43-validation\\aster109_normal_readonly.py",
+        "sha256": "383c99088629d568d3866fcd4ea83a0ef51c1fb9ffc1a587c4832da9decc494a",
+        "bytes": 10479
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution.py",
+        "sha256": "6a3c41a37d65c72edc0fb12fc9a45386fe960e3fa39b172c4d331bb0c0734276",
+        "bytes": 59904
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\entropy_execution_peer.py",
+        "sha256": "e288616d1ae21a79457f2a7ad49ce5859f9d22da585f31ecc95d08253eb7bc3a",
+        "bytes": 28922
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy109-wheel-nextest-20261009\\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+        "sha256": "da0cc0df4fc70cefe52c80ddb6c5514c1566c73a7cac32e460ca5d59298b72cf",
+        "bytes": 109417293
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy109-wheel-nextest-20261009\\native-provenance.json",
+        "sha256": "198f1db53003cdba796cb99461c6209e95dfbf874dbfcb97f21d1f72829c28b0",
+        "bytes": 8168
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\_libnautilus.cp312-win_amd64.pyd",
+        "sha256": "62eaea08f84ae9fa7cc21e374d38fc8fc6b4d877d6a24c4e85919618de139138",
+        "bytes": 389675520
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\aster\\__init__.pyi",
+        "sha256": "3dc13e6d8cfca549f5d0396effbd3c14069075666f9b3cbb544332161fb179bf",
+        "bytes": 3854
+      }
+    ],
+    "all_dependencies_unchanged": true
+  },
+  {
+    "record": "reviewer-aster109-normal-bound.json",
+    "argv": [
+      "E:/persarb/worktrees/entropy-execution-app/.venv/Scripts/python.exe",
+      "-I",
+      "E:/persarb/_tmp/entropy43-validation/reviewer-aster109-normal-bound-run.py"
+    ],
+    "cwd": "E:\\persarb\\_tmp\\entropy43-validation",
+    "started_utc": "2026-10-09T03:37:59.298904+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:38:03.116858+00:00"
+  },
+  {
+    "record": "reviewer-aster109-normal-readonly.json",
+    "argv": [
+      "E:/persarb/worktrees/entropy-execution-app/.venv/Scripts/python.exe",
+      "-I",
+      "E:/persarb/_tmp/entropy43-validation/aster109_normal_readonly.py",
+      "E:/persarb/_tmp/entropy43-validation/reviewer-aster109-normal-readonly",
+      "E:/persarb/_tmp/entropy109-wheel-nextest-20261009/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+      "da0cc0df4fc70cefe52c80ddb6c5514c1566c73a7cac32e460ca5d59298b72cf",
+      "E:/persarb/_tmp/entropy109-wheel-nextest-20261009/native-provenance.json"
+    ],
+    "cwd": "E:\\persarb\\_tmp\\entropy43-validation",
+    "started_utc": "2026-10-09T03:36:47.039071+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:36:50.139599+00:00"
+  },
+  {
+    "record": "reviewer-native-admission-factory-direct.json",
+    "argv": [
+      "E:/persarb/nautilus_trader/target/nextest/deps/nautilus_aster-13029d0434076b74.exe",
+      "selected",
+      "default_private_invalidation",
+      "--test-threads=1"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:46:06.074628+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T02:46:06.089140+00:00"
+  },
+  {
+    "record": "reviewer-native-binance-default-direct.json",
+    "argv": [
+      "E:/persarb/nautilus_trader/target/nextest/deps/nautilus_binance-fe2cc5e2ea07ef12.exe",
+      "futures::websocket::streams::",
+      "--test-threads=1"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:46:08.754668+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T02:46:08.810709+00:00"
+  },
+  {
+    "record": "reviewer-native-final-normal-open-close2.json",
+    "argv": [
+      "E:/persarb/nautilus_trader/target/nextest/deps/exec_client-399d71d1fa0ef85d.exe",
+      "test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once",
+      "--test-threads=1"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T03:19:24.964835+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:19:28.461140+00:00"
+  },
+  {
+    "record": "reviewer-native-final-selected35.json",
+    "argv": [
+      "E:/persarb/nautilus_trader/target/nextest/deps/selected_scope-c23cd16123685453.exe",
+      "--test-threads=1"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T03:19:14.786424+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:19:51.142311+00:00"
+  },
+  {
+    "record": "reviewer-native-scope-units-direct.json",
+    "argv": [
+      "E:/persarb/nautilus_trader/target/nextest/deps/nautilus_aster-13029d0434076b74.exe",
+      "scope::tests::",
+      "--test-threads=1"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:46:06.000510+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T02:46:06.016068+00:00"
+  },
+  {
+    "record": "reviewer-native-selected-direct.json",
+    "argv": [
+      "E:/persarb/nautilus_trader/target/nextest/deps/selected_scope-c23cd16123685453.exe",
+      "--test-threads=1",
+      "--nocapture"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:45:50.803692+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T02:45:54.736328+00:00"
+  },
+  {
+    "record": "reviewer-native-transport-direct.json",
+    "argv": [
+      "E:/persarb/nautilus_trader/target/nextest/deps/nautilus_aster-13029d0434076b74.exe",
+      "http::client::tests::test_submit_admission_runs_after_the_order_quota_wait",
+      "http::client::tests::test_quota_timeout_is_local_and_never_resends_a_post",
+      "http::client::tests::test_timeout_after_dispatch_keeps_the_post_unknown",
+      "--test-threads=1"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:46:06.146677+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T02:46:08.694620+00:00"
+  },
+  {
+    "record": "reviewer-wheel-abi-inspect.json",
+    "argv": [
+      "E:/persarb/worktrees/entropy-aster-proof/.venv/Scripts/python.exe",
+      "-I",
+      "E:/persarb/_tmp/entropy43-validation/reviewer-wheel-abi-inspect.py"
+    ],
+    "cwd": "E:\\persarb\\_tmp\\entropy43-validation",
+    "started_utc": "2026-10-09T03:30:51.496077+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:30:51.636363+00:00"
+  },
+  {
+    "record": "reviewer-wheel-abi-verify.json",
+    "argv": [
+      "E:/persarb/worktrees/entropy-aster-proof/.venv/Scripts/python.exe",
+      "-I",
+      "E:/persarb/_tmp/entropy43-validation/reviewer-wheel-abi-verify.py"
+    ],
+    "cwd": "E:\\persarb\\_tmp\\entropy43-validation",
+    "started_utc": "2026-10-09T03:31:59.675286+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T03:32:01.330510+00:00"
+  },
+  {
+    "record": "rust-format-aster.json",
+    "argv": [
+      "cargo",
+      "+nightly",
+      "fmt",
+      "-p",
+      "nautilus-aster"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:13:43.564847+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T02:13:45.130429+00:00"
+  },
+  {
+    "record": "rust-format-import-final.json",
+    "argv": [
+      "cargo",
+      "+nightly",
+      "fmt",
+      "-p",
+      "nautilus-aster",
+      "-p",
+      "nautilus-binance"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:39:28.258747+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T02:39:29.236996+00:00"
+  },
+  {
+    "record": "rust-format-initial.json",
+    "argv": [
+      "cargo",
+      "+nightly",
+      "fmt",
+      "--all"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:13:06.047744+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 1,
+    "finished_utc": "2026-10-09T02:13:06.495615+00:00"
+  },
+  {
+    "record": "rust-format-message-bridge.json",
+    "argv": [
+      "cargo",
+      "+nightly",
+      "fmt",
+      "-p",
+      "nautilus-aster",
+      "-p",
+      "nautilus-binance"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:28:30.293562+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T02:28:31.276313+00:00"
+  },
+  {
+    "record": "rust-format-money-fix.json",
+    "argv": [
+      "cargo",
+      "+nightly",
+      "fmt",
+      "-p",
+      "nautilus-aster",
+      "-p",
+      "nautilus-binance"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:34:34.838562+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T02:34:38.291429+00:00"
+  },
+  {
+    "record": "rust-format-native-handler.json",
+    "argv": [
+      "cargo",
+      "+nightly",
+      "fmt",
+      "-p",
+      "nautilus-aster",
+      "-p",
+      "nautilus-binance"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:29:55.933633+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T02:29:56.862431+00:00"
+  },
+  {
+    "record": "rust-format-review-fixes.json",
+    "argv": [
+      "cargo",
+      "+nightly",
+      "fmt",
+      "-p",
+      "nautilus-aster",
+      "-p",
+      "nautilus-binance"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+    "started_utc": "2026-10-09T02:26:41.325431+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T02:26:42.506967+00:00"
+  }
+]

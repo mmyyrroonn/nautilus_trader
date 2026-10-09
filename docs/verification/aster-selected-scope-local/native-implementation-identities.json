@@ -1,0 +1,67 @@
+{
+  "captured_utc": "2026-10-09T03:40:34.295927+00:00",
+  "implementation_commit": "f5246dc34bf73f58dba8cf94bcabc7e4aac1144a",
+  "implementation_tree": "4e1dcf22aef587d7675d8468d15a631f4a1f7ecb",
+  "files": {
+    "crates/adapters/aster/src/config.rs": {
+      "git_blob_sha256": "9558b90efa93dd2b79286c93b01433e251b65767dcade88e4a968563b868a502",
+      "current_file_sha256": "9558b90efa93dd2b79286c93b01433e251b65767dcade88e4a968563b868a502"
+    },
+    "crates/adapters/aster/src/execution.rs": {
+      "git_blob_sha256": "f9d2d4351df4b63f777a0a838a562a89032c5cba74269840097c8a4941c8e223",
+      "current_file_sha256": "f9d2d4351df4b63f777a0a838a562a89032c5cba74269840097c8a4941c8e223"
+    },
+    "crates/adapters/aster/src/factories.rs": {
+      "git_blob_sha256": "7cf73342c3583bdbdb708ae5d0be8f5cee1678c51661bff2e3f9375fdb13c3c5",
+      "current_file_sha256": "7cf73342c3583bdbdb708ae5d0be8f5cee1678c51661bff2e3f9375fdb13c3c5"
+    },
+    "crates/adapters/aster/src/http/client.rs": {
+      "git_blob_sha256": "0e1e2a46f1b3fde6d53213007f611ca3eb7c01a1c2af2da856d3497e103d6a6a",
+      "current_file_sha256": "0e1e2a46f1b3fde6d53213007f611ca3eb7c01a1c2af2da856d3497e103d6a6a"
+    },
+    "crates/adapters/aster/src/lib.rs": {
+      "git_blob_sha256": "18b0b95b37c4d353c3fb70dbb11d8f8e620f473f8b97d870625cccb195fb9fe5",
+      "current_file_sha256": "18b0b95b37c4d353c3fb70dbb11d8f8e620f473f8b97d870625cccb195fb9fe5"
+    },
+    "crates/adapters/aster/src/python/config.rs": {
+      "git_blob_sha256": "a6e7a2565dfbb2ac16704342de3079dd4252dff9abfa22aa28c9476989056b1b",
+      "current_file_sha256": "a6e7a2565dfbb2ac16704342de3079dd4252dff9abfa22aa28c9476989056b1b"
+    },
+    "crates/adapters/aster/src/python/factories.rs": {
+      "git_blob_sha256": "0aea44b107be71120fd028a3fca896c1539de8320289f45ea8a2bd4d80d481c9",
+      "current_file_sha256": "0aea44b107be71120fd028a3fca896c1539de8320289f45ea8a2bd4d80d481c9"
+    },
+    "crates/adapters/aster/src/scope.rs": {
+      "git_blob_sha256": "63f8840d0b6b49a6fe8bb5fc5d9393e176975b027d222201154c6ee342bfb916",
+      "current_file_sha256": "63f8840d0b6b49a6fe8bb5fc5d9393e176975b027d222201154c6ee342bfb916"
+    },
+    "crates/adapters/aster/src/websocket/mod.rs": {
+      "git_blob_sha256": "4bc40d112073610b840c05d9b927f880333d48e77ad6d7d277eda3d007f959b9",
+      "current_file_sha256": "4bc40d112073610b840c05d9b927f880333d48e77ad6d7d277eda3d007f959b9"
+    },
+    "crates/adapters/aster/tests/common/mod.rs": {
+      "git_blob_sha256": "999a796a941cbea846a0941e3b540c1afada9e1e5d9b0cc3fd1d7c4068334feb",
+      "current_file_sha256": "999a796a941cbea846a0941e3b540c1afada9e1e5d9b0cc3fd1d7c4068334feb"
+    },
+    "crates/adapters/aster/tests/exec_client.rs": {
+      "git_blob_sha256": "d823916a947eef296d49f5548817027aca72fff0420fab9129be9d880bbd3a86",
+      "current_file_sha256": "d823916a947eef296d49f5548817027aca72fff0420fab9129be9d880bbd3a86"
+    },
+    "crates/adapters/aster/tests/selected_scope.rs": {
+      "git_blob_sha256": "0107770ea4b2797818048e3ca02e59a4da920c0839485f797613443f0c454a79",
+      "current_file_sha256": "0107770ea4b2797818048e3ca02e59a4da920c0839485f797613443f0c454a79"
+    },
+    "crates/adapters/binance/src/futures/websocket/streams/client.rs": {
+      "git_blob_sha256": "f92eaaf039f87b9224960fa05936b10c52c7146ff69f2df4235163a351c4fa68",
+      "current_file_sha256": "f92eaaf039f87b9224960fa05936b10c52c7146ff69f2df4235163a351c4fa68"
+    },
+    "python/nautilus_trader/adapters/aster/__init__.pyi": {
+      "git_blob_sha256": "3dc13e6d8cfca549f5d0396effbd3c14069075666f9b3cbb544332161fb179bf",
+      "current_file_sha256": "3dc13e6d8cfca549f5d0396effbd3c14069075666f9b3cbb544332161fb179bf"
+    },
+    "python/tests/unit/test_aster_selected_scope_config.py": {
+      "git_blob_sha256": "81da2979eb92d7eada0c3be95ce4483ee45eff5fadbf513df489bc7fb38fa0cf",
+      "current_file_sha256": "81da2979eb92d7eada0c3be95ce4483ee45eff5fadbf513df489bc7fb38fa0cf"
+    }
+  }
+}

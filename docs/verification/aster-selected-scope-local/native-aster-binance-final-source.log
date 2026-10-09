@@ -1,0 +1,595 @@
+   Compiling arrow-data v59.2.0
+   Compiling nautilus-core v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\core)
+   Compiling h2 v0.4.19
+   Compiling itertools v0.14.0
+   Compiling tinytemplate v1.2.1
+   Compiling alloy-signer v2.4.1
+   Compiling alloy-eips v2.4.1
+   Compiling codspeed v5.0.1
+   Compiling alloy-transport v2.4.1
+   Compiling codspeed-criterion-compat-walltime v5.0.1
+   Compiling alloy-rpc-client v2.4.1
+   Compiling arrow-array v59.2.0
+   Compiling alloy-transport-http v2.4.1
+   Compiling alloy-consensus v2.4.1
+   Compiling codspeed-criterion-compat v5.0.1
+   Compiling hyper v1.11.0
+   Compiling nautilus-cryptography v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\cryptography)
+   Compiling alloy-consensus-any v2.4.1
+   Compiling alloy-network-primitives v2.4.1
+   Compiling arrow-select v59.2.0
+   Compiling arrow-row v59.2.0
+   Compiling arrow-arith v59.2.0
+   Compiling alloy-rpc-types-eth v2.4.1
+   Compiling hyper-util v0.1.20
+   Compiling hyper-rustls v0.27.9
+   Compiling axum v0.8.9
+   Compiling reqwest v0.13.4
+   Compiling alloy-rpc-types-any v2.4.1
+   Compiling arrow-ord v59.2.0
+   Compiling arrow-ipc v59.2.0
+   Compiling arrow-string v59.2.0
+   Compiling alloy-network v2.4.1
+   Compiling alloy-provider v2.4.1
+   Compiling alloy-signer-local v2.4.1
+   Compiling nautilus-network v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\network)
+   Compiling arrow-cast v59.2.0
+   Compiling arrow-json v59.2.0
+   Compiling arrow-csv v59.2.0
+   Compiling alloy-contract v2.4.1
+   Compiling arrow v59.2.0
+   Compiling alloy v2.4.1
+   Compiling nautilus-model v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\model)
+   Compiling nautilus-common v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\common)
+   Compiling nautilus-serialization v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\serialization)
+   Compiling nautilus-analysis v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\analysis)
+   Compiling nautilus-execution v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\execution)
+   Compiling nautilus-portfolio v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\portfolio)
+   Compiling nautilus-live v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\live)
+   Compiling nautilus-trading v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\trading)
+   Compiling nautilus-testkit v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\testkit)
+   Compiling nautilus-binance v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\adapters\binance)
+   Compiling nautilus-aster v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\adapters\aster)
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\binance_spot_http_public.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\binance_spot_http_public.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\binance_spot_ws_data.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\binance_spot_ws_data.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\binance_spot_http_capture_fixtures.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\binance_spot_http_capture_fixtures.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\binance_spot_ws_user_data_capture.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\binance_spot_ws_user_data_capture.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-binance` (bin "binance-spot-http-public") generated 1 warning
+warning: `nautilus-binance` (bin "binance-spot-ws-data") generated 1 warning
+warning: `nautilus-binance` (bin "binance-spot-http-capture-fixtures") generated 1 warning
+warning: `nautilus-binance` (bin "binance-spot-ws-user-data-capture") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\selected_scope-5c43743466aa116d.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\selected_scope-5c43743466aa116d.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-aster` (test "selected_scope") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\nautilus_binance-8ad6ebe855d2761d.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\nautilus_binance-8ad6ebe855d2761d.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-binance` (lib test) generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\exec_client-780bac51ce8678c2.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\exec_client-780bac51ce8678c2.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-aster` (test "exec_client") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\spot-a165d90927d57066.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\spot-a165d90927d57066.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-binance` (test "spot") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\nautilus_aster-d61ce0fd087b4a87.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\nautilus_aster-d61ce0fd087b4a87.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-aster` (lib test) generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\futures-a6abd030d5e3a485.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\futures-a6abd030d5e3a485.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-binance` (test "futures") generated 1 warning
+    Finished `nextest` profile [unoptimized] target(s) in 1m 18s
+     Running unittests src\lib.rs (E:/persarb/nautilus_trader/target\nextest\deps\nautilus_aster-d61ce0fd087b4a87.exe)
+
+running 358 tests
+test common::consts::tests::test_base_urls::case_1 ... ok
+test common::consts::tests::test_base_urls::case_2 ... ok
+test common::consts::tests::test_signed_endpoint_paths ... ok
+test common::consts::tests::test_documented_request_weights ... ok
+test common::consts::tests::test_rate_limit_budgets ... ok
+test common::credential::tests::test_resolve_from_config_derives_addresses ... ok
+test common::credential::tests::test_resolve_from_environment_variable ... ok
+test common::credential::tests::test_resolve_accepts_checksummed_signer_address ... ok
+test common::credential::tests::test_resolve_reads_addresses_from_environment ... ok
+test common::credential::tests::test_config_takes_precedence_over_environment ... ok
+test common::credential::tests::test_debug_redacts_private_key ... ok
+test common::credential::tests::test_resolve_rejects_malformed_key ... ok
+test common::credential::tests::test_resolve_rejects_mismatched_signer_address ... ok
+test common::credential::tests::test_resolve_without_key_errors_and_names_the_env_var ... ok
+test common::credential::tests::test_resolve_treats_blank_values_as_absent::case_2 ... ok
+test common::enums::tests::test_chain_id ... ok
+test common::enums::tests::test_default_is_mainnet ... ok
+test common::enums::tests::test_display ... ok
+test common::credential::tests::test_resolve_treats_blank_values_as_absent::case_1 ... ok
+test execution::tests::default_private_invalidation_preserves_legacy_admission ... ok
+test execution::tests::test_a_session_without_a_verified_mode_is_never_ready ... ok
+test execution::tests::test_a_superseded_recovery_pass_cannot_publish_ready ... ok
+test config::tests::test_exec_config_testnet_urls ... ok
+test config::tests::test_exec_config_url_overrides ... ok
+test config::tests::test_exec_config_blank_key_is_not_explicit ... ok
+test common::consts::tests::test_venue_and_client_id ... ok
+test config::tests::test_exec_config_defaults ... ok
+test config::tests::test_to_binance_testnet_urls ... ok
+test config::tests::test_to_binance_honours_url_and_venue_overrides ... ok
+test config::tests::test_to_binance_defaults_to_mainnet_usdm_on_aster_venue ... ok
+test config::tests::test_validate_accepts_aster_load_ids ... ok
+test config::tests::test_exec_config_validate_accepts_aster_load_ids ... ok
+test config::tests::test_exec_config_debug_shows_absent_key_as_none ... ok
+test config::tests::test_exec_config_validate_rejects_foreign_load_ids ... ok
+test config::tests::test_validate_rejects_binance_load_ids ... ok
+test config::tests::test_exec_config_debug_redacts_the_signer_key ... ok
+test config::tests::test_config_debug_redacts_authenticated_proxy_urls ... ok
+test execution::tests::test_a_pending_note_for_an_applied_fill_is_ignored ... ok
+test execution::tests::test_a_pending_fill_is_recovered_by_id_not_by_widening_the_window ... ok
+test execution::tests::test_a_filled_status_is_withheld_when_the_trade_history_is_unavailable ... ok
+test config::tests::test_exec_config_serde_round_trip_keeps_the_key ... ok
+test execution::tests::reconnect_cannot_restore_a_superseded_selected_witness ... ok
+test execution::tests::private_evidence_invalidates_selected_generation_and_witness ... ok
+test execution::tests::selected_proof_expires_and_does_not_trust_future_receive_time ... ok
+test execution::tests::test_an_unfilled_status_is_published_even_without_the_trade_history ... ok
+test common::currency::tests::test_unknown_code_is_registered_as_crypto::case_2 ... ok
+test common::currency::tests::test_code_is_trimmed ... ok
+test common::currency::tests::test_known_code_keeps_registered_definition ... ok
+test common::currency::tests::test_unknown_code_is_registered_as_crypto::case_1 ... ok
+test common::currency::tests::test_unusable_code_falls_back_to_usdt::case_2 ... ok
+test common::currency::tests::test_unusable_code_falls_back_to_usdt::case_1 ... ok
+test execution::tests::test_applied_trades_deduplicates_and_tracks_the_newest_time ... ok
+test execution::tests::test_a_clean_snapshot_can_raise_a_tightened_bound ... ok
+test execution::tests::test_a_late_response_cannot_relax_a_newer_bound_or_clear_its_debt ... ok
+test execution::tests::test_a_value_preserving_update_keeps_an_in_flight_response_from_clearing_the_debt ... ok
+test execution::tests::test_base_quantity_orders_are_still_accepted ... ok
+test execution::tests::test_build_limit_order_request ... ok
+test execution::tests::test_client_order_id_length_limit ... ok
+test execution::tests::test_build_market_order_request_omits_price_and_tif ... ok
+test execution::tests::test_bad_unloaded_position_row_invalidates_flat_inference_for_loaded_symbols ... ok
+test execution::tests::test_client_order_id_validation::case_1 ... ok
+test execution::tests::test_client_order_id_validation::case_2 ... ok
+test execution::tests::test_client_order_id_validation::case_3 ... ok
+test execution::tests::test_client_order_id_validation::case_4 ... ok
+test execution::tests::test_client_order_id_validation::case_5 ... ok
+test execution::tests::test_client_order_id_validation::case_6 ... ok
+test execution::tests::test_compensation_fill_retry_schedule_is_bounded ... ok
+test execution::tests::test_compensation_never_reaches_behind_the_session_start ... ok
+test execution::tests::test_default_ws_connect_timeout_exceeds_the_shared_binance_default ... ok
+test execution::tests::test_instrument_index_replace_indexes_both_directions ... ok
+test execution::tests::test_existing_position_row_is_never_replaced_by_a_flat_one ... ok
+test execution::tests::test_flat_row_is_added_for_an_instrument_the_venue_omitted ... ok
+test execution::tests::test_instrument_index_replace_one_updates_both_directions ... ok
+test execution::tests::test_limit_order_with_quote_quantity_is_rejected_before_any_request ... ok
+test execution::tests::test_market_order_params_omit_price_and_time_in_force ... ok
+test execution::tests::test_market_order_with_quote_quantity_is_rejected_before_any_request ... ok
+test execution::tests::test_no_flat_row_without_activity ... ok
+test execution::tests::test_order_fill_evidence_deduplicates_exact_quantity ... ok
+test execution::tests::test_owed_balance_refresh_survives_failures_and_clears_on_success ... ok
+test execution::tests::test_order_request_parameter_order_matches_the_venue_example ... ok
+test execution::tests::test_parse_account_balances_keeps_explicit_zero_rows ... ok
+test execution::tests::test_partial_snapshot_establishes_the_debt_for_the_unknown_asset ... ok
+test execution::tests::test_parse_account_balances_skips_unparsable_amounts ... ok
+test execution::tests::test_pending_order_evidence_survives_until_resolution ... ok
+test execution::tests::test_parse_account_balances_registers_unknown_venue_assets ... ok
+test execution::tests::test_parse_account_balances_clamps_free_above_total ... ok
+test execution::tests::test_post_only_maps_to_gtx ... ok
+test execution::tests::test_readiness_admits_only_risk_reducing_actions_when_degraded ... ok
+test execution::tests::test_recorded_fill_is_not_offered_again ... ok
+test execution::tests::test_position_snapshot_scope_excludes_unloaded_and_newly_loaded_instruments ... ok
+test execution::tests::test_reduce_only_is_forwarded ... ok
+test execution::tests::test_report_acceptance_is_pulled_back_to_its_first_fill ... ok
+test execution::tests::test_report_already_preceding_its_fills_is_left_alone ... ok
+test execution::tests::test_report_without_fills_is_left_alone ... ok
+test execution::tests::test_applied_trades_compacts_dense_ids_without_losing_membership ... ok
+test execution::tests::test_rest_balance_without_available_is_unknown_not_total ... ok
+test execution::tests::test_rest_balance_transition_to_zero_clears_the_cached_amount ... ok
+test execution::tests::test_rest_snapshot_replaces_the_verified_reference ... ok
+test execution::tests::test_settlement_currency_is_usdt ... ok
+test execution::tests::test_stopping_readiness_admits_nothing_and_cannot_be_restored ... ok
+test execution::tests::test_stream_account_update_registers_unknown_assets ... ok
+test execution::tests::test_stream_account_update_without_balances_is_dropped ... ok
+test execution::tests::test_stream_connect_does_not_retry_local_faults ... ok
+test execution::tests::test_stream_balance_transition_to_zero_clears_the_cached_amount ... ok
+test execution::tests::test_stream_connect_does_not_retry_venue_answers::case_1 ... ok
+test execution::tests::test_stream_connect_does_not_retry_venue_answers::case_2 ... ok
+test execution::tests::test_stream_connect_does_not_retry_venue_answers::case_3 ... ok
+test execution::tests::test_stream_connect_does_not_retry_venue_answers::case_4 ... ok
+test execution::tests::test_stream_connect_retries_transport_faults ... ok
+test execution::tests::test_stream_connect_retry_schedule_is_bounded_and_increasing ... ok
+test execution::tests::test_stream_update_carries_verified_available_through_a_wallet_change ... ok
+test execution::tests::test_stream_update_merges_each_asset_row_independently ... ok
+test execution::tests::test_stream_update_negative_wallet_never_raises_available ... ok
+test execution::tests::test_stream_update_stale_event_is_dropped ... ok
+test execution::tests::test_stream_update_never_raises_available_with_cross_wallet_balance ... ok
+test execution::tests::test_stream_update_without_verified_available_withholds_the_row ... ok
+test execution::tests::test_a_pending_trade_stays_recoverable_alongside_a_long_history ... ok
+test execution::tests::test_stream_update_zero_is_a_verified_zero ... ok
+test execution::tests::test_stream_updates_only_tighten_the_available_bound ... ok
+test execution::tests::test_supported_time_in_force::case_1 ... ok
+test execution::tests::test_supported_time_in_force::case_2 ... ok
+test execution::tests::test_supported_time_in_force::case_3 ... ok
+test execution::tests::test_accepted_fill_eviction_keeps_qty_and_degrades_readiness ... ok
+test execution::tests::test_unsupported_order_type_is_rejected ... ok
+test execution::tests::test_unsupported_time_in_force_is_rejected ... ok
+test execution::tests::test_verified_history_rows_stay_pending_until_accepted ... ok
+test execution::tests::test_with_commission_rates_replaces_the_venue_defaults ... ok
+test factories::tests::test_aster_data_client_factory_creation ... ok
+test factories::tests::test_aster_data_client_factory_rejects_wrong_config_type ... ok
+test factories::tests::test_aster_exec_client_factory_metadata ... ok
+test factories::tests::test_aster_exec_client_factory_rejects_foreign_load_ids ... ok
+test factories::tests::test_aster_exec_client_factory_rejects_wrong_config_type ... ok
+test factories::tests::test_aster_exec_client_factory_requires_a_signing_key ... ok
+test execution::tests::test_order_fill_evidence_deduplicates_after_a_long_history ... ok
+test http::client::tests::test_cooldown_for_status::case_01 ... ok
+test http::client::tests::test_cooldown_for_status::case_02 ... ok
+test http::client::tests::test_cooldown_for_status::case_03 ... ok
+test http::client::tests::test_cooldown_for_status::case_04 ... ok
+test http::client::tests::test_cooldown_for_status::case_05 ... ok
+test http::client::tests::test_cooldown_for_status::case_06 ... ok
+test http::client::tests::test_cooldown_for_status::case_07 ... ok
+test http::client::tests::test_cooldown_for_status::case_08 ... ok
+test http::client::tests::test_cooldown_for_status::case_09 ... ok
+test http::client::tests::test_cooldown_for_status::case_10 ... ok
+test http::client::tests::test_all_orders_rejects_cursor_combined_with_a_time_window ... ok
+test http::client::tests::test_cancel_order_requires_an_identifier ... ok
+test http::client::tests::test_await_cooldown_waits_for_the_armed_deadline ... ok
+test http::client::tests::test_client_recreation_keeps_signer_nonce_and_authority_cooldown ... ok
+test http::client::tests::test_credential_accessors ... ok
+test factories::tests::test_aster_exec_client_uses_aster_venue_and_margin_account ... ok
+test factories::tests::test_aster_exec_client_honours_venue_override ... ok
+test factories::tests::test_aster_data_client_uses_aster_venue ... ok
+test factories::tests::test_aster_data_client_honours_venue_override ... ok
+test http::client::tests::test_cooldown_timeout_is_a_local_refusal ... ok
+test factories::tests::selected_scope_factory_is_weak_bound_and_refuses_active_replacement ... ok
+test http::client::tests::test_get_does_not_retry_venue_error_bodies ... ok
+test http::client::tests::test_get_retry_is_bounded ... ok
+test http::client::tests::test_a_heavy_endpoint_exhausts_the_weight_budget_sooner_than_a_light_one ... ok
+test http::client::tests::test_new_trims_trailing_slash_from_base_url ... ok
+test http::client::tests::test_history_page_limits_match_the_venue_documentation ... ok
+test http::client::tests::test_get_retries_transport_faults_then_succeeds ... ok
+test http::client::tests::test_open_orders_weight_depends_on_the_symbol_filter ... ok
+test execution::tests::test_order_fill_evidence_accepts_a_late_lower_id_after_sparse_history ... ok
+test http::client::tests::test_rate_limit_keys_repeat_the_global_key_once_per_weight_unit ... ok
+test http::client::tests::test_request_weight_matches_the_documented_table::case_01 ... ok
+test http::client::tests::test_query_order_requires_an_identifier ... ok
+test http::client::tests::test_request_weight_matches_the_documented_table::case_02 ... ok
+test http::client::tests::test_rate_limit_quotas_cover_requests_and_orders ... ok
+test http::client::tests::test_request_weight_matches_the_documented_table::case_04 ... ok
+test http::client::tests::test_request_weight_matches_the_documented_table::case_05 ... ok
+test http::client::tests::test_request_weight_matches_the_documented_table::case_08 ... ok
+test http::client::tests::test_request_weight_matches_the_documented_table::case_03 ... ok
+test http::client::tests::test_request_weight_matches_the_documented_table::case_06 ... ok
+test http::client::tests::test_request_weight_matches_the_documented_table::case_09 ... ok
+test http::client::tests::test_request_weight_matches_the_documented_table::case_10 ... ok
+test http::client::tests::test_request_weight_matches_the_documented_table::case_07 ... ok
+test http::client::tests::test_signed_payload_nonce_is_strictly_increasing_across_clones ... ok
+test http::client::tests::test_concurrent_clones_sign_with_distinct_nonces ... ok
+test http::error::tests::test_auth_failure_classification::case_1 ... ok
+test http::error::tests::test_auth_failure_classification::case_2 ... ok
+test http::error::tests::test_auth_failure_classification::case_3 ... ok
+test http::error::tests::test_auth_failure_classification::case_4 ... ok
+test http::client::tests::test_unauthenticated_client_cannot_sign ... ok
+test http::error::tests::test_binance_invalid_timestamp_code_is_not_an_aster_auth_failure ... ok
+test http::error::tests::test_display_formats_code_and_message ... ok
+test http::error::tests::test_execution_status_unknown_codes_are_not_rejections::case_1 ... ok
+test http::client::tests::test_signed_payload_prefixes_auth_triple_in_order ... ok
+test http::error::tests::test_execution_status_unknown_codes_are_not_rejections::case_2 ... ok
+test http::error::tests::test_execution_status_unknown_codes_are_still_not_retried ... ok
+test http::error::tests::test_http_client_error_conversion_preserves_kind ... ok
+test http::client::tests::test_user_trades_rejects_cursor_combined_with_a_time_window ... ok
+test http::error::tests::test_insufficient_funds_and_min_notional_and_post_only ... ok
+test http::error::tests::test_local_and_http_status_failures_are_not_retryable ... ok
+test execution::tests::test_terminal_trade_cache_eviction_does_not_create_recovery_debt ... ok
+test http::error::tests::test_local_failures_are_not_ambiguous ... ok
+test http::error::tests::test_nonce_expired_body_is_an_auth_failure ... ok
+test http::client::tests::test_signed_payload_signature_verifies_against_the_signed_prefix ... ok
+test execution::tests::test_terminal_eviction_becomes_debt_only_when_a_status_needs_missing_ids ... ok
+test http::error::tests::test_status_is_rendered_alongside_the_code ... ok
+test http::error::tests::test_rate_limit_classification ... ok
+test http::error::tests::test_structured_body_under_a_server_status_is_ambiguous::case_1 ... ok
+test http::error::tests::test_structured_body_under_a_server_status_is_ambiguous::case_2 ... ok
+test http::error::tests::test_structured_body_under_a_server_status_is_ambiguous::case_4 ... ok
+test http::error::tests::test_structured_body_under_a_server_status_is_ambiguous::case_3 ... ok
+test http::error::tests::test_structured_body_under_a_server_status_is_ambiguous::case_5 ... ok
+test http::error::tests::test_structured_body_under_a_server_status_is_ambiguous::case_6 ... ok
+test http::error::tests::test_transport_errors_are_not_venue_rejections ... ok
+test execution::tests::test_terminal_duplicate_is_safe_after_trade_cache_eviction ... ok
+test http::error::tests::test_transport_errors_are_retryable ... ok
+test http::error::tests::test_undecodable_response_body_is_ambiguous ... ok
+test http::error::tests::test_unexpected_status_ambiguity_follows_the_status_class::case_1 ... ok
+test http::error::tests::test_unexpected_status_ambiguity_follows_the_status_class::case_2 ... ok
+test http::error::tests::test_unexpected_status_ambiguity_follows_the_status_class::case_4 ... ok
+test http::error::tests::test_unexpected_status_ambiguity_follows_the_status_class::case_3 ... ok
+test http::error::tests::test_unexpected_status_ambiguity_follows_the_status_class::case_5 ... ok
+test http::error::tests::test_unexpected_status_ambiguity_follows_the_status_class::case_6 ... ok
+test http::error::tests::test_unexpected_status_ambiguity_follows_the_status_class::case_7 ... ok
+test http::error::tests::test_unknown_order_classification::case_1 ... ok
+test http::error::tests::test_unknown_order_classification::case_2 ... ok
+test http::error::tests::test_venue_error_bodies_are_not_retryable::case_1 ... ok
+test http::error::tests::test_venue_error_bodies_are_not_retryable::case_2 ... ok
+test http::error::tests::test_venue_error_bodies_are_not_retryable::case_3 ... ok
+test http::error::tests::test_venue_error_bodies_are_not_retryable::case_4 ... ok
+test http::error::tests::test_venue_rejection_classification::case_01 ... ok
+test http::error::tests::test_venue_rejection_classification::case_02 ... ok
+test http::client::tests::test_unexpected_status_body_is_truncated ... ok
+test http::error::tests::test_venue_rejection_classification::case_03 ... ok
+test http::error::tests::test_venue_rejection_classification::case_04 ... ok
+test http::error::tests::test_venue_rejection_classification::case_05 ... ok
+test http::error::tests::test_venue_rejection_classification::case_06 ... ok
+test http::error::tests::test_venue_rejection_classification::case_07 ... ok
+test http::error::tests::test_venue_rejection_classification::case_08 ... ok
+test http::error::tests::test_venue_rejection_classification::case_09 ... ok
+test http::error::tests::test_venue_rejection_classification::case_10 ... ok
+test http::client::tests::test_cleanup_queries_do_not_wait_behind_the_ordinary_budget::case_1 ... ok
+test http::client::tests::test_cleanup_queries_do_not_wait_behind_the_ordinary_budget::case_2 ... ok
+test http::error::tests::test_venue_rejection_classification::case_11 ... ok
+test http::error::tests::test_venue_rejection_classification::case_12 ... ok
+test http::models::tests::test_balance_without_available_reports_unknown ... ok
+test http::models::tests::test_deserialize_balances_with_string_update_time ... ok
+test http::models::tests::test_commission_asset_unknown_to_nautilus_does_not_panic ... ok
+test http::models::tests::test_deserialize_cancel_all_orders_rejects_non_numeric_code ... ok
+test http::models::tests::test_deserialize_cancel_all_orders_with_numeric_code ... ok
+test http::models::tests::test_deserialize_cancel_all_orders_with_string_code ... ok
+test http::models::tests::test_deserialize_error_response ... ok
+test http::models::tests::test_deserialize_cancel_order_response_with_string_scalars ... ok
+test http::models::tests::test_deserialize_commission_rate ... ok
+test http::models::tests::test_deserialize_listen_key_and_position_mode ... ok
+test http::models::tests::test_deserialize_open_orders ... ok
+test http::models::tests::test_deserialize_testnet_balance_with_unknown_assets ... ok
+test http::models::tests::test_deserialize_order ... ok
+test http::models::tests::test_expired_in_match_follows_the_expired_mapping ... ok
+test http::models::tests::test_deserialize_position_risk ... ok
+test http::models::tests::test_deserialize_user_trades_and_fill_report ... ok
+test http::models::tests::test_expired_status_mapping::case_1 ... ok
+test http::models::tests::test_expired_status_mapping::case_2 ... ok
+test http::models::tests::test_order_report_acceptance_never_follows_its_last_update ... ok
+test http::models::tests::test_fill_report_falls_back_to_settlement_currency ... ok
+test http::models::tests::test_millis_to_nanos_saturates_instead_of_overflowing ... ok
+test http::models::tests::test_order_to_order_status_report ... ok
+test http::models::tests::test_order_type_mapping::case_02 ... ok
+test http::models::tests::test_order_to_order_status_report_marks_post_only_for_gtx ... ok
+test http::models::tests::test_order_type_mapping::case_01 ... ok
+test http::models::tests::test_order_type_mapping::case_03 ... ok
+test http::models::tests::test_order_type_mapping::case_04 ... ok
+test http::models::tests::test_order_type_mapping::case_06 ... ok
+test http::models::tests::test_order_type_mapping::case_08 ... ok
+test http::models::tests::test_order_type_mapping::case_07 ... ok
+test http::models::tests::test_order_type_mapping::case_09 ... ok
+test http::models::tests::test_parse_helpers_report_the_offending_field ... ok
+test http::models::tests::test_order_type_mapping::case_10 ... ok
+test http::models::tests::test_order_type_mapping::case_05 ... ok
+test http::models::tests::test_position_risk_reports_a_flat_quantity_as_zero ... ok
+test http::models::tests::test_position_risk_unparsable_quantity_is_an_error ... ok
+test http::models::tests::test_pending_cancel_status_is_preserved ... ok
+test http::models::tests::test_time_in_force_mapping::case_1 ... ok
+test http::models::tests::test_time_in_force_mapping::case_2 ... ok
+test http::models::tests::test_time_in_force_mapping::case_3 ... ok
+test http::models::tests::test_time_in_force_mapping::case_4 ... ok
+test http::models::tests::test_unparsable_balance_is_unknown_rather_than_zero ... ok
+test http::models::tests::test_unrecognised_status_is_not_reported_as_accepted ... ok
+test http::models::tests::test_venue_liquidation_statuses_report_as_filled::case_1 ... ok
+test http::models::tests::test_venue_liquidation_statuses_report_as_filled::case_2 ... ok
+test http::query::tests::test_builder_preserves_insertion_order ... ok
+test http::models::tests::test_zero_wallet_balance_with_available_funds_is_not_zero ... ok
+test http::query::tests::test_duplicate_keys_are_preserved_in_order ... ok
+test http::query::tests::test_into_entries_returns_the_ordered_pairs ... ok
+test http::query::tests::test_new_is_empty ... ok
+test http::query::tests::test_optional_parameters_are_skipped_when_none ... ok
+test scope::tests::selected_decimal_accepts_exact_original_values::case_1 ... ok
+test scope::tests::selected_decimal_accepts_exact_original_values::case_2 ... ok
+test scope::tests::selected_decimal_accepts_exact_original_values::case_3 ... ok
+test scope::tests::selected_decimal_accepts_exact_original_values::case_4 ... ok
+test scope::tests::selected_decimal_accepts_exact_original_values::case_5 ... ok
+test scope::tests::selected_decimal_rejects_rounding_underflow_and_unsupported_grammar::case_01 ... ok
+test scope::tests::selected_decimal_rejects_rounding_underflow_and_unsupported_grammar::case_02 ... ok
+test scope::tests::selected_decimal_rejects_rounding_underflow_and_unsupported_grammar::case_03 ... ok
+test scope::tests::selected_decimal_rejects_rounding_underflow_and_unsupported_grammar::case_04 ... ok
+test scope::tests::selected_decimal_rejects_rounding_underflow_and_unsupported_grammar::case_05 ... ok
+test scope::tests::selected_decimal_rejects_rounding_underflow_and_unsupported_grammar::case_06 ... ok
+test scope::tests::selected_decimal_rejects_rounding_underflow_and_unsupported_grammar::case_07 ... ok
+test scope::tests::selected_decimal_rejects_rounding_underflow_and_unsupported_grammar::case_08 ... ok
+test scope::tests::selected_decimal_rejects_rounding_underflow_and_unsupported_grammar::case_09 ... ok
+test scope::tests::selected_decimal_rejects_rounding_underflow_and_unsupported_grammar::case_10 ... ok
+test scope::tests::selected_decimal_rejects_rounding_underflow_and_unsupported_grammar::case_11 ... ok
+test scope::tests::selected_decimal_rejects_rounding_underflow_and_unsupported_grammar::case_12 ... ok
+test scope::tests::strict_policy_accepts_exact_finite_scope ... ok
+test scope::tests::strict_policy_rejects_invalid_numeric_age::case_1 ... ok
+test scope::tests::strict_policy_rejects_invalid_numeric_age::case_3 ... ok
+test scope::tests::strict_policy_rejects_invalid_numeric_age::case_2 ... ok
+test scope::tests::strict_policy_rejects_invalid_numeric_age::case_4 ... ok
+test scope::tests::strict_policy_rejects_invalid_numeric_age::case_5 ... ok
+test scope::tests::strict_policy_rejects_unknown_or_duplicate_scope::case_1 ... ok
+test scope::tests::strict_policy_rejects_unknown_or_duplicate_scope::case_2 ... ok
+test scope::tests::strict_policy_rejects_unknown_or_duplicate_scope::case_3 ... ok
+test scope::tests::strict_policy_rejects_unknown_or_duplicate_scope::case_4 ... ok
+test signing::tests::test_build_param_string_empty ... ok
+test signing::tests::test_address_derived_from_private_key ... ok
+test signing::tests::test_build_param_string_preserves_insertion_order_and_encodes_values ... ok
+test signing::tests::test_encode_uri_component::case_1 ... ok
+test signing::tests::test_debug_does_not_leak_private_key ... ok
+test signing::tests::test_encode_uri_component::case_2 ... ok
+test signing::tests::test_chain_ids_follow_environment ... ok
+test signing::tests::test_encode_uri_component::case_3 ... ok
+test signing::tests::test_encode_uri_component::case_4 ... ok
+test signing::tests::test_encode_uri_component::case_5 ... ok
+test signing::tests::test_encode_uri_component::case_6 ... ok
+test signing::tests::test_encode_uri_component::case_7 ... ok
+test signing::tests::test_encode_uri_component::case_8 ... ok
+test signing::tests::test_encode_uri_component_matches_ccxt_order_id_list_fixture ... ok
+test signing::tests::test_nonce_generator_is_strictly_increasing_when_clock_stalls ... ok
+test signing::tests::test_nonce_generator_returns_microseconds ... ok
+test signing::tests::test_sign_params_appends_signature_to_param_string ... ok
+test signing::tests::test_signer_rejects_invalid_key ... ok
+test signing::tests::test_signer_accepts_key_without_0x_prefix ... ok
+test signing::tests::test_signature_layout_is_65_bytes_with_recovery_id ... ok
+test signing::tests::test_signature_depends_on_chain_id ... ok
+test websocket::tests::test_debug_does_not_leak_the_signing_key ... ok
+test websocket::tests::test_debug_of_a_session_without_a_key_reports_none ... ok
+test websocket::tests::test_debug_redacts_the_listen_key ... ok
+test websocket::tests::test_user_stream_url_appends_listen_key_as_path_segment ... ok
+test websocket::tests::test_user_stream_url_does_not_use_the_binance_query_form ... ok
+test websocket::tests::test_keepalive_without_session_is_a_noop ... ok
+test websocket::tests::test_new_client_has_no_session ... ok
+test websocket::tests::test_user_stream_url_for_testnet ... ok
+test websocket::tests::test_user_stream_url_normalises_trailing_slash ... ok
+test signing::tests::test_sign_param_string_matches_reference_vectors ... ok
+test http::client::tests::test_rate_limited_response_holds_later_requests_without_resending ... ok
+test http::client::tests::test_submit_admission_runs_after_the_order_quota_wait ... ok
+test http::client::tests::test_new_cooldown_refuses_an_already_queued_request ... ok
+test http::client::tests::test_signed_payload_is_built_after_the_quota_wait ... ok
+test http::client::tests::test_get_retry_backoff_uses_the_original_request_budget ... ok
+test http::client::tests::test_independent_clients_share_the_account_order_budget ... ok
+test http::client::tests::test_quota_timeout_is_local_and_never_resends_a_post ... ok
+test http::client::tests::test_independent_clients_share_the_authority_request_budget ... ok
+test http::client::tests::test_priority_query_still_waits_for_the_full_global_budget::case_1 ... ok
+test http::client::tests::test_priority_query_still_waits_for_the_full_global_budget::case_2 ... ok
+test http::client::tests::test_timeout_after_dispatch_keeps_the_post_unknown ... ok
+
+test result: ok. 358 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.02s
+
+     Running tests\exec_client.rs (E:/persarb/nautilus_trader/target\nextest\deps\exec_client-780bac51ce8678c2.exe)
+
+running 98 tests
+test review_round4_hedge_mode_account_is_rejected_at_connect ... ok
+test review_round4_unconfirmed_position_mode_fails_the_connect::case_1 ... ok
+test review_round4_unconfirmed_position_mode_fails_the_connect::case_2 ... ok
+test review_round4_initial_unverified_balance_fails_connect_after_publishing_verified_rows ... ok
+test review_round4_unparsable_open_order_row_denies_new_risk ... ok
+test review_round3_account_fee_registry_leaks_between_clients ... ok
+test review_round2_data_request_preserves_verified_fees ... ok
+test review_round2_mass_status_keeps_fill_for_order_created_before_window ... ok
+test review_round4_explicit_exemption_admits_new_risk_with_an_unconfirmed_mode ... ok
+test review_round4_unsupported_position_mode_endpoint_denies_new_risk ... ok
+test review_round4_stop_denies_new_risk_until_a_new_session_is_verified ... ok
+test review_round4_malformed_order_update_denies_new_risk ... ok
+test test_a_failed_rate_query_does_not_leave_an_earlier_rate_applied ... ok
+test review_round5_failed_execution_send_keeps_real_fill_recoverable ... ok
+test review_round5_rest_zero_fill_clears_malformed_stream_debt_without_reconnect ... ok
+test review_round4_stop_connect_keeps_pending_trade_debt_unready ... ok
+test test_cancel_all_orders_without_a_side_uses_the_symbol_wide_endpoint ... ok
+test test_commission_rate_failure_leaves_the_venue_default_unpublished ... ok
+test review_round2_structured_503_must_not_reject_live_order ... ok
+test review_round4_ambiguous_cancel_failure_awaits_reconciliation ... ok
+test review_round4_cancel_all_for_a_side_reports_a_refusal_per_order ... ok
+test review_round4_cancel_reports_only_a_definitive_refusal::case_2 ... ok
+test review_round4_cancel_reports_only_a_definitive_refusal::case_1 ... ok
+test review_round4_cancel_prefers_the_venue_order_id::case_1 ... ok
+test review_round4_cancel_prefers_the_venue_order_id::case_2 ... ok
+test test_connect_fails_when_the_first_user_stream_cannot_start ... ok
+test test_connect_does_not_retry_a_venue_answer_on_the_first_user_stream ... ok
+test test_connect_waits_for_the_user_stream_before_reporting_connected ... ok
+test test_connect_publishes_instruments_with_the_account_commission_rates ... ok
+test test_cancel_all_orders_with_a_side_and_no_match_sends_nothing ... ok
+test test_complete_position_snapshot_reports_omitted_loaded_symbols_as_flat::case_2 ... ok
+test test_complete_position_snapshot_reports_omitted_loaded_symbols_as_flat::case_1 ... ok
+test test_cancel_all_orders_with_a_side_cancels_only_that_side::case_1 ... ok
+test test_cancel_all_orders_with_a_side_cancels_only_that_side::case_2 ... ok
+test test_fill_report_pagination_stops_on_an_empty_history ... ok
+test test_flat_account_with_pre_session_history_reconciles_without_complaint ... ok
+test test_generate_fill_reports_propagates_a_failed_symbol_request ... ok
+test test_generate_fill_reports_propagates_an_unparsable_commission ... ok
+test test_fill_reports_page_past_the_venue_limit_and_deduplicate ... ok
+test test_generate_position_status_reports_allows_an_unparsable_flat_entry_price ... ok
+test test_generate_order_status_reports_propagates_a_failed_request ... ok
+test test_generate_position_status_reports_propagates_an_unparsable_non_flat_entry_price ... ok
+test test_generate_position_status_reports_propagates_an_unparsable_quantity ... ok
+test test_definitive_venue_rejection_emits_order_rejected_immediately ... ok
+test review_round5_pending_evidence_survives_stop_and_connect ... ok
+test review_round2_failed_fill_report_does_not_consume_recovery_trade ... ok
+test review_round3_unlinked_startup_fill_remains_recoverable ... ok
+test test_order_status_reports_page_past_the_venue_limit ... ok
+test review_round4_queued_submit_is_denied_after_the_stream_drops ... ok
+test review_round4_reconnect_after_disconnect_restores_a_working_session ... ok
+test review_round2_reconnect_preserves_real_trade_economics ... ok
+test review_round4_unparsable_position_row_keeps_recovery_degraded ... ok
+test test_compensation_ignores_fills_from_before_the_session_started ... ok
+test test_quote_quantity_order_is_denied_without_reaching_the_venue::case_1 ... ok
+test test_quote_quantity_order_is_denied_without_reaching_the_venue::case_2 ... ok
+test review_round4_open_order_status_is_withheld_while_its_fills_are ... ok
+test review_round4_uncovered_fills_are_withheld_until_their_order_answers ... ok
+test test_compensation_reports_the_order_together_with_its_fills ... ok
+test review_round5_filtered_mass_fill_stays_recoverable ... ok
+test test_rest_zero_balance_clears_the_cached_amount ... ok
+test test_startup_reconciliation_of_historical_fills_is_accepted_by_the_engine ... ok
+test test_reconciliation_paths_emit_reports_not_order_events ... ok
+test test_outage_compensation_applies_a_fill_and_a_cancel_missed_by_the_stream ... ok
+test test_owed_balance_timer_relaxes_bound_after_quiet_stream ... ok
+test test_owed_balance_timer_retries_failure_without_stream_messages ... ok
+test test_startup_reconciliation_fills_remain_recoverable_until_consumed ... ok
+test test_outage_compensation_does_not_reapply_a_fill_already_seen_on_the_stream ... ok
+test review_round5_ambiguous_submit_full_fill_reaches_engine_once ... ok
+test test_unlinkable_fill_is_kept_and_the_snapshot_declared_incomplete ... ok
+test review_round4_successful_recovery_restores_new_risk ... ok
+test test_stream_zero_balance_clears_the_cached_amount ... ok
+test test_gateway_failure_on_submit_is_reconciled_rather_than_rejected ... ok
+test test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once ... FAILED
+test test_reconnect_reports_flat_for_a_position_omitted_after_external_close ... ok
+test test_repeated_compensation_does_not_duplicate_a_recovered_fill ... ok
+test test_client_side_timeout_on_submit_is_reconciled_rather_than_rejected ... ok
+test review_round4_socket_loss_invalidates_before_reconnect ... ok
+test test_incomplete_reconnect_snapshot_never_infers_flat::case_2 ... ok
+test test_incomplete_reconnect_snapshot_never_infers_flat::case_3 ... ok
+test test_incomplete_reconnect_snapshot_never_infers_flat::case_1 ... ok
+test test_incomplete_reconnect_snapshot_never_infers_flat::case_4 ... ok
+test review_round4_a_pending_trade_does_not_replay_the_long_history ... ok
+test test_incomplete_reconnect_snapshot_never_infers_flat::case_5 ... ok
+test test_unknown_execution_status_is_reconciled_rather_than_rejected::case_1 ... ok
+test test_unknown_execution_status_is_reconciled_rather_than_rejected::case_2 ... ok
+test test_incomplete_reconnect_snapshot_never_infers_flat::case_6 ... ok
+test test_unknown_execution_status_rejects_only_when_the_venue_never_saw_the_order ... ok
+test review_round4_failed_recovery_keeps_new_risk_denied ... ok
+test review_round4_unverified_owed_balance_degrades_until_recovery ... ok
+test test_connect_retries_a_transport_fault_on_the_first_user_stream ... ok
+test test_failed_balance_verification_preserves_available_and_degrades_readiness ... ok
+test test_listen_key_expiry_rebuilds_the_session_and_compensates ... ok
+test review_round3_failed_fill_compensation_preserves_eventual_real_economics ... ok
+test test_reconnect_with_fill_debt_never_infers_flat ... ok
+test review_round4_queued_submit_is_denied_after_recovery_reclaims_readiness ... ok
+test review_round4_unconfirmed_mode_survives_recovery ... ok
+test test_stream_updates_within_the_window_cost_one_snapshot_read ... ok
+test test_a_delayed_snapshot_cannot_clear_the_debt_a_newer_stream_row_raised ... ok
+
+failures:
+
+---- test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once stdout ----
+
+thread 'test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once' (11072) panicked at crates\adapters\aster\tests\exec_client.rs:1859:5:
+assertion failed: cache.positions_open(None, Some(&InstrumentId::from(BTC)), None, None,
+        None).is_empty()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once
+
+test result: FAILED. 97 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.21s
+
+error: test failed, to rerun pass `-p nautilus-aster --test exec_client`

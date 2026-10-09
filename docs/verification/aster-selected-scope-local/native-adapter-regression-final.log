@@ -1,0 +1,205 @@
+   Compiling tokio v1.53.1
+   Compiling nautilus-core v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\core)
+   Compiling nautilus-persistence-macros v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\persistence\macros)
+warning: linker stdout: 正在创建库 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-63fd5ed65377140a.dll.lib 和对象 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-63fd5ed65377140a.dll.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-persistence-macros` (lib) generated 1 warning
+   Compiling nautilus-model v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\model)
+   Compiling nautilus-cryptography v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\cryptography)
+   Compiling tokio-util v0.7.19
+   Compiling tower v0.5.3
+   Compiling object_store v0.13.2
+   Compiling tokio-rustls v0.26.4
+   Compiling datafusion-common-runtime v55.0.0
+   Compiling tokio-tungstenite v0.29.0
+   Compiling tokio-tungstenite v0.30.0
+   Compiling tower-http v0.6.11
+   Compiling alloy-transport v2.4.1
+   Compiling h2 v0.4.19
+   Compiling sockudo-ws v2.0.1
+   Compiling tokio-stream v0.1.19
+   Compiling alloy-transport-http v2.4.1
+   Compiling alloy-rpc-client v2.4.1
+   Compiling alloy-provider v2.4.1
+   Compiling parquet v59.2.0
+   Compiling hyper v1.11.0
+   Compiling hyper-util v0.1.20
+   Compiling alloy-contract v2.4.1
+   Compiling hyper-rustls v0.27.9
+   Compiling axum v0.8.9
+   Compiling alloy v2.4.1
+   Compiling reqwest v0.13.4
+   Compiling nautilus-network v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\network)
+   Compiling datafusion-common v55.0.0
+   Compiling datafusion-expr-common v55.0.0
+   Compiling datafusion-physical-expr-common v55.0.0
+   Compiling nautilus-common v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\common)
+   Compiling nautilus-serialization v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\serialization)
+   Compiling nautilus-analysis v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\analysis)
+   Compiling datafusion-functions-aggregate-common v55.0.0
+   Compiling datafusion-functions-window-common v55.0.0
+   Compiling datafusion-expr v55.0.0
+   Compiling datafusion-physical-expr v55.0.0
+   Compiling datafusion-execution v55.0.0
+   Compiling datafusion-functions v55.0.0
+   Compiling nautilus-execution v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\execution)
+   Compiling nautilus-portfolio v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\portfolio)
+   Compiling datafusion-functions-aggregate v55.0.0
+   Compiling datafusion-functions-window v55.0.0
+   Compiling datafusion-optimizer v55.0.0
+   Compiling nautilus-live v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\live)
+   Compiling datafusion-physical-plan v55.0.0
+   Compiling datafusion-physical-expr-adapter v55.0.0
+   Compiling nautilus-trading v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\trading)
+   Compiling nautilus-hyperliquid v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\adapters\hyperliquid)
+   Compiling nautilus-binance v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\adapters\binance)
+   Compiling nautilus-testkit v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\testkit)
+   Compiling datafusion-functions-nested v55.0.0
+   Compiling datafusion-sql v55.0.0
+   Compiling datafusion-session v55.0.0
+   Compiling datafusion-datasource v55.0.0
+   Compiling datafusion-pruning v55.0.0
+   Compiling datafusion-catalog v55.0.0
+   Compiling datafusion-datasource-json v55.0.0
+   Compiling datafusion-datasource-csv v55.0.0
+   Compiling datafusion-datasource-arrow v55.0.0
+   Compiling datafusion-datasource-parquet v55.0.0
+   Compiling datafusion-physical-optimizer v55.0.0
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_private.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_private.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_public.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_public.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+   Compiling nautilus-aster v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\adapters\aster)
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-private") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-public") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_flatten.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_flatten.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_revoke.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_revoke.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_outcome_order.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_outcome_order.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_approve.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_approve.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_exec.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_exec.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_exec.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_exec.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (bin "hyperliquid-flatten") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-builder-fee-revoke") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-outcome-order") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-builder-fee-approve") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-exec") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_user_outcome.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_user_outcome.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (bin "hyperliquid-ws-exec") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_capture_test_data.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_capture_test_data.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-user-outcome") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_data.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_data.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (bin "hyperliquid-capture-test-data") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-ws-data") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\binance_spot_http_public.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\binance_spot_http_public.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\binance_spot_ws_data.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\binance_spot_ws_data.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\binance_spot_ws_user_data_capture.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\binance_spot_ws_user_data_capture.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\binance_spot_http_capture_fixtures.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\binance_spot_http_capture_fixtures.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-binance` (bin "binance-spot-http-public") generated 1 warning
+warning: `nautilus-binance` (bin "binance-spot-ws-data") generated 1 warning
+warning: `nautilus-binance` (bin "binance-spot-ws-user-data-capture") generated 1 warning
+error: method `push_raw_ws` is never used
+   --> crates\adapters\aster\tests\common\mod.rs:301:19
+    |
+215 | impl MockVenue {
+    | -------------- method in this implementation
+...
+301 |     pub(crate) fn push_raw_ws(&self, frame: &str) {
+    |                   ^^^^^^^^^^^
+    |
+    = note: `-D dead-code` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[expect(dead_code)]` or `#[allow(dead_code)]`
+
+warning: `nautilus-binance` (bin "binance-spot-http-capture-fixtures") generated 1 warning
+error: could not compile `nautilus-aster` (test "exec_client") due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\selected_scope-c23cd16123685453.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\selected_scope-c23cd16123685453.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-aster` (test "selected_scope") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\spot-5c6590b6cabe5632.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\spot-5c6590b6cabe5632.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-binance` (test "spot") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\nautilus_aster-13029d0434076b74.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\nautilus_aster-13029d0434076b74.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-aster` (lib test) generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\nautilus_binance-fe2cc5e2ea07ef12.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\nautilus_binance-fe2cc5e2ea07ef12.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-binance` (lib test) generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\futures-89bc31830233d8b0.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\futures-89bc31830233d8b0.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-binance` (test "futures") generated 1 warning

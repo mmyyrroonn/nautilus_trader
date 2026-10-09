@@ -1,0 +1,133 @@
+"""Archive actual native evidence without binaries or unrelated remote payloads."""
+
+import hashlib
+import json
+import re
+import shutil
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+NATIVE = Path("E:/persarb/worktrees/entropy-aster-proof")
+DESTINATION = NATIVE / "docs/verification/aster-selected-scope-local"
+IMPLEMENTATION = "f5246dc34bf73f58dba8cf94bcabc7e4aac1144a"
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def main():
+    log = ROOT / "native-adapter-final-chronology-regression.log"
+    groups = [tuple(map(int, row)) for row in re.findall(
+        r"test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored",
+        log.read_text(encoding="utf-8"),
+    )]
+    summary = {
+        "passed": sum(row[0] for row in groups),
+        "failed": sum(row[1] for row in groups),
+        "ignored": sum(row[2] for row in groups),
+        "groups": groups, "raw_log": log.name, "raw_log_sha256": digest(log),
+        "command_record": "native-adapter-final-chronology-regression.json",
+    }
+    assert summary["passed"] == 3093 and summary["failed"] == 0 and summary["ignored"] == 12
+    (ROOT / "native-final-regression-summary.json").write_text(
+        json.dumps(summary, indent=2) + "\n", encoding="utf-8",
+    )
+    sources = subprocess.check_output(
+        ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", IMPLEMENTATION],
+        cwd=NATIVE, text=True,
+    ).splitlines()
+    identities = {}
+    for name in sources:
+        tracked = subprocess.check_output(["git", "show", f"{IMPLEMENTATION}:{name}"], cwd=NATIVE)
+        # Git normalizes line endings; native source files retain their tested bytes separately.
+        identities[name] = {
+            "git_blob_sha256": hashlib.sha256(tracked).hexdigest(),
+            "current_file_sha256": digest(NATIVE / name),
+        }
+    source_record = {
+        "captured_utc": datetime.now(timezone.utc).isoformat(),
+        "implementation_commit": IMPLEMENTATION,
+        "implementation_tree": subprocess.check_output(
+            ["git", "rev-parse", f"{IMPLEMENTATION}^{{tree}}"], cwd=NATIVE, text=True,
+        ).strip(),
+        "files": identities,
+    }
+    (ROOT / "native-implementation-identities.json").write_text(
+        json.dumps(source_record, indent=2) + "\n", encoding="utf-8",
+    )
+    prefixes = (
+        "native-adapter", "native-aster-binance", "native-check", "native-chronology",
+        "native-clippy", "native-config", "native-final", "native-official", "native-reconnect",
+        "native-recovery", "native-scope", "native-stub", "native109", "native-implementation",
+        "rust-format", "required-make-", "aster-selected-config", "chronology-peer",
+        "default-reconnect-implementation", "recovery-order", "reviewer-native",
+        "reviewer-source-fixed-pass2", "reviewer-wheel-abi", "aster109-normal-readonly",
+        "reviewer-aster109",
+    )
+    DESTINATION.mkdir(parents=True, exist_ok=True)
+    selected = [path for path in ROOT.iterdir() if path.is_file()
+                and path.name.startswith(prefixes) and path.suffix in {".json", ".log", ".md"}
+                and not path.name.startswith("native109-evidence-archive-")]
+    selected.extend(ROOT / name for name in (
+        "aster-proof-design.md", "run_capture.py", "probe_recovery_order.py",
+        "capture_native_inputs.py", "finalize_generated_stubs.py", "archive_native109.py",
+        "reviewer-wheel-abi-verify.py", "aster109_normal_readonly.py",
+        "reviewer-aster109-normal-bound-run.py",
+    ))
+    commands = []
+    files = []
+    for source in sorted(set(selected)):
+        target = DESTINATION / (source.name + ".txt" if source.suffix in {".py", ".md"} else source.name)
+        shutil.copyfile(source, target)
+        files.append({"path": target.name, "original_name": source.name,
+                      "sha256": digest(target), "bytes": target.stat().st_size})
+        if source.suffix == ".json":
+            record = json.loads(source.read_text(encoding="utf-8-sig"))
+            if isinstance(record, dict) and "argv" in record and "exit_code" in record:
+                commands.append({"record": source.name, **record})
+    for directory in (
+        ROOT / "aster109-agent-readonly-final", ROOT / "reviewer-aster109-normal-readonly",
+        ROOT / "reviewer-aster109-normal-readonly-bound",
+    ):
+        if not directory.is_dir():
+            continue
+        for source in sorted(directory.rglob("*")):
+            if source.is_file() and source.suffix in {".json", ".log", ".py"}:
+                relative = source.relative_to(ROOT)
+                target = DESTINATION / (str(relative) + ".txt" if source.suffix == ".py" else relative)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(source, target)
+                files.append({"path": target.relative_to(DESTINATION).as_posix(),
+                              "sha256": digest(target), "bytes": target.stat().st_size})
+    procedures = DESTINATION / "procedures"
+    procedures.mkdir(parents=True, exist_ok=True)
+    for source in (
+        Path("E:/persarb/worktrees/entropy-execution-app/src/entropy_execution.py"),
+        Path("E:/persarb/worktrees/entropy-execution-app/tests/entropy_execution_peer.py"),
+    ):
+        target = procedures / (source.name + ".txt")
+        shutil.copyfile(source, target)
+        files.append({"path": target.relative_to(DESTINATION).as_posix(),
+                      "source_path": str(source), "sha256": digest(target), "bytes": target.stat().st_size})
+    wheel_directory = Path("E:/persarb/_tmp/entropy109-wheel-nextest-20261009")
+    for name in ("native-provenance.json", "native-build-input.json"):
+        target = DESTINATION / name
+        shutil.copyfile(wheel_directory / name, target)
+        files.append({"path": name, "sha256": digest(target), "bytes": target.stat().st_size})
+    (DESTINATION / "commands.json").write_text(json.dumps(commands, indent=2) + "\n", encoding="utf-8")
+    files.append({"path": "commands.json", "sha256": digest(DESTINATION / "commands.json"),
+                  "bytes": (DESTINATION / "commands.json").stat().st_size})
+    (DESTINATION / "manifest.json").write_text(json.dumps({
+        "archived_utc": datetime.now(timezone.utc).isoformat(),
+        "implementation_commit": IMPLEMENTATION, "files": files,
+        "note": "Raw failures and corrections are preserved. Test reruns are not additional distinct cases. "
+                "Wheel and diagnostic executables are external artifacts, identified by SHA256; no binary is committed.",
+    }, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({"files": len(files), "commands": len(commands), "regression": summary}))
+
+
+if __name__ == "__main__":
+    main()

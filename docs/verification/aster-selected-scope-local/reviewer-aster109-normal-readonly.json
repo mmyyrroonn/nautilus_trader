@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "E:/persarb/worktrees/entropy-execution-app/.venv/Scripts/python.exe",
+    "-I",
+    "E:/persarb/_tmp/entropy43-validation/aster109_normal_readonly.py",
+    "E:/persarb/_tmp/entropy43-validation/reviewer-aster109-normal-readonly",
+    "E:/persarb/_tmp/entropy109-wheel-nextest-20261009/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+    "da0cc0df4fc70cefe52c80ddb6c5514c1566c73a7cac32e460ca5d59298b72cf",
+    "E:/persarb/_tmp/entropy109-wheel-nextest-20261009/native-provenance.json"
+  ],
+  "cwd": "E:\\persarb\\_tmp\\entropy43-validation",
+  "started_utc": "2026-10-09T03:36:47.039071+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T03:36:50.139599+00:00"
+}

@@ -111,6 +111,7 @@ impl AsterExecutionClientConfig {
         treat_expired_as_canceled = None,
         venue = None,
         assume_one_way_mode_when_unconfirmed = None,
+        selected_scope_policy_json = None,
     ))]
     #[expect(clippy::too_many_arguments)]
     fn py_new(
@@ -129,6 +130,7 @@ impl AsterExecutionClientConfig {
         treat_expired_as_canceled: Option<bool>,
         venue: Option<Venue>,
         assume_one_way_mode_when_unconfirmed: Option<bool>,
+        selected_scope_policy_json: Option<String>,
     ) -> PyResult<Self> {
         let defaults = Self::default();
         let config = Self {
@@ -149,6 +151,7 @@ impl AsterExecutionClientConfig {
             venue: venue.or(defaults.venue),
             assume_one_way_mode_when_unconfirmed: assume_one_way_mode_when_unconfirmed
                 .unwrap_or(defaults.assume_one_way_mode_when_unconfirmed),
+            selected_scope_policy_json,
         };
         config.validate().map_err(to_pyvalue_err)?;
         Ok(config)
@@ -190,7 +193,7 @@ mod tests {
     ) {
         let config = AsterExecutionClientConfig::py_new(
             None, None, None, None, None, None, None, None, None, None, None, None, None, None,
-            exemption,
+            exemption, None,
         )
         .unwrap();
         assert_eq!(config.assume_one_way_mode_when_unconfirmed, expected);

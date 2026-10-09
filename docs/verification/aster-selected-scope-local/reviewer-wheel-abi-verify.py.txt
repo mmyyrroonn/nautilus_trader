@@ -1,0 +1,136 @@
+"""Independent installed native ABI and byte binding checks, with no client creation."""
+import ast
+import hashlib
+import inspect
+import json
+import os
+import socket
+import sys
+import zipfile
+from pathlib import Path
+
+import nautilus_trader
+import nautilus_trader._libnautilus as native
+from nautilus_trader.adapters.aster import AsterExecutionClientConfig as Config
+from nautilus_trader.adapters.aster import AsterExecutionClientFactory as Factory
+from nautilus_trader.adapters.binance import BinanceInstrumentProviderConfig as Provider
+
+ROOT = Path('E:/persarb/_tmp/entropy109-wheel-nextest-20261009')
+MANIFEST = ROOT / 'native-provenance.json'
+manifest = json.loads(MANIFEST.read_text())
+wheel = ROOT / 'nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl'
+installed = Path(nautilus_trader.__file__).parent.parent
+EXPECTED_WHEEL = 'da0cc0df4fc70cefe52c80ddb6c5514c1566c73a7cac32e460ca5d59298b72cf'
+
+def digest_stream(stream):
+    result = hashlib.sha256()
+    while block := stream.read(1024 * 1024):
+        result.update(block)
+    return result.hexdigest()
+
+def digest(path):
+    with path.open('rb') as stream:
+        return digest_stream(stream)
+
+before = digest(wheel)
+assert before == EXPECTED_WHEEL == manifest['wheel']['sha256']
+assert wheel.stat().st_size == manifest['wheel']['size']
+assert manifest['source_binding'] == 'verified'
+for source in [manifest['declared_native'], manifest['build']['started_source'], manifest['build']['finished_source']]:
+    assert source['commit'] == 'f5246dc34bf73f58dba8cf94bcabc7e4aac1144a'
+    assert source['tree'] == '4e1dcf22aef587d7675d8468d15a631f4a1f7ecb'
+    assert source['dirty_count'] == 0 and source['dirty'] == []
+assert digest(Path(manifest['declared_evidence']['path'])) == manifest['declared_evidence']['sha256']
+records = []
+with zipfile.ZipFile(wheel) as archive:
+    for entry in manifest['embedded_native_objects'] + manifest['embedded_adapter_stubs']:
+        path = installed / entry['path']
+        with archive.open(entry['path']) as stream:
+            embedded = digest_stream(stream)
+        actual = digest(path)
+        assert embedded == actual == entry['sha256'], entry['path']
+        if 'size' in entry:
+            assert path.stat().st_size == entry['size']
+        records.append({'path': str(path), 'sha256': actual})
+assert Path(native.__file__) == installed / manifest['embedded_native_objects'][0]['path']
+
+stub_path = installed / 'nautilus_trader/adapters/aster/__init__.pyi'
+stub = ast.parse(stub_path.read_text())
+config_stub = next(n for n in stub.body if isinstance(n, ast.ClassDef) and n.name == 'AsterExecutionClientConfig')
+constructor = next(n for n in config_stub.body if isinstance(n, ast.FunctionDef) and n.name == '__init__')
+assert constructor.args.args[-1].arg == 'selected_scope_policy_json'
+assert isinstance(constructor.args.defaults[-1], ast.Constant) and constructor.args.defaults[-1].value is None
+factory_stub = next(n for n in stub.body if isinstance(n, ast.ClassDef) and n.name == 'AsterExecutionClientFactory')
+getter = next(n for n in factory_stub.body if isinstance(n, ast.FunctionDef) and n.name == 'selected_scope_snapshot_json')
+assert ast.unparse(getter.returns) == 'str | None'
+
+def prohibited(*args, **kwargs):
+    raise AssertionError('Python environment/network lookup was attempted')
+
+def audit(event, args):
+    if event.startswith('socket.') or event.startswith('subprocess.'):
+        raise AssertionError('Network/process creation was attempted: ' + event)
+    if event == 'import' and str(args[0]).split('.')[0] == 'dotenv':
+        raise AssertionError('dotenv import was attempted')
+
+sys.addaudithook(audit)
+os.getenv = prohibited
+socket.socket = prohibited
+socket.create_connection = prohibited
+os.environ = type('ForbiddenEnvironment', (), {'get': prohibited, '__getitem__': prohibited, '__contains__': prohibited})()
+checks = []
+def passed(name):
+    checks.append(name)
+
+signature = inspect.signature(Config)
+assert list(signature.parameters)[-2:] == ['assume_one_way_mode_when_unconfirmed', 'selected_scope_policy_json']
+assert signature.parameters['selected_scope_policy_json'].default is None
+assert Config().selected_scope_policy_json is None
+assert Config(*([None] * 15)).selected_scope_policy_json is None
+passed('legacy positional prefix and optional suffix default')
+
+factory = Factory()
+assert factory.name() == 'ASTER'
+assert factory.selected_scope_snapshot_json() is None
+assert factory.selected_scope_snapshot_json() is None
+assert not hasattr(factory, 'set_selected_scope_snapshot_json')
+passed('unbound normal native factory cannot provide positive authority')
+
+ids = ['BTCUSDT-PERP.ASTER']
+policy = {'instrument_ids': ids, 'balance_asset': 'USDT', 'max_age_ms': 2000, 'max_refresh_ms': 15000}
+values = {'user_address': '0x' + 'a' * 40, 'signer_address': '0x' + 'b' * 40, 'signer_private_key': '0x' + '1' * 64, 'instrument_provider': Provider(load_all=False, load_ids=ids)}
+raw = json.dumps(policy)
+config = Config(**values, selected_scope_policy_json=raw)
+assert config.selected_scope_policy_json == raw
+assert not hasattr(config, 'signer_private_key')
+assert values['signer_private_key'] not in repr(config)
+try:
+    config.selected_scope_policy_json = '{}'
+except AttributeError:
+    pass
+else:
+    raise AssertionError('Policy property was writable')
+passed('positive immutable opt-in config without public signing material')
+
+def reject(name, *, policy_raw=raw, options=None):
+    try:
+        Config(**(values | (options or {})), selected_scope_policy_json=policy_raw)
+    except ValueError:
+        passed(name)
+    else:
+        raise AssertionError('Native constructor accepted forbidden policy: ' + name)
+
+reject('caller ready authority rejected', policy_raw=json.dumps(policy | {'ready': True}))
+reject('duplicate JSON authority rejected', policy_raw=raw[:-1] + ',"max_age_ms":4000}')
+reject('boolean TTL rejected', policy_raw=json.dumps(policy | {'max_age_ms': True}))
+reject('unbounded refresh rejected', policy_raw=json.dumps(policy | {'max_refresh_ms': 60001}))
+reject('different selected instruments rejected', policy_raw=json.dumps(policy | {'instrument_ids': ['ETHUSDT-PERP.ASTER']}))
+reject('catalogue loading rejected', options={'instrument_provider': Provider(load_all=True)})
+reject('mode exemption rejected', options={'assume_one_way_mode_when_unconfirmed': True})
+for field in ['user_address', 'signer_address', 'signer_private_key']:
+    reject('missing explicit ' + field + ' rejected', options={field: None})
+reject('credential-bearing source rejected', options={'base_url_http': 'http://synthetic:synthetic@127.0.0.1:0'})
+assert digest(wheel) == before
+result = {'checks_passed': checks, 'checks_count': len(checks), 'wheel_sha256_before_after': before, 'manifest_sha256': digest(MANIFEST), 'installed_module': str(native.__file__), 'config_signature': str(signature), 'getter_signature': str(inspect.signature(Factory.selected_scope_snapshot_json)), 'matched_embedded_installed_files': records, 'source_binding_limit': 'Declared clean pre/post commit/tree verified for internal consistency; reviewer did not run Git or independently recompute tree.', 'scope_limit': 'No client creation, account calls, network, installed app native integration or mainnet acceptance.'}
+Path('E:/persarb/_tmp/entropy43-validation/reviewer-wheel-abi-result.json').write_text(json.dumps(result, indent=2) + '\n')
+print(json.dumps(result, indent=2))

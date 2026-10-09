@@ -1,0 +1,16 @@
+{
+  "captured_utc": "2026-10-09T02:44:05.854254+00:00",
+  "source_path": "E:\\persarb\\worktrees\\entropy-aster-proof\\python\\tests\\unit\\test_aster_selected_scope_config.py",
+  "source_sha256": "6291fe86ef2f8b15dad70032ceab593f80c45d9ac9f52253d5f3f9e9fedfdf7a",
+  "changes": "Added helper/fixture return annotations, kwargs object annotation, test return annotations and docstrings, validation-specific pytest.raises matches, tuple parametrization; formatted only this test with repo python/pyproject.toml. No suppressions or unsafe fixes.",
+  "actual_validation": [
+    "aster-selected-config-ruff-check-validated-fixed.json",
+    "aster-selected-config-format-check-validated-fixed.json"
+  ],
+  "retained_intermediate_failures": [
+    "aster-selected-config-ruff-before-fixed.json",
+    "aster-selected-config-ruff-check-fixed.json",
+    "aster-selected-config-format-check-final-fixed.json"
+  ],
+  "python_abi_tests": "Not run: parent has not installed the new native wheel. Rust config/scope source was read only to bind expected errors."
+}

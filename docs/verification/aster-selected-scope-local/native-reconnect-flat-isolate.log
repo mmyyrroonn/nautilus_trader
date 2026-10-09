@@ -1,0 +1,25 @@
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\exec_client-780bac51ce8678c2.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\exec_client-780bac51ce8678c2.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-aster` (test "exec_client") generated 1 warning
+    Finished `nextest` profile [unoptimized] target(s) in 0.54s
+     Running tests\exec_client.rs (E:/persarb/nautilus_trader/target\nextest\deps\exec_client-780bac51ce8678c2.exe)
+
+running 1 test
+
+thread 'test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once' (7836) panicked at crates\adapters\aster\tests\exec_client.rs:1859:5:
+assertion failed: cache.positions_open(None, Some(&InstrumentId::from(BTC)), None, None,
+        None).is_empty()
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once ... FAILED
+
+failures:
+
+failures:
+    test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 97 filtered out; finished in 1.74s
+
+error: test failed, to rerun pass `-p nautilus-aster --test exec_client`

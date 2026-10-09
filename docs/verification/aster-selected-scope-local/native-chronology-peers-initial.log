@@ -1,0 +1,160 @@
+   Compiling nautilus-aster v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\adapters\aster)
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\selected_scope-5c43743466aa116d.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\selected_scope-5c43743466aa116d.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-aster` (test "selected_scope") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\exec_client-780bac51ce8678c2.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\exec_client-780bac51ce8678c2.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-aster` (test "exec_client") generated 1 warning
+    Finished `nextest` profile [unoptimized] target(s) in 7.80s
+     Running tests\exec_client.rs (E:/persarb/nautilus_trader/target\nextest\deps\exec_client-780bac51ce8678c2.exe)
+
+running 99 tests
+test review_round4_unconfirmed_position_mode_fails_the_connect::case_1 ... ok
+test review_round4_hedge_mode_account_is_rejected_at_connect ... ok
+test review_round4_unconfirmed_position_mode_fails_the_connect::case_2 ... ok
+test review_round4_initial_unverified_balance_fails_connect_after_publishing_verified_rows ... ok
+test review_round4_unparsable_open_order_row_denies_new_risk ... ok
+test review_round3_account_fee_registry_leaks_between_clients ... ok
+test review_round2_mass_status_keeps_fill_for_order_created_before_window ... ok
+test review_round2_data_request_preserves_verified_fees ... ok
+test review_round4_explicit_exemption_admits_new_risk_with_an_unconfirmed_mode ... ok
+test review_round4_unsupported_position_mode_endpoint_denies_new_risk ... ok
+test review_round4_stop_denies_new_risk_until_a_new_session_is_verified ... ok
+test review_round4_malformed_order_update_denies_new_risk ... ok
+test review_round5_failed_execution_send_keeps_real_fill_recoverable ... ok
+test test_a_failed_rate_query_does_not_leave_an_earlier_rate_applied ... ok
+test review_round5_rest_zero_fill_clears_malformed_stream_debt_without_reconnect ... ok
+test review_round4_stop_connect_keeps_pending_trade_debt_unready ... ok
+test test_cancel_all_orders_without_a_side_uses_the_symbol_wide_endpoint ... ok
+test test_commission_rate_failure_leaves_the_venue_default_unpublished ... ok
+test review_round4_cancel_prefers_the_venue_order_id::case_2 ... ok
+test review_round4_cancel_reports_only_a_definitive_refusal::case_2 ... ok
+test review_round2_structured_503_must_not_reject_live_order ... ok
+test review_round4_cancel_reports_only_a_definitive_refusal::case_1 ... ok
+test review_round4_cancel_prefers_the_venue_order_id::case_1 ... ok
+test review_round4_cancel_all_for_a_side_reports_a_refusal_per_order ... ok
+test review_round4_ambiguous_cancel_failure_awaits_reconciliation ... ok
+test test_connect_does_not_retry_a_venue_answer_on_the_first_user_stream ... ok
+test test_connect_fails_when_the_first_user_stream_cannot_start ... ok
+test test_complete_position_snapshot_reports_omitted_loaded_symbols_as_flat::case_1 ... ok
+test test_cancel_all_orders_with_a_side_and_no_match_sends_nothing ... ok
+test test_connect_waits_for_the_user_stream_before_reporting_connected ... ok
+test test_connect_publishes_instruments_with_the_account_commission_rates ... ok
+test test_complete_position_snapshot_reports_omitted_loaded_symbols_as_flat::case_2 ... ok
+test test_cancel_all_orders_with_a_side_cancels_only_that_side::case_2 ... ok
+test test_cancel_all_orders_with_a_side_cancels_only_that_side::case_1 ... ok
+test test_fill_report_pagination_stops_on_an_empty_history ... ok
+test test_flat_account_with_pre_session_history_reconciles_without_complaint ... ok
+test test_generate_fill_reports_propagates_an_unparsable_commission ... ok
+test test_generate_fill_reports_propagates_a_failed_symbol_request ... ok
+test test_generate_position_status_reports_allows_an_unparsable_flat_entry_price ... ok
+test test_generate_order_status_reports_propagates_a_failed_request ... ok
+test test_generate_position_status_reports_propagates_an_unparsable_non_flat_entry_price ... ok
+test test_generate_position_status_reports_propagates_an_unparsable_quantity ... ok
+test test_fill_reports_page_past_the_venue_limit_and_deduplicate ... ok
+test review_round5_pending_evidence_survives_stop_and_connect ... ok
+test test_definitive_venue_rejection_emits_order_rejected_immediately ... ok
+test review_round2_failed_fill_report_does_not_consume_recovery_trade ... ok
+test review_round3_unlinked_startup_fill_remains_recoverable ... ok
+test review_round4_queued_submit_is_denied_after_the_stream_drops ... ok
+test test_order_status_reports_page_past_the_venue_limit ... ok
+test review_round4_reconnect_after_disconnect_restores_a_working_session ... ok
+test review_round2_reconnect_preserves_real_trade_economics ... ok
+test review_round4_unparsable_position_row_keeps_recovery_degraded ... ok
+test test_compensation_ignores_fills_from_before_the_session_started ... ok
+test test_quote_quantity_order_is_denied_without_reaching_the_venue::case_1 ... ok
+test test_quote_quantity_order_is_denied_without_reaching_the_venue::case_2 ... ok
+test review_round4_uncovered_fills_are_withheld_until_their_order_answers ... ok
+test review_round4_open_order_status_is_withheld_while_its_fills_are ... ok
+test test_compensation_reports_the_order_together_with_its_fills ... ok
+test review_round5_filtered_mass_fill_stays_recoverable ... ok
+test test_reconciliation_paths_emit_reports_not_order_events ... ok
+test test_outage_compensation_applies_a_fill_and_a_cancel_missed_by_the_stream ... ok
+test test_owed_balance_timer_relaxes_bound_after_quiet_stream ... ok
+test test_rest_zero_balance_clears_the_cached_amount ... ok
+test test_startup_reconciliation_of_historical_fills_is_accepted_by_the_engine ... ok
+test test_owed_balance_timer_retries_failure_without_stream_messages ... ok
+test test_outage_compensation_does_not_reapply_a_fill_already_seen_on_the_stream ... ok
+test review_round5_ambiguous_submit_full_fill_reaches_engine_once ... ok
+test review_round4_successful_recovery_restores_new_risk ... ok
+test test_unlinkable_fill_is_kept_and_the_snapshot_declared_incomplete ... ok
+test test_startup_reconciliation_fills_remain_recoverable_until_consumed ... ok
+test test_stream_zero_balance_clears_the_cached_amount ... ok
+test test_gateway_failure_on_submit_is_reconciled_rather_than_rejected ... ok
+test test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once::case_1 ... ok
+test test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once::case_2 ... ok
+test test_reconnect_reports_flat_for_a_position_omitted_after_external_close ... ok
+test review_round4_socket_loss_invalidates_before_reconnect ... ok
+test test_client_side_timeout_on_submit_is_reconciled_rather_than_rejected ... ok
+test test_repeated_compensation_does_not_duplicate_a_recovered_fill ... ok
+test test_incomplete_reconnect_snapshot_never_infers_flat::case_2 ... ok
+test test_incomplete_reconnect_snapshot_never_infers_flat::case_3 ... ok
+test test_incomplete_reconnect_snapshot_never_infers_flat::case_1 ... ok
+test test_incomplete_reconnect_snapshot_never_infers_flat::case_4 ... ok
+test test_incomplete_reconnect_snapshot_never_infers_flat::case_5 ... ok
+test review_round4_a_pending_trade_does_not_replay_the_long_history ... ok
+test test_unknown_execution_status_is_reconciled_rather_than_rejected::case_1 ... ok
+test test_unknown_execution_status_is_reconciled_rather_than_rejected::case_2 ... ok
+test test_incomplete_reconnect_snapshot_never_infers_flat::case_6 ... ok
+test test_unknown_execution_status_rejects_only_when_the_venue_never_saw_the_order ... ok
+test review_round4_failed_recovery_keeps_new_risk_denied ... ok
+test review_round4_unverified_owed_balance_degrades_until_recovery ... ok
+test test_connect_retries_a_transport_fault_on_the_first_user_stream ... ok
+test test_failed_balance_verification_preserves_available_and_degrades_readiness ... ok
+test test_listen_key_expiry_rebuilds_the_session_and_compensates ... ok
+test review_round3_failed_fill_compensation_preserves_eventual_real_economics ... ok
+test test_reconnect_with_fill_debt_never_infers_flat ... ok
+test review_round4_queued_submit_is_denied_after_recovery_reclaims_readiness ... ok
+test review_round4_unconfirmed_mode_survives_recovery ... ok
+test test_a_delayed_snapshot_cannot_clear_the_debt_a_newer_stream_row_raised ... ok
+test test_stream_updates_within_the_window_cost_one_snapshot_read ... ok
+
+test result: ok. 99 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.23s
+
+     Running tests\selected_scope.rs (E:/persarb/nautilus_trader/target\nextest\deps\selected_scope-5c43743466aa116d.exe)
+
+running 35 tests
+test incomplete_balance_never_grants_new_risk::case_1 ... ok
+test incomplete_balance_never_grants_new_risk::case_6 ... ok
+test incomplete_selected_positions_never_prove_flat::case_2 ... ok
+test unrepresentable_original_position_never_becomes_verified_zero::case_1 ... ok
+test incomplete_selected_positions_never_prove_flat::case_4 ... ok
+test incomplete_selected_positions_never_prove_flat::case_5 ... ok
+test incomplete_balance_never_grants_new_risk::case_4 ... ok
+test incomplete_balance_never_grants_new_risk::case_2 ... ok
+test incomplete_selected_positions_never_prove_flat::case_6 ... ok
+test incomplete_selected_positions_never_prove_flat::case_1 ... ok
+test unrepresentable_original_position_never_becomes_verified_zero::case_3 ... ok
+test incomplete_selected_positions_never_prove_flat::case_3 ... ok
+test unrepresentable_original_position_never_becomes_verified_zero::case_2 ... ok
+test incomplete_balance_never_grants_new_risk::case_3 ... ok
+test incomplete_balance_never_grants_new_risk::case_5 ... ok
+test dropping_connected_client_immediately_detaches_diagnostics_without_polling_tasks ... ok
+test actual_private_socket_loss_revokes_selected_scope ... ok
+test raw_private_ingress_revokes_scope_even_when_typed_decoder_drops_it::case_4 ... ok
+test raw_private_ingress_revokes_scope_even_when_typed_decoder_drops_it::case_3 ... ok
+test final_dispatch_consumes_one_witness_and_second_order_is_denied ... ok
+test raw_private_ingress_revokes_scope_even_when_typed_decoder_drops_it::case_2 ... ok
+test raw_private_ingress_revokes_scope_even_when_typed_decoder_drops_it::case_1 ... ok
+test position_only_private_change_revokes_proof_then_full_query_restores_current_scope ... ok
+test selected_separated_batches_publish_in_actual_time_order_despite_reverse_order_ids ... ok
+test written_rejection_consumes_scope_and_never_resends::case_2 ... ok
+test written_rejection_consumes_scope_and_never_resends::case_3 ... ok
+test written_rejection_consumes_scope_and_never_resends::case_1 ... ok
+test stale_witness_refuses_order_without_network_submission ... ok
+test in_flight_refresh_cannot_borrow_newer_private_generation ... ok
+test later_selected_partial_order_cannot_certify_unobserved_cumulative_fills ... ok
+test full_normal_factory_proof_preserves_selected_receive_origin ... ok
+test timed_out_write_remains_untrusted_and_is_not_resent ... ok
+test late_targeted_actual_order_fill_keeps_selected_chronology_debt_sticky ... ok
+test selected_ambiguous_atomic_history_stays_in_debt_across_normal_queries::case_2 ... ok
+test selected_ambiguous_atomic_history_stays_in_debt_across_normal_queries::case_1 ... ok
+
+test result: ok. 35 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 12.18s
+

@@ -1,0 +1,16 @@
+# Independent fixed native source review, pass 1
+
+See reviewer-native-source-fixed-pass1.json for source byte identities and capture UTC. No Cargo, build, source edits, installation, native executable test, actual wheel, credentials or venue/network request was performed by this review. Root tests are independent work and are not claimed here.
+
+Verified source fixes for prior blockers:
+
+- Optional raw observer wraps the actual Binance MessageHandler before forwarding to any queue/parser. All Text/Binary frames invalidate optional Aster selected authorization synchronously; Ping/Pong do not. Default observer None returns original handler unchanged. This covers malformed JSON, malformed typed messages, unknown/private messages, internally emitted text reconnect markers and private frames buffered during awaited HTTP recovery. Observer sees no contents and adds no payload logging.
+- Client owns the sole strong Arc<()> lifetime token. Diagnostics and SessionContext only hold Weak; getter checks before/after copy without upgrade, factory is_live uses client token and send/postwait/final witness checks reject destroyed client. Background tasks retaining readiness no longer extend diagnostic lifetime.
+- Selected original decimal parser uses bounded ordinary grammar and Decimal::from_str_exact. Positions, account rows, order quantities/statuses, actual stream/history prices and fees are checked before legacy native projection. Original history rows are checked before time filtering/dedup. Nonrepresentable original values cannot become zero first and borrow precise cumulative coverage later.
+- Second selected openOrders snapshot requires exact original cumulative amount == confirmed real fill quantity and no unknown coverage; unmatched rows become pending and cannot publish the witness. Missing position rows still do not certify flat, current native metadata/generation/stream/debt/TTL and mode remain required.
+
+Remaining blocker sent to root: selected balance validates decimal representability but not native currency Money precision. USD1 balance/free with 9 fractional digits is accepted by exact_decimal while native currency precision8 rounds in AccountBalance::from_total_and_free/Money. Witness publishes original amount as trusted despite native available/cash projection differing. Require exact native monetary representability for selected balance/free (and any authorizing monetary components), or preserve original with conservative projected availability plus explicit Unknown mismatch; no silent available precision widening. Existing commission validation already checks currency precision.
+
+No additional material blocker found in the reviewed optional raw/default contract, weak lifetime, final FnOnce send consumption or exact cumulative selected-order coverage. Native current selected inventory proof remains separate from native engine cache adoption, whole-account coverage, run ownership and funding. App must independently check its current engine projection; this native interface must not claim durable cache recovery.
+
+Pending: monetary fix, stable executable identities, independent actual peer/unit execution, actual generated stubs/wheel ABI/source binding and final root acceptance. Source review alone is not a passed product/native acceptance.

@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "E:/persarb/worktrees/entropy-aster-proof/.venv/Scripts/python.exe",
+    "-I",
+    "E:/persarb/_tmp/entropy43-validation/reviewer-wheel-abi-inspect.py"
+  ],
+  "cwd": "E:\\persarb\\_tmp\\entropy43-validation",
+  "started_utc": "2026-10-09T03:30:51.496077+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T03:30:51.636363+00:00"
+}

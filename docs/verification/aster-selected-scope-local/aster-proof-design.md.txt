@@ -1,0 +1,15 @@
+﻿# Aster selected scope proof design
+
+This optional dependency uses normal native factories and signed HTTP/WS paths. No account-wide, funding, run-ownership, native-cache cold recovery, or remote snapshot clock claim is made.
+
+Config suffix: selected_scope_policy_json. Strict JSON keys instrument_ids (1..8 unique full configured load IDs), balance_asset, max_age_ms (1..60000), max_refresh_ms (1..60000). Opt-in requires explicit credentials and confirmed mode without exemption, exact configured finite loading. All selected loaded instruments must settle/quote in the named balance asset.
+
+Normal connect and QueryAccount run bounded existing native order/fill recovery, then repeated actual one-way mode, balance and explicit selected positions/open orders. Missing position rows are Unknown, not inferred flat. Only a complete pass with unchanged readiness generation/instrument metadata, live stream and no recovery debt publishes a witness. The earliest actual HTTP receive time bounds freshness. Venue updateTime remains row mutation metadata; source_time_ns is null and source_time_origin states absence of venue snapshot clock.
+
+Every private message, stream loss/error, unknown action/debt, stop/reconnect or malformed proof invalidates the witness. Native new-risk submit checks the same witness before Submitted and again after HTTP limiter wait; the final send consumes the witness atomically. Queries, cancellations and existing reduce-only semantics remain available without advertising run ownership.
+
+Factory diagnostic is Weak-bound to the created native client, rejects replacement while an optional client is live, returns None after its destruction and never extends client lifetime. Snapshot copies state under state -> readiness ordering with generation validation before/after, explicitly identifies account/user/signer/source/selected metadata and never asserts whole-account coverage.
+
+Tests needed: strict config JSON/floats/booleans/duplicates/unknown keys/bounds; normal connect full witness; missing row/mode false/malformed balance/positions; source-less row receive origin; TTL; WS position-only and unknown messages; old in-flight response superseded by reconnect; limiter wait invalidation; witness consumption; QueryAccount recovery of complete current witness only; unresolved history/orders; selected outside loaded universe; exact USD1 strings; factory lifetime and default None.
+
+Owned files: crates/adapters/aster/src/{scope.rs,lib.rs,config.rs,factories.rs,execution.rs,python/config.rs,python/factories.rs}; native focused unit tests in scope/execution/factories and python/tests/test_aster_selected_scope_config.py. Root owns peer tests, all Cargo/format/stubs/build/install/Git/GH.

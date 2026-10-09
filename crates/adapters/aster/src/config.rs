@@ -259,6 +259,8 @@ pub struct AsterExecutionClientConfig {
     /// available. Setting this to `true` accepts the one-way assumption for a known
     /// environment; it is an explicit exemption and is logged on every connect.
     pub assume_one_way_mode_when_unconfirmed: bool,
+    /// Optional strict JSON for finite selected-account proof and new-risk admission.
+    pub selected_scope_policy_json: Option<String>,
     /// Optional Nautilus venue identifier override (defaults to `ASTER`).
     pub venue: Option<Venue>,
 }
@@ -286,6 +288,10 @@ impl std::fmt::Debug for AsterExecutionClientConfig {
                 "assume_one_way_mode_when_unconfirmed",
                 &self.assume_one_way_mode_when_unconfirmed,
             )
+            .field(
+                "selected_scope_policy_json",
+                &self.selected_scope_policy_json,
+            )
             .field("venue", &self.venue)
             .finish()
     }
@@ -305,6 +311,7 @@ nautilus_core::impl_pyo3_config_getters!(AsterExecutionClientConfig {
     ws_connect_timeout_secs: Option<u64>,
     treat_expired_as_canceled: bool,
     assume_one_way_mode_when_unconfirmed: bool,
+    selected_scope_policy_json: Option<String>,
     venue: Option<Venue>,
 });
 
@@ -325,6 +332,7 @@ impl Default for AsterExecutionClientConfig {
             proxy_url: None,
             treat_expired_as_canceled: true,
             assume_one_way_mode_when_unconfirmed: false,
+            selected_scope_policy_json: None,
             venue: None,
         }
     }
@@ -371,7 +379,51 @@ impl AsterExecutionClientConfig {
     /// Returns an error if the instrument provider selection does not use the resolved venue.
     pub fn validate(&self) -> anyhow::Result<()> {
         self.instrument_provider
-            .validate_with_venue(BinanceProductType::UsdM, self.resolved_venue())
+            .validate_with_venue(BinanceProductType::UsdM, self.resolved_venue())?;
+        if let Some(raw) = self.selected_scope_policy_json.as_deref() {
+            crate::scope::SelectedScopePolicy::parse(
+                raw,
+                self.resolved_venue(),
+                self.instrument_provider.load_ids.as_deref(),
+                self.instrument_provider.load_all,
+            )?;
+            anyhow::ensure!(
+                !self.assume_one_way_mode_when_unconfirmed,
+                "Aster selected scope does not permit a position-mode exemption"
+            );
+            for address in [&self.user_address, &self.signer_address] {
+                let address = address.as_deref().unwrap_or_default();
+                anyhow::ensure!(
+                    address.len() == 42
+                        && address.starts_with("0x")
+                        && address[2..].bytes().all(|c| c.is_ascii_hexdigit()),
+                    "Aster selected scope requires canonical explicit wallet addresses"
+                );
+            }
+            for endpoint in [self.resolved_http_url(), self.resolved_ws_url()] {
+                let endpoint = nautilus_network::http::Url::parse(&endpoint)?;
+                anyhow::ensure!(
+                    endpoint.username().is_empty()
+                        && endpoint.password().is_none()
+                        && endpoint.query().is_none()
+                        && endpoint.fragment().is_none(),
+                    "Aster selected scope endpoint must not contain embedded credentials, query or fragment"
+                );
+            }
+            anyhow::ensure!(
+                self.has_explicit_credentials()
+                    && self
+                        .user_address
+                        .as_deref()
+                        .is_some_and(|v| !v.trim().is_empty())
+                    && self
+                        .signer_address
+                        .as_deref()
+                        .is_some_and(|v| !v.trim().is_empty()),
+                "Aster selected scope requires explicit user, signer and signing credentials"
+            );
+        }
+        Ok(())
     }
 }
 

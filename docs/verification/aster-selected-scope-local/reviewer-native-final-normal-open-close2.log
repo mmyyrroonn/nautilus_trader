@@ -1,0 +1,7 @@
+
+running 2 tests
+test test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once::case_1 ... ok
+test test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once::case_2 ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 97 filtered out; finished in 3.48s
+

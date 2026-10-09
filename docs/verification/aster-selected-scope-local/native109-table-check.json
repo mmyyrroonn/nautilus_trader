@@ -1,0 +1,14 @@
+{
+  "argv": [
+    "E:\\persarb\\worktrees\\entropy-aster-proof\\.venv\\Scripts\\python.exe",
+    "scripts/check-markdown-tables.py",
+    "docs/verification/aster-selected-scope-contract-20261009.md",
+    "docs/verification/aster-selected-scope-acceptance-20261009.md"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+  "started_utc": "2026-10-09T03:40:21.716540+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T03:40:21.762295+00:00"
+}

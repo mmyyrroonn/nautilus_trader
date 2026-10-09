@@ -40,10 +40,17 @@ impl AsterDataClientFactory {
 #[pymethods]
 #[pyo3_stub_gen::derive::gen_stub_pymethods]
 impl AsterExecutionClientFactory {
+    /// Returns the native current selected-scope witness or None when unbound.
+    #[pyo3(name = "selected_scope_snapshot_json")]
+    fn py_selected_scope_snapshot_json(&self) -> PyResult<Option<String>> {
+        self.selected_scope_snapshot_json()
+            .map_err(nautilus_core::python::to_pyruntime_err)
+    }
+
     /// Factory for creating Aster execution clients.
     #[new]
     fn py_new() -> Self {
-        Self
+        Self::new()
     }
 
     #[pyo3(name = "name")]

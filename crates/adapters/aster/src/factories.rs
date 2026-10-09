@@ -15,7 +15,7 @@
 
 //! Factory functions for creating Aster clients and components.
 
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use nautilus_binance::{
     common::enums::BinanceProductType, futures::data::BinanceFuturesDataClient,
@@ -31,11 +31,12 @@ use nautilus_model::{
     enums::{AccountType, OmsType},
     identifiers::{ClientId, TraderId},
 };
+use parking_lot::Mutex;
 
 use crate::{
     common::consts::ASTER,
     config::{AsterDataClientConfig, AsterExecutionClientConfig},
-    execution::AsterExecutionClient,
+    execution::{AsterExecutionClient, SelectedScopeDiagnostics},
 };
 
 /// Factory for creating Aster data clients.
@@ -112,13 +113,25 @@ impl DataClientFactory for AsterDataClientFactory {
     feature = "python",
     pyo3_stub_gen::derive::gen_stub_pyclass(module = "nautilus_trader.adapters.aster")
 )]
-pub struct AsterExecutionClientFactory;
+pub struct AsterExecutionClientFactory {
+    selected_scope: Arc<Mutex<Option<SelectedScopeDiagnostics>>>,
+}
 
 impl AsterExecutionClientFactory {
+    /// Returns exact-decimal native selected-scope diagnostics, when the optional client exists.
+    pub fn selected_scope_snapshot_json(&self) -> anyhow::Result<Option<String>> {
+        self.selected_scope
+            .lock()
+            .as_ref()
+            .map(SelectedScopeDiagnostics::snapshot_json)
+            .transpose()
+            .map(Option::flatten)
+    }
+
     /// Creates a new [`AsterExecutionClientFactory`] instance.
     #[must_use]
-    pub const fn new() -> Self {
-        Self
+    pub fn new() -> Self {
+        Self::default()
     }
 }
 
@@ -155,7 +168,15 @@ impl ExecutionClientFactory for AsterExecutionClientFactory {
             cache,
         );
 
+        let mut binding = self.selected_scope.lock();
+        anyhow::ensure!(
+            !binding
+                .as_ref()
+                .is_some_and(SelectedScopeDiagnostics::is_live),
+            "Aster factory already has an active selected-scope client"
+        );
         let client = AsterExecutionClient::new(core, aster_config)?;
+        *binding = client.selected_scope_diagnostics();
         Ok(Box::new(client))
     }
 
@@ -379,6 +400,61 @@ mod tests {
             .expect("expected a validation error")
             .to_string();
         assert!(error.contains("must use venue ASTER"), "{error}");
+    }
+
+    #[rstest]
+    fn selected_scope_factory_is_weak_bound_and_refuses_active_replacement() {
+        let mut config = exec_config();
+        let signer = crate::signing::AsterEip712Signer::for_environment(
+            TEST_PRIVATE_KEY,
+            config.environment,
+        )
+        .unwrap()
+        .address_hex();
+        config.user_address = Some(signer.clone());
+        config.signer_address = Some(signer);
+        config.instrument_provider.load_all = false;
+        config.instrument_provider.load_ids = Some(vec!["SNDKUSD1-PERP.ASTER".to_owned()]);
+        config.selected_scope_policy_json = Some(r#"{"instrument_ids":["SNDKUSD1-PERP.ASTER"],"balance_asset":"USD1","max_age_ms":2000,"max_refresh_ms":15000}"#.to_owned());
+        let factory = AsterExecutionClientFactory::new();
+        assert!(factory.selected_scope_snapshot_json().unwrap().is_none());
+        let cache = Rc::new(RefCell::new(Cache::default()));
+        let client = factory
+            .create(
+                TraderId::from("TESTER-001"),
+                "ASTER-SELECTED",
+                &config,
+                cache.clone().into(),
+            )
+            .unwrap();
+        let snapshot: serde_json::Value =
+            serde_json::from_str(&factory.selected_scope_snapshot_json().unwrap().unwrap())
+                .unwrap();
+        assert_eq!(snapshot["ready"], false);
+        assert_eq!(snapshot["whole_account_verified"], false);
+        assert_eq!(snapshot["source_time_ns"], serde_json::Value::Null);
+        assert!(
+            factory
+                .create(
+                    TraderId::from("TESTER-001"),
+                    "ASTER-REPLACEMENT",
+                    &config,
+                    cache.clone().into()
+                )
+                .is_err()
+        );
+        drop(client);
+        assert!(factory.selected_scope_snapshot_json().unwrap().is_none());
+        assert!(
+            factory
+                .create(
+                    TraderId::from("TESTER-001"),
+                    "ASTER-REOPENED",
+                    &config,
+                    cache.into()
+                )
+                .is_ok()
+        );
     }
 
     #[rstest]

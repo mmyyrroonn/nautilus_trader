@@ -1,0 +1,133 @@
+{
+  "started": true,
+  "stopped": true,
+  "queries": 1,
+  "shutdown_verified": true,
+  "actual_selected_scope": {
+    "schema_version": 1,
+    "account_id": "ASTER-ENTROPY109",
+    "venue": "ASTER",
+    "user_address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+    "signer_address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+    "source_endpoint": "http://127.0.0.1:5113",
+    "generation": 6,
+    "phase": "ready",
+    "ready": true,
+    "trusted": true,
+    "stream_live": true,
+    "mode_verified": true,
+    "recovery_complete": true,
+    "fill_chronology_debt": false,
+    "whole_account_verified": false,
+    "run_ownership_verified": false,
+    "funding_verified": false,
+    "source": "native_http_selected_scope",
+    "source_time_ns": null,
+    "source_time_origin": "venue_does_not_supply_snapshot_time",
+    "received_time_ns": 1791517008851902700,
+    "max_age_ms": 2000,
+    "instrument_ids": [
+      "SNDKUSD1-PERP.ASTER"
+    ],
+    "balance_asset": "USD1",
+    "positions": [
+      {
+        "instrument_id": "SNDKUSD1-PERP.ASTER",
+        "signed_quantity": "0",
+        "source_update_time_ms": 1791517008852
+      }
+    ],
+    "balance": {
+      "asset": "USD1",
+      "total": "100",
+      "free": "100",
+      "source_update_time_ms": 1791517008852
+    },
+    "open_orders": [],
+    "reason": null
+  },
+  "prequery_scope": {
+    "schema_version": 1,
+    "account_id": "ASTER-ENTROPY109",
+    "venue": "ASTER",
+    "user_address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+    "signer_address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+    "source_endpoint": "http://127.0.0.1:5113",
+    "generation": 4,
+    "phase": "degraded",
+    "ready": false,
+    "trusted": false,
+    "stream_live": true,
+    "mode_verified": true,
+    "recovery_complete": false,
+    "fill_chronology_debt": false,
+    "whole_account_verified": false,
+    "run_ownership_verified": false,
+    "funding_verified": false,
+    "source": "native_http_selected_scope",
+    "source_time_ns": null,
+    "source_time_origin": "venue_does_not_supply_snapshot_time",
+    "received_time_ns": null,
+    "max_age_ms": 2000,
+    "instrument_ids": [
+      "SNDKUSD1-PERP.ASTER"
+    ],
+    "balance_asset": "USD1",
+    "positions": [],
+    "balance": null,
+    "open_orders": [],
+    "reason": "partial position reports are not a complete selected scope proof"
+  },
+  "post_shutdown_scope_json": null,
+  "failure": null,
+  "observations": [
+    {
+      "received_ns": 1791517008948996600,
+      "snapshot": {
+        "schema_version": 1,
+        "account_id": "ASTER-ENTROPY109",
+        "venue": "ASTER",
+        "user_address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "signer_address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "source_endpoint": "http://127.0.0.1:5113",
+        "generation": 6,
+        "phase": "ready",
+        "ready": true,
+        "trusted": true,
+        "stream_live": true,
+        "mode_verified": true,
+        "recovery_complete": true,
+        "fill_chronology_debt": false,
+        "whole_account_verified": false,
+        "run_ownership_verified": false,
+        "funding_verified": false,
+        "source": "native_http_selected_scope",
+        "source_time_ns": null,
+        "source_time_origin": "venue_does_not_supply_snapshot_time",
+        "received_time_ns": 1791517008851902700,
+        "max_age_ms": 2000,
+        "instrument_ids": [
+          "SNDKUSD1-PERP.ASTER"
+        ],
+        "balance_asset": "USD1",
+        "positions": [
+          {
+            "instrument_id": "SNDKUSD1-PERP.ASTER",
+            "signed_quantity": "0",
+            "source_update_time_ms": 1791517008852
+          }
+        ],
+        "balance": {
+          "asset": "USD1",
+          "total": "100",
+          "free": "100",
+          "source_update_time_ms": 1791517008852
+        },
+        "open_orders": [],
+        "reason": null
+      }
+    }
+  ],
+  "active_sessions_after_teardown": 0,
+  "native_host_egress_isolation_verified": false
+}

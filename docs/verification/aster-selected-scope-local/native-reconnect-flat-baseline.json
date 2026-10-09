@@ -1,0 +1,28 @@
+{
+  "argv": [
+    "cargo",
+    "test",
+    "-p",
+    "nautilus-aster",
+    "-p",
+    "nautilus-binance",
+    "--test",
+    "exec_client",
+    "--profile",
+    "nextest",
+    "--locked",
+    "--offline",
+    "--config",
+    "build.warnings='warn'",
+    "test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once",
+    "--",
+    "--exact",
+    "--nocapture"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy109-baseline",
+  "started_utc": "2026-10-09T02:51:37.651791+00:00",
+  "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+  "pyo3_python": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T02:52:25.471321+00:00"
+}

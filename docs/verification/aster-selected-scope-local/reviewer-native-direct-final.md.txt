@@ -1,0 +1,15 @@
+# Independent direct native artifact tests
+
+All three executable SHA256 identities were checked against root-supplied expected identities before running and rehashed unchanged after all commands. Exact paths/hashes/bytes: reviewer-native-exe-pre.json and reviewer-native-exe-post.json. Native source was reviewed independently in reviewer-source-fixed-pass2.md. Root is responsible for binding these compiled artifacts to the final native source and later wheel provenance.
+
+Actual command captures (UTC/argv/cwd/exit/raw output preserved individually):
+
+- reviewer-native-selected-direct: selected_scope full actual normal factory/HTTP/WS local peer suite, 31 passed, no ignored, 02:45:50.803692Z to 02:45:54.736328Z. Includes malformed/unknown private raw ingress, direct active-client destruction, financial precision rejection, partial cumulative coverage, TTL, old generation in-flight refresh, socket loss, witness consumption, complete QueryAccount refresh, refused partial proofs, written rejection and timed-out write/no resend.
+- reviewer-native-scope-units-direct: exact original numeric grammar/precision and strict finite policy, 27 passed, 02:46:06.000510Z to 02:46:06.016068Z.
+- reviewer-native-admission-factory-direct: selected generation/TTL/weak factory/default behavior, 22 passed, 02:46:06.074628Z to 02:46:06.089140Z. Seventeen decimal cases repeat the prior scope unit run; these are not extra unique cases.
+- reviewer-native-transport-direct: authoritative admission after quota wait, local quota timeout with no POST resend and unknown after-dispatch timeout, 3 passed, 02:46:06.146677Z to 02:46:08.694620Z.
+- reviewer-native-binance-default-direct: futures streams client/default decoder/parse/recovery regression subset, 144 passed, 02:46:08.754668Z to 02:46:08.810709Z.
+
+All actual commands exit0. Raw parsed test names are counted in reviewer-native-exe-post.json: 227 executed instances, 210 unique test names across these commands. They overlap root's test suite and must not be added to root's native total as independent new tests. No ignored/live/mainnet tests were executed. Numeric-loopback functional peers do not establish host kernel network isolation.
+
+Independent selected-scope source plus direct executable review passes for the bounded optional native contract. No remaining material finding identified. Actual PyO3 wheel constructor/getter/generated-stub/source binding still pending, as are app43's seven actual installed-native scenarios. Whole-account flatness, funding completeness, run ownership and durable native cache recovery remain outside native109's proof; actual venue/real account operation was not performed.

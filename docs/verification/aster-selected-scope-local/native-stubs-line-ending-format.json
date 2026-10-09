@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "E:\\persarb\\worktrees\\entropy-aster-proof\\.venv\\Scripts\\ruff.exe",
+    "format",
+    "python/nautilus_trader",
+    "--config",
+    "python/pyproject.toml",
+    "--config",
+    "format.line-ending=\"lf\""
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+  "started_utc": "2026-10-09T03:20:03.553658+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T03:20:03.607808+00:00"
+}

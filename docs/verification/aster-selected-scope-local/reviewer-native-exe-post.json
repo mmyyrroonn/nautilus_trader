@@ -1,0 +1,60 @@
+{
+    "unchanged_prepost":  true,
+    "executed_instances":  227,
+    "actual_outcomes":  [
+                            {
+                                "finished_utc":  "2026-10-09T02:45:54.736328+00:00",
+                                "started_utc":  "2026-10-09T02:45:50.803692+00:00",
+                                "name":  "reviewer-native-selected-direct",
+                                "executed_test_count":  31,
+                                "exit_code":  0
+                            },
+                            {
+                                "finished_utc":  "2026-10-09T02:46:06.016068+00:00",
+                                "started_utc":  "2026-10-09T02:46:06.000510+00:00",
+                                "name":  "reviewer-native-scope-units-direct",
+                                "executed_test_count":  27,
+                                "exit_code":  0
+                            },
+                            {
+                                "finished_utc":  "2026-10-09T02:46:06.089140+00:00",
+                                "started_utc":  "2026-10-09T02:46:06.074628+00:00",
+                                "name":  "reviewer-native-admission-factory-direct",
+                                "executed_test_count":  22,
+                                "exit_code":  0
+                            },
+                            {
+                                "finished_utc":  "2026-10-09T02:46:08.694620+00:00",
+                                "started_utc":  "2026-10-09T02:46:06.146677+00:00",
+                                "name":  "reviewer-native-transport-direct",
+                                "executed_test_count":  3,
+                                "exit_code":  0
+                            },
+                            {
+                                "finished_utc":  "2026-10-09T02:46:08.810709+00:00",
+                                "started_utc":  "2026-10-09T02:46:08.754668+00:00",
+                                "name":  "reviewer-native-binance-default-direct",
+                                "executed_test_count":  144,
+                                "exit_code":  0
+                            }
+                        ],
+    "unique_test_names":  210,
+    "executable_identities":  [
+                                  {
+                                      "path":  "E:/persarb/nautilus_trader/target/nextest/deps/nautilus_aster-13029d0434076b74.exe",
+                                      "sha256":  "4f38e36fe1525a563522754d2ed97ba0e3a50eb14584a67150e5d3f07f328f04",
+                                      "bytes":  22021120
+                                  },
+                                  {
+                                      "path":  "E:/persarb/nautilus_trader/target/nextest/deps/selected_scope-c23cd16123685453.exe",
+                                      "sha256":  "f479255d068e37d2d218c5b3dbdee924bfb68ce24dd2e6b840fb44f3ed30703a",
+                                      "bytes":  18238464
+                                  },
+                                  {
+                                      "path":  "E:/persarb/nautilus_trader/target/nextest/deps/nautilus_binance-fe2cc5e2ea07ef12.exe",
+                                      "sha256":  "71cef423432464aaee71e2a470ff5433301abf114620ee47e8052cfa1fde2f88",
+                                      "bytes":  26300928
+                                  }
+                              ],
+    "utc":  "2026-10-09T02:46:55.6873686Z"
+}

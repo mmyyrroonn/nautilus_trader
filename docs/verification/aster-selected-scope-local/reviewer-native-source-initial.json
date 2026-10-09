@@ -1,0 +1,62 @@
+{
+    "sources":  [
+                    {
+                        "path":  "crates/adapters/aster/src/scope.rs",
+                        "sha256":  "b093c588b0efab74c1a59e0daadfcb8f17e1db2176efbecf1da91b1757f78188",
+                        "bytes":  7211
+                    },
+                    {
+                        "path":  "crates/adapters/aster/src/config.rs",
+                        "sha256":  "9558b90efa93dd2b79286c93b01433e251b65767dcade88e4a968563b868a502",
+                        "bytes":  26192
+                    },
+                    {
+                        "path":  "crates/adapters/aster/src/factories.rs",
+                        "sha256":  "7cf73342c3583bdbdb708ae5d0be8f5cee1678c51661bff2e3f9375fdb13c3c5",
+                        "bytes":  16791
+                    },
+                    {
+                        "path":  "crates/adapters/aster/src/execution.rs",
+                        "sha256":  "0a4debc94fba041e8b736316627572f4ef2f3582d27a1028c65bec230d3e8f42",
+                        "bytes":  333320
+                    },
+                    {
+                        "path":  "crates/adapters/aster/src/http/client.rs",
+                        "sha256":  "0e1e2a46f1b3fde6d53213007f611ca3eb7c01a1c2af2da856d3497e103d6a6a",
+                        "bytes":  79916
+                    },
+                    {
+                        "path":  "crates/adapters/aster/src/python/config.rs",
+                        "sha256":  "a6e7a2565dfbb2ac16704342de3079dd4252dff9abfa22aa28c9476989056b1b",
+                        "bytes":  8086
+                    },
+                    {
+                        "path":  "crates/adapters/aster/src/python/factories.rs",
+                        "sha256":  "0aea44b107be71120fd028a3fca896c1539de8320289f45ea8a2bd4d80d481c9",
+                        "bytes":  1971
+                    },
+                    {
+                        "path":  "crates/adapters/aster/tests/selected_scope.rs",
+                        "sha256":  "55cc090f5cf38727d29ffce5e4d9b895323b4c4809ed6cdcefe8be1dcd8a5bed",
+                        "bytes":  16461
+                    },
+                    {
+                        "path":  "python/tests/unit/test_aster_selected_scope_config.py",
+                        "sha256":  "8043d0aea2909acc5b8a1bfdf274f352758b978705a93791f05962b06cab2011",
+                        "bytes":  5542
+                    },
+                    {
+                        "path":  "crates/adapters/binance/src/futures/websocket/streams/handler.rs",
+                        "sha256":  "6a5bdee3a1c4d8e907c8d705504f0db7b447f0b145218631aafa3e84c365cbe5",
+                        "bytes":  22300
+                    },
+                    {
+                        "path":  "crates/adapters/aster/src/websocket/mod.rs",
+                        "sha256":  "604bc90d72a962fe67bb5601fec347540af02d9b9a018801797874012cf05818",
+                        "bytes":  15640
+                    }
+                ],
+    "review_scope":  "source only, no built test or actual wheel execution",
+    "utc":  "2026-10-09T02:15:19.7456872Z",
+    "head":  "fff2aa6808afb76acf274a6a972322b5ac34d830"
+}

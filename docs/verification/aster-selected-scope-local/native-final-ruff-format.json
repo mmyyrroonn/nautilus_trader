@@ -1,0 +1,17 @@
+{
+  "argv": [
+    ".venv/Scripts/ruff.exe",
+    "format",
+    "--check",
+    "python/tests/unit/test_aster_selected_scope_config.py",
+    "python/nautilus_trader/adapters/aster/__init__.pyi",
+    "--config",
+    "python/pyproject.toml"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+  "started_utc": "2026-10-09T03:18:57.722767+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T03:18:57.744797+00:00"
+}

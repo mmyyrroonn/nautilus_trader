@@ -1,0 +1,59 @@
+   Compiling nautilus-core v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\core)
+   Compiling nautilus-common v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\common)
+   Compiling nautilus-serialization v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\serialization)
+    Checking tokio-rustls v0.26.4
+    Checking rustls-platform-verifier v0.7.0
+    Checking hyper-rustls v0.27.9
+    Checking tokio-tungstenite v0.30.0
+    Checking sockudo-ws v2.0.1
+    Checking reqwest v0.13.4
+    Checking nautilus-model v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\model)
+    Checking nautilus-cryptography v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\cryptography)
+    Checking nautilus-network v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\network)
+    Checking nautilus-execution v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\execution)
+    Checking nautilus-live v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\live)
+    Checking nautilus-binance v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\adapters\binance)
+    Checking nautilus-aster v0.63.0 (E:\persarb\worktrees\entropy-aster-proof\crates\adapters\aster)
+error: unreachable `pub` item
+    --> crates\adapters\aster\src\execution.rs:1314:5
+     |
+1314 |     pub fn is_live(&self) -> bool { self.readiness.upgrade().is_some() }
+     |     ---^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |     |
+     |     help: consider restricting its visibility: `pub(crate)`
+     |
+     = note: requested on the command line with `-D unreachable-pub`
+
+error: unreachable `pub` item
+    --> crates\adapters\aster\src\execution.rs:1316:5
+     |
+1316 |     pub fn snapshot_json(&self) -> anyhow::Result<Option<String>> {
+     |     ---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |     |
+     |     help: consider restricting its visibility: `pub(crate)`
+
+error: unreachable `pub` item
+  --> crates\adapters\aster\src\scope.rs:34:5
+   |
+34 |     pub fn parse(raw: &str, venue: Venue, loaded: Option<&[String]>, load_all: bool) -> anyhow::Result<Self> {
+   |     ---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |     |
+   |     help: consider restricting its visibility: `pub(crate)`
+
+error: unreachable `pub` item
+  --> crates\adapters\aster\src\scope.rs:54:5
+   |
+54 |     pub fn select(&self, instruments: &[InstrumentAny]) -> anyhow::Result<Vec<InstrumentAny>> {
+   |     ---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |     |
+   |     help: consider restricting its visibility: `pub(crate)`
+
+error: unreachable `pub` item
+  --> crates\adapters\aster\src\scope.rs:97:5
+   |
+97 |     pub fn fresh(&self, generation: u64, now_ns: u64, max_age_ms: u64) -> bool {
+   |     ---^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |     |
+   |     help: consider restricting its visibility: `pub(crate)`
+
+error: could not compile `nautilus-aster` (lib) due to 5 previous errors

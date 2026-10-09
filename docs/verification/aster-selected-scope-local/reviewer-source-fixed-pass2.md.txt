@@ -1,0 +1,23 @@
+# Independent fixed-source and pure-test review, pass 2
+
+Captured source byte hashes/UTC: reviewer-source-fixed-pass2.json. Native source is the optional selected-scope dependency in entropy-aster-proof; app source is entropy-execution-app. No source changes, Cargo/build/install, native imports, actual venue/node operations, credentials/.env access or Git/GitHub mutation by this reviewer. Temporary probes/reports are outside both worktrees.
+
+## Native selected-scope review
+
+The remaining native Money blocker is fixed: canonical asset code validation precedes currency resolution, each raw balance/available Decimal is parsed exactly and Money::from_decimal(...).as_decimal must equal the original. Overflow or currency precision mismatch therefore fails before AccountState projection. Other authorizing balance components are parsed exactly, while the selected available amount is bounded by wallet total. Unsupported precision is not rounded into readiness.
+
+The accepted raw-ingress-before-queue, separate client-only Weak lifetime, exact original numeric/order/history/actual fill validation and final selected cumulative fill coverage fixes remain intact. No new material source blocker identified. Current selected HTTP inventory/readiness is explicitly separate from engine adoption, durable cold recovery, whole-account coverage, run ownership and funding. Source review passes within that limited contract, pending actual native/wheel artifact verification.
+
+## Application fixes and actual independent tests
+
+- reviewer-app-pure-fixed.json/.log: 2026-10-09T02:39:24.313241Z to 02:39:24.660029Z, 84 passed. Includes the submitted pure configuration/core/report cases and this reviewer's 5 edge probes. Do not add this count to earlier overlapping 70/84 runs.
+- reviewer-app-runtime-guards-fixed.json/.log: 02:40:35.503643Z to 02:40:36.259740Z, 12 passed, 7 actual-installed cases deselected. These exercise pure guard functions with synthetic projection-shaped inputs, not actual native factories/cache/Portfolio or kernel isolation.
+- reviewer-app-preview-fixed.json/.log: 02:40:36.398411Z to 02:40:36.638749Z, PASS real dry CLI guard after stdlib initialization: only supplied TOML opened, native/dotenv imports/env getter/socket/additional writes refused.
+
+Verified all first-review pure blockers are fixed: multiplier now enters quote notional/minimum/margin reserves/consideration/liquidation loss; contradictory terminal evidence marks owned Unknown and preserves worst reservation; duplicate trade comparisons include venue OID. Independent probes now pass, including cold restart no-new-risk and unknown late-fill reserve retention.
+
+Runtime now validates current account-qualified ordinary Cache orders/positions across all strategy IDs, exact owned intent CID/OID/TID/quantity/price/commission/native events and Portfolio against the filled ledger and selected native inventory. Current projection is a separately named flag; durable native_cache_recovery is always Unknown. HL current owned fills additionally need exact retained E5 raw financial facts and scope attribution. Numeric trade identity is only a protocol restriction, never standalone venue provenance. Genuine numeric actual REST reconciliation facts are retained; synthetic discrepancy UUIDs and foreign events cannot grant ownership. Aster actual source attribution remains limited to normal typed native projection and overall economics remains incomplete.
+
+Loss evidence is refreshed immediately after fills, before terminal advancement, and again before any new-risk dispatch. Its configured FX parity and current touch assumptions are labeled estimates; no actual cash income is invented. Raw venue closedPnl is separately retained with run allocation Unknown instead of aggregating a run realized PnL without opening lineage. Fees remain one engine commission with linked receipt evidence, not double applied. Funding, whole-account flat, cash transfers and complete USD economics remain Unknown.
+
+No new material source blocker found in this review. Product acceptance is still pending the 7 actual installed-native loopback cases, native focused executables, actual generated stubs/wheel binary/source binding, fault/restart and socket teardown evidence. Test deselection is not native acceptance. Kernel network isolation still lacks the required host guard (#29); numeric endpoint validation/pure socket guards do not close it. Authenticated real venue/entry-close criterion remains not run and app43 must remain open for that criterion.

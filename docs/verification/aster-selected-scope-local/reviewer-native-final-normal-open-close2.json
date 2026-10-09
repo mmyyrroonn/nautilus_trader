@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "E:/persarb/nautilus_trader/target/nextest/deps/exec_client-399d71d1fa0ef85d.exe",
+    "test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once",
+    "--test-threads=1"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+  "started_utc": "2026-10-09T03:19:24.964835+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T03:19:28.461140+00:00"
+}

@@ -1,0 +1,13 @@
+{
+  "argv": [
+    "E:/persarb/nautilus_trader/target/nextest/deps/selected_scope-c23cd16123685453.exe",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+  "started_utc": "2026-10-09T02:45:50.803692+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T02:45:54.736328+00:00"
+}

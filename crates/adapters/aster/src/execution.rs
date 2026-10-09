@@ -30,7 +30,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
     str::FromStr,
-    sync::Arc,
+    sync::{Arc, Weak},
     time::Duration,
 };
 
@@ -40,14 +40,17 @@ use async_trait::async_trait;
 use futures_util::StreamExt;
 use nautilus_binance::{
     common::{
-        enums::{BinanceEnvironment, BinancePositionSide, BinanceProductType},
+        enums::{BinanceEnvironment, BinanceOrderStatus, BinancePositionSide, BinanceProductType},
         fees::{FeeScope, clear_instrument_fee, clear_scope_fees, register_instrument_fees},
         symbol::format_binance_symbol,
     },
     futures::{
         http::{client::BinanceFuturesHttpClient, error::BinanceFuturesHttpError},
         websocket::streams::{
-            messages::{BinanceFuturesAccountUpdateMsg, BinanceFuturesWsStreamsMessage},
+            messages::{
+                BinanceFuturesAccountUpdateMsg, BinanceFuturesOrderUpdateMsg,
+                BinanceFuturesWsStreamsMessage,
+            },
             parse_exec::{
                 parse_futures_order_update_to_fill, parse_futures_order_update_to_order_status,
             },
@@ -84,7 +87,7 @@ use nautilus_model::{
     instruments::{Instrument, InstrumentAny},
     orders::{Order, OrderAny},
     reports::{ExecutionMassStatus, FillReport, OrderStatusReport, PositionStatusReport},
-    types::{AccountBalance, Currency, MarginBalance, Quantity},
+    types::{AccountBalance, Currency, MarginBalance, Money, Quantity},
 };
 use nautilus_network::{
     SocketState,
@@ -108,6 +111,10 @@ use crate::{
             AsterBalance, AsterOrder, AsterPositionRisk, AsterUserTrade, millis_to_nanos,
             parse_decimal, parse_order_side,
         },
+    },
+    scope::{
+        SelectedBalance, SelectedOpenOrder, SelectedPosition, SelectedScopePolicy, SelectedWitness,
+        exact_decimal,
     },
     websocket::AsterUserStreamClient,
 };
@@ -567,6 +574,12 @@ struct StreamState {
     /// The order ID is retained independently of `working_orders`: a filled order can disappear
     /// from `openOrders` before its user-trade history becomes readable.
     pending_orders: AHashMap<Ustr, Ustr>,
+    /// Selected history whose atomic bundles cannot establish real fill chronology.
+    ///
+    /// This survives reconnects and targeted recovery for the client lifetime. A status,
+    /// fresh balance or position snapshot cannot repair economics already delivered out of
+    /// sequence or authorize replay of unresolved cross-order history.
+    selected_chronology_debt: bool,
     /// Exact quantities covered by trade IDs already delivered to the engine, keyed by venue
     /// order ID. A cumulative order status is safe only when this amount matches it.
     confirmed_fill_qty: AHashMap<Ustr, Decimal>,
@@ -672,7 +685,8 @@ impl StreamState {
     }
 
     fn has_recovery_debt(&self) -> bool {
-        !self.pending_trades.is_empty()
+        self.selected_chronology_debt
+            || !self.pending_trades.is_empty()
             || !self.pending_orders.is_empty()
             || self.unresolved_coverage_count() > 0
     }
@@ -1080,6 +1094,9 @@ impl StreamState {
     /// Advances the symbol checkpoint only after the history request and every missed order in
     /// it were delivered successfully. WebSocket observations never call this method.
     fn advance_history_checkpoint(&mut self, symbol: Ustr, end_ms: i64) {
+        if self.selected_chronology_debt {
+            return;
+        }
         self.history_checkpoints
             .insert(symbol, end_ms.max(self.session_start_ms));
     }
@@ -1140,6 +1157,9 @@ struct Readiness {
     generation: u64,
     mode_verified: bool,
     reason: Option<String>,
+    selected_policy: Option<SelectedScopePolicy>,
+    selected_witness: Option<SelectedWitness>,
+    stream_live: bool,
 }
 
 impl Default for Readiness {
@@ -1149,11 +1169,34 @@ impl Default for Readiness {
             generation: 0,
             mode_verified: false,
             reason: Some("the session has not connected".to_string()),
+            selected_policy: None,
+            selected_witness: None,
+            stream_live: false,
         }
     }
 }
 
 impl Readiness {
+    fn selected_refusal(&self, now_ns: u64) -> Option<String> {
+        let policy = self.selected_policy.as_ref()?;
+        let valid = self.allows_new_risk()
+            && self.mode_verified
+            && self.stream_live
+            && self
+                .selected_witness
+                .as_ref()
+                .is_some_and(|w| w.fresh(self.generation, now_ns, policy.max_age_ms));
+        (!valid).then(|| {
+            "Aster selected account scope has no fresh current complete witness".to_owned()
+        })
+    }
+
+    fn invalidate_selected(&mut self, reason: &str) {
+        if self.selected_policy.is_some() {
+            self.degrade(reason);
+        }
+    }
+
     fn allows_new_risk(&self) -> bool {
         self.phase == ReadinessPhase::Ready
     }
@@ -1190,6 +1233,8 @@ impl Readiness {
     fn begin_connect(&mut self) -> u64 {
         self.generation = self.generation.wrapping_add(1);
         self.phase = ReadinessPhase::Connecting;
+        self.selected_witness = None;
+        self.stream_live = false;
         self.mode_verified = false;
         self.reason = None;
         self.generation
@@ -1200,6 +1245,7 @@ impl Readiness {
     /// A client that is stopping is not brought back to reconciling: the pass may still run,
     /// but it cannot move the readiness out of `Stopping`.
     fn begin_reconcile(&mut self) -> u64 {
+        self.selected_witness = None;
         self.generation = self.generation.wrapping_add(1);
         if self.phase != ReadinessPhase::Stopping {
             self.phase = ReadinessPhase::Reconciling;
@@ -1245,6 +1291,7 @@ impl Readiness {
 
         self.generation = self.generation.wrapping_add(1);
         self.phase = ReadinessPhase::Degraded;
+        self.selected_witness = None;
         self.reason = Some(reason.into());
     }
 
@@ -1254,6 +1301,8 @@ impl Readiness {
     /// drop cannot publish readiness afterwards: the socket must come back and a new pass must
     /// verify the account before new risk is admitted.
     fn socket_disconnected(&mut self) {
+        self.stream_live = false;
+        self.selected_witness = None;
         if self.phase == ReadinessPhase::Stopping {
             return;
         }
@@ -1264,8 +1313,125 @@ impl Readiness {
     }
 
     fn stop(&mut self) {
+        self.selected_witness = None;
+        self.generation = self.generation.wrapping_add(1);
+        self.stream_live = false;
         self.phase = ReadinessPhase::Stopping;
         self.reason = Some("the client is stopping".to_string());
+    }
+}
+
+/// Factory-bound selected-scope diagnostics which do not retain a native client.
+#[derive(Debug, Clone)]
+pub(crate) struct SelectedScopeDiagnostics {
+    readiness: Weak<RwLock<Readiness>>,
+    client_lifetime: Weak<()>,
+    state: Weak<RwLock<StreamState>>,
+    instruments: Weak<RwLock<InstrumentIndex>>,
+    clock: &'static AtomicTime,
+    account_id: AccountId,
+    venue: Venue,
+    user_address: String,
+    signer_address: String,
+    source_endpoint: String,
+}
+
+impl SelectedScopeDiagnostics {
+    pub(crate) fn is_live(&self) -> bool {
+        self.client_lifetime.strong_count() > 0
+    }
+
+    pub(crate) fn snapshot_json(&self) -> anyhow::Result<Option<String>> {
+        if !self.is_live() {
+            return Ok(None);
+        }
+        let Some(readiness) = self.readiness.upgrade() else {
+            return Ok(None);
+        };
+        let Some(state) = self.state.upgrade() else {
+            return Ok(None);
+        };
+        let Some(instruments) = self.instruments.upgrade() else {
+            return Ok(None);
+        };
+        let state_guard = state.read();
+        let guard = readiness.read();
+        let Some(policy) = guard.selected_policy.as_ref() else {
+            return Ok(None);
+        };
+        let generation = guard.generation;
+        let metadata_current = guard.selected_witness.as_ref().is_some_and(|w| {
+            policy
+                .select(&instruments.read().snapshot())
+                .is_ok_and(|current| current == w.metadata)
+        });
+        let trusted = guard
+            .selected_refusal(self.clock.get_time_ns().as_u64())
+            .is_none()
+            && !state_guard.has_recovery_debt()
+            && metadata_current;
+        let witness = guard.selected_witness.as_ref().filter(|_| trusted);
+        let copied_received_time = witness.map(|w| w.received_time_ns);
+        let mut snapshot = serde_json::json!({
+            "schema_version": 1, "account_id": self.account_id.to_string(), "venue": self.venue.to_string(),
+            "user_address": self.user_address, "signer_address": self.signer_address,
+            "source_endpoint": self.source_endpoint, "generation": generation,
+            "phase": guard.phase.as_str(), "ready": trusted, "trusted": trusted,
+            "stream_live": guard.stream_live, "mode_verified": guard.mode_verified,
+            "recovery_complete": trusted, "fill_chronology_debt": state_guard.selected_chronology_debt,
+            "whole_account_verified": false,
+            "run_ownership_verified": false, "funding_verified": false,
+            "source": "native_http_selected_scope", "source_time_ns": null,
+            "source_time_origin": "venue_does_not_supply_snapshot_time",
+            "received_time_ns": witness.map(|w| w.received_time_ns), "max_age_ms": policy.max_age_ms,
+            "instrument_ids": policy.instrument_ids, "balance_asset": policy.balance_asset,
+            "positions": witness.map_or(&[][..], |w| w.positions.as_slice()),
+            "balance": witness.map(|w| &w.balance),
+            "open_orders": witness.map_or(&[][..], |w| w.open_orders.as_slice()),
+            "reason": if trusted { None } else { guard.reason.as_deref().or(Some("selected scope is missing, stale or superseded")) },
+        });
+        drop(guard);
+        drop(state_guard);
+        // Copying and JSON serialization cannot let an older generation borrow a later recovery
+        let copied = serde_json::to_string(&snapshot)?;
+        let state_guard = state.read();
+        let guard = readiness.read();
+        let witness_current = guard.selected_witness.as_ref().is_some_and(|w| {
+            Some(w.received_time_ns) == copied_received_time
+                && guard.selected_policy.as_ref().is_some_and(|p| {
+                    p.select(&instruments.read().snapshot())
+                        .is_ok_and(|m| m == w.metadata)
+                })
+        });
+        if !self.is_live() {
+            return Ok(None);
+        }
+        if guard.generation != generation
+            || (trusted
+                && (state_guard.has_recovery_debt()
+                    || guard
+                        .selected_refusal(self.clock.get_time_ns().as_u64())
+                        .is_some()
+                    || !witness_current))
+        {
+            snapshot["ready"] = false.into();
+            snapshot["trusted"] = false.into();
+            snapshot["recovery_complete"] = false.into();
+            snapshot["received_time_ns"] = serde_json::Value::Null;
+            snapshot["positions"] = serde_json::json!([]);
+            snapshot["balance"] = serde_json::Value::Null;
+            snapshot["open_orders"] = serde_json::json!([]);
+            snapshot["reason"] = "scope changed while the diagnostic was copied".into();
+            let copied = serde_json::to_string(&snapshot)?;
+            if !self.is_live() {
+                return Ok(None);
+            }
+            return Ok(Some(copied));
+        }
+        if !self.is_live() {
+            return Ok(None);
+        }
+        Ok(Some(copied))
     }
 }
 
@@ -1276,6 +1442,7 @@ impl Readiness {
 /// The execution client's `Rc`-based cache deliberately stays out.
 #[derive(Debug, Clone)]
 struct SessionContext {
+    client_lifetime: Weak<()>,
     http_client: AsterHttpClient,
     emitter: ExecutionEventEmitter,
     account_id: AccountId,
@@ -1309,9 +1476,31 @@ impl SessionContext {
     /// account, the session stays degraded rather than reporting a completeness it did not
     /// reach. A pass superseded by a later one cannot mark the account ready at all.
     async fn recover(&self, reason: &str) {
-        let generation = self.readiness.write().begin_reconcile();
+        let generation = {
+            let mut readiness = self.readiness.write();
+            if readiness.selected_policy.is_some() {
+                readiness.mode_verified = false;
+            }
+            readiness.begin_reconcile()
+        };
 
-        match self.compensate(reason).await {
+        let policy = self.readiness.read().selected_policy.clone();
+        let result = if let Some(policy) = policy {
+            match tokio::time::timeout(Duration::from_millis(policy.max_refresh_ms), async {
+                self.compensate(reason).await?;
+                self.refresh_selected_scope(&policy, generation)
+                    .await
+                    .map_err(|e| e.to_string())
+            })
+            .await
+            {
+                Ok(result) => result,
+                Err(_) => Err("selected account refresh exceeded its finite deadline".to_owned()),
+            }
+        } else {
+            self.compensate(reason).await
+        };
+        match result {
             Ok(()) => {
                 // Hold the state read lock through the readiness transition. A concurrent
                 // evidence handler takes state -> readiness while recording debt, so it cannot
@@ -1330,6 +1519,489 @@ impl SessionContext {
         }
     }
 
+    fn check_submit_admission(
+        &self,
+        reduce_only: bool,
+        admitted_generation: Option<u64>,
+        consume: bool,
+    ) -> Result<(), String> {
+        let state = self.state.read();
+        let mut readiness = self.readiness.write();
+        if readiness.selected_policy.is_some() && self.client_lifetime.strong_count() == 0 {
+            return Err("Aster selected account client was destroyed before dispatch".to_owned());
+        }
+        if let Some(reason) = readiness.refusal(reduce_only) {
+            return Err(reason);
+        }
+        if admitted_generation.is_some_and(|generation| generation != readiness.generation) {
+            return Err("Aster execution readiness changed after order admission".to_owned());
+        }
+        if !reduce_only && let Some(policy) = readiness.selected_policy.as_ref() {
+            if state.has_recovery_debt() {
+                return Err("Aster recovery evidence is pending".to_owned());
+            }
+            if let Some(reason) = readiness.selected_refusal(self.clock.get_time_ns().as_u64()) {
+                return Err(reason);
+            }
+            let current = policy
+                .select(&self.instruments.read().snapshot())
+                .map_err(|e| e.to_string())?;
+            if readiness
+                .selected_witness
+                .as_ref()
+                .is_none_or(|w| w.metadata != current)
+            {
+                return Err("Aster selected instrument metadata changed before send".to_owned());
+            }
+        }
+        if consume {
+            readiness.invalidate_selected("an order write consumed the selected account witness");
+        }
+        Ok(())
+    }
+
+    fn validate_selected_balances(&self, balances: &[AsterBalance]) -> anyhow::Result<()> {
+        if self.readiness.read().selected_policy.is_none() {
+            return Ok(());
+        }
+        for row in balances {
+            anyhow::ensure!(
+                !row.asset.as_str().is_empty()
+                    && row.asset.as_str().len() <= 16
+                    && row
+                        .asset
+                        .as_str()
+                        .bytes()
+                        .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit()),
+                "Selected balance asset is not an exact currency code"
+            );
+            let currency = resolve_currency(row.asset.as_str());
+            for raw in std::iter::once(&row.balance).chain(row.available_balance.iter()) {
+                let amount = exact_decimal(raw, "balance amount")?;
+                anyhow::ensure!(
+                    Money::from_decimal(amount, currency)?.as_decimal() == amount,
+                    "Selected balance amount cannot be represented exactly by native Money"
+                );
+            }
+            for raw in [
+                &row.available_balance,
+                &row.cross_wallet_balance,
+                &row.cross_un_pnl,
+                &row.max_withdraw_amount,
+            ]
+            .into_iter()
+            .flatten()
+            {
+                exact_decimal(raw, "balance component")?;
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_selected_positions(&self, rows: &[AsterPositionRisk]) -> anyhow::Result<()> {
+        if self.readiness.read().selected_policy.is_none() {
+            return Ok(());
+        }
+        for row in rows {
+            let quantity = exact_decimal(&row.position_amt, "position quantity")?;
+            let entry = exact_decimal(&row.entry_price, "entry price")?;
+            anyhow::ensure!(
+                row.position_side == Some(BinancePositionSide::Both)
+                    && (quantity.is_zero() || entry > Decimal::ZERO),
+                "Invalid selected position side or entry price"
+            );
+            if let Some(context) = self.context_for(&row.symbol) {
+                anyhow::ensure!(
+                    quantity.round_dp(u32::from(context.size_precision)) == quantity,
+                    "Selected position quantity exceeds native precision"
+                );
+            }
+            if let Some(time) = row.update_time {
+                anyhow::ensure!(
+                    time >= 0 && time <= self.now_ms(),
+                    "Selected position time is invalid or in the future"
+                );
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_selected_stream_order(
+        &self,
+        msg: &BinanceFuturesOrderUpdateMsg,
+        context: &SymbolContext,
+    ) -> anyhow::Result<()> {
+        if self.readiness.read().selected_policy.is_none() {
+            return Ok(());
+        }
+        let order = &msg.order;
+        let original = exact_decimal(&order.original_qty, "stream original quantity")?;
+        let cumulative = exact_decimal(&order.cumulative_filled_qty, "stream cumulative quantity")?;
+        let last = exact_decimal(&order.last_filled_qty, "stream last quantity")?;
+        anyhow::ensure!(
+            original > Decimal::ZERO
+                && cumulative >= Decimal::ZERO
+                && cumulative <= original
+                && last >= Decimal::ZERO
+                && last <= cumulative,
+            "Invalid exact selected stream quantities"
+        );
+        anyhow::ensure!(
+            match order.order_status {
+                BinanceOrderStatus::PartiallyFilled =>
+                    cumulative > Decimal::ZERO && cumulative < original,
+                BinanceOrderStatus::Filled => cumulative == original,
+                BinanceOrderStatus::New | BinanceOrderStatus::PendingNew => cumulative.is_zero(),
+                BinanceOrderStatus::Unknown
+                | BinanceOrderStatus::NewInsurance
+                | BinanceOrderStatus::NewAdl => false,
+                _ => true,
+            },
+            "Selected stream status contradicts exact cumulative quantity"
+        );
+        for qty in [original, cumulative, last] {
+            anyhow::ensure!(
+                qty.round_dp(u32::from(context.size_precision)) == qty,
+                "Selected stream quantity exceeds native precision"
+            );
+        }
+        for raw in [
+            &order.original_price,
+            &order.average_price,
+            &order.last_filled_price,
+            &order.stop_price,
+        ] {
+            let price = exact_decimal(raw, "stream price")?;
+            anyhow::ensure!(
+                price >= Decimal::ZERO
+                    && price.round_dp(u32::from(context.price_precision)) == price,
+                "Selected stream price exceeds native precision"
+            );
+        }
+        if last > Decimal::ZERO {
+            anyhow::ensure!(
+                exact_decimal(&order.last_filled_price, "stream last price")? > Decimal::ZERO,
+                "Selected actual fill price is invalid"
+            );
+            let commission = exact_decimal(
+                order.commission.as_deref().ok_or_else(|| {
+                    anyhow::anyhow!("Selected actual stream commission is missing")
+                })?,
+                "stream commission",
+            )?;
+            let asset = order
+                .commission_asset
+                .filter(|a| !a.as_str().is_empty())
+                .ok_or_else(|| {
+                    anyhow::anyhow!("Selected actual stream commission asset is missing")
+                })?;
+            anyhow::ensure!(
+                commission.round_dp(u32::from(resolve_currency(asset.as_str()).precision))
+                    == commission,
+                "Selected actual stream commission exceeds native precision"
+            );
+        }
+        anyhow::ensure!(
+            order.position_side == BinancePositionSide::Both
+                && [msg.event_time, msg.transaction_time, order.trade_time]
+                    .into_iter()
+                    .all(|t| t >= 0 && t <= self.now_ms()),
+            "Selected stream side or time is invalid"
+        );
+        Ok(())
+    }
+
+    fn validate_selected_order(
+        &self,
+        order: &AsterOrder,
+        context: &SymbolContext,
+    ) -> anyhow::Result<()> {
+        if self.readiness.read().selected_policy.is_none() {
+            return Ok(());
+        }
+        let original = exact_decimal(&order.orig_qty, "original quantity")?;
+        let filled = exact_decimal(&order.executed_qty, "executed quantity")?;
+        anyhow::ensure!(
+            original > Decimal::ZERO && filled >= Decimal::ZERO && filled <= original,
+            "Invalid exact selected order quantities"
+        );
+        anyhow::ensure!(
+            match order.status {
+                BinanceOrderStatus::PartiallyFilled => filled > Decimal::ZERO && filled < original,
+                BinanceOrderStatus::Filled => filled == original,
+                BinanceOrderStatus::New | BinanceOrderStatus::PendingNew => filled.is_zero(),
+                BinanceOrderStatus::Unknown
+                | BinanceOrderStatus::NewInsurance
+                | BinanceOrderStatus::NewAdl => false,
+                _ => true,
+            },
+            "Selected order status contradicts exact cumulative quantity"
+        );
+        for qty in [original, filled] {
+            anyhow::ensure!(
+                qty.round_dp(u32::from(context.size_precision)) == qty,
+                "Selected order quantity exceeds native precision"
+            );
+        }
+        for raw in std::iter::once(&order.price)
+            .chain(order.avg_price.iter())
+            .chain(order.stop_price.iter())
+        {
+            let price = exact_decimal(raw, "order price")?;
+            anyhow::ensure!(
+                price >= Decimal::ZERO
+                    && price.round_dp(u32::from(context.price_precision)) == price,
+                "Selected order price exceeds native precision"
+            );
+        }
+        if let Some(raw) = order.cum_quote.as_deref() {
+            exact_decimal(raw, "cumulative quote")?;
+        }
+        anyhow::ensure!(
+            order.position_side == Some(BinancePositionSide::Both),
+            "Selected order does not explicitly confirm one-way position side"
+        );
+        for time in [order.time, order.update_time].into_iter().flatten() {
+            anyhow::ensure!(
+                time >= 0 && time <= self.now_ms(),
+                "Selected order time is invalid or in the future"
+            );
+        }
+        Ok(())
+    }
+
+    fn validate_selected_trade(
+        &self,
+        trade: &AsterUserTrade,
+        context: &SymbolContext,
+    ) -> anyhow::Result<()> {
+        if self.readiness.read().selected_policy.is_none() {
+            return Ok(());
+        }
+        let quantity = exact_decimal(&trade.qty, "trade quantity")?;
+        let price = exact_decimal(&trade.price, "trade price")?;
+        anyhow::ensure!(
+            quantity > Decimal::ZERO
+                && quantity.round_dp(u32::from(context.size_precision)) == quantity,
+            "Selected trade quantity exceeds native precision"
+        );
+        anyhow::ensure!(
+            price > Decimal::ZERO && price.round_dp(u32::from(context.price_precision)) == price,
+            "Selected trade price exceeds native precision"
+        );
+        let commission = exact_decimal(
+            trade
+                .commission
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("Selected actual commission is missing"))?,
+            "actual commission",
+        )?;
+        let asset = trade
+            .commission_asset
+            .filter(|a| !a.as_str().is_empty())
+            .ok_or_else(|| anyhow::anyhow!("Selected actual commission asset is missing"))?;
+        let currency = resolve_currency(asset.as_str());
+        anyhow::ensure!(
+            commission.round_dp(u32::from(currency.precision)) == commission,
+            "Selected actual commission exceeds native precision"
+        );
+        for raw in [&trade.quote_qty, &trade.realized_pnl]
+            .into_iter()
+            .flatten()
+        {
+            exact_decimal(raw, "trade component")?;
+        }
+        anyhow::ensure!(
+            trade.position_side == Some(BinancePositionSide::Both)
+                && trade.time >= 0
+                && trade.time <= self.now_ms(),
+            "Selected trade side or time is invalid"
+        );
+        Ok(())
+    }
+
+    /// Builds a witness only from a complete current native selected-scope HTTP pass.
+    async fn refresh_selected_scope(
+        &self,
+        policy: &SelectedScopePolicy,
+        generation: u64,
+    ) -> anyhow::Result<()> {
+        let metadata = policy.select(&self.instruments.read().snapshot())?;
+        let mode = self.http_client.query_position_mode().await?;
+        let received_time_ns = self.clock.get_time_ns().as_u64();
+        anyhow::ensure!(
+            !mode.dual_side_position,
+            "Aster selected scope requires confirmed one-way mode"
+        );
+        let balances = self.http_client.query_balances().await?;
+        anyhow::ensure!(
+            balances.len() <= 512,
+            "Aster selected balance snapshot exceeds its row bound"
+        );
+        self.validate_selected_balances(&balances)?;
+        let mut assets = BTreeSet::new();
+        for row in &balances {
+            anyhow::ensure!(assets.insert(row.asset), "Duplicate Aster balance asset");
+            row.total()?;
+            row.available()?;
+        }
+        let row = balances
+            .iter()
+            .find(|b| b.asset.as_str() == policy.balance_asset)
+            .ok_or_else(|| anyhow::anyhow!("Aster selected balance asset is missing"))?;
+        let total = exact_decimal(&row.balance, "balance")?;
+        let free = exact_decimal(
+            row.available_balance
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("Aster selected available balance is missing"))?,
+            "available balance",
+        )?;
+        anyhow::ensure!(
+            total >= Decimal::ZERO && free >= Decimal::ZERO,
+            "Aster selected balance is negative"
+        );
+        anyhow::ensure!(
+            row.margin_available == Some(true),
+            "Aster selected balance asset is not confirmed margin-available"
+        );
+        let validate_update = |time: Option<i64>| -> anyhow::Result<()> {
+            if let Some(time) = time {
+                anyhow::ensure!(
+                    time >= 0 && time <= self.now_ms(),
+                    "Aster row update time is invalid or in the future"
+                );
+            }
+            Ok(())
+        };
+        validate_update(row.update_time)?;
+        let balance = SelectedBalance {
+            asset: row.asset.to_string(),
+            total: total.to_string(),
+            // Publish the existing adapter's conservative wallet-bound available amount
+            free: free.min(total).to_string(),
+            source_update_time_ms: row.update_time,
+        };
+        let mut positions = Vec::with_capacity(metadata.len());
+        let mut open_orders = Vec::new();
+        let mut order_ids = BTreeSet::new();
+        for instrument in &metadata {
+            let symbol = instrument.raw_symbol();
+            let rows = self
+                .http_client
+                .query_position_risk(Some(symbol.as_str()))
+                .await?;
+            anyhow::ensure!(
+                rows.len() == 1 && rows[0].symbol == symbol.inner(),
+                "Aster selected position requires one explicit exact-symbol row"
+            );
+            let row = &rows[0];
+            anyhow::ensure!(
+                row.position_side == Some(BinancePositionSide::Both),
+                "Aster selected position side is not confirmed one-way"
+            );
+            let signed = exact_decimal(&row.position_amt, "position quantity")?;
+            let quantity = Quantity::from_decimal_dp(signed.abs(), instrument.size_precision())?;
+            anyhow::ensure!(
+                quantity.as_decimal() == signed.abs(),
+                "Aster selected quantity is not exact at native precision"
+            );
+            let entry = exact_decimal(&row.entry_price, "entry price")?;
+            if !signed.is_zero() {
+                anyhow::ensure!(
+                    entry > Decimal::ZERO,
+                    "Aster selected position entry price is invalid"
+                );
+            }
+            validate_update(row.update_time)?;
+            positions.push(SelectedPosition {
+                instrument_id: instrument.id().to_string(),
+                signed_quantity: signed.to_string(),
+                source_update_time_ms: row.update_time,
+            });
+            let orders = self
+                .http_client
+                .query_open_orders(Some(symbol.as_str()))
+                .await?;
+            anyhow::ensure!(
+                open_orders.len() + orders.len() <= 64,
+                "Aster selected open orders exceed their row bound"
+            );
+            for order in orders {
+                anyhow::ensure!(
+                    order.symbol == symbol.inner()
+                        && order.order_id > 0
+                        && order_ids.insert(order.order_id),
+                    "Aster selected open order identity is invalid or duplicate"
+                );
+                let context = self.context_for(&order.symbol).ok_or_else(|| {
+                    anyhow::anyhow!("Selected open-order symbol is no longer loaded")
+                })?;
+                self.validate_selected_order(&order, &context)?;
+                let cumulative = exact_decimal(&order.executed_qty, "executed quantity")?;
+                {
+                    let mut state = self.state.write();
+                    let id = Ustr::from(&order.order_id.to_string());
+                    if state.coverage_unknown(&id) || state.confirmed_fill_qty(&id) != cumulative {
+                        state.note_pending_order(id, order.symbol);
+                        anyhow::bail!(
+                            "Selected open-order cumulative quantity has no complete actual trade coverage"
+                        );
+                    }
+                }
+                let report = order.to_order_status_report(
+                    self.account_id,
+                    instrument.id(),
+                    instrument.price_precision(),
+                    instrument.size_precision(),
+                    self.treat_expired_as_canceled,
+                    self.clock.get_time_ns(),
+                )?;
+                anyhow::ensure!(
+                    !report.order_status.is_closed(),
+                    "Aster open-order snapshot contains a terminal order"
+                );
+                open_orders.push(SelectedOpenOrder {
+                    client_order_id: order.client_order_id,
+                    venue_order_id: order.order_id.to_string(),
+                    instrument_id: instrument.id().to_string(),
+                });
+            }
+        }
+        anyhow::ensure!(
+            policy.select(&self.instruments.read().snapshot())? == metadata,
+            "Aster selected metadata changed during the snapshot"
+        );
+        let state = self.state.read();
+        let mut readiness = self.readiness.write();
+        anyhow::ensure!(
+            self.client_lifetime.strong_count() > 0
+                && !state.has_recovery_debt()
+                && readiness.generation == generation
+                && readiness.stream_live
+                && readiness.phase == ReadinessPhase::Reconciling,
+            "Aster selected proof was superseded or recovery is incomplete"
+        );
+        let witness = SelectedWitness {
+            generation,
+            received_time_ns,
+            positions,
+            balance,
+            open_orders,
+            metadata,
+        };
+        anyhow::ensure!(
+            witness.fresh(
+                generation,
+                self.clock.get_time_ns().as_u64(),
+                policy.max_age_ms
+            ),
+            "Aster selected proof expired before completion"
+        );
+        readiness.verify_position_mode();
+        readiness.selected_witness = Some(witness);
+        Ok(())
+    }
+
     /// Converts a venue order into a report, or `Ok(None)` when its symbol is not loaded.
     ///
     /// An unloaded symbol is out of this client's scope (the account may trade instruments the
@@ -1344,6 +2016,7 @@ impl SessionContext {
             return Ok(None);
         };
 
+        self.validate_selected_order(order, &context)?;
         order
             .to_order_status_report(
                 self.account_id,
@@ -1440,6 +2113,18 @@ impl SessionContext {
                     anyhow::anyhow!("Aster historical order query failed for {symbol}: {e}")
                 })?;
 
+                if self.readiness.read().selected_policy.is_some() {
+                    let context = self
+                        .context_for(&Ustr::from(symbol))
+                        .ok_or_else(|| anyhow::anyhow!("Selected history symbol is not loaded"))?;
+                    for order in &page {
+                        anyhow::ensure!(
+                            order.symbol.as_str() == symbol,
+                            "Selected history order is outside the requested symbol"
+                        );
+                        self.validate_selected_order(order, &context)?;
+                    }
+                }
                 if page.is_empty() {
                     break;
                 }
@@ -1536,6 +2221,18 @@ impl SessionContext {
                 }
                 .map_err(|e| anyhow::anyhow!("Aster user trades query failed for {symbol}: {e}"))?;
 
+                if self.readiness.read().selected_policy.is_some() {
+                    let context = self
+                        .context_for(&Ustr::from(symbol))
+                        .ok_or_else(|| anyhow::anyhow!("Selected history symbol is not loaded"))?;
+                    for trade in &page {
+                        anyhow::ensure!(
+                            trade.symbol.as_str() == symbol,
+                            "Selected history trade is outside the requested symbol"
+                        );
+                        self.validate_selected_trade(trade, &context)?;
+                    }
+                }
                 if page.is_empty() {
                     break;
                 }
@@ -1612,6 +2309,18 @@ impl SessionContext {
                     anyhow::anyhow!("Aster pending trade query failed for {symbol}: {e}")
                 })?;
 
+            if self.readiness.read().selected_policy.is_some() {
+                let context = self
+                    .context_for(&Ustr::from(symbol))
+                    .ok_or_else(|| anyhow::anyhow!("Selected history symbol is not loaded"))?;
+                for trade in &page {
+                    anyhow::ensure!(
+                        trade.symbol.as_str() == symbol,
+                        "Selected history trade is outside the requested symbol"
+                    );
+                    self.validate_selected_trade(trade, &context)?;
+                }
+            }
             if page.is_empty() {
                 break;
             }
@@ -1804,6 +2513,7 @@ impl SessionContext {
             coverage == FillCoverage::Complete
                 && failure.is_none()
                 && !fills_uncovered
+                && !state.selected_chronology_debt
                 && state.pending_trades.is_empty()
                 && state.pending_orders.is_empty()
                 && state.unresolved_coverage_count() == 0
@@ -1817,19 +2527,21 @@ impl SessionContext {
         // were in flight. Read the live debt unconditionally at the end of the pass instead of
         // trusting the earlier fill snapshot; readiness must never be restored over a debt that
         // was raised during recovery.
-        let (pending_trades, pending_orders, unknown_coverage) = {
+        let (pending_trades, pending_orders, unknown_coverage, chronology_debt) = {
             let state = self.state.read();
             (
                 state.pending_trades.len(),
                 state.pending_orders.len(),
                 state.unresolved_coverage_count(),
+                state.selected_chronology_debt,
             )
         };
-        if pending_trades > 0 || pending_orders > 0 || unknown_coverage > 0 {
+        if pending_trades > 0 || pending_orders > 0 || unknown_coverage > 0 || chronology_debt {
             failure.get_or_insert_with(|| {
                 format!(
                     "{} uncovered order(s), {pending_trades} pending trade(s), and \
-                     {pending_orders} pending order(s) ({unknown_coverage} unknown coverage)",
+                     {pending_orders} pending order(s) ({unknown_coverage} unknown coverage, \
+                     selected chronology debt={chronology_debt})",
                     fills.uncovered.len(),
                 )
             });
@@ -2070,6 +2782,10 @@ impl SessionContext {
     /// same bundling the stream path uses: a bare fill would let the engine bootstrap a
     /// synthetic order at the fill quantity and reject the order's later events.
     async fn compensate_fills(&self) -> anyhow::Result<CompensatedFills> {
+        anyhow::ensure!(
+            !self.state.read().selected_chronology_debt,
+            "Selected Aster fill chronology remains unresolved for this client"
+        );
         let mut recovered = CompensatedFills::default();
         let symbols: Vec<Ustr> = {
             let guard = self.instruments.read();
@@ -2126,6 +2842,48 @@ impl SessionContext {
                 by_order.entry(trade.order_id).or_default().push(trade);
             }
 
+            // An opening bundle must precede a later reduce-only close. Hash iteration can
+            // otherwise deliver the close first: the engine retains its order economics but
+            // correctly refuses to create a position from a reduce-only fill.
+            let mut by_order: Vec<_> = by_order.into_iter().collect();
+            for (_, trades) in &mut by_order {
+                trades.sort_by_key(|trade| (trade.time, trade.id));
+            }
+            by_order.sort_by_key(|(order_id, trades)| {
+                (
+                    trades.first().map_or(i64::MAX, |trade| trade.time),
+                    *order_id,
+                )
+            });
+
+            // The engine consumes an order and its cumulative real fills atomically. Do not
+            // pretend those bundles establish chronology for A(t1), B(t2), A(t3), or for
+            // different orders sharing a venue millisecond. Selected admission requires
+            // strictly separated batches; retain ambiguous rows for recovery without
+            // publishing a partial economic projection or advancing its checkpoint.
+            let selected = self.readiness.read().selected_policy.is_some();
+            if selected
+                && by_order.windows(2).any(|pair| match pair {
+                    [previous, next] => previous.1.last().is_some_and(|last| {
+                        next.1.first().is_some_and(|first| last.time >= first.time)
+                    }),
+                    _ => false,
+                })
+            {
+                let mut state = self.state.write();
+                state.selected_chronology_debt = true;
+                for (order_id, trades) in &by_order {
+                    state.note_pending_order(Ustr::from(&order_id.to_string()), symbol);
+                    for trade in trades {
+                        state.note_pending_fill(symbol, trade.id);
+                    }
+                }
+                self.readiness.write().degrade(
+                    "selected recovery has interleaved or tied cross-order fill chronology",
+                );
+                anyhow::bail!("Selected Aster recovery cannot safely order atomic fill bundles");
+            }
+
             let mut symbol_complete = true;
             for (venue_order_id, trades) in by_order {
                 let outcome = self
@@ -2175,6 +2933,11 @@ impl SessionContext {
         let mut unparsable = 0usize;
 
         for trade in trades {
+            if let Err(e) = self.validate_selected_trade(trade, &context) {
+                log::error!("Selected Aster trade could not be parsed exactly: {e}");
+                unparsable += 1;
+                continue;
+            }
             match trade.to_fill_report(
                 self.account_id,
                 context.instrument_id,
@@ -2294,6 +3057,7 @@ impl SessionContext {
             .iter()
             .filter(|trade| trade.order_id == venue_order_id)
             .map(|trade| {
+                self.validate_selected_trade(trade, &context)?;
                 trade
                     .to_fill_report(
                         self.account_id,
@@ -2633,6 +3397,9 @@ impl SessionContext {
         direct_fills: Vec<FillReport>,
         require_trade_evidence: bool,
     ) -> bool {
+        if self.state.read().selected_chronology_debt {
+            return false;
+        }
         let evidence = self
             .resolve_order_evidence(
                 &symbol,
@@ -2669,12 +3436,39 @@ impl SessionContext {
         // reports by acceptance before applying fills, so pull acceptance back to the earliest
         // real fill before sending the atomic bundle.
         let mut report = report;
+        let mut fills = fills;
+        fills.sort_by_key(|fill| (fill.ts_event, fill.trade_id));
         let fill_refs: Vec<&FillReport> = fills.iter().collect();
         align_report_with_fills(&mut report, &fill_refs);
         let venue_order_id_str = report.venue_order_id.inner();
+        let selected = self.readiness.read().selected_policy.is_some();
         let (_deliverable, send_error) = {
             let mut state = self.state.write();
-            if !full_history && state.coverage_unknown(&venue_order_id_str) {
+            let late_selected_fill = selected
+                && state.applied_trades.get(&symbol).is_some_and(|applied| {
+                    fills.iter().any(|fill| {
+                        fill.trade_id.as_str().parse::<i64>().is_ok_and(|id| {
+                            !state.has_fill(&symbol, id)
+                                && (fill.ts_event.as_u64() / 1_000_000) as i64 <= applied.last_ts_ms
+                        })
+                    })
+                });
+            if state.selected_chronology_debt || late_selected_fill {
+                state.selected_chronology_debt = true;
+                state.note_pending_order(venue_order_id_str, symbol);
+                for fill in &fills {
+                    if let Ok(trade_id) = fill.trade_id.as_str().parse::<i64>() {
+                        state.note_pending_fill(symbol, trade_id);
+                    }
+                }
+                self.readiness.write().degrade(
+                    "selected fill chronology is late or ambiguous relative to delivered facts",
+                );
+                (
+                    Vec::new(),
+                    Some("selected fill chronology remains unresolved".to_string()),
+                )
+            } else if !full_history && state.coverage_unknown(&venue_order_id_str) {
                 state.note_pending_order(venue_order_id_str, symbol);
                 for fill in &fills {
                     if let Ok(trade_id) = fill.trade_id.as_str().parse::<i64>() {
@@ -2828,6 +3622,7 @@ impl SessionContext {
             .await
             .map_err(|e| anyhow::anyhow!("Aster balance request failed: {e}"))?;
 
+        self.validate_selected_balances(&balances)?;
         let parsed = parse_account_balances(&balances);
         // This snapshot seeds the conservative bounds every later stream update tightens, and
         // verifies whatever a stream row had left owed - unless a bound moved while it was in
@@ -2874,6 +3669,7 @@ impl SessionContext {
             .await
             .map_err(|e| anyhow::anyhow!("Aster position risk query failed: {e}"))?;
 
+        self.validate_selected_positions(&positions)?;
         // Neither newly loaded nor unloaded instruments are covered by this in-flight request.
         retain_position_scope(&mut scope, &self.instruments.read());
         let parsed = parse_position_snapshot(
@@ -2901,6 +3697,7 @@ enum PositionMode {
 /// Live execution client for the Aster DEX.
 #[derive(Debug)]
 pub struct AsterExecutionClient {
+    client_lifetime: Arc<()>,
     core: ExecutionClientCore,
     clock: &'static AtomicTime,
     config: AsterExecutionClientConfig,
@@ -2940,6 +3737,18 @@ impl AsterExecutionClient {
         clock: &'static AtomicTime,
     ) -> anyhow::Result<Self> {
         config.validate()?;
+        let selected_policy = config
+            .selected_scope_policy_json
+            .as_deref()
+            .map(|raw| {
+                SelectedScopePolicy::parse(
+                    raw,
+                    config.resolved_venue(),
+                    config.instrument_provider.load_ids.as_deref(),
+                    config.instrument_provider.load_all,
+                )
+            })
+            .transpose()?;
 
         let credential = AsterCredential::resolve(
             config.signer_private_key.as_deref(),
@@ -2988,6 +3797,7 @@ impl AsterExecutionClient {
         );
 
         Ok(Self {
+            client_lifetime: Arc::new(()),
             core,
             clock,
             config,
@@ -3000,7 +3810,10 @@ impl AsterExecutionClient {
             fee_scope: FeeScope::new(&http_base_for_scope, config_account_id.as_str()),
             instruments: Arc::new(RwLock::new(InstrumentIndex::default())),
             stream_state: Arc::new(RwLock::new(StreamState::default())),
-            readiness: Arc::new(RwLock::new(Readiness::default())),
+            readiness: Arc::new(RwLock::new(Readiness {
+                selected_policy,
+                ..Readiness::default()
+            })),
             session_tasks: TaskGroup::new(),
             pending_tasks: TaskGroup::new(),
             venue,
@@ -3013,6 +3826,7 @@ impl AsterExecutionClient {
     /// in [`ExecutionClient::start`] and a clone taken before that would drop every event.
     fn session(&self) -> SessionContext {
         SessionContext {
+            client_lifetime: Arc::downgrade(&self.client_lifetime),
             http_client: self.http_client.clone(),
             emitter: self.emitter.clone(),
             account_id: self.core.account_id,
@@ -3022,6 +3836,22 @@ impl AsterExecutionClient {
             clock: self.clock,
             treat_expired_as_canceled: self.config.treat_expired_as_canceled,
         }
+    }
+
+    pub(crate) fn selected_scope_diagnostics(&self) -> Option<SelectedScopeDiagnostics> {
+        self.readiness.read().selected_policy.as_ref()?;
+        Some(SelectedScopeDiagnostics {
+            client_lifetime: Arc::downgrade(&self.client_lifetime),
+            readiness: Arc::downgrade(&self.readiness),
+            state: Arc::downgrade(&self.stream_state),
+            instruments: Arc::downgrade(&self.instruments),
+            clock: self.clock,
+            account_id: self.core.account_id,
+            venue: self.venue,
+            user_address: self.http_client.user_address()?.to_owned(),
+            signer_address: self.http_client.signer_address()?.to_owned(),
+            source_endpoint: self.config.resolved_http_url(),
+        })
     }
 
     /// Returns a reference to the configuration.
@@ -3049,7 +3879,11 @@ impl AsterExecutionClient {
     /// refused while cancellations, queries, and provably reduce-only orders stay available.
     #[must_use]
     pub fn is_ready(&self) -> bool {
-        self.readiness.read().allows_new_risk()
+        let readiness = self.readiness.read();
+        readiness.allows_new_risk()
+            && readiness
+                .selected_refusal(self.clock.get_time_ns().as_u64())
+                .is_none()
     }
 
     /// Returns the current readiness phase name for diagnostics.
@@ -3185,6 +4019,7 @@ impl AsterExecutionClient {
                 .await?;
 
             for trade in &trades {
+                session.validate_selected_trade(trade, &context)?;
                 // A fill whose price, quantity or commission cannot be parsed is a hole in the
                 // history, not a fill to skip: the caller must not treat the result as complete.
                 let report = trade
@@ -3440,6 +4275,7 @@ impl AsterExecutionClient {
 
         // Aster's `/fapi/v3/balance` reports wallet balances only; per-asset initial and
         // maintenance margin are not part of the payload, so no margin balances are emitted.
+        self.session().validate_selected_balances(&balances)?;
         let parsed = parse_account_balances(&balances);
         // This snapshot seeds the conservative bounds every later stream update tightens, and
         // verifies whatever a stream row had left owed - unless a bound moved while it was in
@@ -3600,12 +4436,24 @@ impl AsterExecutionClient {
                     // The transport tells us the socket is gone as soon as it knows, which is
                     // earlier than any business message: a reconnect attempt that never
                     // succeeds must not leave the account marked ready.
+                    let mut readiness = readiness.write();
                     if state == SocketState::Disconnected {
-                        readiness.write().socket_disconnected();
+                        readiness.socket_disconnected();
+                    } else {
+                        readiness.stream_live = true;
                     }
                 }
             },
         );
+
+        if self.readiness.read().selected_policy.is_some() {
+            let readiness = self.readiness.clone();
+            stream_client = stream_client.with_raw_ingress_observer(move || {
+                readiness.write().invalidate_selected(
+                    "raw private ingress invalidated the selected account witness",
+                );
+            });
+        }
 
         let mut attempt = 0usize;
 
@@ -4301,6 +5149,9 @@ impl SessionContext {
     async fn dispatch_user_stream_message(&self, message: &BinanceFuturesWsStreamsMessage) {
         let account_id = self.account_id;
         let ts_init = self.clock.get_time_ns();
+        self.readiness
+            .write()
+            .invalidate_selected("private evidence requires a fresh selected account snapshot");
 
         match message {
             BinanceFuturesWsStreamsMessage::OrderUpdate(msg) => {
@@ -4309,6 +5160,14 @@ impl SessionContext {
                     log::debug!("Ignoring Aster order update for unloaded symbol {symbol}");
                     return;
                 };
+
+                if let Err(e) = self.validate_selected_stream_order(msg, &context) {
+                    self.state
+                        .write()
+                        .note_pending_order(Ustr::from(&msg.order.order_id.to_string()), symbol);
+                    self.degrade(format!("selected stream order is not exact: {e}"));
+                    return;
+                }
 
                 let parsed_status = match parse_futures_order_update_to_order_status(
                     msg,
@@ -4683,7 +5542,11 @@ impl ExecutionClient for AsterExecutionClient {
                 .degrade(format!("open order reconciliation failed: {e}"));
         }
 
-        if self.stream_state.read().has_recovery_debt() {
+        if self.readiness.read().selected_policy.is_some() {
+            self.session()
+                .recover("initial selected account scope")
+                .await;
+        } else if self.stream_state.read().has_recovery_debt() {
             // Pending evidence survives a stop/disconnect. A fresh socket and one open-order
             // sweep do not prove those old trades; run the same bounded recovery contract before
             // admitting new risk, including pending orders that no longer appear in openOrders.
@@ -4758,7 +5621,21 @@ impl ExecutionClient for AsterExecutionClient {
             let readiness = self.readiness.read();
             (
                 (!request.reduce_only).then_some(readiness.generation),
-                readiness.refusal(request.reduce_only),
+                readiness.refusal(request.reduce_only).or_else(|| {
+                    if request.reduce_only {
+                        None
+                    } else {
+                        readiness
+                            .selected_refusal(self.clock.get_time_ns().as_u64())
+                            .or_else(|| {
+                                readiness.selected_policy.as_ref().and_then(|p| {
+                                    (!p.instrument_ids
+                                        .contains(&order.instrument_id().to_string()))
+                                    .then(|| "Aster order is outside the selected scope".to_owned())
+                                })
+                            })
+                    }
+                }),
             )
         };
         if let Some(reason) = refusal {
@@ -4774,7 +5651,6 @@ impl ExecutionClient for AsterExecutionClient {
 
         let session = self.session();
         let http_client = self.http_client.clone();
-        let readiness = self.readiness.clone();
         let clock = self.clock;
         let client_order_id = order.client_order_id();
         let reduce_only = request.reduce_only;
@@ -4786,25 +5662,13 @@ impl ExecutionClient for AsterExecutionClient {
         self.emitter.emit_order_submitted(&order);
 
         spawner.spawn(async move {
-            let admission = move || {
-                let readiness = readiness.read();
-                if let Some(reason) = readiness.refusal(reduce_only) {
-                    return Err(reason);
-                }
-
-                if let Some(admitted_generation) = admission_generation
-                    && readiness.generation != admitted_generation
-                {
-                    return Err(
-                        "Aster execution readiness changed after order admission".to_string(),
-                    );
-                }
-
-                Ok(())
-            };
+            let admission_session = session.clone();
+            let admission = move || admission_session.check_submit_admission(reduce_only, admission_generation, false);
+            let commit_session = session.clone();
+            let commit = move || commit_session.check_submit_admission(reduce_only, admission_generation, true);
 
             match http_client
-                .submit_order_admitted(request.to_params(), admission)
+                .submit_order_admitted_and_committed(request.to_params(), admission, commit)
                 .await
             {
                 Ok(response) => {
@@ -4891,6 +5755,9 @@ impl ExecutionClient for AsterExecutionClient {
     /// An ambiguous failure is different: the venue may still act on the request, so it is left
     /// to reconciliation rather than reported as a rejection that never happened.
     fn cancel_order(&self, cmd: CancelOrder) -> anyhow::Result<()> {
+        self.readiness
+            .write()
+            .invalidate_selected("an order cancellation changed selected scope");
         let (symbol, _) = self.symbol_context(&cmd.instrument_id)?;
 
         let Some(spawner) = self.spawner() else {
@@ -4963,6 +5830,9 @@ impl ExecutionClient for AsterExecutionClient {
     /// opposite side's resting orders, which is a different command from the one the strategy
     /// issued (a `SELL` exit would disappear when only the `BUY` entries were meant to).
     fn cancel_all_orders(&self, cmd: CancelAllOrders) -> anyhow::Result<()> {
+        self.readiness
+            .write()
+            .invalidate_selected("order cancellation changed selected scope");
         let (symbol, _) = self.symbol_context(&cmd.instrument_id)?;
         let http_client = self.http_client.clone();
         let emitter = self.emitter.clone();
@@ -5074,6 +5944,18 @@ impl ExecutionClient for AsterExecutionClient {
     }
 
     fn query_account(&self, _cmd: QueryAccount) -> anyhow::Result<()> {
+        let has_selected_policy = self.readiness.read().selected_policy.is_some();
+        if has_selected_policy {
+            self.readiness.write().invalidate_selected(
+                "an explicit selected account query invalidated the previous witness",
+            );
+            let session = self.session();
+            self.spawn_task("query_selected_account", async move {
+                session.recover("an explicit selected account query").await;
+                Ok(())
+            });
+            return Ok(());
+        }
         let http_client = self.http_client.clone();
         let emitter = self.emitter.clone();
         let stream_state = self.stream_state.clone();
@@ -5111,6 +5993,9 @@ impl ExecutionClient for AsterExecutionClient {
     }
 
     fn query_order(&self, cmd: QueryOrder) -> anyhow::Result<()> {
+        self.readiness
+            .write()
+            .invalidate_selected("an order query is not a complete selected scope proof");
         let (symbol, _) = self.symbol_context(&cmd.instrument_id)?;
 
         let Some(spawner) = self.spawner() else {
@@ -5170,6 +6055,9 @@ impl ExecutionClient for AsterExecutionClient {
         &self,
         cmd: &GenerateOrderStatusReport,
     ) -> anyhow::Result<Option<OrderStatusReport>> {
+        self.readiness
+            .write()
+            .invalidate_selected("a partial order report is not a complete selected scope proof");
         let instrument_id = cmd.instrument_id.ok_or_else(|| {
             anyhow::anyhow!("Aster order status report requires an instrument ID")
         })?;
@@ -5198,6 +6086,7 @@ impl ExecutionClient for AsterExecutionClient {
 
         match result {
             Ok(order) => {
+                self.session().validate_selected_order(&order, &context)?;
                 let report = order.to_order_status_report(
                     self.core.account_id,
                     context.instrument_id,
@@ -5220,6 +6109,9 @@ impl ExecutionClient for AsterExecutionClient {
         &self,
         cmd: &GenerateOrderStatusReports,
     ) -> anyhow::Result<Vec<OrderStatusReport>> {
+        self.readiness
+            .write()
+            .invalidate_selected("partial order reports are not a complete selected scope proof");
         build_order_status_reports(self, cmd, true).await
     }
 
@@ -5227,6 +6119,9 @@ impl ExecutionClient for AsterExecutionClient {
         &self,
         cmd: GenerateFillReports,
     ) -> anyhow::Result<Vec<FillReport>> {
+        self.readiness
+            .write()
+            .invalidate_selected("partial fill reports are not a complete selected scope proof");
         let (reports, delivered) = self.fetch_fill_reports(cmd).await?;
 
         // Returning a vector is not proof that the execution engine accepted every row: the
@@ -5264,6 +6159,9 @@ impl ExecutionClient for AsterExecutionClient {
         &self,
         lookback_mins: Option<u64>,
     ) -> anyhow::Result<Option<ExecutionMassStatus>> {
+        self.readiness.write().invalidate_selected(
+            "startup reconciliation requires a subsequent selected account proof",
+        );
         let ts_init = self.clock.get_time_ns();
         let now_ms = (ts_init.as_u64() / 1_000_000) as i64;
         let start_ms = match lookback_mins {
@@ -5583,6 +6481,9 @@ impl ExecutionClient for AsterExecutionClient {
         &self,
         cmd: &GeneratePositionStatusReports,
     ) -> anyhow::Result<Vec<PositionStatusReport>> {
+        self.readiness.write().invalidate_selected(
+            "partial position reports are not a complete selected scope proof",
+        );
         let symbol = cmd
             .instrument_id
             .map(|id| self.symbol_context(&id).map(|(symbol, _)| symbol))
@@ -5599,6 +6500,7 @@ impl ExecutionClient for AsterExecutionClient {
             .await
             .map_err(|e| anyhow::anyhow!("Aster position risk query failed: {e}"))?;
 
+        self.session().validate_selected_positions(&positions)?;
         if let Some(symbol) = symbol {
             anyhow::ensure!(
                 positions
@@ -5680,6 +6582,86 @@ mod tests {
     }
 
     /// Builds an `ACCOUNT_UPDATE` frame carrying the given `B` array.
+    fn selected_readiness() -> Readiness {
+        let policy = SelectedScopePolicy::parse(
+            r#"{"instrument_ids":["SNDKUSD1-PERP.ASTER"],"balance_asset":"USD1","max_age_ms":2,"max_refresh_ms":1000}"#,
+            Venue::from("ASTER"), Some(&["SNDKUSD1-PERP.ASTER".to_owned()]), false,
+        ).unwrap();
+        let mut readiness = Readiness {
+            selected_policy: Some(policy),
+            ..Readiness::default()
+        };
+        let generation = readiness.begin_connect();
+        readiness.verify_position_mode();
+        readiness.stream_live = true;
+        assert!(readiness.mark_ready(generation));
+        readiness.selected_witness = Some(SelectedWitness {
+            generation,
+            received_time_ns: 1_000_000,
+            positions: vec![SelectedPosition {
+                instrument_id: "SNDKUSD1-PERP.ASTER".to_owned(),
+                signed_quantity: "0".to_owned(),
+                source_update_time_ms: None,
+            }],
+            balance: SelectedBalance {
+                asset: "USD1".to_owned(),
+                total: "10".to_owned(),
+                free: "10".to_owned(),
+                source_update_time_ms: None,
+            },
+            open_orders: Vec::new(),
+            metadata: Vec::new(),
+        });
+        readiness
+    }
+
+    #[rstest]
+    fn selected_proof_expires_and_does_not_trust_future_receive_time() {
+        let readiness = selected_readiness();
+        assert!(readiness.selected_refusal(999_999).is_some());
+        assert!(readiness.selected_refusal(1_000_000).is_none());
+        assert!(readiness.selected_refusal(3_000_000).is_none());
+        assert!(readiness.selected_refusal(3_000_001).is_some());
+    }
+
+    #[rstest]
+    fn private_evidence_invalidates_selected_generation_and_witness() {
+        let mut readiness = selected_readiness();
+        let generation = readiness.generation;
+        readiness.invalidate_selected("a position-only account update");
+        assert_ne!(readiness.generation, generation);
+        assert!(readiness.selected_witness.is_none());
+        assert!(readiness.selected_refusal(1_000_000).is_some());
+        assert!(readiness.allows_reduce_only());
+        assert!(!readiness.mark_ready(generation));
+    }
+
+    #[rstest]
+    fn reconnect_cannot_restore_a_superseded_selected_witness() {
+        let mut readiness = selected_readiness();
+        let first = readiness.begin_reconcile();
+        assert!(readiness.selected_witness.is_none());
+        readiness.socket_disconnected();
+        readiness.stream_live = true;
+        let second = readiness.begin_reconcile();
+        assert_ne!(first, second);
+        assert!(!readiness.mark_ready(first));
+        assert!(readiness.mark_ready(second));
+        assert!(readiness.selected_refusal(1_000_000).is_some());
+    }
+
+    #[rstest]
+    fn default_private_invalidation_preserves_legacy_admission() {
+        let mut readiness = Readiness::default();
+        let generation = readiness.begin_connect();
+        readiness.verify_position_mode();
+        assert!(readiness.mark_ready(generation));
+        readiness.invalidate_selected("optional scope is disabled");
+        assert_eq!(readiness.generation, generation);
+        assert!(readiness.allows_new_risk());
+        assert!(readiness.selected_refusal(1_000_000).is_none());
+    }
+
     fn account_update(balances_json: &str) -> BinanceFuturesAccountUpdateMsg {
         serde_json::from_str(&format!(
             r#"{{"e":"ACCOUNT_UPDATE","E":1788571663397,"T":1788571663397,

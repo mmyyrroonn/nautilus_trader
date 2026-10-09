@@ -1,0 +1,14 @@
+{
+  "argv": [
+    "E:/persarb/nautilus_trader/target/nextest/deps/nautilus_aster-13029d0434076b74.exe",
+    "selected",
+    "default_private_invalidation",
+    "--test-threads=1"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-aster-proof",
+  "started_utc": "2026-10-09T02:46:06.074628+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T02:46:06.089140+00:00"
+}

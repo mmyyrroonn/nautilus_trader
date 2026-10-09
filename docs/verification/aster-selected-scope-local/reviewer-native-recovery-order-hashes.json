@@ -1,0 +1,86 @@
+﻿[
+    {
+        "root":  "E:/persarb/worktrees/entropy-aster-proof",
+        "path":  "crates/adapters/aster/src/execution.rs",
+        "sha256":  "61507858f76a4e50713ca9ea9e1605f4e166cff1076b2cb4dc31c35d8927725f",
+        "bytes":  349295
+    },
+    {
+        "root":  "E:/persarb/worktrees/entropy-aster-proof",
+        "path":  "crates/adapters/aster/tests/exec_client.rs",
+        "sha256":  "7d0c122781f1bf4894c7dc78d4188b2737a70ee2152a1e2db9cb6d599394a873",
+        "bytes":  211390
+    },
+    {
+        "root":  "E:/persarb/worktrees/entropy-aster-proof",
+        "path":  "crates/execution/src/engine/mod.rs",
+        "sha256":  "99615c462a05f132934bf12811171438e30d0665575a7a0fa345aca20933fbfe",
+        "bytes":  167952
+    },
+    {
+        "root":  "E:/persarb/worktrees/entropy-aster-proof",
+        "path":  "crates/adapters/aster/Cargo.toml",
+        "sha256":  "964f513fcb4dee7cc3497bbe1d2e4250d5978402e1f45a2069a39171c077fc24",
+        "bytes":  2654
+    },
+    {
+        "root":  "E:/persarb/worktrees/entropy-aster-proof",
+        "path":  "crates/adapters/binance/Cargo.toml",
+        "sha256":  "b836754a9a2d83e01f9220456f7e01f7655a973d4ea406a99b006d47f4c70bf7",
+        "bytes":  5033
+    },
+    {
+        "root":  "E:/persarb/worktrees/entropy-aster-proof",
+        "path":  "crates/adapters/hyperliquid/Cargo.toml",
+        "sha256":  "a84ca78eed290c1b5808f989f8ba1a7d08df4b19954611438424710d33057686",
+        "bytes":  5861
+    },
+    {
+        "root":  "E:/persarb/worktrees/entropy-aster-proof",
+        "path":  "crates/execution/Cargo.toml",
+        "sha256":  "9692b4fea4e8319d3f469b5f8aeeea6fd63ecef9f85f39d7d92a4028df9c0baa",
+        "bytes":  2273
+    },
+    {
+        "root":  "E:/persarb/worktrees/entropy109-baseline",
+        "path":  "crates/adapters/aster/src/execution.rs",
+        "sha256":  "39f6ab6fd9356e7f285a364197cc5a135f42c544df1b9e3127ee4a30249005e0",
+        "bytes":  311153
+    },
+    {
+        "root":  "E:/persarb/worktrees/entropy109-baseline",
+        "path":  "crates/adapters/aster/tests/exec_client.rs",
+        "sha256":  "8a358a62d5d8053bf39aeb0ac9437989d75dc41bfd16cdb6b98bbc443eb6db3d",
+        "bytes":  211218
+    },
+    {
+        "root":  "E:/persarb/worktrees/entropy109-baseline",
+        "path":  "crates/execution/src/engine/mod.rs",
+        "sha256":  "99615c462a05f132934bf12811171438e30d0665575a7a0fa345aca20933fbfe",
+        "bytes":  167952
+    },
+    {
+        "root":  "E:/persarb/worktrees/entropy109-baseline",
+        "path":  "crates/adapters/aster/Cargo.toml",
+        "sha256":  "964f513fcb4dee7cc3497bbe1d2e4250d5978402e1f45a2069a39171c077fc24",
+        "bytes":  2654
+    },
+    {
+        "root":  "E:/persarb/worktrees/entropy109-baseline",
+        "path":  "crates/adapters/binance/Cargo.toml",
+        "sha256":  "b836754a9a2d83e01f9220456f7e01f7655a973d4ea406a99b006d47f4c70bf7",
+        "bytes":  5033
+    },
+    {
+        "root":  "E:/persarb/worktrees/entropy109-baseline",
+        "path":  "crates/adapters/hyperliquid/Cargo.toml",
+        "sha256":  "a84ca78eed290c1b5808f989f8ba1a7d08df4b19954611438424710d33057686",
+        "bytes":  5861
+    },
+    {
+        "root":  "E:/persarb/worktrees/entropy109-baseline",
+        "path":  "crates/execution/Cargo.toml",
+        "sha256":  "9692b4fea4e8319d3f469b5f8aeeea6fd63ecef9f85f39d7d92a4028df9c0baa",
+        "bytes":  2273
+    }
+]

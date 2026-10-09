@@ -1798,16 +1798,21 @@ async fn test_reconnect_with_fill_debt_never_infers_flat() {
 
 /// The final flat report confirms the real closing trade rather than replacing its economics.
 #[rstest]
+#[case(980001, 980002)]
+#[case(980002, 980001)]
 #[tokio::test]
-async fn test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once() {
+async fn test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once(
+    #[case] opening_order_id: i64,
+    #[case] closing_order_id: i64,
+) {
     let venue = MockVenue::start().await;
     let mut harness = connected_harness(&venue).await;
     drain_exec(&mut harness.exec_rx);
     let time = now_ms();
     venue.script(|s| {
         for (order_id, trade_id, client_id, side, offset) in [
-            (980001, 980101, "O-OPEN-FLAT", "BUY", 0),
-            (980002, 980102, "O-CLOSE-FLAT", "SELL", 1),
+            (opening_order_id, 980101, "O-OPEN-FLAT", "BUY", 0),
+            (closing_order_id, 980102, "O-CLOSE-FLAT", "SELL", 1),
         ] {
             let mut order = venue_order(order_id, client_id, "BTCUSDT", "FILLED", side);
             order["time"] = json!(time + offset);
@@ -1828,6 +1833,21 @@ async fn test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once(
     let mut events = drain_exec(&mut harness.exec_rx);
     drive_compensation(&venue, 3).await;
     events.extend(drain_exec(&mut harness.exec_rx));
+
+    let recovered_order_ids: Vec<_> = events
+        .iter()
+        .filter_map(|event| match event {
+            ExecutionEvent::Report(ExecutionReport::OrderWithFills(report, _)) => {
+                Some(report.venue_order_id.to_string())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        recovered_order_ids,
+        vec![opening_order_id.to_string(), closing_order_id.to_string()],
+        "real fill chronology must determine the bundles, regardless of order ID"
+    );
 
     let cache = Rc::new(RefCell::new(Cache::default()));
     seed_account(&cache);
@@ -1859,7 +1879,9 @@ async fn test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once(
     assert!(
         cache
             .positions_open(None, Some(&InstrumentId::from(BTC)), None, None, None)
-            .is_empty()
+            .is_empty(),
+        "real open/close recovery must preserve flat: positions={:?}; reports={events:?}",
+        cache.positions(None, Some(&InstrumentId::from(BTC)), None, None, None)
     );
     assert_eq!(
         cache

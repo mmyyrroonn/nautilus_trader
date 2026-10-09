@@ -1,0 +1,25 @@
+# Independent final native boundary validation
+
+Actual commands were run by the independent reviewer against parent-provided rebuilt executables, without Cargo/build/install/source edits. Exact source hashes are in `reviewer-native-final-source.json`; executable identities before and after are in `reviewer-native-final-pre.json` and `reviewer-native-final-post.json`.
+
+| Executable | SHA256 before and after | Actual independent outcome |
+|---|---|---|
+| selected_scope-c23cd16123685453.exe | 4c9569c6a959e5ae1262495bdc0dd2eeea5061e9c709b27d18a603e379b075c2 | 35 PASS, 0 FAIL, 0 ignored |
+| exec_client-399d71d1fa0ef85d.exe | 3f210a9358a3fe6aad542820e804248ee7f97ee182d6187ba9ef0b8b65e76a8f | 2 PASS, 0 FAIL, 97 filtered |
+
+Commands from `E:/persarb/worktrees/entropy-aster-proof`:
+
+```
+E:/persarb/nautilus_trader/target/nextest/deps/selected_scope-c23cd16123685453.exe --test-threads=1
+E:/persarb/nautilus_trader/target/nextest/deps/exec_client-399d71d1fa0ef85d.exe test_reconnect_flat_after_real_close_preserves_trade_ids_and_fees_once --test-threads=1
+```
+
+35-test actual interval: 2026-10-09T03:19:14.786424Z through 03:19:51.142311Z. Two-case actual interval: 03:19:24.964835Z through 03:19:28.461140Z. Both returned exit code 0. Raw stdout/stderr and exact actual argv/UTC are preserved in `reviewer-native-final-selected35.log/.json` and `reviewer-native-final-normal-open-close2.log/.json`. This is 37 unique final-artifact cases; older reviewer executable runs are not added to these counts. Parent's 3093-pass complete regression is separate author evidence.
+
+The independent run includes actual normal factory plus HTTP/WebSocket loopback paths: current full selected proof, exact balance/position refusal, raw undecodable ingress invalidation, detached client lifetime, generation supersession, actual timeout/rejection consumption without resend, final dispatch witness consumption, incomplete later cumulative fill refusal, selected interleaved and equal-millisecond chronology held across repeated normal queries, late targeted fill refusal persisting across subsequent queries, and ordered separated bundles despite reverse venue order IDs. The two ordinary-default cases reconcile actual chronological open/close fills through the native execution engine, preserving exact IDs and commissions and proving final flatness without sorting test events.
+
+Final focused source review closes the earlier checkpoint consistency recommendation: `advance_history_checkpoint` refuses sticky chronology debt while holding its caller's state write lock; inferred-flat and final compensation failure diagnostics also include this debt. JSON exposes `fill_chronology_debt`, and actual refusal tests assert it true. Debt has no reset assignment within the client lifecycle; central pre-await and final-send-lock guards cover HTTP compensation, targeted recovery and WebSocket order evidence. No additional Ready/send bypass was found in this bounded review.
+
+Current reviewed execution.rs SHA256: f9d2d4351df4b63f777a0a838a562a89032c5cba74269840097c8a4941c8e223 (2026-10-09T03:19:44.6736216Z). Parent associates these rebuilt test artifacts with final Rust source; independent hashes bind the exact executables run. Subsequent official generated Python docstrings do not establish wheel ABI acceptance, which remains pending actual rebuilt wheel tests.
+
+Acceptance is limited to the selected current HTTP scope and conservative native admission/recovery contract. It does not certify native cache adoption, strategy-owned lineage, historical PnL for arbitrary interleaved default history, durable cold restart, whole-account flatness, funding completeness, Windows kernel network isolation, actual venue or mainnet behavior. Application native integration and actual installed Python binding tests still require the forthcoming candidate wheel.

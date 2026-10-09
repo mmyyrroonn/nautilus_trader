@@ -1,0 +1,5 @@
+{
+  "before": "native-final-inputs-before-stubs.json",
+  "after": "native-final-inputs-after-stubs.json",
+  "changed_scoped_sources": []
+}

@@ -1,0 +1,14 @@
+﻿[
+    {
+        "utc":  "2026-10-09T03:20:01.2036382Z",
+        "path":  "E:/persarb/nautilus_trader/target/nextest/deps/selected_scope-c23cd16123685453.exe",
+        "sha256":  "4c9569c6a959e5ae1262495bdc0dd2eeea5061e9c709b27d18a603e379b075c2",
+        "bytes":  18426368
+    },
+    {
+        "utc":  "2026-10-09T03:20:01.3293100Z",
+        "path":  "E:/persarb/nautilus_trader/target/nextest/deps/exec_client-399d71d1fa0ef85d.exe",
+        "sha256":  "3f210a9358a3fe6aad542820e804248ee7f97ee182d6187ba9ef0b8b65e76a8f",
+        "bytes":  25575936
+    }
+]

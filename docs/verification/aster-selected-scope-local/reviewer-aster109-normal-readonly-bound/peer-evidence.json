@@ -1,0 +1,969 @@
+{
+  "requests": [
+    {
+      "method": "GET",
+      "path": "/fapi/v1/exchangeInfo",
+      "body": null,
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "timezone": "UTC",
+          "serverTime": 1791517081449,
+          "rateLimits": [
+            {
+              "rateLimitType": "REQUEST_WEIGHT",
+              "interval": "MINUTE",
+              "intervalNum": 1,
+              "limit": 2400
+            },
+            {
+              "rateLimitType": "ORDERS",
+              "interval": "MINUTE",
+              "intervalNum": 1,
+              "limit": 1200
+            },
+            {
+              "rateLimitType": "ORDERS",
+              "interval": "SECOND",
+              "intervalNum": 10,
+              "limit": 300
+            }
+          ],
+          "exchangeFilters": [],
+          "symbols": [
+            {
+              "symbol": "SNDKUSD1",
+              "filters": [
+                {
+                  "minPrice": "0.01000",
+                  "maxPrice": "100000",
+                  "filterType": "PRICE_FILTER",
+                  "tickSize": "0.01000"
+                },
+                {
+                  "stepSize": "0.01",
+                  "filterType": "LOT_SIZE",
+                  "maxQty": "6000",
+                  "minQty": "0.01"
+                },
+                {
+                  "stepSize": "0.01",
+                  "filterType": "MARKET_LOT_SIZE",
+                  "maxQty": "600",
+                  "minQty": "0.01"
+                },
+                {
+                  "limit": 200,
+                  "filterType": "MAX_NUM_ORDERS"
+                },
+                {
+                  "limit": 10,
+                  "filterType": "MAX_NUM_ALGO_ORDERS"
+                },
+                {
+                  "notional": "5",
+                  "filterType": "MIN_NOTIONAL"
+                },
+                {
+                  "multiplierDown": "0.9500",
+                  "multiplierUp": "1.0500",
+                  "ltMultiplierDown": "0.9500",
+                  "multiplierDecimal": "4",
+                  "filterType": "PERCENT_PRICE",
+                  "ltMultiplierUp": "1.0500"
+                }
+              ],
+              "orderTypes": [
+                "LIMIT",
+                "MARKET",
+                "STOP",
+                "STOP_MARKET",
+                "TAKE_PROFIT",
+                "TAKE_PROFIT_MARKET",
+                "TRAILING_STOP_MARKET"
+              ],
+              "timeInForce": [
+                "GTC",
+                "IOC",
+                "GTX",
+                "HIDDEN"
+              ],
+              "createTime": 1787250558184,
+              "pair": "SNDKUSD1",
+              "contractType": "PERPETUAL",
+              "deliveryDate": 4133404800000,
+              "onboardDate": 1787254200000,
+              "status": "TRADING",
+              "maintMarginPercent": "16.6600",
+              "requiredMarginPercent": "33.3300",
+              "baseAsset": "SNDK",
+              "quoteAsset": "USD1",
+              "marginAsset": "USD1",
+              "pricePrecision": 5,
+              "quantityPrecision": 2,
+              "baseAssetPrecision": 8,
+              "quotePrecision": 8,
+              "underlyingType": "COIN",
+              "underlyingSubType": [
+                "STOCK",
+                "AOS2",
+                "USD1-RWA"
+              ],
+              "symbolType": 1,
+              "tradingMode": 1,
+              "name": "",
+              "channel": "nasdaq",
+              "sequenceNo": 0,
+              "twapMinNotional": "1000",
+              "imn": "4000.00",
+              "tags": [
+                "SanDisk",
+                "Stock",
+                "\u80a1\u7968",
+                "\u95ea\u8fea",
+                "\u95ea",
+                "\u80a1\u7968",
+                "\u9583\u8fea",
+                "\u9583"
+              ],
+              "settlePlan": 0,
+              "triggerProtect": "0.0500",
+              "liquidationFee": "0.025000",
+              "marketTakeBound": "0.05"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/fapi/v1/exchangeInfo",
+      "body": null,
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "timezone": "UTC",
+          "serverTime": 1791517081451,
+          "rateLimits": [
+            {
+              "rateLimitType": "REQUEST_WEIGHT",
+              "interval": "MINUTE",
+              "intervalNum": 1,
+              "limit": 2400
+            },
+            {
+              "rateLimitType": "ORDERS",
+              "interval": "MINUTE",
+              "intervalNum": 1,
+              "limit": 1200
+            },
+            {
+              "rateLimitType": "ORDERS",
+              "interval": "SECOND",
+              "intervalNum": 10,
+              "limit": 300
+            }
+          ],
+          "exchangeFilters": [],
+          "symbols": [
+            {
+              "symbol": "SNDKUSD1",
+              "filters": [
+                {
+                  "minPrice": "0.01000",
+                  "maxPrice": "100000",
+                  "filterType": "PRICE_FILTER",
+                  "tickSize": "0.01000"
+                },
+                {
+                  "stepSize": "0.01",
+                  "filterType": "LOT_SIZE",
+                  "maxQty": "6000",
+                  "minQty": "0.01"
+                },
+                {
+                  "stepSize": "0.01",
+                  "filterType": "MARKET_LOT_SIZE",
+                  "maxQty": "600",
+                  "minQty": "0.01"
+                },
+                {
+                  "limit": 200,
+                  "filterType": "MAX_NUM_ORDERS"
+                },
+                {
+                  "limit": 10,
+                  "filterType": "MAX_NUM_ALGO_ORDERS"
+                },
+                {
+                  "notional": "5",
+                  "filterType": "MIN_NOTIONAL"
+                },
+                {
+                  "multiplierDown": "0.9500",
+                  "multiplierUp": "1.0500",
+                  "ltMultiplierDown": "0.9500",
+                  "multiplierDecimal": "4",
+                  "filterType": "PERCENT_PRICE",
+                  "ltMultiplierUp": "1.0500"
+                }
+              ],
+              "orderTypes": [
+                "LIMIT",
+                "MARKET",
+                "STOP",
+                "STOP_MARKET",
+                "TAKE_PROFIT",
+                "TAKE_PROFIT_MARKET",
+                "TRAILING_STOP_MARKET"
+              ],
+              "timeInForce": [
+                "GTC",
+                "IOC",
+                "GTX",
+                "HIDDEN"
+              ],
+              "createTime": 1787250558184,
+              "pair": "SNDKUSD1",
+              "contractType": "PERPETUAL",
+              "deliveryDate": 4133404800000,
+              "onboardDate": 1787254200000,
+              "status": "TRADING",
+              "maintMarginPercent": "16.6600",
+              "requiredMarginPercent": "33.3300",
+              "baseAsset": "SNDK",
+              "quoteAsset": "USD1",
+              "marginAsset": "USD1",
+              "pricePrecision": 5,
+              "quantityPrecision": 2,
+              "baseAssetPrecision": 8,
+              "quotePrecision": 8,
+              "underlyingType": "COIN",
+              "underlyingSubType": [
+                "STOCK",
+                "AOS2",
+                "USD1-RWA"
+              ],
+              "symbolType": 1,
+              "tradingMode": 1,
+              "name": "",
+              "channel": "nasdaq",
+              "sequenceNo": 0,
+              "twapMinNotional": "1000",
+              "imn": "4000.00",
+              "tags": [
+                "SanDisk",
+                "Stock",
+                "\u80a1\u7968",
+                "\u95ea\u8fea",
+                "\u95ea",
+                "\u80a1\u7968",
+                "\u9583\u8fea",
+                "\u9583"
+              ],
+              "settlePlan": 0,
+              "triggerProtect": "0.0500",
+              "liquidationFee": "0.025000",
+              "marketTakeBound": "0.05"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/fapi/v1/exchangeInfo",
+      "body": null,
+      "params": {},
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "timezone": "UTC",
+          "serverTime": 1791517081454,
+          "rateLimits": [
+            {
+              "rateLimitType": "REQUEST_WEIGHT",
+              "interval": "MINUTE",
+              "intervalNum": 1,
+              "limit": 2400
+            },
+            {
+              "rateLimitType": "ORDERS",
+              "interval": "MINUTE",
+              "intervalNum": 1,
+              "limit": 1200
+            },
+            {
+              "rateLimitType": "ORDERS",
+              "interval": "SECOND",
+              "intervalNum": 10,
+              "limit": 300
+            }
+          ],
+          "exchangeFilters": [],
+          "symbols": [
+            {
+              "symbol": "SNDKUSD1",
+              "filters": [
+                {
+                  "minPrice": "0.01000",
+                  "maxPrice": "100000",
+                  "filterType": "PRICE_FILTER",
+                  "tickSize": "0.01000"
+                },
+                {
+                  "stepSize": "0.01",
+                  "filterType": "LOT_SIZE",
+                  "maxQty": "6000",
+                  "minQty": "0.01"
+                },
+                {
+                  "stepSize": "0.01",
+                  "filterType": "MARKET_LOT_SIZE",
+                  "maxQty": "600",
+                  "minQty": "0.01"
+                },
+                {
+                  "limit": 200,
+                  "filterType": "MAX_NUM_ORDERS"
+                },
+                {
+                  "limit": 10,
+                  "filterType": "MAX_NUM_ALGO_ORDERS"
+                },
+                {
+                  "notional": "5",
+                  "filterType": "MIN_NOTIONAL"
+                },
+                {
+                  "multiplierDown": "0.9500",
+                  "multiplierUp": "1.0500",
+                  "ltMultiplierDown": "0.9500",
+                  "multiplierDecimal": "4",
+                  "filterType": "PERCENT_PRICE",
+                  "ltMultiplierUp": "1.0500"
+                }
+              ],
+              "orderTypes": [
+                "LIMIT",
+                "MARKET",
+                "STOP",
+                "STOP_MARKET",
+                "TAKE_PROFIT",
+                "TAKE_PROFIT_MARKET",
+                "TRAILING_STOP_MARKET"
+              ],
+              "timeInForce": [
+                "GTC",
+                "IOC",
+                "GTX",
+                "HIDDEN"
+              ],
+              "createTime": 1787250558184,
+              "pair": "SNDKUSD1",
+              "contractType": "PERPETUAL",
+              "deliveryDate": 4133404800000,
+              "onboardDate": 1787254200000,
+              "status": "TRADING",
+              "maintMarginPercent": "16.6600",
+              "requiredMarginPercent": "33.3300",
+              "baseAsset": "SNDK",
+              "quoteAsset": "USD1",
+              "marginAsset": "USD1",
+              "pricePrecision": 5,
+              "quantityPrecision": 2,
+              "baseAssetPrecision": 8,
+              "quotePrecision": 8,
+              "underlyingType": "COIN",
+              "underlyingSubType": [
+                "STOCK",
+                "AOS2",
+                "USD1-RWA"
+              ],
+              "symbolType": 1,
+              "tradingMode": 1,
+              "name": "",
+              "channel": "nasdaq",
+              "sequenceNo": 0,
+              "twapMinNotional": "1000",
+              "imn": "4000.00",
+              "tags": [
+                "SanDisk",
+                "Stock",
+                "\u80a1\u7968",
+                "\u95ea\u8fea",
+                "\u95ea",
+                "\u80a1\u7968",
+                "\u9583\u8fea",
+                "\u9583"
+              ],
+              "settlePlan": 0,
+              "triggerProtect": "0.0500",
+              "liquidationFee": "0.025000",
+              "marketTakeBound": "0.05"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/fapi/v3/positionSide/dual",
+      "body": null,
+      "params": {
+        "nonce": [
+          "1791517081456000"
+        ]
+      },
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "dualSidePosition": false
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/fapi/v3/commissionRate",
+      "body": null,
+      "params": {
+        "nonce": [
+          "1791517081457200"
+        ],
+        "symbol": [
+          "SNDKUSD1"
+        ]
+      },
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "symbol": "SNDKUSD1",
+          "makerCommissionRate": "0.00005",
+          "takerCommissionRate": "0.0004"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/fapi/v3/balance",
+      "body": null,
+      "params": {
+        "nonce": [
+          "1791517081458180"
+        ]
+      },
+      "response": {
+        "status": "200 OK",
+        "body": [
+          {
+            "asset": "USD1",
+            "balance": "100",
+            "crossWalletBalance": "100",
+            "availableBalance": "100",
+            "crossUnPnl": "0",
+            "maxWithdrawAmount": "100",
+            "marginAvailable": true,
+            "updateTime": 1791517081458
+          }
+        ]
+      }
+    },
+    {
+      "method": "POST",
+      "path": "/fapi/v3/listenKey",
+      "body": null,
+      "params": {
+        "nonce": [
+          "1791517081459163"
+        ]
+      },
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "listenKey": "entropy43-owned-synthetic"
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/fapi/v3/openOrders",
+      "body": null,
+      "params": {
+        "nonce": [
+          "1791517081461395"
+        ]
+      },
+      "response": {
+        "status": "200 OK",
+        "body": []
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/fapi/v3/userTrades",
+      "body": null,
+      "params": {
+        "nonce": [
+          "1791517081462229"
+        ],
+        "symbol": [
+          "SNDKUSD1"
+        ],
+        "startTime": [
+          "1791517081459"
+        ],
+        "endTime": [
+          "1791517081462"
+        ],
+        "limit": [
+          "1000"
+        ]
+      },
+      "response": {
+        "status": "200 OK",
+        "body": []
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/fapi/v3/openOrders",
+      "body": null,
+      "params": {
+        "nonce": [
+          "1791517081463869"
+        ]
+      },
+      "response": {
+        "status": "200 OK",
+        "body": []
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/fapi/v3/balance",
+      "body": null,
+      "params": {
+        "nonce": [
+          "1791517081464792"
+        ]
+      },
+      "response": {
+        "status": "200 OK",
+        "body": [
+          {
+            "asset": "USD1",
+            "balance": "100",
+            "crossWalletBalance": "100",
+            "availableBalance": "100",
+            "crossUnPnl": "0",
+            "maxWithdrawAmount": "100",
+            "marginAvailable": true,
+            "updateTime": 1791517081465
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/fapi/v3/positionRisk",
+      "body": null,
+      "params": {
+        "nonce": [
+          "1791517081465759"
+        ]
+      },
+      "response": {
+        "status": "200 OK",
+        "body": [
+          {
+            "symbol": "SNDKUSD1",
+            "positionAmt": "0",
+            "entryPrice": "100",
+            "markPrice": "100",
+            "unRealizedProfit": "0",
+            "liquidationPrice": "0",
+            "leverage": "1",
+            "marginType": "isolated",
+            "positionSide": "BOTH",
+            "notional": "0",
+            "updateTime": 1791517081466
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/fapi/v3/positionSide/dual",
+      "body": null,
+      "params": {
+        "nonce": [
+          "1791517081466806"
+        ]
+      },
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "dualSidePosition": false
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/fapi/v3/balance",
+      "body": null,
+      "params": {
+        "nonce": [
+          "1791517081467627"
+        ]
+      },
+      "response": {
+        "status": "200 OK",
+        "body": [
+          {
+            "asset": "USD1",
+            "balance": "100",
+            "crossWalletBalance": "100",
+            "availableBalance": "100",
+            "crossUnPnl": "0",
+            "maxWithdrawAmount": "100",
+            "marginAvailable": true,
+            "updateTime": 1791517081468
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/fapi/v3/positionRisk",
+      "body": null,
+      "params": {
+        "nonce": [
+          "1791517081468584"
+        ],
+        "symbol": [
+          "SNDKUSD1"
+        ]
+      },
+      "response": {
+        "status": "200 OK",
+        "body": [
+          {
+            "symbol": "SNDKUSD1",
+            "positionAmt": "0",
+            "entryPrice": "100",
+            "markPrice": "100",
+            "unRealizedProfit": "0",
+            "liquidationPrice": "0",
+            "leverage": "1",
+            "marginType": "isolated",
+            "positionSide": "BOTH",
+            "notional": "0",
+            "updateTime": 1791517081469
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/fapi/v3/openOrders",
+      "body": null,
+      "params": {
+        "nonce": [
+          "1791517081469667"
+        ],
+        "symbol": [
+          "SNDKUSD1"
+        ]
+      },
+      "response": {
+        "status": "200 OK",
+        "body": []
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/fapi/v3/allOrders",
+      "body": null,
+      "params": {
+        "nonce": [
+          "1791517081470743"
+        ],
+        "symbol": [
+          "SNDKUSD1"
+        ],
+        "startTime": [
+          "1790912281470"
+        ],
+        "endTime": [
+          "1791517081470"
+        ],
+        "limit": [
+          "1000"
+        ]
+      },
+      "response": {
+        "status": "200 OK",
+        "body": []
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/fapi/v3/userTrades",
+      "body": null,
+      "params": {
+        "nonce": [
+          "1791517081471620"
+        ],
+        "symbol": [
+          "SNDKUSD1"
+        ],
+        "startTime": [
+          "1790912281470"
+        ],
+        "endTime": [
+          "1791517081470"
+        ],
+        "limit": [
+          "1000"
+        ]
+      },
+      "response": {
+        "status": "200 OK",
+        "body": []
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/fapi/v3/positionRisk",
+      "body": null,
+      "params": {
+        "nonce": [
+          "1791517081472573"
+        ]
+      },
+      "response": {
+        "status": "200 OK",
+        "body": [
+          {
+            "symbol": "SNDKUSD1",
+            "positionAmt": "0",
+            "entryPrice": "100",
+            "markPrice": "100",
+            "unRealizedProfit": "0",
+            "liquidationPrice": "0",
+            "leverage": "1",
+            "marginType": "isolated",
+            "positionSide": "BOTH",
+            "notional": "0",
+            "updateTime": 1791517081472
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/fapi/v3/userTrades",
+      "body": null,
+      "params": {
+        "nonce": [
+          "1791517081474296"
+        ],
+        "symbol": [
+          "SNDKUSD1"
+        ],
+        "startTime": [
+          "1791517081462"
+        ],
+        "endTime": [
+          "1791517081474"
+        ],
+        "limit": [
+          "1000"
+        ]
+      },
+      "response": {
+        "status": "200 OK",
+        "body": []
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/fapi/v3/openOrders",
+      "body": null,
+      "params": {
+        "nonce": [
+          "1791517081475280"
+        ]
+      },
+      "response": {
+        "status": "200 OK",
+        "body": []
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/fapi/v3/balance",
+      "body": null,
+      "params": {
+        "nonce": [
+          "1791517081475878"
+        ]
+      },
+      "response": {
+        "status": "200 OK",
+        "body": [
+          {
+            "asset": "USD1",
+            "balance": "100",
+            "crossWalletBalance": "100",
+            "availableBalance": "100",
+            "crossUnPnl": "0",
+            "maxWithdrawAmount": "100",
+            "marginAvailable": true,
+            "updateTime": 1791517081475
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/fapi/v3/positionRisk",
+      "body": null,
+      "params": {
+        "nonce": [
+          "1791517081476469"
+        ]
+      },
+      "response": {
+        "status": "200 OK",
+        "body": [
+          {
+            "symbol": "SNDKUSD1",
+            "positionAmt": "0",
+            "entryPrice": "100",
+            "markPrice": "100",
+            "unRealizedProfit": "0",
+            "liquidationPrice": "0",
+            "leverage": "1",
+            "marginType": "isolated",
+            "positionSide": "BOTH",
+            "notional": "0",
+            "updateTime": 1791517081476
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/fapi/v3/positionSide/dual",
+      "body": null,
+      "params": {
+        "nonce": [
+          "1791517081477171"
+        ]
+      },
+      "response": {
+        "status": "200 OK",
+        "body": {
+          "dualSidePosition": false
+        }
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/fapi/v3/balance",
+      "body": null,
+      "params": {
+        "nonce": [
+          "1791517081477661"
+        ]
+      },
+      "response": {
+        "status": "200 OK",
+        "body": [
+          {
+            "asset": "USD1",
+            "balance": "100",
+            "crossWalletBalance": "100",
+            "availableBalance": "100",
+            "crossUnPnl": "0",
+            "maxWithdrawAmount": "100",
+            "marginAvailable": true,
+            "updateTime": 1791517081477
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/fapi/v3/positionRisk",
+      "body": null,
+      "params": {
+        "nonce": [
+          "1791517081478220"
+        ],
+        "symbol": [
+          "SNDKUSD1"
+        ]
+      },
+      "response": {
+        "status": "200 OK",
+        "body": [
+          {
+            "symbol": "SNDKUSD1",
+            "positionAmt": "0",
+            "entryPrice": "100",
+            "markPrice": "100",
+            "unRealizedProfit": "0",
+            "liquidationPrice": "0",
+            "leverage": "1",
+            "marginType": "isolated",
+            "positionSide": "BOTH",
+            "notional": "0",
+            "updateTime": 1791517081478
+          }
+        ]
+      }
+    },
+    {
+      "method": "GET",
+      "path": "/fapi/v3/openOrders",
+      "body": null,
+      "params": {
+        "nonce": [
+          "1791517081478770"
+        ],
+        "symbol": [
+          "SNDKUSD1"
+        ]
+      },
+      "response": {
+        "status": "200 OK",
+        "body": []
+      }
+    },
+    {
+      "method": "DELETE",
+      "path": "/fapi/v3/listenKey",
+      "body": null,
+      "params": {
+        "nonce": [
+          "1791517082700864"
+        ]
+      },
+      "response": {
+        "status": "200 OK",
+        "body": {}
+      }
+    }
+  ],
+  "commands": [],
+  "frames": [],
+  "errors": [],
+  "actions": 0,
+  "fills": [],
+  "position": "0",
+  "active_sessions_after_teardown": 0
+}
