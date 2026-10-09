@@ -1,0 +1,25 @@
+﻿{
+  "argv": [
+    "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-wheel-identity.py"
+  ],
+  "interpreter": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Scripts\\python.exe",
+  "python": "3.12.9 (main, Mar 17 2025, 21:06:20) [MSC v.1943 64 bit (AMD64)]",
+  "started_utc": "2026-10-08T16:30:20.527004+00:00",
+  "finished_utc": "2026-10-08T16:30:23.186083+00:00",
+  "source_commit": "95c87d4e70d92ec31072a30df3d764d75172b7b3",
+  "source_tree": "8ed0387e434187098309e22d52f2b7d900d55722",
+  "source_fingerprint_sha256": "56238a5bd653594cb354d871c5c8c8415e7120b12e56891616ca5bda12b61149",
+  "source_binding": "verified",
+  "declared_build_dirty_count": 0,
+  "current_docs_only_dirty_status": " M docs/integrations/hyperliquid.md\n M docs/verification/entropy-economics-api-20261008.md\n M docs/verification/entropy-economics-public/README.md\n M docs/verification/entropy-economics-public/SHA256SUMS.txt\n D docs/verification/entropy-economics-public/sources/account-modes.md\n D docs/verification/entropy-economics-public/sources/api-wallets.md\n D docs/verification/entropy-economics-public/sources/heartbeats.md\n D docs/verification/entropy-economics-public/sources/hl-fees.md\n D docs/verification/entropy-economics-public/sources/hl-funding.md\n D docs/verification/entropy-economics-public/sources/info.md\n D docs/verification/entropy-economics-public/sources/issue-102.json\n D docs/verification/entropy-economics-public/sources/perpetuals.md\n D docs/verification/entropy-economics-public/sources/sdk-basic-ws.py\n D docs/verification/entropy-economics-public/sources/sdk-info.py\n D docs/verification/entropy-economics-public/sources/sdk-utils-types.py\n D docs/verification/entropy-economics-public/sources/sdk-websocket_manager.py\n D docs/verification/entropy-economics-public/sources/spot.md\n D docs/verification/entropy-economics-public/sources/subscriptions.md\n D docs/verification/entropy-economics-public/sources/ws.md\n?? docs/verification/entropy-economics-public/manifest.json\n?? docs/verification/entropy-economics-public/original-SHA256SUMS.txt\n?? docs/verification/entropy-economics-public/research-notes.txt\n?? docs/verification/entropy-economics-public/sources/account-modes.md.txt\n?? docs/verification/entropy-economics-public/sources/api-wallets.md.txt\n?? docs/verification/entropy-economics-public/sources/heartbeats.md.txt\n?? docs/verification/entropy-economics-public/sources/hl-fees.md.txt\n?? docs/verification/entropy-economics-public/sources/hl-funding.md.txt\n?? docs/verification/entropy-economics-public/sources/info.md.txt\n?? docs/verification/entropy-economics-public/sources/issue-102.json.txt\n?? docs/verification/entropy-economics-public/sources/perpetuals.md.txt\n?? docs/verification/entropy-economics-public/sources/sdk-basic-ws.py.txt\n?? docs/verification/entropy-economics-public/sources/sdk-info.py.txt\n?? docs/verification/entropy-economics-public/sources/sdk-utils-types.py.txt\n?? docs/verification/entropy-economics-public/sources/sdk-websocket_manager.py.txt\n?? docs/verification/entropy-economics-public/sources/spot.md.txt\n?? docs/verification/entropy-economics-public/sources/subscriptions.md.txt\n?? docs/verification/entropy-economics-public/sources/ws.md.txt",
+  "wheel_path": "E:\\persarb\\_tmp\\entropy102-wheel-nextest-20261008\\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+  "wheel_sha256": "be8d46c2d0b5f197852086b8818b4a17172aa000416512d73893c6041c129aed",
+  "installed_native_module": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\_libnautilus.cp312-win_amd64.pyd",
+  "installed_native_sha256": "bdb2c149ab91d12aa0462afc99106424232158f5f6197abbea533156ebf61c6d",
+  "matched_native_members": 1,
+  "matched_adapter_stubs": 23,
+  "binding_inputs_sha256": "d7056dbb7ed9c832cc93d6f849d25161e6fdb9cb7f7516eec7f0eabd89650382",
+  "native_provenance_sha256": "ddcff3f23c1d72b07690e9db726fa059d4a7399a0f892f531615f02b9d2f8a32",
+  "installed_record_sha256": "0df6c462e7aef75c3d173920b6198413bab59ce9aaba52192da8a8a8e110ba2b"
+}
+

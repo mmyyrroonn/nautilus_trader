@@ -1,0 +1,1444 @@
+warning: linker stdout: 正在创建库 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-63fd5ed65377140a.dll.lib 和对象 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-63fd5ed65377140a.dll.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-persistence-macros` (lib) generated 1 warning
+   Compiling nautilus-hyperliquid v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\hyperliquid)
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_revoke.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_revoke.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_approve.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_approve.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_private.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_private.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_outcome_order.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_outcome_order.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\dispatch-22d09f1b15f198a6.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\dispatch-22d09f1b15f198a6.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (test "dispatch") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_exec.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_exec.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (bin "hyperliquid-builder-fee-revoke") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-builder-fee-approve") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_user_outcome.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_user_outcome.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-private") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-outcome-order") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_public.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_public.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (bin "hyperliquid-ws-exec") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_capture_test_data.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_capture_test_data.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_exec.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_exec.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_data.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_data.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_flatten.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_flatten.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\live_soak-01f7a1a72b3cf620.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\live_soak-01f7a1a72b3cf620.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-user-outcome") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-public") generated 1 warning
+warning: `nautilus-hyperliquid` (test "live_soak") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\live_mainnet_smoke-d81c01db87ff5165.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\live_mainnet_smoke-d81c01db87ff5165.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (test "live_mainnet_smoke") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-capture-test-data") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-exec") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-ws-data") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-flatten") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\http-b0ae1be904965f24.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\http-b0ae1be904965f24.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\entropy_account-69bad49fe9dc76e8.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\entropy_account-69bad49fe9dc76e8.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (test "http") generated 1 warning
+warning: `nautilus-hyperliquid` (test "entropy_account") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\data_client-7c15ddd46a987576.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\data_client-7c15ddd46a987576.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (test "data_client") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\websocket-6b79a96a3b9ad5a0.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\websocket-6b79a96a3b9ad5a0.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (test "websocket") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\nautilus_hyperliquid-1fcbc36810deefe5.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\nautilus_hyperliquid-1fcbc36810deefe5.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (lib test) generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\exec_client-150a1c1d81fd9815.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\exec_client-150a1c1d81fd9815.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (test "exec_client") generated 1 warning
+    Finished `nextest` profile [unoptimized] target(s) in 16.40s
+     Running unittests src\lib.rs (E:/persarb/nautilus_trader/target\nextest\deps\nautilus_hyperliquid-1fcbc36810deefe5.exe)
+
+running 865 tests
+test account::tests::test_resolve_execution_account_address_precedence::case_1 ... ok
+test account::tests::test_resolve_execution_account_address_precedence::case_2 ... ok
+test account::tests::test_resolve_execution_account_address_rejects_invalid_selected_vault ... ok
+test account::tests::test_resolve_execution_account_address_precedence::case_4 ... ok
+test account::tests::test_resolve_execution_account_address_precedence::case_5 ... ok
+test account::tests::test_resolve_execution_account_address_precedence::case_3 ... ok
+test account::tests::test_resolve_execution_account_address_uses_signer_fallback ... ok
+test account_scope::tests::collateral_uses_explicit_token_index_and_exact_identity ... ok
+test account::tests::test_resolve_execution_account_address_uses_env_private_key_fallback ... ok
+test account_scope::tests::explicit_ws_source_expires_even_when_receive_is_fresh ... ok
+test account_scope::tests::incorrect_ws_identity_or_dex_invalidates::case_1 ... ok
+test account_scope::tests::generic_invalidation_revokes_attribution::case_1 ... ok
+test account_scope::tests::generic_invalidation_revokes_attribution::case_2 ... ok
+test account_scope::tests::generic_invalidation_revokes_attribution::case_3 ... ok
+test account_scope::tests::attribution_independently_checks_reader_epoch_ack_and_verification_age ... ok
+test account_scope::tests::generic_invalidation_revokes_attribution::case_4 ... ok
+test account_scope::tests::only_direct_user_identity_is_supported::case_3 ... ok
+test account_scope::tests::incomplete_http_is_rejected::case_1 ... ok
+test account_scope::tests::incomplete_http_is_rejected::case_3 ... ok
+test account_scope::tests::incomplete_http_is_rejected::case_5 ... ok
+test account_scope::tests::latest_private_funds_are_separate_from_http_provenance ... ok
+test account_scope::tests::incomplete_http_is_rejected::case_4 ... ok
+test account_scope::tests::incomplete_http_is_rejected::case_6 ... ok
+test account_scope::tests::attribution_membership_uses_latest_active_metadata_not_cached_ids ... ok
+test account_scope::tests::changed_position_size_invalidates_and_malformed_position_cannot_be_flat ... ok
+test account_scope::tests::invalid_private_source_and_refresh_start_cannot_preserve_or_rebuild_context ... ok
+test account_scope::tests::epoch_ack_transport_and_age_are_independent_trust_requirements ... ok
+test account_scope::tests::missing_facts_never_mean_flat ... ok
+test account_scope::tests::only_direct_user_identity_is_supported::case_1 ... ok
+test account_scope::tests::only_direct_user_identity_is_supported::case_2 ... ok
+test account_scope::tests::incorrect_ws_identity_or_dex_invalidates::case_2 ... ok
+test account_scope::tests::incorrect_ws_identity_or_dex_invalidates::case_3 ... ok
+test account_scope::tests::only_direct_user_identity_is_supported::case_4 ... ok
+test account_scope::tests::incomplete_http_is_rejected::case_2 ... ok
+test account_scope::tests::replacement_context_cannot_certify_an_old_source_in_the_same_epoch ... ok
+test account_scope::tests::snapshot_json_decimals_are_exact_strings_and_no_source_time_is_invented ... ok
+test account_scope::tests::stale_private_source_revokes_detached_attribution ... ok
+test account_scope::tests::validated_position_change_preserves_attribution_without_funds_trust ... ok
+test account_scope::tests::ws_source_time_stays_unknown_and_pnl_changes_do_not_invalidate_rest ... ok
+test common::builder_fee::tests::test_build_approval_action_payload ... ok
+test common::builder_fee::tests::test_build_approval_action_testnet_chain ... ok
+test common::builder_fee::tests::test_approval_signing_hash_varies_with_inputs ... ok
+test common::builder_fee::tests::test_derive_address_known_key ... ok
+test common::consts::tests::test_constants_values ... ok
+test common::consts::tests::test_exchange_url ... ok
+test common::consts::tests::test_info_url ... ok
+test common::consts::tests::test_ws_url ... ok
+test common::converters::tests::test_conditional_order_type_conversions ... ok
+test common::converters::tests::test_determine_tpsl_type ... ok
+test common::converters::tests::test_hyperliquid_to_nautilus_limit ... ok
+test common::converters::tests::test_hyperliquid_to_nautilus_stop_limit ... ok
+test common::converters::tests::test_hyperliquid_to_nautilus_stop_market ... ok
+test common::converters::tests::test_hyperliquid_to_nautilus_take_profit_limit ... ok
+test common::converters::tests::test_hyperliquid_to_nautilus_take_profit_market ... ok
+test common::converters::tests::test_nautilus_to_hyperliquid_limit_order ... ok
+test common::builder_fee::tests::test_sign_approve_builder_fee_recovers_signer ... ok
+test account_scope::tests::exact_negative_free_and_equity_are_retained_without_money_clamping ... ok
+test common::converters::tests::test_nautilus_to_hyperliquid_stop_limit ... ok
+test common::converters::tests::test_nautilus_to_hyperliquid_stop_market ... ok
+test common::converters::tests::test_nautilus_to_hyperliquid_take_profit_limit ... ok
+test common::converters::tests::test_nautilus_to_hyperliquid_take_profit_market ... ok
+test common::converters::tests::test_outcome_asset_id_from_instrument_id_accepts_all_forms::case_2 ... ok
+test common::converters::tests::test_outcome_asset_id_from_instrument_id_accepts_all_forms::case_1 ... ok
+test common::converters::tests::test_outcome_asset_id_from_instrument_id_accepts_all_forms::case_3 ... ok
+test common::converters::tests::test_outcome_asset_id_from_instrument_id_accepts_all_forms::case_4 ... ok
+test common::converters::tests::test_outcome_asset_id_instrument_id_roundtrip ... ok
+test common::converters::tests::test_outcome_asset_id_to_instrument_id_yes_side ... ok
+test common::converters::tests::test_outcome_asset_id_to_wire_symbols ... ok
+test common::converters::tests::test_outcome_asset_id_to_wire_symbols_rejects_non_outcome ... ok
+test common::converters::tests::test_time_in_force_conversions ... ok
+test common::converters::tests::test_unsupported_time_in_force_returns_error::case_1 ... ok
+test common::converters::tests::test_unsupported_time_in_force_returns_error::case_2 ... ok
+test common::converters::tests::test_unsupported_time_in_force_returns_error::case_3 ... ok
+test common::converters::tests::test_unsupported_time_in_force_returns_error::case_4 ... ok
+test common::converters::tests::test_unsupported_time_in_force_returns_error::case_5 ... ok
+test common::credential::tests::test_evm_private_key_creation ... ok
+test common::credential::tests::test_evm_private_key_debug_redacts ... ok
+test common::credential::tests::test_evm_private_key_invalid_hex ... ok
+test common::credential::tests::test_evm_private_key_invalid_length ... ok
+test common::credential::tests::test_evm_private_key_without_0x_prefix ... ok
+test common::credential::tests::test_normalize_address ... ok
+test common::credential::tests::test_secrets_from_json_minimal ... ok
+test common::credential::tests::test_secrets_from_json ... ok
+test common::credential::tests::test_vault_address_creation ... ok
+test common::credential::tests::test_vault_address_debug_redacts_middle ... ok
+test common::credential::tests::test_vault_address_without_0x_prefix ... ok
+test common::enums::tests::error_parsing_tests::test_normalization_preserves_original_in_unknown ... ok
+test common::enums::tests::error_parsing_tests::test_parse_empty_error ... ok
+test common::enums::tests::error_parsing_tests::test_parse_insufficient_margin ... ok
+test common::enums::tests::error_parsing_tests::test_parse_insufficient_margin_case_variations ... ok
+test common::enums::tests::error_parsing_tests::test_parse_insufficient_spot_balance ... ok
+test common::enums::tests::error_parsing_tests::test_parse_invalid_trigger_price ... ok
+test common::enums::tests::error_parsing_tests::test_parse_ioc_no_match ... ok
+test common::enums::tests::error_parsing_tests::test_parse_max_position ... ok
+test common::enums::tests::error_parsing_tests::test_parse_min_notional_perp ... ok
+test common::enums::tests::error_parsing_tests::test_parse_min_notional_spot ... ok
+test common::enums::tests::error_parsing_tests::test_parse_missing_order ... ok
+test common::enums::tests::error_parsing_tests::test_parse_open_interest_increase ... ok
+test common::enums::tests::error_parsing_tests::test_parse_no_liquidity ... ok
+test common::enums::tests::error_parsing_tests::test_parse_oracle_error ... ok
+test common::enums::tests::error_parsing_tests::test_parse_position_flip_at_oi_cap ... ok
+test common::enums::tests::error_parsing_tests::test_parse_position_increase_at_oi_cap ... ok
+test common::enums::tests::error_parsing_tests::test_parse_post_only_with_hyphen ... ok
+test common::enums::tests::error_parsing_tests::test_parse_post_only_match ... ok
+test common::enums::tests::error_parsing_tests::test_parse_reduce_only_with_hyphen ... ok
+test common::enums::tests::error_parsing_tests::test_parse_reduce_only_violation ... ok
+test common::enums::tests::error_parsing_tests::test_parse_tick_size_error ... ok
+test common::enums::tests::error_parsing_tests::test_parse_tick_size_error_case_insensitive ... ok
+test common::enums::tests::error_parsing_tests::test_parse_too_aggressive_at_oi_cap ... ok
+test common::enums::tests::error_parsing_tests::test_parse_unknown_error ... ok
+test common::enums::tests::error_parsing_tests::test_parse_whitespace_only ... ok
+test common::enums::tests::test_aggressor_side_from_hyperliquid_side ... ok
+test common::enums::tests::test_conditional_order_type_conversions ... ok
+test common::enums::tests::test_conditional_order_type_round_trip ... ok
+test common::enums::tests::test_conditional_order_type_serialization ... ok
+test common::enums::tests::test_fill_direction_unknown_is_lenient ... ok
+test common::enums::tests::test_fill_direction_serde ... ok
+test common::enums::tests::test_hyperliquid_tpsl_deserialization ... ok
+test common::enums::tests::test_hyperliquid_tpsl_serialization ... ok
+test common::enums::tests::test_info_request_type_outcome_meta_as_str ... ok
+test common::enums::tests::test_info_request_type_recent_trades_as_str ... ok
+test common::enums::tests::test_liquidity_flag_from_crossed ... ok
+test common::enums::tests::test_order_side_from_hyperliquid_side ... ok
+test common::enums::tests::test_order_status_conversion ... ok
+test common::enums::tests::test_order_status_serde_deserialization ... ok
+test common::enums::tests::test_order_type_enum_coverage ... ok
+test common::enums::tests::test_position_type_unknown_is_lenient ... ok
+test common::enums::tests::test_product_type_from_symbol::case_1 ... ok
+test common::enums::tests::test_product_type_from_symbol::case_2 ... ok
+test common::enums::tests::test_product_type_from_symbol::case_3 ... ok
+test common::enums::tests::test_product_type_from_symbol::case_4 ... ok
+test common::enums::tests::test_product_type_from_symbol::case_5 ... ok
+test common::enums::tests::test_product_type_from_symbol::case_6 ... ok
+test common::enums::tests::test_product_type_from_symbol::case_7 ... ok
+test common::enums::tests::test_product_type_from_symbol::case_8 ... ok
+test common::enums::tests::test_product_type_from_symbol_rejects_invalid::case_01 ... ok
+test common::enums::tests::test_product_type_from_symbol_rejects_invalid::case_03 ... ok
+test common::enums::tests::test_product_type_from_symbol_rejects_invalid::case_02 ... ok
+test common::enums::tests::test_product_type_from_symbol_rejects_invalid::case_04 ... ok
+test common::enums::tests::test_product_type_from_symbol_rejects_invalid::case_05 ... ok
+test common::enums::tests::test_product_type_from_symbol_rejects_invalid::case_06 ... ok
+test common::enums::tests::test_product_type_from_symbol_rejects_invalid::case_07 ... ok
+test common::enums::tests::test_product_type_from_symbol_rejects_invalid::case_08 ... ok
+test common::enums::tests::test_product_type_from_symbol_rejects_invalid::case_09 ... ok
+test common::enums::tests::test_product_type_from_symbol_rejects_invalid::case_10 ... ok
+test common::enums::tests::test_product_type_from_symbol_rejects_invalid::case_11 ... ok
+test common::enums::tests::test_product_type_from_symbol_rejects_invalid::case_12 ... ok
+test common::enums::tests::test_reduce_only ... ok
+test common::enums::tests::test_reject_code_from_api_error ... ok
+test common::enums::tests::test_reject_code_from_error_string ... ok
+test common::enums::tests::test_side_from_order_side ... ok
+test common::enums::tests::test_side_serde ... ok
+test common::enums::tests::test_time_in_force_serde ... ok
+test common::enums::tests::test_trailing_offset_type_serialization ... ok
+test common::enums::tests::test_twap_status_unknown_is_lenient ... ok
+test common::models::tests::test_decimal_level_parsing_uses_declared_precision ... ok
+test common::models::tests::test_configuration ... ok
+test common::models::tests::test_delta_removal_rejects_invalid_size_precision ... ok
+test common::models::tests::test_delta_update_conversion ... ok
+test common::models::tests::test_hyperliquid_account_event_balance_delta ... ok
+test common::models::tests::test_hyperliquid_account_event_balance_snapshot ... ok
+test common::models::tests::test_hyperliquid_account_state_account_value ... ok
+test common::models::tests::test_hyperliquid_account_state_creation ... ok
+test common::models::tests::test_http_snapshot_conversion ... ok
+test common::models::tests::test_hyperliquid_account_state_getters ... ok
+test common::models::tests::test_hyperliquid_balance_creation_and_properties ... ok
+test common::models::tests::test_hyperliquid_instrument_mini_info ... ok
+test common::models::tests::test_hyperliquid_account_state_to_account_state_uses_from_total_and_free ... ok
+test common::models::tests::test_instrument_cache_empty ... ok
+test common::models::tests::test_instrument_info_creation ... ok
+test common::models::tests::test_instrument_info_with_precision ... ok
+test common::models::tests::test_instrument_cache_basic_operations ... ok
+test common::models::tests::test_invalid_price_parsing ... ok
+test common::models::tests::test_normalize_order_for_symbol ... ok
+test common::models::tests::test_price_size_parsing ... ok
+test common::models::tests::test_unconfigured_delta_preserves_source_precision ... ok
+test common::parse::tests::test_cache_alias_for_symbol::case_1 ... ok
+test common::parse::tests::test_cache_alias_for_symbol::case_2 ... ok
+test common::parse::tests::test_cache_alias_for_symbol::case_3 ... ok
+test common::models::tests::test_ws_snapshot_conversion ... ok
+test common::parse::tests::test_cache_alias_for_symbol::case_4 ... ok
+test common::parse::tests::test_cache_alias_for_symbol::case_5 ... ok
+test common::parse::tests::test_cache_alias_for_symbol::case_6 ... ok
+test common::parse::tests::test_cache_alias_for_symbol::case_7 ... ok
+test common::parse::tests::test_cache_alias_for_symbol::case_8 ... ok
+test common::parse::tests::test_clamp_price_to_precision::case_01 ... ok
+test common::parse::tests::test_clamp_price_to_precision::case_02 ... ok
+test common::parse::tests::test_clamp_price_to_precision::case_03 ... ok
+test common::parse::tests::test_clamp_price_to_precision::case_04 ... ok
+test common::parse::tests::test_clamp_price_to_precision::case_05 ... ok
+test common::parse::tests::test_clamp_price_to_precision::case_06 ... ok
+test common::parse::tests::test_clamp_price_to_precision::case_07 ... ok
+test common::parse::tests::test_clamp_price_to_precision::case_08 ... ok
+test common::parse::tests::test_clamp_price_to_precision::case_09 ... ok
+test common::parse::tests::test_clamp_price_to_precision::case_10 ... ok
+test common::parse::tests::test_decimal_serialization_roundtrip ... ok
+test common::parse::tests::test_decimal_precision_preservation ... ok
+test common::parse::tests::test_derive_limit_from_trigger::case_01 ... ok
+test common::parse::tests::test_derive_limit_from_trigger::case_02 ... ok
+test common::parse::tests::test_derive_limit_from_trigger::case_03 ... ok
+test common::parse::tests::test_derive_limit_from_trigger::case_04 ... ok
+test common::parse::tests::test_derive_limit_from_trigger::case_05 ... ok
+test common::parse::tests::test_derive_limit_from_trigger::case_06 ... ok
+test common::parse::tests::test_derive_limit_from_trigger::case_07 ... ok
+test common::parse::tests::test_derive_limit_from_trigger::case_08 ... ok
+test common::parse::tests::test_derive_limit_from_trigger::case_09 ... ok
+test common::parse::tests::test_derive_limit_from_trigger::case_10 ... ok
+test common::parse::tests::test_derive_limit_from_trigger_respects_bps::case_1 ... ok
+test common::parse::tests::test_derive_limit_from_trigger_respects_bps::case_2 ... ok
+test common::parse::tests::test_derive_limit_from_trigger_respects_bps::case_3 ... ok
+test common::parse::tests::test_derive_limit_from_trigger_respects_bps::case_4 ... ok
+test common::parse::tests::test_derive_limit_from_trigger_respects_bps::case_5 ... ok
+test common::parse::tests::test_derive_limit_from_trigger_respects_bps::case_6 ... ok
+test common::parse::tests::test_derive_limit_from_trigger_respects_bps::case_7 ... ok
+test common::parse::tests::test_derive_market_order_price::case_01 ... ok
+test common::parse::tests::test_derive_market_order_price::case_02 ... ok
+test common::parse::tests::test_derive_market_order_price::case_03 ... ok
+test common::parse::tests::test_derive_market_order_price::case_04 ... ok
+test common::parse::tests::test_derive_market_order_price::case_05 ... ok
+test common::parse::tests::test_derive_market_order_price::case_06 ... ok
+test common::parse::tests::test_derive_market_order_price::case_07 ... ok
+test common::parse::tests::test_derive_market_order_price::case_08 ... ok
+test common::parse::tests::test_derive_market_order_price::case_09 ... ok
+test common::parse::tests::test_derive_market_order_price_respects_slippage_override ... ok
+test common::parse::tests::test_derive_market_order_price::case_10 ... ok
+test common::parse::tests::test_edge_cases ... ok
+test common::parse::tests::test_extract_inner_error_non_status_response ... ok
+test common::parse::tests::test_extract_inner_error_modify_success ... ok
+test common::parse::tests::test_extract_inner_error_order_resting ... ok
+test common::parse::tests::test_extract_inner_error_cancel_success ... ok
+test common::parse::tests::test_extract_inner_error_cancel_error ... ok
+test common::parse::tests::test_extract_inner_error_modify_error ... ok
+test common::parse::tests::test_extract_inner_error_order_with_error ... ok
+test common::parse::tests::test_extract_inner_error_order_filled ... ok
+test common::parse::tests::test_extract_inner_error_returns_first_error_in_batch ... ok
+test common::parse::tests::test_extract_inner_error_unparsable_response ... ok
+test common::parse::tests::test_extract_inner_errors_all_success ... ok
+test common::parse::tests::test_extract_inner_errors_mixed_batch ... ok
+test common::parse::tests::test_extract_inner_errors_cancel_mixed ... ok
+test common::parse::tests::test_extract_inner_errors_unparsable ... ok
+test common::parse::tests::test_extract_inner_errors_modify_mixed ... ok
+test common::parse::tests::test_extract_inner_errors_cancel_success ... ok
+test common::parse::tests::test_format_outcome_nautilus_symbol::case_1 ... ok
+test common::parse::tests::test_format_trailing_stop_info ... ok
+test common::parse::tests::test_format_outcome_nautilus_symbol::case_2 ... ok
+test common::parse::tests::test_format_outcome_nautilus_symbol::case_3 ... ok
+test common::parse::tests::test_is_conditional_order_data ... ok
+test common::parse::tests::test_make_fill_trade_id_is_stable ... ok
+test common::parse::tests::test_millisecond_timestamp_is_exact::case_1 ... ok
+test common::parse::tests::test_millisecond_timestamp_is_exact::case_2 ... ok
+test common::parse::tests::test_millisecond_timestamp_is_exact::case_3 ... ok
+test common::parse::tests::test_millisecond_timestamp_overflow_is_rejected ... ok
+test common::parse::tests::test_min_notional_validation ... ok
+test common::parse::tests::test_normalize_order_complete ... ok
+test common::parse::tests::test_normalize_order_min_notional_fail ... ok
+test common::parse::tests::test_normalize_price ... ok
+test common::parse::tests::test_normalize_quantity ... ok
+test common::parse::tests::test_optional_none_handling ... ok
+test common::parse::tests::test_order_to_request_stop_market_derives_limit_from_trigger::case_01 ... ok
+test common::parse::tests::test_order_to_request_stop_market_derives_limit_from_trigger::case_03 ... ok
+test common::parse::tests::test_order_to_request_stop_market_derives_limit_from_trigger::case_02 ... ok
+test common::parse::tests::test_order_to_request_stop_market_derives_limit_from_trigger::case_05 ... ok
+test common::parse::tests::test_order_to_request_stop_market_derives_limit_from_trigger::case_04 ... ok
+test common::parse::tests::test_order_to_request_stop_market_derives_limit_from_trigger::case_06 ... ok
+test common::parse::tests::test_order_to_request_stop_market_derives_limit_from_trigger::case_07 ... ok
+test common::parse::tests::test_order_to_request_stop_market_derives_limit_from_trigger::case_08 ... ok
+test common::parse::tests::test_order_to_request_stop_market_derives_limit_from_trigger::case_09 ... ok
+test common::parse::tests::test_order_to_request_stop_market_derives_limit_from_trigger::case_10 ... ok
+test common::parse::tests::test_outcome_token_from_nautilus_symbol::case_1 ... ok
+test common::parse::tests::test_outcome_token_from_nautilus_symbol::case_2 ... ok
+test common::parse::tests::test_outcome_token_from_nautilus_symbol::case_3 ... ok
+test common::parse::tests::test_outcome_token_from_nautilus_symbol::case_4 ... ok
+test common::parse::tests::test_outcome_token_from_nautilus_symbol::case_5 ... ok
+test common::parse::tests::test_parse_account_balances_returns_empty_when_no_cross_margin_summary ... ok
+test common::parse::tests::test_parse_account_balances_bumps_positive_total_when_withdrawable_exceeds ... ok
+test common::parse::tests::test_parse_account_balances_preserves_negative_total_raw_usd ... ok
+test common::parse::tests::test_parse_account_balances_uses_total_raw_usd_and_top_level_withdrawable ... ok
+test common::parse::tests::test_parse_combined_deduplicates_usdc_when_perp_margin_used_non_zero ... ok
+test common::parse::tests::test_parse_combined_deduplicates_usdc_when_perp_summary_present ... ok
+test common::parse::tests::test_parse_combined_deduplicates_usdc_when_perp_total_raw_usd_negative ... ok
+test common::parse::tests::test_parse_combined_deduplicates_usdc_when_perp_total_raw_usd_non_zero ... ok
+test common::parse::tests::test_parse_combined_deduplicates_usdc_when_perp_withdrawable_non_zero ... ok
+test common::parse::tests::test_parse_combined_surfaces_spot_usdc_when_perp_summary_zeroed_unified ... ok
+test common::parse::tests::test_parse_combined_uses_spot_usdc_when_perp_summary_missing ... ok
+test common::parse::tests::test_parse_order_status_with_trigger ... ok
+test common::parse::tests::test_parse_outcome_nautilus_symbol::case_1 ... ok
+test common::parse::tests::test_parse_outcome_nautilus_symbol::case_2 ... ok
+test common::parse::tests::test_parse_outcome_nautilus_symbol::case_3 ... ok
+test common::parse::tests::test_parse_outcome_nautilus_symbol::case_4 ... ok
+test common::parse::tests::test_parse_outcome_nautilus_symbol_rejects_invalid::case_1 ... ok
+test common::parse::tests::test_parse_outcome_nautilus_symbol_rejects_invalid::case_2 ... ok
+test common::parse::tests::test_parse_outcome_nautilus_symbol_rejects_invalid::case_3 ... ok
+test common::parse::tests::test_parse_outcome_nautilus_symbol_rejects_invalid::case_4 ... ok
+test common::parse::tests::test_parse_outcome_nautilus_symbol_rejects_invalid::case_5 ... ok
+test common::parse::tests::test_parse_outcome_nautilus_symbol_rejects_invalid::case_6 ... ok
+test common::parse::tests::test_parse_outcome_nautilus_symbol_rejects_invalid::case_7 ... ok
+test common::parse::tests::test_parse_outcome_nautilus_symbol_rejects_overflow::case_1 ... ok
+test common::parse::tests::test_parse_outcome_nautilus_symbol_rejects_overflow::case_2 ... ok
+test common::parse::tests::test_parse_outcome_nautilus_symbol_rejects_overflow::case_3 ... ok
+test common::parse::tests::test_parse_outcome_symbol::case_1 ... ok
+test common::parse::tests::test_parse_outcome_symbol::case_2 ... ok
+test common::parse::tests::test_parse_outcome_symbol::case_3 ... ok
+test common::parse::tests::test_parse_outcome_symbol::case_4 ... ok
+test common::parse::tests::test_parse_outcome_symbol_rejects_invalid_values::case_1 ... ok
+test common::parse::tests::test_parse_outcome_symbol_rejects_invalid_values::case_2 ... ok
+test common::parse::tests::test_parse_outcome_symbol_rejects_invalid_values::case_3 ... ok
+test common::parse::tests::test_parse_outcome_symbol_rejects_invalid_values::case_4 ... ok
+test common::parse::tests::test_parse_spot_account_balances_clamps_hold_to_total ... ok
+test common::parse::tests::test_parse_outcome_symbol_rejects_invalid_values::case_5 ... ok
+test common::parse::tests::test_parse_spot_account_balances_empty ... ok
+test common::parse::tests::test_parse_spot_account_balances_emits_one_per_token ... ok
+test common::parse::tests::test_parse_trigger_order_type ... ok
+test common::parse::tests::test_parse_trigger_price ... ok
+test common::parse::tests::test_round_down_to_step ... ok
+test common::parse::tests::test_round_down_to_tick ... ok
+test common::parse::tests::test_round_to_sig_figs ... ok
+test common::types::tests::test_asset_id_builder_perp ... ok
+test common::types::tests::test_asset_id_from_outcome_encoding ... ok
+test common::types::tests::test_asset_id_from_outcome_encoding_rejects_invalid_side ... ok
+test common::types::tests::test_asset_id_from_outcome_encoding_rejects_overflow ... ok
+test common::types::tests::test_asset_id_outcome ... ok
+test common::types::tests::test_asset_id_outcome_accessors_non_outcome ... ok
+test common::types::tests::test_asset_id_outcome_invalid_side_digit_not_outcome ... ok
+test common::types::tests::test_asset_id_outcome_side_one ... ok
+test common::types::tests::test_asset_id_perp ... ok
+test common::types::tests::test_asset_id_outcome_invalid_side - should panic ... ok
+test common::types::tests::test_asset_id_ranges_mutually_exclusive ... ok
+test common::types::tests::test_asset_id_spot ... ok
+test config::tests::test_data_config_debug_redacts_private_key ... ok
+test config::tests::test_data_config_toml_minimal ... ok
+test config::tests::test_data_config_toml_stale_stream_settings ... ok
+test config::tests::test_exec_config_debug_redacts_private_key ... ok
+test config::tests::test_exec_config_default_account_address_is_none ... ok
+test config::tests::test_exec_config_toml_empty_uses_defaults ... ok
+test config::tests::test_exec_config_toml_include_builder_attribution_false ... ok
+test config::tests::test_exec_config_with_account_address ... ok
+test data::tests::test_candle_to_bar_rejects_close_boundary_overflow ... ok
+test data::tests::test_candle_to_bar_uses_causal_initialization_timestamp ... ok
+test data::tests::test_check_stale_book_without_fresh_quote_is_not_flagged::case_2 ... ok
+test data::tests::test_check_stale_book_with_fresh_quote_flags_relative_staleness ... ok
+test data::tests::test_check_stale_book_without_fresh_quote_is_not_flagged::case_1 ... ok
+test data::tests::test_filter_recent_trades_bounds_are_inclusive ... ok
+test data::tests::test_filter_recent_trades_empty_snapshot_returns_empty ... ok
+test data::tests::test_filter_recent_trades_end_equal_to_floor_keeps_floor_trade ... ok
+test data::tests::test_filter_recent_trades_entirely_older_returns_empty ... ok
+test data::tests::test_filter_recent_trades_full_window_returns_all ... ok
+test data::tests::test_filter_recent_trades_limit_keeps_most_recent ... ok
+test data::tests::test_filter_recent_trades_partial_keeps_in_range_subset ... ok
+test data::tests::test_filter_recent_trades_within_window_filters_bounds ... ok
+test data::tests::test_funding_entry_to_update_handles_negative_rate ... ok
+test data::tests::test_funding_entry_to_update_parses_positive_rate ... ok
+test data::tests::test_funding_history_entry_rejects_invalid_rate ... ok
+test data::tests::test_parse_book_precision_params_none ... ok
+test data::tests::test_funding_history_fixture_parses ... ok
+test data::tests::test_parse_book_precision_params_only_n_sig_figs ... ok
+test data::tests::test_parse_book_precision_params_both ... ok
+test data::tests::test_parse_book_precision_params_rejects_negative ... ok
+test data::tests::test_parse_fast::case_1 ... ok
+test data::tests::test_parse_fast::case_2 ... ok
+test data::tests::test_parse_fast::case_3 ... ok
+test data::tests::test_parse_fast::case_4 ... ok
+test data::tests::test_parse_fast::case_5 ... ok
+test data::tests::test_parse_fast_rejects_non_boolean::case_1 ... ok
+test data::tests::test_parse_fast_rejects_non_boolean::case_2 ... ok
+test data::tests::test_data_client_stream_health_config_zero_disables_monitor::case_1 ... ok
+test data::tests::test_data_client_recovery_requires_positive_cooldown ... ok
+test data::tests::test_parse_fast_rejects_non_boolean::case_4 ... ok
+test data::tests::test_parse_fast_rejects_non_boolean::case_3 ... ok
+test data::tests::test_data_client_stream_health_config_zero_disables_monitor::case_2 ... ok
+test data::tests::test_parse_fast_rejects_non_boolean::case_5 ... ok
+test data::tests::test_parse_fast_rejects_non_boolean::case_6 ... ok
+test data::tests::test_parse_l2_book_snapshot_empty_levels_yields_empty_book ... ok
+test data::tests::test_parse_l2_book_snapshot_populates_both_sides ... ok
+test data::tests::test_parse_l2_book_snapshot_skips_non_positive_size ... ok
+test data::tests::test_parse_l2_book_snapshot_skips_zero_size_levels ... ok
+test data::tests::test_parse_l2_book_snapshot_truncates_to_depth ... ok
+test data::tests::test_parse_l2_book_snapshot_uses_venue_time_as_ts_event ... ok
+test data::tests::test_stream_health_monitor_fresh_stream_does_not_warn ... ok
+test data::tests::test_stream_health_monitor_new_update_resets_age_and_stale_count ... ok
+test data::tests::test_stream_health_monitor_unsubscribe_removes_stream ... ok
+test data::tests::test_stream_health_monitor_warning_cooldown_prevents_repeated_logs ... ok
+test data::tests::test_stream_health_monitor_warns_at_receive_threshold ... ok
+test data::tests::test_recent_trades_fixture_parses_and_sorts ... ok
+test data::tests::test_stream_health_monitor_warns_once_after_threshold ... ok
+test data::tests::test_stream_health_receive_resets_recovery_state ... ok
+test data::tests::test_stream_health_recovery_first_breach_warns_even_past_cooldown ... ok
+test data::tests::test_stream_health_recovery_ladder_escalates_and_resets ... ok
+test data::tests::test_stream_health_update_extracts_tracked_market_data_messages ... ok
+test data_types::tests::test_register_hyperliquid_custom_data_is_idempotent ... ok
+test economics_scope::tests::exact_sum_never_rounds_a_small_payment_into_a_large_total ... ok
+test economics_scope::tests::policy_rejects_unknown_or_unbounded_fields::case_1 ... ok
+test economics_scope::tests::policy_rejects_unknown_or_unbounded_fields::case_4 ... ok
+test economics_scope::tests::policy_rejects_unknown_or_unbounded_fields::case_5 ... ok
+test economics_scope::tests::policy_rejects_unknown_or_unbounded_fields::case_3 ... ok
+test economics_scope::tests::policy_rejects_unknown_or_unbounded_fields::case_2 ... ok
+test economics_scope::tests::checkpoint_exclusive_owner_and_missing_initialized_file_fail_closed ... ok
+test economics_scope::tests::empty_or_invalid_envelopes_do_not_grant_attribution::case_1 ... ok
+test economics_scope::tests::only_phase_a_exact_strong_history_replay_can_preserve_current_ready ... ok
+test economics_scope::tests::recomputed_checksum_cannot_override_raw_facts_or_consumer_receipt_completeness::case_1 ... ok
+test execution::tests::oid_query_attaches_the_known_client_order_id ... ok
+test execution::tests::oid_query_keeps_the_api_reported_client_order_id ... ok
+test execution::tests::test_build_ouo_resize_request_sends_sibling_leaves_quantity ... ok
+test execution::tests::test_can_fast_cancel_order_only_allows_plain_order_types::case_1_market ... ok
+test execution::tests::test_can_fast_cancel_order_only_allows_plain_order_types::case_2_limit ... ok
+test execution::tests::test_can_fast_cancel_order_only_allows_plain_order_types::case_3_stop_market ... ok
+test execution::tests::test_can_fast_cancel_order_only_allows_plain_order_types::case_4_unknown ... ok
+test execution::tests::test_cancel_replace_chains_second_corrective_reduce ... ok
+test execution::tests::test_cancel_replace_corrective_uses_post_drain_buffered_fill ... ok
+test execution::tests::test_cancel_replace_emits_target_total_quantity ... ok
+test execution::tests::test_cancel_replace_fill_promotion_queues_corrective_reduce ... ok
+test execution::tests::test_cancel_replace_no_corrective_when_filled_equals_target ... ok
+test execution::tests::test_cancel_replace_no_corrective_without_in_flight_fill ... ok
+test execution::tests::test_cancel_replace_queues_corrective_reduce_on_in_flight_fill ... ok
+test execution::tests::test_cancel_replace_without_marker_falls_back_to_report_quantity ... ok
+test execution::tests::test_determine_order_list_grouping::case_01_independent_orders ... ok
+test execution::tests::test_determine_order_list_grouping::case_02_bracket_oto ... ok
+test execution::tests::test_determine_order_list_grouping::case_03_bracket_oto_with_factory_ouo_children ... ok
+test execution::tests::test_determine_order_list_grouping::case_04_oto_not_bracket_shaped ... ok
+test execution::tests::test_determine_order_list_grouping::case_05_oco_all_reduce_only ... ok
+test execution::tests::test_determine_order_list_grouping::case_06_oco_not_all_reduce_only ... ok
+test execution::tests::test_determine_order_list_grouping::case_07_oto_with_non_oco_children ... ok
+test execution::tests::test_determine_order_list_grouping::case_08_mixed_oco_and_plain_reduce_only ... ok
+test execution::tests::test_determine_order_list_grouping::case_09_unlinked_oco_reduce_only ... ok
+test execution::tests::test_determine_order_list_grouping::case_10_single_order ... ok
+test execution::tests::test_filter_order_status_reports_for_command_filters_open_only ... ok
+test execution::tests::test_filter_order_status_reports_for_command_filters_time_range_inclusively ... ok
+test execution::tests::test_filter_order_status_reports_for_command_without_filters_preserves_reports ... ok
+test execution::tests::test_handle_execution_report_external_terminal_evicts_cloid ... ok
+test execution::tests::test_handle_execution_report_fill_under_filled_marker_promotes_and_evicts_cloid ... ok
+test execution::tests::test_handle_execution_report_filled_marker_then_fill_evicts_on_fill ... ok
+test execution::tests::test_handle_execution_report_open_status_preserves_cloid ... ok
+test economics_scope::tests::empty_or_invalid_envelopes_do_not_grant_attribution::case_3 ... ok
+test execution::tests::test_handle_execution_report_skip_keeps_cloid_mapping ... ok
+test economics_scope::tests::recomputed_checksum_cannot_override_raw_facts_or_consumer_receipt_completeness::case_2 ... ok
+test economics_scope::tests::exact_actual_funding_has_separate_source_and_consumer_checkpoints::case_2 ... ok
+test execution::tests::test_handle_execution_report_tracked_accepted_emits_typed_event ... ok
+test execution::tests::test_register_order_context_registers_regular_order ... ok
+test execution::tests::test_handle_execution_report_tracked_terminal_evicts_cloid ... ok
+test execution::tests::test_restored_active_bracket_rebuilds_ouo_without_reactivation ... ok
+test execution::tests::test_post_rejection_preserves_exact_reason_when_ws_rejection_arrives_first ... ok
+test execution::tests::test_post_rejection_suppresses_late_raw_cloid_reject ... ok
+test economics_scope::tests::recomputed_checksum_cannot_override_raw_facts_or_consumer_receipt_completeness::case_3 ... ok
+test execution::tests::test_register_order_context_skips_quote_quantity_order ... ok
+test execution::tests::test_split_fast_cancel_requests_preserves_request_entry_alignment ... ok
+test execution::tests::test_staged_bracket_activation_links_ouo_siblings_once ... ok
+test execution::tests::test_staged_bracket_child_cancel_preserves_other_child_for_parent_fill ... ok
+test execution::tests::test_staged_bracket_parent_cancel_returns_all_unsubmitted_children ... ok
+test execution::tests::test_validate_accepts_outcome_limit_order::case_1_gtc_post_only ... ok
+test execution::tests::test_validate_accepts_outcome_limit_order::case_2_gtc_taker ... ok
+test execution::tests::test_validate_accepts_outcome_limit_order::case_3_ioc_post_only ... ok
+test execution::tests::test_validate_accepts_outcome_limit_order::case_4_ioc_taker ... ok
+test execution::tests::test_validate_accepts_perp_limit_order ... ok
+test economics_scope::tests::account_wide_ledger_has_no_fake_io_attribution_and_same_hash_effects_are_ambiguous ... ok
+test economics_scope::tests::numeric_literal_lexeme_is_preserved_and_excluded_from_exact_cash ... ok
+test execution::tests::test_validate_rejects_outcome_reduce_only ... ok
+test execution::tests::test_validate_rejects_outcome_trigger_order ... ok
+test execution::tests::test_validate_rejects_unsupported_symbol_suffix ... ok
+test execution_scope::tests::entry_budget_uses_minimum_http_and_latest_private_funds::case_1 ... ok
+test execution_scope::tests::entry_budget_uses_minimum_http_and_latest_private_funds::case_2 ... ok
+test execution_scope::tests::entry_budget_uses_minimum_http_and_latest_private_funds::case_3 ... ok
+test execution_scope::tests::entry_budget_uses_minimum_http_and_latest_private_funds::case_4 ... ok
+test execution_scope::tests::explicit_policy_rejects_unknown_nonexact_or_unbounded_fields::case_1 ... ok
+test execution_scope::tests::explicit_policy_rejects_unknown_nonexact_or_unbounded_fields::case_2 ... ok
+test execution_scope::tests::durable_journal_rejects_changed_tif_and_forged_reservation ... ok
+test execution_scope::tests::explicit_policy_rejects_unknown_nonexact_or_unbounded_fields::case_3 ... ok
+test execution_scope::tests::explicit_policy_rejects_unknown_nonexact_or_unbounded_fields::case_4 ... ok
+test execution_scope::tests::explicit_policy_rejects_unknown_nonexact_or_unbounded_fields::case_5 ... ok
+test execution_scope::tests::explicit_policy_rejects_unknown_nonexact_or_unbounded_fields::case_6 ... ok
+test execution_scope::tests::missing_real_trade_facts_are_never_manufactured::case_1 ... ok
+test execution_scope::tests::missing_real_trade_facts_are_never_manufactured::case_2 ... ok
+test execution_scope::tests::missing_real_trade_facts_are_never_manufactured::case_3 ... ok
+test execution_scope::tests::native_instrument_identity_never_uses_ticker_equivalence::case_1 ... ok
+test execution_scope::tests::native_instrument_identity_never_uses_ticker_equivalence::case_2 ... ok
+test execution_scope::tests::native_instrument_identity_never_uses_ticker_equivalence::case_3 ... ok
+test execution_scope::tests::raw_financial_facts_preserve_rebate_and_do_not_add_builder_fee_twice ... ok
+test execution_scope::tests::raw_trade_identity_detects_financial_and_owned_oid_conflicts::case_1 ... ok
+test execution_scope::tests::raw_trade_identity_detects_financial_and_owned_oid_conflicts::case_2 ... ok
+test execution_scope::tests::raw_trade_identity_detects_financial_and_owned_oid_conflicts::case_3 ... ok
+test execution_scope::tests::raw_trade_identity_detects_financial_and_owned_oid_conflicts::case_4 ... ok
+test execution_scope::tests::wire_precision_respects_quantity_and_integer_price_exception::case_1 ... ok
+test execution_scope::tests::wire_precision_respects_quantity_and_integer_price_exception::case_2 ... ok
+test execution_scope::tests::wire_precision_respects_quantity_and_integer_price_exception::case_3 ... ok
+test execution_scope::tests::wire_precision_respects_quantity_and_integer_price_exception::case_4 ... ok
+test execution_scope::tests::wire_precision_respects_quantity_and_integer_price_exception::case_5 ... ok
+test factories::tests::test_hyperliquid_data_client_config_implements_client_config ... ok
+test factories::tests::test_hyperliquid_data_client_factory_creation ... ok
+test factories::tests::test_hyperliquid_data_client_factory_default ... ok
+test factories::tests::test_hyperliquid_exec_client_config_implements_client_config ... ok
+test factories::tests::test_hyperliquid_data_client_factory_rejects_wrong_config_type ... ok
+test factories::tests::test_hyperliquid_execution_client_factory_creation ... ok
+test factories::tests::test_hyperliquid_execution_client_factory_default ... ok
+test factories::tests::test_hyperliquid_execution_client_factory_rejects_wrong_config_type ... ok
+test http::client::tests::info_pretty_shape ... ok
+test http::client::tests::resolve_perp_dex_name_infers_from_asset_name_when_perp_dexs_missing ... ok
+test http::client::tests::resolve_perp_dex_name_prefers_perp_dexs_entry ... ok
+test http::client::tests::resolve_perp_dex_name_uses_empty_string_for_default_dex ... ok
+test http::client::tests::stable_json_roundtrips ... ok
+test http::client::tests::test_builder_attribution_defaults_to_mainnet_builder ... ok
+test http::client::tests::test_build_submit_order_report_elides_waiting_for_fill_tag ... ok
+test http::client::tests::test_builder_attribution_disabled_returns_none ... ok
+test http::client::tests::test_build_submit_order_report_filled_uses_total_sz_decimal ... ok
+test http::client::tests::test_builder_attribution_omitted_on_testnet ... ok
+test http::client::tests::test_cache_instrument_base_alias_first_write_wins_for_spot ... ok
+test http::client::tests::test_cache_instrument_by_raw_symbol ... ok
+test http::client::tests::test_cache_instrument_perp_aliases_sanitized_base ... ok
+test http::client::tests::test_client_order_id_cloid_cache_is_stable_and_first_write_wins ... ok
+test http::client::tests::test_from_resolved_credentials_preserves_account_address_without_private_key ... ok
+test http::client::tests::test_get_or_create_instrument_outcome_fallback_no_product_type ... ok
+test http::error::tests::test_error_constructors ... ok
+test http::error::tests::test_error_display ... ok
+test http::client::tests::test_with_credentials_preserves_explicit_account_address ... ok
+test http::error::tests::test_is_transport_error ... ok
+test http::error::tests::test_is_unprocessable_entity ... ok
+test http::error::tests::test_retryable_errors ... ok
+test http::models::tests::test_cancel_action_serializes_fast_flag ... ok
+test economics_scope::tests::runtime_bound_preserves_prior_durable_facts_and_does_not_evict_pending ... ok
+test http::models::tests::test_cancel_by_cloid_action_serializes_fast_flag ... ok
+test http::models::tests::test_exchange_response_deserialization ... ok
+test http::models::tests::test_funding_history_entry_with_premium ... ok
+test http::models::tests::test_funding_history_entry_without_premium ... ok
+test http::models::tests::test_hyperliquid_level_serializes_decimals_as_strings ... ok
+test http::models::tests::test_l2_book_deserialization ... ok
+test http::models::tests::test_historical_order_deserializes_liquidation_market_tif ... ok
+test http::models::tests::test_meta_deserialization ... ok
+test http::models::tests::test_modify_target_serializes_cloid ... ok
+test http::models::tests::test_modify_target_serializes_numeric_oid ... ok
+test http::models::tests::test_order_response_normal_tpsl_with_waiting_children ... ok
+test http::models::tests::test_msgpack_serialization_matches_python ... ok
+test http::models::tests::test_outcome_meta_defaults_missing_side_specs ... ok
+test http::models::tests::test_perp_asset_hip3_fields ... ok
+test economics_scope::tests::conflict_before_consumption_excludes_both_cash_candidates ... ok
+test http::models::tests::test_perp_asset_hip3_fields_absent ... ok
+test http::models::tests::test_order_status_deserializes_frontend_market_tif ... ok
+test http::models::tests::test_recent_trade_deserializes ... ok
+test http::models::tests::test_spot_balance_handles_missing_entry_ntl ... ok
+test http::models::tests::test_spot_balance_outcome_side_token_lacks_token_field ... ok
+test http::models::tests::test_spot_clearinghouse_state_deserialization ... ok
+test http::models::tests::test_spot_clearinghouse_state_empty ... ok
+test http::models::tests::test_user_fill_defaults_missing_tid_and_builder_fee ... ok
+test http::models::tests::test_user_fill_deserializes_tid_and_builder_fee ... ok
+test http::models::tests::test_user_outcome_merge_outcome_serialization ... ok
+test http::models::tests::test_user_outcome_merge_outcome_null_amount_means_max ... ok
+test http::models::tests::test_user_outcome_merge_question_null_amount_means_max ... ok
+test http::models::tests::test_user_outcome_merge_question_serialization ... ok
+test http::models::tests::test_user_outcome_negate_outcome_serialization ... ok
+test http::models::tests::test_user_outcome_split_msgpack_roundtrip ... ok
+test http::models::tests::test_user_outcome_split_serialization ... ok
+test http::parse::tests::test_create_instrument_from_def_outcome_emits_binary_option ... ok
+test http::parse::tests::test_create_instrument_from_def_outcome_info_carries_parsed_description ... ok
+test http::parse::tests::test_derive_outcome_settlements_marks_winners_losers_and_fallback ... ok
+test http::parse::tests::test_create_instrument_from_def_perp_defaults_missing_settlement_to_usdc ... ok
+test http::parse::tests::test_derive_outcome_settlements_returns_empty_when_no_questions ... ok
+test http::parse::tests::test_create_instrument_from_def_outcome_info_merges_parent_question ... ok
+test http::parse::tests::test_create_instrument_from_def_perp_sets_min_notional ... ok
+test http::parse::tests::test_derive_outcome_settlements_returns_empty_when_no_questions_settled ... ok
+test http::parse::tests::test_get_usdh_currency_registers_with_explicit_precision ... ok
+test http::parse::tests::test_deserialize_l2_book_from_real_data ... ok
+test http::parse::tests::test_deserialize_user_fills_with_dust_conversion ... ok
+test http::parse::tests::test_is_outcome_side_token::case_01 ... ok
+test http::parse::tests::test_is_outcome_side_token::case_02 ... ok
+test http::parse::tests::test_is_outcome_side_token::case_03 ... ok
+test http::parse::tests::test_is_outcome_side_token::case_04 ... ok
+test http::parse::tests::test_is_outcome_side_token::case_05 ... ok
+test http::parse::tests::test_is_outcome_side_token::case_06 ... ok
+test http::parse::tests::test_is_outcome_side_token::case_07 ... ok
+test http::parse::tests::test_is_outcome_side_token::case_08 ... ok
+test http::parse::tests::test_is_outcome_side_token::case_09 ... ok
+test http::parse::tests::test_is_outcome_side_token::case_10 ... ok
+test http::parse::tests::test_parse_fill_side ... ok
+test http::parse::tests::test_parse_outcome_expiry_ns_rejects_bad_input::case_1 ... ok
+test http::parse::tests::test_parse_fill_report_outcome_round_trip ... ok
+test http::parse::tests::test_parse_outcome_expiry_ns_rejects_bad_input::case_2 ... ok
+test http::parse::tests::test_parse_outcome_expiry_ns_rejects_bad_input::case_3 ... ok
+test http::parse::tests::test_parse_outcome_expiry_ns_rejects_bad_input::case_4 ... ok
+test http::parse::tests::test_parse_outcome_expiry_ns_rejects_bad_input::case_5 ... ok
+test http::client::tests::test_production_client_get_outcome_meta_uses_outcome_meta_request ... ok
+test http::parse::tests::test_parse_outcome_expiry_ns_rejects_bad_input::case_6 ... ok
+test http::parse::tests::test_parse_outcome_expiry_ns_round_trip ... ok
+test http::parse::tests::test_parse_outcome_instruments_emits_both_sides ... ok
+test http::parse::tests::test_parse_outcome_instruments_handles_missing_side_specs ... ok
+test economics_scope::tests::exact_actual_funding_has_separate_source_and_consumer_checkpoints::case_3 ... ok
+test http::parse::tests::test_parse_outcome_meta_question_settlement_round_trip ... ok
+test http::parse::tests::test_parse_outcome_instruments_inherits_expiry_from_parent_question ... ok
+test execution_scope::tests::running_journal_byte_bound_closes_before_an_unbounded_append ... ok
+test http::parse::tests::test_parse_outcome_instruments_pulls_expiry_from_price_binary ... ok
+test http::parse::tests::test_parse_perp_instruments ... ok
+test http::parse::tests::test_parse_perp_instruments_hip3_dex ... ok
+test http::parse::tests::test_parse_perp_instruments_from_real_data ... ok
+test http::parse::tests::test_parse_perp_instruments_sanitizes_hip3_wildcards ... ok
+test http::parse::tests::test_parse_recent_trade ... ok
+test http::parse::tests::test_parse_spot_instruments ... ok
+test http::parse::tests::test_parse_spot_instruments_sanitizes_wildcard_token_names ... ok
+test http::parse::tests::test_parse_spot_instruments_sorts_canonical_before_non_canonical ... ok
+test http::parse::tests::test_parse_perp_instruments_with_non_usdc_collateral ... ok
+test http::parse::tests::test_pow10_neg ... ok
+test http::parse::tests::test_price_decimals_clamping ... ok
+test http::parse::tests::test_recent_trade_rejects_invalid_price ... ok
+test http::parse::tests::test_resolve_fee_currency_falls_back_to_quote_when_unregistered_and_zero_fee ... ok
+test http::parse::tests::test_resolve_fee_currency_outcome_token_returns_quote_even_when_registered ... ok
+test http::parse::tests::test_resolve_perp_settlement_currency_defaults_to_usdc ... ok
+test http::parse::tests::test_resolve_perp_settlement_currency_errors_on_missing_token_index ... ok
+test http::parse::tests::test_sanitize_symbol::case_1 ... ok
+test http::parse::tests::test_resolve_perp_settlement_currency_requires_spot_meta_for_non_usdc ... ok
+test http::parse::tests::test_sanitize_symbol::case_2 ... ok
+test http::parse::tests::test_sanitize_symbol::case_3 ... ok
+test http::parse::tests::test_sanitize_symbol::case_4 ... ok
+test http::parse::tests::test_sanitize_symbol::case_5 ... ok
+test http::parse::tests::test_sanitize_symbol::case_6 ... ok
+test http::query::tests::economic_account_history_contract_has_inclusive_times_and_no_dex ... ok
+test http::query::tests::test_cancel_by_cloid_serialization ... ok
+test http::query::tests::test_exchange_action_cancel ... ok
+test http::query::tests::test_exchange_action_order ... ok
+test http::query::tests::test_exchange_action_serialization ... ok
+test http::query::tests::test_exchange_action_type_as_ref ... ok
+test http::query::tests::test_info_request_all_perp_metas ... ok
+test http::query::tests::test_info_request_clearinghouse_state_dex_serialization ... ok
+test http::query::tests::test_info_request_frontend_open_orders_dex_serialization ... ok
+test http::query::tests::test_info_request_funding_history_omits_end_time_when_none ... ok
+test http::query::tests::test_info_request_funding_history_with_end_time ... ok
+test http::query::tests::test_info_request_l2_book ... ok
+test http::query::tests::test_info_request_meta ... ok
+test http::query::tests::test_info_request_open_orders_dex_serialization ... ok
+test http::query::tests::test_info_request_outcome_meta ... ok
+test http::query::tests::test_info_request_recent_trades ... ok
+test http::query::tests::test_info_request_spot_clearinghouse_state ... ok
+test http::query::tests::test_modify_serialization ... ok
+test http::query::tests::test_update_isolated_margin_serialization ... ok
+test http::query::tests::test_update_leverage_serialization ... ok
+test http::rate_limits::tests::test_backoff_full_jitter_increases::case_1 ... ok
+test http::rate_limits::tests::test_backoff_full_jitter_increases::case_2 ... ok
+test http::rate_limits::tests::test_backoff_full_jitter_increases::case_3 ... ok
+test http::rate_limits::tests::test_backoff_full_jitter_respects_cap ... ok
+test http::rate_limits::tests::test_exchange_weight_cancel ... ok
+test http::rate_limits::tests::test_exchange_weight_non_batch_action ... ok
+test http::rate_limits::tests::test_exchange_weight_order_steps_every_40::case_1 ... ok
+test http::rate_limits::tests::test_exchange_weight_order_steps_every_40::case_2 ... ok
+test http::rate_limits::tests::test_exchange_weight_order_steps_every_40::case_3 ... ok
+test http::rate_limits::tests::test_exchange_weight_order_steps_every_40::case_4 ... ok
+test http::rate_limits::tests::test_exchange_weight_order_steps_every_40::case_5 ... ok
+test http::rate_limits::tests::test_exec_action_weight_batch_modify_steps_every_40::case_1 ... ok
+test http::rate_limits::tests::test_exec_action_weight_batch_modify_steps_every_40::case_2 ... ok
+test http::rate_limits::tests::test_exec_action_weight_batch_modify_steps_every_40::case_3 ... ok
+test http::rate_limits::tests::test_exec_action_weight_batch_modify_steps_every_40::case_4 ... ok
+test http::rate_limits::tests::test_exec_action_weight_batch_modify_steps_every_40::case_5 ... ok
+test http::rate_limits::tests::test_exec_action_weight_cancel_by_cloid_steps_every_40::case_1 ... ok
+test http::rate_limits::tests::test_exec_action_weight_cancel_by_cloid_steps_every_40::case_2 ... ok
+test economics_scope::tests::exact_actual_funding_has_separate_source_and_consumer_checkpoints::case_1 ... ok
+test http::rate_limits::tests::test_exec_action_weight_cancel_by_cloid_steps_every_40::case_3 ... ok
+test http::rate_limits::tests::test_exec_action_weight_cancel_by_cloid_steps_every_40::case_4 ... ok
+test http::rate_limits::tests::test_exec_action_weight_cancel_by_cloid_steps_every_40::case_5 ... ok
+test http::rate_limits::tests::test_exec_action_weight_cancel_by_oid_steps_every_40::case_1 ... ok
+test http::rate_limits::tests::test_exec_action_weight_cancel_by_oid_steps_every_40::case_2 ... ok
+test http::rate_limits::tests::test_exec_action_weight_cancel_by_oid_steps_every_40::case_3 ... ok
+test http::rate_limits::tests::test_exec_action_weight_cancel_by_oid_steps_every_40::case_4 ... ok
+test http::rate_limits::tests::test_exec_action_weight_cancel_by_oid_steps_every_40::case_5 ... ok
+test http::rate_limits::tests::test_exec_action_weight_modify ... ok
+test http::rate_limits::tests::test_exec_action_weight_non_batch_action ... ok
+test http::rate_limits::tests::test_exec_action_weight_order_steps_every_40::case_1 ... ok
+test http::rate_limits::tests::test_exec_action_weight_order_steps_every_40::case_2 ... ok
+test http::rate_limits::tests::test_exec_action_weight_order_steps_every_40::case_3 ... ok
+test http::rate_limits::tests::test_exec_action_weight_order_steps_every_40::case_4 ... ok
+test http::rate_limits::tests::test_exec_action_weight_order_steps_every_40::case_5 ... ok
+test http::rate_limits::tests::test_limiter_debit_extra_works ... ok
+test outcome_settlement::tests::deterministic_identifiers_per_settlement ... ok
+test outcome_settlement::tests::empty_settlements_emit_nothing ... ok
+test outcome_settlement::tests::fractional_balance_rounds_to_outcome_size_precision ... ok
+test outcome_settlement::tests::losing_side_emits_close_at_zero_usdh ... ok
+test outcome_settlement::tests::repeated_settlement_is_idempotent ... ok
+test outcome_settlement::tests::unheld_settlement_marks_tracker_without_fill ... ok
+test outcome_settlement::tests::winning_side_emits_close_at_one_usdh ... ok
+test outcome_settlement::tests::zero_balance_skipped_and_marked ... ok
+test signing::nonce::tests::test_custom_policy ... ok
+test signing::nonce::tests::test_nonce_monotonicity ... ok
+test signing::nonce::tests::test_time_nonce_creation ... ok
+test signing::nonce::tests::test_nonce_deduplication ... ok
+test signing::signers::tests::test_cloid_from_client_order_id_has_varied_leading_bytes ... ok
+test signing::nonce::tests::test_fast_forward ... ok
+test signing::nonce::tests::test_nonce_window_validation ... ok
+test signing::signers::tests::test_cloid_from_client_order_id_is_deterministic ... ok
+test signing::signers::tests::official_l1_dummy_action_signature_matches_python_sdk_for_both_environments ... ok
+test signing::nonce::tests::test_concurrent_nonce_generation ... ok
+test signing::signers::tests::test_connection_id_includes_expires_after_when_present ... ok
+test signing::signers::tests::test_connection_id_matches_python ... ok
+test signing::signers::tests::test_connection_id_with_cloid ... ok
+test signing::signers::tests::test_price_decimal_formatting ... ok
+test signing::signers::tests::test_connection_id_with_vault_matches_reference ... ok
+test signing::signers::tests::test_sign_l1_rejects_when_action_and_bytes_missing ... ok
+test signing::signers::tests::test_production_like_order_with_deterministic_cloid ... ok
+test signing::signers::tests::test_sign_user_signed_returns_error ... ok
+test signing::signers::tests::test_sign_request_l1_action ... ok
+test websocket::book::tests::clear_removes_all_tracked_streams ... ok
+test websocket::book::tests::first_register_subscribes_with_requested_options ... ok
+test websocket::book::tests::matching_options_do_not_report_mismatch ... ok
+test websocket::book::tests::re_registering_same_use_is_idempotent ... ok
+test websocket::book::tests::releasing_one_use_retains_stream_for_the_other ... ok
+test websocket::book::tests::releasing_untracked_coin_unsubscribes_with_default_options ... ok
+test websocket::book::tests::releasing_use_that_was_never_registered_retains_stream ... ok
+test websocket::book::tests::second_use_shares_stream_and_reports_option_mismatch ... ok
+test websocket::client::tests::cancel_errors_for_requests_accepts_empty_as_success ... ok
+test websocket::client::tests::cancel_errors_for_requests_rejects_status_count_mismatch ... ok
+test websocket::client::tests::economics_private_ingress_retains_bound_across_connection_and_epoch_changes ... ok
+test websocket::client::tests::clone_can_own_socket_registration ... ok
+test websocket::client::tests::prepared_private_ingress_rejects_old_epoch_and_fresh_connection_markers ... ok
+test websocket::client::tests::prepared_private_ingress_requires_contiguous_actor_application ... ok
+test websocket::client::tests::prepared_private_ingress_lock_serializes_receipt_and_write_boundary ... ok
+test websocket::client::tests::prepared_private_ingress_unknown_and_private_channels_are_fenced ... ok
+test websocket::client::tests::prepared_private_ingress_only_explicit_execution_installs_shared_fence ... ok
+test websocket::client::tests::set_post_timeout_updates_client_and_clone ... ok
+test websocket::client::tests::test_post_payload_error_does_not_match_embedded_codes_or_words::case_1 ... ok
+test websocket::client::tests::test_post_payload_error_does_not_match_embedded_codes_or_words::case_3 ... ok
+test websocket::client::tests::test_post_payload_error_does_not_match_embedded_codes_or_words::case_2 ... ok
+test websocket::client::tests::prepared_signed_binding_is_verified_before_queue_and_rejection_never_writes ... ok
+test websocket::client::tests::test_post_payload_error_maps_auth::case_1 ... ok
+test websocket::client::tests::test_post_payload_error_maps_auth::case_2 ... ok
+test websocket::client::tests::test_drop_clone_does_not_stop_handler ... ok
+test websocket::client::tests::test_post_payload_error_maps_auth::case_3 ... ok
+test economics_scope::tests::empty_or_invalid_envelopes_do_not_grant_attribution::case_2 ... ok
+test economics_scope::tests::unsupported_user_fill_variants_remain_raw_unknown::case_1 ... ok
+test websocket::client::tests::test_post_payload_error_maps_exchange_status::case_1 ... ok
+test websocket::client::tests::test_post_payload_error_maps_auth::case_4 ... ok
+test websocket::client::tests::test_post_payload_error_maps_rate_limit ... ok
+test websocket::client::tests::test_post_payload_error_maps_bad_request::case_1 ... ok
+test websocket::client::tests::test_post_payload_error_maps_bad_request::case_2 ... ok
+test websocket::client::tests::test_post_payload_error_maps_bad_request::case_3 ... ok
+test websocket::client::tests::test_post_payload_error_maps_exchange_status::case_2 ... ok
+test websocket::client::tests::test_subscription_reconstruction::case_1 ... ok
+test websocket::client::tests::test_subscription_reconstruction::case_2 ... ok
+test websocket::client::tests::test_subscription_reconstruction::case_5 ... ok
+test websocket::client::tests::test_subscription_reconstruction::case_4 ... ok
+test websocket::client::tests::test_subscription_reconstruction::case_3 ... ok
+test websocket::client::tests::test_subscription_topic_candle ... ok
+test websocket::client::tests::test_subscription_reconstruction::case_6 ... ok
+test websocket::client::tests::test_subscription_reconstruction::case_7 ... ok
+test websocket::client::tests::test_subscription_topic_generation::case_1 ... ok
+test websocket::client::tests::test_subscription_topic_generation::case_2 ... ok
+test websocket::client::tests::test_subscription_topic_generation::case_3 ... ok
+test websocket::client::tests::test_subscription_topic_generation::case_4 ... ok
+test websocket::client::tests::test_subscription_topics_unique ... ok
+test websocket::client::tests::with_state_sink_survives_clone ... ok
+test websocket::dispatch::tests::test_check_and_insert_trade_detects_duplicates ... ok
+test websocket::dispatch::tests::test_claim_front_modify_advances_next_old_id ... ok
+test websocket::dispatch::tests::test_cleanup_terminal_clears_corrective_state ... ok
+test websocket::dispatch::tests::test_clear_non_front_modify_leaves_front_old ... ok
+test websocket::dispatch::tests::test_cleanup_terminal_preserves_filled_marker ... ok
+test websocket::dispatch::tests::test_register_and_lookup_context ... ok
+test websocket::dispatch::tests::test_modify_chain_keeps_both_intents_on_rapid_modifies ... ok
+test websocket::dispatch::tests::test_lookup_context_missing_returns_none ... ok
+test websocket::dispatch::tests::test_insert_accepted_dedup ... ok
+test websocket::dispatch::tests::test_clear_front_modify_reparents_next_old ... ok
+test websocket::enums::tests::test_as_str_method::case_1 ... ok
+test websocket::enums::tests::test_as_str_method::case_2 ... ok
+test websocket::enums::tests::test_as_str_method::case_4 ... ok
+test websocket::enums::tests::test_as_str_method::case_3 ... ok
+test websocket::enums::tests::test_as_str_method::case_5 ... ok
+test websocket::enums::tests::test_channel_deserialization::case_1 ... ok
+test websocket::dispatch::tests::test_modify_chain_caps_and_evicts_oldest ... ok
+test websocket::enums::tests::test_channel_deserialization::case_2 ... ok
+test websocket::dispatch::tests::test_clear_modify_generation_preserves_newer_intent ... ok
+test websocket::dispatch::tests::test_pending_modify_roundtrip ... ok
+test websocket::enums::tests::test_channel_deserialization::case_3 ... ok
+test websocket::dispatch::tests::test_stash_modify_request_targets_latest_intent ... ok
+test websocket::enums::tests::test_channel_deserialization::case_4 ... ok
+test websocket::enums::tests::test_channel_deserialization::case_5 ... ok
+test websocket::enums::tests::test_channel_serialization::case_1 ... ok
+test websocket::enums::tests::test_channel_serialization::case_2 ... ok
+test websocket::dispatch::tests::test_update_context_price_without_price_keeps_cached_price ... ok
+test websocket::enums::tests::test_channel_serialization::case_3 ... ok
+test websocket::enums::tests::test_channel_serialization::case_5 ... ok
+test websocket::dispatch::tests::test_update_context_refreshes_price_and_quantity ... ok
+test websocket::enums::tests::test_display_trait ... ok
+test websocket::enums::tests::test_channel_serialization::case_4 ... ok
+test websocket::enums::tests::test_enum_iter ... ok
+test websocket::enums::tests::test_is_private_channel ... ok
+test websocket::enums::tests::test_from_str ... ok
+test websocket::enums::tests::test_is_public_channel ... ok
+test websocket::handler::tests::all_mids_cache_projects_subscriptions_without_scanning_every_websocket_message ... ok
+test websocket::handler::tests::asset_context_caches_clear_removed_data_types ... ok
+test websocket::handler::tests::economics_raw_bridge_preserves_escaped_private_channel ... ok
+test websocket::handler::tests::handle_asset_context_skips_open_interest_for_spot_payload ... ok
+test websocket::handler::tests::handle_all_dexs_asset_ctxs_preserves_index_alignment_when_mappings_are_missing ... ok
+test websocket::handler::tests::handle_asset_context_emits_open_interest_custom_data_when_subscribed ... ok
+test websocket::handler::tests::economics_raw_bridge_retains_numeric_lexeme_and_reader_identity_on_legacy_parse_failure ... ok
+test websocket::handler::tests::handle_asset_context_suppresses_unchanged_open_interest ... ok
+test websocket::handler::tests::handle_l2_book_emits_deltas_and_depth10_when_coin_in_subs ... ok
+test websocket::handler::tests::handle_l2_book_emits_deltas_only_when_not_in_depth10_subs ... ok
+test websocket::handler::tests::handle_l2_book_returns_empty_when_instrument_unknown ... ok
+test websocket::messages::tests::test_hyperliquid_ws_request_serialization ... ok
+test websocket::messages::tests::test_order_request_serialization ... ok
+test websocket::messages::tests::test_subscription_request_serialization ... ok
+test websocket::messages::tests::test_ws_book_data_deserialization ... ok
+test websocket::messages::tests::test_ws_trade_data_deserialization ... ok
+test websocket::messages::tests::test_ws_fill_data_deserialization_with_cloid_and_twap ... ok
+test websocket::messages::tests::test_ws_trade_data_round_trips_decimals_as_strings ... ok
+test websocket::handler::tests::outbound_subscription_logs_omit_payload_bodies ... ok
+test websocket::handler::tests::post_send_failure_cancels_router_waiter ... ok
+test websocket::messages::tests::test_ws_trailing_stop_data_deserialization ... ok
+test websocket::messages::tests::test_ws_trigger_activated_data_deserialization ... ok
+test websocket::messages::tests::test_ws_trigger_triggered_data_deserialization ... ok
+test websocket::messages::tests::test_ws_user_fills_message_deserialization ... ok
+test websocket::messages::tests::test_ws_user_fills_message_with_builder_fee ... ok
+test websocket::messages::tests::test_ws_user_fills_message_with_liquidation ... ok
+test websocket::parse::tests::test_parse_ws_asset_context_perp ... ok
+test websocket::parse::tests::test_parse_ws_asset_context_perp_preserves_funding_precision::case_1_positive_high_precision ... ok
+test websocket::parse::tests::test_parse_ws_asset_context_perp_preserves_funding_precision::case_2_negative_high_precision ... ok
+test websocket::parse::tests::test_parse_ws_asset_context_spot ... ok
+test websocket::parse::tests::test_parse_ws_candle_preserves_open_event_and_receipt_initialization_timestamps ... ok
+test economics_scope::tests::exact_bound_user_fill_variant_reports_fee_without_fabricated_echo::case_1 ... ok
+test websocket::parse::tests::test_parse_ws_fill_report_basic ... ok
+test websocket::parse::tests::test_parse_ws_fill_report_with_liquidation ... ok
+test websocket::parse::tests::test_parse_ws_fill_report_outcome_round_trip ... ok
+test websocket::parse::tests::test_parse_ws_open_interest_perp ... ok
+test websocket::parse::tests::test_parse_ws_open_interest_preserves_precision::case_1_round ... ok
+test websocket::handler::tests::handle_all_dexs_asset_ctxs_emits_normalized_custom_data ... ok
+test websocket::parse::tests::test_parse_ws_open_interest_preserves_precision::case_2_precise ... ok
+test websocket::parse::tests::test_parse_ws_order_book_deltas_snapshot_behavior ... ok
+test economics_scope::tests::exact_bound_user_fill_variant_reports_fee_without_fabricated_echo::case_2 ... ok
+test websocket::parse::tests::test_parse_ws_order_book_depth10_pads_sparse_book ... ok
+test economics_scope::tests::unknown_required_identity_or_amount_is_raw_evidence::case_1 ... ok
+test websocket::parse::tests::test_parse_ws_order_book_depth10_truncates_beyond_10 ... ok
+test websocket::parse::tests::test_parse_ws_order_status_report_basic ... ok
+test economics_scope::tests::unsupported_user_fill_variants_remain_raw_unknown::case_3 ... ok
+test websocket::parse::tests::test_parse_ws_rejection_preserves_venue_reason::case_1 ... ok
+test websocket::parse::tests::test_parse_ws_rejection_preserves_venue_reason::case_2 ... ok
+test websocket::parse::tests::test_parse_ws_rejection_preserves_venue_reason::case_3 ... ok
+test websocket::parse::tests::test_parse_ws_twap_history_row_from_live_mainnet_fixture ... ok
+test websocket::parse::tests::test_parse_ws_twap_slice_fill_from_live_mainnet_fixture ... ok
+test websocket::post::tests::lane_classifier_cases::case_1_all_alo ... ok
+test websocket::post::tests::lane_classifier_cases::case_2_mixed_alo_gtc ... ok
+test economics_scope::tests::unverified_attribution_cannot_recognize_fee_regardless_of_funds_trust::case_1 ... ok
+test economics_scope::tests::unsupported_user_fill_variants_remain_raw_unknown::case_2 ... ok
+test websocket::post::tests::lane_classifier_cases::case_3_all_gtc ... ok
+test websocket::post::tests::test_limit_order_params_builder ... ok
+test economics_scope::tests::unknown_required_identity_or_amount_is_raw_evidence::case_3 ... ok
+test economics_scope::tests::unverified_attribution_cannot_recognize_fee_regardless_of_funds_trust::case_2 ... ok
+test economics_scope::tests::unsupported_user_fill_variants_remain_raw_unknown::case_4 ... ok
+test websocket::post::tests::test_order_builder_single_trigger_convenience ... ok
+test websocket::post::tests::test_action_request_constructors ... ok
+test economics_scope::tests::unknown_required_identity_or_amount_is_raw_evidence::case_2 ... ok
+test websocket::post::tests::lane_classifier_cases::case_4_empty ... ok
+test economics_scope::tests::semantic_checkpoint_corruption_is_not_validated_by_recomputed_checksum ... ok
+test websocket::post::tests::test_order_builder_single_limit_convenience ... ok
+test websocket::post::tests::test_order_request_builder ... ok
+test websocket::post::tests::test_trigger_order_params_builder ... ok
+test websocket::post::tests::test_ws_sender_forwards_and_reports_closed_channel ... ok
+test websocket::trades::tests::duplicate_logical_use_is_idempotent ... ok
+test websocket::post::tests::test_order_builder_batch_orders ... ok
+test websocket::trades::tests::logical_uses_share_one_venue_subscription ... ok
+test websocket::trades::tests::releasing_one_use_retains_the_other ... ok
+test websocket::post::tests::register_duplicate_id_errors ... ok
+test economics_scope::tests::raw_actual_fee_rebate_is_once_without_builder_double_count_or_native_application_claim ... ok
+test economics_scope::tests::verified_attribution_with_untrusted_funds_reports_fee_without_authorizing_native_application ... ok
+test economics_scope::tests::same_time_distinct_hashes_are_distinct_but_changed_payload_is_conflict ... ok
+test economics_scope::tests::source_and_consumer_restart_boundaries_preserve_pending_and_exact_receipts ... ok
+test websocket::client::tests::send_post_request_times_out_while_waiting_for_inflight_slot ... ok
+test economics_scope::tests::wrong_user_stream_and_unverified_metadata_cannot_recognize_funding ... ok
+test economics_scope::tests::weak_ws_occurrences_and_history_overlap_do_not_create_duplicate_cash ... ok
+test websocket::post::tests::timeout_cancels_and_allows_reregister ... ok
+test websocket::handler::tests::prepared_send_wait_does_not_block_private_raw_frame_processing ... ok
+test websocket::post::tests::batcher_sends_on_tick ... ok
+test economics_scope::tests::lifetime_coverage_capacity_preserves_last_checkpoint_when_exhausted ... ok
+test websocket::post::tests::inflight_cap_blocks_then_unblocks ... ok
+test websocket::post::tests::test_batcher_drop_aborts_lane_tasks ... ok
+test economics_scope::tests::complete_five_hundred_row_page_stores_one_shared_raw_envelope ... ok
+test http::client::tests::test_request_instrument_defs_errors_when_non_usdc_collateral_unresolved ... ok
+test http::rate_limits::tests::test_limiter_roughly_caps_to_capacity ... ok
+
+test result: ok. 865 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.16s
+
+     Running tests\catalog.rs (E:/persarb/nautilus_trader/target\nextest\deps\catalog-8900e4969d0b2022.exe)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\data_client.rs (E:/persarb/nautilus_trader/target\nextest\deps\data_client-7c15ddd46a987576.exe)
+
+running 46 tests
+test test_data_client_rejects_invalid_fast_book_request::case_3 ... ok
+test test_data_client_rejects_invalid_fast_book_request::case_4 ... ok
+test test_data_client_rejects_invalid_fast_book_request::case_5 ... ok
+test test_data_client_rejects_invalid_fast_book_request::case_2 ... ok
+test test_data_client_rejects_invalid_fast_book_request::case_1 ... ok
+test test_data_client_reset_clears_state ... ok
+test test_fetch_account_state ... ok
+test test_fetch_instruments_via_meta ... ok
+test test_fetch_orderbook_snapshot ... ok
+test test_meta_universe_structure ... ok
+test test_multiple_sequential_requests ... ok
+test test_orderbook_structure ... ok
+test test_parallel_requests ... ok
+test test_data_client_subscribe_twap_history_rejects_non_canonical_user_metadata ... ok
+test test_data_client_subscribe_book_deltas::case_3 ... ok
+test test_data_client_emits_hip3_instruments ... ok
+test test_data_client_subscribe_quotes ... ok
+test test_data_client_subscribe_book_deltas::case_1 ... ok
+test test_data_client_subscribe_book_deltas::case_2 ... ok
+test test_data_client_request_public_trades ... ok
+test test_data_client_request_public_trades_endpoint_unavailable ... ok
+test test_data_client_emits_instruments_on_connect ... ok
+test test_data_client_subscribe_twap_history_requires_user_metadata ... ok
+test test_request_funding_rates_emits_data_response_from_mock ... ok
+test test_request_funding_rates_non_perp_bails ... ok
+test test_data_client_connect_disconnect ... ok
+test test_data_client_subscribe_trades ... ok
+test test_data_client_subscribe_all_dex_asset_ctxs_custom_data ... ok
+test test_data_client_disconnect_stops_event_flow ... ok
+test test_data_client_subscribe_custom_open_interest ... ok
+test test_data_client_reconnect_after_disconnect_resumes_stream ... ok
+test test_data_client_subscribe_unsubscribe_twap_slice_fills ... ok
+test test_data_client_subscribe_unsubscribe_twap_history ... ok
+test test_data_client_shared_asset_context_subscription_with_open_interest ... ok
+test test_data_client_reset_recreates_public_trade_stream ... ok
+test test_data_client_resubscribe_custom_open_interest_emits_initial_value_again ... ok
+test test_data_client_request_trades ... ok
+test test_data_client_request_bars_filters_unfinished_candle ... ok
+test test_data_client_request_instrument ... ok
+test test_data_client_request_book_snapshot_with_depth ... ok
+test test_data_client_request_trades_endpoint_unavailable ... ok
+test test_data_client_request_instruments ... ok
+test test_data_client_request_book_snapshot ... ok
+test test_data_client_stale_quote_recovery_heals_without_reconnect ... ok
+test test_data_client_reports_stale_book_deltas_while_quotes_flow ... ok
+test test_data_client_stale_book_recovery_escalates_to_reconnect ... ok
+
+test result: ok. 46 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.00s
+
+     Running tests\dispatch.rs (E:/persarb/nautilus_trader/target\nextest\deps\dispatch-22d09f1b15f198a6.exe)
+
+running 40 tests
+test test_buffered_fills_cleared_on_cleanup_terminal ... ok
+test test_cancel_replace_price_sources::case_1_report_has_price ... ok
+test test_dispatch_triggered_per_order_type::case_2_trailing_stop_limit ... ok
+test test_cancel_before_accept_is_suppressed ... ok
+test test_dispatch_canceled_tracked_synthesizes_accepted_then_canceled ... ok
+test test_fill_during_pending_modify_promotes_when_accepted_dropped ... ok
+test test_cancel_replace_fill_promotes_then_late_accepted_is_noop ... ok
+test test_dispatch_accepted_external_falls_back ... ok
+test test_dispatch_fill_tracked_synthesizes_accepted_then_filled ... ok
+test test_dispatch_expired_tracked_synthesizes_accepted_then_expired ... ok
+test test_dispatch_triggered_per_order_type::case_3_limit_if_touched ... ok
+test test_dispatch_passive_ioc_rejection_preserves_venue_reason ... ok
+test test_accepted_dedup_skips_second_accepted ... ok
+test test_fill_on_cached_voi_passes_through_during_pending_modify ... ok
+test test_dispatch_triggered_per_order_type::case_1_stop_limit ... ok
+test test_dispatch_post_only_rejection_sets_due_post_only ... ok
+test test_fill_during_pending_modify_without_price_buffers ... ok
+test test_cancel_replace_recovers_after_timed_out_modify ... ok
+test test_dispatch_fill_duplicate_trade_id_is_skipped ... ok
+test test_dispatch_triggered_per_order_type::case_4_plain_limit_is_ignored ... ok
+test test_cancel_replace_emits_updated_not_canceled ... ok
+test test_cancel_replace_price_sources::case_3_both_missing_is_skipped ... ok
+test test_dispatch_fill_for_order_in_filled_orders_is_skipped ... ok
+test test_partial_fill_status_emits_nothing_from_status_path ... ok
+test test_dispatch_fill_tracked_partial_then_terminal ... ok
+test test_cancel_replace_promotes_on_first_fill_then_subsequent ... ok
+test test_dispatch_stale_replay_after_terminal_is_skipped ... ok
+test test_cancel_replace_price_sources::case_2_context_fallback ... ok
+test test_dispatch_accepted_tracked_emits_order_accepted ... ok
+test test_dispatch_fill_external_falls_back ... ok
+test test_cancel_after_failed_modify_still_emits_canceled ... ok
+test test_chained_cancel_replace_emits_two_updates_no_spurious_cancel ... ok
+test test_filled_status_marker_is_noop_without_fill ... ok
+test test_report_without_client_order_id_is_external ... ok
+test test_filled_status_marker_then_fill_emits_filled ... ok
+test test_dispatch_rejected_tracked_emits_rejected_and_cleans_up ... ok
+test test_query_does_not_promote_when_venue_order_id_unchanged ... ok
+test test_query_promotes_inflight_modify_replacement_when_accepted_dropped ... ok
+test test_stale_old_leg_fill_after_cancel_replace_falls_through ... ok
+test test_user_cancel_after_modify_chain_drains_emits_canceled ... ok
+
+test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running tests\entropy_account.rs (E:/persarb/nautilus_trader/target\nextest\deps\entropy_account-69bad49fe9dc76e8.exe)
+
+running 92 tests
+test exact_account_facts_do_not_grant_io_write_permission::case_4 ... ok
+test exact_account_facts_do_not_grant_io_write_permission::case_1 ... ok
+test exact_account_facts_do_not_grant_io_write_permission::case_3 ... ok
+test exact_account_facts_do_not_grant_io_write_permission::case_2 ... ok
+test execution::actual_user_leverage_change_invalidates_new_risk_without_mutating_leverage ... ok
+test execution::contradictory_or_unprojectable_actual_fill_blocks_without_native_position::case_1 ... ok
+test execution::contradictory_or_unprojectable_actual_fill_blocks_without_native_position::case_2 ... ok
+test execution::contradictory_or_unprojectable_actual_fill_blocks_without_native_position::case_3 ... ok
+test execution::contradictory_or_unprojectable_actual_fill_blocks_without_native_position::case_4 ... ok
+test execution::economics::economic_consumer_failure_retains_durable_pending_source ... ok
+test execution::concurrent_orders_cannot_spend_one_balance_twice ... ok
+test execution::economics::history_same_time_distinct_hash_and_exact_replay_do_not_double_recognized_cash ... ok
+test execution::economics::account_wide_ledger_keeps_attribution_and_cashflow_interpretation_unknown ... ok
+test execution::economics::normal_factory_signed_funding_is_pending_until_durable_report_consumption ... ok
+test execution::economics::original_numeric_lexeme_is_preserved_without_fabricating_exact_cash ... ok
+test execution::economics::unsupported_economic_frames_preserve_raw_and_cannot_create_io_income::case_1 ... ok
+test execution::exact_price_precision_failure_never_reaches_peer ... ok
+test execution::economics::conflicting_strong_history_never_becomes_recognized_cash ... ok
+test execution::economics::failed_full_account_revalidation_revokes_prior_economic_attribution::case_1 ... ok
+test execution::economics::failed_full_account_revalidation_revokes_prior_economic_attribution::case_3 ... ok
+test execution::economics::failed_full_account_revalidation_revokes_prior_economic_attribution::case_2 ... ok
+test execution::economics::actual_history_deadline_preserves_unknown_coverage_and_cannot_enable_execution ... ok
+test execution::economics::malformed_actual_user_fill_retains_raw_without_native_projection_or_fee_receipt::case_3 ... ok
+test execution::newer_private_funds_decline_limits_new_risk_before_http_refresh::case_1 ... ok
+test execution::newer_private_funds_decline_limits_new_risk_before_http_refresh::case_2 ... ok
+test execution::economics::actual_owned_fill_fee_reporting_never_applies_a_second_native_commission ... ok
+test execution::economics::malformed_actual_user_fill_retains_raw_without_native_projection_or_fee_receipt::case_2 ... ok
+test execution::economics::malformed_actual_user_fill_retains_raw_without_native_projection_or_fee_receipt::case_1 ... ok
+test execution::foreign_io_open_order_revokes_ownership_without_adoption ... ok
+test execution::economics::unsupported_economic_frames_preserve_raw_and_cannot_create_io_income::case_3 ... ok
+test execution::economics::unsupported_economic_frames_preserve_raw_and_cannot_create_io_income::case_2 ... ok
+test execution::durable_actual_fill_does_not_claim_native_cache_restored_after_fresh_factory_restart ... ok
+test execution::economics::websocket_no_id_replay_and_history_overlap_preserve_every_weak_occurrence ... ok
+test floating_financial_values_do_not_require_atomic_rest_ws_equality ... ok
+test execution::unsupported_private_economic_frames_revoke_trust_before_new_risk::case_1 ... ok
+test execution::observed_same_size_isolated_leverage_change_revokes_old_asset_proof ... ok
+test execution::unsupported_private_economic_frames_revoke_trust_before_new_risk::case_2 ... ok
+test execution::unsupported_private_economic_frames_revoke_trust_before_new_risk::case_3 ... ok
+test execution::owned_cancel_uses_exact_cached_order_and_dedicated_io_asset ... ok
+test io_zero_balance_never_inherits_default_or_spot_wealth ... ok
+test isolated_io_equity_used_free_and_withdrawable_remain_distinct ... ok
+test global_execution_streams_cannot_emit_ledger_events_for_a_read_only_io_account ... ok
+test mode_or_collateral_drift_revokes_existing_io_admission::case_1 ... ok
+test execution::same_raw_trade_identity_with_changed_economics_is_a_conflict_even_after_terminal::case_1 ... ok
+test foreign_stream_payload_cannot_revalidate_cached_io_flat::case_2 ... ok
+test mode_or_collateral_drift_revokes_existing_io_admission::case_2 ... ok
+test foreign_stream_payload_cannot_revalidate_cached_io_flat::case_1 ... ok
+test normal_factory_returns_a_detached_exact_proof_and_revokes_it_after_shutdown ... ok
+test unsupported_identity_currency_positions_or_source_time_fail_closed::case_02 ... ok
+test execution::same_raw_trade_identity_with_changed_economics_is_a_conflict_even_after_terminal::case_3 ... ok
+test execution::same_raw_trade_identity_with_changed_economics_is_a_conflict_even_after_terminal::case_2 ... ok
+test execution::unsupported_user_fills_with_native_report_content_cannot_advance_trusted_scope ... ok
+test partial_io_state_is_not_empty_flat_or_a_registered_account::case_2 ... ok
+test partial_io_state_is_not_empty_flat_or_a_registered_account::case_1 ... ok
+test partial_io_state_is_not_empty_flat_or_a_registered_account::case_4 ... ok
+test partial_io_state_is_not_empty_flat_or_a_registered_account::case_5 ... ok
+test partial_io_state_is_not_empty_flat_or_a_registered_account::case_3 ... ok
+test initial_rest_private_conflict_cannot_publish_flat_or_an_account::case_2 ... ok
+test initial_rest_private_conflict_cannot_publish_flat_or_an_account::case_1 ... ok
+test unsupported_identity_currency_positions_or_source_time_fail_closed::case_01 ... ok
+test unsupported_identity_currency_positions_or_source_time_fail_closed::case_05 ... ok
+test unsupported_identity_currency_positions_or_source_time_fail_closed::case_04 ... ok
+test unsupported_identity_currency_positions_or_source_time_fail_closed::case_03 ... ok
+test unsupported_identity_currency_positions_or_source_time_fail_closed::case_06 ... ok
+test query_for_another_native_account_id_is_rejected_before_http_or_emission ... ok
+test unsupported_identity_currency_positions_or_source_time_fail_closed::case_07 ... ok
+test unsupported_identity_currency_positions_or_source_time_fail_closed::case_10 ... ok
+test unsupported_identity_currency_positions_or_source_time_fail_closed::case_09 ... ok
+test unsupported_identity_currency_positions_or_source_time_fail_closed::case_11 ... ok
+test unsupported_identity_currency_positions_or_source_time_fail_closed::case_08 ... ok
+test unsupported_shared_and_unknown_modes_emit_no_io_account::case_1 ... ok
+test unsupported_identity_currency_positions_or_source_time_fail_closed::case_12 ... ok
+test unsupported_shared_and_unknown_modes_emit_no_io_account::case_2 ... ok
+test execution::economics::normal_factory_restart_preserves_pending_then_same_consumer_receipts ... ok
+test unsupported_shared_and_unknown_modes_emit_no_io_account::case_4 ... ok
+test private_position_conflict_requires_a_matching_fresh_rest_snapshot ... ok
+test unsupported_shared_and_unknown_modes_emit_no_io_account::case_3 ... ok
+test unsupported_shared_and_unknown_modes_emit_no_io_account::case_5 ... ok
+test physical_reconnect_requires_new_io_stream_evidence_and_rest_reconciliation ... ok
+test partial_refresh_failure_preserves_facts_but_revokes_trust::case_1 ... ok
+test partial_refresh_failure_preserves_facts_but_revokes_trust::case_2 ... ok
+test silent_private_scope_and_old_rest_snapshot_expire_without_business_events ... ok
+test partial_refresh_failure_preserves_facts_but_revokes_trust::case_3 ... ok
+test acknowledgment_and_complete_io_payload_are_independent_requirements::case_2 ... ok
+test acknowledgment_and_complete_io_payload_are_independent_requirements::case_1 ... ok
+test execution::economics::actual_full_page_preserves_distinct_facts_at_the_inclusive_timestamp_boundary ... ok
+test execution::missing_ack_and_unknown_oid_retain_budget_and_restart_never_resends ... ok
+test execution::query_account_total_deadline_bounds_private_verification_and_preserves_unknown ... ok
+test execution::economics::saturated_equal_time_page_terminates_with_unknown_coverage_and_preserves_observed_facts ... ok
+test execution::partial_fill_then_cancel_preserves_actual_position_and_rejects_oversized_close ... ok
+test execution::economics::persisted_funding_does_not_restore_ready_but_current_account_recovery_can_absorb_exact_replay ... ok
+test execution::factory_actual_partial_fills_fees_and_owned_ioc_close_update_engine_and_portfolio ... ok
+
+test result: ok. 92 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 40.58s
+
+     Running tests\exec_client.rs (E:/persarb/nautilus_trader/target\nextest\deps\exec_client-150a1c1d81fd9815.exe)
+
+running 103 tests
+test test_connect_times_out_when_account_never_registers ... ignored, blocks ~30s on hard-coded await_account_registered timeout; revisit once timeout is injectable
+test test_cancel_order_by_oid ... ok
+test test_cancel_order_by_cloid ... ok
+test test_cancel_stores_action ... ok
+test test_exchange_request_count ... ok
+test test_exchange_rate_limiting ... ok
+test test_exec_client_creation ... ok
+test test_generate_order_status_report_forwards_old_leg_fill_during_modify ... ok
+test test_generate_order_status_report_requires_identifier ... ok
+test test_generate_fill_reports_filters_time_range ... ok
+test test_generate_order_status_report_oid_only_returns_terminal ... ok
+test test_generate_mass_status_lookback_filters_only_fills ... ok
+test test_connect_restores_market_parent_bracket_without_quote ... ok
+test test_http_modify_order_rejects_without_venue_id_or_cached_cloid ... ok
+test test_http_modify_order_uses_cached_cloid_target_without_venue_order_id ... ok
+test test_generate_order_status_report_returns_open_order_by_cloid ... ok
+test test_generate_order_status_report_terminal_oid_fallback_returns_report ... ok
+test test_generate_order_status_report_terminal_missing_cloid_trusts_oid ... ok
+test test_generate_mass_status_queries_each_active_builder_dex_once::case_1_historical_orders ... ok
+test test_generate_mass_status_queries_each_active_builder_dex_once::case_2_user_fills ... ok
+test test_http_modify_order_uses_numeric_venue_order_id_without_cached_cloid ... ok
+test test_generate_mass_status_reconstructs_filled_order_for_retained_fill ... ok
+test test_modify_order_success ... ok
+test test_generate_order_status_report_suppresses_old_leg_cancel_during_modify ... ok
+test test_generate_order_status_report_terminal_mismatched_cloid_still_returned ... ok
+test test_modify_stores_action ... ok
+test test_multiple_orders_in_sequence ... ok
+test test_query_account_does_not_block_within_runtime ... ok
+test test_generate_mass_status_skips_inactive_cached_builder_dexes ... ok
+test test_query_account_emits_spot_balances ... ok
+test test_generate_mass_status_propagates_saturated_dex_discovery_error ... ok
+test test_generate_mass_status_falls_back_for_saturated_history::case_1_historical_orders ... ok
+test test_generate_mass_status_falls_back_for_saturated_history::case_2_user_fills ... ok
+test test_generate_order_status_reports_filters_open_only_and_time_range ... ok
+test test_get_account_address_uses_explicit_account_address ... ok
+test test_exec_client_connect_disconnect ... ok
+test test_modify_order_falls_back_to_cached_oid_without_cached_cloid ... ok
+test test_modify_order_post_error_clears_pending_modify ... ok
+test test_modify_order_subtracts_filled_from_target_total ... ok
+test test_modify_order_inner_error_clears_pending_modify ... ok
+test test_modify_order_rejection_does_not_mark_pending_modify ... ok
+test test_batch_cancel_orders_missing_asset_index_logs_and_skips ... ok
+test test_batch_cancel_orders_post_error_emits_no_cancel_rejected ... ok
+test test_cancel_all_orders_missing_asset_index_logs_and_emits_no_cancel_rejected ... ok
+test test_cancel_order_invalid_venue_id_logs_and_emits_no_cancel_rejected ... ok
+test test_cancel_order_post_error_emits_no_cancel_rejected ... ok
+test test_cancel_order_missing_asset_index_logs_and_emits_no_cancel_rejected ... ok
+test test_modify_order_marks_pending_modify_before_post_completes ... ok
+test test_batch_cancel_orders_invalid_venue_id_logs_and_dispatches_valid ... ok
+test test_cancel_all_orders_short_statuses_emit_no_cancel_rejected ... ok
+test test_cancel_all_orders_per_item_error_emits_cancel_rejected ... ok
+test test_batch_cancel_orders_per_item_error_emits_cancel_rejected ... ok
+test test_cancel_order_missing_emits_cancel_rejected ... ok
+test test_cancel_all_orders_post_error_emits_no_cancel_rejected ... ok
+test test_modify_order_uses_cached_cloid_target_without_venue_order_id ... ok
+test test_batch_cancel_orders_short_statuses_emit_no_cancel_rejected ... ok
+test test_submit_order_rejection ... ok
+test test_submit_order_stores_action ... ok
+test test_submit_order_success ... ok
+test test_modify_order_rejects_without_venue_id_or_cached_cloid ... ok
+test test_modify_order_qty_at_filled_emits_modify_rejected ... ok
+test test_stop_aborts_ws_stream_and_pending_tasks ... ok
+test test_submit_market_order_uses_resolved_slippage_from_params ... ok
+test test_modify_order_rejects_cloid_target_before_venue_order_id_known ... ok
+test test_query_order_emits_report_from_cloid_open_match ... ok
+test test_query_order_cloid_only_without_cached_voi ... ok
+test test_query_order_falls_back_to_oid_when_cloid_misses ... ok
+test test_ws_cancel_orders_keeps_valid_cancel_when_one_asset_index_is_missing ... ok
+test test_submit_order_after_stop_emits_denied ... ok
+test test_ws_cancel_orders_keeps_valid_cancel_when_one_venue_id_is_invalid ... ok
+test test_ws_submit_orders_does_not_cache_cloids_when_later_order_fails_conversion ... ok
+test test_query_account_propagates_spot_endpoint_failure ... ok
+test test_query_account_perp_endpoint_failure_emits_no_state ... ok
+test test_ws_cancel_orders_returns_err_on_post_failure ... ok
+test test_ws_cancel_orders_returns_err_when_second_route_post_fails ... ok
+test test_ws_cancel_orders_returns_per_item_errors_for_mixed_venue_statuses ... ok
+test test_ws_cancel_orders_sends_oid_route_when_cloid_route_is_rejected ... ok
+test test_ws_modify_order_uses_cached_cloid_target_without_venue_order_id ... ok
+test test_submit_order_ws_post_includes_builder_attribution ... ok
+test test_query_order_forwards_old_leg_fill_during_modify ... ok
+test test_submit_order_list_market_parent_derives_price_from_quote ... ok
+test test_submit_order_list_normal_tpsl_stages_children_until_parent_fill ... ok
+test test_submit_order_ws_post_omits_builder_when_attribution_disabled ... ok
+test test_ws_cancel_orders_sends_oid_route_when_cloid_status_count_mismatches ... ok
+test test_submit_order_list_after_stop_emits_denied ... ok
+test test_ws_trading_cancel_and_modify_send_expected_actions ... ok
+test test_ws_trading_submit_order_omits_builder_when_attribution_disabled ... ok
+test test_ws_trading_submit_order_sends_builder_and_cloid ... ok
+test test_submit_order_asset_index_missing_emits_denied ... ok
+test test_query_order_suppresses_old_leg_cancel_during_modify ... ok
+test test_submit_order_inner_error_cleans_up_dispatch_state ... ok
+test test_query_order_unknown_returns_silently ... ok
+test test_submit_order_list_market_bracket_no_quote_denies_children ... ok
+test test_submit_order_closed_order_returns_silently ... ok
+test test_submit_order_market_no_quote_emits_denied ... ok
+test test_submit_order_list_denies_outcome_reduce_only ... ok
+test test_submit_order_list_market_no_quote_emits_denied ... ok
+test test_submit_order_unsupported_symbol_emits_denied::case_1_unsupported_symbol ... ok
+test test_query_order_oid_fallback_runs_when_cloid_request_errors ... ok
+test test_submit_order_list_single_inner_error_rejects_entire_batch ... ok
+test test_submit_order_list_per_order_inner_error_rejects_only_failing ... ok
+test test_modify_order_success_marks_pending_modify ... ok
+test test_stop_aborts_outcome_settlement_poll ... ok
+
+test result: ok. 102 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 1.52s
+
+     Running tests\http.rs (E:/persarb/nautilus_trader/target\nextest\deps\http-b0ae1be904965f24.exe)
+
+running 46 tests
+test test_request_bars_missing_cached_instrument_returns_bad_request_lookup_error ... ok
+test test_build_submit_order_report_missing_cached_instrument_returns_bad_request_lookup_error ... ok
+test test_info_clearinghouse_state_returns_account_state ... ok
+test test_info_l2_book_returns_orderbook ... ok
+test test_outcome_meta_returns_outcome_metadata ... ok
+test test_info_open_orders_returns_empty_array ... ok
+test test_l2_book_request_includes_coin_parameter ... ok
+test test_info_user_fills_returns_empty_for_new_user ... ok
+test test_rate_limit_triggers_429_response ... ok
+test test_request_order_status_report_by_client_order_id_no_match ... ok
+test test_invalid_request_type_returns_error ... ok
+test test_request_order_status_reports_routes_default_filter ... ok
+test test_info_meta_returns_market_metadata ... ok
+test test_request_order_status_report_by_client_order_id_matches_cloid ... ok
+test test_request_order_status_report_open_order ... ok
+test test_request_order_status_report_closed_order_fallback_propagates_cloid ... ok
+test test_request_order_status_report_not_found ... ok
+test test_request_order_status_report_triggered_order ... ok
+test test_request_position_status_reports_routes_builder_dex_filter::case_2 ... ok
+test test_request_order_status_reports_routes_builder_dex_filter::case_1 ... ok
+test test_request_order_status_reports_routes_builder_dex_filter::case_2 ... ok
+test test_request_position_status_reports_routes_builder_dex_filter::case_1 ... ok
+test test_request_order_status_report_closed_order_fallback ... ok
+test test_perp_meta_and_ctxs_returns_metadata_with_contexts ... ok
+test test_request_order_status_reports_aggregates_all_cached_dexs ... ok
+test test_request_position_status_reports_skips_spot_fetch_for_perp_filter ... ok
+test test_spot_meta_and_ctxs_returns_metadata_with_contexts ... ok
+test test_user_fills_request_includes_user_parameter ... ok
+test test_spot_meta_returns_spot_metadata ... ok
+test test_submit_orders_resolves_outcome_response_instrument ... ok
+test test_submit_order_resolves_outcome_response_instrument ... ok
+test test_request_spot_position_status_reports_skips_when_instrument_missing ... ok
+test test_request_position_status_reports_skips_perp_fetch_for_outcome_filter ... ok
+test test_request_position_status_reports_skips_perp_fetch_for_spot_filter ... ok
+test test_request_position_status_reports_aggregates_all_cached_dexs ... ok
+test test_request_spot_position_status_reports_emits_for_cached_instrument ... ok
+test test_request_spot_position_status_reports_resolves_outcome_side_token ... ok
+test test_request_spot_position_status_reports_filters_by_instrument_id ... ok
+test test_info_spot_clearinghouse_state_returns_balances ... ok
+test test_request_spot_position_status_reports_skips_usdc ... ok
+test test_request_spot_balances_emits_one_per_non_zero_token ... ok
+test test_request_account_state_preserves_parsed_margins ... ok
+test test_request_account_state_dedupes_usdc_with_perp_summary ... ok
+test test_request_order_status_reports_fails_when_later_dex_fetch_fails ... ok
+test test_request_account_state_propagates_spot_endpoint_failure ... ok
+test test_request_position_status_reports_fails_when_later_dex_fetch_fails ... ok
+
+test result: ok. 46 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.57s
+
+     Running tests\live_mainnet_smoke.rs (E:/persarb/nautilus_trader/target\nextest\deps\live_mainnet_smoke-d81c01db87ff5165.exe)
+
+running 5 tests
+test live_config_debug_redacts_and_optional_private_paths ... ignored, live mainnet smoke
+test live_mainnet_data_streams_allmids_book_and_reconnect ... ignored, live mainnet smoke
+test live_mainnet_http_public_and_fill_paths ... ignored, live mainnet smoke
+test live_mainnet_user_stream_reconnect ... ignored, live mainnet smoke
+test live_testnet_public_reconnect ... ignored, live mainnet smoke
+
+test result: ok. 0 passed; 0 failed; 5 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\live_soak.rs (E:/persarb/nautilus_trader/target\nextest\deps\live_soak-01f7a1a72b3cf620.exe)
+
+running 6 tests
+test soak_authenticated_mainnet_readonly ... ignored, live soak
+test soak_http_exec_paths_across_active_users ... ignored, live soak
+test soak_quote_integrity_and_triple_reconnect ... ignored, live soak
+test soak_testnet_data_and_reconnect ... ignored, live soak
+test soak_testnet_post_only_place_query_cancel ... ignored, live soak
+test soak_user_stream_execution_reports ... ignored, live soak
+
+test result: ok. 0 passed; 0 failed; 6 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests\websocket.rs (E:/persarb/nautilus_trader/target\nextest\deps\websocket-6b79a96a3b9ad5a0.exe)
+
+running 53 tests
+test test_client_creation ... ok
+test test_fast_book_snapshots_clear_old_levels_and_preserve_timestamps ... ok
+test test_close_connection ... ok
+test test_reconnection_retries_failed_subscriptions ... ok
+test test_is_active_lifecycle ... ok
+test test_is_active_false_after_close ... ok
+test test_multiple_subscriptions ... ok
+test test_all_mids_subscription ... ok
+test test_all_mids_subscription_with_dex ... ok
+test test_reconnection_scenario ... ok
+test test_depth10_only_unsubscribe_tears_down_stream_with_original_options ... ok
+test test_fast_conflicts_do_not_change_stream_or_retain_failed_use::case_2 ... ok
+test test_fast_conflicts_do_not_change_stream_or_retain_failed_use::case_1 ... ok
+test test_book_subscribe_recovers_after_venue_reject ... ok
+test test_public_and_generic_trades_share_one_venue_subscription ... ok
+test test_all_dexs_asset_ctxs_subscription_emits_normalized_custom_data ... ok
+test test_all_mids_default_and_dex_subscriptions_emit_distinct_data_types ... ok
+test test_subscribe_public_trades_emits_complete_custom_data ... ok
+test test_resubscribe_book_echoes_original_options::case_2 ... ok
+test test_candle_subscription_survives_reconnection ... ok
+test test_reconnect_forwards_reconnected_after_resubscribe ... ok
+test test_resubscribe_book_echoes_original_options::case_3 ... ok
+test test_book_resubscribe_after_reconnect_cycle_reaches_venue ... ok
+test test_book_precision_options_survive_reconnection::case_2 ... ok
+test test_book_precision_options_survive_reconnection::case_3 ... ok
+test test_resubscribe_book_echoes_original_options::case_1 ... ok
+test test_book_precision_options_survive_reconnection::case_1 ... ok
+test test_subscribe_quotes ... ok
+test test_subscribe_user_twap_slice_fills_emits_custom_data ... ok
+test test_subscribe_orderbook ... ok
+test test_subscribe_user_twap_history_emits_custom_data ... ok
+test test_subscribe_after_next_event_call ... ok
+test test_sends_pong_for_control_ping ... ok
+test test_true_auto_reconnect_with_verification ... ok
+test test_resubscribe_quotes_sends_unsubscribe_then_subscribe ... ok
+test test_subscribe_trades ... ok
+test test_wait_until_active_timeout ... ok
+test test_request_reconnect_replays_subscriptions ... ok
+test test_websocket_connection ... ok
+test test_resubscribe_book_skips_unregistered_stream ... ok
+test test_subscribe_user_events ... ok
+test test_unsubscribe_book_deltas_keeps_shared_stream_for_depth10::case_1 ... ok
+test test_unsubscribe_book_deltas_keeps_shared_stream_for_depth10::case_2 ... ok
+test test_subscription_restoration_tracking ... ok
+test test_public_trade_replay_is_suppressed_after_reconnection ... ok
+test test_unsubscribe_flow ... ok
+test test_resubscribe_quotes_skips_unsubscribed_stream ... ok
+test test_is_active_false_during_reconnection ... ok
+test test_unsubscribed_channel_not_resubscribed_after_disconnect ... ok
+test test_rapid_consecutive_reconnections ... ok
+test test_heartbeat_timeout_reconnection ... ok
+test test_multiple_partial_subscription_failures ... ok
+test test_reconnection_race_condition ... ok
+
+test result: ok. 53 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 3.46s
+

@@ -164,6 +164,7 @@ pub fn info_extra_weight(req: &InfoRequest, json: &Value) -> u32 {
         | HyperliquidInfoRequestType::FundingHistory
         | HyperliquidInfoRequestType::UserFunding
         | HyperliquidInfoRequestType::NonUserFundingUpdates
+        | HyperliquidInfoRequestType::UserNonFundingLedgerUpdates
         | HyperliquidInfoRequestType::TwapHistory
         | HyperliquidInfoRequestType::UserTwapSliceFills
         | HyperliquidInfoRequestType::UserTwapSliceFillsByTime

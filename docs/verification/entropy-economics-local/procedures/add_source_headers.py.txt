@@ -1,0 +1,12 @@
+from pathlib import Path
+
+root=Path("E:/persarb/worktrees/entropy-account/crates/adapters/hyperliquid/src")
+prefix=(root/"economics_scope.rs").read_text(encoding="utf-8").split("//!",1)[0]
+assert "GNU Lesser General Public License" in prefix
+for name in ("parsing.rs","store.rs","tests.rs"):
+    path=root/"economics_scope"/name
+    body=path.read_text(encoding="utf-8")
+    if "Copyright (C)" not in body.split("\n",4)[0:4]:
+        if not body.startswith("// -------------------------------------------------------------------------------------------------"):
+            path.write_text(prefix+body,encoding="utf-8",newline="\n")
+            print(f"Added standard source header: {name}")

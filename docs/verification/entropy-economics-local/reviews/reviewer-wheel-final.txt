@@ -1,0 +1,67 @@
+﻿# Entropy #102 independent final wheel and offline PR review
+
+Reviewer: entropy_review. Date: 2026-10-09 Asia/Shanghai; 20261008 UTC evidence batch. Worktree: E:/persarb/worktrees/entropy-account.
+
+Verdict: PASS for the final source-bound installed candidate and the limited offline PR scope. No remaining material finding was identified across the final source review, 41 selected native executions and 51 installed Python executions. This is suitable independent review evidence for the user-authorized offline PR merge. It does not establish actual private settlement behavior, E6 acceptance, cold native cache restoration or permission for mainnet actions.
+
+The reviewer performed no Cargo/build/install, production edits, real account access or node start. Native tests used actual local synthetic peers. Python checks used only normal factory/LiveNode construction against unreachable local fixture endpoints; they never invoked start. All reviewer notes/scripts/raw outputs are under E:/persarb/_tmp/entropy102-validation.
+
+## Actual artifact identity
+
+| Item | Independently verified identity |
+|---|---|
+| Clean build source commit | 95c87d4e70d92ec31072a30df3d764d75172b7b3 |
+| Source tree | 8ed0387e434187098309e22d52f2b7d900d55722 |
+| Source fingerprint | 56238a5bd653594cb354d871c5c8c8415e7120b12e56891616ca5bda12b61149 |
+| Wheel | nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl |
+| Actual wheel SHA256 | be8d46c2d0b5f197852086b8818b4a17172aa000416512d73893c6041c129aed |
+| Actual imported installed pyd SHA256 | bdb2c149ab91d12aa0462afc99106424232158f5f6197abbea533156ebf61c6d |
+| Hyperliquid generated stub SHA256 | 016760dd07b4e7498769088ce6a7ac85100ba3fcaf07a0abd33e8e51614d7cfd |
+| Provenance JSON SHA256 | ddcff3f23c1d72b07690e9db726fa059d4a7399a0f892f531615f02b9d2f8a32 |
+| Final binding inputs SHA256 | d7056dbb7ed9c832cc93d6f849d25161e6fdb9cb7f7516eec7f0eabd89650382 |
+
+The reviewer recomputed the canonical source fingerprint using the actual repository identity algorithm, verified matching declared/build-input/pre-build/post-build identities and dirty_count=0 at build time, and matched the provenance/build-input hashes to strict installed evidence. Wheel ZIP CRC checks passed. The actual imported extension path is this worktree's .venv/Lib/site-packages/nautilus_trader/_libnautilus.cp312-win_amd64.pyd; interpreter is the same worktree .venv Python 3.12.9. The pyd's ZIP member, provenance digest, declared size and installed disk bytes agree.
+
+All 23 adapter stub members match wheel, provenance, installed disk and final source bytes, including the three new Hyperliquid report-consumer methods and the optional economic config suffix. reviewer-wheel-identity.json stores the full native/stub member matrix, installed paths and SHA256. Every final binding-input source/test/stub hash was checked; production and binding inputs were unchanged after installed tests. The pyd was independently rehashed after those tests with the same digest.
+
+The builder used the existing nextest profile and --locked --offline; this is not a release-profile performance claim. Root built and installed the artifact; the reviewer independently checked it without rebuilding or reinstalling.
+
+## Independent installed execution
+
+Both invocations used Python -I, cwd E:/persarb/_tmp/entropy102-validation, pytest --import-mode=importlib and pythonpath=, so assertions run against the actual installed package rather than a source-tree import. Exact argv, interpreter/test script SHA256, UTC and exit codes are retained in reviewer-wheel-python.json and reviewer-wheel-lifetime.json; complete outputs are retained in the matching .log files.
+
+| Execution | UTC start / finish | Actual result |
+|---|---|---|
+| Submitted account, execution and economic config modules | 2026-10-08T16:31:05.6446820Z / 16:31:06.7379934Z | 49 passed in 0.67s, zero skipped |
+| Independent native factory lifetime/restart/None checks | 2026-10-08T16:32:25.9413921Z / 16:32:26.8265947Z | 2 passed in 0.54s, zero skipped |
+
+The submitted tests prove the unchanged 18 legacy positional parameter prefix, appended io/account-age/execution/economic options, frozen and credential-opaque readback, ordinary LiveNode builder positive controls, invalid policies/scopes before I/O, optional/read-only economics with Unknown native application and no invented funds, authoritative checkpoint lease rejection, one factory refusing silent replacement of its live report consumer, and the unchanged bounded execution journal policy.
+
+The two reviewer checks use the same normal installed factory and submitted constructor helpers. Deleting an unstarted live node and collecting it releases the live client's checkpoint lease; all three Weak-bound report methods return None after drop. Rebuilding through the same factory and same actual empty authoritative checkpoint reloads the same consumer ID and report without money, receipts, account proof or native cache restoration. Dropping the replacement again detaches diagnostics. The separate None-policy normal builder never creates an economic checkpoint or report/account proof. This Python restart is explicitly an empty-checkpoint constructor test; actual nonempty pending/consumed restart was proved by the independently run native peers, not fabricated through Python.
+
+reviewer-wheel-identity-run.json records the successful artifact check at 2026-10-08T16:30:20.4670058Z through 2026-10-08T16:30:23.5775901Z; reviewer-wheel-identity.json records the verifier's own 16:30:20.527004–16:30:23.186083 UTC timestamps. The process and verifier timestamps are recorded separately.
+
+## Source binding versus later documentation
+
+The final artifact remains bound to clean source 95c87d4e70. Root later normalized documentation tables and packaged official raw research captures as immutable .txt data; current worktree dirtiness was confined to docs/. The identity verifier records those actual later paths separately. They do not retroactively change the wheel's build-source identity, and a later documentation/evidence commit must not be labeled as this wheel's source. All final implementation/binding/test/stub inputs still matched binding-inputs.json.
+
+Two identity harness failures are retained honestly: reviewer-wheel-identity-initial.log and reviewer-wheel-identity-initial-run.json refused an assumption that the entire current worktree must remain clean after build, before root's doc-only changes were accounted for; reviewer-wheel-identity-status-parser.log and reviewer-wheel-identity-status-parser-run.json exposed the reviewer's own .strip() mistake that removed Git's leading status column space. The verifier was corrected to preserve status columns and allow only independently observed docs-only later changes, while strictly checking every declared implementation input and actual artifact. Those preparation failures were not product test failures; no raw output was rewritten or presented as a prior pass.
+
+The earlier native preflight also refused the official generator's cfg(feature=python)-only doc/format change. The default-native source remained exactly unchanged, and the final binding file is now separately bound through the actual Python-feature wheel and installed tests. This reviewer does not claim default-native tests compiled that binding file. The submitted generated methods, installed introspection and ABI now correspond to its final actual bytes.
+
+## Combined review and remaining boundaries
+
+reviewer-native-final.md records the independently run 26 library plus 15 real normal-factory peer cases, all passed with zero ignored, exact source hashes and stable executable SHA256. These include the actual position-changing fee/one native commission, three failed role/mode/token fee-Unknown cases, three malformed user fill no-projection cases, independent current account recovery versus report persistence, same-epoch old-generation refusal, exact raw/checksum tampering, lease/missing-state, pending/receipt restart, pagination saturation/overlap, weak delivery multiplicity, conflict and consumer disk failure.
+
+Final code separates current funds from bounded account/collateral/mode/instrument attribution without assigning trusted=true to stale money. Default invalidation clears context; valid financial changes close trading while retaining only the already verified context. Source origin is checked before and after proof copying and after phase A; new-generation context cannot certify old input. Current account/owned recovery remains the only route to permitted readiness. Consumer B/report receipts never supply order budgets, native cache acknowledgment or another fill commission.
+
+One authoritative checkpoint retains exact raw lexemes and immutable report receipts with atomic A/B commits, semantic load validation and finite policy/capacity. Funding identity is a local composite, weak snapshots are not unique income, ledger net amount/currency/io attribution stays Unknown, and late conflicts preserve historical receipts/totals with explicit unresolved identity. The checksum is internal consistency, not source authenticity or a venue-signed uniqueness guarantee. A finite window containing unresolved weak/ledger/conflicting facts may remain closed; lifetime coverage limits intentionally terminate a bounded run.
+
+Root's separate complete native run is 1,244 passed with 12 existing ignored (11 live/soak plus one approximately-30-second registration-timeout case). Root's separate complete installed five-module run is 209 passed in 18.38s at 16:25:30–16:25:49 UTC. They are root-run evidence, not extra reviewer cases; the reviewer reports its own 41 native and 51 Python cases separately and does not sum overlapping root/reviewer runs into a larger acceptance total.
+
+Preserve the existing check limits: root production --lib Clippy -D warnings passed; --lib --tests Clippy exited 101 on existing Windows documentation lint in crates/persistence/src/parquet.rs:656. make format/pre-commit could not launch because make is absent (exit 127), with actual failure records retained. Scoped official formatting, Ruff and direct native/Python checks are separate evidence, not a claim that make or test Clippy passed. Cargo.lock and python/uv.lock are byte-unchanged from comparison base 511ff91d04983afb706eb20989be0b400e6299b9. No new dependency security scan was run by this reviewer; previously documented dependency-audit/deployment gates remain and are not cleared by this offline PR review.
+
+Actual private mainnet settlements, account movements, E6/application issue 43 and private-history retention are unobserved. Cold native order/cache/Portfolio recovery stays outside #102 and the #101 barrier remains. Per-frame/checkpoint acceptance caps are not global socket allocation or unbounded-queue memory guarantees. No mainnet authorization or readiness is inferred from this report.
+
+Limited offline PR-review PASS. Keep these boundaries and exact source/artifact identities in the acceptance and PR description.
+

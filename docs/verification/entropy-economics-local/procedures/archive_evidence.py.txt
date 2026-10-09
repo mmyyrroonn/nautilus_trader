@@ -1,0 +1,66 @@
+"""Copy exact local acceptance bytes, including real failures and reviewer executions."""
+
+import hashlib
+import json
+import shutil
+from datetime import UTC, datetime
+from pathlib import Path
+
+root = Path("E:/persarb/worktrees/entropy-account")
+run = Path(__file__).resolve().parent
+wheel = Path("E:/persarb/_tmp/entropy102-wheel-nextest-20261008")
+dest = root / "docs/verification/entropy-economics-local"
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def copy(source, target):
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, target)
+    assert digest(source) == digest(target)
+    return {"path": target.relative_to(dest).as_posix(), "original_path": str(source),
+            "bytes": target.stat().st_size, "sha256": digest(target)}
+
+
+provenance = json.loads((wheel / "native-provenance.json").read_text(encoding="utf-8"))
+installed = json.loads((run / "installed-native.json").read_text(encoding="utf-8"))
+assert provenance["source_binding"] == "verified"
+assert provenance["declared_native"]["dirty_count"] == 0
+assert provenance["build"]["started_source"] == provenance["build"]["finished_source"]
+assert installed["strict_source_binding_passed"] is True
+tested = json.loads((run / "tested-inputs.json").read_text(encoding="utf-8"))
+bindings = json.loads((run / "binding-inputs.json").read_text(encoding="utf-8"))
+for name, expected in tested["inputs"].items():
+    expected_hash = bindings["final_projection_inputs"].get(name, expected["sha256"])
+    assert digest(root / name) == expected_hash, f"Validated implementation changed: {name}"
+assert (run / "reviewer-wheel-final.md").is_file(), "Final installed wheel review is required"
+commands = []
+for path in sorted(run.glob("*.json")):
+    record = json.loads(path.read_text(encoding="utf-8-sig"))
+    if isinstance(record, dict) and "argv" in record:
+        commands.append({"record": path.name, **record})
+(run / "commands.json").write_text(json.dumps({"schema_version": 1,
+    "note": "Actual command records, including intermediate failures and launch refusals. Counts from selected subsets are not additional unique tests.",
+    "commands": commands}, indent=2) + "\n", encoding="utf-8")
+artifacts = []
+for source in sorted(run.glob("*.log")):
+    artifacts.append(copy(source, dest / "raw" / (source.stem + ".txt")))
+for source in sorted(run.glob("*.json")):
+    artifacts.append(copy(source, dest / source.name))
+for source in sorted(run.glob("reviewer-*.md")):
+    artifacts.append(copy(source, dest / "reviews" / (source.stem + ".txt")))
+for source in sorted(run.glob("*.py")) + sorted(run.glob("*.ps1")):
+    artifacts.append(copy(source, dest / "procedures" / (source.name + ".txt")))
+for name in ("native-provenance.json", "native-build-input.json"):
+    artifacts.append(copy(wheel / name, dest / name))
+manifest = {"schema_version": 1, "generated_at_utc": datetime.now(UTC).isoformat(),
+            "scope": "Owned synthetic loopback peers and an isolated installed source-bound wheel; no real private settlements or venue actions",
+            "source_commit": provenance["declared_native"]["commit"],
+            "source_tree": provenance["declared_native"]["tree"],
+            "source_fingerprint_sha256": provenance["source_fingerprint_sha256"],
+            "note": "The wheel is bound to the clean implementation commit above. Subsequent changes are documentation formatting and evidence packaging only; they are not relabeled as the built source.",
+            "wheel": provenance["wheel"], "artifacts": artifacts}
+(dest / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+print(f"Archived and independently rehashed {len(artifacts)} exact artifacts; validated implementation unchanged")

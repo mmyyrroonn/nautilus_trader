@@ -1,0 +1,73 @@
+﻿# Entropy #102 independent final native review
+
+Review date: 2026-10-09 Asia/Shanghai (20261008 UTC evidence batch). Worktree E:/persarb/worktrees/entropy-account, feature/entropy-economics from main 511ff91d04983afb706eb20989be0b400e6299b9.
+
+Verdict: PASS for the inspected final default-native source and the selected independently executed native tests. No remaining material finding was identified in this scope. This is not the final installed Python wheel review or authorization for real account activity. No Cargo, build, installation, production edits, external accounts or mainnet I/O were performed. Fixture action assertions refer to actual loopback peers with synthetic accounts.
+
+## Independent execution
+
+The native executables were run directly, after obtaining the actual test names with --list. Tests were deliberately run serially through normal factory/API paths; production HTTP quota, source TTL, deadlines, ownership and ingress fences were retained.
+
+| Executable | Selected result | UTC start / finish | SHA256 before and after |
+|---|---|---|---|
+| Library | 26 passed, 0 failed, 0 ignored; 839 filtered | 2026-10-08T16:21:09.0050487Z / 2026-10-08T16:21:10.0922840Z | d5ad190211a85acfa5bf757a451e10f547f4911c644067317b39392ad0824dac |
+| Normal account peers | 15 passed, 0 failed, 0 ignored; 77 filtered | 2026-10-08T16:21:10.1558946Z / 2026-10-08T16:21:23.0440549Z | 70f696c987157ecd0585c744211a9c20079b6be2a9d0ce486ef6f247e0d6a588 |
+
+Independent total: 41 passed, zero failures and zero ignored, not a rerun of all 1,244 root cases. The library subset took 1.07 seconds and normal peer subset 12.88 seconds in their harness summaries. Both processes exited zero and both executable hashes were unchanged after execution. Exact argv, working directory, UTC times, elapsed time, before/after executable SHA256 and input-manifest SHA256 are retained in reviewer-native-lib-final.json and reviewer-native-peer-final.json; the corresponding .log files retain the complete captured outputs. reviewer-run-native-final.ps1 contains the actual direct-execution procedure and filters.
+
+The selected library cases prove source/consumer restart, initialized-missing and exclusive-owner failure, raw-vs-normalized checksum tampering and missing receipt rejection, checked exact totals, late payload conflict, raw envelope sharing for 500 rows, cumulative coverage/observation exhaustion without eviction, strong phase-A replay, independent funds versus fee attribution, actual active native membership, missing ACK/source TTL/identity revocation and same-epoch different-reader-generation refusal.
+
+The normal factory peers prove the real position-changing user fee produces one native Filled/commission and exact -0.001 economic fee without a second debit, all three actual failed mode/role/collateral revalidations prevent fee recognition, all three malformed user-fill cases preserve raw facts without native projection, independent current account recovery can survive exact strong historical replay while B alone cannot restore readiness, pending/receipt restart behavior, inclusive 500-row overlap and saturated equal-time stopping, payload conflict, source-preserving consumer write failure, weak WS multiplicity and numeric-literal precision preservation. Assertions were read in the actual test source; no synthetic echoing fill, false position or forced trusted flag was introduced to make the fee case pass.
+
+## Input identity and preflight refusal
+
+The root final tested-inputs.json captured 25 inputs at 2026-10-08T16:10:11.001713+00:00. The first reviewer preflight deliberately refused to run because one input differed: crates/adapters/hyperliquid/src/python/factories.rs, expected SHA41a8af2d265d3bc730af4c55c28cde1bc9c2afe629a78b942f9b91bace28db1e/3249 bytes, then current SHAb8b964113c16a0facb7960a63d0a4e24b3e40616f02f87df8ee5c6eb689be13b/3326 bytes. This was an input-identity refusal before any selected test ran, not a test failure. The comparison is retained in reviewer-native-preflight-inputs.json. It is not represented as 25 matching inputs.
+
+Root then identified the official stub/source generator's new Python factory method documentation and CRLF output, followed by official formatting. Cargo.toml defaults to high-precision and lib.rs exposes this module only under cfg(feature="python"); the recorded root native command did not enable that feature. The direct native review therefore allowed only that explicitly isolated binding input mismatch and retained its actual pre/post hash. All other 24 manifest inputs matched exact bytes before and after execution. The binding-only final postflight hash is 6fb9ec947fb1affd3ff5b0350f7a6ee305781766e39ae5d4c8fa701c52b0d65c; its installed binary/stub semantics and source binding remain for the upcoming wheel review. No claim is made that default-native tests compiled or validated that Python feature file.
+
+reviewer-native-input-checks.json and reviewer-native-postflight-inputs.json retain every expected/actual source hash; the former includes source sizes. This reviewer reread the final account context/getter/typed invalidation and expected-origin call sites, exact parser/store/report/receipt semantics, the boolean history preflight, selected native peer assertions and unchanged cache recovery barrier. Source review findings from the earlier round are closed by the actual final code and the targeted executions above.
+
+## Source conclusions and limits
+
+- Complete role, repeated disabled abstraction, canonical collateral and native universe verification under captured version/epoch/generation establishes attribution; default invalidation clears it. Validated position/financial changes retain only that fresh context while closing funds and incrementing the funds revision. Getter checks source/verification freshness, active reader, ACK, exact active membership and source origin before and after copying. Funds trusted/flat stay truthful.
+- Actual source generation/epoch is passed to the getter; a new same-epoch reader cannot certify an old source. Every history page obtains fresh proof. Actor/page check replacement after phase A; native projection checks again. Exact raw fees do not depend on available-balance trust, and bad owner/mode/token/metadata still remain Unknown.
+- Raw JSON lexemes and duplicate keys are preserved/rejected before exact monetary normalization; malformed typed schema cannot reach Value-based native projection. Strong receipt identities exclude amount, weak deliveries remain observations, ledger cashflow/currency/dex stays Unknown. Exact actual fees are reporting only and never apply a second commission.
+- One exclusive authoritative checkpoint atomically commits A or B; consumed observations, immutable receipts and exact report totals are semantically checked against retained original lexemes. Missing initialized state, tamper, capacity or disk failures fail closed. A persisted report never supplies account budget or native cache recovery.
+- History termination proves only finite requested-window coverage. Weak/Unknown/conflict/ledger content can keep execution closed; lifetime coverage and observation/receipt/file caps intentionally end a finite run. Already consumed receipts/totals remain immutable historical values after a later conflict and are explicitly unresolved, not currently spendable cash.
+- Native cache/Portfolio cold restoration remains outside #102; #101 native_projection_recovery_required is preserved. Real account funding/ledger effects, venue retention and global hash uniqueness were not observed. Per-frame/checkpoint bounds do not constitute a general process-memory proof against arbitrary unbounded network input; raw queues remain existing unbounded infrastructure.
+- HTTP economic acceptance caps are checked before economic parsing after the existing finite transport body reception. Response receive time is captured before extra item quota. Do not describe that policy as a smaller transport streaming cap.
+
+Root's separate native-all-final.json/.log reports 1,244 passed and 12 existing ignored on the same final default-native input set. Reading its actual summaries gives 865 library + 46 data + 40 dispatch + 92 account peers + 102 execution + 46 HTTP + 53 WebSocket = 1,244. The 12 are 11 live/soak cases plus one existing hard-coded approximately-30-second account-registration timeout test. They were not executed by this review, and no live results are claimed.
+
+The prior 17/19 economic peer failures and the intermediate 864/92 pre-origin-fix results remain earlier evidence. The real fee failure was fixed through independent attribution rather than removing the real position change. The positive historical recovery fixture now explicitly declares a supported thirty-second history timeout instead of its original three-second budget; quota and production limits remain intact. The final executed origin-bound revision is distinct from both intermediate versions.
+
+Python wheel/provenance/pyd/generated stub/normal installed builder and legacy ABI validation remain pending. The outcome here is a limited default-native PASS suitable as one PR review input, not the whole delivery verdict.
+
+## Inspected final input SHA256
+
+The full 25-row expected/actual manifests are archived separately. These final byte-identical source/test inputs form the native scope; the generated Python binding exception is separately described above.
+
+| Source | SHA256 |
+|---|---|
+| crates/adapters/hyperliquid/src/account_scope.rs | edfa6945224f6575baa4872668f6022df0911675e5ee442004f78813c485b69f |
+| crates/adapters/hyperliquid/src/common/enums.rs | 01745601292ad41eb69c7cf25c68f09d65caf36f93b2bfc05a69e68ea2193143 |
+| crates/adapters/hyperliquid/src/config.rs | 3f7d2531ae1425a36a36c7db215569fcb3425efcf08942205a570144c2d026c4 |
+| crates/adapters/hyperliquid/src/economics_scope.rs | bcb748af8a343f19b9806021e1a19bf23f81956fa43a7cec4db34185c465bc84 |
+| crates/adapters/hyperliquid/src/economics_scope/parsing.rs | e5033d0cc69a85b22765e998995733f2eb2e31748c7fa9ad10db650b9f39ae15 |
+| crates/adapters/hyperliquid/src/economics_scope/store.rs | 45fe49e6b631b8f1a1758370166aa1c19e798ef5357d252ea0e3b60380ce5adf |
+| crates/adapters/hyperliquid/src/economics_scope/tests.rs | 3b9363dbf3fd0f6c4a812bb682fc724f842922f3b9c9509319c6ea77ab570602 |
+| crates/adapters/hyperliquid/src/execution.rs | d4f2e3a6d1cebebcbaf247b43eb68e148fc87e687f2e441a39ac178f5a238219 |
+| crates/adapters/hyperliquid/src/execution_scope.rs | 318b0c005a230549182dc6a80d6c5916f3ff9cfd8d7f73b910b73508fb7dea83 |
+| crates/adapters/hyperliquid/src/factories.rs | 30fece7dd8955b770c707f4ac7a9107fa24a2ec06c5d3ae29b37890a7aed5886 |
+| crates/adapters/hyperliquid/src/http/client.rs | 3873e1e454fb21e7486d51190a6b37d526c0ad6cb8533affc3051bbcf715ed16 |
+| crates/adapters/hyperliquid/src/http/query.rs | 71fd99ba15e009185bceed074d169780ec39638f2b5b2d16c7972abc67a3f3e8 |
+| crates/adapters/hyperliquid/src/http/rate_limits.rs | 47dd217c00b7a28358b2f28b7e1803c72e5817212300a2e62c2f0a419047dafc |
+| crates/adapters/hyperliquid/src/lib.rs | 906148403df2613c39db89ef470210abde40ab6b117aeb233d5cde092ae8b32e |
+| crates/adapters/hyperliquid/src/python/config.rs | f480b7e99bf72de4fbe4221655eb0e94fd7db3eefcda3ee7c6c88282a159f7c3 |
+| crates/adapters/hyperliquid/src/websocket/client.rs | 4ff1e3f378dc124dc09cc21dd05c36af533f7e02b3390a896653b26a77b7602a |
+| crates/adapters/hyperliquid/src/websocket/handler.rs | e810a1b89ccf2b75cc1389e8788cd2c6c552190d23e24b89508b34e19aad5fb6 |
+| crates/adapters/hyperliquid/src/websocket/messages.rs | 9468d33247a7c40e968ba36b4fc294a952d9b8b7840ea7bd5bafb825d48ba2d1 |
+| crates/adapters/hyperliquid/tests/entropy_account.rs | d8e2d1605c08873c2c28dafcc283cc62997e2adf9138bbc9445c0dc52c1414ae |
+| crates/adapters/hyperliquid/tests/entropy_account/economics.rs | 5bc6af18ae469b768e432c9e8adfb73d68633f4205680f3a083210df25d86127 |
+| crates/adapters/hyperliquid/tests/entropy_account/execution.rs | b6aaa5e995cdab8ce4c74f3384095efe0165f27ff7baba09f828f45f18a19cea |
+

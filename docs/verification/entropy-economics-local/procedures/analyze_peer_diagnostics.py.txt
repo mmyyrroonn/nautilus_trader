@@ -1,0 +1,15 @@
+import json
+from pathlib import Path
+
+log = Path(__file__).with_name("native-peer-diagnostics.log").read_text(encoding="utf-8")
+decoder = json.JSONDecoder()
+for line in log.splitlines():
+    if "Actual fee consumer state: " in line:
+        state, _ = decoder.raw_decode(line.split("Actual fee consumer state: ", 1)[1])
+        print("FEE", json.dumps({"observations": state["observations"], "report": state["report"]}))
+    if "Independent account state: " in line:
+        rest = line.split("Independent account state: ", 1)[1]
+        account, offset = decoder.raw_decode(rest)
+        economics = json.loads(rest[offset:].split("; economic state: ", 1)[1])
+        print("ACCOUNT", json.dumps(account["account"]))
+        print("HISTORY", json.dumps(economics["coverage"]))

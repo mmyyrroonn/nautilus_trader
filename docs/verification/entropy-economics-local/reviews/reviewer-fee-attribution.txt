@@ -1,0 +1,31 @@
+﻿# #102 fee attribution versus current funds trust
+
+Date: 2026-10-08. Read-only source analysis; no Cargo or fixture edits.
+
+Root evidence: native-peer-diagnostics.log, 17/19 economic normal peers passed. The fee peer preserves the real position update; its subsequent valid user fill has actual user/io/mode/canonical token/verified instrument/epoch in ScopeEvidence, but trusted=false because the prior HTTP flat position differs from the new complete WS position. Native Filled and commission succeed; economic cash recognition remains Unknown.
+
+## Actual source finding
+
+AccountScopeState has no separately validated metadata/attribution context. Its facts field survives invalidation and is retained across failed HTTP role/mode/collateral verification. snapshot.trusted intentionally combines all failures: position disagreement, economic invalidation, HTTP/WS TTL, identity errors, missing ACK, stream replacement and failed role/mode. Reading old mode/token fields from an untrusted snapshot cannot distinguish them. Removing the trusted requirement globally or assigning trusted=true would permit stale/failed-mode facts and is unsafe.
+
+The initial complete HTTP path genuinely verifies role, both abstraction facts twice around exact canonical collateral metadata and native universe, actual user, captured account version and stream epoch. This can establish a separate, bounded attribution context. It cannot authorize margin, flatness, orders, funds or native-cache recovery.
+
+## Minimum concrete change
+
+- Add a detached account attribution context in AccountScopeState, populated only after a successful complete role/mode/collateral/universe HTTP verification and its current version/epoch commit. Store actual user, io dex, inferred disabled mode, canonical token ID, verified native coin universe, stream epoch, verification started/finished times and evidence provenance. Keep monetary fields out.
+- Expose a read-only getter through AccountScopeDiagnostics. It must reject absent/invalidated context, inactive/replacement stream, stale/future verification times and failed/missing subscription/full-private-source evidence. A valid position change may preserve the underlying WS receive/source witness; the getter must not require old HTTP and new WS position sizes to agree.
+- Keep default invalidate conservative: clear attribution. Add an explicit typed financial-only invalidation that preserves a previously verified context while still incrementing account revision and closing funds/trading proof. Use it only for the already validated complete WS position-size change and the financial observation boundary before economic persistence. Do not use diagnostic-string allowlists. A pending HTTP refresh begins by clearing old attribution; a position event during that refresh cannot recreate it.
+- Wrong owner/dex, malformed complete private state, source expiry, bad ACK, disconnection/reconnection, failed role/mode/collateral/metadata verification and unknown attribution invalidate context. A new valid HTTP verification is required to create it again. An execution/persistence failure may conservatively clear it; no exception is needed to pass the normal fee case.
+- Economic ScopeEvidence must expose a separate attribution_verified flag/context and source timestamps. Do not mutate account snapshot trusted/flat. The parser may recognize exact raw fee/funding attribution from that context while current funds trusted is false. Historical receipt identity remains local, native application remains Unknown, and report persistence still cannot open execution.
+
+In the fee peer this means: verified initial flat HTTP and acknowledged private stream -> actual valid WS non-flat state invalidates current funds only -> same fresh epoch/account/mode/token context attributes the exact subsequent user fee -> native Filled/commission once and report fee once -> trading remains closed pending independent current recovery. Preserve the real position update.
+
+## Required focused checks
+
+1. Positive actual native fee peer with real position update; exact signed fee report and exactly one native commission; account funds trusted/flat remain false/unknown after receipt consumption.
+2. Independent getter case: valid WS size change preserves fresh attribution but closes funds; pending refresh or source TTL cannot revive context.
+3. Failed role, unsupported mode, token/universe drift, wrong WS owner/dex, malformed source, wrong/old epoch, physical disconnection and missing ACK each remove attribution and keep subsequent raw fee Unknown/no receipt.
+4. Reverified actual mode/token/account on a current epoch can create a new context; old delayed HTTP completion cannot restore it after revision/epoch invalidation.
+5. Empty/identical history preflight cannot manufacture funds trust from attribution, pending source or consumer receipts; it only preserves an already independently valid funds proof.
+
+The second current peer failure is a real declared three-second history deadline exhausted in HTTP quota before the ledger endpoint. A positive fixture may declare a longer supported bounded policy and wait that deadline. Production quota/TTL/deadline limits must remain intact, and the original failure remains evidence.

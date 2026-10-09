@@ -1,0 +1,30 @@
+"""Retain the pinned official SDK license alongside unchanged research captures."""
+
+import hashlib
+import json
+import urllib.request
+from datetime import UTC, datetime
+from pathlib import Path
+
+package = Path("E:/persarb/worktrees/entropy-account/docs/verification/entropy-economics-public")
+url = "https://raw.githubusercontent.com/hyperliquid-dex/hyperliquid-python-sdk/2fdb18f9517675ea03695a0962bd19eece9c83f0/LICENSE.md"
+started = datetime.now(UTC).isoformat()
+with urllib.request.urlopen(url, timeout=20) as response:
+    data = response.read(8192)
+finished = datetime.now(UTC).isoformat()
+assert b"MIT License" in data and b"Copyright" in data
+target = package / "sdk-LICENSE.txt"
+target.write_bytes(data)
+manifest_path = package / "manifest.json"
+manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+manifest["sdk_license"] = {"archive_file": target.name, "url": url,
+                           "capture_start_utc": started, "capture_end_utc": finished,
+                           "bytes": len(data), "sha256": hashlib.sha256(data).hexdigest()}
+manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+rows = manifest["sources"] + manifest["supplements"] + [manifest["sdk_license"]]
+hash_rows = [f"{row['sha256']}  {row['archive_file']}" for row in rows]
+hash_rows.append(f"{hashlib.sha256(manifest_path.read_bytes()).hexdigest()}  manifest.json")
+(package / "SHA256SUMS.txt").write_text("\n".join(sorted(hash_rows)) + "\n", encoding="utf-8")
+readme = package / "README.md"
+readme.write_text(readme.read_text(encoding="utf-8") + "\nThe pinned official SDK [MIT license](sdk-LICENSE.txt) accompanies the captured SDK source files.\n", encoding="utf-8")
+print("Captured pinned official SDK license with actual URL, UTC interval and byte hash")

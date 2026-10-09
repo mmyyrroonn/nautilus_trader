@@ -1,0 +1,50 @@
+﻿"""Independent installed native factory lifetime/restart checks; never start a node."""
+import gc
+import importlib.util
+import json
+from pathlib import Path
+
+from nautilus_trader.adapters.hyperliquid import HyperliquidExecutionClientFactory
+
+SOURCE=Path('E:/persarb/worktrees/entropy-account/python/tests/unit/test_entropy_economics_config.py')
+spec=importlib.util.spec_from_file_location('reviewed_economic_constructor_helpers',SOURCE)
+helpers=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(helpers)
+
+
+def test_installed_factory_lifetime_releases_lease_and_reloads_same_empty_consumer(tmp_path):
+    factory=HyperliquidExecutionClientFactory()
+    settings=helpers.config(helpers.economic_policy(tmp_path))
+    node=helpers.build(factory,settings)
+    initial=json.loads(factory.economics_scope_snapshot_json())
+    assert initial['pending']==initial['durable_receipts']==0
+    assert factory.account_scope_snapshot_json() is None
+    assert json.loads(factory.persist_economics())['report']==initial['report']
+    del node
+    gc.collect()
+    for method in (factory.economics_scope_snapshot_json,factory.pending_economics_json,factory.persist_economics):
+        assert method() is None
+    replacement=helpers.build(factory,settings)
+    reloaded=json.loads(factory.economics_scope_snapshot_json())
+    assert reloaded['consumer_id']==initial['consumer_id']
+    assert reloaded['report']==initial['report']
+    assert reloaded['pending']==reloaded['durable_receipts']==0
+    assert reloaded['native_applied']=='Unknown'
+    assert reloaded['balance_adjustment'] is False
+    assert reloaded['native_cache_recovery'] is False
+    assert factory.account_scope_snapshot_json() is None
+    del replacement
+    gc.collect()
+    assert factory.economics_scope_snapshot_json() is None
+
+
+def test_installed_optional_none_builder_has_no_report_or_fabricated_account(tmp_path):
+    factory=HyperliquidExecutionClientFactory()
+    node=helpers.build(factory,helpers.config(None))
+    for method in (factory.economics_scope_snapshot_json,factory.pending_economics_json,factory.persist_economics):
+        assert method() is None
+    assert factory.account_scope_snapshot_json() is None
+    assert factory.execution_scope_snapshot_json() is None
+    assert not (tmp_path/'economic-report.json').exists()
+    del node
+    gc.collect()

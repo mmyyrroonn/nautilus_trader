@@ -15,7 +15,7 @@
 
 //! Normal native factory and actual execution engine/portfolio acceptance against owned peers.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 
 use nautilus_common::{
     clock::{Clock, TestClock},
@@ -39,6 +39,9 @@ use tempfile::TempDir;
 
 use super::*;
 
+#[path = "economics.rs"]
+mod economics;
+
 #[derive(Debug)]
 pub(super) struct PeerExecution {
     pub posts: Vec<Value>,
@@ -47,6 +50,9 @@ pub(super) struct PeerExecution {
     pub acknowledge_posts: bool,
     pub observable_orders: bool,
     pub asset_data: Value,
+    pub funding_pages: VecDeque<String>,
+    pub ledger_pages: VecDeque<String>,
+    pub history_delay_ms: u64,
 }
 
 impl Default for PeerExecution {
@@ -59,8 +65,39 @@ impl Default for PeerExecution {
             observable_orders: true,
             asset_data: json!({"user":USER,"coin":"io:SNDK","leverage":{"type":"isolated","value":1},
                 "maxTradeSzs":["1","1"],"availableToTrade":["100","100"],"markPx":"100"}),
+            funding_pages: VecDeque::from(["[]".to_string()]),
+            ledger_pages: VecDeque::from(["[]".to_string()]),
+            history_delay_ms: 0,
         }
     }
+}
+
+pub(super) fn economic_info_response(state: &PeerState, request: &Value) -> Option<(u64, String)> {
+    let kind = request["type"].as_str()?;
+    if !matches!(kind, "userFunding" | "userNonFundingLedgerUpdates") {
+        return None;
+    }
+    assert_eq!(request["user"], USER);
+    assert!(
+        request.get("dex").is_none(),
+        "economic requests have no documented DEX field"
+    );
+    assert!(request["startTime"].as_u64().is_some());
+    assert!(request["endTime"].as_u64().is_some());
+    let mut data = state.data.lock();
+    let execution = data.execution.as_mut()?;
+    let delay = execution.history_delay_ms;
+    let pages = if kind == "userFunding" {
+        &mut execution.funding_pages
+    } else {
+        &mut execution.ledger_pages
+    };
+    let body = if pages.len() > 1 {
+        pages.pop_front().unwrap()
+    } else {
+        pages.front().cloned().unwrap_or_else(|| "[]".to_string())
+    };
+    Some((delay, body))
 }
 
 pub(super) fn info_response(state: &PeerState, request: &Value) -> Option<Value> {
@@ -197,6 +234,14 @@ impl Harness {
     }
 
     async fn with_balance(balance: &str, change: impl FnOnce(&mut PeerExecution)) -> Self {
+        Self::with_configuration(balance, change, |_, _| {}).await
+    }
+
+    async fn with_configuration(
+        balance: &str,
+        change: impl FnOnce(&mut PeerExecution),
+        configure: impl FnOnce(&mut HyperliquidExecutionClientConfig, &TempDir),
+    ) -> Self {
         let peer = Peer::start(clearinghouse(balance, balance, "0", balance, false)).await;
         let directory = TempDir::new().unwrap();
         let mut execution = PeerExecution::default();
@@ -204,6 +249,17 @@ impl Harness {
         peer.state.data.lock().execution = Some(execution);
         let mut config = execution_config(&peer, 30000);
         config.io_execution_policy_json = Some(policy(&directory).to_string());
+        configure(&mut config, &directory);
+        Self::from_parts(peer, directory, config).await
+    }
+
+    async fn from_parts(
+        peer: Peer,
+        directory: TempDir,
+        config: HyperliquidExecutionClientConfig,
+    ) -> Self {
+        let execution_enabled = config.io_execution_policy_json.is_some();
+        let economics_enabled = config.io_economics_policy_json.is_some();
         let cache = Rc::new(RefCell::new(Cache::default()));
         // A normal node loads instruments through its provider before applying fills.
         // Seed the real native cache from this peer's public metadata using that HTTP API.
@@ -215,7 +271,7 @@ impl Harness {
         }
         let factory = HyperliquidExecutionClientFactory::new();
         let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
-        set_exec_event_sender(sender);
+        replace_exec_event_sender(sender);
         let mut client = factory
             .create(
                 TraderId::from("TESTER-001"),
@@ -244,7 +300,9 @@ impl Harness {
             receiver,
             fill_events: 0,
         };
-        result.wait_ready().await;
+        if execution_enabled && !economics_enabled {
+            result.wait_ready().await;
+        }
         result
     }
 
@@ -515,7 +573,14 @@ impl Harness {
         })
         .await
         .unwrap();
-        assert!(self.directory.path().join("io-intents.jsonl").is_file());
+        if self
+            .factory
+            .execution_scope_snapshot_json()
+            .unwrap()
+            .is_some()
+        {
+            assert!(self.directory.path().join("io-intents.jsonl").is_file());
+        }
     }
 }
 

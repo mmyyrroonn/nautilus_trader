@@ -1,0 +1,20 @@
+﻿{
+    "argv":  [
+                 "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+                 "-I",
+                 "-m",
+                 "pytest",
+                 "--import-mode=importlib",
+                 "-o",
+                 "pythonpath=",
+                 "E:/persarb/worktrees/entropy-account/python/tests/unit/test_entropy_account_config.py",
+                 "E:/persarb/worktrees/entropy-account/python/tests/unit/test_entropy_execution_config.py",
+                 "E:/persarb/worktrees/entropy-account/python/tests/unit/test_entropy_economics_config.py",
+                 "-q"
+             ],
+    "cwd":  "E:\\persarb\\_tmp\\entropy102-validation",
+    "started_utc":  "2026-10-08T16:31:05.6446820Z",
+    "finished_utc":  "2026-10-08T16:31:06.7379934Z",
+    "exit_code":  0,
+    "python_sha256":  "a5c8449a9b7a1a35580b801075737d56d82a1e4b398ddc3c0169e072e26fc135"
+}

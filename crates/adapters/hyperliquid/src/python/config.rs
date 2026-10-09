@@ -135,6 +135,7 @@ impl HyperliquidExecutionClientConfig {
         account_dex = None,
         account_snapshot_max_age_ms = None,
         io_execution_policy_json = None,
+        io_economics_policy_json = None,
     ))]
     #[expect(clippy::too_many_arguments)]
     fn py_new(
@@ -159,6 +160,7 @@ impl HyperliquidExecutionClientConfig {
         account_dex: Option<String>,
         account_snapshot_max_age_ms: Option<u64>,
         io_execution_policy_json: Option<String>,
+        io_economics_policy_json: Option<String>,
     ) -> Self {
         let defaults = Self::default();
         Self {
@@ -168,6 +170,7 @@ impl HyperliquidExecutionClientConfig {
             account_address,
             account_dex,
             io_execution_policy_json,
+            io_economics_policy_json,
             account_snapshot_max_age_ms: account_snapshot_max_age_ms
                 .unwrap_or(defaults.account_snapshot_max_age_ms),
             base_url_ws,

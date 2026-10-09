@@ -1,0 +1,123 @@
+warning: linker stdout: 正在创建库 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-63fd5ed65377140a.dll.lib 和对象 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-63fd5ed65377140a.dll.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-persistence-macros` (lib) generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_user_outcome.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_user_outcome.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_outcome_order.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_outcome_order.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_data.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_data.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_exec.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_exec.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_capture_test_data.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_capture_test_data.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_flatten.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_flatten.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_exec.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_exec.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_public.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_public.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_private.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_private.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_revoke.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_revoke.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_approve.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_approve.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-user-outcome") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-outcome-order") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-ws-data") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-exec") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-capture-test-data") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-flatten") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-ws-exec") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-public") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-private") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-builder-fee-revoke") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-builder-fee-approve") generated 1 warning
+   Compiling nautilus-hyperliquid v0.63.0 (E:\persarb\worktrees\entropy-account\crates\adapters\hyperliquid)
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\entropy_account-69bad49fe9dc76e8.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\entropy_account-69bad49fe9dc76e8.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (test "entropy_account") generated 1 warning
+    Finished `nextest` profile [unoptimized] target(s) in 3.03s
+     Running tests\entropy_account.rs (E:/persarb/nautilus_trader/target\nextest\deps\entropy_account-69bad49fe9dc76e8.exe)
+
+running 19 tests
+
+thread 'execution::economics::actual_owned_fill_fee_reporting_never_applies_a_second_native_commission' (49480) panicked at crates\adapters\hyperliquid\tests\entropy_account\economics.rs:696:5:
+assertion `left == right` failed: Actual fee consumer state: {"schema_version":1,"account_id":"HYPERLIQUID-ENTROPY","actual_user":"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d","network":"testnet","consumer_id":"0xf723c691ce0c4015117b552ee24a5b1e3f26d792cc3e2549bd563205152ca000","policy":{"schema_version":1,"checkpoint_path":"C:\\Users\\myron\\AppData\\Local\\Temp\\.tmp2TF2Se\\economic-report.json","instruments":["io:SNDK-USD-PERP.HYPERLIQUID"],"history_start_ms":1791473953194,"history_max_window_ms":86400000,"history_timeout_ms":3000,"history_max_pages":8,"history_max_records":2000,"max_observations":10000,"max_receipts":5000,"max_checkpoint_bytes":16777216,"max_raw_frame_bytes":65536,"max_history_body_bytes":1048576},"source_seq":1,"checkpoint_revision":6,"tainted":false,"diagnostic":"Bounded economic report only; no native cache application proof","observations":{"observation-1":{"id":"observation-1","source_seq":1,"raw_text":"{\"coin\":\"io:SNDK\",\"px\":\"99.75\",\"sz\":\"0.1\",\"side\":\"B\",\"time\":1791474013399,\"startPosition\":\"0\",\"dir\":\"Open Long\",\"closedPnl\":\"0\",\"hash\":\"0x0000000000000000000000000000000000000000000000000000000000002329\",\"oid\":70001,\"crossed\":true,\"fee\":\"-0.001\",\"builderFee\":\"0.0002\",\"tid\":9001,\"feeToken\":\"USDC\",\"cloid\":\"0x1193adb87851bb15491bf92a97ae2831\"}","raw_envelope_ref":"0x7833ccbba94e9a00415a89b56bffd8a5f8c1f20c4acba98fd2c0761c44c466fd","source":{"transport":"websocket","received_ms":1791474013399,"generation":1,"epoch":0,"sequence":9,"snapshot":null,"request_start_ms":null,"request_end_ms":null},"fact":{"category":"fill_fee","dex":null,"amount":null,"currency":null,"coin":"io:SNDK","instrument_id":null,"venue_time_ms":1791474013399,"event_hash":"0x0000000000000000000000000000000000000000000000000000000000002329","components":{},"native_applied":"Unknown"},"receipt_key":null,"effect_bucket":null,"financial_digest":"0x13720a27ea25993fc2c5d35cd66042634b59a4f240ebc04cbeb74b39ee0860ee","identity_quality":"Unknown","diagnostic":"Unverified fee instrument/collateral/account","ownership_basis":"AccountRaw; strategy/native application Unknown","scope_evidence":{"actual_user":"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d","dex":"io","mode":"standard_disabled_inferred","collateral_token_id":"0x6d1e7cde53ba9467b783cb7c530ce054","trusted":false,"private_stream_epoch":0,"verified_instruments":["io:SNDK-USD-PERP.HYPERLIQUID"]}}},"raw_envelopes":{"0x7833ccbba94e9a00415a89b56bffd8a5f8c1f20c4acba98fd2c0761c44c466fd":"{\"channel\":\"user\",\"data\":{\"fills\":[{\"coin\":\"io:SNDK\",\"px\":\"99.75\",\"sz\":\"0.1\",\"side\":\"B\",\"time\":1791474013399,\"startPosition\":\"0\",\"dir\":\"Open Long\",\"closedPnl\":\"0\",\"hash\":\"0x0000000000000000000000000000000000000000000000000000000000002329\",\"oid\":70001,\"crossed\":true,\"fee\":\"-0.001\",\"builderFee\":\"0.0002\",\"tid\":9001,\"feeToken\":\"USDC\",\"cloid\":\"0x1193adb87851bb15491bf92a97ae2831\"}]}}"},"coverage":[{"generation":1,"epoch":0,"endpoint":"userFunding","start_ms":1791473953194,"end_ms":1791474013286,"pages":1,"records":0,"complete":true,"diagnostic":"Requested finite pagination window terminated; venue retention remains Unknown"},{"generation":1,"epoch":0,"endpoint":"userNonFundingLedgerUpdates","start_ms":1791473953194,"end_ms":1791474013286,"pages":1,"records":0,"complete":true,"diagnostic":"Requested finite pagination window terminated; venue retention remains Unknown"}],"report":{"funding_usdc":"0","actual_fee_usdc":"0","receipts":{},"consumed_observations":["observation-1"],"unknown_observations":["observation-1"]},"pending":0,"durable_receipts":0,"consumed_observations":1,"financial_identity_complete":false,"recognized_amount_basis":"immutable locally recognized receipt history; unresolved at consumption excluded; later conflicts retain historical totals and remain Unknown","coverage_record_limit":24,"retention":"Unknown","native_applied":"Unknown","balance_adjustment":false,"native_cache_recovery":false}
+  left: 0
+ right: -0.001
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test execution::economics::actual_owned_fill_fee_reporting_never_applies_a_second_native_commission ... FAILED
+test execution::economics::economic_consumer_failure_retains_durable_pending_source ... ok
+test execution::economics::unsupported_economic_frames_preserve_raw_and_cannot_create_io_income::case_1 ... ok
+test execution::economics::unsupported_economic_frames_preserve_raw_and_cannot_create_io_income::case_2 ... ok
+test execution::economics::account_wide_ledger_keeps_attribution_and_cashflow_interpretation_unknown ... ok
+test execution::economics::unsupported_economic_frames_preserve_raw_and_cannot_create_io_income::case_3 ... ok
+test execution::economics::original_numeric_lexeme_is_preserved_without_fabricating_exact_cash ... ok
+test execution::economics::normal_factory_signed_funding_is_pending_until_durable_report_consumption ... ok
+test execution::economics::conflicting_strong_history_never_becomes_recognized_cash ... ok
+test execution::economics::history_same_time_distinct_hash_and_exact_replay_do_not_double_recognized_cash ... ok
+test execution::economics::actual_history_deadline_preserves_unknown_coverage_and_cannot_enable_execution ... ok
+test execution::economics::websocket_no_id_replay_and_history_overlap_preserve_every_weak_occurrence ... ok
+test execution::economics::malformed_actual_user_fill_retains_raw_without_native_projection_or_fee_receipt::case_2 ... ok
+test execution::economics::malformed_actual_user_fill_retains_raw_without_native_projection_or_fee_receipt::case_1 ... ok
+test execution::economics::malformed_actual_user_fill_retains_raw_without_native_projection_or_fee_receipt::case_3 ... ok
+test execution::economics::normal_factory_restart_preserves_pending_then_same_consumer_receipts ... ok
+test execution::economics::actual_full_page_preserves_distinct_facts_at_the_inclusive_timestamp_boundary ... ok
+test execution::economics::saturated_equal_time_page_terminates_with_unknown_coverage_and_preserves_observed_facts ... ok
+
+thread 'execution::economics::persisted_funding_does_not_restore_ready_but_current_account_recovery_can_absorb_exact_replay' (59524) panicked at crates\adapters\hyperliquid\tests\entropy_account\economics.rs:753:5:
+assertion `left == right` failed: Independent account state: {"policy":{"schema_version":1,"strategy_id":"ENTROPY-001","journal_path":"C:\\Users\\myron\\AppData\\Local\\Temp\\.tmp9sNkYb\\io-intents.jsonl","max_order_notional":"100","max_gross_notional":"200","max_open_orders":2,"max_actions":16,"max_leverage":1,"margin_buffer":"5","fee_buffer_bps":"10","action_timeout_ms":1000,"recovery_timeout_ms":1500,"recovery_max_attempts":2,"recovery_retry_delay_ms":10,"metadata_max_age_ms":30000,"symbols":[{"instrument_id":"io:SNDK-USD-PERP.HYPERLIQUID","max_quantity":"1","min_price":"95","max_price":"105"}]},"account":{"dex":"io","address":"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d","account_mode":"standard_disabled_inferred","collateral_token_id":"0x6d1e7cde53ba9467b783cb7c530ce054","balance":"100","equity":"100","withdrawable":"100","used":"0","free":"100","total_maintenance":null,"positions":[],"http_source_time_ms":1791474013375,"http_received_time_ms":1791474013375,"http_verification_started_time_ms":1791474013374,"private_stream_epoch":0,"ws_received_time_ms":1791474013251,"ws_source_time_ms":null,"trusted":false,"flat":null,"diagnostic":"Economic history total deadline exhausted (quota/retries/metadata included)","provenance":"Explicit io REST request scope; marginSummary includes isolated positions; disabled-to-standard is an SDK-supported inference; mode/role/collateral requests are not atomic; WS source time is not synthesized"},"latest_private_funds":{"free":"100","withdrawable":"100","received_time_ms":1791474013251,"source_time_ms":null},"metadata":{"io:SNDK-USD-PERP.HYPERLIQUID":{"instrument_id":"io:SNDK-USD-PERP.HYPERLIQUID","coin":"io:SNDK","asset":110000,"dex_index":1,"universe_index":0,"size_decimals":4,"margin_mode":"strictIsolated","actual_leverage":1,"received_ms":1791474013374,"verification_started_ms":1791474013374,"user_asset_source_time_ms":null,"max_trade_sizes":["1","1"],"available_to_trade":["100","100"],"mark_price":"100"}},"recovery_complete":false,"recovered_epoch":0,"diagnostic":"Economic history total deadline exhausted (quota/retries/metadata included)","journal_tainted":false,"native_projection_recovery_required":false,"actions":0,"owned_intents":{},"actual_fills":{},"margin_basis":"conservative full-notional entry estimate using minimum HTTP/private free and withdrawable; isolated total maintenance unknown; non-atomic source observations","user_asset_source_time_ms":null}; economic state: {"schema_version":1,"account_id":"HYPERLIQUID-ENTROPY","actual_user":"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d","network":"testnet","consumer_id":"0xdb35a2a922839e4d241d09f3be697b141196de0217f3f3f2491cc21fa89fb29d","policy":{"schema_version":1,"checkpoint_path":"C:\\Users\\myron\\AppData\\Local\\Temp\\.tmp9sNkYb\\economic-report.json","instruments":["io:SNDK-USD-PERP.HYPERLIQUID"],"history_start_ms":1791473953195,"history_max_window_ms":86400000,"history_timeout_ms":3000,"history_max_pages":8,"history_max_records":2000,"max_observations":10000,"max_receipts":5000,"max_checkpoint_bytes":16777216,"max_raw_frame_bytes":65536,"max_history_body_bytes":1048576},"source_seq":2,"checkpoint_revision":8,"tainted":false,"diagnostic":"Bounded economic report only; no native cache application proof","observations":{"observation-1":{"id":"observation-1","source_seq":1,"raw_text":"{\"time\":1791474012684,\"hash\":\"0x000000000000000000000000000000000000000000000000000000000000005a\",\"delta\":{\"type\":\"funding\",\"coin\":\"io:SNDK\",\"usdc\":\"0.25\",\"szi\":\"0.125\",\"fundingRate\":\"0.0001\",\"nSamples\":1}}","raw_envelope_ref":"0x5a62150cc1d1872b322c8f8c3c09adc9d50807427ae4c98bfa554cb8787d5160","source":{"transport":"userFunding","received_ms":1791474013287,"generation":1,"epoch":0,"sequence":null,"snapshot":null,"request_start_ms":1791473953195,"request_end_ms":1791474013286},"fact":{"category":"funding","dex":"io","amount":"0.25","currency":"USDC","coin":"io:SNDK","instrument_id":"io:SNDK-USD-PERP.HYPERLIQUID","venue_time_ms":1791474012684,"event_hash":"0x000000000000000000000000000000000000000000000000000000000000005a","components":{"fundingRate":"0.0001","nSamples":"1","szi":"0.125"},"native_applied":"Unknown"},"receipt_key":"0x43aae81178f4fc2488b4ea76649e8d3de9b183b1aa87ce4e9c3e648f4c7c7380","effect_bucket":null,"financial_digest":"0xc603b6f10eb7370e7c09c5d5382aee3274f5fa4a4fa513e21ce09c0f4efa7b41","identity_quality":"EvidencedLocalComposite","diagnostic":"Local hash/time/coin composite policy; venue uniqueness and retention remain unknown","ownership_basis":"AccountRaw; strategy/native application Unknown","scope_evidence":{"actual_user":"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d","dex":"io","mode":"standard_disabled_inferred","collateral_token_id":"0x6d1e7cde53ba9467b783cb7c530ce054","trusted":true,"private_stream_epoch":0,"verified_instruments":["io:SNDK-USD-PERP.HYPERLIQUID"]}},"observation-2":{"id":"observation-2","source_seq":2,"raw_text":"{\"time\":1791474012684,\"hash\":\"0x000000000000000000000000000000000000000000000000000000000000005a\",\"delta\":{\"type\":\"funding\",\"coin\":\"io:SNDK\",\"usdc\":\"0.25\",\"szi\":\"0.125\",\"fundingRate\":\"0.0001\",\"nSamples\":1}}","raw_envelope_ref":"0x5a62150cc1d1872b322c8f8c3c09adc9d50807427ae4c98bfa554cb8787d5160","source":{"transport":"userFunding","received_ms":1791474016650,"generation":1,"epoch":0,"sequence":null,"snapshot":null,"request_start_ms":1791473953195,"request_end_ms":1791474013657},"fact":{"category":"funding","dex":"io","amount":"0.25","currency":"USDC","coin":"io:SNDK","instrument_id":"io:SNDK-USD-PERP.HYPERLIQUID","venue_time_ms":1791474012684,"event_hash":"0x000000000000000000000000000000000000000000000000000000000000005a","components":{"fundingRate":"0.0001","nSamples":"1","szi":"0.125"},"native_applied":"Unknown"},"receipt_key":"0x43aae81178f4fc2488b4ea76649e8d3de9b183b1aa87ce4e9c3e648f4c7c7380","effect_bucket":null,"financial_digest":"0xc603b6f10eb7370e7c09c5d5382aee3274f5fa4a4fa513e21ce09c0f4efa7b41","identity_quality":"EvidencedLocalComposite","diagnostic":"Local hash/time/coin composite policy; venue uniqueness and retention remain unknown","ownership_basis":"AccountRaw; strategy/native application Unknown","scope_evidence":{"actual_user":"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d","dex":"io","mode":"standard_disabled_inferred","collateral_token_id":"0x6d1e7cde53ba9467b783cb7c530ce054","trusted":true,"private_stream_epoch":0,"verified_instruments":["io:SNDK-USD-PERP.HYPERLIQUID"]}}},"raw_envelopes":{"0x5a62150cc1d1872b322c8f8c3c09adc9d50807427ae4c98bfa554cb8787d5160":"[{\"time\":1791474012684,\"hash\":\"0x000000000000000000000000000000000000000000000000000000000000005a\",\"delta\":{\"type\":\"funding\",\"coin\":\"io:SNDK\",\"usdc\":\"0.25\",\"szi\":\"0.125\",\"fundingRate\":\"0.0001\",\"nSamples\":1}}]"},"coverage":[{"generation":1,"epoch":0,"endpoint":"userFunding","start_ms":1791473953195,"end_ms":1791474013286,"pages":1,"records":1,"complete":true,"diagnostic":"Requested finite pagination window terminated; venue retention remains Unknown"},{"generation":1,"epoch":0,"endpoint":"userNonFundingLedgerUpdates","start_ms":1791473953195,"end_ms":1791474013286,"pages":1,"records":0,"complete":true,"diagnostic":"Requested finite pagination window terminated; venue retention remains Unknown"},{"generation":1,"epoch":0,"endpoint":"userFunding","start_ms":1791473953195,"end_ms":1791474013657,"pages":1,"records":1,"complete":true,"diagnostic":"Requested finite pagination window terminated; venue retention remains Unknown"},{"generation":1,"epoch":0,"endpoint":"userNonFundingLedgerUpdates","start_ms":1791473953195,"end_ms":1791474013657,"pages":0,"records":0,"complete":false,"diagnostic":"Economic history total deadline exhausted (quota/retries/metadata included)"}],"report":{"funding_usdc":"0.25","actual_fee_usdc":"0","receipts":{"0x43aae81178f4fc2488b4ea76649e8d3de9b183b1aa87ce4e9c3e648f4c7c7380":{"key":"0x43aae81178f4fc2488b4ea76649e8d3de9b183b1aa87ce4e9c3e648f4c7c7380","financial_digest":"0xc603b6f10eb7370e7c09c5d5382aee3274f5fa4a4fa513e21ce09c0f4efa7b41","observation_id":"observation-1","source_seq":1,"consumer_id":"0xdb35a2a922839e4d241d09f3be697b141196de0217f3f3f2491cc21fa89fb29d","consumed_revision":5}},"consumed_observations":["observation-1"],"unknown_observations":[]},"pending":1,"durable_receipts":1,"consumed_observations":1,"financial_identity_complete":true,"recognized_amount_basis":"immutable locally recognized receipt history; unresolved at consumption excluded; later conflicts retain historical totals and remain Unknown","coverage_record_limit":24,"retention":"Unknown","native_applied":"Unknown","balance_adjustment":false,"native_cache_recovery":false}
+  left: Bool(false)
+ right: true
+test execution::economics::persisted_funding_does_not_restore_ready_but_current_account_recovery_can_absorb_exact_replay ... FAILED
+
+failures:
+
+failures:
+    execution::economics::actual_owned_fill_fee_reporting_never_applies_a_second_native_commission
+    execution::economics::persisted_funding_does_not_restore_ready_but_current_account_recovery_can_absorb_exact_replay
+
+test result: FAILED. 17 passed; 2 failed; 0 ignored; 0 measured; 70 filtered out; finished in 3.51s
+
+error: test failed, to rerun pass `-p nautilus-hyperliquid --test entropy_account`

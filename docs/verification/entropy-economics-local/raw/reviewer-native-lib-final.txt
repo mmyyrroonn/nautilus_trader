@@ -1,0 +1,32 @@
+﻿
+running 26 tests
+test account_scope::tests::attribution_independently_checks_reader_epoch_ack_and_verification_age ... ok
+test account_scope::tests::attribution_membership_uses_latest_active_metadata_not_cached_ids ... ok
+test account_scope::tests::generic_invalidation_revokes_attribution::case_1 ... ok
+test account_scope::tests::generic_invalidation_revokes_attribution::case_2 ... ok
+test account_scope::tests::generic_invalidation_revokes_attribution::case_3 ... ok
+test account_scope::tests::generic_invalidation_revokes_attribution::case_4 ... ok
+test account_scope::tests::invalid_private_source_and_refresh_start_cannot_preserve_or_rebuild_context ... ok
+test account_scope::tests::replacement_context_cannot_certify_an_old_source_in_the_same_epoch ... ok
+test account_scope::tests::stale_private_source_revokes_detached_attribution ... ok
+test account_scope::tests::validated_position_change_preserves_attribution_without_funds_trust ... ok
+test economics_scope::tests::account_wide_ledger_has_no_fake_io_attribution_and_same_hash_effects_are_ambiguous ... ok
+test economics_scope::tests::checkpoint_exclusive_owner_and_missing_initialized_file_fail_closed ... ok
+test economics_scope::tests::complete_five_hundred_row_page_stores_one_shared_raw_envelope ... ok
+test economics_scope::tests::exact_sum_never_rounds_a_small_payment_into_a_large_total ... ok
+test economics_scope::tests::lifetime_coverage_capacity_preserves_last_checkpoint_when_exhausted ... ok
+test economics_scope::tests::only_phase_a_exact_strong_history_replay_can_preserve_current_ready ... ok
+test economics_scope::tests::recomputed_checksum_cannot_override_raw_facts_or_consumer_receipt_completeness::case_1 ... ok
+test economics_scope::tests::recomputed_checksum_cannot_override_raw_facts_or_consumer_receipt_completeness::case_2 ... ok
+test economics_scope::tests::recomputed_checksum_cannot_override_raw_facts_or_consumer_receipt_completeness::case_3 ... ok
+test economics_scope::tests::runtime_bound_preserves_prior_durable_facts_and_does_not_evict_pending ... ok
+test economics_scope::tests::same_time_distinct_hashes_are_distinct_but_changed_payload_is_conflict ... ok
+test economics_scope::tests::semantic_checkpoint_corruption_is_not_validated_by_recomputed_checksum ... ok
+test economics_scope::tests::source_and_consumer_restart_boundaries_preserve_pending_and_exact_receipts ... ok
+test economics_scope::tests::unverified_attribution_cannot_recognize_fee_regardless_of_funds_trust::case_1 ... ok
+test economics_scope::tests::unverified_attribution_cannot_recognize_fee_regardless_of_funds_trust::case_2 ... ok
+test economics_scope::tests::verified_attribution_with_untrusted_funds_reports_fee_without_authorizing_native_application ... ok
+
+test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 839 filtered out; finished in 1.07s
+
+

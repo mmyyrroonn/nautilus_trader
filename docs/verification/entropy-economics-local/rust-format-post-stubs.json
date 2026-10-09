@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "cargo",
+    "+nightly",
+    "fmt",
+    "-p",
+    "nautilus-hyperliquid"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-account",
+  "started_utc": "2026-10-08T16:20:36.830192+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-08T16:20:37.515468+00:00"
+}

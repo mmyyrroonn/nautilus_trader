@@ -78,6 +78,7 @@ def test_new_scope_options_preserve_legacy_positional_constructor_order() -> Non
         "account_dex",
         "account_snapshot_max_age_ms",
         "io_execution_policy_json",
+        "io_economics_policy_json",
     ]
     config = HyperliquidExecutionClientConfig(
         AccountId("HYPERLIQUID-LEGACY"),
@@ -90,6 +91,7 @@ def test_new_scope_options_preserve_legacy_positional_constructor_order() -> Non
     assert config.account_dex is None
     assert config.account_snapshot_max_age_ms == 30_000
     assert config.io_execution_policy_json is None
+    assert config.io_economics_policy_json is None
 
 
 def test_unbound_native_factory_returns_no_account_proof() -> None:

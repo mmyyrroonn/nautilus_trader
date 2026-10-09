@@ -122,6 +122,47 @@ fn private_ledger_channel(channel: &str) -> Option<&str> {
     }
 }
 
+fn scoped_execution_frame(
+    text: &str,
+    epoch: u64,
+    received: UnixNanos,
+    ingress: Option<PrivateIngressToken>,
+) -> Result<Option<NautilusWsMessage>, &'static str> {
+    #[derive(serde::Deserialize)]
+    struct RawEnvelope<'a> {
+        channel: String,
+        #[serde(borrow)]
+        data: &'a serde_json::value::RawValue,
+    }
+    let Some(token) = ingress else {
+        return Ok(None);
+    };
+    if token
+        .economic_raw_limit
+        .is_some_and(|limit| text.len() > limit)
+    {
+        return Err("Economic raw WebSocket frame exceeds policy bound; source not preserved");
+    }
+    let Ok(raw) = serde_json::from_str::<RawEnvelope<'_>>(text) else {
+        return Ok(None);
+    };
+    let Some(channel) = private_ledger_channel(&raw.channel) else {
+        return Ok(None);
+    };
+    // The immutable original is copied before legacy Value/typed materialization.
+    let raw_text = text.to_string();
+    Ok(Some(NautilusWsMessage::IoExecutionFrame {
+        channel: channel.into(),
+        data: serde_json::from_str(raw.data.get()).unwrap_or(serde_json::Value::Null),
+        raw_text,
+        legacy_parse_succeeded: false,
+        generation: token.generation,
+        sequence: token.sequence,
+        epoch,
+        received,
+    }))
+}
+
 /// Commands sent from the outer client to the inner message handler.
 #[derive(Debug)]
 #[expect(
@@ -550,6 +591,17 @@ impl FeedHandler {
                                 return Some(NautilusWsMessage::AccountScopeStreamEpoch { epoch });
                             }
 
+                            // RawValue retains numeric lexemes and avoids decoding unknown cash
+                            // before economic ingestion. Even legacy typed parsing errors retain
+                            // the original scoped raw fact ahead of Error and the applied marker.
+                            let scoped_raw = match scoped_execution_frame(&text, epoch, received, ingress) {
+                                Ok(raw) => raw,
+                                Err(error) => {
+                                    if let Some(marker) = ingress_marker(ingress) { self.message_buffer.push_back(marker); }
+                                    return Some(NautilusWsMessage::Error(error.into()));
+                                }
+                            };
+
                             match serde_json::from_str::<HyperliquidWsMessage>(&text) {
                                 Ok(msg) => {
                                     if let HyperliquidWsMessage::SubscriptionResponse { ref data } = msg {
@@ -586,12 +638,9 @@ impl FeedHandler {
                                         self.all_mids_data_types.as_slice(),
                                     );
 
-                                    if ingress.is_some()
-                                        && let Ok(raw) = serde_json::from_str::<serde_json::Value>(&text)
-                                        && let Some(channel) = raw.get("channel").and_then(serde_json::Value::as_str).and_then(private_ledger_channel)
-                                        && let Some(data) = raw.get("data")
-                                    {
-                                        nautilus_msgs.insert(0, NautilusWsMessage::IoExecutionFrame { channel: channel.into(), data: data.clone(), epoch, received });
+                                    if let Some(mut raw) = scoped_raw {
+                                        if let NautilusWsMessage::IoExecutionFrame { legacy_parse_succeeded, .. } = &mut raw { *legacy_parse_succeeded = true; }
+                                        nautilus_msgs.insert(0, raw);
                                     }
                                     for message in &mut nautilus_msgs {
                                         match message {
@@ -613,6 +662,11 @@ impl FeedHandler {
                                 }
                                 Err(e) => {
                                     log::error!("Error parsing WebSocket message: {e}");
+                                    if let Some(raw) = scoped_raw {
+                                        self.message_buffer.push_back(NautilusWsMessage::Error(format!("WebSocket message parse failed: {e}")));
+                                        if let Some(marker) = ingress_marker(ingress) { self.message_buffer.push_back(marker); }
+                                        return Some(raw);
+                                    }
                                     if let Some(marker) = ingress_marker(ingress) { self.message_buffer.push_back(marker); }
                                     return Some(NautilusWsMessage::Error(format!("WebSocket message parse failed: {e}")));
                                 }
@@ -1542,6 +1596,61 @@ pub(crate) fn create_hyperliquid_timeout_error(msg: String) -> HyperliquidWsErro
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn economics_raw_bridge_retains_numeric_lexeme_and_reader_identity_on_legacy_parse_failure() {
+        let raw = r#"{"channel":"userFundings","data":{"user":"0xabc","fundings":[{"time":1,"coin":"io:SNDK","usdc":0.1234567890123456789012345678,"szi":"1","fundingRate":"0"}]}}"#;
+        assert!(serde_json::from_str::<super::HyperliquidWsMessage>(raw).is_err());
+        let token = super::PrivateIngressToken {
+            generation: 8,
+            epoch: 3,
+            sequence: 19,
+            economic_raw_limit: Some(65536),
+        };
+        let frame =
+            super::scoped_execution_frame(raw, 3, nautilus_core::UnixNanos::from(777), Some(token))
+                .unwrap()
+                .unwrap();
+        let super::NautilusWsMessage::IoExecutionFrame {
+            raw_text,
+            generation,
+            sequence,
+            epoch,
+            received,
+            ..
+        } = frame
+        else {
+            panic!("Expected scoped raw frame");
+        };
+        assert_eq!(raw_text, raw);
+        assert_eq!(
+            (generation, epoch, sequence, received.as_u64()),
+            (8, 3, 19, 777)
+        );
+        assert!(
+            super::scoped_execution_frame(raw, 3, received, None)
+                .unwrap()
+                .is_none()
+        );
+        let limited = super::PrivateIngressToken {
+            economic_raw_limit: Some(8),
+            ..token
+        };
+        assert!(super::scoped_execution_frame(raw, 3, received, Some(limited)).is_err());
+    }
+
+    #[test]
+    fn economics_raw_bridge_preserves_escaped_private_channel() {
+        let raw = r#"{"channel":"user\u0046undings","data":{"user":"0xabc","fundings":[]}}"#;
+        let token = super::PrivateIngressToken {
+            generation: 1,
+            epoch: 0,
+            sequence: 1,
+            economic_raw_limit: Some(65536),
+        };
+        assert!(
+            matches!(super::scoped_execution_frame(raw, 0, nautilus_core::UnixNanos::from(1), Some(token)).unwrap(), Some(super::NautilusWsMessage::IoExecutionFrame { channel, raw_text, .. }) if channel == "userFundings" && raw_text == raw)
+        );
+    }
     use std::{
         sync::{Arc, atomic::AtomicBool},
         time::Duration,
@@ -1818,6 +1927,7 @@ mod tests {
                         generation: 7,
                         epoch,
                         sequence: 1,
+                        economic_raw_limit: None,
                     }),
                     frame,
                 ))

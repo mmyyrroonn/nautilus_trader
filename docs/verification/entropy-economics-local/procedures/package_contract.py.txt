@@ -1,0 +1,73 @@
+"""Package immutable research bytes as data, preserving original capture provenance."""
+
+import hashlib
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+
+original = Path("E:/persarb/_tmp/issue102-official-contract-20261008").resolve()
+package = Path("E:/persarb/worktrees/entropy-account/docs/verification/entropy-economics-public").resolve()
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+provenance = json.loads((original / "provenance.json").read_text(encoding="utf-8"))
+records = [row for value in provenance.values() if isinstance(value, list)
+           for row in value if isinstance(row, dict) and "file" in row]
+assert len(records) == 15
+artifacts = []
+for record in records:
+    source = original / record["file"]
+    assert digest(source) == record["sha256"] and source.stat().st_size == record["bytes"]
+    target = package / (record["file"] + ".txt")
+    target.resolve().relative_to(package)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(source.read_bytes())
+    assert digest(target) == record["sha256"]
+    old = package / record["file"]
+    old.resolve().relative_to(package)
+    if old.is_file():
+        old.unlink()
+    artifacts.append({**record, "original_file": record["file"],
+                      "archive_file": target.relative_to(package).as_posix()})
+supplements = []
+for source_name, archive_name in (("README.md", "research-notes.txt"),
+                                  ("provenance.json", "provenance.json"),
+                                  ("SHA256SUMS.txt", "original-SHA256SUMS.txt")):
+    source, target = original / source_name, package / archive_name
+    target.write_bytes(source.read_bytes())
+    supplements.append({"archive_file": archive_name, "original_file": source_name,
+                        "bytes": target.stat().st_size, "sha256": digest(target)})
+manifest = {"schema_version": 1, "packaged_at_utc": datetime.now(UTC).isoformat(),
+            "scope": "Original official public captures and historical preparation notes; no private account observation",
+            "note": "Original provenance file fields name the historical capture paths. archive_file maps them to immutable .txt data. Capture times and byte hashes are unchanged. Preparation recommendations are not the final implementation contract.",
+            "sources": artifacts, "supplements": supplements}
+(package / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+hash_rows = [f"{row['sha256']}  {row['archive_file']}" for row in artifacts + supplements]
+hash_rows.append(f"{digest(package / 'manifest.json')}  manifest.json")
+(package / "SHA256SUMS.txt").write_text("\n".join(sorted(hash_rows)) + "\n", encoding="utf-8")
+(package / "README.md").write_text("""# Entropy Economic Protocol Sources
+
+This archive preserves fifteen original public captures used for native issue 102: official
+Hyperliquid documentation, the official Python SDK and the requested issue. It contains no real
+private account observation or venue action. The SDK revision is
+`2fdb18f9517675ea03695a0962bd19eece9c83f0`.
+
+[manifest.json](manifest.json) maps original capture names to the immutable `.txt` data files.
+It preserves the original URLs, UTC capture intervals, byte counts and SHA256 values. The original
+[provenance.json](provenance.json) is unchanged; its `file` fields refer to the historical capture
+names. [SHA256SUMS.txt](SHA256SUMS.txt) verifies the actual archive paths. The original checksum
+file is separately preserved as [original-SHA256SUMS.txt](original-SHA256SUMS.txt).
+
+[research-notes.txt](research-notes.txt) preserves the original preparation notes byte for byte.
+They precede implementation and are not the final capability contract. For example, the final
+implementation preserves numeric JSON monetary literals as Unknown rather than normalizing them;
+supported exact string decimals are normalized without floating-point conversion.
+
+Use the [native API guide](../entropy-economics-api-20261008.md) for current policy, report,
+attribution, receipt and recovery semantics. Official source captures and synthetic local tests
+do not prove actual private settlements or application entry/close results.
+""", encoding="utf-8")
+print("Packaged 15 exact public captures as data; original notes/provenance/checksums preserved")

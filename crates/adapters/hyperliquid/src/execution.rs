@@ -16,6 +16,7 @@
 //! Live execution client implementation for the Hyperliquid adapter.
 
 use std::{
+    collections::BTreeSet,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -48,6 +49,7 @@ use nautilus_model::{
     identifiers::{
         AccountId, ClientId, ClientOrderId, InstrumentId, StrategyId, Venue, VenueOrderId,
     },
+    instruments::Instrument,
     orders::{Order, any::OrderAny},
     reports::{ExecutionMassStatus, FillReport, OrderStatusReport, PositionStatusReport},
     types::{AccountBalance, MarginBalance, Quantity},
@@ -176,6 +178,9 @@ use crate::{
         },
     },
     config::HyperliquidExecutionClientConfig,
+    economics_scope::{
+        IoEconomicsPolicy, IoEconomicsRuntime, IoEconomicsScopeProof, IoHistoryCoverage,
+    },
     execution_scope::{IoExecutionPolicy, IoExecutionRuntime},
     http::{
         client::HyperliquidHttpClient,
@@ -187,6 +192,7 @@ use crate::{
             HyperliquidExchangePlaceOrderRequest, HyperliquidExchangeTpSl, SpotClearinghouseState,
         },
         parse::derive_outcome_settlements,
+        query::InfoRequest,
     },
     outcome_settlement::{OutcomeSettlementTracker, build_settlement_fills},
     websocket::{
@@ -217,6 +223,8 @@ pub struct HyperliquidExecutionClient {
     outcome_settlement_tracker: Arc<Mutex<OutcomeSettlementTracker>>,
     account_scope: Option<AccountScopeDiagnostics>,
     io_execution: Option<IoExecutionRuntime>,
+    io_economics: Option<IoEconomicsRuntime>,
+    economics_instruments: Arc<Mutex<BTreeSet<String>>>,
 }
 
 impl HyperliquidExecutionClient {
@@ -251,6 +259,14 @@ impl HyperliquidExecutionClient {
         self.io_execution
             .as_ref()
             .map(IoExecutionRuntime::diagnostics)
+    }
+
+    pub(crate) fn io_economics_runtime(
+        &self,
+    ) -> Option<crate::economics_scope::IoEconomicsDiagnostics> {
+        self.io_economics
+            .as_ref()
+            .map(IoEconomicsRuntime::diagnostics)
     }
 
     /// Returns a reference to the configuration.
@@ -646,6 +662,16 @@ impl HyperliquidExecutionClient {
             .as_deref()
             .map(IoExecutionPolicy::parse)
             .transpose()?;
+        anyhow::ensure!(
+            config.io_economics_policy_json.is_none()
+                || config.account_dex.as_deref() == Some("io"),
+            "Explicit economic policy requires account_dex=io"
+        );
+        let economics_policy = config
+            .io_economics_policy_json
+            .as_deref()
+            .map(IoEconomicsPolicy::parse)
+            .transpose()?;
         let secrets = Secrets::resolve(
             config.private_key.as_deref(),
             config.vault_address.as_deref(),
@@ -745,6 +771,19 @@ impl HyperliquidExecutionClient {
                 )
             })
             .transpose()?;
+        let io_economics = economics_policy
+            .map(|policy| {
+                let raw_limit = policy.max_raw_frame_bytes;
+                let runtime = IoEconomicsRuntime::new(
+                    &policy,
+                    core.account_id,
+                    http_client.get_account_address()?,
+                    config.environment.to_string(),
+                )?;
+                ws_client.install_io_economic_ingress(raw_limit)?;
+                Ok::<_, anyhow::Error>(runtime)
+            })
+            .transpose()?;
         Ok(Self {
             core,
             clock,
@@ -760,6 +799,8 @@ impl HyperliquidExecutionClient {
             outcome_settlement_tracker: Arc::new(Mutex::new(OutcomeSettlementTracker::new())),
             account_scope,
             io_execution,
+            io_economics,
+            economics_instruments: Arc::new(Mutex::new(BTreeSet::new())),
         })
     }
 
@@ -788,6 +829,23 @@ impl HyperliquidExecutionClient {
 
         self.core.set_instruments_initialized();
         Ok(())
+    }
+
+    /// Finite inclusive economic recovery, independent of order/cache readiness.
+    async fn refresh_economics_history(&self) -> anyhow::Result<()> {
+        let Some(runtime) = &self.io_economics else {
+            return Ok(());
+        };
+        recover_economic_history(
+            runtime,
+            self.account_scope
+                .as_ref()
+                .context("Missing economic account scope")?,
+            &self.http_client,
+            &self.economics_instruments,
+            self.io_execution.as_ref(),
+        )
+        .await
     }
 
     async fn refresh_account_state(&self) -> anyhow::Result<()> {
@@ -2027,11 +2085,13 @@ impl ExecutionClient for HyperliquidExecutionClient {
             let http = self.http_client.clone();
             let emitter = self.emitter.clone();
             let runtime = self.io_execution.clone();
+            let economics = self.io_economics.clone();
+            let economics_instruments = Arc::clone(&self.economics_instruments);
             if let Some(runtime) = &runtime {
                 runtime.invalidate("io explicit query/recovery pending");
             }
             self.spawn_task("query_io_account", async move {
-                if let Some(runtime) = runtime {
+                let result = if let Some(runtime) = &runtime {
                     let result = tokio::time::timeout(
                         Duration::from_millis(runtime.policy.recovery_timeout_ms),
                         async {
@@ -2058,7 +2118,19 @@ impl ExecutionClient for HyperliquidExecutionClient {
                     result
                 } else {
                     refresh_account_scope(&scope.state, &http, &scope.ws, &emitter).await
+                };
+                result?;
+                if let Some(economics) = &economics {
+                    recover_economic_history(
+                        economics,
+                        &scope,
+                        &http,
+                        &economics_instruments,
+                        runtime.as_ref(),
+                    )
+                    .await?;
                 }
+                Ok(())
             });
             return Ok(());
         }
@@ -2277,6 +2349,8 @@ impl ExecutionClient for HyperliquidExecutionClient {
                 }
                 result?;
             }
+
+            self.refresh_economics_history().await?;
 
             Ok::<(), anyhow::Error>(())
         };
@@ -2608,6 +2682,167 @@ impl ExecutionClient for HyperliquidExecutionClient {
     }
 }
 
+/// Economic history has its own finite coverage and never constitutes current funds proof.
+async fn recover_economic_history(
+    runtime: &IoEconomicsRuntime,
+    scope: &AccountScopeDiagnostics,
+    http: &HyperliquidHttpClient,
+    verified: &Arc<Mutex<BTreeSet<String>>>,
+    execution: Option<&IoExecutionRuntime>,
+) -> anyhow::Result<()> {
+    let policy = runtime.policy();
+    let start = policy.history_start_ms;
+    let now = get_atomic_clock_realtime().get_time_ns().as_u64() / 1_000_000;
+    let end = start
+        .checked_add(policy.history_max_window_ms)
+        .context("Economic window overflow")?
+        .min(now);
+    let (generation, epoch) = scope.ws.private_source_identity();
+    let mut coverage =
+        ["userFunding", "userNonFundingLedgerUpdates"].map(|endpoint| IoHistoryCoverage {
+            generation,
+            epoch,
+            endpoint: endpoint.into(),
+            start_ms: start,
+            end_ms: end,
+            pages: 0,
+            records: 0,
+            complete: false,
+            diagnostic: "History not yet requested; retention Unknown".into(),
+        });
+    let result = tokio::time::timeout(Duration::from_millis(policy.history_timeout_ms), async {
+        anyhow::ensure!(start <= end, "Economic history begins in the future");
+        // Current official native metadata, not policy symbols, supplies exact membership.
+        let meta = http.account_scope_info(&InfoRequest::meta_for_dex("io")).await?;
+        let spot = http.account_scope_info(&InfoRequest::spot_meta()).await?;
+        let coins = crate::account_scope::validate_collateral(&meta, &spot)?;
+        let instruments = coins.into_iter().filter_map(|coin| {
+            let instrument = http.io_cached_instrument(&coin)?;
+            let id = instrument.id().to_string();
+            (id == format!("{coin}-USD-PERP.HYPERLIQUID")).then_some(id)
+        }).collect::<BTreeSet<_>>();
+        anyhow::ensure!(!instruments.is_empty(), "Economic metadata has no exact native instrument");
+        anyhow::ensure!(scope.ws.private_source_identity() == (generation, epoch), "Economic metadata completed on a replacement stream");
+        *verified.lock() = instruments;
+        let user = http.get_account_address()?;
+        let mut total_records = 0usize;
+        let mut total_pages = 0usize;
+        for progress in &mut coverage {
+            let mut cursor = start;
+            loop {
+                anyhow::ensure!(total_pages < policy.history_max_pages, "Economic history page bound exhausted");
+                let response = if progress.endpoint == "userFunding" {
+                    http.info_user_funding_body(&user, cursor, end, policy.max_history_body_bytes).await?
+                } else {
+                    http.info_user_non_funding_ledger_body(&user, cursor, end, policy.max_history_body_bytes).await?
+                };
+                let raw = response.raw_text;
+                total_pages += 1;
+                progress.pages += 1;
+                let rows: Vec<Box<serde_json::value::RawValue>> = serde_json::from_str(&raw)?;
+                total_records = total_records.checked_add(rows.len()).context("Economic history record count overflow")?;
+                anyhow::ensure!(total_records <= policy.history_max_records, "Economic history record bound exhausted");
+                progress.records += rows.len();
+                let candidates = verified.lock().clone();
+                let proof = scope.economic_attribution(&candidates, (generation, epoch)).map(|(account, attribution_verified, verified_instruments)| IoEconomicsScopeProof { account, attribution_verified, verified_instruments });
+                let current = scope.ws.private_source_identity() == (generation, epoch);
+                // Only an exact strong fact already durably observed in phase A can
+                // avoid invalidating a newly re-established current account proof.
+                // Consumer receipts/report totals never authorize this decision.
+                let needs_invalidation = runtime.history_requires_invalidation(&progress.endpoint, &raw, cursor, end, generation, epoch, response.received_ms, if current { proof.as_ref() } else { None });
+                if current && needs_invalidation {
+                    scope.state.lock().invalidate_financial("Actual economic history received; current scoped recovery required independently of report persistence");
+                    if let Some(execution) = execution { execution.invalidate("Actual economic history does not prove current funds or native projection"); }
+                }
+                let observed = runtime.observe_history(&progress.endpoint, &raw, cursor, end, generation, epoch,
+                    response.received_ms,
+                    if current { proof.as_ref() } else { None })?;
+                let current = current && scope.ws.private_source_identity() == (generation, epoch);
+                log::debug!("Economic history source preserved: observed={}, unknown={}", observed.observed, observed.unknown);
+                if current && !rows.is_empty() && !observed.attribution_complete {
+                    scope.state.lock().invalidate("Economic history has incomplete account or instrument attribution", false);
+                }
+                anyhow::ensure!(current, "Historical response preserved but current stream was replaced");
+                let mut last = cursor;
+                for row in &rows {
+                    #[derive(serde::Deserialize)]
+                    struct ItemTime { time: u64 }
+                    let time = serde_json::from_str::<ItemTime>(row.get())?.time;
+                    anyhow::ensure!(time >= last && time <= end, "History timestamps unordered or outside inclusive window");
+                    last = time;
+                }
+                if rows.len() < 500 {
+                    progress.complete = true;
+                    progress.diagnostic = "Requested finite pagination window terminated; venue retention remains Unknown".into();
+                    break;
+                }
+                anyhow::ensure!(last > cursor, "Saturated inclusive timestamp boundary has no progress; coverage Unknown");
+                // Preserve overlap; +1 would lose distinct facts at the boundary millisecond.
+                cursor = last;
+            }
+        }
+        Ok::<(), anyhow::Error>(())
+    }).await;
+    let failure = match result {
+        Ok(Ok(())) => None,
+        Ok(Err(error)) => Some(format!("Economic bounded history incomplete: {error:#}")),
+        Err(_) => Some(
+            "Economic history total deadline exhausted (quota/retries/metadata included)".into(),
+        ),
+    };
+    if let Some(reason) = &failure {
+        if scope.ws.private_source_identity() == (generation, epoch) {
+            scope.state.lock().invalidate(reason, false);
+            if let Some(execution) = execution {
+                execution.invalidate(reason);
+            }
+        }
+        for progress in &mut coverage {
+            if !progress.complete {
+                progress.diagnostic = reason.clone();
+            }
+        }
+        log::warn!("{reason}");
+    }
+    for mut progress in coverage {
+        if scope.ws.private_source_identity() != (generation, epoch) {
+            progress.complete = false;
+            progress.diagnostic =
+                "Historical source belongs to a replaced stream; current coverage Unknown".into();
+        }
+        runtime.record_history_coverage(progress)?;
+    }
+    Ok(())
+}
+
+fn mark_economic_stream_gap(
+    runtime: &IoEconomicsRuntime,
+    ws: &HyperliquidWebSocketClient,
+    reason: &str,
+) -> anyhow::Result<()> {
+    let (generation, epoch) = ws.private_source_identity();
+    let policy = runtime.policy();
+    let start_ms = policy.history_start_ms;
+    let end_ms = start_ms
+        .checked_add(policy.history_max_window_ms)
+        .context("Economic gap window overflow")?
+        .min(get_atomic_clock_realtime().get_time_ns().as_u64() / 1_000_000);
+    for endpoint in ["userFunding", "userNonFundingLedgerUpdates"] {
+        runtime.record_history_coverage(IoHistoryCoverage {
+            generation,
+            epoch,
+            endpoint: endpoint.into(),
+            start_ms,
+            end_ms,
+            pages: 0,
+            records: 0,
+            complete: false,
+            diagnostic: reason.into(),
+        })?;
+    }
+    Ok(())
+}
+
 impl HyperliquidExecutionClient {
     async fn start_ws_stream(&self) -> anyhow::Result<()> {
         // Must match REST queries; mismatch silently drops fills on agent wallets
@@ -2650,6 +2885,20 @@ impl HyperliquidExecutionClient {
             let _ = ws_client.disconnect().await;
             return Err(e);
         }
+        if self.io_economics.is_some()
+            && let Err(error) = async {
+                ws_client
+                    .subscribe_user_fundings(&subscription_address)
+                    .await?;
+                ws_client
+                    .subscribe_user_non_funding_ledger_updates(&subscription_address)
+                    .await
+            }
+            .await
+        {
+            let _ = ws_client.disconnect().await;
+            return Err(error);
+        }
         log::debug!("Subscribed to Hyperliquid execution updates for {subscription_address}");
 
         let emitter = self.emitter.clone();
@@ -2660,6 +2909,8 @@ impl HyperliquidExecutionClient {
         let clock = self.clock;
         let account_scope = self.account_scope.clone();
         let io_execution = self.io_execution.clone();
+        let io_economics = self.io_economics.clone();
+        let economics_instruments = Arc::clone(&self.economics_instruments);
         let session_spawner = self
             .session_tasks
             .spawner()
@@ -2706,13 +2957,55 @@ impl HyperliquidExecutionClient {
                         NautilusWsMessage::IoExecutionFrame {
                             channel,
                             data,
+                            raw_text,
+                            legacy_parse_succeeded,
+                            generation,
+                            sequence,
                             epoch,
-                            received: _,
+                            received,
                         } => {
-                            if epoch != ws_client.connection_epoch() {
+                            let candidates = economics_instruments.lock().clone();
+                            let proof = account_scope.as_ref().and_then(|scope| scope.economic_attribution(&candidates, (generation, epoch))).map(|(account, attribution_verified, verified_instruments)| IoEconomicsScopeProof { account, attribution_verified, verified_instruments });
+                            let current = ws_client.private_source_identity() == (generation, epoch);
+                            let financial = matches!(channel.as_str(), "user" | "userFills" | "userFundings" | "userNonFundingLedgerUpdates" | "userTwapSliceFills");
+                            // Close current financial proof before phase-A disk work. A durable
+                            // observation/report cannot restore it or the native projection barrier.
+                            if io_economics.is_some() && financial && current {
+                                if let Some(scope) = &account_scope { scope.state.lock().invalidate_financial("Economic private financial observation requires current scoped recovery"); }
+                                if let Some(runtime) = &io_execution { runtime.invalidate("Economic financial frame pending durable preservation and scoped recovery"); }
+                            }
+                            let mut economic_source_clean = false;
+                            if let Some(economics) = &io_economics {
+                                let observed = economics.observe_ws(&raw_text, generation, epoch, sequence, received.as_u64() / 1_000_000, if current { proof.as_ref() } else { None });
+                                let current = current && ws_client.private_source_identity() == (generation, epoch);
+                                economic_source_clean = observed.as_ref().is_ok_and(|result| result.handled && result.unknown == 0);
+                                if let Ok(result) = &observed {
+                                    log::debug!("Economic WebSocket source preserved: observed={}, unknown={}", result.observed, result.unknown);
+                                    // Empty supported snapshots can retain existing metadata;
+                                    // they never establish context or assert financial identity.
+                                    let empty_supported = result.handled && result.observed == 0 && result.unknown == 0;
+                                    if financial && current && !result.attribution_complete && !empty_supported
+                                        && let Some(scope) = &account_scope {
+                                        scope.state.lock().invalidate("Economic private source has incomplete account or instrument attribution", false);
+                                    }
+                                }
+                                if let Err(error) = observed {
+                                    if current {
+                                        if let Some(scope) = &account_scope { scope.state.lock().invalidate(&format!("Economic source preservation failed: {error:#}"), false); }
+                                        if let Some(runtime) = &io_execution { runtime.invalidate(&format!("Economic source preservation failed: {error:#}")); }
+                                    }
+                                    log::warn!("Economic source preservation failed: {error:#}");
+                                }
+                            }
+                            // Phase-A persistence can span a reader replacement;
+                            // never project the old frame using a replacement context.
+                            if !current || ws_client.private_source_identity() != (generation, epoch) {
                                 continue;
                             }
-                            if let Some(runtime) = &io_execution
+                            // Dedicated economic channels remain financial proof invalidators;
+                            // preserving them replaces only the old unsupported parsing path.
+                            if legacy_parse_succeeded && (!matches!(channel.as_str(), "userFundings" | "userNonFundingLedgerUpdates") || io_economics.is_none())
+                                && let Some(runtime) = &io_execution
                                 && let Err(error) = runtime.observe_frame(
                                     &channel,
                                     &data,
@@ -2728,8 +3021,22 @@ impl HyperliquidExecutionClient {
                                         scope.state.lock().invalidate(&format!("io private financial/ownership facts are unknown: {error}"), false);
                                     }
                             }
+                            if legacy_parse_succeeded && economic_source_clean && let (Some(runtime), Some(economics)) = (&io_execution, &io_economics) {
+                                for fill in runtime.accepted_frame_fills(&data) {
+                                    if let Err(error) = economics.observe_owned_fill(&fill, generation, epoch, received.as_u64() / 1_000_000, proof.as_ref()) {
+                                        runtime.invalidate(&format!("Economic owned raw fee preservation failed: {error:#}"));
+                                        if let Some(scope) = &account_scope { scope.state.lock().invalidate(&format!("Economic owned fee preservation failed: {error:#}"), false); }
+                                    }
+                                }
+                            }
                         }
                         NautilusWsMessage::AccountScopeStreamEpoch { epoch } => {
+                            if let Some(economics) = &io_economics {
+                                economics_instruments.lock().clear();
+                                if let Err(error) = mark_economic_stream_gap(economics, &ws_client, "Private stream replaced; economic recovery coverage Unknown until explicit bounded recovery") {
+                                    log::warn!("Economic stream gap could not be preserved: {error:#}");
+                                }
+                            }
                             if let Some(runtime) = &io_execution {
                                 runtime.invalidate(
                                     "io private epoch changed; scoped owned recovery required",
@@ -2975,6 +3282,10 @@ impl HyperliquidExecutionClient {
                         | NautilusWsMessage::CustomData(_) => {}
                     },
                     None => {
+                        if let Some(economics) = &io_economics
+                            && let Err(error) = mark_economic_stream_gap(economics, &ws_client, "Private stream ended; economic recovery gap Unknown") {
+                                log::warn!("Economic stream-end gap could not be preserved: {error:#}");
+                        }
                         if let Some(scope) = &account_scope {
                             scope
                                 .state

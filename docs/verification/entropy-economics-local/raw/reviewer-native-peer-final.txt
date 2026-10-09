@@ -1,0 +1,21 @@
+﻿
+running 15 tests
+test execution::economics::actual_full_page_preserves_distinct_facts_at_the_inclusive_timestamp_boundary ... ok
+test execution::economics::actual_owned_fill_fee_reporting_never_applies_a_second_native_commission ... ok
+test execution::economics::conflicting_strong_history_never_becomes_recognized_cash ... ok
+test execution::economics::economic_consumer_failure_retains_durable_pending_source ... ok
+test execution::economics::failed_full_account_revalidation_revokes_prior_economic_attribution::case_1 ... ok
+test execution::economics::failed_full_account_revalidation_revokes_prior_economic_attribution::case_2 ... ok
+test execution::economics::failed_full_account_revalidation_revokes_prior_economic_attribution::case_3 ... ok
+test execution::economics::malformed_actual_user_fill_retains_raw_without_native_projection_or_fee_receipt::case_1 ... ok
+test execution::economics::malformed_actual_user_fill_retains_raw_without_native_projection_or_fee_receipt::case_2 ... ok
+test execution::economics::malformed_actual_user_fill_retains_raw_without_native_projection_or_fee_receipt::case_3 ... ok
+test execution::economics::normal_factory_restart_preserves_pending_then_same_consumer_receipts ... ok
+test execution::economics::original_numeric_lexeme_is_preserved_without_fabricating_exact_cash ... ok
+test execution::economics::persisted_funding_does_not_restore_ready_but_current_account_recovery_can_absorb_exact_replay ... ok
+test execution::economics::saturated_equal_time_page_terminates_with_unknown_coverage_and_preserves_observed_facts ... ok
+test execution::economics::websocket_no_id_replay_and_history_overlap_preserve_every_weak_occurrence ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 77 filtered out; finished in 12.88s
+
+

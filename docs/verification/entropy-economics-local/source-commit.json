@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "git",
+    "commit",
+    "-m",
+    "Add bounded Entropy economic receipts and recovery",
+    "-m",
+    "Preserve original funding, ledger and fee observations with bounded atomic report receipts and fail-closed account attribution. Add normal native peers and generated Python factory interfaces. Refs #102."
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-account",
+  "started_utc": "2026-10-08T16:23:19.815129+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-08T16:23:19.947615+00:00"
+}

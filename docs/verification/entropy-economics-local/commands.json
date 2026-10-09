@@ -1,0 +1,1220 @@
+{
+  "schema_version": 1,
+  "note": "Actual command records, including intermediate failures and launch refusals. Counts from selected subsets are not additional unique tests.",
+  "commands": [
+    {
+      "record": "binding-inputs-final.json",
+      "argv": [
+        "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+        "E:/persarb/_tmp/entropy102-validation/bind_inputs.py"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:22:41.410822+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T16:22:41.515618+00:00"
+    },
+    {
+      "record": "clippy-lib-final.json",
+      "argv": [
+        "cargo",
+        "clippy",
+        "-p",
+        "nautilus-hyperliquid",
+        "--lib",
+        "--profile",
+        "nextest",
+        "--locked",
+        "--offline",
+        "--config",
+        "build.warnings='warn'",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:09:21.455584+00:00",
+      "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+      "pyo3_python": "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T16:09:29.711056+00:00"
+    },
+    {
+      "record": "clippy-lib-initial.json",
+      "argv": [
+        "cargo",
+        "clippy",
+        "-p",
+        "nautilus-hyperliquid",
+        "--lib",
+        "--profile",
+        "nextest",
+        "--locked",
+        "--offline",
+        "--config",
+        "build.warnings='warn'",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:05:28.924615+00:00",
+      "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+      "pyo3_python": "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+      "exit_code": 101,
+      "finished_utc": "2026-10-08T16:05:43.480349+00:00"
+    },
+    {
+      "record": "clippy-tests-final.json",
+      "argv": [
+        "cargo",
+        "clippy",
+        "-p",
+        "nautilus-hyperliquid",
+        "--lib",
+        "--tests",
+        "--profile",
+        "nextest",
+        "--locked",
+        "--offline",
+        "--config",
+        "build.warnings='warn'",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:16:58.323042+00:00",
+      "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+      "pyo3_python": "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+      "exit_code": 101,
+      "finished_utc": "2026-10-08T16:17:14.318416+00:00"
+    },
+    {
+      "record": "make-format.json",
+      "argv": [
+        "make",
+        "format"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T15:54:04.391992+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "launch_error": "[WinError 2] \u7cfb\u7edf\u627e\u4e0d\u5230\u6307\u5b9a\u7684\u6587\u4ef6\u3002",
+      "exit_code": 127,
+      "finished_utc": "2026-10-08T15:54:04.393992+00:00"
+    },
+    {
+      "record": "make-precommit.json",
+      "argv": [
+        "make",
+        "pre-commit"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T15:54:04.392991+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "launch_error": "[WinError 2] \u7cfb\u7edf\u627e\u4e0d\u5230\u6307\u5b9a\u7684\u6587\u4ef6\u3002",
+      "exit_code": 127,
+      "finished_utc": "2026-10-08T15:54:04.393992+00:00"
+    },
+    {
+      "record": "markdown-acceptance-final.json",
+      "argv": [
+        "npx.cmd",
+        "--offline",
+        "--yes",
+        "markdownlint-cli2@0.23.2",
+        "--config",
+        ".markdownlint.jsonc",
+        "docs/integrations/hyperliquid.md",
+        "docs/verification/entropy-economics-api-20261008.md",
+        "docs/verification/entropy-economics-acceptance-20261008.md",
+        "docs/verification/entropy-economics-public/README.md"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:37:56.310113+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T16:37:57.312297+00:00"
+    },
+    {
+      "record": "markdown-authored-final.json",
+      "argv": [
+        "npx.cmd",
+        "--offline",
+        "--yes",
+        "markdownlint-cli2@0.23.2",
+        "--config",
+        ".markdownlint.jsonc",
+        "docs/integrations/hyperliquid.md",
+        "docs/verification/entropy-economics-api-20261008.md",
+        "docs/verification/entropy-economics-public/README.md"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:30:00.212434+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T16:30:01.218212+00:00"
+    },
+    {
+      "record": "markdown-authored-initial.json",
+      "argv": [
+        "npx.cmd",
+        "--offline",
+        "--yes",
+        "markdownlint-cli2@0.23.2",
+        "--config",
+        ".markdownlint.jsonc",
+        "docs/integrations/hyperliquid.md",
+        "docs/verification/entropy-economics-api-20261008.md",
+        "docs/verification/entropy-economics-public/README.md"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:27:24.041642+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "exit_code": 1,
+      "finished_utc": "2026-10-08T16:27:37.664417+00:00"
+    },
+    {
+      "record": "markdown-tables-acceptance-final.json",
+      "argv": [
+        "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+        "-B",
+        "scripts/check-markdown-tables.py",
+        "docs/integrations/hyperliquid.md",
+        "docs/verification/entropy-economics-api-20261008.md",
+        "docs/verification/entropy-economics-acceptance-20261008.md",
+        "docs/verification/entropy-economics-public/README.md"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:37:57.375297+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T16:37:57.426297+00:00"
+    },
+    {
+      "record": "markdown-tables-acceptance-format.json",
+      "argv": [
+        "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+        "-B",
+        "scripts/check-markdown-tables.py",
+        "docs/verification/entropy-economics-acceptance-20261008.md"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:37:56.197606+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "exit_code": 1,
+      "finished_utc": "2026-10-08T16:37:56.250113+00:00"
+    },
+    {
+      "record": "markdown-tables-authored-final.json",
+      "argv": [
+        "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+        "-B",
+        "scripts/check-markdown-tables.py",
+        "docs/integrations/hyperliquid.md",
+        "docs/verification/entropy-economics-api-20261008.md",
+        "docs/verification/entropy-economics-public/README.md"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:30:01.279211+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T16:30:01.327211+00:00"
+    },
+    {
+      "record": "markdown-tables-authored-initial.json",
+      "argv": [
+        "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+        "-B",
+        "scripts/check-markdown-tables.py",
+        "docs/integrations/hyperliquid.md",
+        "docs/verification/entropy-economics-api-20261008.md",
+        "docs/verification/entropy-economics-public/README.md"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:27:37.731416+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "exit_code": 1,
+      "finished_utc": "2026-10-08T16:27:37.786416+00:00"
+    },
+    {
+      "record": "native-account-fifth.json",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "nautilus-hyperliquid",
+        "--lib",
+        "--test",
+        "entropy_account",
+        "--profile",
+        "nextest",
+        "--locked",
+        "--offline",
+        "--config",
+        "build.warnings='warn'"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T15:59:22.547481+00:00",
+      "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+      "pyo3_python": "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T16:00:09.231233+00:00"
+    },
+    {
+      "record": "native-account-fourth.json",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "nautilus-hyperliquid",
+        "--lib",
+        "--test",
+        "entropy_account",
+        "--profile",
+        "nextest",
+        "--locked",
+        "--offline",
+        "--config",
+        "build.warnings='warn'"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T15:56:35.265932+00:00",
+      "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+      "pyo3_python": "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+      "exit_code": 101,
+      "finished_utc": "2026-10-08T15:56:51.835810+00:00"
+    },
+    {
+      "record": "native-all-final.json",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "nautilus-hyperliquid",
+        "--lib",
+        "--tests",
+        "--profile",
+        "nextest",
+        "--locked",
+        "--offline",
+        "--config",
+        "build.warnings='warn'"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:10:11.087425+00:00",
+      "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+      "pyo3_python": "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T16:11:26.161045+00:00"
+    },
+    {
+      "record": "native-economics-initial.json",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "nautilus-hyperliquid",
+        "--lib",
+        "--test",
+        "entropy_account",
+        "--profile",
+        "nextest",
+        "--locked",
+        "--offline",
+        "--config",
+        "build.warnings='warn'",
+        "economics",
+        "--",
+        "--nocapture"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T15:27:56.636410+00:00",
+      "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+      "pyo3_python": "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+      "exit_code": 101,
+      "finished_utc": "2026-10-08T15:28:30.200646+00:00"
+    },
+    {
+      "record": "native-economics-second.json",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "nautilus-hyperliquid",
+        "--lib",
+        "--test",
+        "entropy_account",
+        "--profile",
+        "nextest",
+        "--locked",
+        "--offline",
+        "--config",
+        "build.warnings='warn'",
+        "economics",
+        "--",
+        "--nocapture"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T15:32:56.326234+00:00",
+      "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+      "pyo3_python": "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+      "exit_code": 101,
+      "finished_utc": "2026-10-08T15:33:15.034915+00:00"
+    },
+    {
+      "record": "native-economics-third.json",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "nautilus-hyperliquid",
+        "--lib",
+        "--test",
+        "entropy_account",
+        "--profile",
+        "nextest",
+        "--locked",
+        "--offline",
+        "--config",
+        "build.warnings='warn'",
+        "economics",
+        "--",
+        "--nocapture"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T15:36:15.928576+00:00",
+      "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+      "pyo3_python": "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+      "exit_code": 101,
+      "finished_utc": "2026-10-08T15:36:29.188453+00:00"
+    },
+    {
+      "record": "native-peer-diagnostics.json",
+      "argv": [
+        "cargo",
+        "test",
+        "-p",
+        "nautilus-hyperliquid",
+        "--test",
+        "entropy_account",
+        "--profile",
+        "nextest",
+        "--locked",
+        "--offline",
+        "--config",
+        "build.warnings='warn'",
+        "execution::economics",
+        "--",
+        "--nocapture"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T15:40:09.634155+00:00",
+      "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+      "pyo3_python": "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+      "exit_code": 101,
+      "finished_utc": "2026-10-08T15:40:16.710099+00:00"
+    },
+    {
+      "record": "progress-issue-post.json",
+      "argv": [
+        "gh",
+        "api",
+        "-X",
+        "POST",
+        "repos/mmyyrroonn/nautilus_trader/issues/102/comments",
+        "--input",
+        "E:/persarb/_tmp/entropy102-validation/progress-issue.json",
+        "--jq",
+        "{id,html_url,created_at}"
+      ],
+      "cwd": "E:\\persarb",
+      "started_utc": "2026-10-08T16:33:07.848203+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T16:33:09.058797+00:00"
+    },
+    {
+      "record": "public-contract-package.json",
+      "argv": [
+        "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+        "E:/persarb/_tmp/entropy102-validation/package_contract.py"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:29:59.955802+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T16:30:00.144321+00:00"
+    },
+    {
+      "record": "python-candidate.json",
+      "argv": [
+        "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+        "-m",
+        "pytest",
+        "--import-mode=importlib",
+        "-o",
+        "pythonpath=",
+        "python/tests/unit/test_entropy_account_config.py",
+        "python/tests/unit/test_entropy_execution_config.py",
+        "python/tests/unit/test_entropy_economics_config.py",
+        "python/tests/unit/test_config_readback_contracts.py",
+        "python/tests/unit/test_generate_stubs.py",
+        "-q"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:25:30.115723+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T16:25:49.122157+00:00"
+    },
+    {
+      "record": "python-format-check-final.json",
+      "argv": [
+        "E:/persarb/worktrees/entropy-account/.venv/Scripts/ruff.exe",
+        "format",
+        "--check",
+        "--config",
+        "python/pyproject.toml",
+        "python/tests/unit/test_entropy_account_config.py",
+        "python/tests/unit/test_entropy_economics_config.py"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:19:42.089070+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T16:19:42.114606+00:00"
+    },
+    {
+      "record": "python-ruff-final.json",
+      "argv": [
+        "E:/persarb/worktrees/entropy-account/.venv/Scripts/ruff.exe",
+        "check",
+        "--config",
+        "python/pyproject.toml",
+        "python/tests/unit/test_entropy_account_config.py",
+        "python/tests/unit/test_entropy_economics_config.py"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:19:41.987911+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T16:19:42.020451+00:00"
+    },
+    {
+      "record": "python-ruff-initial.json",
+      "argv": [
+        ".venv/Scripts/ruff.exe",
+        "check",
+        "python/tests/unit/test_entropy_economics_config.py",
+        "python/tests/unit/test_entropy_account_config.py"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T15:23:37.725383+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T15:23:37.753626+00:00"
+    },
+    {
+      "record": "python-ruff-with-stubs.json",
+      "argv": [
+        "E:/persarb/worktrees/entropy-account/.venv/Scripts/ruff.exe",
+        "check",
+        "--config",
+        "python/pyproject.toml",
+        "python/tests/unit/test_entropy_account_config.py",
+        "python/tests/unit/test_entropy_economics_config.py",
+        "python/nautilus_trader/adapters/hyperliquid/__init__.pyi"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:20:38.327839+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T16:20:38.355151+00:00"
+    },
+    {
+      "record": "reviewer-native-lib-final.json",
+      "argv": [
+        "E:/persarb/nautilus_trader/target/nextest/deps/nautilus_hyperliquid-1fcbc36810deefe5.exe",
+        "account_scope::tests::validated_position_change",
+        "account_scope::tests::generic_invalidation_revokes_attribution",
+        "account_scope::tests::attribution_",
+        "account_scope::tests::invalid_private_source_and_refresh_start",
+        "account_scope::tests::stale_private_source",
+        "account_scope::tests::replacement_context_cannot_certify",
+        "economics_scope::tests::recomputed_checksum",
+        "economics_scope::tests::source_and_consumer_restart",
+        "economics_scope::tests::checkpoint_exclusive_owner",
+        "economics_scope::tests::only_phase_a_exact",
+        "economics_scope::tests::lifetime_coverage_capacity",
+        "economics_scope::tests::complete_five_hundred",
+        "economics_scope::tests::exact_sum_never_rounds",
+        "economics_scope::tests::verified_attribution_with_untrusted",
+        "economics_scope::tests::unverified_attribution_cannot",
+        "economics_scope::tests::same_time_distinct_hashes",
+        "economics_scope::tests::account_wide_ledger",
+        "economics_scope::tests::runtime_bound_preserves",
+        "economics_scope::tests::semantic_checkpoint_corruption",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "E:/persarb/worktrees/entropy-account",
+      "started_utc": "2026-10-08T16:21:09.0050487Z",
+      "finished_utc": "2026-10-08T16:21:10.0922840Z",
+      "elapsed_seconds": 1.0818535999999999,
+      "executable_sha256": "d5ad190211a85acfa5bf757a451e10f547f4911c644067317b39392ad0824dac",
+      "executable_sha256_after": "d5ad190211a85acfa5bf757a451e10f547f4911c644067317b39392ad0824dac",
+      "exit_code": 0,
+      "raw_output": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-native-lib-final.log",
+      "tested_input_manifest_sha256": "c1a6fd7fa24cacd00c1ab9b2b843e73926b7a34aead5df670ed8b090c7b8bba0"
+    },
+    {
+      "record": "reviewer-native-peer-final.json",
+      "argv": [
+        "E:/persarb/nautilus_trader/target/nextest/deps/entropy_account-69bad49fe9dc76e8.exe",
+        "execution::economics::actual_owned_fill_fee_reporting",
+        "execution::economics::failed_full_account_revalidation",
+        "execution::economics::malformed_actual_user_fill",
+        "execution::economics::persisted_funding_does_not_restore_ready",
+        "execution::economics::normal_factory_restart_preserves_pending",
+        "execution::economics::actual_full_page_preserves",
+        "execution::economics::saturated_equal_time_page",
+        "execution::economics::conflicting_strong_history",
+        "execution::economics::economic_consumer_failure",
+        "execution::economics::websocket_no_id_replay",
+        "execution::economics::original_numeric_lexeme",
+        "--test-threads=1",
+        "--nocapture"
+      ],
+      "cwd": "E:/persarb/worktrees/entropy-account",
+      "started_utc": "2026-10-08T16:21:10.1558946Z",
+      "finished_utc": "2026-10-08T16:21:23.0440549Z",
+      "elapsed_seconds": 12.8887424,
+      "executable_sha256": "70f696c987157ecd0585c744211a9c20079b6be2a9d0ce486ef6f247e0d6a588",
+      "executable_sha256_after": "70f696c987157ecd0585c744211a9c20079b6be2a9d0ce486ef6f247e0d6a588",
+      "exit_code": 0,
+      "raw_output": "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-native-peer-final.log",
+      "tested_input_manifest_sha256": "c1a6fd7fa24cacd00c1ab9b2b843e73926b7a34aead5df670ed8b090c7b8bba0"
+    },
+    {
+      "record": "reviewer-wheel-identity-initial-run.json",
+      "argv": [
+        "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+        "-I",
+        "E:/persarb/_tmp/entropy102-validation/reviewer-wheel-identity.py"
+      ],
+      "started_utc": "2026-10-08T16:28:38.0862775Z",
+      "finished_utc": "2026-10-08T16:28:38.4612771Z",
+      "exit_code": 1
+    },
+    {
+      "record": "reviewer-wheel-identity-run.json",
+      "argv": [
+        "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+        "-I",
+        "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-wheel-identity.py"
+      ],
+      "started_utc": "2026-10-08T16:30:20.4670058Z",
+      "finished_utc": "2026-10-08T16:30:23.5775901Z",
+      "exit_code": 0
+    },
+    {
+      "record": "reviewer-wheel-identity-status-parser-run.json",
+      "argv": [
+        "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+        "-I",
+        "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-wheel-identity.py"
+      ],
+      "started_utc": "2026-10-08T16:29:55.3228679Z",
+      "finished_utc": "2026-10-08T16:29:55.6923792Z",
+      "exit_code": 1
+    },
+    {
+      "record": "reviewer-wheel-identity.json",
+      "argv": [
+        "E:\\persarb\\_tmp\\entropy102-validation\\reviewer-wheel-identity.py"
+      ],
+      "interpreter": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Scripts\\python.exe",
+      "python": "3.12.9 (main, Mar 17 2025, 21:06:20) [MSC v.1943 64 bit (AMD64)]",
+      "started_utc": "2026-10-08T16:30:20.527004+00:00",
+      "finished_utc": "2026-10-08T16:30:23.186083+00:00",
+      "source_commit": "95c87d4e70d92ec31072a30df3d764d75172b7b3",
+      "source_tree": "8ed0387e434187098309e22d52f2b7d900d55722",
+      "source_fingerprint_sha256": "56238a5bd653594cb354d871c5c8c8415e7120b12e56891616ca5bda12b61149",
+      "source_binding": "verified",
+      "declared_build_dirty_count": 0,
+      "current_docs_only_dirty_status": " M docs/integrations/hyperliquid.md\n M docs/verification/entropy-economics-api-20261008.md\n M docs/verification/entropy-economics-public/README.md\n M docs/verification/entropy-economics-public/SHA256SUMS.txt\n D docs/verification/entropy-economics-public/sources/account-modes.md\n D docs/verification/entropy-economics-public/sources/api-wallets.md\n D docs/verification/entropy-economics-public/sources/heartbeats.md\n D docs/verification/entropy-economics-public/sources/hl-fees.md\n D docs/verification/entropy-economics-public/sources/hl-funding.md\n D docs/verification/entropy-economics-public/sources/info.md\n D docs/verification/entropy-economics-public/sources/issue-102.json\n D docs/verification/entropy-economics-public/sources/perpetuals.md\n D docs/verification/entropy-economics-public/sources/sdk-basic-ws.py\n D docs/verification/entropy-economics-public/sources/sdk-info.py\n D docs/verification/entropy-economics-public/sources/sdk-utils-types.py\n D docs/verification/entropy-economics-public/sources/sdk-websocket_manager.py\n D docs/verification/entropy-economics-public/sources/spot.md\n D docs/verification/entropy-economics-public/sources/subscriptions.md\n D docs/verification/entropy-economics-public/sources/ws.md\n?? docs/verification/entropy-economics-public/manifest.json\n?? docs/verification/entropy-economics-public/original-SHA256SUMS.txt\n?? docs/verification/entropy-economics-public/research-notes.txt\n?? docs/verification/entropy-economics-public/sources/account-modes.md.txt\n?? docs/verification/entropy-economics-public/sources/api-wallets.md.txt\n?? docs/verification/entropy-economics-public/sources/heartbeats.md.txt\n?? docs/verification/entropy-economics-public/sources/hl-fees.md.txt\n?? docs/verification/entropy-economics-public/sources/hl-funding.md.txt\n?? docs/verification/entropy-economics-public/sources/info.md.txt\n?? docs/verification/entropy-economics-public/sources/issue-102.json.txt\n?? docs/verification/entropy-economics-public/sources/perpetuals.md.txt\n?? docs/verification/entropy-economics-public/sources/sdk-basic-ws.py.txt\n?? docs/verification/entropy-economics-public/sources/sdk-info.py.txt\n?? docs/verification/entropy-economics-public/sources/sdk-utils-types.py.txt\n?? docs/verification/entropy-economics-public/sources/sdk-websocket_manager.py.txt\n?? docs/verification/entropy-economics-public/sources/spot.md.txt\n?? docs/verification/entropy-economics-public/sources/subscriptions.md.txt\n?? docs/verification/entropy-economics-public/sources/ws.md.txt",
+      "wheel_path": "E:\\persarb\\_tmp\\entropy102-wheel-nextest-20261008\\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+      "wheel_sha256": "be8d46c2d0b5f197852086b8818b4a17172aa000416512d73893c6041c129aed",
+      "installed_native_module": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\_libnautilus.cp312-win_amd64.pyd",
+      "installed_native_sha256": "bdb2c149ab91d12aa0462afc99106424232158f5f6197abbea533156ebf61c6d",
+      "matched_native_members": 1,
+      "matched_adapter_stubs": 23,
+      "members": [
+        {
+          "path": "nautilus_trader/_libnautilus.cp312-win_amd64.pyd",
+          "sha256": "bdb2c149ab91d12aa0462afc99106424232158f5f6197abbea533156ebf61c6d",
+          "installed_path": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\_libnautilus.cp312-win_amd64.pyd",
+          "matches": true
+        },
+        {
+          "path": "nautilus_trader/adapters/__init__.pyi",
+          "sha256": "b6f46e5fd703208605a3892ee1e09d7d361f68b3d58d0f435db30063765e2324",
+          "installed_path": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\__init__.pyi",
+          "matches": true
+        },
+        {
+          "path": "nautilus_trader/adapters/architect_ax/__init__.pyi",
+          "sha256": "e7734c547cd35be5cf5367575f34a105b5714ca11e29c4688078264d62c9bb93",
+          "installed_path": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\architect_ax\\__init__.pyi",
+          "matches": true
+        },
+        {
+          "path": "nautilus_trader/adapters/aster/__init__.pyi",
+          "sha256": "9b72dbc7b89b2578ef6d124b7a6df9e57b047e21edb7789acce82f85fed9bb00",
+          "installed_path": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\aster\\__init__.pyi",
+          "matches": true
+        },
+        {
+          "path": "nautilus_trader/adapters/backpack/__init__.pyi",
+          "sha256": "1498096ee67e641cdc27ecab2ffecacf771d4552c79ce24ffbc2bf50154abc11",
+          "installed_path": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\backpack\\__init__.pyi",
+          "matches": true
+        },
+        {
+          "path": "nautilus_trader/adapters/betfair/__init__.pyi",
+          "sha256": "531091ad2a75b53f42e7da0029f9551f5779d5d3dce6adc24eaa85f159221637",
+          "installed_path": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\betfair\\__init__.pyi",
+          "matches": true
+        },
+        {
+          "path": "nautilus_trader/adapters/binance/__init__.pyi",
+          "sha256": "2e3e9c4253a8cac2414d456598f7ae682fe3e889871e83d241cb99f3b77c7368",
+          "installed_path": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\binance\\__init__.pyi",
+          "matches": true
+        },
+        {
+          "path": "nautilus_trader/adapters/bitmex/__init__.pyi",
+          "sha256": "f44f4d8bd628688dce3405c62a3aa5f2572c3f0aad508807999b95aaa1e7d4db",
+          "installed_path": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\bitmex\\__init__.pyi",
+          "matches": true
+        },
+        {
+          "path": "nautilus_trader/adapters/blockchain/__init__.pyi",
+          "sha256": "e7a9a7d88d3cf63fb924e64c065f39f7c83f27d2ca8635e9768412bfc30eb79f",
+          "installed_path": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\blockchain\\__init__.pyi",
+          "matches": true
+        },
+        {
+          "path": "nautilus_trader/adapters/bybit/__init__.pyi",
+          "sha256": "10c5adb89788504f3bb4bd457e911182087183fd512cba7df87d62e723b9f86c",
+          "installed_path": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\bybit\\__init__.pyi",
+          "matches": true
+        },
+        {
+          "path": "nautilus_trader/adapters/coinbase/__init__.pyi",
+          "sha256": "563f757b9ce7e62e34ac7f0c9a674b4d7b02e3fcb3e9dcf3c2de8d4aa81263f6",
+          "installed_path": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\coinbase\\__init__.pyi",
+          "matches": true
+        },
+        {
+          "path": "nautilus_trader/adapters/databento/__init__.pyi",
+          "sha256": "e4996914215dd9b1e2a24f9fd7c45d2c085e03d77034d617870d5c5a823b6148",
+          "installed_path": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\databento\\__init__.pyi",
+          "matches": true
+        },
+        {
+          "path": "nautilus_trader/adapters/deribit/__init__.pyi",
+          "sha256": "052e4de1171ccb3f3e2d29d877d9f33fce52dd9f203880c52b7b399361d9e663",
+          "installed_path": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\deribit\\__init__.pyi",
+          "matches": true
+        },
+        {
+          "path": "nautilus_trader/adapters/derive/__init__.pyi",
+          "sha256": "2ef1919968809db7627dbb1ffd7d9d1b98fe251d55dc311422fb3bccbe0e8bd7",
+          "installed_path": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\derive\\__init__.pyi",
+          "matches": true
+        },
+        {
+          "path": "nautilus_trader/adapters/dydx/__init__.pyi",
+          "sha256": "52888fdf72d97aadf496dc0e888e57e8eb1cec26ae9fa97815705002f51d5ceb",
+          "installed_path": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\dydx\\__init__.pyi",
+          "matches": true
+        },
+        {
+          "path": "nautilus_trader/adapters/hyperliquid/__init__.pyi",
+          "sha256": "016760dd07b4e7498769088ce6a7ac85100ba3fcaf07a0abd33e8e51614d7cfd",
+          "installed_path": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\hyperliquid\\__init__.pyi",
+          "matches": true
+        },
+        {
+          "path": "nautilus_trader/adapters/interactive_brokers/__init__.pyi",
+          "sha256": "edf80aacbf93888ad7f9b518f660e0b1f874263e16d5dcbe9c582d601cfec7f6",
+          "installed_path": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\interactive_brokers\\__init__.pyi",
+          "matches": true
+        },
+        {
+          "path": "nautilus_trader/adapters/kraken/__init__.pyi",
+          "sha256": "f7cdfd712d3188a0bc816e02ab7a31ca2ce5fececc4df7c81b41cfd791853737",
+          "installed_path": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\kraken\\__init__.pyi",
+          "matches": true
+        },
+        {
+          "path": "nautilus_trader/adapters/lighter/__init__.pyi",
+          "sha256": "425f451b5fac36359dbad8d0f11779f892ce6801897c1d4768fabe911f5a7b00",
+          "installed_path": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\lighter\\__init__.pyi",
+          "matches": true
+        },
+        {
+          "path": "nautilus_trader/adapters/okx/__init__.pyi",
+          "sha256": "de8fda7bee851ec3faa58bcb81fb48a812c1ca391e5cb6b879b4bd97f7eac707",
+          "installed_path": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\okx\\__init__.pyi",
+          "matches": true
+        },
+        {
+          "path": "nautilus_trader/adapters/ondo/__init__.pyi",
+          "sha256": "53323ad230833c03f4f6121061a256b059cc40b022d0b927d94903444b0bc187",
+          "installed_path": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\ondo\\__init__.pyi",
+          "matches": true
+        },
+        {
+          "path": "nautilus_trader/adapters/polymarket/__init__.pyi",
+          "sha256": "62d7f08ea762f17435fe471bc4ba732a65da58599cc74df694fcacb80ac843a0",
+          "installed_path": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\polymarket\\__init__.pyi",
+          "matches": true
+        },
+        {
+          "path": "nautilus_trader/adapters/sandbox/__init__.pyi",
+          "sha256": "bc89c0b96a747963eff82153ba7eae5cd5ab5ef4f37efdd8285bd0803252ddd6",
+          "installed_path": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\sandbox\\__init__.pyi",
+          "matches": true
+        },
+        {
+          "path": "nautilus_trader/adapters/tardis/__init__.pyi",
+          "sha256": "dc5f6d93e6bc60a96e9041ef2cabf044efc73430dde84c9aae703d4fba00aba0",
+          "installed_path": "E:\\persarb\\worktrees\\entropy-account\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\tardis\\__init__.pyi",
+          "matches": true
+        }
+      ],
+      "binding_inputs_sha256": "d7056dbb7ed9c832cc93d6f849d25161e6fdb9cb7f7516eec7f0eabd89650382",
+      "native_provenance_sha256": "ddcff3f23c1d72b07690e9db726fa059d4a7399a0f892f531615f02b9d2f8a32",
+      "installed_record_sha256": "0df6c462e7aef75c3d173920b6198413bab59ce9aaba52192da8a8a8e110ba2b"
+    },
+    {
+      "record": "reviewer-wheel-lifetime.json",
+      "argv": [
+        "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+        "-I",
+        "-m",
+        "pytest",
+        "--import-mode=importlib",
+        "-o",
+        "pythonpath=",
+        "E:/persarb/_tmp/entropy102-validation/test_reviewer_entropy_lifetime.py",
+        "-q"
+      ],
+      "cwd": "E:\\persarb\\_tmp\\entropy102-validation",
+      "started_utc": "2026-10-08T16:32:25.9413921Z",
+      "finished_utc": "2026-10-08T16:32:26.8265947Z",
+      "exit_code": 0,
+      "test_source_sha256": "9f223a552122088b05ddae2af8ec40e70b3e47fcaf52d887013efc1adc2dca32"
+    },
+    {
+      "record": "reviewer-wheel-python.json",
+      "argv": [
+        "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+        "-I",
+        "-m",
+        "pytest",
+        "--import-mode=importlib",
+        "-o",
+        "pythonpath=",
+        "E:/persarb/worktrees/entropy-account/python/tests/unit/test_entropy_account_config.py",
+        "E:/persarb/worktrees/entropy-account/python/tests/unit/test_entropy_execution_config.py",
+        "E:/persarb/worktrees/entropy-account/python/tests/unit/test_entropy_economics_config.py",
+        "-q"
+      ],
+      "cwd": "E:\\persarb\\_tmp\\entropy102-validation",
+      "started_utc": "2026-10-08T16:31:05.6446820Z",
+      "finished_utc": "2026-10-08T16:31:06.7379934Z",
+      "exit_code": 0,
+      "python_sha256": "a5c8449a9b7a1a35580b801075737d56d82a1e4b398ddc3c0169e072e26fc135"
+    },
+    {
+      "record": "rust-format-check-post-stubs.json",
+      "argv": [
+        "cargo",
+        "+nightly",
+        "fmt",
+        "-p",
+        "nautilus-hyperliquid",
+        "--check"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:20:37.574508+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T16:20:38.262789+00:00"
+    },
+    {
+      "record": "rust-format-fifth.json",
+      "argv": [
+        "cargo",
+        "+nightly",
+        "fmt",
+        "-p",
+        "nautilus-hyperliquid"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T15:59:21.137722+00:00",
+      "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+      "pyo3_python": "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T15:59:21.829305+00:00"
+    },
+    {
+      "record": "rust-format-final.json",
+      "argv": [
+        "cargo",
+        "+nightly",
+        "fmt",
+        "-p",
+        "nautilus-hyperliquid"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:09:20.015208+00:00",
+      "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+      "pyo3_python": "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T16:09:20.729403+00:00"
+    },
+    {
+      "record": "rust-format-fourth.json",
+      "argv": [
+        "cargo",
+        "+nightly",
+        "fmt",
+        "-p",
+        "nautilus-hyperliquid"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T15:56:33.828251+00:00",
+      "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+      "pyo3_python": "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T15:56:34.548381+00:00"
+    },
+    {
+      "record": "rust-format-initial.json",
+      "argv": [
+        "cargo",
+        "+nightly",
+        "fmt",
+        "-p",
+        "nautilus-hyperliquid"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T15:27:53.188223+00:00",
+      "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+      "pyo3_python": "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T15:27:55.985389+00:00"
+    },
+    {
+      "record": "rust-format-post-stubs.json",
+      "argv": [
+        "cargo",
+        "+nightly",
+        "fmt",
+        "-p",
+        "nautilus-hyperliquid"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:20:36.830192+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T16:20:37.515468+00:00"
+    },
+    {
+      "record": "rust-format-prelint.json",
+      "argv": [
+        "cargo",
+        "+nightly",
+        "fmt",
+        "-p",
+        "nautilus-hyperliquid"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:05:27.493495+00:00",
+      "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+      "pyo3_python": "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T16:05:28.221601+00:00"
+    },
+    {
+      "record": "rust-format-second.json",
+      "argv": [
+        "cargo",
+        "+nightly",
+        "fmt",
+        "-p",
+        "nautilus-hyperliquid"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T15:32:54.998682+00:00",
+      "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+      "pyo3_python": "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T15:32:55.672726+00:00"
+    },
+    {
+      "record": "rust-format-third.json",
+      "argv": [
+        "cargo",
+        "+nightly",
+        "fmt",
+        "-p",
+        "nautilus-hyperliquid"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T15:36:14.605040+00:00",
+      "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+      "pyo3_python": "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T15:36:15.259500+00:00"
+    },
+    {
+      "record": "sdk-license-capture.json",
+      "argv": [
+        "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+        "E:/persarb/_tmp/entropy102-validation/capture_sdk_license.py"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:32:00.527876+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T16:32:01.060892+00:00"
+    },
+    {
+      "record": "source-commit.json",
+      "argv": [
+        "git",
+        "commit",
+        "-m",
+        "Add bounded Entropy economic receipts and recovery",
+        "-m",
+        "Preserve original funding, ledger and fee observations with bounded atomic report receipts and fail-closed account attribution. Add normal native peers and generated Python factory interfaces. Refs #102."
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:23:19.815129+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T16:23:19.947615+00:00"
+    },
+    {
+      "record": "stubs-final.json",
+      "argv": [
+        "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+        "python/generate_stubs.py"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:18:00.446784+00:00",
+      "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+      "pyo3_python": "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T16:19:27.512119+00:00"
+    },
+    {
+      "record": "stubs-format-final.json",
+      "argv": [
+        "E:/persarb/worktrees/entropy-account/.venv/Scripts/ruff.exe",
+        "format",
+        "--config",
+        "python/pyproject.toml",
+        "--line-ending",
+        "lf",
+        "python/nautilus_trader\\__init__.pyi",
+        "python/nautilus_trader\\_libnautilus\\__init__.pyi",
+        "python/nautilus_trader\\trading\\__init__.pyi",
+        "python/nautilus_trader\\testkit\\__init__.pyi",
+        "python/nautilus_trader\\serialization\\__init__.pyi",
+        "python/nautilus_trader\\risk\\__init__.pyi",
+        "python/nautilus_trader\\portfolio\\__init__.pyi",
+        "python/nautilus_trader\\persistence\\__init__.pyi",
+        "python/nautilus_trader\\network\\__init__.pyi",
+        "python/nautilus_trader\\model\\__init__.pyi",
+        "python/nautilus_trader\\live\\__init__.pyi",
+        "python/nautilus_trader\\infrastructure\\__init__.pyi",
+        "python/nautilus_trader\\indicators\\__init__.pyi",
+        "python/nautilus_trader\\execution\\__init__.pyi",
+        "python/nautilus_trader\\data\\__init__.pyi",
+        "python/nautilus_trader\\cryptography\\__init__.pyi",
+        "python/nautilus_trader\\core\\__init__.pyi",
+        "python/nautilus_trader\\config\\__init__.pyi",
+        "python/nautilus_trader\\common\\__init__.pyi",
+        "python/nautilus_trader\\backtest\\__init__.pyi",
+        "python/nautilus_trader\\analysis\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\tardis\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\sandbox\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\polymarket\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\ondo\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\databento\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\okx\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\coinbase\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\lighter\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\bybit\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\kraken\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\blockchain\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\interactive_brokers\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\bitmex\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\hyperliquid\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\binance\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\betfair\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\dydx\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\derive\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\backpack\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\deribit\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\aster\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\architect_ax\\__init__.pyi"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:20:04.662643+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "exit_code": 2,
+      "finished_utc": "2026-10-08T16:20:04.680162+00:00"
+    },
+    {
+      "record": "stubs-format-lf.json",
+      "argv": [
+        "E:/persarb/worktrees/entropy-account/.venv/Scripts/ruff.exe",
+        "format",
+        "--config",
+        "python/pyproject.toml",
+        "--config",
+        "format.line-ending='lf'",
+        "python/nautilus_trader\\__init__.pyi",
+        "python/nautilus_trader\\_libnautilus\\__init__.pyi",
+        "python/nautilus_trader\\trading\\__init__.pyi",
+        "python/nautilus_trader\\testkit\\__init__.pyi",
+        "python/nautilus_trader\\serialization\\__init__.pyi",
+        "python/nautilus_trader\\risk\\__init__.pyi",
+        "python/nautilus_trader\\portfolio\\__init__.pyi",
+        "python/nautilus_trader\\persistence\\__init__.pyi",
+        "python/nautilus_trader\\network\\__init__.pyi",
+        "python/nautilus_trader\\model\\__init__.pyi",
+        "python/nautilus_trader\\live\\__init__.pyi",
+        "python/nautilus_trader\\infrastructure\\__init__.pyi",
+        "python/nautilus_trader\\indicators\\__init__.pyi",
+        "python/nautilus_trader\\core\\__init__.pyi",
+        "python/nautilus_trader\\execution\\__init__.pyi",
+        "python/nautilus_trader\\data\\__init__.pyi",
+        "python/nautilus_trader\\config\\__init__.pyi",
+        "python/nautilus_trader\\cryptography\\__init__.pyi",
+        "python/nautilus_trader\\analysis\\__init__.pyi",
+        "python/nautilus_trader\\common\\__init__.pyi",
+        "python/nautilus_trader\\backtest\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\bitmex\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\binance\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\tardis\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\betfair\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\sandbox\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\backpack\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\polymarket\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\ondo\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\aster\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\okx\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\interactive_brokers\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\deribit\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\derive\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\lighter\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\kraken\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\architect_ax\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\bybit\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\blockchain\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\databento\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\coinbase\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\hyperliquid\\__init__.pyi",
+        "python/nautilus_trader\\adapters\\dydx\\__init__.pyi"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:20:36.716771+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T16:20:36.762924+00:00"
+    },
+    {
+      "record": "wheel-build.json",
+      "argv": [
+        "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+        "scripts/adapter-evidence/build_native.py",
+        "--python",
+        "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+        "--native-root",
+        "E:/persarb/worktrees/entropy-account",
+        "--output-dir",
+        "E:/persarb/_tmp/entropy102-wheel-nextest-20261008",
+        "--profile",
+        "nextest"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-account",
+      "started_utc": "2026-10-08T16:23:42.750721+00:00",
+      "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+      "pyo3_python": "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T16:24:35.271042+00:00"
+    },
+    {
+      "record": "wheel-install.json",
+      "argv": [
+        "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+        "scripts/install_native.py",
+        "--python",
+        "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+        "--local-override",
+        "--native-root",
+        "E:/persarb/worktrees/entropy-account",
+        "--wheel",
+        "E:/persarb/_tmp/entropy102-wheel-nextest-20261008/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+        "--provenance",
+        "E:/persarb/_tmp/entropy102-wheel-nextest-20261008/native-provenance.json",
+        "--sha256",
+        "be8d46c2d0b5f197852086b8818b4a17172aa000416512d73893c6041c129aed",
+        "--additional-adapter",
+        "hyperliquid",
+        "--output",
+        "E:/persarb/_tmp/entropy102-validation/installed-native.json"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-app",
+      "started_utc": "2026-10-08T16:24:58.376649+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "exit_code": 0,
+      "finished_utc": "2026-10-08T16:25:03.253828+00:00"
+    }
+  ]
+}

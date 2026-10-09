@@ -55,6 +55,7 @@ pub mod common;
 pub mod config;
 pub mod data;
 pub mod data_types;
+mod economics_scope;
 pub mod execution;
 mod execution_scope;
 pub mod factories;

@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+    "python/generate_stubs.py"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-account",
+  "started_utc": "2026-10-08T16:18:00.446784+00:00",
+  "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+  "pyo3_python": "E:/persarb/worktrees/entropy-account/.venv/Scripts/python.exe",
+  "exit_code": 0,
+  "finished_utc": "2026-10-08T16:19:27.512119+00:00"
+}

@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "captured_at_utc": "2026-10-08T16:02:02.663866+00:00",
+  "comparison_base": "511ff91d04983afb706eb20989be0b400e6299b9",
+  "candidate_commit": "511ff91d04983afb706eb20989be0b400e6299b9",
+  "scope": "Changed implementation, tests and generated inputs; credentials excluded",
+  "inputs": {
+    ".gitattributes": {
+      "bytes": 520,
+      "sha256": "52aa8e3060532657a3c90dd5d20456fe2fd1465f258090a22df7fbce57f4cbc1"
+    },
+    "crates/adapters/hyperliquid/src/account_scope.rs": {
+      "bytes": 44901,
+      "sha256": "60e1596f4ee07205b7554721eb5fae66079d0837b840c708da07492972970b54"
+    },
+    "crates/adapters/hyperliquid/src/common/enums.rs": {
+      "bytes": 59682,
+      "sha256": "01745601292ad41eb69c7cf25c68f09d65caf36f93b2bfc05a69e68ea2193143"
+    },
+    "crates/adapters/hyperliquid/src/config.rs": {
+      "bytes": 20603,
+      "sha256": "3f7d2531ae1425a36a36c7db215569fcb3425efcf08942205a570144c2d026c4"
+    },
+    "crates/adapters/hyperliquid/src/economics_scope.rs": {
+      "bytes": 32480,
+      "sha256": "5a52c73d5f6497b74dea5ef3080139073301684acaa46ecd74e6a8432d1f71b3"
+    },
+    "crates/adapters/hyperliquid/src/economics_scope/parsing.rs": {
+      "bytes": 25494,
+      "sha256": "00a4646fd57d56ea78167235a545ea6c8f6dc88ba8b4191b2adca1b2f4827353"
+    },
+    "crates/adapters/hyperliquid/src/economics_scope/store.rs": {
+      "bytes": 19465,
+      "sha256": "eb5e489604872a0ac8a5ca504bf737b307a4b4f1c240086868ad9dcdac8eb2ce"
+    },
+    "crates/adapters/hyperliquid/src/economics_scope/tests.rs": {
+      "bytes": 25802,
+      "sha256": "56dc78c994e4dcd96e7ae850f8738d31fd9924ae8ae42a9fe09b2b1d8e40fa50"
+    },
+    "crates/adapters/hyperliquid/src/execution.rs": {
+      "bytes": 240036,
+      "sha256": "f16be5c09671404fd08f5a88e5a4235802e1c140363113272a74d402e2aceebe"
+    },
+    "crates/adapters/hyperliquid/src/execution_scope.rs": {
+      "bytes": 111555,
+      "sha256": "318b0c005a230549182dc6a80d6c5916f3ff9cfd8d7f73b910b73508fb7dea83"
+    },
+    "crates/adapters/hyperliquid/src/factories.rs": {
+      "bytes": 12460,
+      "sha256": "30fece7dd8955b770c707f4ac7a9107fa24a2ec06c5d3ae29b37890a7aed5886"
+    },
+    "crates/adapters/hyperliquid/src/http/client.rs": {
+      "bytes": 174482,
+      "sha256": "3873e1e454fb21e7486d51190a6b37d526c0ad6cb8533affc3051bbcf715ed16"
+    },
+    "crates/adapters/hyperliquid/src/http/query.rs": {
+      "bytes": 30196,
+      "sha256": "71fd99ba15e009185bceed074d169780ec39638f2b5b2d16c7972abc67a3f3e8"
+    },
+    "crates/adapters/hyperliquid/src/http/rate_limits.rs": {
+      "bytes": 15968,
+      "sha256": "47dd217c00b7a28358b2f28b7e1803c72e5817212300a2e62c2f0a419047dafc"
+    },
+    "crates/adapters/hyperliquid/src/lib.rs": {
+      "bytes": 3241,
+      "sha256": "906148403df2613c39db89ef470210abde40ab6b117aeb233d5cde092ae8b32e"
+    },
+    "crates/adapters/hyperliquid/src/python/config.rs": {
+      "bytes": 8838,
+      "sha256": "f480b7e99bf72de4fbe4221655eb0e94fd7db3eefcda3ee7c6c88282a159f7c3"
+    },
+    "crates/adapters/hyperliquid/src/python/factories.rs": {
+      "bytes": 3249,
+      "sha256": "41a8af2d265d3bc730af4c55c28cde1bc9c2afe629a78b942f9b91bace28db1e"
+    },
+    "crates/adapters/hyperliquid/src/websocket/client.rs": {
+      "bytes": 131382,
+      "sha256": "4ff1e3f378dc124dc09cc21dd05c36af533f7e02b3390a896653b26a77b7602a"
+    },
+    "crates/adapters/hyperliquid/src/websocket/handler.rs": {
+      "bytes": 99961,
+      "sha256": "6ac3d3005ba1a0422c9c42f2c84b892024ca75ecee9a1fce255b03473cfe5905"
+    },
+    "crates/adapters/hyperliquid/src/websocket/messages.rs": {
+      "bytes": 39891,
+      "sha256": "9468d33247a7c40e968ba36b4fc294a952d9b8b7840ea7bd5bafb825d48ba2d1"
+    },
+    "crates/adapters/hyperliquid/tests/entropy_account.rs": {
+      "bytes": 42906,
+      "sha256": "d8e2d1605c08873c2c28dafcc283cc62997e2adf9138bbc9445c0dc52c1414ae"
+    },
+    "crates/adapters/hyperliquid/tests/entropy_account/economics.rs": {
+      "bytes": 28981,
+      "sha256": "5bc6af18ae469b768e432c9e8adfb73d68633f4205680f3a083210df25d86127"
+    },
+    "crates/adapters/hyperliquid/tests/entropy_account/execution.rs": {
+      "bytes": 56660,
+      "sha256": "b6aaa5e995cdab8ce4c74f3384095efe0165f27ff7baba09f828f45f18a19cea"
+    },
+    "python/tests/unit/test_entropy_account_config.py": {
+      "bytes": 6639,
+      "sha256": "e8fe99f5255e300aa625c57703aee1762135fb9b47337fa3749c50b532588b61"
+    },
+    "python/tests/unit/test_entropy_economics_config.py": {
+      "bytes": 7855,
+      "sha256": "653ed84945a214a2d2466c17ae19f6f552604a689a79058a39c71262733d2b60"
+    }
+  }
+}

@@ -1,0 +1,35 @@
+"""Bind unchanged native inputs and the official generated Python stub."""
+
+import hashlib
+import json
+import subprocess
+from datetime import UTC, datetime
+from pathlib import Path
+
+root = Path("E:/persarb/worktrees/entropy-account")
+run = Path(__file__).resolve().parent
+tested = json.loads((run / "tested-inputs.json").read_text(encoding="utf-8"))
+inputs = {}
+binding_changes = {}
+for name, expected in tested["inputs"].items():
+    path = root / name
+    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    if actual != expected["sha256"]:
+        assert name == "crates/adapters/hyperliquid/src/python/factories.rs", name
+        binding_changes[name] = {"tested_sha256": expected["sha256"], "final_sha256": actual,
+                                "reason": "Official generator updated the three new Python method doc comments; nightly formatting normalized the generated source. This module is cfg(feature=python) and was not compiled in the default-native regression; the actual wheel validates its final feature-enabled bytes."}
+    inputs[name] = {"bytes": path.stat().st_size, "sha256": actual}
+stub = "python/nautilus_trader/adapters/hyperliquid/__init__.pyi"
+inputs[stub] = {"bytes": (root / stub).stat().st_size,
+               "sha256": hashlib.sha256((root / stub).read_bytes()).hexdigest()}
+paths = subprocess.check_output(["git", "diff", "--name-only", "--", "python/nautilus_trader"],
+                                cwd=root, text=True).splitlines()
+assert paths == [stub], paths
+record = {"schema_version": 1, "captured_at_utc": datetime.now(UTC).isoformat(),
+          "default_native_inputs_unchanged": True,
+          "official_generator_command_record": "stubs-final.json",
+          "generated_stub": stub, "binding_only_changes": binding_changes,
+          "final_projection_inputs": {name: entry["final_sha256"] for name, entry in binding_changes.items()},
+          "inputs": inputs}
+(run / "binding-inputs.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+print(f"{len(tested['inputs']) - len(binding_changes)} native/test inputs byte-identical; {len(binding_changes)} generated binding-only input separately bound; one generated stub")

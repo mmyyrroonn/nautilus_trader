@@ -1,0 +1,54 @@
+﻿# Entropy #102 attribution source review
+
+Review written: 2026-10-09 (Asia/Shanghai); evidence batch and requested report suffix: 20261008. Worktree: E:/persarb/worktrees/entropy-account, feature/entropy-economics.
+
+Verdict at the updated source snapshot below: PASS for the limited independent source review; no remaining material finding was identified in this attribution change. This closes the reported origin-generation binding gap after inspecting the actual fix. This is code review only, not an actual test/wheel PASS or a merge verdict. No Cargo, production edits, external accounts or network writes were performed. The source was frozen when read; root is independently running the actual native tests.
+
+## Origin-generation finding and actual source resolution
+
+The initial frozen source sampled current identity before a getter that independently read its latest generation. An old generation-1/epoch-0 frame could therefore borrow a newly verified generation-2/epoch-0 context across replacement. This was reported as an origin-binding defect, without claiming a report could authorize trading.
+
+The revised actual getter accepts expected_origin from the captured source tuple. The state getter verifies attribution_generation against that expected source generation; actual reader identity must equal the expected tuple before and after the detached account-state copy. Both WS actor and each history page obtain this origin-bound proof before computing current. They recheck source identity after phase-A persistence, and the actor checks again before legacy native projection/accepted-fee hook. The same-epoch replacement test explicitly makes a generation-12 context fail to certify source 11 while allowing source 12 and preserving funds trusted=false. No invented generation DTO or forced proof flag was added.
+
+This fixes the reported cross-generation-context interleaving. Detached historical facts remain source-tagged and report-only; source replacement does not make a report current account proof. Actual test execution on this revision remains pending independent binary/wheel review.
+
+## Boundaries verified by reading actual code
+
+- Default AccountScopeState::invalidate clears attribution_generation and attribution_universe before normal funds invalidation. `invalidate_financial` retains only an existing context while incrementing the same account version and closing funds proof. It cannot create context or mark money/flatness trusted.
+- Complete valid WS position changes take the typed financial path. Missing/wrong user or dex, malformed complete snapshot and invalid source time use the default path and revoke context. A refresh starts by clearing context, so position events during pending HTTP cannot reconstruct it.
+- HTTP refresh installs attribution only after role, both abstraction facts twice, canonical collateral/native universe, complete scoped financial parsing, verification/source freshness, captured account version, current epoch/active stream and reader generation checks. WS position reconciliation must also succeed. Failed role/mode/collateral or stale/superseded HTTP completion cannot install a usable context.
+- HTTP context setup preserves delisted coins in the position universe but excludes them from current active attribution. Candidate cached native IDs are intersected with the latest successfully verified active coin set. A cached ID alone does not establish current membership.
+- The getter deliberately does not compare current account version to the establishment revision: typed position/financial invalidation must advance that version to reject old funds HTTP completions while preserving metadata identity. It checks existing attribution generation, actual active stream/epoch, all private ACKs, HTTP source/receive/verification-start TTL, latest complete private receive TTL and optional real private source TTL.
+- The returned account snapshot is the original diagnostic snapshot. Its trusted and flat fields are not overwritten. ScopeEvidence separately records attribution_verified and genuine funds trusted. Exact owner/io/inferred disabled mode/canonical USDC/native instrument checks and source-epoch filtering remain in the funding/fill parser. No account funds, order admission or native recovery barrier consults attribution_verified.
+- Each history page now obtains fresh attribution after its actual body/quota acquisition; it no longer reuses one proof captured before earlier pages. An unknown/unattributed earlier page clears context, so later pages cannot borrow that earlier context. Already persisted strong identical facts may preserve an independently valid funds proof; report receipts/totals do not participate in that decision.
+- For financial WS/HTTP input, funds close before phase-A disk work. `attribution_complete` is true only for nonempty correctly attributed funding/fill_fee observations with supported identity quality, exact io/USDC/instrument/time/amount and verified context. Valid weak funding can preserve attribution while remaining excluded from recognized cash. Unknown, conflict, ledger or failed preservation clears context. Supported empty snapshots retain only an existing context and never establish one or assert positive financial identity.
+- A raw frame is saved before typed parsing. `legacy_parse_succeeded` must be true before native owned-fill projection and accepted-fee hook; malformed numeric/schema/duplicate-known-key input remains raw -> Error -> marker. Strict original user/userEvents fills support now exists without inventing an echoing user, and raw startup validation permits that exact original channel variant.
+- Economic report consumption performs no AccountState/native fill/balance adjustment and does not clear the #101 native projection recovery barrier. Native application remains Unknown. Later conflicts preserve immutable historical receipts/totals while explicitly exposing unknown identity; they are not spendable current balances.
+- The new account-context fields/helper are private production interfaces. Added fixtures are inside normal test modules; no production test-only setter, forced proof flag, quota bypass or synthetic financial state injection was found. None/economics-disabled and read-only account modes retain the old funds invalidation/snapshot logic. Their new private context cannot enable trading, fees or reports without economic opt-in.
+
+## Pending actual validation
+
+Root subsequently reports 864 library cases plus 92 normal account peers passed on the PRE-origin-fix frozen source, with that input identity recorded separately in tested-inputs-before-origin-fix.json. Those results include the real position-changing native fee/one-commission positive path, independent account recovery with the declared thirty-second history budget, three actual failed role/mode/token fee-Unknown cases and three malformed fill no-projection cases. They are root-run evidence, not this reviewer's independently executed tests, and do not prove the revised origin-binding source above.
+
+Root's earlier 17/19 normal economic peers include two genuine failures. The user-fee context failure motivated this production distinction; preserve its real position update. The positive history-recovery case hit its declared three-second HTTP quota deadline; root has changed only that positive fixture's declared supported history timeout to thirty seconds, retaining production quotas/deadlines and the original failed evidence. Do not represent either correction as a previously passing test.
+
+Before final binary/wheel review: actual origin-generation binding negative case; actual normal fee with real position update and funds trusted=false; wrong role/mode/token/metadata/WS owner/schema/ACK/TTL/epoch/reconnect revocation; stale same-generation HTTP revision rejection; strong phase-A replay with independent account recovery; malformed owned fill no native projection; cold cache barrier; exact final executable/wheel/pyd/stub/provenance and normal installed Python factory/ABI checks. This reviewer has run none of those binaries for the current snapshot.
+
+## SHA256 source snapshot
+
+The following bytes were independently hashed after read-only inspection. Changes to any row require rebinding the report; these hashes do not claim an existing binary was built from them.
+
+| Source | SHA256 |
+|---|---|
+| crates/adapters/hyperliquid/src/account_scope.rs | edfa6945224f6575baa4872668f6022df0911675e5ee442004f78813c485b69f |
+| crates/adapters/hyperliquid/src/economics_scope.rs | 5a52c73d5f6497b74dea5ef3080139073301684acaa46ecd74e6a8432d1f71b3 |
+| crates/adapters/hyperliquid/src/economics_scope/parsing.rs | 00a4646fd57d56ea78167235a545ea6c8f6dc88ba8b4191b2adca1b2f4827353 |
+| crates/adapters/hyperliquid/src/economics_scope/store.rs | eb5e489604872a0ac8a5ca504bf737b307a4b4f1c240086868ad9dcdac8eb2ce |
+| crates/adapters/hyperliquid/src/economics_scope/tests.rs | 56dc78c994e4dcd96e7ae850f8738d31fd9924ae8ae42a9fe09b2b1d8e40fa50 |
+| crates/adapters/hyperliquid/src/execution.rs | d7e7e88498f00efcf7aa3a53da9073d08dc693cbc0e6c5dadfbf64146db682b9 |
+| crates/adapters/hyperliquid/src/execution_scope.rs | 318b0c005a230549182dc6a80d6c5916f3ff9cfd8d7f73b910b73508fb7dea83 |
+| crates/adapters/hyperliquid/src/websocket/client.rs | 4ff1e3f378dc124dc09cc21dd05c36af533f7e02b3390a896653b26a77b7602a |
+| crates/adapters/hyperliquid/src/websocket/handler.rs | 6ac3d3005ba1a0422c9c42f2c84b892024ca75ecee9a1fce255b03473cfe5905 |
+| crates/adapters/hyperliquid/src/websocket/messages.rs | 9468d33247a7c40e968ba36b4fc294a952d9b8b7840ea7bd5bafb825d48ba2d1 |
+| crates/adapters/hyperliquid/src/factories.rs | 30fece7dd8955b770c707f4ac7a9107fa24a2ec06c5d3ae29b37890a7aed5886 |
+

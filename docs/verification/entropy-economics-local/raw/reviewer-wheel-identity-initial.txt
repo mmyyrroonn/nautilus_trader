@@ -1,0 +1,12 @@
+﻿python.exe : Traceback (most recent call last):
+所在位置 行:72 字符: 174
++ ... ('o'); $out=& E:/persarb/worktrees/entropy-account/.venv/Scripts/pyth ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "E:\persarb\_tmp\entropy102-validation\reviewer-wheel-identity.py", line 38, in <module>
+    assert not git('status','--porcelain')
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError
+

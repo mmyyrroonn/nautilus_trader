@@ -1,0 +1,14 @@
+﻿python.exe : Traceback (most recent call last):
+所在位置 行:2 字符: 877
++ ... ('o'); $out=& E:/persarb/worktrees/entropy-account/.venv/Scripts/pyth ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Traceback (most recent call last)::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  File "E:\persarb\_tmp\entropy102-validation\reviewer-wheel-identity.py", line 39, in <module>
+    assert all(line[3:].startswith('docs/') for line in dirty_after_build.splitlines()), dirty_after_build
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError: M docs/integrations/hyperliquid.md
+ M docs/verification/entropy-economics-api-20261008.md
+ M docs/verification/entropy-economics-public/README.md
+

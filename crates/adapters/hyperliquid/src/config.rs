@@ -236,6 +236,8 @@ pub struct HyperliquidExecutionClientConfig {
     pub account_dex: Option<String>,
     /// Explicit bounded io execution policy JSON; absent retains read-only io behavior.
     pub io_execution_policy_json: Option<String>,
+    /// Optional finite io economic reporting policy, independent of trading permission.
+    pub io_economics_policy_json: Option<String>,
     /// Maximum source and receive age for an io account proof and private stream, in milliseconds.
     #[builder(default = 30_000)]
     pub account_snapshot_max_age_ms: u64,
@@ -296,6 +298,7 @@ nautilus_core::impl_pyo3_config_getters!(HyperliquidExecutionClientConfig {
     account_address: Option<String>,
     account_dex: Option<String>,
     io_execution_policy_json: Option<String>,
+    io_economics_policy_json: Option<String>,
     account_snapshot_max_age_ms: u64,
     environment: HyperliquidEnvironment,
     base_url_ws: Option<String>,
@@ -359,6 +362,10 @@ impl Debug for HyperliquidExecutionClientConfig {
             .field(
                 "io_execution_enabled",
                 &self.io_execution_policy_json.is_some(),
+            )
+            .field(
+                "io_economics_enabled",
+                &self.io_economics_policy_json.is_some(),
             )
             .field(
                 "account_snapshot_max_age_ms",
