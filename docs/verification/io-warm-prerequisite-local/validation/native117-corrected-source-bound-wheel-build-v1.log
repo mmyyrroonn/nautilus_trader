@@ -1,0 +1,45 @@
+🍹 Building a mixed python/rust project
+🐍 Found CPython 3.12 at E:\persarb\worktrees\entropy-warm-prerequisites\.venv\Scripts\python.exe
+🔗 Found pyo3 bindings
+📡 Using build options features from pyproject.toml
+   Compiling nautilus-common v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\common)
+   Compiling nautilus-portfolio v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\portfolio)
+   Compiling nautilus-execution v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\execution)
+   Compiling nautilus-persistence v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\persistence)
+   Compiling nautilus-infrastructure v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\infrastructure)
+   Compiling nautilus-trading v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\trading)
+   Compiling nautilus-risk v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\risk)
+   Compiling nautilus-data v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\data)
+   Compiling nautilus-testkit v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\testkit)
+   Compiling nautilus-system v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\system)
+   Compiling nautilus-live v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\live)
+   Compiling nautilus-sandbox v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\adapters\sandbox)
+   Compiling nautilus-backtest v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\backtest)
+   Compiling nautilus-binance v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\adapters\binance)
+   Compiling nautilus-ondo v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\adapters\ondo)
+   Compiling nautilus-backpack v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\adapters\backpack)
+   Compiling nautilus-polymarket v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\adapters\polymarket)
+   Compiling nautilus-databento v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\adapters\databento)
+   Compiling nautilus-derive v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\adapters\derive)
+   Compiling nautilus-bitmex v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\adapters\bitmex)
+   Compiling nautilus-interactive-brokers v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\adapters\interactive_brokers)
+   Compiling nautilus-hyperliquid v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\adapters\hyperliquid)
+   Compiling nautilus-deribit v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\adapters\deribit)
+   Compiling nautilus-coinbase v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\adapters\coinbase)
+   Compiling nautilus-kraken v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\adapters\kraken)
+   Compiling nautilus-architect-ax v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\adapters\architect_ax)
+   Compiling nautilus-lighter v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\adapters\lighter)
+   Compiling nautilus-okx v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\adapters\okx)
+   Compiling nautilus-betfair v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\adapters\betfair)
+   Compiling nautilus-bybit v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\adapters\bybit)
+   Compiling nautilus-tardis v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\adapters\tardis)
+   Compiling nautilus-blockchain v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\adapters\blockchain)
+   Compiling nautilus-dydx v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\adapters\dydx)
+   Compiling nautilus-aster v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\adapters\aster)
+   Compiling nautilus-pyo3 v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\pyo3)
+    Finished `nextest` profile [unoptimized] target(s) in 31.96s
+📦 Including files matching "**/*.pyi"
+📦 Built wheel for CPython 3.12 to E:\persarb\_tmp\entropy117-corrected-wheel-nextest-20261009\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl
+wrote E:\persarb\_tmp\entropy117-corrected-wheel-nextest-20261009\native-provenance.json
+source-bound wheel: E:\persarb\_tmp\entropy117-corrected-wheel-nextest-20261009\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl
+wheel SHA-256: 5187319f1754e37069904ce678f8526ddc47a8bc4d077209a95f97fe0205057a

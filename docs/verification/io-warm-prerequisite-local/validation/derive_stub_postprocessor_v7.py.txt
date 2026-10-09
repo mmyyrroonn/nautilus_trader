@@ -1,0 +1,24 @@
+"""Give this candidate's official stub comparison distinct immutable labels."""
+
+import hashlib
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+root = Path(__file__).resolve().parent
+before = root / "postprocess_stubs.py"
+after = root / "postprocess_stubs_v7.py"
+receipt = root / "native117-stub-helper-preparation-v7.json"
+assert not after.exists() and not receipt.exists()
+source = before.read_text(encoding="utf-8")
+replacements = (
+    ('"native117-official-stub-line-endings"', '"native117-official-stub-line-endings-v7"'),
+    ('"native117-generated-stub-comparison.json"', '"native117-generated-stub-comparison-v7.json"'),
+)
+for needle, replacement in replacements:
+    assert source.count(needle) == 1
+    source = source.replace(needle, replacement)
+after.write_text(source, encoding="utf-8")
+receipt.write_text(json.dumps({"created_utc": datetime.now(timezone.utc).isoformat(), "original": {"path": str(before), "sha256": hashlib.sha256(before.read_bytes()).hexdigest()}, "derived": {"path": str(after), "sha256": hashlib.sha256(after.read_bytes()).hexdigest()}, "differences": "Only two output labels; all official Ruff, AST, and normalized-text checks remain unchanged", "tests_executed": 0}, indent=2) + "\n", encoding="utf-8")
+print(receipt.read_text(encoding="utf-8"))

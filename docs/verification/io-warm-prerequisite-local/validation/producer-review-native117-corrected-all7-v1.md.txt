@@ -1,0 +1,55 @@
+# Native117 corrected seven-mode installed cohort: producer artifact audit
+
+Root observed the original paired test pass at 2026-10-09 13:42:18.980560–13:42:24.022478 UTC (1 pass, 4.81 seconds), then the remaining six original modes pass at 13:43:06.509197–13:44:16.566533 (6 passes, one paired deselection, 69.83 seconds). The latter process was closed before this inspection. No tests were repeated by this reviewer.
+
+Both cohorts use clean implementation `b07a7e6e6bfc7613aa12c77cdee1110e25790ca1` and installed wheel SHA256 `5187319f1754e37069904ce678f8526ddc47a8bc4d077209a95f97fe0205057a`. Root's four captures match the same 58 source/installed/artifact identities. This is a producer's artifact audit: I authored production changes, so it supplements the separate independent source review and root's acceptance, rather than replacing either.
+
+## Actual per-mode outcomes
+
+Request/action counts below are measured peer records, ordered Hyperliquid/Aster. Quantities and reservations are actual controller/native records; they are not inferred from the test name.
+
+| Mode | Controller end | Actual fills HL/Aster | Final quantities HL/Aster | Gross reservation | Requests; actions HL/Aster |
+|---|---|---:|---|---|---|
+| paired | Completed | 2/2 | 0/0 | 0 | 63/48; 2/3 |
+| reject | Completed | 2/0 | 0/0 | 0 | 63/38; 2/1 |
+| partial | Completed | 2/2 | 0/0 | 0 | 63/48; 2/3 |
+| unknown | StoppedUnknown | 0/0 | 0/0 confirmed; admission Unknown | 12.7260 | 77/133; 1/0 |
+| cleanup_failure | StoppedUnknown | 2/1 | 0/-0.12 | 12.6000 | 74/144; 2/2 |
+| foreign | StoppedUnknown | 0/0 | Controller 0/0; actual foreign Aster/PF +0.03 | 0 | 58/29; 0/0 |
+| loss_fee | Completed | 2/0 | 0/0; owned-flat admission Unknown | 0 | 63/29; 2/0 |
+
+All peer error arrays are empty. Negative HTTP responses are deliberately recorded venue semantics, not peer harness errors. Each case's child process verifies started/stopped/shutdown, with no watchdog firing or application failure. The unchanged passing test asserts that native peer sessions are empty after teardown; this audit does not claim a separate OS socket inventory or kernel egress isolation.
+
+## Actual negative stimuli and safeguards
+
+**Reject:** Aster's real POST for the hedge returns HTTP400/code-2010, `synthetic bounded rejection`, followed by the normal native `order_rejected` event for the owned hedge CID. No Aster fill exists. The actual 0.12 Hyperliquid entry is reduced by its actual 0.12 cleanup; cache/PF and current projection become zero/verified. The retained reason is `partial_hedge_or_dust_residual`. A rejected order's displayed original `reserved_usd` field is not the final aggregate active reservation; the aggregate is zero. The existing mode assertion is weaker than this actual rejection evidence and still does not require that wire/event stimulus directly.
+
+**Partial:** Actual Aster trade update reports PARTIALLY_FILLED with 0.06 against original 0.12, followed by a real EXPIRED wire update with cumulative 0.06. The normal native/controller terminal representation is CANCELED, not FILLED; the actual partial quantity is preserved. The cleanup is sized 0.06 and actually fills 0.06, while Hyperliquid cleanup fills its full 0.12. Both final projections are verified zero. The mode keeps `partial_hedge_or_dust_residual` and the transient cleanup reason. The test's source-only gap remains: it checks two entries/reason rather than explicitly asserting the 0.06 wire trade/expiry, although those stimuli are now observed in this cohort.
+
+**Unknown:** Peer commands show exactly one real signed order post; there is no matching post ACK frame, fill, or physical position. Normal timeout leaves the owned order terminal null/Unknown, aggregate reservation 12.7260 and `orders_terminal=false`. No Aster order or hedge fill occurs. Reasons include `bounded_native_terminal_timeout` and `cleanup_deadline_exhausted`. Zero observed physical/PF quantities do not erase the uncertain handed-off action or establish flat ownership. There is no native economic receipt to use as a complete-history/healthy-state proof in this no-fill case; `economic_error=null` is not such proof.
+
+**Cleanup failure:** Aster's real reduce-only 0.12 buy POST returns HTTP400/-2010 and normal `order_rejected`; the attempted DELETE returns -2013 (order absent). The earlier actual Aster short0.12 remains, while Hyperliquid actually closes. The ordinary Aster Portfolio is -0.12, projection/owned-flat remain Unknown, and aggregate exposure reservation12.6000 remains. Reasons include action/order budget exhaustion and cleanup deadline exhaustion. The existing test checks the residual rather than requiring that exact rejecting POST/event, so its previously identified assertion gap is still a source-only coverage limitation, not an absent stimulus in this actual run.
+
+**Foreign:** The normal selected position/reconciliation path observes foreign Aster +0.03, reflected in ordinary PF. Open-order HTTP rows are empty; this is not proof of a foreign open-order wire response. The runtime's actual reason is `foreign_account_qualified_native_order`, followed by `cleanup_without_started_run`. Both venues receive zero actions, no run fills are adopted, and projection/owned-flat stay Unknown. Controller-owned zero quantity is kept separate from foreign +0.03.
+
+**Loss fee:** Actual Hyperliquid entry commission is 2 USDC, exceeding the configured loss rail before a hedge. Aster receives no action/fill. Hyperliquid's actual reduce-only close incurs another2 USDC; loss estimate ends4.00120000 with `loss_budget_exhausted` and the transient cleanup reason. The finite controller completes its order work, but owned-flat/current-projection remain Unknown rather than granting a stronger proof from zero PF alone. This real fee-triggered scenario supports the existing terminal-callback loss-guard assertion.
+
+## Economic retention and corrected paired distinction
+
+Detailed corrected paired chronology is frozen separately in `producer-review-native117-corrected-first-paired-v1.md`. It includes four exact scoped fills, current zero projection, both completed reusable warm queries, original expiry not renewed, transient Aster cleanup degradation and genuine cancel error.
+
+For paired/reject/partial/cleanup_failure/loss_fee, each recorded post-close native economic receipt is revision12/tainted=false with actual fee consumption. It is a fresh accepted receipt containing the second warm Unknown tail, not the prior failed567 cohort's stale revision11 snapshot. The original finite COMPLETE history pair and first zero-page Unknown pair are retained; the new post-close Unknown pair is appended. Stream teardown adds distinct Unknown recovery gaps to the durable checkpoint. Unknown intervals never become COMPLETE, and there is no repeated clearing/compaction of old rows or fees.
+
+The failed567/4748 artifacts and their append-only regression remain separate and immutable. This cohort does not erase a failed journal, rehabilitate taint/debt from it, or reuse that candidate's current proof. Each mode has its own fresh run directory and journal. No quota, timeout, source age, capacity or synthetic delivery limit was adjusted for this audit. Request counts are measured; internal limiter balances are not available.
+
+## Acceptance boundary and unchanged source-only gaps
+
+This records seven original installed finite scenarios passing on one source-bound candidate. It does not establish full App43 issue acceptance. Source-only watchpoints in `reviewer-app43-source-only-v1.md` remain: narrower reject/partial/cleanup wire assertions, no installed app cold restart acceptance, funding completeness, drift/dust/value-parity extensions, and the unobserved subprocess TimeoutExpired evidence path. Those are neither new failures in this cohort nor claims that native117 violates its finite prerequisite contract.
+
+All modes keep whole-account flatness and durable cold-native restoration Unknown. Aster actual funding/economics completeness remain Unknown; numeric-loopback peer execution supplies no real venue/mainnet or kernel isolation authorization. Root controls final issue/PR acceptance and subsequent issue work.
+
+## Review identities and executions
+
+Machine-readable `producer-review-native117-corrected-all7-v1.json`, SHA256 `afeefb0bdb6f7835daaea9381815007798353514e627847d45e22aa1b4dfa253`, contains case summaries, raw status frames, actual order HTTP responses, native financial events, coverage/fee records and 90 exact before/after file/source identities; all matched. Root's `app43-native117-corrected-cohorts-unchanged-v1.json` contains the four equal 58-input manifests, native clean head and installed candidate binding.
+
+Author executions in this follow-up: one stdlib closed-cohort parse and two stdlib detail reads; tests/native imports/Cargo/Git/GitHub/product edits all zero. Case-sensitive Python was used because PowerShell's JSON parser cannot represent peer keys `e` and `E`; the rejected PowerShell detail parse did not yield usable case observations. Original raw files, source-only review, paired review and previous failures were not overwritten. Review is frozen.

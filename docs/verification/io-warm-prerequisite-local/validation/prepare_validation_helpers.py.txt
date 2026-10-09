@@ -1,0 +1,43 @@
+"""Derive bounded source and binary validators without claiming their execution."""
+
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+
+
+SOURCE = Path("E:/persarb/_tmp/entropy115-validation")
+TARGET = Path(__file__).resolve().parent
+REPLACEMENTS = (
+    ("E:/persarb/worktrees/entropy-startup-account-proof", "E:/persarb/worktrees/entropy-warm-prerequisites"),
+    ("native115", "native117"),
+)
+
+
+def main():
+    output = TARGET / "native117-validation-helper-derivation.json"
+    assert not output.exists()
+    record = {"started_utc": dt.datetime.now(dt.timezone.utc).isoformat(), "files": []}
+    for name in ("postprocess_stubs.py", "capture_stable_binaries.py"):
+        source = SOURCE / name
+        target = TARGET / name
+        assert source.is_file() and not target.exists()
+        before = source.read_bytes()
+        text = before.decode("utf-8")
+        for old, new in REPLACEMENTS:
+            text = text.replace(old, new)
+        after = text.encode("utf-8")
+        target.write_bytes(after)
+        record["files"].append({
+            "source": str(source), "source_sha256": hashlib.sha256(before).hexdigest(),
+            "target": str(target), "target_sha256": hashlib.sha256(after).hexdigest(),
+            "replacements": REPLACEMENTS,
+        })
+    record.update(finished_utc=dt.datetime.now(dt.timezone.utc).isoformat(),
+                  source_checks_executed=0, test_executions=0)
+    output.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(record))
+
+
+if __name__ == "__main__":
+    main()

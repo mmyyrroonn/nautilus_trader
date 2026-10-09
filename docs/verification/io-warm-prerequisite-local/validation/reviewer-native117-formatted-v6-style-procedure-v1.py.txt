@@ -1,0 +1,99 @@
+import datetime
+import difflib
+import hashlib
+import json
+from pathlib import Path
+
+ROOT = Path('E:/persarb/_tmp/entropy117-validation')
+LABEL = 'reviewer-native117-formatted-v6-style-review-v1'
+now = lambda: datetime.datetime.now(datetime.timezone.utc).isoformat()
+sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+started = now()
+manifests = {v: json.loads((ROOT / f'native117-formatted-v{v}.json').read_text(encoding='utf-8')) for v in (4, 5, 6)}
+records = {}
+inputs = []
+for v, m in manifests.items():
+    records[v] = {}
+    inputs.append(ROOT / f'native117-formatted-v{v}.json')
+    for group in ('native', 'app'):
+        base = Path(m[group]['root'])
+        for entry in m[group]['files']:
+            rel = Path(entry['path']).relative_to(base)
+            key = group + '/' + rel.as_posix()
+            copy = Path(m['snapshot_directory']) / group / rel
+            assert copy.is_file(), str(copy)
+            assert sha(copy) == entry['sha256'], str(copy)
+            records[v][key] = {'sha256': sha(copy), 'copy': str(copy), 'current': str(entry['path'])}
+            inputs.append(copy)
+assert len(records[6]) == 41 and set(records[4]) == set(records[5]) == set(records[6])
+for v in (4, 5):
+    for ext in ('log', 'json'):
+        inputs.append(ROOT / f'native117-tests-inclusive-clippy-v{v}.{ext}')
+for ext in ('md', 'json'):
+    inputs.append(ROOT / f'reviewer-native117-actual-quota-v4-evidence-v1.{ext}')
+inputs.append(Path(__file__))
+inputs += [Path(r['current']) for r in records[6].values()]
+inputs = list(dict.fromkeys(inputs))
+before = [{'path': str(p), 'sha256': sha(p)} for p in inputs]
+changes = {}
+for a, b in ((4, 5), (5, 6), (4, 6)):
+    changed = [key for key in records[a] if records[a][key]['sha256'] != records[b][key]['sha256']]
+    changes[f'v{a}_to_v{b}'] = changed
+    diff = []
+    for key in changed:
+        old = Path(records[a][key]['copy']).read_text(encoding='utf-8').splitlines(keepends=True)
+        new = Path(records[b][key]['copy']).read_text(encoding='utf-8').splitlines(keepends=True)
+        diff += list(difflib.unified_diff(old, new, fromfile=f'v{a}/{key}', tofile=f'v{b}/{key}'))
+    out = ROOT / f'{LABEL}-v{a}-v{b}.diff.txt'
+    assert not out.exists()
+    out.write_text(''.join(diff), encoding='utf-8', newline='\n')
+assert len(changes['v4_to_v5']) == 2 and len(changes['v5_to_v6']) == 1
+current_matches = all(sha(Path(r['current'])) == r['sha256'] for r in records[6].values())
+assert current_matches
+after = [{'path': str(p), 'sha256': sha(p)} for p in inputs]
+assert before == after
+receipts = {f'v{v}': json.loads((ROOT / f'native117-tests-inclusive-clippy-v{v}.json').read_text(encoding='utf-8')) for v in (4, 5)}
+data = {'started_utc': started, 'finished_utc': now(), 'reviewer_executed_tests': 0,
+        'scope': 'Read-only narrow test-style source review; no production, native execution, build, or Git operations.',
+        'source_manifest': str(ROOT / 'native117-formatted-v6.json'), 'source_manifest_sha256': sha(ROOT / 'native117-formatted-v6.json'),
+        'declared_inputs': {'native': 31, 'app': 10}, 'changes': changes,
+        'versions': records, 'current_v6_all41_match': current_matches,
+        'before': before, 'after': after, 'unchanged': True,
+        'root_clippy_receipts': receipts,
+        'verdict': 'No blocker in the two lexical lock scope edits or the sole unit-returning assert semicolon; final v6 runtime/lint acceptance is outside this review.',
+        'limitations': ['No independent test execution.', 'Baseline diagnostic lineage is attributed to root, not independently tested or Git-verified.', 'No exact mutex/fsync/metadata-clock crossing execution claim.', 'The old v4 evidence review timestamps and bytes remain archived unchanged.']}
+out = ROOT / f'{LABEL}.json'
+assert not out.exists()
+out.write_text(json.dumps(data, indent=2), encoding='utf-8', newline='\n')
+test_dir = 'native/crates/adapters/hyperliquid/tests/entropy_account/'
+hashlines = '\n'.join(f'- `{key}`: `{records[6][key]["sha256"]}`' for key in changes['v4_to_v6'])
+md = f'''# Native117 formatted v6 narrow style review
+
+Read-only review completed at {data['finished_utc']}. Independent executions: **0 tests**. No production/test writes, Cargo, build, install, native import, or Git operations were performed.
+
+## Verdict and identity
+
+No blocker in this narrow delta. Final source binding is `native117-formatted-v6.json` SHA256 `{data['source_manifest_sha256']}`. All 31 native and 10 app input bytes match the frozen v6 manifest and remained unchanged across this review. Preserved v4/v5 snapshots were independently hashed. Only two test files differ from v4; all other 39 inputs, including both production files, are byte-identical. v5 to v6 changes only one semicolon in the io test.
+
+{hashlines}
+
+## Business criteria and lifetime checks
+
+In `warm_metadata_never_substitutes_for_actual_final_account_sources`, the borrowed peer data and actual target-response checks now end in a lexical block at the original explicit-drop point. HTTP body selection, status, exact role/mode/metadata/financial fault assertions, cache/fill/write checks, and normal stop remain. There is no await inside that scope. The formatting braces around the panic closure and foreign-position match arm change no predicate; v6's sole added assert semicolon preserves that arm's unit value.
+
+In `qualified_normal_postbinding_recovery_retains_actual_original_eight_sources`, the guard and borrowed clear-source vector now drop together at the same boundary before current-source checks and normal stop. Exact eight-source correlation, original verification times, and all no-projection checks remain. No await occurs inside the scope. No TTL, quota, deadline, body/group/Facts cap, stimulus, test count, or expected result changed. The declared 37 new and 64 existing scenarios remain source criteria, not independent runtime passes.
+
+## Actual lint evidence and prior execution boundary
+
+The root's archived v4 lint run failed with 12 diagnostic errors: the two new lock warnings and ten other diagnostics. The root's v5 run also failed: it removed both new lock warnings but introduced the foreign-position semicolon diagnostic, leaving 11 diagnostic errors. Compiler terminal summaries are excluded from these counts. The ten other diagnostic locations are in unchanged inputs; their baseline lineage is parent-supplied, not independently established with Git or Cargo here. This report does **not** claim v5 inclusive Clippy passed, nor claim a v6 Clippy result.
+
+The earlier actual v4 quota evidence review remains separately bound to its original captured bytes and timestamps (2026-10-09T12:28:17.245698+00:00 through 2026-10-09T12:28:17.251711+00:00). It was a read-only review of the root's successful actual probe, not reviewer execution, and is not relabeled as a v6 run.
+
+## Limits
+
+This approval covers source semantics of the two lexical scopes and sole semicolon. Full production authority was reviewed separately. No actual lock-wait/fsync/metadata-expiry crossing, full regression, installed-wheel acceptance, paired liveness, continuous remote mode, generic cold recovery, or mainnet claim follows from this review. Exact deltas and all before/after SHA256 values are retained in the companion JSON and diff files.
+'''
+out = ROOT / f'{LABEL}.md'
+assert not out.exists()
+out.write_text(md, encoding='utf-8', newline='\n')
+print(json.dumps({'report': str(out), 'report_sha256': sha(out), 'current41_match': current_matches, 'changed_v4_v6': changes['v4_to_v6'], 'v6_test_sha256': {k: records[6][k]['sha256'] for k in changes['v4_to_v6']}, 'captured_inputs': len(inputs), 'tests': 0}))

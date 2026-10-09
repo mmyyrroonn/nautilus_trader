@@ -1,0 +1,101 @@
+import datetime
+import difflib
+import hashlib
+import json
+import re
+from pathlib import Path
+
+root=Path('E:/persarb/_tmp/entropy117-validation')
+label='reviewer-native117-economic-gap-formatted-v7-review-v1'
+load=lambda p:json.loads(p.read_text(encoding='utf-8-sig'))
+sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+now=lambda:datetime.datetime.now(datetime.timezone.utc).isoformat()
+started=now()
+manifest=root/'native117-formatted-v7.json'
+m=load(manifest)
+red_manifest=root/'native117-gap-test-v2-formatted.json'
+red=load(red_manifest)
+inputs=[manifest,red_manifest,Path(__file__),root/'native117-economic-gap-correction-contract-v2.md',
+        root/'native117-economic-gap-fix-source-v1.md',root/'native117-economic-gap-fix-source-v1.json',
+        root/'native117-economic-gap-fix-source-v1-before.rs',root/'native117-economic-gap-fix-source-v1-after.rs',
+        root/'reviewer-native117-gap-tests-v2-source-review-v2.md',root/'reviewer-native117-gap-tests-v2-source-review-v2.json']
+changed=[]
+by_key={}
+for group,count in [('native',33),('app',10)]:
+    assert len(m[group]['files'])==len(red[group]['files'])==count
+    old={Path(r['path']).relative_to(Path(red[group]['root'])).as_posix():r for r in red[group]['files']}
+    for row in m[group]['files']:
+        rel=Path(row['path']).relative_to(Path(m[group]['root'])).as_posix()
+        p=Path(row['path']); copied=Path(m['snapshot_directory'])/group/rel
+        assert sha(copied)==sha(p)==row['sha256'] and p.stat().st_size==row['size']
+        inputs += [p,copied]
+        key=group+'/'+rel; by_key[key]=row
+        if old[rel]['sha256']!=row['sha256']:changed.append(key)
+assert changed==['native/crates/adapters/hyperliquid/src/economics_scope.rs']
+for stem in ['native117-gap-unit-green-v7','native117-gap-normal-callback-green-v7']:
+    inputs += [root/(stem+'.json'),root/(stem+'.log')]
+inputs=list(dict.fromkeys(inputs))
+before=[{'path':str(p),'sha256':sha(p)} for p in inputs]
+relative='crates/adapters/hyperliquid/src/economics_scope.rs'
+old_p=root/'native117-economic-gap-fix-source-v1-before.rs'
+new_p=Path(m['snapshot_directory'])/'native'/relative
+oldtext,newtext=old_p.read_text(encoding='utf-8'),new_p.read_text(encoding='utf-8')
+start='    pub(crate) fn record_unrequested_history('
+end='    pub(crate) fn diagnostics('
+a,at=oldtext.split(start,1); aa,az=at.split(end,1)
+b,bt=newtext.split(start,1); bb,bz=bt.split(end,1)
+assert a==b and az==bz
+diff=root/(label+'.diff.txt');assert not diff.exists()
+diff.write_text(''.join(difflib.unified_diff(oldtext.splitlines(keepends=True),newtext.splitlines(keepends=True),fromfile='unchanged567',tofile='formatted-v7')),encoding='utf-8')
+green=[]
+for stem in ['native117-gap-unit-green-v7','native117-gap-normal-callback-green-v7']:
+    command_path=root/(stem+'.json');log_path=root/(stem+'.log');command=load(command_path)
+    assert command['exit_code']==0 and command['finished_utc']
+    inputs += [command_path,log_path]
+    rows=[list(map(int,r)) for r in re.findall(r'test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored; (\d+) measured; (\d+) filtered out',log_path.read_text(encoding='utf-8'))]
+    assert len(rows)==1
+    green.append({'receipt_path':str(command_path),'log_path':str(log_path),'command':command,'counts':rows[0]})
+assert green[0]['counts'][:3]==[10,0,0] and green[1]['counts'][:3]==[1,0,0]
+inputs=list(dict.fromkeys(inputs))
+# All detailed source checks above are independently retained by exact diff and frozen snapshots.
+after=[{'path':str(p),'sha256':sha(p)} for p in inputs]
+assert before==after
+data={'started_utc':started,'finished_utc':now(),'manifest':str(manifest),'manifest_sha256':sha(manifest),
+      'reviewer_tests':0,'cargo_git_native_imports':0,'before':before,'after':after,'unchanged':True,
+      'current_and_frozen_43_match':True,'changed_inputs_from_red':changed,'outside_function_prefix_suffix_identical':True,
+      'producer_sha256':sha(new_p),'unit_sha256':by_key['native/crates/adapters/hyperliquid/src/economics_scope/tests.rs']['sha256'],
+      'io_sha256':by_key['native/crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs']['sha256'],
+      'root_closed_green_evidence':green,
+      'verdict':'Narrow source correction approved; no blocker in append-only producer, existing taint/cap/time/caller/store boundaries.',
+      'limits':['Root green counts are not reviewer executions or distinct counts added to broader reruns.',
+                'No full regression, lint/stub/wheel/installed paired acceptance here.',
+                'No generic cold restore, whole-history economics or real-venue/kernel claim.']}
+out=root/(label+'.json');assert not out.exists();out.write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')
+md=f'''# Native117 formatted v7 economic demand producer: independent review
+
+**Narrow source correction approved; no blocker found in the assigned scope.** Source `economics_scope.rs` SHA `{data['producer_sha256']}`; manifest `{manifest.name}` SHA `{data['manifest_sha256']}`. Review procedure {started} through {data['finished_utc']}. All 33 native and ten app inputs and frozen copies agree and remain unchanged. Tests executed by reviewer: **0**; no Cargo/Git/native imports/production edits. Candidate source is the staged correction after historical clean567, not a newly accepted installed wheel.
+
+## Exact scope
+
+Only the producer file differs from the historical RED-before 43-input capture. Both test files are the already reviewed frozen versions: unit `{data['unit_sha256']}`, io `{data['io_sha256']}`. Exact text before and after `record_unrequested_history` is byte-equivalent after newline decoding, while the saved full diff isolates every changed line. Normal client worker/callback, account/prerequisite source qualification, metadata and source clocks, quotas/TTLs/deadlines, economic store and other production remain unchanged. The manifest captures actual whole-file hashes; no Git command was needed for this source comparison.
+
+## Authority and immutable coverage
+
+The producer still clips end with checked original policy start plus window and actual caller now. It checks economic taint before no-op. For each exact generation/epoch/endpoint, the frontier uses maximum prior COMPLETE end or an exact warm-demand diagnostic with incomplete/zero pages/zero records. Merely matching prefix, other Unknown/stream-gap records and nonzero-page/record entries cannot extend it. Different endpoint/generation/epoch cannot lend authority. These records are demand boundaries, not proofs of continuous complete history or new financial requests.
+
+All existing coverage remains untouched. A later boundary appends an Unknown tail; no iter_mut replacement or compaction remains. More recent COMPLETE rows may select a later frontier without erasing older Unknown or COMPLETE rows. Every new row remains zero-page/zero-record/incomplete and uses the original diagnostic. Existing raw observation/TID/fee/envelope/receipt fields are untouched. A same/earlier represented boundary makes no append, then returns before commit, so there is no revision advance, fsync or checkpoint rewrite; already-tainted state cannot reach that return.
+
+## Transaction and finite failure behavior
+
+Both endpoint additions are staged in one local checkpoint clone. First append cannot become durable before the second is checked. At one remaining slot, a second required append fails before the sole commit, preserving the original durable checkpoint. At full capacity a healthy true no-op bypasses no required append; a later unrepresented demand is refused. If only one endpoint genuinely needs an addition, one available slot can correctly suffice; atomicity means all required additions or none. Original row cap and normal store checkpoint-byte cap stay intact. Store still enforces previous coverage as an exact prefix and immutable financial/source/receipt facts. Any actual commit validation or I/O error retains existing store taint/error behavior; no debt/taint clearing or generic restart adoption was introduced.
+
+The source change fixes the producer/store mismatch observed in the earlier separate unchanged567 RED. Source-level approval does not imply arbitrary duration liveness: existing count/byte caps can still refuse later warm demands. Post-lock/copy/fsync timing and financial writer checks outside this method retain their existing contracts; this edit does not newly prove them.
+
+## Closed root verification evidence, not reviewer tests
+
+Read-only parsing of the now completed root records observes unit GREEN 10 passed/0 failed at {green[0]['command']['started_utc']}–{green[0]['command']['finished_utc']}, and normal callback GREEN 1 passed/0 failed at {green[1]['command']['started_utc']}–{green[1]['command']['finished_utc']}. Both recorded exit 0. Their actual argv/log hashes and counts are in the JSON. These are root executions; no copied binary was run here. The original RED 4P/6F and normal 0P/1F, plus the first installed failed paired, remain preserved and must not be replaced or counted as new distinct successes.
+
+Full unfiltered native regression, production/test lint outcomes, official stubs, a newly source-bound wheel and strict installs, and fresh actual paired/seven-scenario acceptance remain separate. This report grants narrow producer source approval, not application43/E6, installed artifact, whole economics/history, generic cold restore, kernel isolation or mainnet acceptance.
+'''
+out=root/(label+'.md');assert not out.exists();out.write_text(md,encoding='utf-8')
+print(json.dumps({'report':str(out),'report_sha256':sha(out),'producer_sha256':sha(new_p),'manifest_sha256':sha(manifest),'inputs':len(inputs),'tests':0,'root_closed_green':[(x['counts'][0],x['counts'][1]) for x in green]}))

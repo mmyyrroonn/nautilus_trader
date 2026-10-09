@@ -1,0 +1,63 @@
+# Native117 corrected first installed paired: producer artifact review
+
+The corrected first installed paired run passed: one test in 4.81 seconds, root UTC 2026-10-09 13:42:18.980560–13:42:24.022478. This is a review of that closed run, not a new execution or a seven-scenario result. I authored the prerequisite/gap producer changes; this artifact review does not replace the separate independent source review performed by the native reviewer.
+
+Candidate: clean implementation `b07a7e6e6bfc7613aa12c77cdee1110e25790ca1`; wheel SHA256 `5187319f1754e37069904ce678f8526ddc47a8bc4d077209a95f97fe0205057a`. Original raw directory is `E:/persarb/_tmp/app43-native117-corrected-first-paired-20261009/paired`. The failed567/4748 cohort and its report remain preserved separately.
+
+## Actual orders, projections and transient cleanup
+
+| Leg and action | Native callback UTC | Exact venue order/trade | Quantity and fee |
+|---|---|---|---|
+| Hyperliquid entry, buy | 13:42:21.761328100 | 70001 / `io:io:SNDK:70001:60001` | 0.1200; 0.00100000 USDC |
+| Aster hedge, sell | 13:42:22.069339400 | 80001 / 90000 | 0.12; 0.00100000 USD1 |
+| Hyperliquid reduce-only close, sell | 13:42:22.284483900 | 70002 / `io:io:SNDK:70002:60002` | 0.1200; 0.00100000 USDC |
+| Aster reduce-only close, buy | 13:42:22.477386400 | 80002 / 90001 | 0.12; 0.00100000 USD1 |
+
+Each fill has an exact owned CID, OID, typed native fill event reference, and ordinary cache attribution event. Both native Hyperliquid intents end `terminal`, filled 0.12, reservation zero, with normal signed action bindings retained. Controller orders all end FILLED and non-Unknown: two entries and two cleanup orders, six bounded actions including the cleanup cancel attempts. Final controller state is Completed; positions, gross reservation and unhedged reservation are zero. Loss estimate is 0.00640000.
+
+The initial Aster refresh still transiently degraded cleanup admission. At 13:42:22.118853800, immediately after the Aster query, the Hyperliquid cleanup was prepared with `cleanup_not_currently_proven_or_budget_exhausted` and StoppedUnknown. A following controller step moved to Closing; the final Completed state retains this historical reason. It must not be rewritten as a smooth uninterrupted path. Child stderr also retains the genuine 13:42:22.121909200 native error `io cancel scope/remaining order facts are incomplete`. There was no Hyperliquid venue cancel; the peer records two Hyperliquid actions and three Aster actions. These facts did not prevent the real fills and subsequent current flat proofs.
+
+Both ordinary Cache positions are FLAT and Portfolio net quantities zero. Current projection witnesses, rather than stale entry witnesses, explicitly verify signed quantity zero and two actual owned fills per leg at 13:42:22.710318200. Hyperliquid witness refers to its fresh financial receipt at 13:42:22.421; Aster witness refers to generation17 receipt at 13:42:22.624729700, ready/trusted/live, explicit zero selected position, no open orders. Whole-account and durable cold-cache recovery remain Unknown.
+
+## Actual original source reuse and clocks
+
+Original generation1/epoch0 prerequisite: captured sequence6, hard revision1, verification start `1791553341356`, finish `1791553341362`, absolute expiry `1791553343356` (13:42:23.356). Its full original eight-source group and received raw text remain in the recorded native getter. Both financial recoveries retain this exact old source/expiry; no source clock was renewed.
+
+Entry query occurred at 13:42:21.816533000 after its actual fill. The first completed warm scope was observed at 13:42:21.911655200: trusted/Ready, query_completed1, warm/reused true, new clearinghouse source and receipt `1791553341828`.
+
+Close query occurred at 13:42:22.414826300 after its actual fill. The completed close warm scope was observed at 13:42:22.478889500: trusted/Ready, query_completed2, warm/reused true, generation1/epoch0, applied sequence13, metadata origin retained, new clearinghouse source `1791553342420` and receipt `1791553342421`. Both owned reservations were zero. This completion precedes original expiry by about 877 ms; neither the old account start nor the metadata age was replaced with the new financial time. Recorded recovery debt is null, journal taint false, and native projection recovery requirement false.
+
+## Economic append-only correction actually observed
+
+The summary now contains a fresh successful native economic receipt at checkpoint revision12, source_seq4, tainted=false, no economic_error, and the second warm boundary. This is different evidence from the previous failed run's stale revision11 receipt. Its six coverage rows are:
+
+| Both endpoints: userFunding / userNonFundingLedgerUpdates | Start ms | End ms | Meaning |
+|---|---:|---:|---|
+| Original requested interval | 1791553339783 | 1791553341363 | One page each, zero records, COMPLETE finite interval |
+| First warm boundary | 1791553341363 | 1791553341830 | Zero pages/records, Unknown |
+| Post-close appended tail | 1791553341830 | 1791553342424 | Zero pages/records, Unknown |
+
+The original COMPLETE pair and first Unknown pair remain intact while the second pair forms a disjoint appended tail. The second tail's actual normal callback boundary 13:42:22.424 differs from the financial source/receipt 22.420/22.421 and the observed scope event 22.478889500. These are distinct source, receipt, demand and observation clocks, not interchangeable timestamps.
+
+Native economics retains two immutable fee receipts, four consumed raw observations, no unknown observations and actual fee total 0.002 USDC. Exact receipt keys remain `0x22152e6f71e4594f86b6e9a7a46918460468c1b4c2c35b18cee40eaa58a40af7` and `0x6fa84a855cac4c06cbc87fbca705e8b0d252236e460433f2c2a5fbf5b97e871c`. No duplicate fee reapplication occurred. At normal stream shutdown, the durable economic checkpoint reaches revision14 with two additional stream-ended Unknown rows ending `1791553342929`. They do not replace the successful revision12 receipt or claim financial history completeness.
+
+Current ownership/projection and fill-fee identity flags are true. Economic history, Aster actual funding, run attribution, whole-account flatness, complete economics and durable cold restoration remain Unknown. The passed finite paired test does not upgrade those claims.
+
+## Peer, shutdown and review boundaries
+
+Actual peers recorded Hyperliquid 63 HTTP requests, two actions/two fills, final position0, and Aster 48 requests, three actions/two fills, final position0; all responses were 200 and peer error arrays empty. Hyperliquid request groups47–50 and57–62 are the actual entry/close warm open/fills/status/clearinghouse reads; close also performs two flat activeAssetData counterproofs. No extra role/mode/meta/spot group is hidden inside either warm query. Finite economics funding and ledger HTTP each occurred once at startup; Unknown tails are not new source requests. Internal quota/bucket balances are not recorded and no measured quota claim is made.
+
+Summary has started/stopped/shutdown_verified true, watchdog false, failure null. Root's passing test executes the unchanged post-context assertion that both peers' active native sessions are empty. There is no independent OS socket inventory in this artifact review. Host kernel egress isolation remains false; only normal numeric-loopback synthetic peers were used. No real venue trading or new mainnet authorization is claimed.
+
+This author performed two stdlib-only evidence parses (the second added the actual `native_economic_receipt` key rather than the absent earlier key), no tests/native imports/Cargo/Git/GitHub or production edits. Seventeen closed raw/source identities were sampled before and after each parse and matched. Root's pre/post source32 + installed24 + artifacts2 identities match exactly. The remaining six modes were not inspected while their root run was active. Broad App43 source-only watchpoints remain distinct and unchanged.
+
+## Exact evidence hashes
+
+- Derived JSON `producer-review-native117-corrected-first-paired-v1.json`: `d313f6ed6376ffae5778c383e3fbcf4c413d292998b0930e51f65cb582418984` (contains complete before/after17 identity arrays).
+- Evidence parser `inspect-native117-corrected-first-paired-v1.py`: `09ad79c4ab0e6cb7944a1b4f3bf3fd0c840aefcfae05cb879ea01e73d7b41b36`.
+- Root before58 manifest: `1612fca5cd13e0eb83118fa1df27a6b5f5a29ce1ca86311a0ba85588551f8181`.
+- Root after58 manifest: `708a6cfcfd334e4c1bb3b0018e6948e9761ad8e8b7d89377f3ffb50ffb69f4a0`.
+- Root first paired command/result JSON: `59d6ec5428e81b32b9d222e7b0aed8f0f54e6d7d87888ac52acbef42f3470607`.
+- Corrected production economics source: `a7c2d11299417c3f3cd82c485d5f834401e6cb65baffb4f89e8af8e34687a03e`; normal callback and store invariant source hashes remain identical to the failed567 cohort.
+
+Review is frozen; no sources, prior reports or original journals were overwritten.

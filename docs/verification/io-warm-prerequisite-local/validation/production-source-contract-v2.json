@@ -1,0 +1,42 @@
+﻿{
+    "schema_version":  1,
+    "revision":  2,
+    "issue":  117,
+    "utc":  "2026-10-09 11:42:06 UTC",
+    "author":  "/root/entropy_app_runtime",
+    "source":  [
+                   {
+                       "path":  "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\account_scope.rs",
+                       "snapshot":  "E:\\persarb\\_tmp\\entropy117-validation\\production-source-v2-frozen\\account_scope.rs",
+                       "bytes":  83284,
+                       "sha256":  "b9a04afc4cafcf4c781133eecb97457d594da8dc8fa4fb34e5a6c2d08fcbe92a"
+                   },
+                   {
+                       "path":  "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+                       "snapshot":  "E:\\persarb\\_tmp\\entropy117-validation\\production-source-v2-frozen\\execution_scope.rs",
+                       "bytes":  191965,
+                       "sha256":  "31801cf59b1641a7a96eef9b1dcd5a9edbbf60bf6e6f82553e23d1ade4c00b88"
+                   }
+               ],
+    "previous":  "production-source-contract-v1.json",
+    "reason":  "Root static review found final heavy validation could exceed original deadline after outer check",
+    "changes":  [
+                    "Private scalar freshness helper preserves existing predicates",
+                    "Original full validation samples freshness again after all financial/position comparisons",
+                    "Actual original query deadline passed at sole internal commit call",
+                    "Post-validation/post-checked timestamp final deadline and scalar source/private freshness fence before mutation and AccountState"
+                ],
+    "unchanged":  [
+                      "All v1 provenance/eligibility semantics",
+                      "Original account2s recovery3s quota and byte bounds",
+                      "Existing financial comparisons and failure reserve restoration",
+                      "No public API or test hook"
+                  ],
+    "checks":  {
+                   "static_callsite_count":  1,
+                   "cargo":  0,
+                   "format":  0,
+                   "tests":  0,
+                   "exact_lock_or_fsync_deadline_crossing":  "Not observed"
+               }
+}

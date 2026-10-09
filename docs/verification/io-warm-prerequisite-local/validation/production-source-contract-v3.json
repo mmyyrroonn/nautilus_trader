@@ -1,0 +1,44 @@
+﻿{
+    "schema_version":  1,
+    "issue":  117,
+    "revision":  3,
+    "utc":  "2026-10-09 12:05:51 UTC",
+    "source":  [
+                   {
+                       "path":  "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\account_scope.rs",
+                       "snapshot":  "E:\\persarb\\_tmp\\entropy117-validation\\production-source-v3-frozen\\account_scope.rs",
+                       "bytes":  84490,
+                       "sha256":  "1ff6b1d2ea0050b2b31f0a053682b109b2fa0eb7ae94c9509afdb6b7ef4e5230"
+                   },
+                   {
+                       "path":  "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+                       "snapshot":  "E:\\persarb\\_tmp\\entropy117-validation\\production-source-v3-frozen\\execution_scope.rs",
+                       "bytes":  193772,
+                       "sha256":  "6239145bec9e54135bc0e240950b349fd3b49b7d855752629fbbf0460833e6c0"
+                   }
+               ],
+    "before":  [
+                   {
+                       "path":  "E:\\persarb\\_tmp\\entropy117-validation\\production-source-v3-before\\account_scope.rs",
+                       "sha256":  "5380d902310c477418335e941f9962061fe86f1fffacafc858f990409557fca5"
+                   },
+                   {
+                       "path":  "E:\\persarb\\_tmp\\entropy117-validation\\production-source-v3-before\\execution_scope.rs",
+                       "sha256":  "b5b8ba952f432750c0d3d711eaa1b5818a959b922e92787ff372e7bbe4c2c18f"
+                   }
+               ],
+    "reason":  "Independent review found original metadata TTL was not checked after final financial comparison",
+    "immutable_expiry":  "min over captured selected metadata(received_ms + existing metadata_max_age_ms, verification_started_ms + existing metadata_max_age_ms), checked addition",
+    "admission":  "Existing normal selected/native pair completeness and freshness plus explicit nonempty/future/overflow refusal",
+    "publication":  "No-allocation scalar wallclock \u003c= captured metadata expiry, original monotonic query deadline, existing account/private ages, after fallible validation/timestamp conversion and before mutate/emit",
+    "caps_changed":  false,
+    "public_api_changed":  false,
+    "checks":  {
+                   "cargo":  0,
+                   "format":  0,
+                   "tests":  0,
+                   "internal_commit_callsite_count":  1,
+                   "exact_heavy_comparison_ttl_crossing":  "Not executed"
+               },
+    "prior_focused_result":  "Root ran frozen formatted v2: 36 PASS, 1 FAIL; root independently identified fixture HTTP timeout ordering, logs preserved. Not a v3 result."
+}

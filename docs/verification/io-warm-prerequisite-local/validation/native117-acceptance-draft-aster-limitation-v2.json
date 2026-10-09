@@ -1,0 +1,12 @@
+{
+  "created_utc": "2026-10-09T14:10:00.852959+00:00",
+  "original_sha256": "e36947dc852fb7ec460b53beb354ebc980d5868af5fed5a17629b3ded1ac2c61",
+  "corrected_sha256": "eacb536bfe0ce9df3947f522c0ad8ede4ccc28f3b7f78ff7c66f8dc52a203f62",
+  "source": "E:/persarb/_tmp/entropy117-validation/io-warm-prerequisite-acceptance-draft-v1.md",
+  "target": "E:/persarb/_tmp/entropy117-validation/io-warm-prerequisite-acceptance-draft-v2.md",
+  "source_lines": "tests/entropy_execution_peer.py:330-338,495-565",
+  "raw_cohort": "app43-native117-corrected-first-paired-20261009/paired",
+  "reason": "Observed synthetic cancellation followed by delayed execution is a remaining App43 fixture limitation; passing current assertions does not certify cancellation chronology.",
+  "source_changes": 0,
+  "tests_executed": 0
+}

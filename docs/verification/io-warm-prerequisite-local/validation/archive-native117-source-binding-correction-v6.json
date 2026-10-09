@@ -1,0 +1,21 @@
+{
+  "created_utc": "2026-10-09T14:22:26.465893+00:00",
+  "prior_helper_sha256": "1ad8ec5c536b1fad8ad897db097a178bdbcc29679d4f334793623aeee73105e9",
+  "new_helper_sha256": "a5668e50628d709fe64ad1953806090a97087e782470bf57288732a5fdf24673",
+  "note_sha256": "9657ea87fd5de28ce3ae655e2dc3edb5ef3f7bfa28f5202787a9f6a46974ad9f",
+  "preserved_failure": [
+    {
+      "original": "E:/persarb/_tmp/entropy117-validation/native117-archive-command-v5.json",
+      "copy": "E:/persarb/_tmp/entropy117-validation/native117-preserved-archive-v5-failure.json",
+      "sha256": "f42c65e912a5431b2a9553e92debaf04d493515d8b7b1af2cfaba4292669e66e"
+    },
+    {
+      "original": "E:/persarb/_tmp/entropy117-validation/native117-archive-command-v5.log",
+      "copy": "E:/persarb/_tmp/entropy117-validation/native117-preserved-archive-v5-failure.log",
+      "sha256": "515925a062e6de26b793f9f2c5aa0b12e9a3977d3d4ba2348b9479fdd53de52f"
+    }
+  ],
+  "no_archive_created_after_v5": true,
+  "tests_executed": 0,
+  "helper_executions_in_preparation": 0
+}

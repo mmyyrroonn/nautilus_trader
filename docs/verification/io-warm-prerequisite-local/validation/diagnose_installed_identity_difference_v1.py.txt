@@ -1,0 +1,20 @@
+"""Locate the exact closed installed/provenance schema differences."""
+import hashlib
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+root = Path(__file__).resolve().parent
+provenance_path = Path("E:/persarb/_tmp/entropy117-corrected-wheel-nextest-20261009/native-provenance.json")
+expected = json.loads(provenance_path.read_text(encoding="utf-8"))
+results = []
+for name in ("native", "app"):
+    path = root / f"native117-corrected-{name}-installed-identity-v1.json"
+    identity = json.loads(path.read_text(encoding="utf-8"))
+    actual = identity["native_provenance"]
+    differences = [{"field": key, "installed_value": actual.get(key), "build_value": expected.get(key)} for key in sorted(set(actual) | set(expected)) if actual.get(key) != expected.get(key)]
+    results.append({"name": name, "strict_source_binding_passed": identity["strict_source_binding_passed"], "wheel": identity["wheel"], "installed_module": identity["installed"]["native_module_sha256"], "native_provenance_differences": differences, "identity_sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
+output = root / "native117-installed-identity-schema-difference-v1.json"
+assert not output.exists()
+output.write_text(json.dumps({"created_utc": datetime.now(timezone.utc).isoformat(), "actual_identities": results, "provenance_sha256": hashlib.sha256(provenance_path.read_bytes()).hexdigest(), "tests_executed": 0}, indent=2) + "\n", encoding="utf-8")
+print(output.read_text(encoding="utf-8"))

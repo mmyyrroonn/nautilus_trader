@@ -1,0 +1,124 @@
+--- v4/native/crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs
++++ v6/native/crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs
+@@ -1132,31 +1132,36 @@
+         "metadata" => "meta",
+         _ => "clearinghouseState",
+     };
+-    let data = harness.peer.state.data.lock();
+-    let actual = data
+-        .http_observations
+-        .iter()
+-        .skip(responses_before)
+-        .find(|row| row["request"]["type"] == endpoint)
+-        .unwrap_or_else(|| panic!("bad target body was not actually received: {fault}: {result}"));
+-    assert_eq!(actual["status"], 200);
+-    let body: Value = serde_json::from_str(actual["raw_body"].as_str().unwrap()).unwrap();
+-    match fault {
+-        "mode" => assert_eq!(body, json!("unifiedAccount")),
+-        "role" => assert_eq!(body, json!({"role":"agent"})),
+-        "metadata" => assert_eq!(body, *data.meta_override.as_ref().unwrap()),
+-        "missing_positions" => assert!(body.get("assetPositions").is_none()),
+-        "missing_time" => assert!(body.get("time").is_none()),
+-        "foreign_position" => assert_eq!(body["assetPositions"][0]["position"]["coin"], "io:OTHER"),
+-        "token" => assert!(
+-            actual["raw_body"]
+-                .as_str()
+-                .unwrap()
+-                .contains("0x00000000000000000000000000000000")
+-        ),
+-        _ => unreachable!(),
+-    }
+-    drop(data);
++    {
++        let data = harness.peer.state.data.lock();
++        let actual = data
++            .http_observations
++            .iter()
++            .skip(responses_before)
++            .find(|row| row["request"]["type"] == endpoint)
++            .unwrap_or_else(|| {
++                panic!("bad target body was not actually received: {fault}: {result}")
++            });
++        assert_eq!(actual["status"], 200);
++        let body: Value = serde_json::from_str(actual["raw_body"].as_str().unwrap()).unwrap();
++        match fault {
++            "mode" => assert_eq!(body, json!("unifiedAccount")),
++            "role" => assert_eq!(body, json!({"role":"agent"})),
++            "metadata" => assert_eq!(body, *data.meta_override.as_ref().unwrap()),
++            "missing_positions" => assert!(body.get("assetPositions").is_none()),
++            "missing_time" => assert!(body.get("time").is_none()),
++            "foreign_position" => {
++                assert_eq!(body["assetPositions"][0]["position"]["coin"], "io:OTHER");
++            }
++            "token" => assert!(
++                actual["raw_body"]
++                    .as_str()
++                    .unwrap()
++                    .contains("0x00000000000000000000000000000000")
++            ),
++            _ => unreachable!(),
++        }
++    }
+     assert_eq!(harness.fill_events, 0);
+     assert!(
+         harness
+--- v4/native/crates/adapters/hyperliquid/tests/entropy_account/warm_prerequisite.rs
++++ v6/native/crates/adapters/hyperliquid/tests/entropy_account/warm_prerequisite.rs
+@@ -465,34 +465,35 @@
+     let source = prerequisite(&harness);
+     let rows = source["sources"]["original_sources"].as_array().unwrap();
+     assert_eq!(rows.len(), 8);
+-    let data = harness.peer.state.data.lock();
+-    let clears: Vec<_> = data
+-        .http_observations
+-        .iter()
+-        .filter(|row| {
+-            row["request"]["type"] == "clearinghouseState" && row["request"]["dex"] == "io"
+-        })
+-        .collect();
+-    assert!(
+-        clears.len() >= 2,
+-        "normal connect must include its early prebinding and recovery transactions"
+-    );
+-    let retained_clear = rows
++    {
++        let data = harness.peer.state.data.lock();
++        let clears: Vec<_> = data
++            .http_observations
++            .iter()
++            .filter(|row| {
++                row["request"]["type"] == "clearinghouseState" && row["request"]["dex"] == "io"
++            })
++            .collect();
++        assert!(
++            clears.len() >= 2,
++            "normal connect must include its early prebinding and recovery transactions"
++        );
++        let retained_clear = rows
+         .iter()
+         .find(|row| {
+             serde_json::from_str::<Value>(row["request_json"].as_str().unwrap()).unwrap()["type"]
+                 == "clearinghouseState"
+         })
+         .unwrap();
+-    assert_eq!(
+-        retained_clear["raw_text"],
+-        clears.last().unwrap()["raw_body"]
+-    );
+-    assert!(
+-        source["verification_started_ms"].as_u64().unwrap()
+-            >= clears[0]["completed_ms"].as_u64().unwrap()
+-    );
+-    drop(data);
++        assert_eq!(
++            retained_clear["raw_text"],
++            clears.last().unwrap()["raw_body"]
++        );
++        assert!(
++            source["verification_started_ms"].as_u64().unwrap()
++                >= clears[0]["completed_ms"].as_u64().unwrap()
++        );
++    }
+     assert_current(&harness.scope());
+     assert_no_financial_projection(&harness);
+     harness.stop().await;

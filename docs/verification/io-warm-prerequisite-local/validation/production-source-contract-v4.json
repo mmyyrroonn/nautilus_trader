@@ -1,0 +1,45 @@
+﻿{
+    "schema_version":  1,
+    "issue":  117,
+    "revision":  4,
+    "utc":  "2026-10-09 12:17:08 UTC",
+    "source":  [
+                   {
+                       "path":  "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\account_scope.rs",
+                       "snapshot":  "E:\\persarb\\_tmp\\entropy117-validation\\production-source-v4-frozen\\account_scope.rs",
+                       "bytes":  84490,
+                       "sha256":  "1ff6b1d2ea0050b2b31f0a053682b109b2fa0eb7ae94c9509afdb6b7ef4e5230"
+                   },
+                   {
+                       "path":  "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+                       "snapshot":  "E:\\persarb\\_tmp\\entropy117-validation\\production-source-v4-frozen\\execution_scope.rs",
+                       "bytes":  194007,
+                       "sha256":  "05963a5c4d221b476cae64260cf956898105acbafbde8ce117b1e659f000be50"
+                   }
+               ],
+    "before":  [
+                   {
+                       "path":  "E:\\persarb\\_tmp\\entropy117-validation\\production-source-v4-before\\account_scope.rs",
+                       "sha256":  "1ff6b1d2ea0050b2b31f0a053682b109b2fa0eb7ae94c9509afdb6b7ef4e5230"
+                   },
+                   {
+                       "path":  "E:\\persarb\\_tmp\\entropy117-validation\\production-source-v4-before\\execution_scope.rs",
+                       "sha256":  "57df3fa269f02a16c900b38894bdc3fd2de4a4528c22e954afbeccb53c5da19d"
+                   }
+               ],
+    "reason":  "Actual root production Clippy v3 failed needless_pass_by_value on retain_warm_source_debt",
+    "actual_log":  "E:/persarb/_tmp/entropy117-validation/native117-production-clippy-v3.log",
+    "actual_log_sha256":  "9b384c38a24c5066bc0b70884a5a217a3cb8b8db3cda0d14f0f6e722463375de",
+    "change":  "Borrow Option\u003c\u0026Arc\u003cWarmPrerequisiteSourceSeal\u003e\u003e through Drop -\u003e abandon -\u003e retain, clone only into durable UnknownSources; use same borrowed original for bounded RetentionFailed origin",
+    "account_scope_changed":  false,
+    "behavior_changed":  false,
+    "tests_changed":  false,
+    "checks":  {
+                   "cargo":  0,
+                   "clippy":  0,
+                   "format":  0,
+                   "tests":  0,
+                   "static_retain_caller_count":  1,
+                   "static_abandon_caller_count":  1
+               }
+}

@@ -1,0 +1,68 @@
+import hashlib,json,difflib
+from datetime import datetime,timezone
+from pathlib import Path
+R=Path('E:/persarb/_tmp/entropy117-validation');S='reviewer-native117-archive-helper-v6-reference-review-v1'
+def load(p):return json.loads(Path(p).read_text(encoding='utf-8-sig'))
+def ident(p):
+    p=Path(p);b=p.read_bytes();return {'path':str(p),'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest()}
+def utc():return datetime.now(timezone.utc).isoformat()
+V=Path('E:/persarb/worktrees/entropy-execution-app/scripts/verify_native_install.py')
+first=Path('E:/persarb/_tmp/entropy117-wheel-nextest-20261009');current=Path('E:/persarb/_tmp/entropy117-corrected-wheel-nextest-20261009')
+case_paths=[Path('E:/persarb/_tmp/app43-native117-first-paired-20261009/paired/manifest.json'),Path('E:/persarb/_tmp/app43-native117-corrected-first-paired-20261009/paired/manifest.json')]+[Path('E:/persarb/_tmp/app43-native117-corrected-remaining-scenarios-20261009')/m/'manifest.json' for m in ['reject','partial','unknown','cleanup_failure','foreign','loss_fee']]
+install_paths=[R/f'native117-corrected-{n}-installed-identity-v1.json' for n in ['native','app']]
+paths=[R/'archive_native117_v5.py',R/'archive_native117_v6.py',R/'archive-native117-source-binding-correction-v6.md',R/'archive-native117-source-binding-correction-v6.json',R/'native117-installed-identity-schema-difference-v1.json',R/'native117-archive-command-v5.json',R/'native117-archive-command-v5.log',R/'native117-preserved-archive-v5-failure.json',R/'native117-preserved-archive-v5-failure.log',R/'reviewer-native117-archive-helper-v5-schema-review-v1.md',V,first/'native-provenance.json',current/'native-provenance.json',Path(__file__),*case_paths,*install_paths]
+started=utc();before=[ident(p) for p in paths]
+(R/f'{S}-before.json').write_text(json.dumps({'captured_utc':utc(),'inputs':before},indent=2),encoding='utf-8')
+assert ident(R/'archive_native117_v5.py')['sha256']=='1ad8ec5c536b1fad8ad897db097a178bdbcc29679d4f334793623aeee73105e9'
+assert ident(R/'archive_native117_v6.py')['sha256']=='a5668e50628d709fe64ad1953806090a97087e782470bf57288732a5fdf24673'
+assert ident(R/'archive-native117-source-binding-correction-v6.md')['sha256']=='9657ea87fd5de28ce3ae655e2dc3edb5ef3f7bfa28f5202787a9f6a46974ad9f'
+failure=load(R/'native117-archive-command-v5.json');assert failure['exit_code']==1
+assert 'Corrected native installed identity differs' in (R/'native117-archive-command-v5.log').read_text()
+assert ident(R/'native117-archive-command-v5.json')['sha256']==ident(R/'native117-preserved-archive-v5-failure.json')['sha256']
+assert ident(R/'native117-archive-command-v5.log')['sha256']==ident(R/'native117-preserved-archive-v5-failure.log')['sha256']
+archive=Path('E:/persarb/worktrees/entropy-warm-prerequisites/docs/verification/io-warm-prerequisite-local');assert not archive.exists()
+a=(R/'archive_native117_v5.py').read_text();b=(R/'archive_native117_v6.py').read_text()
+start=b.index('def verify_installed_provenance_reference(');end=b.index('def verify_case(',start)
+restored=b[:start]+b[end:]
+restored=restored.replace('    verify_installed_provenance_reference(identity, provenance, wheel_root)\n','    require(identity["native_provenance"] == provenance, "Installed provenance object differs")\n')
+restored=restored.replace('        verify_installed_provenance_reference(identity, provenance, WHEEL)\n        require(identity["strict_source_binding_passed"] is True\n','        require(identity["strict_source_binding_passed"] is True and identity["native_provenance"] == provenance\n')
+assert restored==a, 'Unrelated preflight guard modified'
+schema={'path','sha256','source_binding','declared_native','declared_build','source_fingerprint_sha256','build'}
+fields=schema-{'path','sha256'}
+source=V.read_text();assert all('"'+field+'":' in source[source.index('        "native_provenance": {'):source.index('        "strict_source_binding_passed":')] for field in schema)
+checked=[]
+for p in [*install_paths,*case_paths]:
+    obj=load(p);identity=obj['native_identity'] if p.name=='manifest.json' else obj
+    ref=identity['native_provenance'];assert set(ref)==schema
+    root=first if p==case_paths[0] else current
+    actual=root/'native-provenance.json';prov=load(actual)
+    assert Path(ref['path']).resolve()==actual.resolve() and ref['sha256']==ident(actual)['sha256']
+    assert all(ref[f]==prov[f] for f in fields)
+    assert identity['strict_source_binding_passed'] is True and identity['wheel']['sha256']==prov['wheel']['sha256']
+    objects=[x for x in prov['embedded_native_objects'] if x['path'].endswith('.pyd')]
+    assert len(objects)==1 and identity['installed']['native_module_sha256']==objects[0]['sha256']
+    checked.append({'identity_path':str(p),'schema_keys':sorted(ref),'whole_provenance_path':str(actual),'whole_file_sha256':ref['sha256'],'native_commit':ref['declared_native']['commit'],'wheel_sha256':identity['wheel']['sha256'],'native_module_sha256':identity['installed']['native_module_sha256']})
+assert ident(current/'native-provenance.json')['sha256']=='a430a728f9aa190e41428192b7ba10a224fa6b8b2b4ebff8d26844c9371aca47'
+# Check unchanged source guards' actual assumed fields after the last closed failure.
+assert load(current/'native-provenance.json')['build']['completed_at']
+assert all('native_provenance' in load(p) for p in install_paths)
+after=[ident(p) for p in paths];assert before==after and not archive.exists()
+delta=''.join(difflib.unified_diff(a.splitlines(True),b.splitlines(True),fromfile='v5',tofile='v6'));(R/f'{S}-delta.diff').write_text(delta)
+out={'started_utc':started,'finished_utc':utc(),'outcome':'PASS for v6 reference-schema correction; archive remains unexecuted','helper_executions':0,'helper_imports':0,'helper_AST_parses':0,'tests_executed':0,'native_imports':0,'git_commands':0,'inputs_before':before,'inputs_after':after,'inputs_unchanged':True,'archive_absent_before_after':True,'only_shared_verifier_and_two_call_sites_changed':True,'closed_v5_failure':failure,'identity_checks':checked,'obvious_additional_assumed_field_mismatches_found':[],'limits':['Prior static reviews missed inherited whole-object/reference mismatch; actual v5 execution exposed it.','No broad helper runtime success claim, actual root execution still required.','Original/current provenance and failed receipts are preserved, not normalized.']}
+(R/f'{S}.json').write_text(json.dumps(out,indent=2),encoding='utf-8')
+md=f'''# Independent archive helper v6 provenance reference review v1
+
+**PASS for the narrow static schema correction.** {started}–{out['finished_utc']}; {len(before)} inputs unchanged before/after. Helper executions/imports/AST parses, native imports, tests and Git: 0. V6 SHA `{ident(R/'archive_native117_v6.py')['sha256']}`. Archive remains absent.
+
+Actual v5 invocation {failure['started_utc']}–{failure['finished_utc']} exited1 before mkdir because full provenance-object equality was incompatible with the install verifier's actual seven-field reference. Prior static reviews missed this inherited assumption; actual root execution exposed it. Failed v5 receipt/log and preserved byte copies are equal and unchanged. This is an archive schema failure, not a native install/product failure.
+
+Official `scripts/verify_native_install.py:220` constructs exactly path, sha256, source_binding, declared_native, declared_build, source_fingerprint_sha256, build. Independently checked that actual schema in both corrective installed-venv identities, all7 corrected case manifests, and the original failed567/4748 manifest: ten references. Each points to its assigned original/current complete provenance file, hashes that complete file, has all five source/build fields exactly equal to the loaded complete JSON, and retains stricttrue plus exact wheel/PYD hashes. Corrective full provenance SHA is `a430a728f9aa190e41428192b7ba10a224fa6b8b2b4ebff8d26844c9371aca47`.
+
+V6 adds one shared exact-schema verifier and replaces only the two prior whole-object equality sites (installed identities and case identities). Static text reconstruction recovers v5 exactly; wheel/source fingerprints/tree/strict install/raw Clippy/tested-source/all7/cohort and prior failure guards are unchanged. Wrong schema, unassigned path, changed full-file hash/content, or any mismatching source field remains fail-closed. Full JSON equality is now required for the actual referenced file, not incorrectly against its seven-field descriptor. The original and corrective cohorts stay separate.
+
+The remaining obvious assumed fields along the affected identity/case/build guards match the actual closed artifact schemas inspected here; no additional concrete mismatch was found. This is not execution or syntax-validation of the helper and does not guarantee that future archive execution succeeds. Root may execute v6 actual preflight; any new failure must be retained honestly. Existing App43 limitations, loss_fee owned-flat Unknown and synthetic Aster cancellation chronology, remain unchanged.
+
+Exact hashes, ten reference checks, closed failure and textual delta are in `{S}.json`/`{S}-delta.diff`. Reviewer writing stops after this report; no original artifact or product source was modified.
+'''
+(R/f'{S}.md').write_text(md,encoding='utf-8')
+print(json.dumps({'outcome':out['outcome'],'inputs':len(before),'report':ident(R/f'{S}.md'),'json':ident(R/f'{S}.json'),'tests':0,'archive_created':False}))

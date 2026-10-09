@@ -1,0 +1,75 @@
+import hashlib
+import json
+import difflib
+from datetime import datetime, timezone
+from pathlib import Path
+
+R=Path('E:/persarb/_tmp/entropy117-validation')
+S='reviewer-native117-archive-helper-v5-schema-review-v1'
+B=Path('E:/persarb/worktrees/entropy-warm-prerequisites/scripts/adapter-evidence/build_native.py')
+def read(p):return json.loads(Path(p).read_text(encoding='utf-8-sig'))
+def ident(p):
+    p=Path(p);b=p.read_bytes();return {'path':str(p),'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest()}
+def now():return datetime.now(timezone.utc).isoformat()
+wheel_roots=[Path('E:/persarb/_tmp/entropy117-wheel-nextest-20261009'),Path('E:/persarb/_tmp/entropy117-corrected-wheel-nextest-20261009')]
+labels=['native117-source-bound-wheel-build','native117-corrected-source-bound-wheel-build-v1']
+paths=[R/'archive_native117_v4.py',R/'archive_native117_v5.py',R/'prepare_archive_helper_v5.py',R/'archive-native117-source-binding-correction-v5.md',R/'archive-native117-source-binding-correction-v5.json',R/'native117-archive-command-v4.json',R/'native117-archive-command-v4.log',R/'reviewer-native117-archive-helper-v4-narrow-review-v1.md',B,Path(__file__)]
+paths += [R/(label+suffix) for label in labels for suffix in ['.json','.log']]
+paths += [root/'native-provenance.json' for root in wheel_roots]
+started=now();before=[ident(p) for p in paths]
+(R/f'{S}-before.json').write_text(json.dumps({'captured_utc':now(),'inputs':before},indent=2),encoding='utf-8')
+assert ident(R/'archive_native117_v4.py')['sha256']=='05877a700aaef8199c5254ca73519854fa38e3c05ce830889654d7fd07667609'
+assert ident(R/'archive_native117_v5.py')['sha256']=='1ad8ec5c536b1fad8ad897db097a178bdbcc29679d4f334793623aeee73105e9'
+assert ident(R/'archive-native117-source-binding-correction-v5.md')['sha256']=='32d8e915c0a2a1762923f31951e7380f9a5ddd344b4fb3c748f0577a04eaf145'
+assert ident(R/'native117-archive-command-v4.json')['sha256']=='2cb279af5b0bc269e304fa8e14cb633282286a2f1343ea7c0cc656d342763f4f'
+failed=read(R/'native117-archive-command-v4.json');assert failed['exit_code']==1 and 'ValueError: Build is unfinished' in (R/'native117-archive-command-v4.log').read_text()
+archive=Path('E:/persarb/worktrees/entropy-warm-prerequisites/docs/verification/io-warm-prerequisite-local')
+assert not archive.exists()
+a=(R/'archive_native117_v4.py').read_text();b=(R/'archive_native117_v5.py').read_text()
+old='    require(provenance["build"].get("started_at") and provenance["build"].get("completed_at"), "Build is unfinished")\n'
+new='''    build_label = ("native117-corrected-source-bound-wheel-build-v1"
+                   if wheel_root == WHEEL else "native117-source-bound-wheel-build")
+    require(wheel_root in (WHEEL, FIRST_WHEEL), "Unassigned controlled wheel directory")
+    actual_build = completed_command(build_label, 0)["command"]
+    require(provenance["build"].get("completed_at"), "Build completion is absent")
+    require(datetime.fromisoformat(actual_build["started_utc"])
+            <= datetime.fromisoformat(provenance["build"]["completed_at"])
+            <= datetime.fromisoformat(actual_build["finished_utc"]),
+            "Build completion is outside its actual completed command")
+'''
+old2='''    require(datetime.fromisoformat(build["started_utc"]) <= datetime.fromisoformat(provenance["build"]["started_at"])
+            <= datetime.fromisoformat(provenance["build"]["completed_at"]) <= datetime.fromisoformat(build["finished_utc"]),
+            "Clean build provenance is not bracketed by the actual build command")'''
+new2='''    require(datetime.fromisoformat(build["started_utc"])
+            <= datetime.fromisoformat(provenance["build"]["completed_at"])
+            <= datetime.fromisoformat(build["finished_utc"]),
+            "Clean build completion is not bracketed by the actual build command")'''
+assert a.count(old)==a.count(old2)==1 and a.replace(old,new).replace(old2,new2)==b
+assert '"started_at"' not in B.read_text() and '"started_source": before' in B.read_text() and '"finished_source": after' in B.read_text() and '"completed_at": datetime.now(UTC).isoformat()' in B.read_text()
+actual=[]
+for label,root in zip(labels,wheel_roots,strict=True):
+    receipt=read(R/(label+'.json'));p=read(root/'native-provenance.json')
+    assert receipt['exit_code']==0 and datetime.fromisoformat(receipt['started_utc'])<=datetime.fromisoformat(p['build']['completed_at'])<=datetime.fromisoformat(receipt['finished_utc'])
+    assert 'started_at' not in p['build'] and p['build']['builder_sha256']==ident(B)['sha256']
+    assert receipt['argv'][receipt['argv'].index('--output-dir')+1]==str(root).replace('\\','/')
+    assert p['source_binding']=='verified' and p['build']['started_source']==p['build']['finished_source']==p['declared_native']
+    assert p['declared_native']['dirty_count']==0
+    actual.append({'label':label,'argv':receipt['argv'],'receipt_sha256':ident(R/(label+'.json'))['sha256'],'log_sha256':ident(R/(label+'.log'))['sha256'],'actual_exit_code':0,'started_utc':receipt['started_utc'],'completed_at':p['build']['completed_at'],'finished_utc':receipt['finished_utc'],'native_commit':p['declared_native']['commit'],'wheel_sha256':p['wheel']['sha256'],'build_started_at_absent':True})
+after=[ident(p) for p in paths];assert before==after and not archive.exists()
+delta=''.join(difflib.unified_diff(a.splitlines(True),b.splitlines(True),fromfile='v4',tofile='v5'));(R/f'{S}-delta.diff').write_text(delta)
+out={'started_utc':started,'finished_utc':now(),'outcome':'PASS: actual-schema correction; root may execute v5 preflight','helper_executions':0,'helper_imports':0,'helper_AST_parses':0,'tests_executed':0,'native_imports':0,'git_commands':0,'inputs_before':before,'inputs_after':after,'inputs_unchanged':True,'archive_absent_before_after':True,'exactly_two_guards_changed':True,'closed_v4_failure':failed,'actual_builds':actual,'limits':['No archive execution/PASS has occurred in this review.','Original inner actual build receipt is exit0; separately preserved outer printing/GBK failure exit1 is not converted to build failure or erased.','Clean fingerprints, source/tree/wheel/install/Clippy/cohort and all7 guards unchanged.']}
+(R/f'{S}.json').write_text(json.dumps(out,indent=2),encoding='utf-8')
+md=f'''# Independent archive helper v5 schema correction review v1
+
+**PASS for the narrow two-guard static correction.** {started}–{out['finished_utc']}; {len(before)} actual inputs unchanged before/after. Helper execution/import/AST parsing, native imports, tests and Git: 0. Archive absent both before and after review. V5 SHA `{ident(R/'archive_native117_v5.py')['sha256']}`.
+
+Actual v4 root execution {failed['started_utc']}–{failed['finished_utc']} exited1 before mkdir, with `ValueError: Build is unfinished`. That closed receipt/log is preserved. My prior v4 static review did not discover this inherited builder-schema mismatch; actual execution exposed it. Official `scripts/adapter-evidence/build_native.py` emits `started_source`, `finished_source`, `completed_at`, and no `started_at`. Both original and corrected provenance objects use this same actual builder SHA and schema.
+
+Only the two nonexistent-started_at guards change. Assigned current/original wheel directory selects its actual completed build-command receipt/log, requires exit0 and brackets real `completed_at` by that command's real start/finish. Candidate checks retain the same completed-command bracket. Independently inspected actual original build0 ({actual[0]['started_utc']}–{actual[0]['finished_utc']}, completion {actual[0]['completed_at']}) and corrective build0 ({actual[1]['started_utc']}–{actual[1]['finished_utc']}, completion {actual[1]['completed_at']}); both brackets hold. Actual commands target their assigned output directories and provenance has exact clean before/after source identity. No start timestamp is fabricated; absent/nonzero/unclosed receipt or out-of-bracket completion still refuses.
+
+Text replacement equality proves every other source/tree/clean fingerprint/wheel/install/tested-source/binary/Clippy/all7/raw failure/cohort/archive guard remains unchanged from v4. Original inner build receipt0 and separate outer GBK printing failure1 remain distinct; the latter is not erased or used to invent a failed wheel build. This is correction to actual evidence schema, not a waiver for an unfinished build. Root may now execute v5 preflight; success is still to be established by that actual invocation. No remaining blocker was found in these two replacements.
+
+Exact closed receipts, provenance/builder/source hashes and delta are in `{S}.json` and `{S}-delta.diff`. No source or prior failure/archive evidence was modified.
+'''
+(R/f'{S}.md').write_text(md,encoding='utf-8')
+print(json.dumps({'result':out['outcome'],'inputs':len(before),'report':ident(R/f'{S}.md'),'json':ident(R/f'{S}.json'),'archive_created':False,'tests':0}))

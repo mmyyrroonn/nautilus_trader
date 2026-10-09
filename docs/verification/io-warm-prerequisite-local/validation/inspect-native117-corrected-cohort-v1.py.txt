@@ -1,0 +1,71 @@
+"""Inspect closed seven-mode evidence using stdlib; never import native/application code."""
+import hashlib
+import json
+from collections import Counter
+from datetime import datetime, timezone
+from pathlib import Path
+
+OUT = Path("E:/persarb/_tmp/entropy117-validation")
+REMAINING = Path("E:/persarb/_tmp/app43-native117-corrected-remaining-scenarios-20261009")
+DIRECTORIES = {"paired": Path("E:/persarb/_tmp/app43-native117-corrected-first-paired-20261009/paired")}
+DIRECTORIES.update({mode: REMAINING / mode for mode in ("reject", "partial", "unknown", "cleanup_failure", "foreign", "loss_fee")})
+OUTPUT = OUT / "producer-review-native117-corrected-all7-v1.json"
+assert not OUTPUT.exists(), "Never overwrite an earlier review"
+
+def read(path):
+    return json.loads(path.read_text(encoding="utf-8-sig"))
+
+def identity(path):
+    raw = path.read_bytes()
+    return {"path": str(path), "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
+
+sources = [Path("E:/persarb/worktrees/entropy-execution-app") / p for p in (
+    "src/entropy_execution.py", "src/entropy_execution_config.py", "src/entropy_execution_core.py",
+    "src/entropy_execution_report.py", "tests/test_entropy_execution_native.py", "tests/entropy_execution_peer.py")]
+files = [p for d in DIRECTORIES.values() for p in d.iterdir() if p.is_file()] + sources
+before = [identity(p) for p in files]
+cases = {}
+for mode, directory in DIRECTORIES.items():
+    summary = read(directory / "summary.json")
+    peers = read(directory / "peer-evidence.json")
+    events = [json.loads(line) for line in (directory / "events.jsonl").read_text().splitlines()]
+    financial = [event for event in events if event["kind"] in ("native_order_filled", "native_fill_order_cache_attributed", "prepared_native_intent", "native_command_handed_off", "order_rejected", "order_expired", "order_denied")]
+    economic_file = directory / "native-io-economics.json"
+    economic = read(economic_file)["checkpoint"] if economic_file.exists() else None
+    wire = {}
+    for venue, peer in peers.items():
+        requests = peer["requests"]
+        wire[venue] = {
+            "requests": len(requests), "actions": peer["actions"], "fills": peer["fills"],
+            "position": peer["position"], "errors": peer["errors"],
+            "statuses": dict(Counter(r.get("response", {}).get("status") for r in requests)),
+            "order_requests": [r for r in requests if "/order" in r["path"].lower()],
+            "frames": peer.get("frames"),
+        }
+    cases[mode] = {
+        "directory": str(directory), "summary": summary, "peers": wire,
+        "financial_events": financial,
+        "native_economic_checkpoint": None if economic is None else {
+            "revision": economic["revision"], "coverage": economic["coverage"], "report": economic["report"]},
+        "stderr": (directory / "child-stderr.log").read_text(encoding="utf-8-sig"),
+    }
+after = [identity(p) for p in files]
+assert before == after, "Closed input changed during review"
+data = {
+    "schema_version": 1, "inspected_utc": datetime.now(timezone.utc).isoformat(),
+    "author_role": "Production producer; artifact audit does not replace independent source review",
+    "author_executions": {"evidence_parser": 1, "tests": 0, "native_imports": 0, "cargo": 0, "git_or_github": 0, "product_edits": 0},
+    "identities_before": before, "identities_after": after, "identities_unchanged": True,
+    "root_remaining_run": read(OUT / "app43-native117-corrected-remaining-scenarios-v1.json"),
+    "root_cohort_identity": read(OUT / "app43-native117-corrected-cohorts-unchanged-v1.json"),
+    "cases": cases,
+}
+OUTPUT.write_text(json.dumps(data, indent=2), encoding="utf-8")
+print(json.dumps({"report_sha256": identity(OUTPUT)["sha256"], "inputs": len(before), "cases": {
+    mode: {"state": c["summary"]["controller"]["state"], "reasons": c["summary"]["controller"]["reasons"],
+           "positions": c["summary"]["controller"]["positions"], "reserve": c["summary"]["controller"]["gross_reserved_usd"],
+           "fills": len(c["summary"]["controller"]["fills"]), "entry": c["summary"]["controller"]["entry_orders"],
+           "cleanup": c["summary"]["controller"]["cleanup_orders"], "loss": c["summary"]["controller"]["loss_usd"],
+           "economic_error": c["summary"]["economic_error"],
+           "wire": {v: {k: p[k] for k in ("requests", "actions", "position", "errors")} for v,p in c["peers"].items()}}
+    for mode,c in cases.items()}}, indent=2))

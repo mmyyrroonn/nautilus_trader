@@ -1,0 +1,10 @@
+Resolved 1 package in 1ms
+Prepared 1 package in 0.50ms
+Uninstalled 1 package in 58ms
+warning: Failed to hardlink files; falling back to full copy. This may lead to degraded performance.
+         If the cache and target directories are on different filesystems, hardlinking may not be supported.
+         If this is intentional, set `export UV_LINK_MODE=copy` or use `--link-mode=copy` to suppress this warning.
+Installed 1 package in 164ms
+ - nautilus-trader==2.0.0rc4 (from file:///E:/persarb/_tmp/entropy117-wheel-nextest-20261009/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl)
+ + nautilus-trader==2.0.0rc4 (from file:///E:/persarb/_tmp/entropy117-corrected-wheel-nextest-20261009/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl)
+installed source-bound native candidate: 5187319f1754e37069904ce678f8526ddc47a8bc4d077209a95f97fe0205057a

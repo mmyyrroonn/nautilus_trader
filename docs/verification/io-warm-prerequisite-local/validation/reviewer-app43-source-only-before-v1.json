@@ -1,0 +1,62 @@
+﻿[
+    {
+        "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\CLAUDE.md",
+        "declared_sha256":  "e88c45fda78397824437eba1ba8bf3aa8c33760940d377b3f6e3e04f0477e530",
+        "actual_sha256":  "e88c45fda78397824437eba1ba8bf3aa8c33760940d377b3f6e3e04f0477e530",
+        "bytes":  2551
+    },
+    {
+        "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\AGENTS.md",
+        "declared_sha256":  "0db83eca19a5637b536145f71915c4d1d84c7b186eaf809e266b126eb9fde7e5",
+        "actual_sha256":  "0db83eca19a5637b536145f71915c4d1d84c7b186eaf809e266b126eb9fde7e5",
+        "bytes":  4070
+    },
+    {
+        "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution.py",
+        "declared_sha256":  "fbde3f919a6813a47aeb8c388ac3689a33689139d876c6e7e6551d7a364ab882",
+        "actual_sha256":  "fbde3f919a6813a47aeb8c388ac3689a33689139d876c6e7e6551d7a364ab882",
+        "bytes":  73521
+    },
+    {
+        "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution_config.py",
+        "declared_sha256":  "45ed321317743d05a86b1a51058ad684dbd2e84f31bd86a9fd701845025d8c54",
+        "actual_sha256":  "45ed321317743d05a86b1a51058ad684dbd2e84f31bd86a9fd701845025d8c54",
+        "bytes":  12822
+    },
+    {
+        "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution_core.py",
+        "declared_sha256":  "da5abc7ffa5d61439daaf814254aff4d99ad5a7f977790ee80f86dad910d2443",
+        "actual_sha256":  "da5abc7ffa5d61439daaf814254aff4d99ad5a7f977790ee80f86dad910d2443",
+        "bytes":  37382
+    },
+    {
+        "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution_report.py",
+        "declared_sha256":  "5b1a01d4762173c739a90daed4878f854ab0f78b2232a5de07c6969eab9deffa",
+        "actual_sha256":  "5b1a01d4762173c739a90daed4878f854ab0f78b2232a5de07c6969eab9deffa",
+        "bytes":  21940
+    },
+    {
+        "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\entropy_execution_peer.py",
+        "declared_sha256":  "11930d360dabe0c8751b0f2451c1f8570489311a8526b419a72b25781075515d",
+        "actual_sha256":  "11930d360dabe0c8751b0f2451c1f8570489311a8526b419a72b25781075515d",
+        "bytes":  30306
+    },
+    {
+        "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\test_entropy_execution_peer.py",
+        "declared_sha256":  "c649d24c2c68beb5758442e3eb5abfdd455b070627c179c734f66b8719eac35a",
+        "actual_sha256":  "c649d24c2c68beb5758442e3eb5abfdd455b070627c179c734f66b8719eac35a",
+        "bytes":  7419
+    },
+    {
+        "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\test_entropy_execution_native.py",
+        "declared_sha256":  "9a975f5cca43b6b7cb778435a170b3a1223cf0db351417b7bfdd4f9788124120",
+        "actual_sha256":  "9a975f5cca43b6b7cb778435a170b3a1223cf0db351417b7bfdd4f9788124120",
+        "bytes":  31959
+    },
+    {
+        "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\scripts\\install_native.py",
+        "declared_sha256":  "c2d473e5f5dea8c8931ef4350471b2dfa4e1877fcf8168fb7f816f3351d48adf",
+        "actual_sha256":  "c2d473e5f5dea8c8931ef4350471b2dfa4e1877fcf8168fb7f816f3351d48adf",
+        "bytes":  10944
+    }
+]

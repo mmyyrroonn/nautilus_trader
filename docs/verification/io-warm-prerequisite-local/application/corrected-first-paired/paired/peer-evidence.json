@@ -1,0 +1,4105 @@
+{
+  "HYPERLIQUID": {
+    "requests": [
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "spotMeta"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "universe": [],
+            "tokens": [
+              {
+                "name": "USDC",
+                "index": 0,
+                "szDecimals": 8,
+                "weiDecimals": 8,
+                "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+                "isCanonical": true,
+                "fullName": "USD Coin"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "allPerpMetas"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "universe": [],
+              "collateralToken": 0
+            },
+            {
+              "universe": [
+                {
+                  "name": "io:SNDK",
+                  "szDecimals": 4,
+                  "maxLeverage": 10,
+                  "onlyIsolated": true,
+                  "marginMode": "strictIsolated"
+                }
+              ],
+              "collateralToken": 0
+            }
+          ]
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "outcomeMeta"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "outcomes": [],
+            "questions": []
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "allPerpMetas"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "universe": [],
+              "collateralToken": 0
+            },
+            {
+              "universe": [
+                {
+                  "name": "io:SNDK",
+                  "szDecimals": 4,
+                  "maxLeverage": 10,
+                  "onlyIsolated": true,
+                  "marginMode": "strictIsolated"
+                }
+              ],
+              "collateralToken": 0
+            }
+          ]
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "perpDexs"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": [
+            null,
+            {
+              "name": "io",
+              "fullName": "Synthetic Entropy"
+            }
+          ]
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "spotMeta"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "universe": [],
+            "tokens": [
+              {
+                "name": "USDC",
+                "index": 0,
+                "szDecimals": 8,
+                "weiDecimals": 8,
+                "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+                "isCanonical": true,
+                "fullName": "USD Coin"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "allPerpMetas"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "universe": [],
+              "collateralToken": 0
+            },
+            {
+              "universe": [
+                {
+                  "name": "io:SNDK",
+                  "szDecimals": 4,
+                  "maxLeverage": 10,
+                  "onlyIsolated": true,
+                  "marginMode": "strictIsolated"
+                }
+              ],
+              "collateralToken": 0
+            }
+          ]
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "outcomeMeta"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "outcomes": [],
+            "questions": []
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "spotMeta"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "universe": [],
+            "tokens": [
+              {
+                "name": "USDC",
+                "index": 0,
+                "szDecimals": 8,
+                "weiDecimals": 8,
+                "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+                "isCanonical": true,
+                "fullName": "USD Coin"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "allPerpMetas"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "universe": [],
+              "collateralToken": 0
+            },
+            {
+              "universe": [
+                {
+                  "name": "io:SNDK",
+                  "szDecimals": 4,
+                  "maxLeverage": 10,
+                  "onlyIsolated": true,
+                  "marginMode": "strictIsolated"
+                }
+              ],
+              "collateralToken": 0
+            }
+          ]
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "outcomeMeta"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "outcomes": [],
+            "questions": []
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userRole",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "role": "user"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userAbstraction",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": "disabled"
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userDexAbstraction",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": false
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "meta",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "universe": [
+              {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            ],
+            "collateralToken": 0
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "spotMeta"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "universe": [],
+            "tokens": [
+              {
+                "name": "USDC",
+                "index": 0,
+                "szDecimals": 8,
+                "weiDecimals": 8,
+                "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+                "isCanonical": true,
+                "fullName": "USD Coin"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "clearinghouseState",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "0",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [],
+            "time": 1791553341246
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userAbstraction",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": "disabled"
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userDexAbstraction",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": false
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "perpDexs"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": [
+            null,
+            {
+              "name": "io",
+              "fullName": "Synthetic Entropy"
+            }
+          ]
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "meta",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "universe": [
+              {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            ],
+            "collateralToken": 0
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "spotMeta"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "universe": [],
+            "tokens": [
+              {
+                "name": "USDC",
+                "index": 0,
+                "szDecimals": 8,
+                "weiDecimals": 8,
+                "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+                "isCanonical": true,
+                "fullName": "USD Coin"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "activeAssetData",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "coin": "io:SNDK"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+            "coin": "io:SNDK",
+            "leverage": {
+              "type": "isolated",
+              "value": 1
+            },
+            "maxTradeSzs": [
+              "1",
+              "1"
+            ],
+            "availableToTrade": [
+              "100",
+              "100"
+            ],
+            "markPx": "100"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "activeAssetData",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "coin": "io:SNDK"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+            "coin": "io:SNDK",
+            "leverage": {
+              "type": "isolated",
+              "value": 1
+            },
+            "maxTradeSzs": [
+              "1",
+              "1"
+            ],
+            "availableToTrade": [
+              "100",
+              "100"
+            ],
+            "markPx": "100"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "frontendOpenOrders",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userFills",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userRole",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "role": "user"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userAbstraction",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": "disabled"
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userDexAbstraction",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": false
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "meta",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "universe": [
+              {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            ],
+            "collateralToken": 0
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "spotMeta"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "universe": [],
+            "tokens": [
+              {
+                "name": "USDC",
+                "index": 0,
+                "szDecimals": 8,
+                "weiDecimals": 8,
+                "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+                "isCanonical": true,
+                "fullName": "USD Coin"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "clearinghouseState",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "0",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [],
+            "time": 1791553341360
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userAbstraction",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": "disabled"
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userDexAbstraction",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": false
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "meta",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "universe": [
+              {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            ],
+            "collateralToken": 0
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "spotMeta"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "universe": [],
+            "tokens": [
+              {
+                "name": "USDC",
+                "index": 0,
+                "szDecimals": 8,
+                "weiDecimals": 8,
+                "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+                "isCanonical": true,
+                "fullName": "USD Coin"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userFunding",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "startTime": 1791553339783,
+          "endTime": 1791553341363
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userNonFundingLedgerUpdates",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "startTime": 1791553339783,
+          "endTime": 1791553341363
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "frontendOpenOrders",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userFills",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "historicalOrders",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "frontendOpenOrders",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userFills",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "orderStatus",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "oid": "0x765fde8d8d4a9ae99a37a1f3deb3a35e"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "status": "order",
+            "order": {
+              "order": {
+                "coin": "io:SNDK",
+                "side": "B",
+                "limitPx": "100",
+                "sz": "0",
+                "origSz": "0.12",
+                "oid": 70001,
+                "timestamp": 1791553341618,
+                "cloid": "0x765fde8d8d4a9ae99a37a1f3deb3a35e",
+                "reduceOnly": false,
+                "orderType": "Limit",
+                "tif": "Ioc"
+              },
+              "status": "filled",
+              "statusTimestamp": 1791553341618
+            }
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "frontendOpenOrders",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userFills",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "orderStatus",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "oid": "0x765fde8d8d4a9ae99a37a1f3deb3a35e"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "status": "order",
+            "order": {
+              "order": {
+                "coin": "io:SNDK",
+                "side": "B",
+                "limitPx": "100",
+                "sz": "0",
+                "origSz": "0.12",
+                "oid": 70001,
+                "timestamp": 1791553341618,
+                "cloid": "0x765fde8d8d4a9ae99a37a1f3deb3a35e",
+                "reduceOnly": false,
+                "orderType": "Limit",
+                "tif": "Ioc"
+              },
+              "status": "filled",
+              "statusTimestamp": 1791553341618
+            }
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "frontendOpenOrders",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userFills",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "coin": "io:SNDK",
+              "px": "100",
+              "sz": "0.12",
+              "side": "B",
+              "time": 1791553341618,
+              "startPosition": "0",
+              "dir": "Open Long",
+              "closedPnl": "0",
+              "hash": "0x000000000000000000000000000000000000000000000000000000000000ea61",
+              "oid": 70001,
+              "crossed": true,
+              "fee": "0.001",
+              "builderFee": "0.0002",
+              "tid": 60001,
+              "feeToken": "USDC",
+              "cloid": "0x765fde8d8d4a9ae99a37a1f3deb3a35e"
+            }
+          ]
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "orderStatus",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "oid": "0x765fde8d8d4a9ae99a37a1f3deb3a35e"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "status": "order",
+            "order": {
+              "order": {
+                "coin": "io:SNDK",
+                "side": "B",
+                "limitPx": "100",
+                "sz": "0",
+                "origSz": "0.12",
+                "oid": 70001,
+                "timestamp": 1791553341618,
+                "cloid": "0x765fde8d8d4a9ae99a37a1f3deb3a35e",
+                "reduceOnly": false,
+                "orderType": "Limit",
+                "tif": "Ioc"
+              },
+              "status": "filled",
+              "statusTimestamp": 1791553341618
+            }
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "clearinghouseState",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "12.00",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [
+              {
+                "type": "oneWay",
+                "position": {
+                  "coin": "io:SNDK",
+                  "szi": "0.12",
+                  "marginUsed": "0",
+                  "leverage": {
+                    "type": "isolated",
+                    "value": 1
+                  },
+                  "cumFunding": {
+                    "allTime": "0",
+                    "sinceOpen": "0",
+                    "sinceChange": "0"
+                  },
+                  "entryPx": "100",
+                  "liquidationPx": null,
+                  "maxLeverage": 10,
+                  "positionValue": "12.00",
+                  "returnOnEquity": "0",
+                  "unrealizedPnl": "0"
+                }
+              }
+            ],
+            "time": 1791553341828
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "frontendOpenOrders",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userFills",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "coin": "io:SNDK",
+              "px": "100",
+              "sz": "0.12",
+              "side": "B",
+              "time": 1791553341618,
+              "startPosition": "0",
+              "dir": "Open Long",
+              "closedPnl": "0",
+              "hash": "0x000000000000000000000000000000000000000000000000000000000000ea61",
+              "oid": 70001,
+              "crossed": true,
+              "fee": "0.001",
+              "builderFee": "0.0002",
+              "tid": 60001,
+              "feeToken": "USDC",
+              "cloid": "0x765fde8d8d4a9ae99a37a1f3deb3a35e"
+            }
+          ]
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "orderStatus",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "oid": "0x782dac5589d929429784b00b34589629"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "status": "order",
+            "order": {
+              "order": {
+                "coin": "io:SNDK",
+                "side": "A",
+                "limitPx": "99.99",
+                "sz": "0",
+                "origSz": "0.12",
+                "oid": 70002,
+                "timestamp": 1791553342122,
+                "cloid": "0x782dac5589d929429784b00b34589629",
+                "reduceOnly": true,
+                "orderType": "Limit",
+                "tif": "Ioc"
+              },
+              "status": "filled",
+              "statusTimestamp": 1791553342122
+            }
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "frontendOpenOrders",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userFills",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "coin": "io:SNDK",
+              "px": "100",
+              "sz": "0.12",
+              "side": "B",
+              "time": 1791553341618,
+              "startPosition": "0",
+              "dir": "Open Long",
+              "closedPnl": "0",
+              "hash": "0x000000000000000000000000000000000000000000000000000000000000ea61",
+              "oid": 70001,
+              "crossed": true,
+              "fee": "0.001",
+              "builderFee": "0.0002",
+              "tid": 60001,
+              "feeToken": "USDC",
+              "cloid": "0x765fde8d8d4a9ae99a37a1f3deb3a35e"
+            }
+          ]
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "orderStatus",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "oid": "0x782dac5589d929429784b00b34589629"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "status": "order",
+            "order": {
+              "order": {
+                "coin": "io:SNDK",
+                "side": "A",
+                "limitPx": "99.99",
+                "sz": "0",
+                "origSz": "0.12",
+                "oid": 70002,
+                "timestamp": 1791553342122,
+                "cloid": "0x782dac5589d929429784b00b34589629",
+                "reduceOnly": true,
+                "orderType": "Limit",
+                "tif": "Ioc"
+              },
+              "status": "filled",
+              "statusTimestamp": 1791553342122
+            }
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "frontendOpenOrders",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userFills",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "coin": "io:SNDK",
+              "px": "100",
+              "sz": "0.12",
+              "side": "B",
+              "time": 1791553341618,
+              "startPosition": "0",
+              "dir": "Open Long",
+              "closedPnl": "0",
+              "hash": "0x000000000000000000000000000000000000000000000000000000000000ea61",
+              "oid": 70001,
+              "crossed": true,
+              "fee": "0.001",
+              "builderFee": "0.0002",
+              "tid": 60001,
+              "feeToken": "USDC",
+              "cloid": "0x765fde8d8d4a9ae99a37a1f3deb3a35e"
+            },
+            {
+              "coin": "io:SNDK",
+              "px": "99.99",
+              "sz": "0.12",
+              "side": "A",
+              "time": 1791553342122,
+              "startPosition": "0.12",
+              "dir": "Close Long",
+              "closedPnl": "0",
+              "hash": "0x000000000000000000000000000000000000000000000000000000000000ea62",
+              "oid": 70002,
+              "crossed": true,
+              "fee": "0.001",
+              "builderFee": "0.0002",
+              "tid": 60002,
+              "feeToken": "USDC",
+              "cloid": "0x782dac5589d929429784b00b34589629"
+            }
+          ]
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "orderStatus",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "oid": "0x782dac5589d929429784b00b34589629"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "status": "order",
+            "order": {
+              "order": {
+                "coin": "io:SNDK",
+                "side": "A",
+                "limitPx": "99.99",
+                "sz": "0",
+                "origSz": "0.12",
+                "oid": 70002,
+                "timestamp": 1791553342122,
+                "cloid": "0x782dac5589d929429784b00b34589629",
+                "reduceOnly": true,
+                "orderType": "Limit",
+                "tif": "Ioc"
+              },
+              "status": "filled",
+              "statusTimestamp": 1791553342122
+            }
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "clearinghouseState",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "0.00",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [],
+            "time": 1791553342420
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "activeAssetData",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "coin": "io:SNDK"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+            "coin": "io:SNDK",
+            "leverage": {
+              "type": "isolated",
+              "value": 1
+            },
+            "maxTradeSzs": [
+              "1",
+              "1"
+            ],
+            "availableToTrade": [
+              "100",
+              "100"
+            ],
+            "markPx": "100"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "activeAssetData",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "coin": "io:SNDK"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+            "coin": "io:SNDK",
+            "leverage": {
+              "type": "isolated",
+              "value": 1
+            },
+            "maxTradeSzs": [
+              "1",
+              "1"
+            ],
+            "availableToTrade": [
+              "100",
+              "100"
+            ],
+            "markPx": "100"
+          }
+        }
+      }
+    ],
+    "commands": [
+      {
+        "method": "subscribe",
+        "subscription": {
+          "type": "orderUpdates",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        }
+      },
+      {
+        "method": "subscribe",
+        "subscription": {
+          "type": "userEvents",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        }
+      },
+      {
+        "method": "subscribe",
+        "subscription": {
+          "type": "clearinghouseState",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io"
+        }
+      },
+      {
+        "method": "subscribe",
+        "subscription": {
+          "type": "userFundings",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        }
+      },
+      {
+        "method": "subscribe",
+        "subscription": {
+          "type": "userNonFundingLedgerUpdates",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        }
+      },
+      {
+        "method": "subscribe",
+        "subscription": {
+          "type": "l2Book",
+          "coin": "io:SNDK"
+        }
+      },
+      {
+        "method": "post",
+        "id": 1,
+        "request": {
+          "type": "action",
+          "payload": {
+            "action": {
+              "type": "order",
+              "orders": [
+                {
+                  "a": 110000,
+                  "b": true,
+                  "p": "100",
+                  "s": "0.12",
+                  "r": false,
+                  "t": {
+                    "limit": {
+                      "tif": "Ioc"
+                    }
+                  },
+                  "c": "0x765fde8d8d4a9ae99a37a1f3deb3a35e"
+                }
+              ],
+              "grouping": "na"
+            },
+            "nonce": 1791553341617,
+            "signature": {
+              "r": "0xa1fba4914ce82e6b335c40a31d56b27141179fcb870ed96955670e1ae3ebe20c",
+              "s": "0x065900a643a325c4355fd9478ed981f0f5015100b738a95cc93cbdb86b49a86c",
+              "v": 28
+            },
+            "expiresAfter": 1791553343615
+          }
+        }
+      },
+      {
+        "method": "post",
+        "id": 2,
+        "request": {
+          "type": "action",
+          "payload": {
+            "action": {
+              "type": "order",
+              "orders": [
+                {
+                  "a": 110000,
+                  "b": false,
+                  "p": "99.99",
+                  "s": "0.12",
+                  "r": true,
+                  "t": {
+                    "limit": {
+                      "tif": "Ioc"
+                    }
+                  },
+                  "c": "0x782dac5589d929429784b00b34589629"
+                }
+              ],
+              "grouping": "na"
+            },
+            "nonce": 1791553342121,
+            "signature": {
+              "r": "0x5b6a028883a076ecd5459ccea56907e0355645cbc9b250477502f68234b6ed24",
+              "s": "0x6e6fd78c99514b623d9a1dad389523089667d89df190ab462e3b4c0b1897d609",
+              "v": 28
+            },
+            "expiresAfter": 1791553344120
+          }
+        }
+      },
+      {
+        "method": "unsubscribe",
+        "subscription": {
+          "type": "l2Book",
+          "coin": "io:SNDK"
+        }
+      }
+    ],
+    "frames": [
+      {
+        "channel": "clearinghouseState",
+        "data": {
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io",
+          "clearinghouseState": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "0",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [],
+            "time": 1791553341332
+          }
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553341426,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553341535,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "post",
+        "data": {
+          "id": 1,
+          "response": {
+            "type": "action",
+            "payload": {
+              "status": "ok",
+              "response": {
+                "type": "order",
+                "data": {
+                  "statuses": [
+                    {
+                      "filled": {
+                        "oid": 70001,
+                        "totalSz": "0.12",
+                        "avgPx": "100"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553341644,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553341752,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "user",
+        "data": {
+          "fills": [
+            {
+              "coin": "io:SNDK",
+              "px": "100",
+              "sz": "0.12",
+              "side": "B",
+              "time": 1791553341618,
+              "startPosition": "0",
+              "dir": "Open Long",
+              "closedPnl": "0",
+              "hash": "0x000000000000000000000000000000000000000000000000000000000000ea61",
+              "oid": 70001,
+              "crossed": true,
+              "fee": "0.001",
+              "builderFee": "0.0002",
+              "tid": 60001,
+              "feeToken": "USDC",
+              "cloid": "0x765fde8d8d4a9ae99a37a1f3deb3a35e"
+            }
+          ]
+        }
+      },
+      {
+        "channel": "clearinghouseState",
+        "data": {
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io",
+          "clearinghouseState": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "12.00",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [
+              {
+                "type": "oneWay",
+                "position": {
+                  "coin": "io:SNDK",
+                  "szi": "0.12",
+                  "marginUsed": "0",
+                  "leverage": {
+                    "type": "isolated",
+                    "value": 1
+                  },
+                  "cumFunding": {
+                    "allTime": "0",
+                    "sinceOpen": "0",
+                    "sinceChange": "0"
+                  },
+                  "entryPx": "100",
+                  "liquidationPx": null,
+                  "maxLeverage": 10,
+                  "positionValue": "12.00",
+                  "returnOnEquity": "0",
+                  "unrealizedPnl": "0"
+                }
+              }
+            ],
+            "time": 1791553341753
+          }
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553341862,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553341973,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553342068,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "post",
+        "data": {
+          "id": 2,
+          "response": {
+            "type": "action",
+            "payload": {
+              "status": "ok",
+              "response": {
+                "type": "order",
+                "data": {
+                  "statuses": [
+                    {
+                      "filled": {
+                        "oid": 70002,
+                        "totalSz": "0.12",
+                        "avgPx": "99.99"
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553342179,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "user",
+        "data": {
+          "fills": [
+            {
+              "coin": "io:SNDK",
+              "px": "99.99",
+              "sz": "0.12",
+              "side": "A",
+              "time": 1791553342122,
+              "startPosition": "0.12",
+              "dir": "Close Long",
+              "closedPnl": "0",
+              "hash": "0x000000000000000000000000000000000000000000000000000000000000ea62",
+              "oid": 70002,
+              "crossed": true,
+              "fee": "0.001",
+              "builderFee": "0.0002",
+              "tid": 60002,
+              "feeToken": "USDC",
+              "cloid": "0x782dac5589d929429784b00b34589629"
+            }
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553342274,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "clearinghouseState",
+        "data": {
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io",
+          "clearinghouseState": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "0.00",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [],
+            "time": 1791553342274
+          }
+        }
+      },
+      {
+        "channel": "clearinghouseState",
+        "data": {
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io",
+          "clearinghouseState": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "0.00",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [],
+            "time": 1791553342383
+          }
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553342383,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553342476,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553342585,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553342694,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553342805,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      }
+    ],
+    "actions": 2,
+    "fills": [
+      {
+        "coin": "io:SNDK",
+        "px": "100",
+        "sz": "0.12",
+        "side": "B",
+        "time": 1791553341618,
+        "startPosition": "0",
+        "dir": "Open Long",
+        "closedPnl": "0",
+        "hash": "0x000000000000000000000000000000000000000000000000000000000000ea61",
+        "oid": 70001,
+        "crossed": true,
+        "fee": "0.001",
+        "builderFee": "0.0002",
+        "tid": 60001,
+        "feeToken": "USDC",
+        "cloid": "0x765fde8d8d4a9ae99a37a1f3deb3a35e"
+      },
+      {
+        "coin": "io:SNDK",
+        "px": "99.99",
+        "sz": "0.12",
+        "side": "A",
+        "time": 1791553342122,
+        "startPosition": "0.12",
+        "dir": "Close Long",
+        "closedPnl": "0",
+        "hash": "0x000000000000000000000000000000000000000000000000000000000000ea62",
+        "oid": 70002,
+        "crossed": true,
+        "fee": "0.001",
+        "builderFee": "0.0002",
+        "tid": 60002,
+        "feeToken": "USDC",
+        "cloid": "0x782dac5589d929429784b00b34589629"
+      }
+    ],
+    "position": "0.00",
+    "errors": [],
+    "recording_point": "after runtime cleanup before peer teardown"
+  },
+  "ASTER": {
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/fapi/v1/exchangeInfo",
+        "body": null,
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "timezone": "UTC",
+            "serverTime": 1791553341212,
+            "rateLimits": [
+              {
+                "rateLimitType": "REQUEST_WEIGHT",
+                "interval": "MINUTE",
+                "intervalNum": 1,
+                "limit": 2400
+              },
+              {
+                "rateLimitType": "ORDERS",
+                "interval": "MINUTE",
+                "intervalNum": 1,
+                "limit": 1200
+              },
+              {
+                "rateLimitType": "ORDERS",
+                "interval": "SECOND",
+                "intervalNum": 10,
+                "limit": 300
+              }
+            ],
+            "exchangeFilters": [],
+            "symbols": [
+              {
+                "symbol": "SNDKUSD1",
+                "filters": [
+                  {
+                    "minPrice": "0.01000",
+                    "maxPrice": "100000",
+                    "filterType": "PRICE_FILTER",
+                    "tickSize": "0.01000"
+                  },
+                  {
+                    "stepSize": "0.01",
+                    "filterType": "LOT_SIZE",
+                    "maxQty": "6000",
+                    "minQty": "0.01"
+                  },
+                  {
+                    "stepSize": "0.01",
+                    "filterType": "MARKET_LOT_SIZE",
+                    "maxQty": "600",
+                    "minQty": "0.01"
+                  },
+                  {
+                    "limit": 200,
+                    "filterType": "MAX_NUM_ORDERS"
+                  },
+                  {
+                    "limit": 10,
+                    "filterType": "MAX_NUM_ALGO_ORDERS"
+                  },
+                  {
+                    "notional": "5",
+                    "filterType": "MIN_NOTIONAL"
+                  },
+                  {
+                    "multiplierDown": "0.9500",
+                    "multiplierUp": "1.0500",
+                    "ltMultiplierDown": "0.9500",
+                    "multiplierDecimal": "4",
+                    "filterType": "PERCENT_PRICE",
+                    "ltMultiplierUp": "1.0500"
+                  }
+                ],
+                "orderTypes": [
+                  "LIMIT",
+                  "MARKET",
+                  "STOP",
+                  "STOP_MARKET",
+                  "TAKE_PROFIT",
+                  "TAKE_PROFIT_MARKET",
+                  "TRAILING_STOP_MARKET"
+                ],
+                "timeInForce": [
+                  "GTC",
+                  "IOC",
+                  "GTX",
+                  "HIDDEN"
+                ],
+                "createTime": 1787250558184,
+                "pair": "SNDKUSD1",
+                "contractType": "PERPETUAL",
+                "deliveryDate": 4133404800000,
+                "onboardDate": 1787254200000,
+                "status": "TRADING",
+                "maintMarginPercent": "16.6600",
+                "requiredMarginPercent": "33.3300",
+                "baseAsset": "SNDK",
+                "quoteAsset": "USD1",
+                "marginAsset": "USD1",
+                "pricePrecision": 5,
+                "quantityPrecision": 2,
+                "baseAssetPrecision": 8,
+                "quotePrecision": 8,
+                "underlyingType": "COIN",
+                "underlyingSubType": [
+                  "STOCK",
+                  "AOS2",
+                  "USD1-RWA"
+                ],
+                "symbolType": 1,
+                "tradingMode": 1,
+                "name": "",
+                "channel": "nasdaq",
+                "sequenceNo": 0,
+                "twapMinNotional": "1000",
+                "imn": "4000.00",
+                "tags": [
+                  "SanDisk",
+                  "Stock",
+                  "\u80a1\u7968",
+                  "\u95ea\u8fea",
+                  "\u95ea",
+                  "\u80a1\u7968",
+                  "\u9583\u8fea",
+                  "\u9583"
+                ],
+                "settlePlan": 0,
+                "triggerProtect": "0.0500",
+                "liquidationFee": "0.025000",
+                "marketTakeBound": "0.05"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v1/exchangeInfo",
+        "body": null,
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "timezone": "UTC",
+            "serverTime": 1791553341215,
+            "rateLimits": [
+              {
+                "rateLimitType": "REQUEST_WEIGHT",
+                "interval": "MINUTE",
+                "intervalNum": 1,
+                "limit": 2400
+              },
+              {
+                "rateLimitType": "ORDERS",
+                "interval": "MINUTE",
+                "intervalNum": 1,
+                "limit": 1200
+              },
+              {
+                "rateLimitType": "ORDERS",
+                "interval": "SECOND",
+                "intervalNum": 10,
+                "limit": 300
+              }
+            ],
+            "exchangeFilters": [],
+            "symbols": [
+              {
+                "symbol": "SNDKUSD1",
+                "filters": [
+                  {
+                    "minPrice": "0.01000",
+                    "maxPrice": "100000",
+                    "filterType": "PRICE_FILTER",
+                    "tickSize": "0.01000"
+                  },
+                  {
+                    "stepSize": "0.01",
+                    "filterType": "LOT_SIZE",
+                    "maxQty": "6000",
+                    "minQty": "0.01"
+                  },
+                  {
+                    "stepSize": "0.01",
+                    "filterType": "MARKET_LOT_SIZE",
+                    "maxQty": "600",
+                    "minQty": "0.01"
+                  },
+                  {
+                    "limit": 200,
+                    "filterType": "MAX_NUM_ORDERS"
+                  },
+                  {
+                    "limit": 10,
+                    "filterType": "MAX_NUM_ALGO_ORDERS"
+                  },
+                  {
+                    "notional": "5",
+                    "filterType": "MIN_NOTIONAL"
+                  },
+                  {
+                    "multiplierDown": "0.9500",
+                    "multiplierUp": "1.0500",
+                    "ltMultiplierDown": "0.9500",
+                    "multiplierDecimal": "4",
+                    "filterType": "PERCENT_PRICE",
+                    "ltMultiplierUp": "1.0500"
+                  }
+                ],
+                "orderTypes": [
+                  "LIMIT",
+                  "MARKET",
+                  "STOP",
+                  "STOP_MARKET",
+                  "TAKE_PROFIT",
+                  "TAKE_PROFIT_MARKET",
+                  "TRAILING_STOP_MARKET"
+                ],
+                "timeInForce": [
+                  "GTC",
+                  "IOC",
+                  "GTX",
+                  "HIDDEN"
+                ],
+                "createTime": 1787250558184,
+                "pair": "SNDKUSD1",
+                "contractType": "PERPETUAL",
+                "deliveryDate": 4133404800000,
+                "onboardDate": 1787254200000,
+                "status": "TRADING",
+                "maintMarginPercent": "16.6600",
+                "requiredMarginPercent": "33.3300",
+                "baseAsset": "SNDK",
+                "quoteAsset": "USD1",
+                "marginAsset": "USD1",
+                "pricePrecision": 5,
+                "quantityPrecision": 2,
+                "baseAssetPrecision": 8,
+                "quotePrecision": 8,
+                "underlyingType": "COIN",
+                "underlyingSubType": [
+                  "STOCK",
+                  "AOS2",
+                  "USD1-RWA"
+                ],
+                "symbolType": 1,
+                "tradingMode": 1,
+                "name": "",
+                "channel": "nasdaq",
+                "sequenceNo": 0,
+                "twapMinNotional": "1000",
+                "imn": "4000.00",
+                "tags": [
+                  "SanDisk",
+                  "Stock",
+                  "\u80a1\u7968",
+                  "\u95ea\u8fea",
+                  "\u95ea",
+                  "\u80a1\u7968",
+                  "\u9583\u8fea",
+                  "\u9583"
+                ],
+                "settlePlan": 0,
+                "triggerProtect": "0.0500",
+                "liquidationFee": "0.025000",
+                "marketTakeBound": "0.05"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v1/exchangeInfo",
+        "body": null,
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "timezone": "UTC",
+            "serverTime": 1791553341226,
+            "rateLimits": [
+              {
+                "rateLimitType": "REQUEST_WEIGHT",
+                "interval": "MINUTE",
+                "intervalNum": 1,
+                "limit": 2400
+              },
+              {
+                "rateLimitType": "ORDERS",
+                "interval": "MINUTE",
+                "intervalNum": 1,
+                "limit": 1200
+              },
+              {
+                "rateLimitType": "ORDERS",
+                "interval": "SECOND",
+                "intervalNum": 10,
+                "limit": 300
+              }
+            ],
+            "exchangeFilters": [],
+            "symbols": [
+              {
+                "symbol": "SNDKUSD1",
+                "filters": [
+                  {
+                    "minPrice": "0.01000",
+                    "maxPrice": "100000",
+                    "filterType": "PRICE_FILTER",
+                    "tickSize": "0.01000"
+                  },
+                  {
+                    "stepSize": "0.01",
+                    "filterType": "LOT_SIZE",
+                    "maxQty": "6000",
+                    "minQty": "0.01"
+                  },
+                  {
+                    "stepSize": "0.01",
+                    "filterType": "MARKET_LOT_SIZE",
+                    "maxQty": "600",
+                    "minQty": "0.01"
+                  },
+                  {
+                    "limit": 200,
+                    "filterType": "MAX_NUM_ORDERS"
+                  },
+                  {
+                    "limit": 10,
+                    "filterType": "MAX_NUM_ALGO_ORDERS"
+                  },
+                  {
+                    "notional": "5",
+                    "filterType": "MIN_NOTIONAL"
+                  },
+                  {
+                    "multiplierDown": "0.9500",
+                    "multiplierUp": "1.0500",
+                    "ltMultiplierDown": "0.9500",
+                    "multiplierDecimal": "4",
+                    "filterType": "PERCENT_PRICE",
+                    "ltMultiplierUp": "1.0500"
+                  }
+                ],
+                "orderTypes": [
+                  "LIMIT",
+                  "MARKET",
+                  "STOP",
+                  "STOP_MARKET",
+                  "TAKE_PROFIT",
+                  "TAKE_PROFIT_MARKET",
+                  "TRAILING_STOP_MARKET"
+                ],
+                "timeInForce": [
+                  "GTC",
+                  "IOC",
+                  "GTX",
+                  "HIDDEN"
+                ],
+                "createTime": 1787250558184,
+                "pair": "SNDKUSD1",
+                "contractType": "PERPETUAL",
+                "deliveryDate": 4133404800000,
+                "onboardDate": 1787254200000,
+                "status": "TRADING",
+                "maintMarginPercent": "16.6600",
+                "requiredMarginPercent": "33.3300",
+                "baseAsset": "SNDK",
+                "quoteAsset": "USD1",
+                "marginAsset": "USD1",
+                "pricePrecision": 5,
+                "quantityPrecision": 2,
+                "baseAssetPrecision": 8,
+                "quotePrecision": 8,
+                "underlyingType": "COIN",
+                "underlyingSubType": [
+                  "STOCK",
+                  "AOS2",
+                  "USD1-RWA"
+                ],
+                "symbolType": 1,
+                "tradingMode": 1,
+                "name": "",
+                "channel": "nasdaq",
+                "sequenceNo": 0,
+                "twapMinNotional": "1000",
+                "imn": "4000.00",
+                "tags": [
+                  "SanDisk",
+                  "Stock",
+                  "\u80a1\u7968",
+                  "\u95ea\u8fea",
+                  "\u95ea",
+                  "\u80a1\u7968",
+                  "\u9583\u8fea",
+                  "\u9583"
+                ],
+                "settlePlan": 0,
+                "triggerProtect": "0.0500",
+                "liquidationFee": "0.025000",
+                "marketTakeBound": "0.05"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/positionSide/dual",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553341227911"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "dualSidePosition": false
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/commissionRate",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553341229735"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "symbol": "SNDKUSD1",
+            "makerCommissionRate": "0.00005",
+            "takerCommissionRate": "0.0004"
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/balance",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553341231280"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "asset": "USD1",
+              "balance": "100",
+              "crossWalletBalance": "100",
+              "availableBalance": "100",
+              "crossUnPnl": "0",
+              "maxWithdrawAmount": "100",
+              "marginAvailable": true,
+              "updateTime": 1791553341231
+            }
+          ]
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/fapi/v3/listenKey",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553341232718"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "listenKey": "entropy43-owned-synthetic"
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/openOrders",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553341235747"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/userTrades",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553341238669"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ],
+          "startTime": [
+            "1791553341232"
+          ],
+          "endTime": [
+            "1791553341238"
+          ],
+          "limit": [
+            "1000"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/openOrders",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553341240688"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/balance",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553341242153"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "asset": "USD1",
+              "balance": "100",
+              "crossWalletBalance": "100",
+              "availableBalance": "100",
+              "crossUnPnl": "0",
+              "maxWithdrawAmount": "100",
+              "marginAvailable": true,
+              "updateTime": 1791553341242
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/positionRisk",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553341243702"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "symbol": "SNDKUSD1",
+              "positionAmt": "0",
+              "entryPrice": "100",
+              "markPrice": "100",
+              "unRealizedProfit": "0",
+              "liquidationPrice": "0",
+              "leverage": "1",
+              "marginType": "isolated",
+              "positionSide": "BOTH",
+              "notional": "0",
+              "updateTime": 1791553341244
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/positionSide/dual",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553341245191"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "dualSidePosition": false
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/balance",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553341246599"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "asset": "USD1",
+              "balance": "100",
+              "crossWalletBalance": "100",
+              "availableBalance": "100",
+              "crossUnPnl": "0",
+              "maxWithdrawAmount": "100",
+              "marginAvailable": true,
+              "updateTime": 1791553341247
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/positionRisk",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553341248044"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "symbol": "SNDKUSD1",
+              "positionAmt": "0",
+              "entryPrice": "100",
+              "markPrice": "100",
+              "unRealizedProfit": "0",
+              "liquidationPrice": "0",
+              "leverage": "1",
+              "marginType": "isolated",
+              "positionSide": "BOTH",
+              "notional": "0",
+              "updateTime": 1791553341248
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/openOrders",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553341249605"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/allOrders",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553341398614"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ],
+          "startTime": [
+            "1790948541398"
+          ],
+          "endTime": [
+            "1791553341398"
+          ],
+          "limit": [
+            "1000"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/userTrades",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553341399907"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ],
+          "startTime": [
+            "1790948541398"
+          ],
+          "endTime": [
+            "1791553341398"
+          ],
+          "limit": [
+            "1000"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/positionRisk",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553341401130"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "symbol": "SNDKUSD1",
+              "positionAmt": "0",
+              "entryPrice": "100",
+              "markPrice": "100",
+              "unRealizedProfit": "0",
+              "liquidationPrice": "0",
+              "leverage": "1",
+              "marginType": "isolated",
+              "positionSide": "BOTH",
+              "notional": "0",
+              "updateTime": 1791553341402
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/userTrades",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553341506802"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ],
+          "startTime": [
+            "1791553341238"
+          ],
+          "endTime": [
+            "1791553341506"
+          ],
+          "limit": [
+            "1000"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v1/depth",
+        "body": null,
+        "params": {
+          "symbol": [
+            "SNDKUSD1"
+          ],
+          "limit": [
+            "20"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "lastUpdateId": 101,
+            "E": 1791553341508,
+            "T": 1791553341508,
+            "bids": [
+              [
+                "100.10",
+                "1"
+              ]
+            ],
+            "asks": [
+              [
+                "100.11",
+                "1"
+              ]
+            ]
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/openOrders",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553341508389"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/balance",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553341509601"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "asset": "USD1",
+              "balance": "100",
+              "crossWalletBalance": "100",
+              "availableBalance": "100",
+              "crossUnPnl": "0",
+              "maxWithdrawAmount": "100",
+              "marginAvailable": true,
+              "updateTime": 1791553341509
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/positionRisk",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553341510333"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "symbol": "SNDKUSD1",
+              "positionAmt": "0",
+              "entryPrice": "100",
+              "markPrice": "100",
+              "unRealizedProfit": "0",
+              "liquidationPrice": "0",
+              "leverage": "1",
+              "marginType": "isolated",
+              "positionSide": "BOTH",
+              "notional": "0",
+              "updateTime": 1791553341509
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/positionSide/dual",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553341511031"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "dualSidePosition": false
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/balance",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553341511617"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "asset": "USD1",
+              "balance": "100",
+              "crossWalletBalance": "100",
+              "availableBalance": "100",
+              "crossUnPnl": "0",
+              "maxWithdrawAmount": "100",
+              "marginAvailable": true,
+              "updateTime": 1791553341511
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/positionRisk",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553341512216"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "symbol": "SNDKUSD1",
+              "positionAmt": "0",
+              "entryPrice": "100",
+              "markPrice": "100",
+              "unRealizedProfit": "0",
+              "liquidationPrice": "0",
+              "leverage": "1",
+              "marginType": "isolated",
+              "positionSide": "BOTH",
+              "notional": "0",
+              "updateTime": 1791553341511
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/openOrders",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553341512727"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/fapi/v3/order",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553341915232"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ],
+          "side": [
+            "SELL"
+          ],
+          "type": [
+            "LIMIT"
+          ],
+          "quantity": [
+            "0.12"
+          ],
+          "price": [
+            "100.10000"
+          ],
+          "timeInForce": [
+            "IOC"
+          ],
+          "newClientOrderId": [
+            "ENTROPY43_LOCAL-aster-2"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "symbol": "SNDKUSD1",
+            "orderId": 80001,
+            "clientOrderId": "ENTROPY43_LOCAL-aster-2",
+            "origQty": "0.12",
+            "executedQty": "0",
+            "price": "100.10000",
+            "avgPrice": "0",
+            "status": "NEW",
+            "timeInForce": "IOC",
+            "type": "LIMIT",
+            "side": "SELL",
+            "positionSide": "BOTH",
+            "reduceOnly": false,
+            "time": 1791553341915,
+            "updateTime": 1791553341915
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/userTrades",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553342121326"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ],
+          "startTime": [
+            "1791553341506"
+          ],
+          "endTime": [
+            "1791553342121"
+          ],
+          "limit": [
+            "1000"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "symbol": "SNDKUSD1",
+              "id": 90000,
+              "orderId": 80001,
+              "price": "100.10000",
+              "qty": "0.12",
+              "quoteQty": "12.0120000",
+              "realizedPnl": "0",
+              "commission": "0.001",
+              "commissionAsset": "USD1",
+              "time": 1791553342068,
+              "buyer": false,
+              "maker": false,
+              "side": "SELL",
+              "positionSide": "BOTH"
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/openOrders",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553342123219"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/balance",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553342124049"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "asset": "USD1",
+              "balance": "100",
+              "crossWalletBalance": "100",
+              "availableBalance": "100",
+              "crossUnPnl": "0",
+              "maxWithdrawAmount": "100",
+              "marginAvailable": true,
+              "updateTime": 1791553342123
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/positionRisk",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553342125113"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "symbol": "SNDKUSD1",
+              "positionAmt": "-0.12",
+              "entryPrice": "100",
+              "markPrice": "100",
+              "unRealizedProfit": "0",
+              "liquidationPrice": "0",
+              "leverage": "1",
+              "marginType": "isolated",
+              "positionSide": "BOTH",
+              "notional": "-12.00",
+              "updateTime": 1791553342124
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/positionSide/dual",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553342125862"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "dualSidePosition": false
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/balance",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553342126377"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "asset": "USD1",
+              "balance": "100",
+              "crossWalletBalance": "100",
+              "availableBalance": "100",
+              "crossUnPnl": "0",
+              "maxWithdrawAmount": "100",
+              "marginAvailable": true,
+              "updateTime": 1791553342126
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/positionRisk",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553342127552"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "symbol": "SNDKUSD1",
+              "positionAmt": "-0.12",
+              "entryPrice": "100",
+              "markPrice": "100",
+              "unRealizedProfit": "0",
+              "liquidationPrice": "0",
+              "leverage": "1",
+              "marginType": "isolated",
+              "positionSide": "BOTH",
+              "notional": "-12.00",
+              "updateTime": 1791553342126
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/openOrders",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553342128214"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/fapi/v3/order",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553342320400"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ],
+          "side": [
+            "BUY"
+          ],
+          "type": [
+            "LIMIT"
+          ],
+          "quantity": [
+            "0.12"
+          ],
+          "price": [
+            "100.11000"
+          ],
+          "timeInForce": [
+            "IOC"
+          ],
+          "reduceOnly": [
+            "true"
+          ],
+          "newClientOrderId": [
+            "ENTROPY43_LOCAL-aster-5"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "symbol": "SNDKUSD1",
+            "orderId": 80002,
+            "clientOrderId": "ENTROPY43_LOCAL-aster-5",
+            "origQty": "0.12",
+            "executedQty": "0",
+            "price": "100.11000",
+            "avgPrice": "0",
+            "status": "NEW",
+            "timeInForce": "IOC",
+            "type": "LIMIT",
+            "side": "BUY",
+            "positionSide": "BOTH",
+            "reduceOnly": true,
+            "time": 1791553342321,
+            "updateTime": 1791553342321
+          }
+        }
+      },
+      {
+        "method": "DELETE",
+        "path": "/fapi/v3/order",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553342321097"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ],
+          "origClientOrderId": [
+            "ENTROPY43_LOCAL-aster-5"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "symbol": "SNDKUSD1",
+            "orderId": 80002,
+            "clientOrderId": "ENTROPY43_LOCAL-aster-5",
+            "origQty": "0.12",
+            "executedQty": "0",
+            "price": "100.11000",
+            "avgPrice": "0",
+            "status": "CANCELED",
+            "timeInForce": "IOC",
+            "type": "LIMIT",
+            "side": "BUY",
+            "positionSide": "BOTH",
+            "reduceOnly": true,
+            "time": 1791553342321,
+            "updateTime": 1791553342321
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/userTrades",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553342620480"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ],
+          "startTime": [
+            "1791553342121"
+          ],
+          "endTime": [
+            "1791553342620"
+          ],
+          "limit": [
+            "1000"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "symbol": "SNDKUSD1",
+              "id": 90000,
+              "orderId": 80001,
+              "price": "100.10000",
+              "qty": "0.12",
+              "quoteQty": "12.0120000",
+              "realizedPnl": "0",
+              "commission": "0.001",
+              "commissionAsset": "USD1",
+              "time": 1791553342068,
+              "buyer": false,
+              "maker": false,
+              "side": "SELL",
+              "positionSide": "BOTH"
+            },
+            {
+              "symbol": "SNDKUSD1",
+              "id": 90001,
+              "orderId": 80002,
+              "price": "100.11000",
+              "qty": "0.12",
+              "quoteQty": "12.0132000",
+              "realizedPnl": "0",
+              "commission": "0.001",
+              "commissionAsset": "USD1",
+              "time": 1791553342476,
+              "buyer": true,
+              "maker": false,
+              "side": "BUY",
+              "positionSide": "BOTH"
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/openOrders",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553342621881"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/balance",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553342622676"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "asset": "USD1",
+              "balance": "100",
+              "crossWalletBalance": "100",
+              "availableBalance": "100",
+              "crossUnPnl": "0",
+              "maxWithdrawAmount": "100",
+              "marginAvailable": true,
+              "updateTime": 1791553342622
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/positionRisk",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553342623420"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "symbol": "SNDKUSD1",
+              "positionAmt": "0.00",
+              "entryPrice": "100",
+              "markPrice": "100",
+              "unRealizedProfit": "0",
+              "liquidationPrice": "0",
+              "leverage": "1",
+              "marginType": "isolated",
+              "positionSide": "BOTH",
+              "notional": "0.00",
+              "updateTime": 1791553342623
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/positionSide/dual",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553342624167"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "dualSidePosition": false
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/balance",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553342624755"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "asset": "USD1",
+              "balance": "100",
+              "crossWalletBalance": "100",
+              "availableBalance": "100",
+              "crossUnPnl": "0",
+              "maxWithdrawAmount": "100",
+              "marginAvailable": true,
+              "updateTime": 1791553342624
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/positionRisk",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553342625377"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "symbol": "SNDKUSD1",
+              "positionAmt": "0.00",
+              "entryPrice": "100",
+              "markPrice": "100",
+              "unRealizedProfit": "0",
+              "liquidationPrice": "0",
+              "leverage": "1",
+              "marginType": "isolated",
+              "positionSide": "BOTH",
+              "notional": "0.00",
+              "updateTime": 1791553342625
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/openOrders",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553342625967"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "DELETE",
+        "path": "/fapi/v3/listenKey",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553343807673"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": {}
+        }
+      }
+    ],
+    "commands": [
+      {
+        "method": "SUBSCRIBE",
+        "params": [
+          "sndkusd1@depth@0ms"
+        ],
+        "id": 1
+      },
+      {
+        "method": "UNSUBSCRIBE",
+        "params": [
+          "sndkusd1@depth@0ms"
+        ],
+        "id": 2
+      }
+    ],
+    "frames": [
+      {
+        "e": "depthUpdate",
+        "E": 1791553341426,
+        "T": 1791553341426,
+        "s": "SNDKUSD1",
+        "U": 101,
+        "u": 101,
+        "pu": 100,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553341535,
+        "T": 1791553341535,
+        "s": "SNDKUSD1",
+        "U": 102,
+        "u": 102,
+        "pu": 101,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553341644,
+        "T": 1791553341644,
+        "s": "SNDKUSD1",
+        "U": 103,
+        "u": 103,
+        "pu": 102,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553341752,
+        "T": 1791553341752,
+        "s": "SNDKUSD1",
+        "U": 104,
+        "u": 104,
+        "pu": 103,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553341862,
+        "T": 1791553341862,
+        "s": "SNDKUSD1",
+        "U": 105,
+        "u": 105,
+        "pu": 104,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553341973,
+        "T": 1791553341973,
+        "s": "SNDKUSD1",
+        "U": 106,
+        "u": 106,
+        "pu": 105,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "ORDER_TRADE_UPDATE",
+        "E": 1791553342068,
+        "T": 1791553342068,
+        "o": {
+          "s": "SNDKUSD1",
+          "c": "ENTROPY43_LOCAL-aster-2",
+          "S": "SELL",
+          "o": "LIMIT",
+          "f": "IOC",
+          "q": "0.12",
+          "p": "100.10000",
+          "ap": "100.10000",
+          "sp": "0",
+          "x": "TRADE",
+          "X": "FILLED",
+          "i": 80001,
+          "l": "0.12",
+          "z": "0.12",
+          "L": "100.10000",
+          "N": "USD1",
+          "n": "0.001",
+          "T": 1791553342068,
+          "t": 90000,
+          "m": false,
+          "R": false,
+          "wt": "CONTRACT_PRICE",
+          "ot": "LIMIT",
+          "ps": "BOTH",
+          "rp": "0"
+        }
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553342068,
+        "T": 1791553342068,
+        "s": "SNDKUSD1",
+        "U": 107,
+        "u": 107,
+        "pu": 106,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553342179,
+        "T": 1791553342179,
+        "s": "SNDKUSD1",
+        "U": 108,
+        "u": 108,
+        "pu": 107,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553342274,
+        "T": 1791553342274,
+        "s": "SNDKUSD1",
+        "U": 109,
+        "u": 109,
+        "pu": 108,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553342383,
+        "T": 1791553342383,
+        "s": "SNDKUSD1",
+        "U": 110,
+        "u": 110,
+        "pu": 109,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "ORDER_TRADE_UPDATE",
+        "E": 1791553342476,
+        "T": 1791553342476,
+        "o": {
+          "s": "SNDKUSD1",
+          "c": "ENTROPY43_LOCAL-aster-5",
+          "S": "BUY",
+          "o": "LIMIT",
+          "f": "IOC",
+          "q": "0.12",
+          "p": "100.11000",
+          "ap": "100.11000",
+          "sp": "0",
+          "x": "TRADE",
+          "X": "FILLED",
+          "i": 80002,
+          "l": "0.12",
+          "z": "0.12",
+          "L": "100.11000",
+          "N": "USD1",
+          "n": "0.001",
+          "T": 1791553342476,
+          "t": 90001,
+          "m": false,
+          "R": true,
+          "wt": "CONTRACT_PRICE",
+          "ot": "LIMIT",
+          "ps": "BOTH",
+          "rp": "0"
+        }
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553342476,
+        "T": 1791553342476,
+        "s": "SNDKUSD1",
+        "U": 111,
+        "u": 111,
+        "pu": 110,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553342585,
+        "T": 1791553342585,
+        "s": "SNDKUSD1",
+        "U": 112,
+        "u": 112,
+        "pu": 111,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553342694,
+        "T": 1791553342694,
+        "s": "SNDKUSD1",
+        "U": 113,
+        "u": 113,
+        "pu": 112,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553342804,
+        "T": 1791553342804,
+        "s": "SNDKUSD1",
+        "U": 114,
+        "u": 114,
+        "pu": 113,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      }
+    ],
+    "actions": 3,
+    "fills": [
+      {
+        "symbol": "SNDKUSD1",
+        "id": 90000,
+        "orderId": 80001,
+        "price": "100.10000",
+        "qty": "0.12",
+        "quoteQty": "12.0120000",
+        "realizedPnl": "0",
+        "commission": "0.001",
+        "commissionAsset": "USD1",
+        "time": 1791553342068,
+        "buyer": false,
+        "maker": false,
+        "side": "SELL",
+        "positionSide": "BOTH"
+      },
+      {
+        "symbol": "SNDKUSD1",
+        "id": 90001,
+        "orderId": 80002,
+        "price": "100.11000",
+        "qty": "0.12",
+        "quoteQty": "12.0132000",
+        "realizedPnl": "0",
+        "commission": "0.001",
+        "commissionAsset": "USD1",
+        "time": 1791553342476,
+        "buyer": true,
+        "maker": false,
+        "side": "BUY",
+        "positionSide": "BOTH"
+      }
+    ],
+    "position": "0.00",
+    "errors": [],
+    "recording_point": "after runtime cleanup before peer teardown"
+  }
+}

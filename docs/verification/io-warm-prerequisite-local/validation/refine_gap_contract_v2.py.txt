@@ -1,0 +1,22 @@
+"""Preserve the first contract and add the reviewer-discovered taint gate."""
+
+import hashlib
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+root = Path(__file__).resolve().parent
+before = root / "native117-economic-gap-correction-contract-v1.md"
+after = root / "native117-economic-gap-correction-contract-v2.md"
+receipt = root / "native117-economic-gap-correction-contract-v2.json"
+assert not after.exists() and not receipt.exists()
+original = before.read_text(encoding="utf-8")
+needle = "Same/earlier time, or an already represented end, is a true no-op with no checkpoint rewrite or revision advance."
+replacement = needle + " The producer must check the existing economic taint gate before this no-op return; an already tainted runtime still rejects same/earlier boundaries, without clearing the flag. The normal commit retains its existing check."
+assert original.count(needle) == 1
+updated = original.replace(needle, replacement)
+updated += "\nContract v2 records the independent review's taint-gate requirement. No earlier contract or failed evidence was overwritten. Add a durable tainted-runtime no-op rejection regression; do not infer that a no-op authorizes reuse of an invalid economic state.\n"
+after.write_text(updated, encoding="utf-8")
+receipt.write_text(json.dumps({"created_utc": datetime.now(timezone.utc).isoformat(), "original": {"path": str(before), "sha256": hashlib.sha256(before.read_bytes()).hexdigest()}, "refined": {"path": str(after), "sha256": hashlib.sha256(after.read_bytes()).hexdigest()}, "reason": "Independent reviewer: no-op must not bypass existing economic taint gate", "tests_executed": 0}, indent=2) + "\n", encoding="utf-8")
+print(receipt.read_text(encoding="utf-8"))

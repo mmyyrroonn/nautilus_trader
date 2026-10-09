@@ -1,0 +1,53 @@
+"""Correct the archive helper to the actual controlled-builder schema."""
+import hashlib
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+root = Path(__file__).resolve().parent
+old = root / "archive_native117_v4.py"
+assert hashlib.sha256(old.read_bytes()).hexdigest() == "05877a700aaef8199c5254ca73519854fa38e3c05ce830889654d7fd07667609"
+failed = json.loads((root / "native117-archive-command-v4.json").read_text(encoding="utf-8"))
+assert failed["exit_code"] == 1
+archive = Path("E:/persarb/worktrees/entropy-warm-prerequisites/docs/verification/io-warm-prerequisite-local")
+assert not archive.exists(), "Failed v4 must have stopped before creating an archive"
+content = old.read_text(encoding="utf-8")
+before = '    require(provenance["build"].get("started_at") and provenance["build"].get("completed_at"), "Build is unfinished")\n'
+after = '''    build_label = ("native117-corrected-source-bound-wheel-build-v1"
+                   if wheel_root == WHEEL else "native117-source-bound-wheel-build")
+    require(wheel_root in (WHEEL, FIRST_WHEEL), "Unassigned controlled wheel directory")
+    actual_build = completed_command(build_label, 0)["command"]
+    require(provenance["build"].get("completed_at"), "Build completion is absent")
+    require(datetime.fromisoformat(actual_build["started_utc"])
+            <= datetime.fromisoformat(provenance["build"]["completed_at"])
+            <= datetime.fromisoformat(actual_build["finished_utc"]),
+            "Build completion is outside its actual completed command")
+'''
+assert content.count(before) == 1
+content = content.replace(before, after)
+before_time = '''    require(datetime.fromisoformat(build["started_utc"]) <= datetime.fromisoformat(provenance["build"]["started_at"])
+            <= datetime.fromisoformat(provenance["build"]["completed_at"]) <= datetime.fromisoformat(build["finished_utc"]),
+            "Clean build provenance is not bracketed by the actual build command")'''
+after_time = '''    require(datetime.fromisoformat(build["started_utc"])
+            <= datetime.fromisoformat(provenance["build"]["completed_at"])
+            <= datetime.fromisoformat(build["finished_utc"]),
+            "Clean build completion is not bracketed by the actual build command")'''
+assert content.count(before_time) == 1
+content = content.replace(before_time, after_time)
+new = root / "archive_native117_v5.py"
+assert not new.exists()
+new.write_text(content, encoding="utf-8")
+note = root / "archive-native117-source-binding-correction-v5.md"
+assert not note.exists()
+note.write_text('''# Native117 archive helper v5 — actual builder timestamp schema
+
+Root's actual v4 invocation at13:13 UTC (see exact receipt) stopped before mkdir with `ValueError: Build is unfinished`. The controlled builder does not emit `build.started_at`: its actual schema has clean `started_source`/`finished_source`, verified source fingerprints and `completed_at`. Both original and corrective builds actually completed; no provenance field or old failure record is fabricated or rewritten.
+
+V5 replaces only the two references to that nonexistent field. `verify_wheel` requires the assigned directory's actual completed build-command receipt/log and exit0, and brackets actual `completed_at` by that receipt's start/end. Candidate checks apply the same completed-command bracket. All clean source/commit/tree/pre-post identities, actual build-input and wheel bytes, strict installs, tested-source/binary, raw Clippy gate, separate failure/RED and seven-cohort guards remain unchanged. The first saved inner build receipt is0 while its outer GBK-printing failure remains preserved separately.
+
+This preparation only reads/writes versioned helper source and a note. V4 is preserved. V5 is unexecuted and awaits narrow source review; no test, native import, Cargo, Git, build, installation or archive runs occurred here.
+'''.replace('at13:13 UTC', 'at14:13 UTC'), encoding="utf-8")
+record = root / "archive-native117-source-binding-correction-v5.json"
+assert not record.exists()
+record.write_text(json.dumps({"created_utc": datetime.now(timezone.utc).isoformat(), "prior_helper_sha256": hashlib.sha256(old.read_bytes()).hexdigest(), "new_helper_sha256": hashlib.sha256(new.read_bytes()).hexdigest(), "note_sha256": hashlib.sha256(note.read_bytes()).hexdigest(), "failed_v4_receipt_sha256": hashlib.sha256((root / "native117-archive-command-v4.json").read_bytes()).hexdigest(), "no_archive_created_after_v4": True, "helper_executions_in_preparation": 0, "tests_executed": 0}, indent=2) + "\n", encoding="utf-8")
+print(record.read_text(encoding="utf-8"))

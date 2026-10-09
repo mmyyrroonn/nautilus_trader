@@ -1,0 +1,15 @@
+{
+  "argv": [
+    "gh",
+    "api",
+    "repos/mmyyrroonn/nautilus_trader/issues/117/comments",
+    "--method",
+    "POST",
+    "--input",
+    "E:\\persarb\\_tmp\\entropy117-validation\\native117-gap-red-green-progress-v1-post-input.json"
+  ],
+  "started_utc": "2026-10-09T13:31:13.385518+00:00",
+  "finished_utc": "2026-10-09T13:31:14.772858+00:00",
+  "exit_code": 0,
+  "attempts": 1
+}

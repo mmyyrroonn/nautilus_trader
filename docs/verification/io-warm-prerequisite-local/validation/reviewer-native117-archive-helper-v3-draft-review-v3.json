@@ -1,0 +1,187 @@
+{
+  "started_utc": "2026-10-09T13:41:59.492079+00:00",
+  "finished_utc": "2026-10-09T13:41:59.509089+00:00",
+  "helper_sha256": "62e5c53e4b9b46980bb296d9e3973a5c91e4b923d209910f906b8dc3daedc1af",
+  "before": [
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v3-draft-procedure-v3.py",
+      "sha256": "b2a3c80956d5ea2c64ddb0e9f6ff6bea1d58fbe658d9cba6494bc9501ea20926"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v3-draft-procedure-v2.py",
+      "sha256": "7e9f2aa6037d1b5f01903b104cd9d3872fbd668cd0f3d746ca5d60f0c8586ad2"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v3-draft-procedure-v2-failed.log",
+      "sha256": "6409d6d7f4bc7974dd306af390f4d4a9f70388ac20fb1a990836becec14ffad8"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\archive_native117_v3.py",
+      "sha256": "62e5c53e4b9b46980bb296d9e3973a5c91e4b923d209910f906b8dc3daedc1af"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v3-draft-review-v3-source.py.txt",
+      "sha256": "62e5c53e4b9b46980bb296d9e3973a5c91e4b923d209910f906b8dc3daedc1af"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\archive_native117_v2.py",
+      "sha256": "3c317b91fb66330d9668403358ee91d78c2759d43f06c14f6532a93822f105e9"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\archive-native117-source-binding-correction-v3.md",
+      "sha256": "9b73d997484f12f37405375b9e4993284af4f8d085a0123056427667121c930f"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\archive-native117-source-binding-correction-v3.json",
+      "sha256": "72d388df9245e087516c0930e67ebfe4c54d6630d8484fd401ae1e1ace62fc1d"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-clippy-diagnostic-comparison-v7-v2.json",
+      "sha256": "27d8c0271ede0c49cb688eb402aaaa394cba089c08ca06d6b1212270288dbed9"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v3-draft-procedure-v1.py",
+      "sha256": "cc9c9588add2a0ef4a411a4f3c33419a1a8af559c05cab2e152b8a97a2e9dc81"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v3-draft-procedure-v1-failed.log",
+      "sha256": "0aa612a1773fd836ef521391597e2d6a4860d091d2e297cf7a60d3612be5f56f"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v2.md",
+      "sha256": "86b90e5b50fc054b4ffac00cddf4b47b4033b022d2efccd54fa1644740576a6a"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v2.json",
+      "sha256": "31655b483dc47745c38749acfda525f2828f41e430a00d03216d0ae4b581d2e7"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-tests-inclusive-clippy-v6.log",
+      "sha256": "559298b53941140d27d842374cbdf9e8e2520dbad6454197416c1a273ab46681"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-tests-inclusive-clippy-v6.json",
+      "sha256": "ee0cd3b45ce66b98be15c78808bbedf534ac6f0ad7ae2fb9f914504e7348951e"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-tests-inclusive-clippy-v7.log",
+      "sha256": "38e6a57c6420ebbaa3ca9149b68ceb0702eece37f8a1dddc6c4533e43b12b646"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-tests-inclusive-clippy-v7.json",
+      "sha256": "054ee86142505d3f2a7690c654c632c2cc18eb95612fc3ab67f163ca73a0cb02"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-integration-tests-clippy-v7.log",
+      "sha256": "156f4593383397f36a2315bda394a9f6e4f61ce1845728afaf00ccb80e044ffc"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-integration-tests-clippy-v7.json",
+      "sha256": "2547ffe8fa72b2082f315b5f6f9fcf297f0ced95f562d542c6001d45b61c1603"
+    }
+  ],
+  "after": [
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v3-draft-procedure-v3.py",
+      "sha256": "b2a3c80956d5ea2c64ddb0e9f6ff6bea1d58fbe658d9cba6494bc9501ea20926"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v3-draft-procedure-v2.py",
+      "sha256": "7e9f2aa6037d1b5f01903b104cd9d3872fbd668cd0f3d746ca5d60f0c8586ad2"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v3-draft-procedure-v2-failed.log",
+      "sha256": "6409d6d7f4bc7974dd306af390f4d4a9f70388ac20fb1a990836becec14ffad8"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\archive_native117_v3.py",
+      "sha256": "62e5c53e4b9b46980bb296d9e3973a5c91e4b923d209910f906b8dc3daedc1af"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v3-draft-review-v3-source.py.txt",
+      "sha256": "62e5c53e4b9b46980bb296d9e3973a5c91e4b923d209910f906b8dc3daedc1af"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\archive_native117_v2.py",
+      "sha256": "3c317b91fb66330d9668403358ee91d78c2759d43f06c14f6532a93822f105e9"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\archive-native117-source-binding-correction-v3.md",
+      "sha256": "9b73d997484f12f37405375b9e4993284af4f8d085a0123056427667121c930f"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\archive-native117-source-binding-correction-v3.json",
+      "sha256": "72d388df9245e087516c0930e67ebfe4c54d6630d8484fd401ae1e1ace62fc1d"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-clippy-diagnostic-comparison-v7-v2.json",
+      "sha256": "27d8c0271ede0c49cb688eb402aaaa394cba089c08ca06d6b1212270288dbed9"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v3-draft-procedure-v1.py",
+      "sha256": "cc9c9588add2a0ef4a411a4f3c33419a1a8af559c05cab2e152b8a97a2e9dc81"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v3-draft-procedure-v1-failed.log",
+      "sha256": "0aa612a1773fd836ef521391597e2d6a4860d091d2e297cf7a60d3612be5f56f"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v2.md",
+      "sha256": "86b90e5b50fc054b4ffac00cddf4b47b4033b022d2efccd54fa1644740576a6a"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v2.json",
+      "sha256": "31655b483dc47745c38749acfda525f2828f41e430a00d03216d0ae4b581d2e7"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-tests-inclusive-clippy-v6.log",
+      "sha256": "559298b53941140d27d842374cbdf9e8e2520dbad6454197416c1a273ab46681"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-tests-inclusive-clippy-v6.json",
+      "sha256": "ee0cd3b45ce66b98be15c78808bbedf534ac6f0ad7ae2fb9f914504e7348951e"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-tests-inclusive-clippy-v7.log",
+      "sha256": "38e6a57c6420ebbaa3ca9149b68ceb0702eece37f8a1dddc6c4533e43b12b646"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-tests-inclusive-clippy-v7.json",
+      "sha256": "054ee86142505d3f2a7690c654c632c2cc18eb95612fc3ab67f163ca73a0cb02"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-integration-tests-clippy-v7.log",
+      "sha256": "156f4593383397f36a2315bda394a9f6e4f61ce1845728afaf00ccb80e044ffc"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-integration-tests-clippy-v7.json",
+      "sha256": "2547ffe8fa72b2082f315b5f6f9fcf297f0ced95f562d542c6001d45b61c1603"
+    }
+  ],
+  "unchanged": true,
+  "helper_executions": 0,
+  "helper_import_or_ast": 0,
+  "native_import_tests_cargo_git": 0,
+  "archive_created": false,
+  "full_v7_regression_log_read": false,
+  "verdict": "Pending one inherited-diagnostic hard gate; otherwise no new material static blocker in requested source/cohort/archive scope.",
+  "blocker": {
+    "function": "verify_candidate_checks",
+    "detail": "exit101 is accepted and labeled inherited without comparing actual diagnostic sets to the bound baseline/current comparison.",
+    "minimal_fix": "Require actual comparison/current/baseline command+log hashes, same10 diagnostics/new array[] and empty set difference, targeted6 overlapping; retain both actual failures; record bound comparison ledger."
+  },
+  "existing_closed_comparison_readonly_checks": {
+    "combined_current_diagnostics": 10,
+    "baseline_diagnostics": 10,
+    "new_diagnostics": 0,
+    "targeted_integration_diagnostics": 6,
+    "targeted_subset_of_combined": true,
+    "actual_results": "both FAIL101"
+  },
+  "limits": [
+    "No future corrective commit/build/install/cohort/full-regression acceptance.",
+    "No helper syntax or runtime check.",
+    "Exact Git logic assessed statically, no Git invocation.",
+    "Old actual failure identity remains historical and separate from corrected current candidate."
+  ]
+}

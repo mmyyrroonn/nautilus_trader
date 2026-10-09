@@ -1,0 +1,50 @@
+"""Use official Ruff on generated stubs and verify no public AST change."""
+
+import ast
+import datetime as dt
+import hashlib
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+
+ROOT = Path("E:/persarb/worktrees/entropy-warm-prerequisites")
+DIRECTORY = Path(__file__).resolve().parent
+
+
+def main():
+    paths = sorted((ROOT / "python" / "nautilus_trader").rglob("*.pyi"))
+    subprocess.run([
+        sys.executable, str(DIRECTORY / "run_capture.py"),
+        "native117-official-stub-line-endings-v7", "--", sys.executable,
+        "-m", "ruff", "format", "--config", "format.line-ending='lf'",
+        *(str(path) for path in paths),
+    ], cwd=ROOT, check=True)
+    rows = []
+    for path in paths:
+        relative = path.relative_to(ROOT).as_posix()
+        before = subprocess.run(
+            ["git", "show", f"HEAD:{relative}"], cwd=ROOT,
+            capture_output=True, check=True,
+        ).stdout
+        after = path.read_bytes()
+        rows.append({
+            "path": relative,
+            "baseline_sha256": hashlib.sha256(before).hexdigest(),
+            "generated_sha256": hashlib.sha256(after).hexdigest(),
+            "public_ast_equal": ast.dump(ast.parse(before)) == ast.dump(ast.parse(after)),
+            "normalized_text_equal": before.replace(b"\r\n", b"\n") == after.replace(b"\r\n", b"\n"),
+        })
+    record = {"captured_utc": dt.datetime.now(dt.timezone.utc).isoformat(), "stubs": rows}
+    output = DIRECTORY / "native117-generated-stub-comparison-v7.json"
+    if output.exists():
+        raise ValueError("Stub comparison already recorded")
+    output.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    if not all(row["public_ast_equal"] and row["normalized_text_equal"] for row in rows):
+        raise ValueError("Generated stubs changed: inspect the saved comparison")
+    print(json.dumps({"stubs": len(rows), "all_public_ast_and_normalized_text_equal": True}))
+
+
+if __name__ == "__main__":
+    main()

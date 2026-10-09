@@ -1,0 +1,28 @@
+--- formatted-v2-frozen
++++ root-fixture-revision
+@@ -1004,12 +1004,25 @@
+ async fn composed_source_timeout_keeps_original_deadline_and_both_provenance_origins() {
+     let harness = normal().await;
+     let old = prerequisite(&harness);
++    override_response(&harness, "frontendOpenOrders", 1500, "[]".into());
+     override_response(&harness, "userFills", 3500, "[]".into());
+     let started = now_ms();
+     let elapsed = tokio::time::Instant::now();
+     issue(&harness);
+     let token = harness.scope()["query_token"].clone();
+     let result = finished(&harness).await;
++    eprintln!(
++        "original total deadline fixture: {}",
++        json!({
++            "elapsed_ms": elapsed.elapsed().as_millis(),
++            "http_timeout_secs": 2,
++            "frontend_open_orders_delay_ms": 1500,
++            "user_fills_delay_ms": 3500,
++            "query_started_ms": started,
++            "scope": result,
++            "http_observations": harness.peer.state.data.lock().http_observations,
++        }),
++    );
+     assert!(elapsed.elapsed() >= Duration::from_millis(2800));
+     assert!(elapsed.elapsed() < Duration::from_millis(3800));
+     assert_eq!(result["recovery_complete"], false);

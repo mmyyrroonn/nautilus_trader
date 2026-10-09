@@ -1,0 +1,26 @@
+{
+  "argv": [
+    "E:/persarb/worktrees/entropy-warm-prerequisites/.venv/Scripts/python.exe",
+    "E:/persarb/_tmp/entropy117-validation/capture_stable_binaries.py",
+    "--source",
+    "native117-formatted-v6",
+    "--regression",
+    "native117-full-hyperliquid-regression-v6",
+    "--label",
+    "native117-verified-binaries-v6"
+  ],
+  "cwd": "E:\\persarb",
+  "started_utc": "2026-10-09T12:37:05.796018+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "uv_project_environment": null,
+  "nautilus_stub_profile": null,
+  "cargo_build_warnings": null,
+  "cargo_net_offline": null,
+  "entropy43_native_wheel": null,
+  "entropy43_native_sha256": null,
+  "entropy43_native_provenance": null,
+  "entropy43_evidence_root": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T12:37:06.743007+00:00"
+}

@@ -1,0 +1,123 @@
+warning: linker stdout: 正在创建库 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-63fd5ed65377140a.dll.lib 和对象 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-63fd5ed65377140a.dll.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-persistence-macros` (lib) generated 1 warning
+   Compiling nautilus-hyperliquid v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\adapters\hyperliquid)
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_approve.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_approve.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_revoke.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_revoke.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_exec.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_exec.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (bin "hyperliquid-builder-fee-approve") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-builder-fee-revoke") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-ws-exec") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_capture_test_data.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_capture_test_data.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_private.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_private.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_public.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_public.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_user_outcome.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_user_outcome.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_exec.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_exec.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_flatten.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_flatten.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_outcome_order.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_outcome_order.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (bin "hyperliquid-capture-test-data") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_data.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_data.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-public") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-private") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-user-outcome") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-exec") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-outcome-order") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-flatten") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-ws-data") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\entropy_account-69bad49fe9dc76e8.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\entropy_account-69bad49fe9dc76e8.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (test "entropy_account") generated 1 warning
+    Finished `nextest` profile [unoptimized] target(s) in 11.48s
+     Running tests\entropy_account.rs (E:/persarb/nautilus_trader/target\nextest\deps\entropy_account-69bad49fe9dc76e8.exe)
+
+running 37 tests
+test execution::warm_prerequisite::actual_owned_entry_then_reduce_close_reuses_old_prerequisites_and_new_finances ... ok
+test execution::warm_prerequisite::actual_owned_fill_not_consumed_by_engine_cannot_borrow_original_prerequisites ... ok
+test execution::warm_prerequisite::complete_new_http_finances_must_match_private_facts_precision_and_source_age::case_1 ... ok
+test execution::warm_prerequisite::complete_new_http_finances_must_match_private_facts_precision_and_source_age::case_2 ... ok
+test execution::warm_prerequisite::complete_new_http_finances_must_match_private_facts_precision_and_source_age::case_3 ... ok
+test execution::warm_prerequisite::complete_new_http_finances_must_match_private_facts_precision_and_source_age::case_4 ... ok
+test execution::warm_prerequisite::complete_new_http_finances_must_match_private_facts_precision_and_source_age::case_5 ... ok
+test execution::warm_prerequisite::complete_new_http_finances_must_match_private_facts_precision_and_source_age::case_6 ... ok
+test execution::warm_prerequisite::composed_query_must_confirm_every_actual_owned_trade_and_exact_commission::case_1 ... ok
+test execution::warm_prerequisite::composed_query_must_confirm_every_actual_owned_trade_and_exact_commission::case_2 ... ok
+test execution::warm_prerequisite::composed_query_must_confirm_every_actual_owned_trade_and_exact_commission::case_3 ... ok
+test execution::warm_prerequisite::composed_query_must_confirm_every_actual_owned_trade_and_exact_commission::case_4 ... ok
+test execution::warm_prerequisite::composed_query_must_confirm_every_actual_owned_trade_and_exact_commission::case_5 ... ok
+test execution::warm_prerequisite::composed_source_timeout_keeps_original_deadline_and_both_provenance_origins ... ok
+test execution::warm_prerequisite::crossed_original_transaction_cannot_be_retrosealed_and_requires_actual_full_warm ... ok
+test execution::warm_prerequisite::escaped_old_and_new_raw_use_actual_record_bound_and_survive_normal_drop::case_1 ... ok
+test execution::warm_prerequisite::escaped_old_and_new_raw_use_actual_record_bound_and_survive_normal_drop::case_2 ... ok
+test execution::warm_prerequisite::genuinely_expired_prerequisite_fallback_receives_bad_actual_target_before_refusal::case_1 ... ok
+test execution::warm_prerequisite::genuinely_expired_prerequisite_fallback_receives_bad_actual_target_before_refusal::case_2 ... ok
+test execution::warm_prerequisite::genuinely_expired_prerequisite_fallback_receives_bad_actual_target_before_refusal::case_3 ... ok
+test execution::warm_prerequisite::genuinely_expired_prerequisite_fallback_receives_bad_actual_target_before_refusal::case_4 ... ok
+test execution::warm_prerequisite::genuinely_expired_prerequisite_fallback_receives_bad_actual_target_before_refusal::case_5 ... ok
+test execution::warm_prerequisite::identical_applied_frame_revokes_startup_finance_but_not_original_prerequisites ... ok
+test execution::warm_prerequisite::normal_stop_releases_queued_owner_and_preserves_two_origin_raw_without_housekeeping ... ok
+test execution::warm_prerequisite::old_prerequisite_expiring_on_owner_channel_cannot_commit_new_account_state ... ok
+test execution::warm_prerequisite::original_expiry_requires_new_complete_sources_and_successful_owner_before_replacement ... ok
+test execution::warm_prerequisite::original_nonfinancial_source_cannot_replace_any_missing_new_actual_financial_source::case_1 ... ok
+test execution::warm_prerequisite::original_nonfinancial_source_cannot_replace_any_missing_new_actual_financial_source::case_2 ... ok
+test execution::warm_prerequisite::original_nonfinancial_source_cannot_replace_any_missing_new_actual_financial_source::case_3 ... ok
+test execution::warm_prerequisite::original_nonfinancial_source_cannot_replace_any_missing_new_actual_financial_source::case_4 ... ok
+test execution::warm_prerequisite::qualified_normal_postbinding_recovery_retains_actual_original_eight_sources ... ok
+test execution::warm_prerequisite::retained_prerequisites_cannot_authorize_crossed_new_financial_source_or_reader::case_1 ... ok
+test execution::warm_prerequisite::retained_prerequisites_cannot_authorize_crossed_new_financial_source_or_reader::case_2 ... ok
+test execution::warm_prerequisite::retained_prerequisites_cannot_authorize_crossed_new_financial_source_or_reader::case_3 ... ok
+test execution::warm_prerequisite::retained_prerequisites_cannot_authorize_crossed_new_financial_source_or_reader::case_4 ... ok
+test execution::warm_prerequisite::retained_prerequisites_cannot_authorize_crossed_new_financial_source_or_reader::case_5 ... ok
+test execution::warm_prerequisite::silent_unrequested_mode_change_is_only_previous_bounded_evidence_not_a_new_mode_read ... ok
+
+test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 233 filtered out; finished in 26.99s
+

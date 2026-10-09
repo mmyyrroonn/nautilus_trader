@@ -1,0 +1,80 @@
+[
+  {
+    "capture": "validation/native117-app43-start-progress-comment-v1.json",
+    "tool": "mcp__codex_apps__github_add_comment_to_issue",
+    "started": {
+      "current_time": "2026-10-09 11:14:21 UTC"
+    },
+    "args": {
+      "repo_full_name": "mmyyrroonn/Nautilus-Perps",
+      "pr_number": 43,
+      "comment": "Native prerequisite115 is completed and PR116 actually merged as main5db2761590dd824fa159625326b6eaf3923b999a after exact-head CI37918361381 success: https://github.com/mmyyrroonn/nautilus_trader/pull/116.\n\nThe first corrected-fixture application paired run10:11:46\u201310:12:04 UTC on source-bound wheel7ea01172... remains FAIL. Four orders were actually Filled, current Cache/Portfolio quantities were zero and native fees/receipts were retained, but the post-close warm flight exhausted its original3s deadline after open/fills/status and role/mode reads. Its immutable Unknown debt and full raw evidence remain preserved in native115's acceptance/archive; zero positions do not replace current account proof. No successful all-seven claim is made.\n\nThe next finite dependency is https://github.com/mmyyrroonn/nautilus_trader/issues/117. A new clean feature/entropy-warm-prerequisites branch was created from freshly fetched main5db2761. Separate implementation/test subagents and independent review are assigned. It retains original nonfinancial source times/2s expiration and rereads real current finances/orders/fills/status plus required flat leverage counterproofs under original3s/quota/caps. Old failed journals will not be reused or repaired.\n\nCurrent fully paginated two-repository inventory at11:13:24\u201327 UTC is95 issues total,78 closed,17 open (PRs excluded). Application43 remains open; real venue/mainnet/kernel/whole economics are not certified by these local results."
+    },
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "Action completed."
+        }
+      ],
+      "structuredContent": {
+        "id": 6079754512
+      },
+      "isError": false
+    },
+    "finished": {
+      "current_time": "2026-10-09 11:14:23 UTC"
+    }
+  },
+  {
+    "capture": "validation/native117-first-source-progress-comment-v1.json",
+    "tool": "mcp__codex_apps__github_add_comment_to_issue",
+    "started": {
+      "current_time": "2026-10-09 11:36:55 UTC"
+    },
+    "args": {
+      "repo_full_name": "mmyyrroonn/nautilus_trader",
+      "pr_number": 117,
+      "comment": "Implementation progress from fresh main5db2761590dd824fa159625326b6eaf3923b999a, branch feature/entropy-warm-prerequisites.\n\nIndependent design v2 review4ea0af412443a25f1b5679dc078679b3f99df36772d9a475b09a0859e971bdcd found34 source/contract inputs unchanged and accepted bounded design principles, with zero tests. Both final clarifications are in this issue: one old4MiB raw group plus one active4MiB group (not an RSS claim), and an eligible postbinding creation hook whose individual crossed/unqualified runs may remain unsealed.\n\nProduction ownership is limited to account_scope.rs and execution_scope.rs. A separate test author froze a new normal HTTP/WS module with16 async functions/37 source-expanded cases; no compilation/execution is claimed. Root froze explicit adaptations to existing64 warm scenarios: immutable original verification time plus real new financial receipt, source-derived44/82/84 request minima, genuine original2s expiry/fresh applied WS for four future-HTTP faults, and preserved new-raw lower bounds with separate original-prerequisite raw checks. Business fill/fee/Cache/Portfolio/reserve/refusal assertions remain.\n\nThe quota negative's former two full preloads no longer produces equivalent demand under reuse. Its candidate now requires three actual successful complete full262 groups before a fourth full target, unchanged3s deadline/1200-per-minute/20-per-second supply and a <=10s fixture setup bound. Actual early TTL refusal, missing source receipt or a slow setup will be a fixture FAIL, not quota coverage. This source-derived feasibility argument is not a measured bucket balance or a test PASS.\n\nSource review and actual native tests/build/stubs/installed/application scenarios remain pending. Prior115 corrected paired failure, raw evidence and immutable Unknown debt remain unchanged; no repeat of that failed candidate is being used to manufacture success."
+    },
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "Action completed."
+        }
+      ],
+      "structuredContent": {
+        "id": 6080079999
+      },
+      "isError": false
+    },
+    "finished": {
+      "current_time": "2026-10-09 11:36:57 UTC"
+    }
+  },
+  {
+    "capture": "validation/native117-progress-after-v4-local-fixes-v1.json",
+    "tool": "github_add_comment_to_issue",
+    "args": {
+      "repo_full_name": "mmyyrroonn/nautilus_trader",
+      "pr_number": 117,
+      "comment": "\u8fdb\u5ea6\u7559\u75d5\uff08\u5c1a\u672a\u5b8c\u6210\u9a8c\u6536\uff09\uff1a\n\n- \u5df2\u4fdd\u7559 v1/v2 \u72ec\u7acb\u6e90\u7801 review\u3002\u4e24\u540d reviewer \u53d1\u73b0\u7684\u8d26\u6237/\u539f\u603b\u671f\u9650\u6700\u7ec8\u95e8\u3001metadata \u539f 30 \u79d2\u6700\u7ec8\u95e8\u5747\u5df2\u4fee\u6b63\uff1b\u683c\u5f0f\u5316 v4 \u901a\u8fc7\u72ec\u7acb\u6709\u9650\u6e90\u7801\u590d\u5ba1\uff0c41 \u4efd\u51bb\u7ed3\u8f93\u5165\u5339\u914d\u3002\u6e90\u7801 review \u6267\u884c\u6d4b\u8bd5\u6570\u4e3a 0\uff0c\u4e0d\u5f53\u4f5c\u8de8 TTL\u3001mutex \u6216 fsync \u65f6\u5e8f\u5b9e\u6d4b\u3002\n- \u9996\u8f6e\u65b0\u589e\u7528\u4f8b\u5b9e\u9645\u4e3a 36 PASS / 1 FAIL\uff1a\u539f\u8d85\u65f6\u523a\u6fc0\u5148\u649e\u4e0a\u5355\u8bf7\u6c42 HTTP 2 \u79d2\u3002\u4fee\u6b63\u4e3a\u4e24\u4e2a\u771f\u5b9e\u4e32\u884c\u5ef6\u8fdf\uff0c\u4fdd\u7559\u603b 3 \u79d2\u4e0e\u5168\u90e8 Unknown/\u53cc\u6765\u6e90\u6301\u4e45\u5316\u65ad\u8a00\uff1bv3 \u65b0\u589e 37 \u7528\u4f8b\u5168\u90e8 PASS\u3002\u539f\u5931\u8d25\u65e5\u5fd7\u672a\u6253\u5370 scope/raw\uff0c\u4e0d\u80fd\u8ffd\u6eaf\u8865\u8bc1\uff1b\u65b0\u523a\u6fc0\u5df2\u5728\u65ad\u8a00\u524d\u8bb0\u5f55\u539f\u6587\u3002\n- \u539f 64 \u6062\u590d\u7528\u4f8b\u7684\u9996\u6b21 v3 \u6267\u884c\u4e3a 63 PASS / 1 FAIL\u3002\u914d\u989d\u6d4b\u8bd5\u7b2c\u4e09\u6b21\u5b8c\u6574\u9884\u70ed\u5728 account \u539f 2 \u79d2\u5185\u672a\u5b8c\u6210\uff0c\u5b9e\u9645 2403ms\uff0c\u6b63\u786e\u62d2\u7edd\uff1b\u5c1a\u672a\u8fdb\u5165\u76ee\u6807\u603b\u671f\u9650\u3002\u5b8c\u6574 actual HTTP/WS \u4e0e\u5931\u8d25\u8bb0\u5f55\u4fdd\u7559\u3002\n- \u72ec\u7acb\u6838\u5bf9\u6267\u884c\u5ba2\u6237\u7aef\u521d\u59cb\u5316\u6743\u91cd\u4e3a 624\uff0cHarness provider \u53e6\u4e00\u4e2a bucket \u7684 60 \u4e0d\u8ba1\u5165\u8be5 bucket\u3002\u6539\u7528\u56fa\u5b9a 7 \u6b21\u771f\u5b9e 82 \u6743\u91cd\u590d\u7528\u67e5\u8be2\uff0c\u6bcf\u6b21\u5fc5\u987b fully-qualified \u4e14\u539f source/metadata \u4e0d\u53d8\uff0c\u7136\u540e\u7b49\u5f85\u539f source \u771f\u6b63\u5230\u671f\u3001\u63a5\u6536\u5b9e\u9645\u65b0 WS \u518d\u4f5c\u5b8c\u6574\u8bfb\u53d6\uff1bsetup \u22643 \u79d2\uff0c\u76ee\u6807\u539f 2800..3800ms / exact total-deadline / Unknown \u65ad\u8a00\u4fdd\u7559\u3002v4 \u8be5\u7528\u4f8b\u5b9e\u9645 PASS\uff08\u4e0e\u539f 64 \u91cd\u53e0\uff0c\u975e\u65b0\u589e\u7528\u4f8b\uff09\u3002\u8fd9\u4e9b\u6743\u91cd\u662f\u6e90\u7801\u4e0e\u771f\u5b9e\u8bf7\u6c42\u63a8\u5bfc\uff0c\u672a\u8bfb\u53d6\u5185\u90e8 bucket\uff1b\u91cd\u590d\u540c\u6beb\u79d2 mode/activeAssetData \u8bf7\u6c42\u6309\u771f\u5b9e occurrence \u4fdd\u7559\u3002\n- production Clippy v3 \u65b0\u589e 1 \u5904 needless_pass_by_value \u5931\u8d25\u5df2\u4fdd\u7559\uff1b\u7a84\u6539\u4e3a\u501f\u7528 Arc\uff0cv4 production Clippy PASS\uff0c\u65e0 lint suppression\u3002\n\n\u73b0\u5728\u8fd0\u884c v4 Hyperliquid \u5168\u91cf\u56de\u5f52\u3002\u4e4b\u540e\u4ecd\u9700 official stubs\u3001installed Python\u3001clean wheel\u3001\u5168\u65b0 journal \u4e0b app43 paired/\u5176\u4f59\u573a\u666f\u3001\u6700\u7ec8 review \u4e0e exact-head CI\u3002\u9650\u989d\u3001\u6765\u6e90 2 \u79d2\u3001metadata 30 \u79d2\u3001\u603b\u6062\u590d 3 \u79d2\u53ca journal/body \u8fb9\u754c\u5747\u4fdd\u6301\u539f\u503c\uff1b\u672c\u6b21\u5747\u4e3a synthetic numeric loopback\uff0c\u5c1a\u65e0 mainnet/kernel/E6 \u7ed3\u8bba\u3002\u65e7 native115 paired FAIL \u4fdd\u7559\uff0c\u4e0d\u7528\u4e8e native117 \u9a8c\u6536\u3002"
+    },
+    "started": {
+      "current_time": "2026-10-09 12:21:43 UTC"
+    },
+    "finished": {
+      "current_time": "2026-10-09 12:21:49 UTC"
+    },
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "tool call error: tool call failed for `codex_apps/github.add_comment_to_issue`\n\nCaused by:\n    Transport send error: Transport [codex_rmcp_client::event_notification_transport::EventNotificationTransport<rmcp::transport::worker::WorkerTransport<rmcp::transport::streamable_http_client::StreamableHttpClientWorker<codex_rmcp_client::http_client_adapter::StreamableHttpClientAdapter>>>] error: Client error: HTTP request failed: http/request failed: error sending request for url (https://chatgpt.com/backend-api/ps/mcp)"
+        }
+      ],
+      "isError": true
+    }
+  }
+]

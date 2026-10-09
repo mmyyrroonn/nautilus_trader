@@ -1,0 +1,103 @@
+import difflib
+import hashlib
+import json
+import re
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path('E:/persarb/_tmp/entropy117-validation')
+STEM = 'reviewer-native117-archive-helper-v4-narrow-review-v1'
+def load(p): return json.loads(Path(p).read_text(encoding='utf-8-sig'))
+def utc(): return datetime.now(timezone.utc).isoformat()
+def ident(p):
+    p=Path(p); b=p.read_bytes()
+    return {'path':str(p),'bytes':len(b),'sha256':hashlib.sha256(b).hexdigest()}
+v3=ROOT/'archive_native117_v3.py';v4=ROOT/'archive_native117_v4.py'
+comparison_path=ROOT/'native117-clippy-diagnostic-comparison-v7-v2.json'
+comparison=load(comparison_path)
+records=[comparison['baseline'],*comparison['current']]
+paths={v3,v4,comparison_path,ROOT/'archive-native117-source-binding-correction-v4.md',ROOT/'archive-native117-source-binding-correction-v4.json',Path(__file__),ROOT/'reviewer-native117-archive-helper-v3-draft-review-v3.md',ROOT/'reviewer-native117-corrected-all7-independent-v2.md',ROOT/'reviewer-native117-corrected-all7-independent-v2.json'}
+for r in records:
+    paths.update([Path(r['log']['path']),Path(r['receipt']['path'])])
+started=utc();before=[ident(p) for p in sorted(paths)]
+(ROOT/f'{STEM}-before.json').write_text(json.dumps({'captured_utc':utc(),'inputs':before},indent=2),encoding='utf-8')
+assert ident(v3)['sha256']=='62e5c53e4b9b46980bb296d9e3973a5c91e4b923d209910f906b8dc3daedc1af'
+assert ident(v4)['sha256']=='05877a700aaef8199c5254ca73519854fa38e3c05ce830889654d7fd07667609'
+assert ident(v4)['bytes']==52022
+assert ident(comparison_path)['sha256']=='27d8c0271ede0c49cb688eb402aaaa394cba089c08ca06d6b1212270288dbed9'
+assert ident(ROOT/'archive-native117-source-binding-correction-v4.md')['sha256']=='0e51481eb61f9e1bbbc5bd606168620c7c08c4674e5e6126d1cb530269b125a3'
+assert ident(ROOT/'archive-native117-source-binding-correction-v4.json')['sha256']=='c59e4656f3e5e25a49cdc6bade1a85860add37de13de4b759d46a813cc8fb955'
+assert type(comparison['new_diagnostics']) is list and comparison['new_diagnostics']==[]
+assert type(comparison['inherited_diagnostics']) is int and comparison['inherited_diagnostics']==10
+assert comparison['tests_executed_by_comparison']==0
+
+source3=v3.read_text(encoding='utf-8');source4=v4.read_text(encoding='utf-8')
+delta=''.join(difflib.unified_diff(source3.splitlines(True),source4.splitlines(True),fromfile=v3.name,tofile=v4.name))
+(ROOT/f'{STEM}-delta.diff').write_text(delta,encoding='utf-8')
+# Static string delta reconstruction; neither helper is parsed as AST, imported, or executed.
+insert_start=source4.index('def parse_clippy_error_blocks(')
+insert_end=source4.index('def verify_candidate_checks(',insert_start)
+restored=source4[:insert_start]+source4[insert_end:]
+restored=restored.replace('    inherited_clippy = verify_inherited_clippy(checks[3])\n','')
+restored=restored.replace('            "inherited_clippy_source_proof": inherited_clippy,\n','')
+restored=restored.replace('"FAIL; ten exact inherited diagnostics independently verified from raw logs, not production strict PASS"','"FAIL; retained actual inherited diagnostics, not production strict PASS"')
+extra_start=restored.index('    comparison = candidate_checks["inherited_clippy_source_proof"]\n')
+extra_end=restored.index('    ARCHIVE.mkdir(parents=True, exist_ok=False)',extra_start)
+restored=restored[:extra_start]+restored[extra_end:]
+assert restored==source3, 'An unrelated archive/preflight change exists'
+
+reviewed=[]
+for index,r in enumerate(records):
+    command=load(r['receipt']['path'])
+    assert command==r['command'] and command['exit_code']==101
+    assert datetime.fromisoformat(command['started_utc'])<=datetime.fromisoformat(command['finished_utc'])
+    assert ident(r['log']['path'])['sha256']==r['log']['sha256']
+    assert ident(r['receipt']['path'])['sha256']==r['receipt']['sha256']
+    target=['--test','entropy_account'] if index==2 else ['--lib','--tests']
+    expected=['cargo','clippy','-p','nautilus-hyperliquid']+target+['--no-deps','--profile','nextest','--locked','--offline','--config',"build.warnings='warn'",'--','-D','warnings']
+    assert command['argv']==expected and Path(command['cwd']).resolve()==Path('E:/persarb/worktrees/entropy-warm-prerequisites').resolve()
+    raw=Path(r['log']['path']).read_text(encoding='utf-8-sig').replace('\r\n','\n')
+    assert '\x1b' not in raw
+    # Independent raw-file classification of all error headers, not invoking helper code.
+    lines=raw.splitlines();diagnostics=[];summaries=[]
+    for i,l in enumerate(lines):
+        if not re.match(r'^\s*error',l):continue
+        header=l.strip()
+        m=re.fullmatch(r'error: could not compile `nautilus-hyperliquid` \((lib test|test "entropy_account")\) due to (\d+) previous errors',header)
+        if m:
+            summaries.append((m.group(1),int(m.group(2))));continue
+        assert header.startswith('error: ') and not header.startswith('error['),header
+        assert i+1<len(lines) and re.match(r'^\s*-->\s+',lines[i+1]),header
+        location=re.sub(r'^\s*-->\s+','',lines[i+1]).strip().replace('\\','/')
+        assert re.fullmatch(r'crates/adapters/hyperliquid/[A-Za-z0-9_/.\-]+\.rs:\d+:\d+',location)
+        diagnostics.append({'message':header[len('error: '):],'location':location})
+    assert diagnostics==r['diagnostics'] and len(diagnostics)==(6 if index==2 else 10)
+    assert sorted(summaries)==sorted([('test "entropy_account"',6)] + ([] if index==2 else [('lib test',4)]))
+    assert sum(n for _,n in summaries)==len(diagnostics)
+    reviewed.append({'label':r['label'],'argv':command['argv'],'exit_code':101,'started_utc':command['started_utc'],'finished_utc':command['finished_utc'],'log_sha256':r['log']['sha256'],'receipt_sha256':r['receipt']['sha256'],'diagnostics':diagnostics,'summaries':summaries})
+sets=[{(x['message'],x['location']) for x in r['diagnostics']} for r in reviewed]
+assert len(sets[0])==len(sets[1])==10 and len(sets[2])==6 and sets[0]==sets[1] and sets[2].issubset(sets[1])
+assert source4.index('    inherited_clippy = verify_inherited_clippy(checks[3])') < source4.index('def main():')
+assert source4.index('    candidate_checks = verify_candidate_checks(provenance)',source4.index('def main():')) < source4.index('    ARCHIVE.mkdir(parents=True, exist_ok=False)')
+assert '"Hard-gated lint comparison is not bound to the immutable archive inventory"' in source4
+assert '"Hard-gated lint comparison changed before archive creation"' in source4
+assert '"Unparsed compiler/error header: {header}"' in source4
+after=[ident(p) for p in sorted(paths)]; assert before==after
+out={'started_utc':started,'finished_utc':utc(),'outcome':'PASS for narrow v4 static source gate; previous inherited-lint blocker closed','scope':'v3→v4 Clippy hard-gate and inventory delta only; not archive execution or implementation/full App43 acceptance','helper_executions':0,'helper_imports':0,'helper_AST_parses':0,'native_imports':0,'tests_executed':0,'git_commands':0,'inputs_unchanged':True,'inputs_before':before,'inputs_after':after,'actual_comparison_sha256':ident(comparison_path)['sha256'],'comparison_schema':{'new_diagnostics':[],'inherited_diagnostics':10},'actual_raw_command_review':reviewed,'no_unrelated_changes':True,'remaining_watchpoints':['Archive helper has not run; future preflight/copy failure remains actual failure and cannot be predeclared PASS.','Actual tests-inclusive commands remain FAIL101; combined ten/targeted overlapping six are not a tests-inclusive PASS.','Seven installed assertion passes have finite scope; loss_fee owned-flat/projection Unknown and synthetic Aster cancel/late-fill fixture gap remain documented.','Root/source Git/checks inside helper reviewed statically only; reviewer did not execute Git or helper.']}
+(ROOT/f'{STEM}.json').write_text(json.dumps(out,indent=2),encoding='utf-8')
+md=f'''# Independent archive_native117_v4 narrow source review v1
+
+**PASS for the requested static v3→v4 correction.** Previous v3 inherited-Clippy blocker is closed by an explicit mandatory preflight gate. This is source approval for root to perform actual archive preflight, not an archive execution/PASS or full App43 acceptance. Review {started}–{out['finished_utc']}; {len(before)} actual inputs unchanged before/after. Helper executions/imports/AST parses, tests, native imports and Git commands: **0**.
+
+Frozen v4: 52,022 bytes, SHA `{ident(v4)['sha256']}`. V3 bytes remain `{ident(v3)['sha256']}`. Text delta reconstruction proves v3 is recovered exactly by removing the new lint parsing/verification functions, their candidate-check call/result fields and inventory-binding gate. All other preflight/source/build/cohort/copy/failure behavior is unchanged; prior v3 review therefore remains applicable.
+
+Actual comparison file SHA `{ident(comparison_path)['sha256']}` has **new_diagnostics=[] (array), inherited_diagnostics=10 (integer)**. These are the actual file fields, not the earlier compact stdout count. Independently inspected three bound command receipts, exact argv/cwd, command/log hashes, completion brackets and every raw error header: baseline combined 10; final combined the exact same 10; integration target 6, an overlapping subset. All actual exits remain 101/FAIL. No unaccounted compiler error/summary or duplicate error was found in these actual logs. The check is not based on exit101 alone.
+
+V4 requires this same proof: missing comparison, wrong schema/count/labels, changed nested command/log hashes, wrong strict target/argv, new/duplicate diagnostics, ANSI or unparsed compiler error headers, unexpected Cargo summaries, or mismatch with the candidate's actual combined-lint receipt all fail before archive mkdir. It verifies all raw diagnostic rows and summary totals, baseline/current equality and six-subset relation. The exact comparison digest is carried into the candidate manifest, required in the immutable source inventory and rechecked immediately before archive creation. Consequently a newly introduced lint or compiler failure cannot be silently labeled inherited merely because its command exited101.
+
+The correction preserves separate historical failure/RED and corrected GREEN/cohorts, actual58 input equality and all7 original selectors/statuses. This narrow source review does not claim helper syntax/runtime execution success. Future root helper failure/copy refusal must retain its actual log and partial/no-manifest state, without fabricated archive PASS. No remaining material blocker was found in this requested delta. Keep APP43 limits from the separate actual7 review: loss_fee Completed with owned-flat/projection Unknown; synthetic Aster DELETE→delayed-fill chronology is unresolved; no E6/kernel/mainnet/whole-run claim.
+
+Actual hashes/commands/diagnostics are in `{STEM}.json`; complete source delta is `{STEM}-delta.diff`. Earlier v3 blocker reports and mistaken-schema parser failures remain unchanged.
+'''
+(ROOT/f'{STEM}.md').write_text(md,encoding='utf-8')
+print(json.dumps({'outcome':out['outcome'],'inputs':len(before),'report':ident(ROOT/f'{STEM}.md'),'json':ident(ROOT/f'{STEM}.json'),'helper_executions':0,'tests_executed':0}))

@@ -1,0 +1,13 @@
+{
+  "created_utc": "2026-10-09T13:05:29.843604+00:00",
+  "original": {
+    "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-economic-gap-correction-contract-v1.md",
+    "sha256": "869d265a5aa3b679c5274d3a82ae9d6869547071674d614908b8bf03c42e6d27"
+  },
+  "refined": {
+    "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-economic-gap-correction-contract-v2.md",
+    "sha256": "62b8cdac77bec6e7952cca889b156936b42fbc59a1b78973d283842c90d675ec"
+  },
+  "reason": "Independent reviewer: no-op must not bypass existing economic taint gate",
+  "tests_executed": 0
+}

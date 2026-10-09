@@ -1,0 +1,466 @@
+{
+  "started_utc": "2026-10-09T14:25:05.340780+00:00",
+  "finished_utc": "2026-10-09T14:25:05.348797+00:00",
+  "outcome": "PASS for v6 reference-schema correction; archive remains unexecuted",
+  "helper_executions": 0,
+  "helper_imports": 0,
+  "helper_AST_parses": 0,
+  "tests_executed": 0,
+  "native_imports": 0,
+  "git_commands": 0,
+  "inputs_before": [
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\archive_native117_v5.py",
+      "bytes": 53287,
+      "sha256": "1ad8ec5c536b1fad8ad897db097a178bdbcc29679d4f334793623aeee73105e9"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\archive_native117_v6.py",
+      "bytes": 54294,
+      "sha256": "a5668e50628d709fe64ad1953806090a97087e782470bf57288732a5fdf24673"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\archive-native117-source-binding-correction-v6.md",
+      "bytes": 1531,
+      "sha256": "9657ea87fd5de28ce3ae655e2dc3edb5ef3f7bfa28f5202787a9f6a46974ad9f"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\archive-native117-source-binding-correction-v6.json",
+      "bytes": 1052,
+      "sha256": "f75de4dfe849c20193e75ea74b251eb4e521fbd3d058cbe4caa29c49b3a6ec78"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-installed-identity-schema-difference-v1.json",
+      "bytes": 16481,
+      "sha256": "cc67d19b01fb4c1475bc2fd5a30626e98b6726c580d65f60901a3cb8d50f8bbc"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-archive-command-v5.json",
+      "bytes": 1064,
+      "sha256": "f42c65e912a5431b2a9553e92debaf04d493515d8b7b1af2cfaba4292669e66e"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-archive-command-v5.log",
+      "bytes": 755,
+      "sha256": "515925a062e6de26b793f9f2c5aa0b12e9a3977d3d4ba2348b9479fdd53de52f"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-preserved-archive-v5-failure.json",
+      "bytes": 1064,
+      "sha256": "f42c65e912a5431b2a9553e92debaf04d493515d8b7b1af2cfaba4292669e66e"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-preserved-archive-v5-failure.log",
+      "bytes": 755,
+      "sha256": "515925a062e6de26b793f9f2c5aa0b12e9a3977d3d4ba2348b9479fdd53de52f"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v5-schema-review-v1.md",
+      "bytes": 2639,
+      "sha256": "b1eafd565c8d24311719eb57dcdbd047817309620abb33a41dab3b191039416d"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\scripts\\verify_native_install.py",
+      "bytes": 12357,
+      "sha256": "8b177547f5be52a5f737d7d8c3e0ccfbdf392df326eb37badddecfdded56a9f9"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-wheel-nextest-20261009\\native-provenance.json",
+      "bytes": 8179,
+      "sha256": "f5ebd1c1e5236ac43663efcf1180abc26f2f488c985d801d91bee77c7a0099ae"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-corrected-wheel-nextest-20261009\\native-provenance.json",
+      "bytes": 8209,
+      "sha256": "a430a728f9aa190e41428192b7ba10a224fa6b8b2b4ebff8d26844c9371aca47"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v6-reference-review-v1-procedure.py",
+      "bytes": 9399,
+      "sha256": "1d8c691f4ca458a9178b14ad35c56967f298ec49e267f5f4370701c04e232af3"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-first-paired-20261009\\paired\\manifest.json",
+      "bytes": 17879,
+      "sha256": "20c58888d934335d4e46f5a80d6fc6339b676a2d25f1eb2150528126a3e41f67"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-first-paired-20261009\\paired\\manifest.json",
+      "bytes": 17919,
+      "sha256": "2e891b28e36b888fbb34ea574b26d584a9a8ad820ec3780f3637ed0ef5031380"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\reject\\manifest.json",
+      "bytes": 17919,
+      "sha256": "aad7ca08d6eec01f88acdd872babd864036a81e200c0993bc63b199c5c57512e"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\partial\\manifest.json",
+      "bytes": 17919,
+      "sha256": "7325d2df753f5bee9f6d15f01db4a4050e243ca16c453c95b91676106220b3f6"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\unknown\\manifest.json",
+      "bytes": 17919,
+      "sha256": "9db8ee84fca0cce8703d7b4f623b6cf59d827e62cce57e91e2f2164b9dc3bb57"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\cleanup_failure\\manifest.json",
+      "bytes": 17919,
+      "sha256": "955eeb46b7e52844e5859e61298ddc8bf44d203cbbd5b906fce882f4d143a471"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\foreign\\manifest.json",
+      "bytes": 17919,
+      "sha256": "c19ba0b173ff6d7ed69e5d03deedf58cdac6aec496b01be2f5da5afc55d408f2"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\loss_fee\\manifest.json",
+      "bytes": 17919,
+      "sha256": "fa24c41241eb4aaf5146369908510f7bbe220e833599dab88dfcf577bfb6d167"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-corrected-native-installed-identity-v1.json",
+      "bytes": 19740,
+      "sha256": "5bf993f75cddea827f9a571b4c47efa8304829b97cb1aa1d13d715584bc35234"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-corrected-app-installed-identity-v1.json",
+      "bytes": 19730,
+      "sha256": "16c688d79753aa5867da4ce24670e32d05106f473e7bde9ea273e60b651d2c68"
+    }
+  ],
+  "inputs_after": [
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\archive_native117_v5.py",
+      "bytes": 53287,
+      "sha256": "1ad8ec5c536b1fad8ad897db097a178bdbcc29679d4f334793623aeee73105e9"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\archive_native117_v6.py",
+      "bytes": 54294,
+      "sha256": "a5668e50628d709fe64ad1953806090a97087e782470bf57288732a5fdf24673"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\archive-native117-source-binding-correction-v6.md",
+      "bytes": 1531,
+      "sha256": "9657ea87fd5de28ce3ae655e2dc3edb5ef3f7bfa28f5202787a9f6a46974ad9f"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\archive-native117-source-binding-correction-v6.json",
+      "bytes": 1052,
+      "sha256": "f75de4dfe849c20193e75ea74b251eb4e521fbd3d058cbe4caa29c49b3a6ec78"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-installed-identity-schema-difference-v1.json",
+      "bytes": 16481,
+      "sha256": "cc67d19b01fb4c1475bc2fd5a30626e98b6726c580d65f60901a3cb8d50f8bbc"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-archive-command-v5.json",
+      "bytes": 1064,
+      "sha256": "f42c65e912a5431b2a9553e92debaf04d493515d8b7b1af2cfaba4292669e66e"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-archive-command-v5.log",
+      "bytes": 755,
+      "sha256": "515925a062e6de26b793f9f2c5aa0b12e9a3977d3d4ba2348b9479fdd53de52f"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-preserved-archive-v5-failure.json",
+      "bytes": 1064,
+      "sha256": "f42c65e912a5431b2a9553e92debaf04d493515d8b7b1af2cfaba4292669e66e"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-preserved-archive-v5-failure.log",
+      "bytes": 755,
+      "sha256": "515925a062e6de26b793f9f2c5aa0b12e9a3977d3d4ba2348b9479fdd53de52f"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v5-schema-review-v1.md",
+      "bytes": 2639,
+      "sha256": "b1eafd565c8d24311719eb57dcdbd047817309620abb33a41dab3b191039416d"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\scripts\\verify_native_install.py",
+      "bytes": 12357,
+      "sha256": "8b177547f5be52a5f737d7d8c3e0ccfbdf392df326eb37badddecfdded56a9f9"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-wheel-nextest-20261009\\native-provenance.json",
+      "bytes": 8179,
+      "sha256": "f5ebd1c1e5236ac43663efcf1180abc26f2f488c985d801d91bee77c7a0099ae"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-corrected-wheel-nextest-20261009\\native-provenance.json",
+      "bytes": 8209,
+      "sha256": "a430a728f9aa190e41428192b7ba10a224fa6b8b2b4ebff8d26844c9371aca47"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v6-reference-review-v1-procedure.py",
+      "bytes": 9399,
+      "sha256": "1d8c691f4ca458a9178b14ad35c56967f298ec49e267f5f4370701c04e232af3"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-first-paired-20261009\\paired\\manifest.json",
+      "bytes": 17879,
+      "sha256": "20c58888d934335d4e46f5a80d6fc6339b676a2d25f1eb2150528126a3e41f67"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-first-paired-20261009\\paired\\manifest.json",
+      "bytes": 17919,
+      "sha256": "2e891b28e36b888fbb34ea574b26d584a9a8ad820ec3780f3637ed0ef5031380"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\reject\\manifest.json",
+      "bytes": 17919,
+      "sha256": "aad7ca08d6eec01f88acdd872babd864036a81e200c0993bc63b199c5c57512e"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\partial\\manifest.json",
+      "bytes": 17919,
+      "sha256": "7325d2df753f5bee9f6d15f01db4a4050e243ca16c453c95b91676106220b3f6"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\unknown\\manifest.json",
+      "bytes": 17919,
+      "sha256": "9db8ee84fca0cce8703d7b4f623b6cf59d827e62cce57e91e2f2164b9dc3bb57"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\cleanup_failure\\manifest.json",
+      "bytes": 17919,
+      "sha256": "955eeb46b7e52844e5859e61298ddc8bf44d203cbbd5b906fce882f4d143a471"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\foreign\\manifest.json",
+      "bytes": 17919,
+      "sha256": "c19ba0b173ff6d7ed69e5d03deedf58cdac6aec496b01be2f5da5afc55d408f2"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\loss_fee\\manifest.json",
+      "bytes": 17919,
+      "sha256": "fa24c41241eb4aaf5146369908510f7bbe220e833599dab88dfcf577bfb6d167"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-corrected-native-installed-identity-v1.json",
+      "bytes": 19740,
+      "sha256": "5bf993f75cddea827f9a571b4c47efa8304829b97cb1aa1d13d715584bc35234"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-corrected-app-installed-identity-v1.json",
+      "bytes": 19730,
+      "sha256": "16c688d79753aa5867da4ce24670e32d05106f473e7bde9ea273e60b651d2c68"
+    }
+  ],
+  "inputs_unchanged": true,
+  "archive_absent_before_after": true,
+  "only_shared_verifier_and_two_call_sites_changed": true,
+  "closed_v5_failure": {
+    "argv": [
+      "E:/persarb/worktrees/entropy-warm-prerequisites/.venv/Scripts/python.exe",
+      "-X",
+      "utf8",
+      "E:/persarb/_tmp/entropy117-validation/archive_native117_v5.py",
+      "--implementation",
+      "b07a7e6e6bfc7613aa12c77cdee1110e25790ca1",
+      "--regression",
+      "native117-full-hyperliquid-regression-v7",
+      "--paired-root",
+      "E:/persarb/_tmp/app43-native117-corrected-first-paired-20261009",
+      "--scenarios-root",
+      "E:/persarb/_tmp/app43-native117-corrected-remaining-scenarios-20261009"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-warm-prerequisites",
+    "started_utc": "2026-10-09T14:19:05.158784+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "uv_project_environment": null,
+    "nautilus_stub_profile": null,
+    "cargo_build_warnings": null,
+    "cargo_net_offline": null,
+    "entropy43_native_wheel": null,
+    "entropy43_native_sha256": null,
+    "entropy43_native_provenance": null,
+    "entropy43_evidence_root": null,
+    "exit_code": 1,
+    "finished_utc": "2026-10-09T14:19:06.087884+00:00"
+  },
+  "identity_checks": [
+    {
+      "identity_path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-corrected-native-installed-identity-v1.json",
+      "schema_keys": [
+        "build",
+        "declared_build",
+        "declared_native",
+        "path",
+        "sha256",
+        "source_binding",
+        "source_fingerprint_sha256"
+      ],
+      "whole_provenance_path": "E:\\persarb\\_tmp\\entropy117-corrected-wheel-nextest-20261009\\native-provenance.json",
+      "whole_file_sha256": "a430a728f9aa190e41428192b7ba10a224fa6b8b2b4ebff8d26844c9371aca47",
+      "native_commit": "b07a7e6e6bfc7613aa12c77cdee1110e25790ca1",
+      "wheel_sha256": "5187319f1754e37069904ce678f8526ddc47a8bc4d077209a95f97fe0205057a",
+      "native_module_sha256": "bad744cbe9b3a44aadc7262af68f8501c237957de05450bd320646c16188a885"
+    },
+    {
+      "identity_path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-corrected-app-installed-identity-v1.json",
+      "schema_keys": [
+        "build",
+        "declared_build",
+        "declared_native",
+        "path",
+        "sha256",
+        "source_binding",
+        "source_fingerprint_sha256"
+      ],
+      "whole_provenance_path": "E:\\persarb\\_tmp\\entropy117-corrected-wheel-nextest-20261009\\native-provenance.json",
+      "whole_file_sha256": "a430a728f9aa190e41428192b7ba10a224fa6b8b2b4ebff8d26844c9371aca47",
+      "native_commit": "b07a7e6e6bfc7613aa12c77cdee1110e25790ca1",
+      "wheel_sha256": "5187319f1754e37069904ce678f8526ddc47a8bc4d077209a95f97fe0205057a",
+      "native_module_sha256": "bad744cbe9b3a44aadc7262af68f8501c237957de05450bd320646c16188a885"
+    },
+    {
+      "identity_path": "E:\\persarb\\_tmp\\app43-native117-first-paired-20261009\\paired\\manifest.json",
+      "schema_keys": [
+        "build",
+        "declared_build",
+        "declared_native",
+        "path",
+        "sha256",
+        "source_binding",
+        "source_fingerprint_sha256"
+      ],
+      "whole_provenance_path": "E:\\persarb\\_tmp\\entropy117-wheel-nextest-20261009\\native-provenance.json",
+      "whole_file_sha256": "f5ebd1c1e5236ac43663efcf1180abc26f2f488c985d801d91bee77c7a0099ae",
+      "native_commit": "56705ce873d5fc4e568e5f9ea8f2c614d5d35230",
+      "wheel_sha256": "47486c076bfaa7afac05a02071b11d485280dca5718a0d806d6dd6fe1eb4a05e",
+      "native_module_sha256": "425b546ad05e2ca3d6bd117ab03fccadd1c8b20fcd55a70f303b6927d8deadee"
+    },
+    {
+      "identity_path": "E:\\persarb\\_tmp\\app43-native117-corrected-first-paired-20261009\\paired\\manifest.json",
+      "schema_keys": [
+        "build",
+        "declared_build",
+        "declared_native",
+        "path",
+        "sha256",
+        "source_binding",
+        "source_fingerprint_sha256"
+      ],
+      "whole_provenance_path": "E:\\persarb\\_tmp\\entropy117-corrected-wheel-nextest-20261009\\native-provenance.json",
+      "whole_file_sha256": "a430a728f9aa190e41428192b7ba10a224fa6b8b2b4ebff8d26844c9371aca47",
+      "native_commit": "b07a7e6e6bfc7613aa12c77cdee1110e25790ca1",
+      "wheel_sha256": "5187319f1754e37069904ce678f8526ddc47a8bc4d077209a95f97fe0205057a",
+      "native_module_sha256": "bad744cbe9b3a44aadc7262af68f8501c237957de05450bd320646c16188a885"
+    },
+    {
+      "identity_path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\reject\\manifest.json",
+      "schema_keys": [
+        "build",
+        "declared_build",
+        "declared_native",
+        "path",
+        "sha256",
+        "source_binding",
+        "source_fingerprint_sha256"
+      ],
+      "whole_provenance_path": "E:\\persarb\\_tmp\\entropy117-corrected-wheel-nextest-20261009\\native-provenance.json",
+      "whole_file_sha256": "a430a728f9aa190e41428192b7ba10a224fa6b8b2b4ebff8d26844c9371aca47",
+      "native_commit": "b07a7e6e6bfc7613aa12c77cdee1110e25790ca1",
+      "wheel_sha256": "5187319f1754e37069904ce678f8526ddc47a8bc4d077209a95f97fe0205057a",
+      "native_module_sha256": "bad744cbe9b3a44aadc7262af68f8501c237957de05450bd320646c16188a885"
+    },
+    {
+      "identity_path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\partial\\manifest.json",
+      "schema_keys": [
+        "build",
+        "declared_build",
+        "declared_native",
+        "path",
+        "sha256",
+        "source_binding",
+        "source_fingerprint_sha256"
+      ],
+      "whole_provenance_path": "E:\\persarb\\_tmp\\entropy117-corrected-wheel-nextest-20261009\\native-provenance.json",
+      "whole_file_sha256": "a430a728f9aa190e41428192b7ba10a224fa6b8b2b4ebff8d26844c9371aca47",
+      "native_commit": "b07a7e6e6bfc7613aa12c77cdee1110e25790ca1",
+      "wheel_sha256": "5187319f1754e37069904ce678f8526ddc47a8bc4d077209a95f97fe0205057a",
+      "native_module_sha256": "bad744cbe9b3a44aadc7262af68f8501c237957de05450bd320646c16188a885"
+    },
+    {
+      "identity_path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\unknown\\manifest.json",
+      "schema_keys": [
+        "build",
+        "declared_build",
+        "declared_native",
+        "path",
+        "sha256",
+        "source_binding",
+        "source_fingerprint_sha256"
+      ],
+      "whole_provenance_path": "E:\\persarb\\_tmp\\entropy117-corrected-wheel-nextest-20261009\\native-provenance.json",
+      "whole_file_sha256": "a430a728f9aa190e41428192b7ba10a224fa6b8b2b4ebff8d26844c9371aca47",
+      "native_commit": "b07a7e6e6bfc7613aa12c77cdee1110e25790ca1",
+      "wheel_sha256": "5187319f1754e37069904ce678f8526ddc47a8bc4d077209a95f97fe0205057a",
+      "native_module_sha256": "bad744cbe9b3a44aadc7262af68f8501c237957de05450bd320646c16188a885"
+    },
+    {
+      "identity_path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\cleanup_failure\\manifest.json",
+      "schema_keys": [
+        "build",
+        "declared_build",
+        "declared_native",
+        "path",
+        "sha256",
+        "source_binding",
+        "source_fingerprint_sha256"
+      ],
+      "whole_provenance_path": "E:\\persarb\\_tmp\\entropy117-corrected-wheel-nextest-20261009\\native-provenance.json",
+      "whole_file_sha256": "a430a728f9aa190e41428192b7ba10a224fa6b8b2b4ebff8d26844c9371aca47",
+      "native_commit": "b07a7e6e6bfc7613aa12c77cdee1110e25790ca1",
+      "wheel_sha256": "5187319f1754e37069904ce678f8526ddc47a8bc4d077209a95f97fe0205057a",
+      "native_module_sha256": "bad744cbe9b3a44aadc7262af68f8501c237957de05450bd320646c16188a885"
+    },
+    {
+      "identity_path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\foreign\\manifest.json",
+      "schema_keys": [
+        "build",
+        "declared_build",
+        "declared_native",
+        "path",
+        "sha256",
+        "source_binding",
+        "source_fingerprint_sha256"
+      ],
+      "whole_provenance_path": "E:\\persarb\\_tmp\\entropy117-corrected-wheel-nextest-20261009\\native-provenance.json",
+      "whole_file_sha256": "a430a728f9aa190e41428192b7ba10a224fa6b8b2b4ebff8d26844c9371aca47",
+      "native_commit": "b07a7e6e6bfc7613aa12c77cdee1110e25790ca1",
+      "wheel_sha256": "5187319f1754e37069904ce678f8526ddc47a8bc4d077209a95f97fe0205057a",
+      "native_module_sha256": "bad744cbe9b3a44aadc7262af68f8501c237957de05450bd320646c16188a885"
+    },
+    {
+      "identity_path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\loss_fee\\manifest.json",
+      "schema_keys": [
+        "build",
+        "declared_build",
+        "declared_native",
+        "path",
+        "sha256",
+        "source_binding",
+        "source_fingerprint_sha256"
+      ],
+      "whole_provenance_path": "E:\\persarb\\_tmp\\entropy117-corrected-wheel-nextest-20261009\\native-provenance.json",
+      "whole_file_sha256": "a430a728f9aa190e41428192b7ba10a224fa6b8b2b4ebff8d26844c9371aca47",
+      "native_commit": "b07a7e6e6bfc7613aa12c77cdee1110e25790ca1",
+      "wheel_sha256": "5187319f1754e37069904ce678f8526ddc47a8bc4d077209a95f97fe0205057a",
+      "native_module_sha256": "bad744cbe9b3a44aadc7262af68f8501c237957de05450bd320646c16188a885"
+    }
+  ],
+  "obvious_additional_assumed_field_mismatches_found": [],
+  "limits": [
+    "Prior static reviews missed inherited whole-object/reference mismatch; actual v5 execution exposed it.",
+    "No broad helper runtime success claim, actual root execution still required.",
+    "Original/current provenance and failed receipts are preserved, not normalized."
+  ]
+}

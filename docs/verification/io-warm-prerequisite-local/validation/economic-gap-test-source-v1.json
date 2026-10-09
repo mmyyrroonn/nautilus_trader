@@ -1,0 +1,62 @@
+{
+    "utc":  "2026-10-09T13:13:59.2079335Z",
+    "implementation":  "56705ce873d5fc4e568e5f9ea8f2c614d5d35230",
+    "before_manifest_sha256":  "2ee241e891353cdb4ff4e3e2946e522d4aca61500de2c5fcf4d98bb9f1c4daed",
+    "contract_sha256":  "62b8cdac77bec6e7952cca889b156936b42fbc59a1b78973d283842c90d675ec",
+    "report_sha256":  "0bc1648beddee6bccc2c340f1b65249c0f5b8277a5390c4df3427a7c9cdc62ac",
+    "source_freeze":  true,
+    "declared_direct_cases":  9,
+    "declared_integration_cases":  1,
+    "executed_tests":  0,
+    "cargo":  0,
+    "format":  0,
+    "native_imports":  0,
+    "git":  0,
+    "red_filters":  [
+                        "warm_demand_",
+                        "consecutive_owned_entry_and_close_warm_callbacks_append_economic_unknown_tails"
+                    ],
+    "production_unchanged":  true,
+    "files":  [
+                  {
+                      "relative_path":  "crates/adapters/hyperliquid/src/economics_scope/tests.rs",
+                      "path":  "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\economics_scope\\tests.rs",
+                      "before_sha256":  "3b9363dbf3fd0f6c4a812bb682fc724f842922f3b9c9509319c6ea77ab570602",
+                      "after_sha256":  "b2b569a2faafb12558974a62223a067ba70043d8d7ba83fc2ed2e849850fb7fd",
+                      "bytes":  36098,
+                      "unchanged":  false
+                  },
+                  {
+                      "relative_path":  "crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs",
+                      "path":  "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs",
+                      "before_sha256":  "23566164a25e0470777180fdbd9e25491ca85f9a6e15cd83b2ca69054bbb994c",
+                      "after_sha256":  "aadc109e4ff6ef7a0d7a40a9363377d0de24cbbaf6eee478d9582dcce433e345",
+                      "bytes":  86666,
+                      "unchanged":  false
+                  },
+                  {
+                      "relative_path":  "crates/adapters/hyperliquid/src/economics_scope.rs",
+                      "path":  "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\economics_scope.rs",
+                      "before_sha256":  "2ebdf3756f39ea0cd32cfdc79d84ef7babdcabd6c2d7fea0b0f00d4c151f7f47",
+                      "after_sha256":  "2ebdf3756f39ea0cd32cfdc79d84ef7babdcabd6c2d7fea0b0f00d4c151f7f47",
+                      "bytes":  34956,
+                      "unchanged":  true
+                  },
+                  {
+                      "relative_path":  "crates/adapters/hyperliquid/src/account_scope.rs",
+                      "path":  "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\account_scope.rs",
+                      "before_sha256":  "1ff6b1d2ea0050b2b31f0a053682b109b2fa0eb7ae94c9509afdb6b7ef4e5230",
+                      "after_sha256":  "1ff6b1d2ea0050b2b31f0a053682b109b2fa0eb7ae94c9509afdb6b7ef4e5230",
+                      "bytes":  84490,
+                      "unchanged":  true
+                  },
+                  {
+                      "relative_path":  "crates/adapters/hyperliquid/src/execution_scope.rs",
+                      "path":  "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+                      "before_sha256":  "05963a5c4d221b476cae64260cf956898105acbafbde8ce117b1e659f000be50",
+                      "after_sha256":  "05963a5c4d221b476cae64260cf956898105acbafbde8ce117b1e659f000be50",
+                      "bytes":  194007,
+                      "unchanged":  true
+                  }
+              ]
+}

@@ -1,0 +1,44 @@
+"""Publish the closed corrective candidate results without claiming full app acceptance."""
+
+import hashlib
+import json
+from pathlib import Path
+
+from github_capture import api
+
+
+root = Path(__file__).resolve().parent
+for label in (
+    "native117-full-hyperliquid-regression-v7",
+    "native117-production-clippy-v7",
+    "native117-corrected-source-bound-wheel-build-v1",
+    "native117-corrected-installed-python-contracts-v1",
+    "app43-native117-corrected-first-paired-v1",
+    "app43-native117-corrected-remaining-scenarios-v1",
+):
+    assert json.loads((root / (label + ".json")).read_text(encoding="utf-8"))["exit_code"] == 0, label
+for label in ("native117-tests-inclusive-clippy-v7", "native117-integration-tests-clippy-v7"):
+    assert json.loads((root / (label + ".json")).read_text(encoding="utf-8"))["exit_code"] == 101, label
+comparison = json.loads((root / "native117-clippy-diagnostic-comparison-v7-v2.json").read_text(encoding="utf-8"))
+assert comparison["new_diagnostics"] == []
+assert comparison["inherited_diagnostics"] == 10
+wheel = Path("E:/persarb/_tmp/entropy117-corrected-wheel-nextest-20261009/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl")
+assert hashlib.sha256(wheel.read_bytes()).hexdigest() == "5187319f1754e37069904ce678f8526ddc47a8bc4d077209a95f97fe0205057a"
+issue = api("repos/mmyyrroonn/nautilus_trader/issues/117", "native117-corrected-seven-progress-v1-before")
+assert issue["state"] == "open"
+body = """The corrective candidate is now built and installed from clean commit `b07a7e6e6bfc7613aa12c77cdee1110e25790ca1`, following preserved first candidate `56705ce873d5fc4e568e5f9ea8f2c614d5d35230`. The new wheel SHA256 is `5187319f1754e37069904ce678f8526ddc47a8bc4d077209a95f97fe0205057a`; formal application pins/lock are not yet changed.
+
+Actual local checks: unfiltered Hyperliquid regression **1435 passed / 18 inherited ignored** (13:29:38–13:34:14 UTC); production strict Clippy passed; official 44 stubs retain equal public AST and normalized text; installed Python contracts **242 passed** (13:41:32–49). Test-inclusive Clippy remains **FAIL** with exactly the 10 inherited diagnostics. The separate integration Clippy failure repeats six of those ten, so it is not 16 distinct failures. Source and closed-log comparisons retain both failures.
+
+The fresh corrected installed first paired passed once (13:42:18–24, **1 passed**). Only after that result, the remaining six original parameters passed (13:43:06–13:44:16, **6 passed / 1 paired deselected**). All four before/after captures match the same 58 source/installed/artifact identities. No paired retry or limit increase was used. Paired reached four actual native fills, current owned-flat proof and zero reservation. Real reject/partial/cleanup-reject stimuli were recorded; unknown keeps reservation 12.7260, cleanup failure keeps Aster -0.12 and reservation12.6000, and foreign +0.03 receives no actions. Loss-fee completes its finite order work while owned-flat proof remains Unknown. Each expected conservative stop is retained as observed.
+
+The fresh economic receipts preserve the old finite COMPLETE coverage and first Unknown tails, then append the second Unknown tails without taint. This does not make the Unknown history complete. The failed first wheel/paired journal and direct RED commands remain separate immutable evidence.
+
+Independent source review has approved the corrective source; the producer's all-seven artifact audit is frozen and independent artifact/archive review is in progress. Evidence documentation, PR, actual final-head CI and authorized merge remain pending. This finite native prerequisite delivery does not close App43, E6, funding/history completeness, cold app restoration, kernel isolation or mainnet acceptance."""
+comments = api("repos/mmyyrroonn/nautilus_trader/issues/117/comments?per_page=100", "native117-corrected-seven-progress-v1-comments")
+assert not any(comment["body"] == body for comment in comments)
+comment = api("repos/mmyyrroonn/nautilus_trader/issues/117/comments", "native117-corrected-seven-progress-v1-post", "POST", {"body": body})
+output = root / "native117-corrected-seven-progress-v1-result.json"
+assert not output.exists()
+output.write_text(json.dumps({"comment_url": comment["html_url"], "comment_id": comment["id"]}, indent=2) + "\n", encoding="utf-8")
+print(json.dumps({"comment_url": comment["html_url"]}))

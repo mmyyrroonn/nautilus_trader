@@ -1,0 +1,31 @@
+"""Preserve the first installed failure and publish one checked progress comment."""
+
+import hashlib
+import json
+from pathlib import Path
+
+from github_capture import api
+
+
+ROOT = Path(__file__).resolve().parent
+issue = api("repos/mmyyrroonn/nautilus_trader/issues/117", "native117-first-paired-failure-progress-v1-before")
+assert issue["state"] == "open"
+receipt = json.loads((ROOT / "app43-native117-first-paired.json").read_text(encoding="utf-8"))
+assert receipt["exit_code"] == 1
+body = """The first installed APP43 paired run on clean implementation `56705ce873d5fc4e568e5f9ea8f2c614d5d35230` and wheel SHA-256 `47486c076bfaa7afac05a02071b11d485280dca5718a0d806d6dd6fe1eb4a05e` failed and is preserved: 2026-10-09 12:48:15.893970–12:48:34.684631 UTC, 1 failed, child ended `StoppedUnknown`. All 57 before/after source, installed module, and artifact identities matched. No other installed scenario was run on this candidate.
+
+Both normal warm recoveries completed and reused the original bounded prerequisite; the post-close callback then reported `Economic unrequested coverage could not be preserved`. The original role-group expiry was still 12:48:20.265 UTC. Four actual fills completed, final owned/native/peer positions and reservations were flat/zero. This failure is distinct from the previous candidate's incomplete source-group/debt failure.
+
+Source inspection identifies an existing warm economics producer that mutates a previously durable zero-page Unknown interval, conflicting with the store's append-only coverage guard. The normal callback uses the current financial completion clock; there is no evidence of role-clock backdating. The installed log did not print the inner store error, so that precise rejection remains source-derived pending a recorded regression. A stale last economic snapshot is not evidence that the later failed economic state remained untainted.
+
+The final first-candidate native regression passed 1,424 tests with 18 inherited ignores; installed Python contracts passed 242 tests; official 44-stub comparison and production Clippy passed. Tests-inclusive Clippy retained 10 inherited diagnostics, with no new diagnostics. These finite checks did not detect the repeated ordinary economic callback regression.
+
+Work remains open in #117. The corrective contract preserves every old coverage row and appends only new Unknown demand tails, with genuine duplicate-time no-ops and unchanged generation/epoch scope, row/byte caps, immutable fees, original two-second prerequisite TTL, and original three-second total deadline. A sub-agent will add a recorded failing normal-path regression; another will independently review the source and durable boundaries. The first failed source/wheel/raw journals will not be reused or erased. A corrected candidate requires fresh source-bound build, install identities, regression and fresh paired evidence before the other cases. No mainnet, E6/kernel, or APP43 completion is claimed."""
+comments = api("repos/mmyyrroonn/nautilus_trader/issues/117/comments?per_page=100", "native117-first-paired-failure-progress-v1-comments")
+assert all(comment["body"] != body for comment in comments)
+comment = api("repos/mmyyrroonn/nautilus_trader/issues/117/comments", "native117-first-paired-failure-progress-v1-post", "POST", {"body": body})
+contract = ROOT / "native117-economic-gap-correction-contract-v1.md"
+output = ROOT / "native117-first-paired-failure-progress-v1-result.json"
+assert not output.exists()
+output.write_text(json.dumps({"comment_url": comment["html_url"], "comment_id": comment["id"], "contract_sha256": hashlib.sha256(contract.read_bytes()).hexdigest(), "paired_receipt_sha256": hashlib.sha256((ROOT / "app43-native117-first-paired.json").read_bytes()).hexdigest()}, indent=2) + "\n", encoding="utf-8")
+print(json.dumps({"comment_url": comment["html_url"], "contract_sha256": hashlib.sha256(contract.read_bytes()).hexdigest()}))

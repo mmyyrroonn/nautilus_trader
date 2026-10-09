@@ -1,0 +1,108 @@
+import datetime
+import difflib
+import hashlib
+import json
+from pathlib import Path
+
+root = Path('E:/persarb/_tmp/entropy117-validation')
+label = 'reviewer-native117-archive-helper-v2'
+sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+now = lambda: datetime.datetime.now(datetime.timezone.utc).isoformat()
+load = lambda name: json.loads((root / name).read_text(encoding='utf-8-sig'))
+started = now()
+v1 = root / 'archive_native117.py'
+v2 = root / 'archive_native117_v2.py'
+assert sha(v1) == '37c5c76f1d0d3707b113eb7d4f2c0d4e5fcfbcee4aae2190f3d7fcee527399d6'
+assert sha(v2) == '3c317b91fb66330d9668403358ee91d78c2759d43f06c14f6532a93822f105e9'
+snapshot = root / (label + '-source.py.txt')
+assert not snapshot.exists()
+snapshot.write_bytes(v2.read_bytes())
+names = ['archive-native117-source-binding-correction-v2.md', 'archive-native117-source-binding-correction-v2.json',
+         'native117-formatted-v6.json', 'native117-after-full-regression-v6.json',
+         'native117-verified-binaries-v6.json', 'native117-full-inputs-unchanged-v6.json',
+         'native117-full-hyperliquid-regression-v6.json', 'native117-full-hyperliquid-regression-v6.log',
+         'native117-implementation-commit.json', 'reviewer-native117-archive-helper-v1.md',
+         'reviewer-native117-archive-helper-v1.json', 'native117-source-bound-wheel-build.json']
+inputs = [v1, v2, snapshot, Path(__file__)] + [root / name for name in names]
+pre = load('native117-formatted-v6.json')
+post = load('native117-after-full-regression-v6.json')
+binary = load('native117-verified-binaries-v6.json')
+implementation = load('native117-implementation-commit.json')
+comparison = load('native117-full-inputs-unchanged-v6.json')
+command = load('native117-full-hyperliquid-regression-v6.json')
+copies = []
+for group, count in [('native', 31), ('app', 10)]:
+    assert len(pre[group]['files']) == len(post[group]['files']) == count
+    a = {Path(x['path']).relative_to(Path(pre[group]['root'])).as_posix(): x for x in pre[group]['files']}
+    b = {Path(x['path']).relative_to(Path(post[group]['root'])).as_posix(): x for x in post[group]['files']}
+    assert a.keys() == b.keys() and not pre[group]['missing_inputs'] and not post[group]['missing_inputs']
+    assert comparison['repositories'][group]['equal'] and comparison['repositories'][group]['inputs'] == count
+    assert pre[group]['head'] == post[group]['head']
+    for relative, row in a.items():
+        assert row['sha256'] == b[relative]['sha256'] and row['size'] == b[relative]['size']
+        p = Path(pre['snapshot_directory']) / group / relative
+        assert p.is_file() and sha(p) == row['sha256'] and p.stat().st_size == row['size']
+        copies.append(p)
+    if group == 'native':
+        for relative, digest in implementation['files'].items():
+            assert a[relative]['sha256'] == digest
+assert 'snapshot_directory' not in post
+assert implementation['reviewed_manifest_sha256'] == binary['source_manifest']['sha256'] == sha(root / 'native117-formatted-v6.json')
+assert binary['actual_cargo_command']['sha256'] == sha(root / 'native117-full-hyperliquid-regression-v6.json')
+assert binary['actual_cargo_log']['sha256'] == sha(root / 'native117-full-hyperliquid-regression-v6.log')
+assert binary['actual_cargo_command']['command'] == command
+parse = datetime.datetime.fromisoformat
+assert parse(pre['finished_utc']) <= parse(command['started_utc']) <= parse(command['finished_utc']) <= parse(post['started_utc'])
+inputs += copies + [Path(x['immutable_copy_path']) for x in binary['binaries']]
+before = [{'path': str(p), 'sha256': sha(p)} for p in inputs]
+for row in binary['binaries']:
+    p = Path(row['immutable_copy_path'])
+    assert sha(p) == row['sha256'] and p.stat().st_size == row['bytes']
+# Compare top-level source text only; do not import/execute/AST-parse the helper.
+def sections(text):
+    parts = text.split('\ndef ')
+    return {part.split('(', 1)[0]: 'def ' + part for part in parts[1:]}
+old, new = v1.read_text(encoding='utf-8'), v2.read_text(encoding='utf-8')
+old_sections, new_sections = sections(old), sections(new)
+changed = [name for name in old_sections if old_sections[name] != new_sections[name]]
+added = sorted(new_sections.keys() - old_sections.keys())
+assert set(changed) == {'verify_implementation', 'main'}
+assert added == ['verify_reference', 'verify_tested_source']
+diff = root / (label + '-v1-v2.diff.txt')
+assert not diff.exists()
+diff.write_text(''.join(difflib.unified_diff(old.splitlines(keepends=True), new.splitlines(keepends=True), fromfile='v1', tofile='v2')), encoding='utf-8')
+after = [{'path': str(p), 'sha256': sha(p)} for p in inputs]
+assert before == after
+data = {'started_utc': started, 'finished_utc': now(), 'v1_sha256': sha(v1), 'v2_sha256': sha(v2),
+        'helper_executed': False, 'helper_imported_or_ast_parsed': False, 'reviewer_tests': 0,
+        'git_or_native_commands': 0, 'archive_created': False, 'before': before, 'after': after, 'unchanged': True,
+        'new_functions': added, 'changed_prior_functions': changed,
+        'actual_schema_checks': {'native_inputs': 31, 'app_inputs': 10, 'frozen_before_copies': len(copies),
+            'after_has_snapshot_directory': False, 'immutable_binary_bytes_matched': 2,
+            'source_times': {'before_finished': pre['finished_utc'], 'regression_started': command['started_utc'],
+                             'regression_finished': command['finished_utc'], 'after_started': post['started_utc']},
+            'tested_five_hashes_match_implementation_receipt': True},
+        'verdict': 'Prior regression-to-implementation source-chain blocker closed in the requested narrow static scope.',
+        'limits': ['No helper execution, archive, Git or native/test execution.', 'Git blob equality was assessed statically; reviewer compared actual receipt/snapshot bytes.',
+                   'No future scenario, wheel-install or archive manifest acceptance.', 'Inner build command exit zero and host wrapper GBK failure exit one must remain distinct in final documentation.']}
+out = root / (label + '.json')
+assert not out.exists()
+out.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
+md = f'''# Native117 archival helper v2 independent narrow review
+
+**Prior source-binding blocker closed in this static scope.** Helper SHA256 `{data['v2_sha256']}` (27,524 bytes). Original v1 SHA `{data['v1_sha256']}` and its blocked review remain unchanged. Procedure UTC {started} through {data['finished_utc']}. Zero tests, helper execution/import/AST parsing, archive creation, native/Git/build/install operations.
+
+`verify_tested_source` is called before wheel/case inventory and archive creation. It fixes the accepted regression label to the final v6 run, binds the actual command and log bytes through the immutable binary receipt, requires that receipt's source-manifest hash and the implementation receipt's reviewed-manifest hash to agree, and verifies original before/after source hashes and sizes. It independently checks 31 native and ten app input counts/path sets, missing inputs, unchanged heads and comparison result, actual frozen source copies, the source capture time bracket, and both immutable binary byte hashes. `tested_file_sha256` now comes from the actual tested capture; current bytes remain separately named and both are compared with the Git blob.
+
+The actual existing schema was independently read and checked without invoking the helper. All 41 original frozen before copies match their recorded SHA/size; post-run source rows agree. The five implementation receipt hashes agree with those tested source rows. Command/log references match actual file hashes. The time bracket is `{pre['finished_utc']}` <= `{command['started_utc']}` <= `{command['finished_utc']}` <= `{post['started_utc']}`. Two immutable binary copies match their recorded bytes. The after capture really has no snapshot directory: v2 uses its real post-run hashes and verifies existing before copies, and does not invent post-run duplicate copies.
+
+The preserved source-text diff adds only `verify_reference` and `verify_tested_source`, changes current-vs-tested naming in `verify_implementation`, and invokes/archives the new binding ledger in `main`. Original regression count checks, source Git scope, wheel provenance, seven scenario gates, failure preservation, inventory exclusions, exact byte copying and non-deduplicated raw handling are unchanged. These existing gates remain covered by the v1 static review; no future artifacts or actual scenario outcome is inferred from this addendum.
+
+Final documentation must distinguish the actual native build command's recorded exit 0 from the parent-reported outer command-wrapper exit 1 caused by GBK printing an emoji. Neither record should be overwritten or described as an entirely successful outer wrapper run. This review read the existing inner command receipt; the outer host event is parent-supplied and is not independently certified here.
+
+This is approval of the narrow helper correction, not a completed archive or runtime acceptance. Actual execution, complete seven-scenario evidence, final wheel/installed bytes, archive record verification and remote CI remain separate root responsibilities. Exact before/after inputs and diff are retained in the companion JSON and files.
+'''
+out = root / (label + '.md')
+assert not out.exists()
+out.write_text(md, encoding='utf-8')
+print(json.dumps({'report': str(out), 'report_sha256': sha(out), 'helper_sha256': sha(v2), 'inputs': len(inputs), 'blocker_closed': True, 'tests': 0}))

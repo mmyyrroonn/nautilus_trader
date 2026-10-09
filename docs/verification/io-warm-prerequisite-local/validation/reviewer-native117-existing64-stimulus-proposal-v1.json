@@ -1,0 +1,106 @@
+{
+  "kind": "independent readonly existing64 adaptation design",
+  "executed_tests": 0,
+  "reviewed_native117_moving_source": false,
+  "inputs_unchanged": true,
+  "before": {
+    "utc": "2026-10-09T11:27:16.767113+00:00",
+    "files": [
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs",
+        "size": 71854,
+        "sha256": "2fca06baee1dc91a94ac1956db71c555db980c3566fd25c453ad7b99bfc4f58b"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\execution.rs",
+        "size": 58999,
+        "sha256": "d3958d96f3f48ada888b671ebc9de1f2ee361f6739d4f9c47b66b5c0b98dc1fb"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\tests\\entropy_account.rs",
+        "size": 45087,
+        "sha256": "5976b5e8e5b9e19314679ca009365024817a2ad4e3a07ac65c7cdf1d06a79c07"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+        "size": 187538,
+        "sha256": "afc9ba90c3c7a2b57e6e41212704d333e964b4934b88653960cbca599a16b4d1"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\src\\account_scope.rs",
+        "size": 71506,
+        "sha256": "2b176ca4b355955268fe26a218a3019b5195ee4a3e87edd6c24e604f4553d0ce"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\src\\execution.rs",
+        "size": 250478,
+        "sha256": "2b1e30b896b60b01edd257947426c5f132b841dc7fe7771602f1e810c81c3316"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\src\\http\\rate_limits.rs",
+        "size": 15968,
+        "sha256": "47dd217c00b7a28358b2f28b7e1803c72e5817212300a2e62c2f0a419047dafc"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy115-validation\\next-warm-prerequisite-source-contract-proposal-v2.md",
+        "size": 18206,
+        "sha256": "17c52c4d0d79dd301101b063c5882b15ad644f16ac939d09c44c3655939f4b26"
+      }
+    ]
+  },
+  "after": {
+    "utc": "2026-10-09T11:27:16.768113+00:00",
+    "files": [
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs",
+        "size": 71854,
+        "sha256": "2fca06baee1dc91a94ac1956db71c555db980c3566fd25c453ad7b99bfc4f58b"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\execution.rs",
+        "size": 58999,
+        "sha256": "d3958d96f3f48ada888b671ebc9de1f2ee361f6739d4f9c47b66b5c0b98dc1fb"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\tests\\entropy_account.rs",
+        "size": 45087,
+        "sha256": "5976b5e8e5b9e19314679ca009365024817a2ad4e3a07ac65c7cdf1d06a79c07"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+        "size": 187538,
+        "sha256": "afc9ba90c3c7a2b57e6e41212704d333e964b4934b88653960cbca599a16b4d1"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\src\\account_scope.rs",
+        "size": 71506,
+        "sha256": "2b176ca4b355955268fe26a218a3019b5195ee4a3e87edd6c24e604f4553d0ce"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\src\\execution.rs",
+        "size": 250478,
+        "sha256": "2b1e30b896b60b01edd257947426c5f132b841dc7fe7771602f1e810c81c3316"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-startup-account-proof\\crates\\adapters\\hyperliquid\\src\\http\\rate_limits.rs",
+        "size": 15968,
+        "sha256": "47dd217c00b7a28358b2f28b7e1803c72e5817212300a2e62c2f0a419047dafc"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy115-validation\\next-warm-prerequisite-source-contract-proposal-v2.md",
+        "size": 18206,
+        "sha256": "17c52c4d0d79dd301101b063c5882b15ad644f16ac939d09c44c3655939f4b26"
+      }
+    ]
+  },
+  "proposal_sha256": "677bc429ea17f076b1e1629afb9582b576ea16fdf6a82e8df86bdd38e77ec3bb",
+  "quota_candidate": "3 real expired-source full-flat success preloads + fourth full-flat target; <=10s setup-to-target premise; actual result pending",
+  "unchanged_limits": {
+    "account_ms": 2000,
+    "metadata_ms": 30000,
+    "recovery_ms": 3000,
+    "quota_per_min": 1200,
+    "refill_per_sec": 20
+  },
+  "root_schema_intent_not_source_acceptance": "separate reused_prerequisite_source optional; original_sources still new flight"
+}

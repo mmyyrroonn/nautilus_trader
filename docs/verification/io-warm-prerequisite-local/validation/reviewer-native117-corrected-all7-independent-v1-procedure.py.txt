@@ -1,0 +1,183 @@
+import hashlib
+import json
+import zipfile
+from datetime import datetime, timezone
+from decimal import Decimal
+from pathlib import Path
+
+ROOT = Path('E:/persarb/_tmp/entropy117-validation')
+APP = Path('E:/persarb/worktrees/entropy-execution-app')
+STEM = 'reviewer-native117-corrected-all7-independent-v1'
+WHEEL_SHA = '5187319f1754e37069904ce678f8526ddc47a8bc4d077209a95f97fe0205057a'
+COMMIT = 'b07a7e6e6bfc7613aa12c77cdee1110e25790ca1'
+MODES = ['paired', 'reject', 'partial', 'unknown', 'cleanup_failure', 'foreign', 'loss_fee']
+DIRS = {m: Path('E:/persarb/_tmp/app43-native117-corrected-first-paired-20261009/paired') if m == 'paired' else Path('E:/persarb/_tmp/app43-native117-corrected-remaining-scenarios-20261009') / m for m in MODES}
+def read(p):
+    return json.loads(Path(p).read_text(encoding='utf-8-sig'))
+def utc():
+    return datetime.now(timezone.utc).isoformat()
+def identity(p):
+    p = Path(p)
+    h = hashlib.sha256()
+    with p.open('rb') as f:
+        for b in iter(lambda: f.read(1048576), b''):
+            h.update(b)
+    return {'path': str(p), 'bytes': p.stat().st_size, 'sha256': h.hexdigest()}
+def stamp(s):
+    return datetime.fromisoformat(s)
+
+capture_names = ['before-first-paired', 'after-first-paired', 'before-remaining-scenarios', 'after-remaining-scenarios']
+capture_paths = [ROOT / f'app43-native117-corrected-{n}-v1.json' for n in capture_names]
+caps = [read(p) for p in capture_paths]
+rows = [x for k in ['source_files', 'installed_files', 'artifacts'] for x in caps[0][k]]
+assert len(rows) == 58 and [len(caps[0][k]) for k in ['source_files','installed_files','artifacts']] == [32,24,2]
+receipt_paths = [ROOT / f'app43-native117-corrected-{n}-v1.{ext}' for n in ['first-paired','remaining-scenarios'] for ext in ['json','log']]
+extra_names = ['app43-native117-corrected-cohorts-unchanged-v1.json', 'native117-corrected-app-installed-identity-v1.json', 'native117-corrected-native-installed-identity-v1.json', 'native117-economic-correction-implementation-commit.json', 'native117-formatted-v7.json', 'native117-gap-red-evidence-v2.json', 'producer-review-native117-corrected-all7-v1.md', 'producer-review-native117-corrected-all7-v1.json']
+old = Path('E:/persarb/_tmp/app43-native117-first-paired-20261009/paired')
+paths = {Path(x['path']) for x in rows} | set(capture_paths + receipt_paths) | {ROOT/n for n in extra_names}
+for d in [*DIRS.values(), old]:
+    paths.update(p for p in d.rglob('*') if p.is_file())
+paths.update([ROOT/'app43-native117-first-paired.json',ROOT/'app43-native117-first-paired.log',Path(__file__)])
+started = utc()
+before = [identity(p) for p in sorted(paths)]
+(ROOT / f'{STEM}-before.json').write_text(json.dumps({'captured_utc':utc(),'inputs':before},indent=2), encoding='utf-8')
+by_path = {x['path']:x for x in before}
+for x in rows:
+    actual = by_path[str(Path(x['path']))]
+    assert actual['sha256'] == x['sha256'] and actual['bytes'] == x['bytes'], x['path']
+for c in caps:
+    assert c['native_current_checkout_head'] == COMMIT and c['source_binding'] == 'verified'
+    for k in ['source_files','installed_files','artifacts']:
+        assert c[k] == caps[0][k]
+
+paired_run = read(receipt_paths[0])
+remaining_run = read(receipt_paths[2])
+assert paired_run['exit_code'] == remaining_run['exit_code'] == 0
+selector = 'tests/test_entropy_execution_native.py::test_actual_installed_factory_two_leg_execution'
+assert selector+'[paired]' in paired_run['argv']
+assert selector in remaining_run['argv'] and '--deselect='+selector+'[paired]' in remaining_run['argv']
+assert stamp(caps[0]['captured_utc']) <= stamp(paired_run['started_utc']) <= stamp(paired_run['finished_utc']) <= stamp(caps[1]['captured_utc']) < stamp(caps[2]['captured_utc']) <= stamp(remaining_run['started_utc']) <= stamp(remaining_run['finished_utc']) <= stamp(caps[3]['captured_utc'])
+assert '1 passed' in receipt_paths[1].read_text(encoding='utf-8-sig')
+assert '6 passed, 1 deselected' in receipt_paths[3].read_text(encoding='utf-8-sig')
+
+installed = read(ROOT/'native117-corrected-app-installed-identity-v1.json')
+assert installed['strict_source_binding_passed'] is True
+assert installed['wheel']['sha256'] == WHEEL_SHA
+provenance = read(installed['native_provenance']['path'])
+for name in ['started_source','finished_source']:
+    assert provenance['build'][name]['commit'] == COMMIT and provenance['build'][name]['dirty_count'] == 0
+wheel = Path(installed['wheel']['path'])
+assert identity(wheel)['sha256'] == WHEEL_SHA
+zip_matches = []
+with zipfile.ZipFile(wheel) as z:
+    for x in caps[0]['installed_files']:
+        p = Path(x['path'])
+        if 'site-packages' in p.parts:
+            rel = '/'.join(p.parts[p.parts.index('site-packages')+1:])
+            if rel in z.namelist():
+                with z.open(rel) as f:
+                    h = hashlib.sha256()
+                    for b in iter(lambda:f.read(1048576),b''):h.update(b)
+                assert h.hexdigest() == x['sha256'], rel
+                zip_matches.append(rel)
+assert any(n.endswith('.pyd') for n in zip_matches)
+
+results = {}
+warm_diag = 'Current interval was not requested by warm account recovery; coverage Unknown'
+fixture_hash = identity(APP/'tests/entropy_execution_peer.py')['sha256']
+for mode, d in DIRS.items():
+    s = read(d/'summary.json'); c = s['controller']; peer = read(d/'peer-evidence.json'); command = read(d/'child-command.json'); manifest = read(d/'manifest.json'); report = read(d/'economic-report.json')
+    assert command['exit_code'] == 0 and '--entropy43-child' in command['argv'] and mode in command['argv'] and WHEEL_SHA in command['argv']
+    lines = [l[len('ENTROPY43_NATIVE_RESULT '):] for l in (d/'child-stdout.log').read_text(encoding='utf-8-sig').splitlines() if l.startswith('ENTROPY43_NATIVE_RESULT ')]
+    assert len(lines) == 1
+    result = json.loads(lines[0]); assert result['mode'] == mode and result['summary'] == s and result['active_sockets'] == 0 and result['wheel_sha256'] == WHEEL_SHA
+    assert manifest['fixture_sha256'] == fixture_hash
+    assert manifest['native_identity']['wheel']['sha256'] == WHEEL_SHA
+    assert manifest['native_identity']['native_provenance']['build']['finished_source']['commit'] == COMMIT
+    assert s['started'] and s['stopped'] and s['shutdown_verified'] and s['failure'] is None and s['watchdog_fired'] is False
+    assert s['native_host_egress_isolation_verified'] is False and s['account_flat_verified'] == 'Unknown' and s['aster_actual_funding'] == 'Unknown' and s['economics_complete'] is False and s['durable_cold_native_cache_restore_verified'] is False
+    assert c['native_cache_recovery'] == 'Unknown'
+    assert all(not v['errors'] for v in peer.values())
+    hl = peer['HYPERLIQUID']; ast = peer['ASTER']
+    posts = [x for x in hl['commands'] if x.get('method') == 'post']
+    orders = [x for x in ast['requests'] if x['path'].startswith('/fapi/v3/order')]
+    fills = c['fills']; receipt = s['native_economic_receipt']
+    for f in fills:
+        assert f['native_applied'] is True and f['source_reference'].startswith('native-order-filled:')
+        if f['leg'] == 'entropy':
+            assert f['trade_id'] == f"io:io:SNDK:{f['venue_order_id']}:{60001 if f['side']=='BUY' else 60002}"
+    economics = None
+    if receipt is not None:
+        disk = read(d/'native-io-economics.json')['checkpoint']
+        assert receipt['tainted'] is False and s['economic_error'] is None
+        assert disk['coverage'][:len(receipt['coverage'])] == receipt['coverage']
+        assert disk['observations'] == {k:{key:v for key,v in obs.items() if key in disk['observations'][k]} for k,obs in receipt['observations'].items()}
+        assert disk['report'] == receipt['report']
+        tails = [x for x in receipt['coverage'] if x['diagnostic'] == warm_diag]
+        assert len(tails) == 4
+        for endpoint in ['userFunding','userNonFundingLedgerUpdates']:
+            same = [x for x in receipt['coverage'] if x['endpoint'] == endpoint]
+            assert same[0]['complete'] is True and same[1]['start_ms'] == same[0]['end_ms'] and same[2]['start_ms'] == same[1]['end_ms']
+            assert all(x['pages']==x['records']==0 and not x['complete'] for x in same[1:])
+        assert report['native_economic_snapshot'] == receipt and report['actual_fills'] == fills
+        assert report['flags']['history_coverage_complete'] == report['flags']['run_attribution_complete'] == report['flags']['economics_complete'] == 'Unknown'
+        fee = Decimal(receipt['report']['actual_fee_usdc'])
+        assert fee == sum((Decimal(f['fee']) for f in fills if f['leg']=='entropy'),Decimal(0))
+        assert fee == sum((Decimal(str(f['fee'])) for f in hl['fills']),Decimal(0))
+        economics = {'summary_revision':receipt['checkpoint_revision'],'disk_revision':disk['revision'],'summary_coverage':len(receipt['coverage']),'disk_coverage':len(disk['coverage']),'tainted':False,'actual_fee_usdc':str(fee),'receipt_count':len(receipt['report']['receipts']),'observations':len(receipt['observations']),'disk_appended_shutdown_gap':disk['coverage'][len(receipt['coverage']):]}
+    if mode in ['paired','reject','partial']:
+        assert c['state']=='Completed' and c['owned_flat_verified'] is True and c['orders_terminal'] is True
+        assert all(Decimal(v)==0 for v in c['positions'].values()) and all(Decimal(v)==0 for v in s['native_portfolio_net_positions'].values())
+    if mode=='paired':assert len(fills)==4 and len(posts)==2
+    if mode=='reject':
+        assert len(fills)==2 and all(f['leg']=='entropy' for f in fills)
+        assert any(x['method']=='POST' and x['response']['status']==400 for x in orders)
+    if mode=='partial':
+        assert [Decimal(f['quantity']) for f in fills if f['leg']=='aster']==[Decimal('.06'),Decimal('.06')]
+        assert any(x['method']=='POST' and x['params'].get('reduceOnly')==['true'] and x['params']['quantity']==['0.06'] for x in orders)
+    if mode=='unknown':
+        assert c['state']=='StoppedUnknown' and not fills and len(posts)==1 and ast['actions']==0 and not c['orders_terminal']
+        assert Decimal(c['gross_reserved_usd'])>0 and any(o['unknown'] for o in c['orders'].values()) and receipt is None
+    if mode=='cleanup_failure':
+        assert c['state']=='StoppedUnknown' and c['owned_flat_verified']=='Unknown' and Decimal(c['positions']['aster'])==Decimal('-.12') and Decimal(c['gross_reserved_usd'])>0
+        assert len([f for f in fills if f['leg']=='aster'])==1
+        assert any(x['method']=='POST' and x['params'].get('reduceOnly')==['true'] and x['response']['status']==400 for x in orders)
+    if mode=='foreign':
+        assert c['state']=='StoppedUnknown' and not fills and c['actions']==0 and not posts and not orders and Decimal(ast['position'])==Decimal('.03')
+        assert Decimal(s['native_portfolio_net_positions']['aster'])==Decimal('.03') and c['owned_flat_verified']=='Unknown' and receipt is None
+    if mode=='loss_fee':
+        assert c['state']=='Completed' and c['owned_flat_verified']==c['current_projection_verified']=='Unknown' and c['new_risk_closed'] and not orders and not ast['fills']
+        assert Decimal(c['loss_usd'])>=4 and economics['actual_fee_usdc']=='4' and len(fills)==2
+    results[mode]={'state':c['state'],'reasons':c['reasons'],'actions':c['actions'],'entry_orders':c['entry_orders'],'cleanup_orders':c['cleanup_orders'],'fills':fills,'orders_terminal':c['orders_terminal'],'owned_flat_verified':c['owned_flat_verified'],'current_projection_verified':c['current_projection_verified'],'positions':c['positions'],'portfolio':s['native_portfolio_net_positions'],'gross_reserved_usd':c['gross_reserved_usd'],'unhedged_reserved_usd':c['unhedged_reserved_usd'],'loss_usd':c['loss_usd'],'hl_posts':len(posts),'aster_actions':ast['actions'],'economics':economics,'child_exit':0,'shutdown':True,'active_sockets':0}
+
+oldsummary = read(old/'summary.json'); oldmanifest=read(old/'manifest.json'); olddisk=read(old/'native-io-economics.json')['checkpoint']
+assert oldsummary['controller']['state']=='StoppedUnknown'
+assert oldmanifest['native_identity']['wheel']['sha256']=='47486c076bfaa7afac05a02071b11d485280dca5718a0d806d6dd6fe1eb4a05e'
+assert oldmanifest['native_identity']['native_provenance']['build']['finished_source']['commit']=='56705ce873d5fc4e568e5f9ea8f2c614d5d35230'
+after=[identity(p) for p in sorted(paths)]
+assert before == after
+output={'review_started_utc':started,'review_finished_utc':utc(),'tests_executed_by_reviewer':0,'native_imports':0,'git_commands':0,'scope':'independent closed-artifact and source-byte review; finite native117 only','result':'PASS within stated bounds; loss_fee owned-flat/projection remains Unknown','inputs_unchanged':True,'inputs_count':len(before),'inputs_before':before,'inputs_after':after,'four_capture_equality':True,'captured_input_count':58,'root_commands':[paired_run,remaining_run],'wheel_sha256':WHEEL_SHA,'native_commit_from_closed_receipts':COMMIT,'wheel_installed_zip_matches':zip_matches,'cases':results,'preserved_old_candidate':{'commit':'56705ce873d5fc4e568e5f9ea8f2c614d5d35230','wheel_sha256':oldmanifest['native_identity']['wheel']['sha256'],'state':oldsummary['controller']['state'],'disk_revision':olddisk['revision'],'coverage_rows':len(olddisk['coverage'])},'limits':['no independent execution of these tests','summary is a pre-stop economics snapshot; durable checkpoint appends explicit shutdown Unknown gaps','no whole App43/E6 acceptance','no whole-account flat/funding/history/run-PnL/cold-cache restoration proof','kernel isolation false','synthetic numeric loopback only; no mainnet authorization'],'preliminary_inspection_errors':['Earlier inline metadata inspection had None.get on absent Unknown receipt; corrected with explicit null handling.','Later inline compact inspection used lowercase peer key; actual keys are uppercase venue names. Neither inspection executed tests.']}
+(ROOT/f'{STEM}.json').write_text(json.dumps(output,indent=2),encoding='utf-8')
+table='\n'.join(f"| {m} | {x['state']} | {len(x['fills'])} | {x['owned_flat_verified']} | {x['gross_reserved_usd']} | {x['loss_usd']} |" for m,x in results.items())
+md=f'''# Independent corrected native117 installed cohort review v1
+
+Reviewed {started} to {output['review_finished_utc']}. **PASS for the finite closed-artifact contract**, with no reviewer test execution, native imports, Git commands, or production writes. {len(before)} actual files hashed before and after inspection; all unchanged. Four historical captures have exactly equal 32 source + 24 installed + 2 artifact entries, and each captured current byte/hash/size matches this review.
+
+The first selector explicitly executes `[paired]`; the second executes the same parameterized test and explicitly deselects `[paired]`. Actual closed outer receipts are exit 0: paired 1 PASS ({paired_run['started_utc']}–{paired_run['finished_utc']}); remaining 6 PASS, 1 deselected ({remaining_run['started_utc']}–{remaining_run['finished_utc']}). Each normal child has one exact result line matching its summary, exit 0, started/stopped/shutdown true, no watchdog/failure, and zero remaining sockets. Command timestamps are bracketed by the four capture times. These are root executions independently inspected, not reviewer reruns or additional distinct tests.
+
+Candidate bytes: implementation `{COMMIT}` per closed clean build receipts; wheel `{WHEEL_SHA}`. Actual provenance, current installed bytes and {len(zip_matches)} applicable installed ZIP members (including the native PYD) match. Seven manifests bind this wheel/source and the actual chronology fixture hash `{fixture_hash}`; every child command uses that candidate. The historical 56705ce / 47486c first failed pair remains separately hashed and unchanged; its StoppedUnknown result is preserved, not reclassified as corrected success.
+
+| Mode | Controller | Actual fills | Owned flat | Reserved USD | Loss USD |
+|---|---|---:|---|---:|---:|
+{table}
+
+Wire checks retain every request occurrence. Reject has an actual Aster HTTP 400 and no Aster financial fill; partial hedges/closes only the actual 0.06; unknown has one real HL post, no resend, no invented Aster hedge, an unknown order and positive reservations; cleanup failure has actual reduce-only HTTP rejection, an unclosed Aster -0.12 and retained reservations. Foreign has zero financial submissions and leaves actual Aster 0.03 in peer/Portfolio. High fees are two actual HL fees of 2 each, with no Aster handoff. **loss_fee Completed does not certify owned flat: owned_flat/current_projection remain Unknown.** Controller actions/prepared cancellations are not equated to actual venue writes; no HL cancellation was observed.
+
+For the five modes with actual economic receipts, two finite complete empty-history endpoint rows remain immutable and each endpoint has two appended disjoint zero-page Unknown tails. Actual native fee totals match immutable native fills and actual peer fill facts (0.002 USDC, or 4 USDC for loss_fee); receipt observations/report agree with the durable checkpoint. Final durable checkpoint revision can exceed the summary snapshot: stop adds two explicit `Private stream ended; economic recovery gap Unknown` rows. This is retained Unknown coverage, not new complete history. Unknown and foreign have no economic receipt; null is not replaced with a successful empty receipt. Fresh timestamps/receipt identities are independent of the original failed candidate. The original failure and new correction RED/GREEN evidence remain separate; no root aggregate counts are added to this review.
+
+Scope remains synthetic numeric loopback and native117. All-account flat, Aster funding, whole-run attribution/history/economics, durable cold-cache restore and kernel isolation remain unverified/Unknown or false as originally reported. This review does not close all App43 acceptance or E6, authorize mainnet, or prove arbitrary Engine Cache changes across write scheduling. The author artifact audit is recorded only as an author report; conclusions above were checked against actual raw artifacts and source bytes independently. Two preliminary schema inspection failures are preserved in the JSON description; neither executed tests.
+
+Exact input hashes, commands, snapshots, per-mode native fills and shutdown gaps are in `{STEM}.json` and the retained before capture. No pending material blocker was found within this narrow artifact scope.
+'''
+(ROOT/f'{STEM}.md').write_text(md,encoding='utf-8')
+print(json.dumps({'result':output['result'],'inputs':len(before),'unchanged':True,'report':identity(ROOT/f'{STEM}.md'),'json':identity(ROOT/f'{STEM}.json'),'tests_executed':0}))

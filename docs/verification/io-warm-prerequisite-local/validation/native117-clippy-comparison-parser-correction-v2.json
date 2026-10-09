@@ -1,0 +1,14 @@
+{
+  "created_utc": "2026-10-09T13:32:34.664760+00:00",
+  "original": {
+    "path": "E:\\persarb\\_tmp\\entropy117-validation\\compare_clippy_v7.py",
+    "sha256": "c7dac5d8efbcbeda37b6baa576dd849844ddf8f2422619d17e8c067400d6cebf"
+  },
+  "corrected": {
+    "path": "E:\\persarb\\_tmp\\entropy117-validation\\compare_clippy_v7_v2.py",
+    "sha256": "68e7f94023e3bf62416c3ef9ea7c4b4c9d47e7eb7209ec0fb0207ed1ee838dad"
+  },
+  "original_attempt": "Original tool command exited 1 with AssertionError at len(unit diagnostics)==4. No completed comparison JSON was produced; original source remains immutable.",
+  "full_log_result": "Combined ten inherited diagnostics; targeted six overlap. No new diagnostic and no Clippy PASS inferred",
+  "tests_executed": 0
+}

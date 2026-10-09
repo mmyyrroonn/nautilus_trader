@@ -1,0 +1,121 @@
+"""Read closed evidence with stdlib only; no application/native execution."""
+import hashlib
+import json
+from collections import Counter
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path("E:/persarb/_tmp/app43-native117-corrected-first-paired-20261009/paired")
+OUT = Path("E:/persarb/_tmp/entropy117-validation")
+NATIVE = Path("E:/persarb/worktrees/entropy-warm-prerequisites")
+
+
+def read(path):
+    return json.loads(path.read_text(encoding="utf-8-sig"))
+
+
+def identity(path):
+    raw = path.read_bytes()
+    return {"path": str(path), "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
+
+
+def utc_ns(ns):
+    seconds, fraction = divmod(ns, 1_000_000_000)
+    return datetime.fromtimestamp(seconds, timezone.utc).strftime("%Y-%m-%dT%H:%M:%S") + f".{fraction:09d}Z"
+
+
+files = [p for p in ROOT.iterdir() if p.is_file()]
+sources = [NATIVE / p for p in (
+    "crates/adapters/hyperliquid/src/execution.rs",
+    "crates/adapters/hyperliquid/src/execution_scope.rs",
+    "crates/adapters/hyperliquid/src/account_scope.rs",
+    "crates/adapters/hyperliquid/src/economics_scope.rs",
+    "crates/adapters/hyperliquid/src/economics_scope/store.rs",
+)]
+before = [identity(p) for p in files + sources]
+events = [json.loads(line) for line in (ROOT / "events.jsonl").read_text().splitlines()]
+summary = read(ROOT / "summary.json")
+peers = read(ROOT / "peer-evidence.json")
+checkpoint = read(ROOT / "native-io-economics.json")["checkpoint"]
+journal = [json.loads(line) for line in (ROOT / "native-io-intents.jsonl").read_text().splitlines()]
+scopes = []
+for event in events:
+    if event["kind"] != "native_scope" or event["value"]["leg"] != "entropy":
+        continue
+    s = event["value"]["snapshot"]
+    a = s.get("account") or {}
+    old = s.get("warm_prerequisite_source")
+    scopes.append({
+        "ns": event["received_ns"], "utc": utc_ns(event["received_ns"]),
+        "complete": s.get("recovery_complete"), "trusted": a.get("trusted"),
+        "diagnostic": s.get("diagnostic"), "metadata_origin": s.get("warm_metadata_origin") is not None,
+        "debt": s.get("recovery_source_debt"), "journal_tainted": s.get("journal_tainted"),
+        "projection_recovery_required": s.get("native_projection_recovery_required"),
+        "warm": s.get("last_query_warm"), "reused": s.get("last_query_reused_prerequisite"),
+        "query_in_flight": s.get("query_in_flight"), "query_completed": s.get("query_completed"),
+        "query_token": s.get("query_token"), "ingress": s.get("startup_private_ingress"),
+        "old_origin": None if old is None else {k: old[k] for k in (
+            "generation", "epoch", "received_sequence", "hard_revision", "verification_started_ms",
+            "verification_finished_ms", "effective_expires_ms", "http_source_time_ms", "http_received_time_ms")},
+        "account_start_ms": a.get("http_verification_started_time_ms"),
+        "financial_source_ms": a.get("http_source_time_ms"), "financial_received_ms": a.get("http_received_time_ms"),
+        "private_received_ms": a.get("ws_received_time_ms"),
+        "positions": a.get("positions"),
+        "intents": {cid: {k: i.get(k) for k in ("phase", "filled", "reservation", "terminal_time_ms")}
+                    for cid, i in s.get("owned_intents", {}).items()},
+    })
+
+timeline = []
+for e in events:
+    if e["kind"] in {"native_scope", "native_policies"}:
+        continue
+    v = e["value"]
+    row = {"ns": e["received_ns"], "utc": utc_ns(e["received_ns"]), "kind": e["kind"]}
+    row.update({k: v[k] for k in ("leg", "client_order_id", "read_action", "trade_id", "quantity") if k in v})
+    if "intent" in v:
+        row["intent"] = v["intent"]
+        row["controller_state"] = v["controller"]["state"]
+        row["controller_reasons"] = v["controller"]["reasons"]
+    timeline.append(row)
+
+http = []
+for index, request in enumerate(peers["HYPERLIQUID"]["requests"]):
+    body = request["body"]
+    result = request.get("response", {}).get("body")
+    row = {"index": index, "request": body, "status": request.get("response", {}).get("status"),
+           "exact_response_json": json.dumps(result, separators=(",", ":"))}
+    if isinstance(result, dict):
+        row["response_time_ms"] = result.get("time")
+    http.append(row)
+
+first_old = next(e["value"]["snapshot"]["warm_prerequisite_source"] for e in events
+                 if e["kind"] == "native_scope" and e["value"]["leg"] == "entropy"
+                 and e["value"]["snapshot"].get("warm_prerequisite_source"))
+peer_summary = {venue: {
+    "requests": len(p["requests"]), "actions": p["actions"], "fills": len(p["fills"]),
+    "position": p["position"], "errors": p["errors"],
+    "statuses": dict(Counter(r.get("response", {}).get("status") for r in p["requests"])),
+    "request_types": dict(Counter((r.get("body") or {}).get("type", r["path"]) for r in p["requests"])),
+} for venue, p in peers.items()}
+
+after = [identity(p) for p in files + sources]
+assert before == after, "Read-only input changed during inspection"
+data = {
+    "schema_version": 1, "inspected_utc": datetime.now(timezone.utc).isoformat(),
+    "author_executions": {"evidence_parser": 2, "native_imports": 0, "tests": 0,
+                          "cargo": 0, "git_or_github": 0, "product_edits": 0},
+    "identities_before": before, "identities_after": after, "identities_unchanged": True,
+    "actual_root_run": read(OUT / "app43-native117-corrected-first-paired-v1.json"),
+    "peers": peer_summary, "timeline": timeline, "hl_scope_sequence": scopes,
+    "first_original_prerequisite": first_old, "hl_http_sequence": http,
+    "native_journal_records": len(journal), "native_last_journal": journal[-1],
+    "durable_economic_checkpoint": {"revision": checkpoint["revision"], "coverage": checkpoint["coverage"],
+                                    "report": checkpoint["report"]},
+    "summary_end": {k: summary[k] for k in (
+        "controller", "economic_error", "economic_flags", "native_portfolio_net_positions",
+        "native_cache_positions", "shutdown_verified", "watchdog_fired", "failure")},
+    "saved_economics": summary.get("native_economic_receipt"),
+    "author_role": "Production producer; artifact review does not replace independent source review",
+}
+(OUT / "producer-review-native117-corrected-first-paired-v1.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
+print(json.dumps({"report_sha256": identity(OUT / "producer-review-native117-corrected-first-paired-v1.json")["sha256"], "inputs_unchanged": before == after}))

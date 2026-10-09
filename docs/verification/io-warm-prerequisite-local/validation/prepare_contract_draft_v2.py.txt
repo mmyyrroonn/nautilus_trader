@@ -1,0 +1,20 @@
+"""Correct the reviewed activeAssetData wording while preserving draft v1."""
+import hashlib
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+root = Path(__file__).resolve().parent
+source = root / "io-warm-prerequisite-contract-draft-v1.md"
+assert hashlib.sha256(source.read_bytes()).hexdigest() == "73ee7ed6858d5a0533ef7ecf7ebea9c0176a4fa607b55ef3299b236e8e175e45"
+old = "Missing current leverage rows, including flat accounts, require actual activeAssetData counterproofs for both selected instruments."
+new = "Missing current leverage rows, including flat accounts, require two repeated actual activeAssetData counterproofs for each selected instrument lacking current position leverage evidence."
+content = source.read_text(encoding="utf-8")
+assert content.count(old) == 1
+target = root / "io-warm-prerequisite-contract-draft-v2.md"
+assert not target.exists()
+target.write_text(content.replace(old, new), encoding="utf-8")
+record = root / "native117-contract-draft-correction-v2.json"
+assert not record.exists()
+record.write_text(json.dumps({"created_utc": datetime.now(timezone.utc).isoformat(), "original_sha256": hashlib.sha256(source.read_bytes()).hexdigest(), "corrected_sha256": hashlib.sha256(target.read_bytes()).hexdigest(), "source": source.as_posix(), "target": target.as_posix(), "review": "producer-doc-draft-review-v1.md", "review_source_lines": "execution_scope.rs:906-917", "reason": "Each selected missing leverage witness receives two actual requests; the app has one selected Hyperliquid instrument.", "source_changes": 0, "tests_executed": 0}, indent=2) + "\n", encoding="utf-8")
+print(record.read_text(encoding="utf-8"))

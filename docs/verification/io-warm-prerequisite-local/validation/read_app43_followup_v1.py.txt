@@ -1,0 +1,6 @@
+"""Read the next application acceptance scope without changing either repository."""
+import json
+from github_capture import api
+
+issue = api("repos/mmyyrroonn/Nautilus-Perps/issues/43", "app43-after-native117-local-checks-read-v1")
+print(json.dumps({"number": issue["number"], "state": issue["state"], "title": issue["title"], "body": issue["body"]}, ensure_ascii=False, indent=2))

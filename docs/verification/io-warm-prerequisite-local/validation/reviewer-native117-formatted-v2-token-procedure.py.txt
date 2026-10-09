@@ -1,0 +1,98 @@
+from pathlib import Path
+import re
+import json
+import hashlib
+import difflib
+
+root = Path('E:/persarb/_tmp/entropy117-validation')
+old = root / 'snapshots/native117-tests-unformatted-v1/native'
+new = root / 'snapshots/native117-formatted-v2/native'
+rels = [
+    'crates/adapters/hyperliquid/tests/entropy_account/execution.rs',
+    'crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs',
+    'crates/adapters/hyperliquid/tests/entropy_account/warm_prerequisite.rs',
+    'crates/adapters/hyperliquid/tests/entropy_account.rs',
+]
+
+
+def tokens(s):
+    out = []
+    i = 0
+    while i < len(s):
+        if s[i].isspace():
+            i += 1
+            continue
+        if s.startswith('//', i):
+            k = s.find('\n', i)
+            i = len(s) if k < 0 else k + 1
+            continue
+        if s.startswith('/*', i):
+            depth = 1
+            i += 2
+            while depth:
+                if s.startswith('/*', i):
+                    depth += 1
+                    i += 2
+                elif s.startswith('*/', i):
+                    depth -= 1
+                    i += 2
+                else:
+                    i += 1
+            continue
+        raw = re.match(r'(?:br|cr|r)(#*)"', s[i:])
+        if raw:
+            start = i
+            end = '"' + raw[1]
+            i = s.index(end, i + len(raw[0])) + len(end)
+            out.append(s[start:i])
+            continue
+        quote = re.match(r'(?:b|c)?"(?:\\[\s\S]|[^"\\])*"', s[i:])
+        char = re.match(r"b?'(?:\\[\s\S]|[^'\\])'", s[i:])
+        word = re.match(
+            r'[A-Za-z_][A-Za-z_0-9]*|[0-9][A-Za-z_0-9.]*|::|->|=>|==|!=|<=|>=|&&|\|\||\.\.=|\.\.|<<|>>|\+=|-=|\*=|/=',
+            s[i:],
+        )
+        match = quote or char or word
+        if match:
+            out.append(match[0])
+            i += len(match[0])
+        else:
+            out.append(s[i])
+            i += 1
+    return out
+
+
+results = []
+for rel in rels:
+    a = (old / rel).read_text(encoding='utf-8')
+    b = (new / rel).read_text(encoding='utf-8')
+    ta, tb = tokens(a), tokens(b)
+    changes = []
+    for op, a0, a1, b0, b1 in difflib.SequenceMatcher(None, ta, tb, autojunk=False).get_opcodes():
+        if op == 'equal':
+            continue
+        changes.append({
+            'op': op, 'old': ta[a0:a1], 'new': tb[b0:b1],
+            'next_old': ta[a1:a1 + 2], 'next_new': tb[b1:b1 + 2],
+        })
+    results.append({
+        'relative': rel,
+        'old_sha256': hashlib.sha256((old / rel).read_bytes()).hexdigest(),
+        'new_sha256': hashlib.sha256((new / rel).read_bytes()).hexdigest(),
+        'tokens_exact': ta == tb,
+        'token_changes': changes,
+        'only_added_trailing_commas': all(
+            d['op'] == 'insert' and d['new'] == [',']
+            and d['next_new'] and d['next_new'][0] in [')', '}', ']']
+            for d in changes
+        ),
+    })
+out = root / 'reviewer-native117-formatted-v2-test-token-comparison.json'
+if out.exists():
+    raise RuntimeError('refuse overwrite')
+out.write_text(json.dumps(results, indent=2) + '\n', encoding='utf-8')
+print(json.dumps([
+    {k: r[k] for k in ['relative', 'tokens_exact', 'only_added_trailing_commas']}
+    | {'changes': len(r['token_changes']), 'examples': r['token_changes'][:2]}
+    for r in results
+]))

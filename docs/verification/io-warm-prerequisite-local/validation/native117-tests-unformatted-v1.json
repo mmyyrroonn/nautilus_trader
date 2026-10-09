@@ -1,0 +1,35 @@
+{
+  "captured_utc": "2026-10-09T11:35:02.695615+00:00",
+  "files": [
+    {
+      "relative": "crates/adapters/hyperliquid/tests/entropy_account/execution.rs",
+      "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\execution.rs",
+      "snapshot": "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-tests-unformatted-v1\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\execution.rs",
+      "bytes": 59056,
+      "sha256": "fbc4a4efc0eb867d9f52322f948e5a601d0990cece044b05deca33c557af4196"
+    },
+    {
+      "relative": "crates/adapters/hyperliquid/tests/entropy_account/warm_prerequisite.rs",
+      "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\warm_prerequisite.rs",
+      "snapshot": "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-tests-unformatted-v1\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\warm_prerequisite.rs",
+      "bytes": 41741,
+      "sha256": "eb28493cd87f9bbca327dc1f04f1b97b671e2bd89f855132dfd99370e36a20d6"
+    },
+    {
+      "relative": "crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs",
+      "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs",
+      "snapshot": "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-tests-unformatted-v1\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs",
+      "bytes": 79785,
+      "sha256": "386aad8630838493142c0ddd92b6ef2ef8c909812440528556665979725b7bf6"
+    },
+    {
+      "relative": "crates/adapters/hyperliquid/tests/entropy_account.rs",
+      "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\tests\\entropy_account.rs",
+      "snapshot": "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-tests-unformatted-v1\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account.rs",
+      "bytes": 45087,
+      "sha256": "5976b5e8e5b9e19314679ca009365024817a2ad4e3a07ac65c7cdf1d06a79c07"
+    }
+  ],
+  "source_unchanged_across_capture": true,
+  "executed_tests": 0
+}

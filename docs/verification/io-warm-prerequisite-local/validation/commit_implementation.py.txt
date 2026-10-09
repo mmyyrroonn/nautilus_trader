@@ -1,0 +1,77 @@
+"""Commit only the exact source reviewed and validated for bounded prerequisites."""
+
+import hashlib
+import json
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+DIRECTORY = Path(__file__).resolve().parent
+NATIVE = Path("E:/persarb/worktrees/entropy-warm-prerequisites")
+BASE = "5db2761590dd824fa159625326b6eaf3923b999a"
+FILES = (
+    "crates/adapters/hyperliquid/src/account_scope.rs",
+    "crates/adapters/hyperliquid/src/execution_scope.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account/execution.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account/warm_prerequisite.rs",
+)
+
+
+def git(*args):
+    return subprocess.check_output(["git", *args], cwd=NATIVE)
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def main():
+    output = DIRECTORY / "native117-implementation-commit.json"
+    assert not output.exists()
+    assert git("rev-parse", "HEAD").decode().strip() == BASE
+    assert git("rev-parse", "origin/main").decode().strip() == BASE
+    assert not git("diff", "--cached", "--name-only").strip()
+    manifest_path = DIRECTORY / "native117-formatted-v6.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for repository in ("native", "app"):
+        assert not manifest[repository]["missing_inputs"]
+        for row in manifest[repository]["files"]:
+            assert digest(Path(row["path"])) == row["sha256"], row["path"]
+    for label in (
+        "native117-quota-focused-v4", "native117-full-hyperliquid-regression-v6",
+        "native117-production-clippy-v4", "native117-official-stubs-utf8-v6",
+        "native117-stub-comparison-v6",
+    ):
+        record = json.loads((DIRECTORY / (label + ".json")).read_text(encoding="utf-8"))
+        assert record["exit_code"] == 0, label
+    production = json.loads((DIRECTORY / "native117-formatted-v4.json").read_text(encoding="utf-8"))
+    for row in production["native"]["files"]:
+        if row["path"].endswith(("src/account_scope.rs", "src/execution_scope.rs")):
+            assert digest(Path(row["path"])) == row["sha256"], "Production changed after Clippy/review"
+    subprocess.run(["git", "add", "--", *FILES], cwd=NATIVE, check=True)
+    subprocess.run(["git", "diff", "--cached", "--check"], cwd=NATIVE, check=True)
+    assert set(git("diff", "--cached", "--name-only").decode().splitlines()) == set(FILES)
+    command = ["git", "commit", "-m", "Reuse bounded Hyperliquid io warm prerequisites", "-m",
+               "Retain complete original nonfinancial sources across validated owned financial changes. "
+               "Require fresh native financial reads and preserve original expiry and owner fences. "
+               "Keep durable separate old and new raw provenance within existing journal bounds.\n\nReferences #117."]
+    subprocess.run(command, cwd=NATIVE, check=True)
+    assert not git("status", "--porcelain").strip(), "Implementation checkout must be clean"
+    commit = git("rev-parse", "HEAD").decode().strip()
+    identities = {}
+    for name in FILES:
+        current = digest(NATIVE / name)
+        assert hashlib.sha256(git("show", f"{commit}:{name}")).hexdigest() == current, name
+        identities[name] = current
+    record = {"committed_utc": datetime.now(timezone.utc).isoformat(), "base_main": BASE,
+              "commit": commit, "tree": git("rev-parse", "HEAD^{tree}").decode().strip(),
+              "command": command, "files": identities, "clean": True,
+              "reviewed_manifest_sha256": digest(manifest_path)}
+    output.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(record))
+
+
+if __name__ == "__main__":
+    main()

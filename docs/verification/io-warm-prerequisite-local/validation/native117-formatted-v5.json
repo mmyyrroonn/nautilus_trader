@@ -1,0 +1,228 @@
+{
+  "started_utc": "2026-10-09T12:28:55.265855+00:00",
+  "native": {
+    "root": "E:\\persarb\\worktrees\\entropy-warm-prerequisites",
+    "head": "5db2761590dd824fa159625326b6eaf3923b999a",
+    "tree": "5ac2931e2d31ca13b0d9062a46bbc25fd581acd5",
+    "status": "M crates/adapters/hyperliquid/src/account_scope.rs\n M crates/adapters/hyperliquid/src/execution_scope.rs\n M crates/adapters/hyperliquid/tests/entropy_account/execution.rs\n M crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs\n?? crates/adapters/hyperliquid/tests/entropy_account/warm_prerequisite.rs",
+    "files": [
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\.gitattributes",
+        "size": 768,
+        "sha256": "7a94dfd273d7c91cbf75f8d7c48cded86061204d3150f036ff606782d339a7e7"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\python\\pyproject.toml",
+        "size": 11420,
+        "sha256": "51288a9b821361cdfa6a915ca3048c2e5daf92e9793edd1b8514c0767e666018"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\python\\uv.lock",
+        "size": 200194,
+        "sha256": "5bf016c9fa06ee5ecad7d3d346e148793a205bb186e56bfb5d30106a57be7a55"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\Cargo.toml",
+        "size": 24273,
+        "sha256": "46b62a317d15d8e2d1701bf3d0e834bed4973860ebb685749800f148f42f2d5a"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\Cargo.lock",
+        "size": 259667,
+        "sha256": "a802008d4363de0a4e28dd3b14990d0d79f95ef8a89431c5936fc31e1215463a"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\AGENTS.md",
+        "size": 4285,
+        "sha256": "846051c913f6fca348bf09b8e0051e1f0d98915c35c73505ff2c6aafb43a0e1a"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\AI_POLICY.md",
+        "size": 5058,
+        "sha256": "57c967521e37dba26dc00e88d8d8e098ab58574c2ab506b5be629862602d304d"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\CONTRIBUTING.md",
+        "size": 8543,
+        "sha256": "c0f05ebf611b058af9bc5f8684fc88aab8a5b7089dcc5bdc98b3d1dc345e189b"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\docs\\developer_guide\\coding_standards.md",
+        "size": 11180,
+        "sha256": "cd807899f98d98338afbbb72d75300d26b5064c1d23cfa61a29c09e40829d492"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+        "size": 194007,
+        "sha256": "05963a5c4d221b476cae64260cf956898105acbafbde8ce117b1e659f000be50"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\execution.rs",
+        "size": 250478,
+        "sha256": "2b1e30b896b60b01edd257947426c5f132b841dc7fe7771602f1e810c81c3316"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\http\\client.rs",
+        "size": 176208,
+        "sha256": "ba66b53fcc6a6d1fb6e8bb34ac6faf677cd9e7eb6ffe89eea9e2c11ea398eab2"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\account_scope.rs",
+        "size": 84490,
+        "sha256": "1ff6b1d2ea0050b2b31f0a053682b109b2fa0eb7ae94c9509afdb6b7ef4e5230"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\websocket\\client.rs",
+        "size": 131462,
+        "sha256": "15a9fdde9cf9df8e491a63dde625de7029ac85868f19a8dc775d56f2ea160b9a"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\economics_scope.rs",
+        "size": 34956,
+        "sha256": "2ebdf3756f39ea0cd32cfdc79d84ef7babdcabd6c2d7fea0b0f00d4c151f7f47"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\http\\rate_limits.rs",
+        "size": 15968,
+        "sha256": "47dd217c00b7a28358b2f28b7e1803c72e5817212300a2e62c2f0a419047dafc"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\common\\src\\runner.rs",
+        "size": 37029,
+        "sha256": "8c97f8e42092665146c4e0ff976ee9e49a766cf003229b46de8131953000a845"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\live\\src\\runner.rs",
+        "size": 77300,
+        "sha256": "cc4a6b2928e4135c83220cf900244b8cdf430dc1f28cfb7803740504998520ac"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\tests\\entropy_account.rs",
+        "size": 45087,
+        "sha256": "5976b5e8e5b9e19314679ca009365024817a2ad4e3a07ac65c7cdf1d06a79c07"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\execution.rs",
+        "size": 59056,
+        "sha256": "fbc4a4efc0eb867d9f52322f948e5a601d0990cece044b05deca33c557af4196"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\startup.rs",
+        "size": 33903,
+        "sha256": "a0f708aba4572358881536b5e724259289f46343c938995cbfc11ca90e946951"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\startup_source_reuse.rs",
+        "size": 29844,
+        "sha256": "671ee0467460743f9f4c94f1f67e8febd14568754f8be89320e6d4ed2ca373b5"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs",
+        "size": 80996,
+        "sha256": "4506e7fc644f1421b417c8e32508bb300aa954c442d321040d72451a797d89e9"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\warm_prerequisite.rs",
+        "size": 45212,
+        "sha256": "4df0b91c82c998df6d60950e3ead30417ec0891dc73f06811b1768b503b3bb40"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\live\\src\\node\\mod.rs",
+        "size": 312511,
+        "sha256": "b25b76f9efacd998d180b72172c85261292f999ebc196a160c2fc3c7f17ce044"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\live\\src\\execution\\manager.rs",
+        "size": 311998,
+        "sha256": "6f700cb823d634f64efaa04efa8ed0b949c43bf27284090074e7eb5b65e998c9"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\model\\src\\reports\\mass_status.rs",
+        "size": 20654,
+        "sha256": "b358556a4b05afb510e797477fc2db76829679533aa3e69aa6cee8a0cec82c94"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\python\\generate_stubs.py",
+        "size": 122759,
+        "sha256": "59f80e4b8b337733705f23a9ebdecd48b6eb10893a16ce9382e115dc2e2491e7"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\scripts\\adapter-evidence\\build_native.py",
+        "size": 6026,
+        "sha256": "7f94cb247ddbc432779b03e97f87a75703df882fa39bee359413ae2e69d98b70"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\python\\nautilus_trader\\adapters\\hyperliquid\\__init__.py",
+        "size": 1635,
+        "sha256": "2188e2ef55f0927e954eb9ce78d5430eaad84e61a9645e3c0178a0dfd05b3612"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\python\\nautilus_trader\\adapters\\hyperliquid\\__init__.pyi",
+        "size": 20210,
+        "sha256": "016760dd07b4e7498769088ce6a7ac85100ba3fcaf07a0abd33e8e51614d7cfd"
+      }
+    ],
+    "missing_inputs": []
+  },
+  "app": {
+    "root": "E:\\persarb\\worktrees\\entropy-execution-app",
+    "head": "5b8c144c39ebcbcfd03ca07f8e53b103741b130a",
+    "tree": "bd1399694b2a497a83f34b1d5b73cfb29629b215",
+    "status": "M tests/entropy_execution_peer.py\n?? tests/test_entropy_execution_peer.py",
+    "files": [
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-execution-app\\CLAUDE.md",
+        "size": 2551,
+        "sha256": "e88c45fda78397824437eba1ba8bf3aa8c33760940d377b3f6e3e04f0477e530"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-execution-app\\AGENTS.md",
+        "size": 4070,
+        "sha256": "0db83eca19a5637b536145f71915c4d1d84c7b186eaf809e266b126eb9fde7e5"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution.py",
+        "size": 73521,
+        "sha256": "fbde3f919a6813a47aeb8c388ac3689a33689139d876c6e7e6551d7a364ab882"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution_config.py",
+        "size": 12822,
+        "sha256": "45ed321317743d05a86b1a51058ad684dbd2e84f31bd86a9fd701845025d8c54"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution_core.py",
+        "size": 37382,
+        "sha256": "da5abc7ffa5d61439daaf814254aff4d99ad5a7f977790ee80f86dad910d2443"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution_report.py",
+        "size": 21940,
+        "sha256": "5b1a01d4762173c739a90daed4878f854ab0f78b2232a5de07c6969eab9deffa"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\entropy_execution_peer.py",
+        "size": 30306,
+        "sha256": "11930d360dabe0c8751b0f2451c1f8570489311a8526b419a72b25781075515d"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\test_entropy_execution_peer.py",
+        "size": 7419,
+        "sha256": "c649d24c2c68beb5758442e3eb5abfdd455b070627c179c734f66b8719eac35a"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\test_entropy_execution_native.py",
+        "size": 31959,
+        "sha256": "9a975f5cca43b6b7cb778435a170b3a1223cf0db351417b7bfdd4f9788124120"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-execution-app\\scripts\\install_native.py",
+        "size": 10944,
+        "sha256": "c2d473e5f5dea8c8931ef4350471b2dfa4e1877fcf8168fb7f816f3351d48adf"
+      }
+    ],
+    "missing_inputs": []
+  },
+  "finished_utc": "2026-10-09T12:28:55.442387+00:00",
+  "snapshot_directory": "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v5"
+}

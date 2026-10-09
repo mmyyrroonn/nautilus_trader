@@ -1,0 +1,401 @@
+"""Strict, credential-free plans for one synthetic Entropy/Aster execution cycle."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+import tomllib
+from dataclasses import asdict, dataclass
+from decimal import Decimal, Inexact, localcontext
+from pathlib import Path, PureWindowsPath
+from urllib.parse import urlsplit
+
+MAX_PLAN_BYTES = 32768
+DECIMAL_CAPS = {
+    "max_order_notional_usd": Decimal(20),
+    "max_entry_notional_usd": Decimal(40),
+    "max_gross_notional_usd": Decimal(40),
+    "max_unhedged_notional_usd": Decimal(20),
+    "max_loss_usd": Decimal(1),
+    "fee_buffer_bps": Decimal(100),
+}
+INTEGER_CAPS = {
+    "max_entry_orders": 2,
+    "max_cleanup_orders": 2,
+    "max_actions": 6,
+    "duration_ms": 120000,
+    "cleanup_ms": 30000,
+    "action_timeout_ms": 5000,
+    "proof_max_age_ms": 2000,
+    "book_max_age_ms": 2000,
+    "book_max_skew_ms": 500,
+    "max_events": 512,
+    "max_evidence_bytes": 1048576,
+}
+
+
+class ExecutionConfigError(ValueError):
+    pass
+
+
+def decimal(value, label="amount", *, positive=False):
+    if type(value) is not str or not re.fullmatch(
+        r"-?(?:0|[1-9]\d{0,23})(?:\.\d{1,12})?", value
+    ):
+        raise ExecutionConfigError(f"{label} must be a bounded exact decimal string")
+    result = Decimal(value)
+    if positive and result <= 0:
+        raise ExecutionConfigError(f"{label} must be positive")
+    return result
+
+
+def exact_mul(*values):
+    with localcontext() as context:
+        context.prec = 160
+        context.traps[Inexact] = True
+        result = Decimal(1)
+        for value in values:
+            result *= value
+        return result
+
+
+def exact_add(*values):
+    with localcontext() as context:
+        context.prec = 160
+        context.traps[Inexact] = True
+        return sum(values, Decimal(0))
+
+
+def _aligned(value, step):
+    with localcontext() as context:
+        context.prec = 160
+        return value % step == 0
+
+
+def _keys(value, fields, label):
+    if type(value) is not dict or set(value) != set(fields):
+        raise ExecutionConfigError(f"{label} requires exactly {sorted(fields)}")
+
+
+def _text(value, label):
+    if (
+        type(value) is not str
+        or not value
+        or len(value) > 256
+        or any(ord(c) < 32 for c in value)
+    ):
+        raise ExecutionConfigError(f"invalid {label}")
+    return value
+
+
+def _integer(value, label, cap):
+    if type(value) is not int or not 1 <= value <= cap:
+        raise ExecutionConfigError(f"{label} must be an integer in 1..{cap}")
+    return value
+
+
+def _endpoint(value, label):
+    value = _text(value, label)
+    parsed = urlsplit(value)
+    scheme = "http" if label == "http_url" else "ws"
+    try:
+        valid = (
+            parsed.scheme == scheme
+            and parsed.hostname == "127.0.0.1"
+            and parsed.port is not None
+            and 1024 <= parsed.port <= 65535
+            and parsed.username is None
+            and parsed.password is None
+            and parsed.path in ("", "/")
+            and not parsed.query
+            and not parsed.fragment
+        )
+    except ValueError:
+        valid = False
+    if not valid:
+        raise ExecutionConfigError(
+            f"{label} must be an explicit numeric-loopback {scheme} endpoint"
+        )
+    return value.rstrip("/")
+
+
+@dataclass(frozen=True)
+class Limits:
+    max_order_notional_usd: Decimal
+    max_entry_notional_usd: Decimal
+    max_gross_notional_usd: Decimal
+    max_unhedged_notional_usd: Decimal
+    max_loss_usd: Decimal
+    fee_buffer_bps: Decimal
+    max_entry_orders: int
+    max_cleanup_orders: int
+    max_actions: int
+    duration_ms: int
+    cleanup_ms: int
+    action_timeout_ms: int
+    proof_max_age_ms: int
+    book_max_age_ms: int
+    book_max_skew_ms: int
+    max_events: int
+    max_evidence_bytes: int
+
+
+@dataclass(frozen=True)
+class LegPlan:
+    name: str
+    client_id: str
+    account_id: str
+    instrument_id: str
+    quote_currency: str
+    settlement_currency: str
+    side: str
+    quantity_multiplier: Decimal
+    quantity_step: Decimal
+    min_quantity: Decimal
+    min_notional: Decimal
+    price_step: Decimal
+    price_min: Decimal
+    price_max: Decimal
+    entry_quantity: Decimal
+    http_url: str
+    ws_url: str
+
+
+@dataclass(frozen=True)
+class ValuationPlan:
+    currency: str
+    quote_to_usd: Decimal
+    source_id: str
+    basis_assumption: str
+    max_age_ms: int
+
+
+@dataclass(frozen=True)
+class ExecutionPlan:
+    schema_version: int
+    run_id: str
+    strategy_id: str
+    run_directory: str
+    matching_sha256: str
+    fixture_sha256: str
+    limits: Limits
+    legs: tuple[LegPlan, LegPlan]
+    valuation: tuple[ValuationPlan, ...]
+
+    @property
+    def sha256(self):
+        return hashlib.sha256(canonical_json(plan_document(self)).encode()).hexdigest()
+
+    def leg(self, name):
+        return next(leg for leg in self.legs if leg.name == name)
+
+    def fx(self, currency):
+        return next(value for value in self.valuation if value.currency == currency)
+
+
+def _document(value):
+    if isinstance(value, Decimal):
+        return format(value, "f")
+    if isinstance(value, dict):
+        return {key: _document(item) for key, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [_document(item) for item in value]
+    return value
+
+
+def canonical_json(value):
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    )
+
+
+def plan_document(plan):
+    return _document(asdict(plan))
+
+
+def parse_plan(document):
+    _keys(document, ExecutionPlan.__dataclass_fields__, "execution plan")
+    if type(document["schema_version"]) is not int or document["schema_version"] != 1:
+        raise ExecutionConfigError("only schema_version 1 is supported")
+    for key in ("run_id", "strategy_id"):
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,48}", _text(document[key], key)):
+            raise ExecutionConfigError(f"invalid {key}")
+    directory = _text(document["run_directory"], "run_directory")
+    if not (Path(directory).is_absolute() or PureWindowsPath(directory).is_absolute()):
+        raise ExecutionConfigError("run_directory must be absolute")
+    if any(part in ("..", ".env") for part in re.split(r"[/\\]", directory.lower())):
+        raise ExecutionConfigError("unsafe run_directory")
+    for key in ("matching_sha256", "fixture_sha256"):
+        if type(document[key]) is not str or not re.fullmatch(
+            r"[0-9a-f]{64}", document[key]
+        ):
+            raise ExecutionConfigError(f"{key} requires a SHA256")
+    values = document["limits"]
+    _keys(values, Limits.__dataclass_fields__, "limits")
+    resolved = {}
+    for key, cap in DECIMAL_CAPS.items():
+        amount = decimal(values[key], key, positive=True)
+        if amount > cap:
+            raise ExecutionConfigError(f"{key} exceeds hard cap {cap}")
+        resolved[key] = amount
+    for key, cap in INTEGER_CAPS.items():
+        resolved[key] = _integer(values[key], key, cap)
+    limits = Limits(**resolved)
+    if (
+        limits.cleanup_ms >= limits.duration_ms
+        or limits.max_actions < limits.max_entry_orders
+        or limits.max_gross_notional_usd < limits.max_order_notional_usd
+        or limits.max_entry_notional_usd < limits.max_order_notional_usd
+    ):
+        raise ExecutionConfigError("inconsistent finite limits")
+    raw_legs = document["legs"]
+    if type(raw_legs) is not list or len(raw_legs) != 2:
+        raise ExecutionConfigError("exactly two explicitly scoped legs required")
+    legs = []
+    numeric = (
+        "quantity_multiplier",
+        "quantity_step",
+        "min_quantity",
+        "min_notional",
+        "price_step",
+        "price_min",
+        "price_max",
+        "entry_quantity",
+    )
+    for index, raw in enumerate(raw_legs):
+        _keys(raw, LegPlan.__dataclass_fields__, "leg")
+        fields = {
+            key: _text(raw[key], key)
+            for key in LegPlan.__dataclass_fields__
+            if key not in numeric
+        }
+        fields.update({key: decimal(raw[key], key, positive=True) for key in numeric})
+        leg = LegPlan(**fields)
+        expected = (
+            ("entropy", "io:SNDK-USD-PERP.HYPERLIQUID", "USD", "USDC", "BUY"),
+            ("aster", "SNDKUSD1-PERP.ASTER", "USD1", "USD1", "SELL"),
+        )[index]
+        if (
+            leg.name,
+            leg.instrument_id,
+            leg.quote_currency,
+            leg.settlement_currency,
+            leg.side,
+        ) != expected:
+            raise ExecutionConfigError(
+                "only the explicitly verified synthetic SNDK pair is supported"
+            )
+        if (
+            leg.price_min > leg.price_max
+            or leg.entry_quantity < leg.min_quantity
+            or not _aligned(leg.entry_quantity, leg.quantity_step)
+            or not _aligned(leg.min_quantity, leg.quantity_step)
+            or not _aligned(leg.price_min, leg.price_step)
+            or not _aligned(leg.price_max, leg.price_step)
+        ):
+            raise ExecutionConfigError("invalid lot, minimum or price interval")
+        _endpoint(leg.http_url, "http_url")
+        _endpoint(leg.ws_url, "ws_url")
+        legs.append(leg)
+    if (
+        legs[0].client_id == legs[1].client_id
+        or legs[0].account_id == legs[1].account_id
+        or len({leg.http_url for leg in legs} | {leg.ws_url for leg in legs}) != 4
+    ):
+        raise ExecutionConfigError(
+            "distinct clients, accounts and four endpoints are required"
+        )
+    raw_fx = document["valuation"]
+    if type(raw_fx) is not list or len(raw_fx) != 3:
+        raise ExecutionConfigError(
+            "explicit USD, USDC and USD1 valuations are required"
+        )
+    valuations = []
+    for raw in raw_fx:
+        _keys(raw, ValuationPlan.__dataclass_fields__, "valuation")
+        valuations.append(
+            ValuationPlan(
+                _text(raw["currency"], "currency"),
+                decimal(raw["quote_to_usd"], "quote_to_usd", positive=True),
+                _text(raw["source_id"], "source_id"),
+                _text(raw["basis_assumption"], "basis_assumption"),
+                _integer(raw["max_age_ms"], "valuation max_age_ms", 2000),
+            )
+        )
+    if {value.currency for value in valuations} != {"USD", "USDC", "USD1"}:
+        raise ExecutionConfigError(
+            "valuation currencies must be unique USD, USDC, USD1"
+        )
+    plan = ExecutionPlan(
+        1,
+        document["run_id"],
+        document["strategy_id"],
+        directory,
+        document["matching_sha256"],
+        document["fixture_sha256"],
+        limits,
+        tuple(legs),
+        tuple(valuations),
+    )
+    for leg in plan.legs:
+        worst = exact_mul(
+            leg.entry_quantity,
+            leg.quantity_multiplier,
+            leg.price_max,
+            plan.fx(leg.quote_currency).quote_to_usd,
+        )
+        if worst > limits.max_order_notional_usd:
+            raise ExecutionConfigError(
+                "configured quantity exceeds worst-price order cap"
+            )
+        if (
+            exact_mul(leg.entry_quantity, leg.quantity_multiplier, leg.price_min)
+            < leg.min_notional
+        ):
+            raise ExecutionConfigError(
+                "configured quantity fails minimum at the lowest allowed price"
+            )
+    if exact_mul(legs[0].entry_quantity, legs[0].quantity_multiplier) != exact_mul(
+        legs[1].entry_quantity, legs[1].quantity_multiplier
+    ):
+        raise ExecutionConfigError("configured canonical entry quantities must match")
+    return plan
+
+
+def load_plan(path):
+    with open(path, "rb") as source:
+        raw = source.read(MAX_PLAN_BYTES + 1)
+    if len(raw) > MAX_PLAN_BYTES:
+        raise ExecutionConfigError("execution plan exceeds byte cap")
+    try:
+        return parse_plan(tomllib.loads(raw.decode("utf-8")))
+    except (UnicodeError, tomllib.TOMLDecodeError) as error:
+        raise ExecutionConfigError("invalid UTF-8 TOML plan") from error
+
+
+def preview_plan(plan):
+    return {
+        "mode": "synthetic_numeric_loopback_only",
+        "plan": plan_document(plan),
+        "plan_sha256": plan.sha256,
+        "hard_caps": _document({**DECIMAL_CAPS, **INTEGER_CAPS}),
+        "allowed_operations": [
+            "one IOC entry per leg",
+            "exact owned cancel",
+            "owned reduce-only IOC",
+        ],
+        "readiness": {
+            key: "Unknown" for key in ("account", "margin", "mode", "book", "recovery")
+        },
+        "capabilities": [
+            "Hyperliquid account/execution/economics factory diagnostics",
+            "Aster native current account/inventory/recovery proof",
+        ],
+        "valuation_status": "configured assumptions; no observed current FX",
+        "real_execution_authorized": False,
+    }

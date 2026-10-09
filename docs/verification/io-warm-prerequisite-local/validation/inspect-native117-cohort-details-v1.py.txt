@@ -1,0 +1,25 @@
+"""Read the derived closed-cohort JSON with case-sensitive stdlib JSON."""
+import json
+from pathlib import Path
+
+r = json.loads(Path("E:/persarb/_tmp/entropy117-validation/producer-review-native117-corrected-all7-v1.json").read_text())
+for mode, case in r["cases"].items():
+    if mode == "paired":
+        continue
+    s = case["summary"]
+    print(json.dumps({"mode": mode, "fills": s["controller"]["fills"],
+                      "aster_order_requests": case["peers"]["ASTER"]["order_requests"],
+                      "terminals": [e for e in case["financial_events"] if e["kind"] in ("order_rejected", "order_expired", "order_denied")],
+                      "orders": s["controller"]["orders"],
+                      "flat": s["controller"]["owned_flat_verified"],
+                      "projection": s["controller"]["current_projection_verified"],
+                      "PF": s["native_portfolio_net_positions"],
+                      "native_economic_receipt": {k: (s.get("native_economic_receipt") or {}).get(k) for k in ("checkpoint_revision", "tainted")}}, separators=(",", ":")))
+    frames = case["peers"]["ASTER"]["frames"] or []
+    selected = [f for f in frames if any(word in json.dumps(f) for word in ("REJECTED", "PARTIALLY_FILLED", "EXPIRED"))]
+    print(json.dumps({"mode": mode, "actual_status_frames": selected}, separators=(",", ":")))
+    if mode in ("unknown", "foreign"):
+        raw = json.loads((Path(case["directory"]) / "peer-evidence.json").read_text())
+        print(json.dumps({"mode": mode, "hl_commands": raw["HYPERLIQUID"]["commands"],
+                          "hl_post_frames": [f for f in raw["HYPERLIQUID"]["frames"] if isinstance(f, dict) and f.get("channel") == "post"],
+                          "aster_open_rows": [q["response"]["body"] for q in raw["ASTER"]["requests"] if "openOrders" in q["path"]]}, separators=(",", ":")))

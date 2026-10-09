@@ -1,0 +1,21 @@
+# Native117 archival helper v1 independent review
+
+Reviewed frozen helper SHA256 `37c5c76f1d0d3707b113eb7d4f2c0d4e5fcfbcee4aae2190f3d7fcee527399d6` (19,631 bytes), preserved as `reviewer-native117-archive-helper-v1-source.py.txt`. Read-only procedure UTC: 2026-10-09T12:46:29.334057+00:00 through 2026-10-09T12:46:29.348061+00:00. **0 reviewer tests; helper not executed; no archive created; no Git/native/build/install operation.**
+
+## Finding: regression-to-implementation source chain missing
+
+Helper v1 needs one preflight correction before it can independently assert tested-source binding. `verify_regression` (line 84) checks exact unfiltered Cargo argv/cwd, completion and 1424/0/18 totals. `verify_implementation` (line 118) separately verifies exact commit/base/HEAD, five changed paths, original Git blob bytes and current files. At line 132, `tested_file_sha256` is only the current file hash. No check binds the selected actual regression's original before/after sources to those blobs. A prior run in the same checkout with matching totals could pass that gate despite another tested revision.
+
+This is a helper gap, not a finding that the actual final regression failed or has no provenance. The existing actual `native117-verified-binaries-v6.json` binds the selected command/log hashes to `native117-formatted-v6.json`; the implementation receipt already carries that reviewed-manifest hash. Original `native117-after-full-regression-v6.json` and the comparison receipt are also available. This review independently compared those existing JSON/hash chains and the five source hashes: they agree. A minimal helper fix can require that chain and compare original capture timestamps around the selected run, before archive creation. No new evidence or reconstructed execution is needed.
+
+## Other static gates
+
+`main` checks absence of a prior archive, implementation, regression, completed clean wheel provenance and original wheel bytes, then every first-paired and seven actual scenario directory before `ARCHIVE.mkdir` (line 254). Missing future evidence raises; it cannot become PASS. Exact case mode and candidate command args, source-bound provenance object and installed pyd hash are checked. A completed nonzero child is retained as FAIL, with its summary/stdout/stderr; a success result contradicting failure is refused. Successful paired additionally requires four fills, two entry/two cleanup orders, terminal/owned-flat and zero native Portfolio. Seven synthetic local passes still leave application43/E6 false in the generated ledger.
+
+Inventory keeps original bytes and occurrences, including superseded failures, source snapshots and raw non-JSON bodies. It performs no HTTP record deduplication. Code snapshots receive `.txt` suffixes. `.env` prefixes, `.git/.venv/__pycache__`, binary suffixes and `native117-archive-command`, `native117-archive-check`, `archive-check` logger prefixes are excluded. Collision, source mutation and copy-byte mismatch stop processing. A copy-stage error can leave a partial directory; there is no completed manifest/PASS output, and the helper refuses to replace it. The caller must treat only a completed verified manifest as successful archive creation.
+
+The regression command/log were read without running tests; observed root totals are 1424 passed, zero failed, 18 ignored (including doctests), zero measured/filtered. Overlapping reruns are not added. Exact Git object calls are read-only in the code and original blob bytes are obtained without stripping. The reviewer did not invoke them.
+
+## Limits and disposition
+
+Disposition: **pending the source-chain gate**, otherwise no new material static blocker found in the requested scope. Future wheel/installed bytes and scenario outcomes remain unaccepted here. This review neither runs the archiver nor certifies future artifacts, remote CI, actual scenarios, kernel isolation, real venue, whole history/economics or generic cold recovery. The companion JSON retains exact original helper and observed evidence hashes, all unchanged across the procedure. No author file was modified.

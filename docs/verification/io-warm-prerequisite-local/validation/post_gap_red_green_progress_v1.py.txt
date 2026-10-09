@@ -1,0 +1,29 @@
+"""Publish actual RED/GREEN finite checks once while full validation remains open."""
+
+import json
+from pathlib import Path
+
+from github_capture import api
+
+
+root = Path(__file__).resolve().parent
+for label in ("native117-gap-unit-green-v7", "native117-gap-normal-callback-green-v7", "native117-production-clippy-v7"):
+    assert json.loads((root / (label + ".json")).read_text(encoding="utf-8"))["exit_code"] == 0
+red = json.loads((root / "native117-gap-red-evidence-v2.json").read_text(encoding="utf-8"))
+assert red["normal_settled_callbacks"][1]["tainted"]
+issue = api("repos/mmyyrroonn/nautilus_trader/issues/117", "native117-gap-red-green-progress-v1-before")
+assert issue["state"] == "open"
+body = """The new regression now directly reproduces the lower-level fault on unchanged first-candidate production, without retrying its installed paired run. The direct durable run (13:20:17–32 UTC) had 4 passes/6 failures; the normal owned entry → warm → reduce-only close → warm run (13:21:07–18 UTC) had 0 passes/1 failure. That normal path completed both account queries and then exposed current economic `tainted=true` with `io economic persistence failed: Economic source/consumer state regression`. All 43 recorded source inputs remained identical before/after these RED commands. This is new regression evidence; the original installed log still did not print the inner error.
+
+The narrow corrective source changes only `economics_scope.rs::record_unrequested_history`. It keeps all durable rows, appends disjoint Unknown demand tails under the original caps, performs genuine byte/revision no-ops, and checks existing taint before a no-op. The callback clock, append-only storage guard, immutable fills/fee receipts, original prerequisite TTL, total deadline and quota are unchanged. The first implementation commit/wheel and its failed journals remain preserved.
+
+On the corrective source, the same 10 direct cases passed (13:25:58–13:26:06 UTC) and the normal two-callback case passed (13:26:52–13:27:02 UTC), retaining the previous coverage prefix and actual owned fees. Production Clippy passed. Two tests-inclusive/targeted Clippy commands failed with the same inherited 4 library-test + 6 integration diagnostics; no new diagnostic was introduced. These results overlap the pending full regression and are not extra independent reviewer executions.
+
+Independent source/test review is underway; the unfiltered Hyperliquid regression is running. Official stubs, a separately built clean source-bound corrective wheel, installed Python contracts, fresh paired and remaining six original scenarios, final evidence review, exact-head CI and PR/merge remain pending. No installed corrected paired or APP43/E6 completion is claimed."""
+comments = api("repos/mmyyrroonn/nautilus_trader/issues/117/comments?per_page=100", "native117-gap-red-green-progress-v1-comments")
+assert not any(comment["body"] == body for comment in comments)
+comment = api("repos/mmyyrroonn/nautilus_trader/issues/117/comments", "native117-gap-red-green-progress-v1-post", "POST", {"body": body})
+output = root / "native117-gap-red-green-progress-v1-result.json"
+assert not output.exists()
+output.write_text(json.dumps({"comment_url": comment["html_url"], "comment_id": comment["id"]}, indent=2) + "\n", encoding="utf-8")
+print(json.dumps({"comment_url": comment["html_url"]}))

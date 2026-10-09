@@ -1,0 +1,130 @@
+{
+  "started_utc": "2026-10-09T12:46:29.334057+00:00",
+  "finished_utc": "2026-10-09T12:46:29.348061+00:00",
+  "helper_sha256": "37c5c76f1d0d3707b113eb7d4f2c0d4e5fcfbcee4aae2190f3d7fcee527399d6",
+  "reviewer_executed_tests": 0,
+  "helper_executed": false,
+  "archive_created": false,
+  "git_invoked_by_reviewer": false,
+  "before": [
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\archive_native117.py",
+      "sha256": "37c5c76f1d0d3707b113eb7d4f2c0d4e5fcfbcee4aae2190f3d7fcee527399d6"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v1-source.py.txt",
+      "sha256": "37c5c76f1d0d3707b113eb7d4f2c0d4e5fcfbcee4aae2190f3d7fcee527399d6"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v1-procedure.py",
+      "sha256": "c7892e856c2304a1c3fa6ccf93a786acf4f4d48dd499a2cb535981a4453a8135"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-full-hyperliquid-regression-v6.json",
+      "sha256": "dccb12a794cf36adec6d31162d36980d43046fa6a905eeab0aa31038a8d06f79"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-full-hyperliquid-regression-v6.log",
+      "sha256": "3d059d512eaa8b042f2b373ea98fcad665f5e1a69645e830f1a9d3747a51e9fb"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-implementation-commit.json",
+      "sha256": "1b29309793eba1747329dcb161932df3259e8443b7dbd72f7470452aa2534a98"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-verified-binaries-v6.json",
+      "sha256": "a68ed475abc8461aa25970c67a708924414b111569b5a7ebc352d3ce0347392f"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-formatted-v6.json",
+      "sha256": "97dd8aa22e399c40aac2156de708157bde002694bfa68699d99a746672bc377c"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-after-full-regression-v6.json",
+      "sha256": "39a031f7e9f91bc928aa3be84cfdc5c06140471a377f6e8f3cc4f3af3b69079c"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-full-inputs-unchanged-v6.json",
+      "sha256": "a991c2638e0b86e1972d07ccf554b7ba733105f22dca8cf9254ba6a208c882e2"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-full-source-comparison-v6.json",
+      "sha256": "1fffeb298e0a7c50985b35e6950fbe220d9ae041720b1bcdd613962e96f2315e"
+    }
+  ],
+  "after": [
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\archive_native117.py",
+      "sha256": "37c5c76f1d0d3707b113eb7d4f2c0d4e5fcfbcee4aae2190f3d7fcee527399d6"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v1-source.py.txt",
+      "sha256": "37c5c76f1d0d3707b113eb7d4f2c0d4e5fcfbcee4aae2190f3d7fcee527399d6"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v1-procedure.py",
+      "sha256": "c7892e856c2304a1c3fa6ccf93a786acf4f4d48dd499a2cb535981a4453a8135"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-full-hyperliquid-regression-v6.json",
+      "sha256": "dccb12a794cf36adec6d31162d36980d43046fa6a905eeab0aa31038a8d06f79"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-full-hyperliquid-regression-v6.log",
+      "sha256": "3d059d512eaa8b042f2b373ea98fcad665f5e1a69645e830f1a9d3747a51e9fb"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-implementation-commit.json",
+      "sha256": "1b29309793eba1747329dcb161932df3259e8443b7dbd72f7470452aa2534a98"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-verified-binaries-v6.json",
+      "sha256": "a68ed475abc8461aa25970c67a708924414b111569b5a7ebc352d3ce0347392f"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-formatted-v6.json",
+      "sha256": "97dd8aa22e399c40aac2156de708157bde002694bfa68699d99a746672bc377c"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-after-full-regression-v6.json",
+      "sha256": "39a031f7e9f91bc928aa3be84cfdc5c06140471a377f6e8f3cc4f3af3b69079c"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-full-inputs-unchanged-v6.json",
+      "sha256": "a991c2638e0b86e1972d07ccf554b7ba733105f22dca8cf9254ba6a208c882e2"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-full-source-comparison-v6.json",
+      "sha256": "1fffeb298e0a7c50985b35e6950fbe220d9ae041720b1bcdd613962e96f2315e"
+    }
+  ],
+  "unchanged": true,
+  "root_regression_log_observed_totals": [
+    1424,
+    0,
+    18,
+    0,
+    0
+  ],
+  "root_regression_command_utc": {
+    "started": "2026-10-09T12:31:36.811111+00:00",
+    "finished": "2026-10-09T12:36:08.253114+00:00"
+  },
+  "existing_external_chain_matches": true,
+  "verdict": "One source-binding preflight blocker in helper v1; external actual receipts already supply the missing chain.",
+  "blocker": {
+    "lines": [
+      84,
+      118,
+      132
+    ],
+    "detail": "Regression cwd/argv/counts and current Git blobs are separately verified; the selected regression pre/post source manifest is not checked against implementation blobs. tested_file_sha256 is only current source in this helper.",
+    "minimal_fix": "Bind selected regression command/log hashes through native117-verified-binaries-v6.json, reviewed manifest hash from implementation receipt, and original before/after source capture five-file hashes to the implementation blobs; verify source capture times encompass the selected run."
+  },
+  "limits": [
+    "Static review only; no helper execution, archive or scenario run.",
+    "No reviewer Git invocation; exact Git-object logic assessed statically.",
+    "Future wheel/scenario existence and identities were not certified.",
+    "Observed existing root regression totals are not reviewer test counts."
+  ]
+}

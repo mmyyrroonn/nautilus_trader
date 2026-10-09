@@ -1,0 +1,296 @@
+{
+  "root_receipt": {
+    "argv": [
+      "cargo",
+      "test",
+      "-p",
+      "nautilus-hyperliquid",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'",
+      "--test",
+      "entropy_account",
+      "existing_weighted_quota_wait_is_inside_unchanged_three_second_query_deadline",
+      "--",
+      "--test-threads=1",
+      "--nocapture"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-warm-prerequisites",
+    "started_utc": "2026-10-09T12:18:16.457925+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": "E:/persarb/worktrees/entropy-warm-prerequisites/.venv/Scripts/python.exe",
+    "uv_project_environment": null,
+    "nautilus_stub_profile": null,
+    "cargo_build_warnings": null,
+    "cargo_net_offline": null,
+    "entropy43_native_wheel": null,
+    "entropy43_native_sha256": null,
+    "entropy43_native_provenance": null,
+    "entropy43_evidence_root": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T12:18:31.800806+00:00"
+  },
+  "preloads": [
+    {
+      "index": 0,
+      "elapsed_ms": 63,
+      "same_old_source": true,
+      "same_old_metadata_origin": true,
+      "types": [
+        "frontendOpenOrders",
+        "userFills",
+        "clearinghouseState",
+        "activeAssetData",
+        "activeAssetData"
+      ],
+      "base_weight": 82,
+      "request_occurrences_match": true,
+      "all_actual200": true,
+      "first_actual_ms": 1791548306601,
+      "last_actual_ms": 1791548306602,
+      "age_at_last_actual_ms": 8
+    },
+    {
+      "index": 1,
+      "elapsed_ms": 94,
+      "same_old_source": true,
+      "same_old_metadata_origin": true,
+      "types": [
+        "frontendOpenOrders",
+        "userFills",
+        "clearinghouseState",
+        "activeAssetData",
+        "activeAssetData"
+      ],
+      "base_weight": 82,
+      "request_occurrences_match": true,
+      "all_actual200": true,
+      "first_actual_ms": 1791548306629,
+      "last_actual_ms": 1791548306630,
+      "age_at_last_actual_ms": 36
+    },
+    {
+      "index": 2,
+      "elapsed_ms": 112,
+      "same_old_source": true,
+      "same_old_metadata_origin": true,
+      "types": [
+        "frontendOpenOrders",
+        "userFills",
+        "clearinghouseState",
+        "activeAssetData",
+        "activeAssetData"
+      ],
+      "base_weight": 82,
+      "request_occurrences_match": true,
+      "all_actual200": true,
+      "first_actual_ms": 1791548306661,
+      "last_actual_ms": 1791548306662,
+      "age_at_last_actual_ms": 68
+    },
+    {
+      "index": 3,
+      "elapsed_ms": 142,
+      "same_old_source": true,
+      "same_old_metadata_origin": true,
+      "types": [
+        "frontendOpenOrders",
+        "userFills",
+        "clearinghouseState",
+        "activeAssetData",
+        "activeAssetData"
+      ],
+      "base_weight": 82,
+      "request_occurrences_match": true,
+      "all_actual200": true,
+      "first_actual_ms": 1791548306679,
+      "last_actual_ms": 1791548306679,
+      "age_at_last_actual_ms": 85
+    },
+    {
+      "index": 4,
+      "elapsed_ms": 159,
+      "same_old_source": true,
+      "same_old_metadata_origin": true,
+      "types": [
+        "frontendOpenOrders",
+        "userFills",
+        "clearinghouseState",
+        "activeAssetData",
+        "activeAssetData"
+      ],
+      "base_weight": 82,
+      "request_occurrences_match": true,
+      "all_actual200": true,
+      "first_actual_ms": 1791548306709,
+      "last_actual_ms": 1791548306710,
+      "age_at_last_actual_ms": 116
+    },
+    {
+      "index": 5,
+      "elapsed_ms": 190,
+      "same_old_source": true,
+      "same_old_metadata_origin": true,
+      "types": [
+        "frontendOpenOrders",
+        "userFills",
+        "clearinghouseState",
+        "activeAssetData",
+        "activeAssetData"
+      ],
+      "base_weight": 82,
+      "request_occurrences_match": true,
+      "all_actual200": true,
+      "first_actual_ms": 1791548306727,
+      "last_actual_ms": 1791548306727,
+      "age_at_last_actual_ms": 133
+    },
+    {
+      "index": 6,
+      "elapsed_ms": 207,
+      "same_old_source": true,
+      "same_old_metadata_origin": true,
+      "types": [
+        "frontendOpenOrders",
+        "userFills",
+        "clearinghouseState",
+        "activeAssetData",
+        "activeAssetData"
+      ],
+      "base_weight": 82,
+      "request_occurrences_match": true,
+      "all_actual200": true,
+      "first_actual_ms": 1791548306757,
+      "last_actual_ms": 1791548306758,
+      "age_at_last_actual_ms": 164
+    }
+  ],
+  "old_source_scalar": {
+    "generation": 1,
+    "epoch": 0,
+    "received_sequence": 4,
+    "verification_started_ms": 1791548306594,
+    "verification_finished_ms": 1791548306595,
+    "effective_expires_ms": 1791548308594
+  },
+  "final": {
+    "diagnostic": "io warm RecoveryIncomplete: io warm recovery total deadline exhausted",
+    "query_completed": 8,
+    "query_in_flight": false,
+    "last_query_reused_prerequisite": false,
+    "recovery_complete": false,
+    "account_trusted": false,
+    "journal_tainted": false,
+    "final_ingress": {
+      "generation": 1,
+      "epoch": 0,
+      "received_sequence": 6,
+      "is_applied": true
+    },
+    "debt_kind": "unknown_sources",
+    "captured_debt_sequence": 5,
+    "owned_intents": 0,
+    "actual_fills": 0
+  },
+  "target": {
+    "requests": [
+      {
+        "type": "frontendOpenOrders",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "dex": "io"
+      },
+      {
+        "type": "userFills",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      {
+        "type": "userRole",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      }
+    ],
+    "printed_weight": 100
+  },
+  "target_http": [
+    {
+      "type": "frontendOpenOrders",
+      "started_ms": 1791548308616,
+      "completed_ms": 1791548308616,
+      "status": 200,
+      "raw_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "type": "userFills",
+      "started_ms": 1791548308616,
+      "completed_ms": 1791548308616,
+      "status": 200,
+      "raw_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "type": "userRole",
+      "started_ms": 1791548311482,
+      "completed_ms": 1791548311482,
+      "status": 200,
+      "raw_sha256": "6b3061507ef8cc2ca95320f790a9f9ccb3c850ae081df4b6f6e56e40d57203e4"
+    }
+  ],
+  "ws": [
+    {
+      "occurrence": 0,
+      "channel": "subscriptionResponse",
+      "completed_ms": 1791548306573,
+      "delivered": true,
+      "raw_sha256": "91ed9877da17cf17b3b23cce0bb0b5fc1fce6d76e40688c134ed042d07131f7f"
+    },
+    {
+      "occurrence": 1,
+      "channel": "subscriptionResponse",
+      "completed_ms": 1791548306573,
+      "delivered": true,
+      "raw_sha256": "8ae64591e54d9f490ec42579e7af712d24a623d2a2742030d133aa51ffe564b4"
+    },
+    {
+      "occurrence": 2,
+      "channel": "subscriptionResponse",
+      "completed_ms": 1791548306573,
+      "delivered": true,
+      "raw_sha256": "a483e66eac64cb6f78d75792b38b49129970a3c37107df7855667794082b2d4b"
+    },
+    {
+      "occurrence": 3,
+      "channel": "clearinghouseState",
+      "completed_ms": 1791548306574,
+      "delivered": true,
+      "raw_sha256": "db6f50cae172e2988ded3a489128dee582476101e2d72a19f3429f2f97769eb2",
+      "actual_source_time": null
+    },
+    {
+      "occurrence": 4,
+      "channel": "clearinghouseState",
+      "completed_ms": 1791548308599,
+      "delivered": true,
+      "raw_sha256": "50e17fa5a3e1dd0f5d60a636302c2b9030e1beb4612bcfc793f5f26ca915bd04",
+      "actual_source_time": 1791548308598
+    },
+    {
+      "occurrence": 5,
+      "channel": "clearinghouseState",
+      "completed_ms": 1791548311576,
+      "delivered": true,
+      "raw_sha256": "50e17fa5a3e1dd0f5d60a636302c2b9030e1beb4612bcfc793f5f26ca915bd04",
+      "actual_source_time": 1791548308598
+    }
+  ],
+  "actual_http_occurrences": 70,
+  "peer_base_cost": 1358,
+  "execution_base_cost": 1298,
+  "debt_source_types": [
+    "frontendOpenOrders",
+    "userFills",
+    "userRole"
+  ],
+  "new_executions": 0,
+  "internal_bucket_read": false
+}

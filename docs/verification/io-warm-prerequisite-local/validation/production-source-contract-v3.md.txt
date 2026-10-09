@@ -1,0 +1,20 @@
+# Native117 production v3 — captured original metadata publication expiry
+
+Root authorized this revision after independent source review found a second final-clock gap. The outer owner native-instrument check used the original metadata30s TTL, but the account commit performed another potentially large private/financial comparison afterward. V2's publication fence checked the original query3s and account/private2s sources, not the independent original metadata expiration. V1/v2 artifacts and the actual root36PASS/1FAIL focused log remain preserved; the latter is not a v3 result and is not relabeled as full success.
+
+Only `account_scope.rs` and `execution_scope.rs` changed from the root-formatted v2. The actual pre-v3 bytes are copied to `production-source-v3-before/`. This author ran zero formatter, Cargo, tests, Git, GitHub, build or install operations.
+
+While capturing the actual selected query metadata under the existing guards, v3 computes its immutable earliest absolute expiration. For every captured proof this is the lesser of `received_ms + policy.metadata_max_age_ms` and `verification_started_ms + policy.metadata_max_age_ms`, then the minimum across all selected proofs. Every addition is checked; future timestamps and an empty map refuse capture. Existing `warm_native_instruments` checks still establish exact configured selected completeness, HTTP/Engine binding and native fields before this calculation. The query's metadata copy and expiration come from the same held immutable state. No user-asset source timestamp is substituted and no metadata timestamp is renewed.
+
+The internal `IoWarmQuery.metadata_expires_ms` is carried to the sole `commit_observation` caller. After all final financial validation and checked source timestamp conversion, immediately before account mutation/AccountState publication, an allocation-free scalar check requires the actual publication wall clock to remain within that captured expiry, the original monotonic query deadline and all existing account/private freshness predicates. Failure follows the existing complete reservation restoration and debt path. No public API, test hook, new HTTP read, quota, cap, timeout or policy change is introduced.
+
+The change corrects a source-verified gap. Exact heavy comparison crossing the metadata TTL has not been executed by this author; compilation, tests and independent approval remain root obligations. The first patch briefly matched a similarly named startup struct; static inspection corrected the field placement before freezing. The frozen bytes contain the new field only in `IoWarmQuery`, with its sole normal constructor and sole account commit caller updated. Startup boundary fields remain unchanged.
+
+## Frozen evidence
+
+- account_scope.rs:84,490 bytes, SHA256 `1ff6b1d2ea0050b2b31f0a053682b109b2fa0eb7ae94c9509afdb6b7ef4e5230`.
+- execution_scope.rs:193,772 bytes, SHA256 `6239145bec9e54135bc0e240950b349fd3b49b7d855752629fbbf0460833e6c0`.
+- Exact copies: `production-source-v3-frozen/`.
+- Exact UTC, pre-edit hashes and scope: `production-source-contract-v3.json`, SHA256 `4f61ec4adb782b789054184c1ebb584d9edadf6481ac89e9d8f7df3f3d7127a4`.
+
+Source writes stop at this revision. All earlier original/composed provenance, bounded non-atomic role/mode authority, original source expiry, raw retention, existing journal/HTTP limits, ordinary financial admission and failed115 debt preservation remain unchanged.

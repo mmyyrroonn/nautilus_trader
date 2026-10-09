@@ -1,0 +1,66 @@
+"""Bind the installed provenance reference using its actual documented projection."""
+import hashlib
+import json
+import shutil
+from datetime import datetime, timezone
+from pathlib import Path
+
+root = Path(__file__).resolve().parent
+old = root / "archive_native117_v5.py"
+assert hashlib.sha256(old.read_bytes()).hexdigest() == "1ad8ec5c536b1fad8ad897db097a178bdbcc29679d4f334793623aeee73105e9"
+failed = json.loads((root / "native117-archive-command-v5.json").read_text(encoding="utf-8"))
+assert failed["exit_code"] == 1
+assert not Path("E:/persarb/worktrees/entropy-warm-prerequisites/docs/verification/io-warm-prerequisite-local").exists()
+content = old.read_text(encoding="utf-8")
+anchor = "def verify_case(directory, mode, provenance, wheel_root=WHEEL):\n"
+function = '''def verify_installed_provenance_reference(identity, provenance, wheel_root):
+    """Bind the install verifier's reference/hash and all five source fields."""
+    require(wheel_root in (WHEEL, FIRST_WHEEL), "Unassigned installed provenance directory")
+    reference = identity["native_provenance"]
+    fields = {"source_binding", "declared_native", "declared_build",
+              "source_fingerprint_sha256", "build"}
+    require(isinstance(reference, dict) and set(reference) == fields | {"path", "sha256"},
+            "Installed provenance reference schema differs")
+    path = wheel_root / "native-provenance.json"
+    require(Path(reference["path"]).resolve() == path.resolve()
+            and reference["sha256"] == digest(path) and load_json(path) == provenance,
+            "Installed provenance reference path/hash/content differs")
+    require(all(reference[field] == provenance[field] for field in fields),
+            "Installed provenance source/build fields differ")
+
+
+'''
+assert content.count(anchor) == 1
+content = content.replace(anchor, function + anchor)
+before_case = '    require(identity["native_provenance"] == provenance, "Installed provenance object differs")\n'
+assert content.count(before_case) == 1
+content = content.replace(before_case, '    verify_installed_provenance_reference(identity, provenance, wheel_root)\n')
+before_install = '        require(identity["strict_source_binding_passed"] is True and identity["native_provenance"] == provenance\n'
+assert content.count(before_install) == 1
+content = content.replace(before_install, '        verify_installed_provenance_reference(identity, provenance, WHEEL)\n        require(identity["strict_source_binding_passed"] is True\n')
+new = root / "archive_native117_v6.py"
+assert not new.exists()
+new.write_text(content, encoding="utf-8")
+preserved = []
+for suffix in (".json", ".log"):
+    source = root / ("native117-archive-command-v5" + suffix)
+    target = root / ("native117-preserved-archive-v5-failure" + suffix)
+    assert not target.exists()
+    shutil.copyfile(source, target)
+    digest = hashlib.sha256(source.read_bytes()).hexdigest()
+    assert hashlib.sha256(target.read_bytes()).hexdigest() == digest
+    preserved.append({"original": source.as_posix(), "copy": target.as_posix(), "sha256": digest})
+note = root / "archive-native117-source-binding-correction-v6.md"
+assert not note.exists()
+note.write_text('''# Native117 archive helper v6 — exact installed provenance reference
+
+Root's actual v5 invocation14:19:05–06 UTC failed before mkdir with `Corrected native installed identity differs`. The actual install verifier intentionally records a seven-field provenance reference: path, SHA256 and five selected source/build fields. It does not inline every top-level collector/stub/wheel field. Source: app `scripts/verify_native_install.py:220–228`; actual two installed identities and all case manifests follow that schema.
+
+V6 replaces only the two impossible reference-vs-whole-object equality checks. A shared finite verifier requires exactly the documented seven fields, exact assigned original/corrective provenance path, actual whole-file SHA256 and decoded full provenance content, plus exact equality of all five source/build fields. Both corrected venv identities and every original/corrective case use it. Wheel/native object hashes, strict source binding, source/commit/tree/build input/pre-post identity and all other guards are unchanged. This binds the full original provenance bytes rather than waiving a missing field.
+
+The actual v5 receipt/log is copied byte-identically outside the live archive exclusion prefix, so its real failed invocation is retained in the successful inventory. V4 originals/copies remain unchanged. V6 is new and unexecuted, pending narrow review; this preparation did not run a helper/archive, tests, native imports, Cargo, Git, build or installation and changed no product source.
+''', encoding="utf-8")
+record = root / "archive-native117-source-binding-correction-v6.json"
+assert not record.exists()
+record.write_text(json.dumps({"created_utc": datetime.now(timezone.utc).isoformat(), "prior_helper_sha256": hashlib.sha256(old.read_bytes()).hexdigest(), "new_helper_sha256": hashlib.sha256(new.read_bytes()).hexdigest(), "note_sha256": hashlib.sha256(note.read_bytes()).hexdigest(), "preserved_failure": preserved, "no_archive_created_after_v5": True, "tests_executed": 0, "helper_executions_in_preparation": 0}, indent=2) + "\n", encoding="utf-8")
+print(record.read_text(encoding="utf-8"))

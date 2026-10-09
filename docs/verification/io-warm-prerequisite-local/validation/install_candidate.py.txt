@@ -1,0 +1,40 @@
+"""Install the actual source-bound native117 wheel into two isolated environments."""
+
+import hashlib
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+
+DIRECTORY = Path(__file__).resolve().parent
+NATIVE = Path("E:/persarb/worktrees/entropy-warm-prerequisites")
+APP = Path("E:/persarb/worktrees/entropy-execution-app")
+ARTIFACT = Path("E:/persarb/_tmp/entropy117-wheel-nextest-20261009")
+
+
+def main():
+    provenance_path = ARTIFACT / "native-provenance.json"
+    provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    implementation = json.loads((DIRECTORY / "native117-implementation-commit.json").read_text(encoding="utf-8"))
+    build = json.loads((DIRECTORY / "native117-source-bound-wheel-build.json").read_text(encoding="utf-8"))
+    assert build["exit_code"] == 0 and provenance["source_binding"] == "verified"
+    assert provenance["declared_native"]["commit"] == implementation["commit"]
+    wheel = ARTIFACT / provenance["wheel"]["filename"]
+    assert wheel.is_file() and hashlib.sha256(wheel.read_bytes()).hexdigest() == provenance["wheel"]["sha256"]
+    for name, root in (("native", NATIVE), ("app", APP)):
+        interpreter = root / ".venv" / "Scripts" / "python.exe"
+        output = DIRECTORY / f"native117-{name}-installed-identity.json"
+        assert not output.exists()
+        command = [str(interpreter), str(APP / "scripts" / "install_native.py"),
+                   "--python", str(interpreter), "--local-override", "--native-root", str(NATIVE),
+                   "--wheel", str(wheel), "--provenance", str(provenance_path),
+                   "--sha256", provenance["wheel"]["sha256"],
+                   "--additional-adapter", "hyperliquid", "--additional-adapter", "aster",
+                   "--output", str(output)]
+        subprocess.run([sys.executable, str(DIRECTORY / "run_capture.py"),
+                        f"native117-{name}-installed-wheel", "--", *command], cwd=APP, check=True)
+
+
+if __name__ == "__main__":
+    main()

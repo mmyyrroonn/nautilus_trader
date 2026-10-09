@@ -1,0 +1,5101 @@
+{
+  "parsed_utc": "2026-10-09T13:22:33.543905+00:00",
+  "commands": [
+    {
+      "receipt": {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-gap-unit-red-v2.json",
+        "sha256": "e97248c050b56ea3ee3a48a27a51df8f374ca14cbf26e2139d9f15a7630f9c71"
+      },
+      "log": {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-gap-unit-red-v2.log",
+        "sha256": "1900fcf2bf9e4bb8d385df9951cccce91f02e3695544bd86ca5890dae01a9b89"
+      },
+      "command": {
+        "argv": [
+          "cargo",
+          "test",
+          "-p",
+          "nautilus-hyperliquid",
+          "--lib",
+          "warm_demand_",
+          "--profile",
+          "nextest",
+          "--locked",
+          "--offline",
+          "--config",
+          "build.warnings='warn'",
+          "--",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "cwd": "E:\\persarb\\worktrees\\entropy-warm-prerequisites",
+        "started_utc": "2026-10-09T13:20:17.282476+00:00",
+        "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+        "pyo3_python": "E:/persarb/worktrees/entropy-warm-prerequisites/.venv/Scripts/python.exe",
+        "uv_project_environment": null,
+        "nautilus_stub_profile": null,
+        "cargo_build_warnings": null,
+        "cargo_net_offline": null,
+        "entropy43_native_wheel": null,
+        "entropy43_native_sha256": null,
+        "entropy43_native_provenance": null,
+        "entropy43_evidence_root": null,
+        "exit_code": 101,
+        "finished_utc": "2026-10-09T13:20:32.673845+00:00"
+      },
+      "passed": 4,
+      "failed": 6,
+      "ignored": 0,
+      "filtered": 867
+    },
+    {
+      "receipt": {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-gap-normal-callback-red-v2.json",
+        "sha256": "ea0054c4160957897bd43882c568047dc5c51755c8fa1e96ee679fe9392faaf3"
+      },
+      "log": {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-gap-normal-callback-red-v2.log",
+        "sha256": "a99e60735969d41178961f6171ce801e1fd60f13d7c1419c3fef268a2a0f5642"
+      },
+      "command": {
+        "argv": [
+          "cargo",
+          "test",
+          "-p",
+          "nautilus-hyperliquid",
+          "--test",
+          "entropy_account",
+          "consecutive_owned_entry_and_close_warm_callbacks_append_economic_unknown_tails",
+          "--profile",
+          "nextest",
+          "--locked",
+          "--offline",
+          "--config",
+          "build.warnings='warn'",
+          "--",
+          "--nocapture",
+          "--test-threads=1"
+        ],
+        "cwd": "E:\\persarb\\worktrees\\entropy-warm-prerequisites",
+        "started_utc": "2026-10-09T13:21:07.755751+00:00",
+        "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+        "pyo3_python": "E:/persarb/worktrees/entropy-warm-prerequisites/.venv/Scripts/python.exe",
+        "uv_project_environment": null,
+        "nautilus_stub_profile": null,
+        "cargo_build_warnings": null,
+        "cargo_net_offline": null,
+        "entropy43_native_wheel": null,
+        "entropy43_native_sha256": null,
+        "entropy43_native_provenance": null,
+        "entropy43_evidence_root": null,
+        "exit_code": 101,
+        "finished_utc": "2026-10-09T13:21:18.131575+00:00"
+      },
+      "passed": 0,
+      "failed": 1,
+      "ignored": 0,
+      "filtered": 270
+    }
+  ],
+  "normal_callback_observations": [
+    {
+      "phase": "before_owned_submit",
+      "query_completed": 0,
+      "query_in_flight": false,
+      "recovery_complete": true,
+      "last_query_reused_prerequisite": false,
+      "execution_diagnostic": "Complete bounded owned io recovery for HYPERLIQUID-ENTROPY; REST requests are non-atomic; leverage proof source time unknown",
+      "trusted": true,
+      "flat": true,
+      "financial_received_ms": 1791552077631,
+      "prerequisite": {
+        "schema_version": 1,
+        "account_id": "HYPERLIQUID-ENTROPY",
+        "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "policy": {
+          "schema_version": 1,
+          "strategy_id": "ENTROPY-001",
+          "journal_path": "C:\\Users\\myron\\AppData\\Local\\Temp\\.tmp9PYjaA\\io-intents.jsonl",
+          "max_order_notional": "100",
+          "max_gross_notional": "200",
+          "max_open_orders": 2,
+          "max_actions": 16,
+          "max_leverage": 1,
+          "margin_buffer": "5",
+          "fee_buffer_bps": "10",
+          "action_timeout_ms": 2000,
+          "recovery_timeout_ms": 3000,
+          "recovery_max_attempts": 2,
+          "recovery_retry_delay_ms": 10,
+          "metadata_max_age_ms": 30000,
+          "symbols": [
+            {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "max_quantity": "1",
+              "min_price": "95",
+              "max_price": "105"
+            }
+          ]
+        },
+        "generation": 1,
+        "epoch": 0,
+        "received_sequence": 6,
+        "hard_revision": 1,
+        "verification_started_ms": 1791552077630,
+        "verification_finished_ms": 1791552077631,
+        "effective_expires_ms": 1791552079630,
+        "maximum_age_ms": 2000,
+        "http_source_time_ms": 1791552077631,
+        "http_received_time_ms": 1791552077631,
+        "metadata": {
+          "universe": [
+            {
+              "name": "io:SNDK",
+              "szDecimals": 4,
+              "maxLeverage": 10,
+              "onlyIsolated": true,
+              "marginMode": "strictIsolated"
+            }
+          ],
+          "collateralToken": 0
+        },
+        "spot_metadata": {
+          "universe": [],
+          "tokens": [
+            {
+              "name": "USDC",
+              "index": 0,
+              "szDecimals": 8,
+              "weiDecimals": 8,
+              "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+              "isCanonical": true,
+              "fullName": "USD Coin"
+            }
+          ]
+        },
+        "native_http": {
+          "io:SNDK-USD-PERP.HYPERLIQUID": {
+            "CryptoPerpetual": {
+              "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "raw_symbol": "io:SNDK",
+              "base_currency": "io:SNDK",
+              "quote_currency": "USD",
+              "settlement_currency": "USDC",
+              "is_inverse": false,
+              "price_precision": 2,
+              "size_precision": 4,
+              "price_increment": "0.01",
+              "size_increment": "0.0001",
+              "multiplier": "1",
+              "lot_size": "1",
+              "margin_init": "0",
+              "margin_maint": "0",
+              "maker_fee": "0",
+              "taker_fee": "0",
+              "max_quantity": null,
+              "min_quantity": null,
+              "max_notional": null,
+              "min_notional": "10.00 USD",
+              "max_price": null,
+              "min_price": null,
+              "tick_scheme": null,
+              "info": null,
+              "ts_event": 1791552077600342500,
+              "ts_init": 1791552077600342500
+            }
+          }
+        },
+        "metadata_context": {
+          "metadata": {
+            "io:SNDK-USD-PERP.HYPERLIQUID": {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "coin": "io:SNDK",
+              "asset": 110000,
+              "dex_index": 1,
+              "universe_index": 0,
+              "size_decimals": 4,
+              "margin_mode": "strictIsolated",
+              "actual_leverage": 1,
+              "received_ms": 1791552077630,
+              "verification_started_ms": 1791552077628,
+              "user_asset_source_time_ms": null,
+              "max_trade_sizes": [
+                "1",
+                "1"
+              ],
+              "available_to_trade": [
+                "100",
+                "100"
+              ],
+              "mark_price": "100"
+            }
+          },
+          "origin": {
+            "generation": 1,
+            "epoch": 0,
+            "hard_revision": 1,
+            "selected_rows": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            },
+            "native_http": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "CryptoPerpetual": {
+                  "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                  "raw_symbol": "io:SNDK",
+                  "base_currency": "io:SNDK",
+                  "quote_currency": "USD",
+                  "settlement_currency": "USDC",
+                  "is_inverse": false,
+                  "price_precision": 2,
+                  "size_precision": 4,
+                  "price_increment": "0.01",
+                  "size_increment": "0.0001",
+                  "multiplier": "1",
+                  "lot_size": "1",
+                  "margin_init": "0",
+                  "margin_maint": "0",
+                  "maker_fee": "0",
+                  "taker_fee": "0",
+                  "max_quantity": null,
+                  "min_quantity": null,
+                  "max_notional": null,
+                  "min_notional": "10.00 USD",
+                  "max_price": null,
+                  "min_price": null,
+                  "tick_scheme": null,
+                  "info": null,
+                  "ts_event": 1791552077600342500,
+                  "ts_init": 1791552077600342500
+                }
+              }
+            },
+            "native_instruments": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": [
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077600342500,
+                    "ts_init": 1791552077600342500
+                  }
+                },
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077584660500,
+                    "ts_init": 1791552077584660500
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "account_source_start": 0,
+        "sources": {
+          "original_sources": [
+            {
+              "request_json": "{\"type\":\"userRole\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"role\":\"user\"}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "false"
+            },
+            {
+              "request_json": "{\"type\":\"meta\",\"dex\":\"io\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[{\"name\":\"io:SNDK\",\"szDecimals\":4,\"maxLeverage\":10,\"onlyIsolated\":true,\"marginMode\":\"strictIsolated\"}],\"collateralToken\":0}"
+            },
+            {
+              "request_json": "{\"type\":\"spotMeta\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[],\"tokens\":[{\"name\":\"USDC\",\"index\":0,\"szDecimals\":8,\"weiDecimals\":8,\"tokenId\":\"0x6d1e7cde53ba9467b783cb7c530ce054\",\"isCanonical\":true,\"fullName\":\"USD Coin\"}]}"
+            },
+            {
+              "request_json": "{\"type\":\"clearinghouseState\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "{\"marginSummary\":{\"accountValue\":\"100\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"100\",\"totalMarginUsed\":\"0\"},\"crossMarginSummary\":{\"accountValue\":\"0\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"0\",\"totalMarginUsed\":\"0\"},\"crossMaintenanceMarginUsed\":\"0\",\"withdrawable\":\"100\",\"assetPositions\":[],\"time\":1791552077631}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "false"
+            }
+          ],
+          "unavailable_sources": []
+        }
+      },
+      "tainted": false,
+      "economic_diagnostic": "Bounded economic report only; no native cache application proof",
+      "revision": 4,
+      "coverage": [
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userFunding",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userNonFundingLedgerUpdates",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        }
+      ],
+      "fee_usdc": "0",
+      "durable_receipts": 0,
+      "actual_http_occurrences": 36,
+      "actual_fills": {}
+    },
+    {
+      "phase": "aggregate_ack_without_trade",
+      "query_completed": 0,
+      "query_in_flight": false,
+      "recovery_complete": false,
+      "last_query_reused_prerequisite": false,
+      "execution_diagnostic": "io RecoveryIncomplete: Verified owned filled marker awaits complete actual fills",
+      "trusted": true,
+      "flat": true,
+      "financial_received_ms": 1791552077631,
+      "prerequisite": {
+        "schema_version": 1,
+        "account_id": "HYPERLIQUID-ENTROPY",
+        "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "policy": {
+          "schema_version": 1,
+          "strategy_id": "ENTROPY-001",
+          "journal_path": "C:\\Users\\myron\\AppData\\Local\\Temp\\.tmp9PYjaA\\io-intents.jsonl",
+          "max_order_notional": "100",
+          "max_gross_notional": "200",
+          "max_open_orders": 2,
+          "max_actions": 16,
+          "max_leverage": 1,
+          "margin_buffer": "5",
+          "fee_buffer_bps": "10",
+          "action_timeout_ms": 2000,
+          "recovery_timeout_ms": 3000,
+          "recovery_max_attempts": 2,
+          "recovery_retry_delay_ms": 10,
+          "metadata_max_age_ms": 30000,
+          "symbols": [
+            {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "max_quantity": "1",
+              "min_price": "95",
+              "max_price": "105"
+            }
+          ]
+        },
+        "generation": 1,
+        "epoch": 0,
+        "received_sequence": 6,
+        "hard_revision": 1,
+        "verification_started_ms": 1791552077630,
+        "verification_finished_ms": 1791552077631,
+        "effective_expires_ms": 1791552079630,
+        "maximum_age_ms": 2000,
+        "http_source_time_ms": 1791552077631,
+        "http_received_time_ms": 1791552077631,
+        "metadata": {
+          "universe": [
+            {
+              "name": "io:SNDK",
+              "szDecimals": 4,
+              "maxLeverage": 10,
+              "onlyIsolated": true,
+              "marginMode": "strictIsolated"
+            }
+          ],
+          "collateralToken": 0
+        },
+        "spot_metadata": {
+          "universe": [],
+          "tokens": [
+            {
+              "name": "USDC",
+              "index": 0,
+              "szDecimals": 8,
+              "weiDecimals": 8,
+              "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+              "isCanonical": true,
+              "fullName": "USD Coin"
+            }
+          ]
+        },
+        "native_http": {
+          "io:SNDK-USD-PERP.HYPERLIQUID": {
+            "CryptoPerpetual": {
+              "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "raw_symbol": "io:SNDK",
+              "base_currency": "io:SNDK",
+              "quote_currency": "USD",
+              "settlement_currency": "USDC",
+              "is_inverse": false,
+              "price_precision": 2,
+              "size_precision": 4,
+              "price_increment": "0.01",
+              "size_increment": "0.0001",
+              "multiplier": "1",
+              "lot_size": "1",
+              "margin_init": "0",
+              "margin_maint": "0",
+              "maker_fee": "0",
+              "taker_fee": "0",
+              "max_quantity": null,
+              "min_quantity": null,
+              "max_notional": null,
+              "min_notional": "10.00 USD",
+              "max_price": null,
+              "min_price": null,
+              "tick_scheme": null,
+              "info": null,
+              "ts_event": 1791552077600342500,
+              "ts_init": 1791552077600342500
+            }
+          }
+        },
+        "metadata_context": {
+          "metadata": {
+            "io:SNDK-USD-PERP.HYPERLIQUID": {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "coin": "io:SNDK",
+              "asset": 110000,
+              "dex_index": 1,
+              "universe_index": 0,
+              "size_decimals": 4,
+              "margin_mode": "strictIsolated",
+              "actual_leverage": 1,
+              "received_ms": 1791552077630,
+              "verification_started_ms": 1791552077628,
+              "user_asset_source_time_ms": null,
+              "max_trade_sizes": [
+                "1",
+                "1"
+              ],
+              "available_to_trade": [
+                "100",
+                "100"
+              ],
+              "mark_price": "100"
+            }
+          },
+          "origin": {
+            "generation": 1,
+            "epoch": 0,
+            "hard_revision": 1,
+            "selected_rows": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            },
+            "native_http": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "CryptoPerpetual": {
+                  "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                  "raw_symbol": "io:SNDK",
+                  "base_currency": "io:SNDK",
+                  "quote_currency": "USD",
+                  "settlement_currency": "USDC",
+                  "is_inverse": false,
+                  "price_precision": 2,
+                  "size_precision": 4,
+                  "price_increment": "0.01",
+                  "size_increment": "0.0001",
+                  "multiplier": "1",
+                  "lot_size": "1",
+                  "margin_init": "0",
+                  "margin_maint": "0",
+                  "maker_fee": "0",
+                  "taker_fee": "0",
+                  "max_quantity": null,
+                  "min_quantity": null,
+                  "max_notional": null,
+                  "min_notional": "10.00 USD",
+                  "max_price": null,
+                  "min_price": null,
+                  "tick_scheme": null,
+                  "info": null,
+                  "ts_event": 1791552077600342500,
+                  "ts_init": 1791552077600342500
+                }
+              }
+            },
+            "native_instruments": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": [
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077600342500,
+                    "ts_init": 1791552077600342500
+                  }
+                },
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077584660500,
+                    "ts_init": 1791552077584660500
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "account_source_start": 0,
+        "sources": {
+          "original_sources": [
+            {
+              "request_json": "{\"type\":\"userRole\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"role\":\"user\"}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "false"
+            },
+            {
+              "request_json": "{\"type\":\"meta\",\"dex\":\"io\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[{\"name\":\"io:SNDK\",\"szDecimals\":4,\"maxLeverage\":10,\"onlyIsolated\":true,\"marginMode\":\"strictIsolated\"}],\"collateralToken\":0}"
+            },
+            {
+              "request_json": "{\"type\":\"spotMeta\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[],\"tokens\":[{\"name\":\"USDC\",\"index\":0,\"szDecimals\":8,\"weiDecimals\":8,\"tokenId\":\"0x6d1e7cde53ba9467b783cb7c530ce054\",\"isCanonical\":true,\"fullName\":\"USD Coin\"}]}"
+            },
+            {
+              "request_json": "{\"type\":\"clearinghouseState\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "{\"marginSummary\":{\"accountValue\":\"100\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"100\",\"totalMarginUsed\":\"0\"},\"crossMarginSummary\":{\"accountValue\":\"0\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"0\",\"totalMarginUsed\":\"0\"},\"crossMaintenanceMarginUsed\":\"0\",\"withdrawable\":\"100\",\"assetPositions\":[],\"time\":1791552077631}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "false"
+            }
+          ],
+          "unavailable_sources": []
+        }
+      },
+      "tainted": false,
+      "economic_diagnostic": "Bounded economic report only; no native cache application proof",
+      "revision": 4,
+      "coverage": [
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userFunding",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userNonFundingLedgerUpdates",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        }
+      ],
+      "fee_usdc": "0",
+      "durable_receipts": 0,
+      "actual_http_occurrences": 42,
+      "actual_fills": {}
+    },
+    {
+      "phase": "actual_owned_trade_consumed",
+      "query_completed": 0,
+      "query_in_flight": false,
+      "recovery_complete": false,
+      "last_query_reused_prerequisite": false,
+      "execution_diagnostic": "Actual io fill requires new complete scoped account absorption",
+      "trusted": false,
+      "flat": null,
+      "financial_received_ms": 1791552077631,
+      "prerequisite": {
+        "schema_version": 1,
+        "account_id": "HYPERLIQUID-ENTROPY",
+        "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "policy": {
+          "schema_version": 1,
+          "strategy_id": "ENTROPY-001",
+          "journal_path": "C:\\Users\\myron\\AppData\\Local\\Temp\\.tmp9PYjaA\\io-intents.jsonl",
+          "max_order_notional": "100",
+          "max_gross_notional": "200",
+          "max_open_orders": 2,
+          "max_actions": 16,
+          "max_leverage": 1,
+          "margin_buffer": "5",
+          "fee_buffer_bps": "10",
+          "action_timeout_ms": 2000,
+          "recovery_timeout_ms": 3000,
+          "recovery_max_attempts": 2,
+          "recovery_retry_delay_ms": 10,
+          "metadata_max_age_ms": 30000,
+          "symbols": [
+            {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "max_quantity": "1",
+              "min_price": "95",
+              "max_price": "105"
+            }
+          ]
+        },
+        "generation": 1,
+        "epoch": 0,
+        "received_sequence": 6,
+        "hard_revision": 1,
+        "verification_started_ms": 1791552077630,
+        "verification_finished_ms": 1791552077631,
+        "effective_expires_ms": 1791552079630,
+        "maximum_age_ms": 2000,
+        "http_source_time_ms": 1791552077631,
+        "http_received_time_ms": 1791552077631,
+        "metadata": {
+          "universe": [
+            {
+              "name": "io:SNDK",
+              "szDecimals": 4,
+              "maxLeverage": 10,
+              "onlyIsolated": true,
+              "marginMode": "strictIsolated"
+            }
+          ],
+          "collateralToken": 0
+        },
+        "spot_metadata": {
+          "universe": [],
+          "tokens": [
+            {
+              "name": "USDC",
+              "index": 0,
+              "szDecimals": 8,
+              "weiDecimals": 8,
+              "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+              "isCanonical": true,
+              "fullName": "USD Coin"
+            }
+          ]
+        },
+        "native_http": {
+          "io:SNDK-USD-PERP.HYPERLIQUID": {
+            "CryptoPerpetual": {
+              "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "raw_symbol": "io:SNDK",
+              "base_currency": "io:SNDK",
+              "quote_currency": "USD",
+              "settlement_currency": "USDC",
+              "is_inverse": false,
+              "price_precision": 2,
+              "size_precision": 4,
+              "price_increment": "0.01",
+              "size_increment": "0.0001",
+              "multiplier": "1",
+              "lot_size": "1",
+              "margin_init": "0",
+              "margin_maint": "0",
+              "maker_fee": "0",
+              "taker_fee": "0",
+              "max_quantity": null,
+              "min_quantity": null,
+              "max_notional": null,
+              "min_notional": "10.00 USD",
+              "max_price": null,
+              "min_price": null,
+              "tick_scheme": null,
+              "info": null,
+              "ts_event": 1791552077600342500,
+              "ts_init": 1791552077600342500
+            }
+          }
+        },
+        "metadata_context": {
+          "metadata": {
+            "io:SNDK-USD-PERP.HYPERLIQUID": {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "coin": "io:SNDK",
+              "asset": 110000,
+              "dex_index": 1,
+              "universe_index": 0,
+              "size_decimals": 4,
+              "margin_mode": "strictIsolated",
+              "actual_leverage": 1,
+              "received_ms": 1791552077630,
+              "verification_started_ms": 1791552077628,
+              "user_asset_source_time_ms": null,
+              "max_trade_sizes": [
+                "1",
+                "1"
+              ],
+              "available_to_trade": [
+                "100",
+                "100"
+              ],
+              "mark_price": "100"
+            }
+          },
+          "origin": {
+            "generation": 1,
+            "epoch": 0,
+            "hard_revision": 1,
+            "selected_rows": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            },
+            "native_http": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "CryptoPerpetual": {
+                  "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                  "raw_symbol": "io:SNDK",
+                  "base_currency": "io:SNDK",
+                  "quote_currency": "USD",
+                  "settlement_currency": "USDC",
+                  "is_inverse": false,
+                  "price_precision": 2,
+                  "size_precision": 4,
+                  "price_increment": "0.01",
+                  "size_increment": "0.0001",
+                  "multiplier": "1",
+                  "lot_size": "1",
+                  "margin_init": "0",
+                  "margin_maint": "0",
+                  "maker_fee": "0",
+                  "taker_fee": "0",
+                  "max_quantity": null,
+                  "min_quantity": null,
+                  "max_notional": null,
+                  "min_notional": "10.00 USD",
+                  "max_price": null,
+                  "min_price": null,
+                  "tick_scheme": null,
+                  "info": null,
+                  "ts_event": 1791552077600342500,
+                  "ts_init": 1791552077600342500
+                }
+              }
+            },
+            "native_instruments": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": [
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077600342500,
+                    "ts_init": 1791552077600342500
+                  }
+                },
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077584660500,
+                    "ts_init": 1791552077584660500
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "account_source_start": 0,
+        "sources": {
+          "original_sources": [
+            {
+              "request_json": "{\"type\":\"userRole\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"role\":\"user\"}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "false"
+            },
+            {
+              "request_json": "{\"type\":\"meta\",\"dex\":\"io\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[{\"name\":\"io:SNDK\",\"szDecimals\":4,\"maxLeverage\":10,\"onlyIsolated\":true,\"marginMode\":\"strictIsolated\"}],\"collateralToken\":0}"
+            },
+            {
+              "request_json": "{\"type\":\"spotMeta\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[],\"tokens\":[{\"name\":\"USDC\",\"index\":0,\"szDecimals\":8,\"weiDecimals\":8,\"tokenId\":\"0x6d1e7cde53ba9467b783cb7c530ce054\",\"isCanonical\":true,\"fullName\":\"USD Coin\"}]}"
+            },
+            {
+              "request_json": "{\"type\":\"clearinghouseState\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "{\"marginSummary\":{\"accountValue\":\"100\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"100\",\"totalMarginUsed\":\"0\"},\"crossMarginSummary\":{\"accountValue\":\"0\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"0\",\"totalMarginUsed\":\"0\"},\"crossMaintenanceMarginUsed\":\"0\",\"withdrawable\":\"100\",\"assetPositions\":[],\"time\":1791552077631}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "false"
+            }
+          ],
+          "unavailable_sources": []
+        }
+      },
+      "tainted": false,
+      "economic_diagnostic": "Bounded economic report only; no native cache application proof",
+      "revision": 6,
+      "coverage": [
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userFunding",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userNonFundingLedgerUpdates",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        }
+      ],
+      "fee_usdc": "0",
+      "durable_receipts": 0,
+      "actual_http_occurrences": 42,
+      "actual_fills": {
+        "io:SNDK:70001:1901": {
+          "coin": "io:SNDK",
+          "oid": 70001,
+          "tid": 1901,
+          "time": 1791552077741,
+          "is_buy": true,
+          "quantity": "0.12",
+          "price": "100",
+          "fee": "0.001",
+          "fee_token": "USDC",
+          "start_position": "0",
+          "closed_pnl": "0",
+          "hash": "0x000000000000000000000000000000000000000000000000000000000000076d",
+          "builder_fee": "0.0002"
+        }
+      }
+    },
+    {
+      "phase": "before_normal_warm_query",
+      "query_completed": 0,
+      "query_in_flight": false,
+      "recovery_complete": false,
+      "last_query_reused_prerequisite": false,
+      "execution_diagnostic": "Actual io fill requires new complete scoped account absorption",
+      "trusted": false,
+      "flat": null,
+      "financial_received_ms": 1791552077631,
+      "prerequisite": {
+        "schema_version": 1,
+        "account_id": "HYPERLIQUID-ENTROPY",
+        "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "policy": {
+          "schema_version": 1,
+          "strategy_id": "ENTROPY-001",
+          "journal_path": "C:\\Users\\myron\\AppData\\Local\\Temp\\.tmp9PYjaA\\io-intents.jsonl",
+          "max_order_notional": "100",
+          "max_gross_notional": "200",
+          "max_open_orders": 2,
+          "max_actions": 16,
+          "max_leverage": 1,
+          "margin_buffer": "5",
+          "fee_buffer_bps": "10",
+          "action_timeout_ms": 2000,
+          "recovery_timeout_ms": 3000,
+          "recovery_max_attempts": 2,
+          "recovery_retry_delay_ms": 10,
+          "metadata_max_age_ms": 30000,
+          "symbols": [
+            {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "max_quantity": "1",
+              "min_price": "95",
+              "max_price": "105"
+            }
+          ]
+        },
+        "generation": 1,
+        "epoch": 0,
+        "received_sequence": 6,
+        "hard_revision": 1,
+        "verification_started_ms": 1791552077630,
+        "verification_finished_ms": 1791552077631,
+        "effective_expires_ms": 1791552079630,
+        "maximum_age_ms": 2000,
+        "http_source_time_ms": 1791552077631,
+        "http_received_time_ms": 1791552077631,
+        "metadata": {
+          "universe": [
+            {
+              "name": "io:SNDK",
+              "szDecimals": 4,
+              "maxLeverage": 10,
+              "onlyIsolated": true,
+              "marginMode": "strictIsolated"
+            }
+          ],
+          "collateralToken": 0
+        },
+        "spot_metadata": {
+          "universe": [],
+          "tokens": [
+            {
+              "name": "USDC",
+              "index": 0,
+              "szDecimals": 8,
+              "weiDecimals": 8,
+              "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+              "isCanonical": true,
+              "fullName": "USD Coin"
+            }
+          ]
+        },
+        "native_http": {
+          "io:SNDK-USD-PERP.HYPERLIQUID": {
+            "CryptoPerpetual": {
+              "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "raw_symbol": "io:SNDK",
+              "base_currency": "io:SNDK",
+              "quote_currency": "USD",
+              "settlement_currency": "USDC",
+              "is_inverse": false,
+              "price_precision": 2,
+              "size_precision": 4,
+              "price_increment": "0.01",
+              "size_increment": "0.0001",
+              "multiplier": "1",
+              "lot_size": "1",
+              "margin_init": "0",
+              "margin_maint": "0",
+              "maker_fee": "0",
+              "taker_fee": "0",
+              "max_quantity": null,
+              "min_quantity": null,
+              "max_notional": null,
+              "min_notional": "10.00 USD",
+              "max_price": null,
+              "min_price": null,
+              "tick_scheme": null,
+              "info": null,
+              "ts_event": 1791552077600342500,
+              "ts_init": 1791552077600342500
+            }
+          }
+        },
+        "metadata_context": {
+          "metadata": {
+            "io:SNDK-USD-PERP.HYPERLIQUID": {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "coin": "io:SNDK",
+              "asset": 110000,
+              "dex_index": 1,
+              "universe_index": 0,
+              "size_decimals": 4,
+              "margin_mode": "strictIsolated",
+              "actual_leverage": 1,
+              "received_ms": 1791552077630,
+              "verification_started_ms": 1791552077628,
+              "user_asset_source_time_ms": null,
+              "max_trade_sizes": [
+                "1",
+                "1"
+              ],
+              "available_to_trade": [
+                "100",
+                "100"
+              ],
+              "mark_price": "100"
+            }
+          },
+          "origin": {
+            "generation": 1,
+            "epoch": 0,
+            "hard_revision": 1,
+            "selected_rows": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            },
+            "native_http": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "CryptoPerpetual": {
+                  "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                  "raw_symbol": "io:SNDK",
+                  "base_currency": "io:SNDK",
+                  "quote_currency": "USD",
+                  "settlement_currency": "USDC",
+                  "is_inverse": false,
+                  "price_precision": 2,
+                  "size_precision": 4,
+                  "price_increment": "0.01",
+                  "size_increment": "0.0001",
+                  "multiplier": "1",
+                  "lot_size": "1",
+                  "margin_init": "0",
+                  "margin_maint": "0",
+                  "maker_fee": "0",
+                  "taker_fee": "0",
+                  "max_quantity": null,
+                  "min_quantity": null,
+                  "max_notional": null,
+                  "min_notional": "10.00 USD",
+                  "max_price": null,
+                  "min_price": null,
+                  "tick_scheme": null,
+                  "info": null,
+                  "ts_event": 1791552077600342500,
+                  "ts_init": 1791552077600342500
+                }
+              }
+            },
+            "native_instruments": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": [
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077600342500,
+                    "ts_init": 1791552077600342500
+                  }
+                },
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077584660500,
+                    "ts_init": 1791552077584660500
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "account_source_start": 0,
+        "sources": {
+          "original_sources": [
+            {
+              "request_json": "{\"type\":\"userRole\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"role\":\"user\"}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "false"
+            },
+            {
+              "request_json": "{\"type\":\"meta\",\"dex\":\"io\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[{\"name\":\"io:SNDK\",\"szDecimals\":4,\"maxLeverage\":10,\"onlyIsolated\":true,\"marginMode\":\"strictIsolated\"}],\"collateralToken\":0}"
+            },
+            {
+              "request_json": "{\"type\":\"spotMeta\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[],\"tokens\":[{\"name\":\"USDC\",\"index\":0,\"szDecimals\":8,\"weiDecimals\":8,\"tokenId\":\"0x6d1e7cde53ba9467b783cb7c530ce054\",\"isCanonical\":true,\"fullName\":\"USD Coin\"}]}"
+            },
+            {
+              "request_json": "{\"type\":\"clearinghouseState\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "{\"marginSummary\":{\"accountValue\":\"100\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"100\",\"totalMarginUsed\":\"0\"},\"crossMarginSummary\":{\"accountValue\":\"0\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"0\",\"totalMarginUsed\":\"0\"},\"crossMaintenanceMarginUsed\":\"0\",\"withdrawable\":\"100\",\"assetPositions\":[],\"time\":1791552077631}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "false"
+            }
+          ],
+          "unavailable_sources": []
+        }
+      },
+      "tainted": false,
+      "economic_diagnostic": "Bounded economic report only; no native cache application proof",
+      "revision": 7,
+      "coverage": [
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userFunding",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userNonFundingLedgerUpdates",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        }
+      ],
+      "fee_usdc": "0.001",
+      "durable_receipts": 1,
+      "actual_http_occurrences": 42,
+      "actual_fills": {
+        "io:SNDK:70001:1901": {
+          "coin": "io:SNDK",
+          "oid": 70001,
+          "tid": 1901,
+          "time": 1791552077741,
+          "is_buy": true,
+          "quantity": "0.12",
+          "price": "100",
+          "fee": "0.001",
+          "fee_token": "USDC",
+          "start_position": "0",
+          "closed_pnl": "0",
+          "hash": "0x000000000000000000000000000000000000000000000000000000000000076d",
+          "builder_fee": "0.0002"
+        }
+      }
+    },
+    {
+      "phase": "economic_callback_settle_outcome",
+      "query_completed": 1,
+      "query_in_flight": false,
+      "recovery_complete": true,
+      "last_query_reused_prerequisite": true,
+      "execution_diagnostic": "Bounded live owned warm io recovery; historical coverage remains independent",
+      "trusted": true,
+      "flat": false,
+      "financial_received_ms": 1791552077809,
+      "prerequisite": {
+        "schema_version": 1,
+        "account_id": "HYPERLIQUID-ENTROPY",
+        "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "policy": {
+          "schema_version": 1,
+          "strategy_id": "ENTROPY-001",
+          "journal_path": "C:\\Users\\myron\\AppData\\Local\\Temp\\.tmp9PYjaA\\io-intents.jsonl",
+          "max_order_notional": "100",
+          "max_gross_notional": "200",
+          "max_open_orders": 2,
+          "max_actions": 16,
+          "max_leverage": 1,
+          "margin_buffer": "5",
+          "fee_buffer_bps": "10",
+          "action_timeout_ms": 2000,
+          "recovery_timeout_ms": 3000,
+          "recovery_max_attempts": 2,
+          "recovery_retry_delay_ms": 10,
+          "metadata_max_age_ms": 30000,
+          "symbols": [
+            {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "max_quantity": "1",
+              "min_price": "95",
+              "max_price": "105"
+            }
+          ]
+        },
+        "generation": 1,
+        "epoch": 0,
+        "received_sequence": 6,
+        "hard_revision": 1,
+        "verification_started_ms": 1791552077630,
+        "verification_finished_ms": 1791552077631,
+        "effective_expires_ms": 1791552079630,
+        "maximum_age_ms": 2000,
+        "http_source_time_ms": 1791552077631,
+        "http_received_time_ms": 1791552077631,
+        "metadata": {
+          "universe": [
+            {
+              "name": "io:SNDK",
+              "szDecimals": 4,
+              "maxLeverage": 10,
+              "onlyIsolated": true,
+              "marginMode": "strictIsolated"
+            }
+          ],
+          "collateralToken": 0
+        },
+        "spot_metadata": {
+          "universe": [],
+          "tokens": [
+            {
+              "name": "USDC",
+              "index": 0,
+              "szDecimals": 8,
+              "weiDecimals": 8,
+              "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+              "isCanonical": true,
+              "fullName": "USD Coin"
+            }
+          ]
+        },
+        "native_http": {
+          "io:SNDK-USD-PERP.HYPERLIQUID": {
+            "CryptoPerpetual": {
+              "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "raw_symbol": "io:SNDK",
+              "base_currency": "io:SNDK",
+              "quote_currency": "USD",
+              "settlement_currency": "USDC",
+              "is_inverse": false,
+              "price_precision": 2,
+              "size_precision": 4,
+              "price_increment": "0.01",
+              "size_increment": "0.0001",
+              "multiplier": "1",
+              "lot_size": "1",
+              "margin_init": "0",
+              "margin_maint": "0",
+              "maker_fee": "0",
+              "taker_fee": "0",
+              "max_quantity": null,
+              "min_quantity": null,
+              "max_notional": null,
+              "min_notional": "10.00 USD",
+              "max_price": null,
+              "min_price": null,
+              "tick_scheme": null,
+              "info": null,
+              "ts_event": 1791552077600342500,
+              "ts_init": 1791552077600342500
+            }
+          }
+        },
+        "metadata_context": {
+          "metadata": {
+            "io:SNDK-USD-PERP.HYPERLIQUID": {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "coin": "io:SNDK",
+              "asset": 110000,
+              "dex_index": 1,
+              "universe_index": 0,
+              "size_decimals": 4,
+              "margin_mode": "strictIsolated",
+              "actual_leverage": 1,
+              "received_ms": 1791552077630,
+              "verification_started_ms": 1791552077628,
+              "user_asset_source_time_ms": null,
+              "max_trade_sizes": [
+                "1",
+                "1"
+              ],
+              "available_to_trade": [
+                "100",
+                "100"
+              ],
+              "mark_price": "100"
+            }
+          },
+          "origin": {
+            "generation": 1,
+            "epoch": 0,
+            "hard_revision": 1,
+            "selected_rows": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            },
+            "native_http": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "CryptoPerpetual": {
+                  "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                  "raw_symbol": "io:SNDK",
+                  "base_currency": "io:SNDK",
+                  "quote_currency": "USD",
+                  "settlement_currency": "USDC",
+                  "is_inverse": false,
+                  "price_precision": 2,
+                  "size_precision": 4,
+                  "price_increment": "0.01",
+                  "size_increment": "0.0001",
+                  "multiplier": "1",
+                  "lot_size": "1",
+                  "margin_init": "0",
+                  "margin_maint": "0",
+                  "maker_fee": "0",
+                  "taker_fee": "0",
+                  "max_quantity": null,
+                  "min_quantity": null,
+                  "max_notional": null,
+                  "min_notional": "10.00 USD",
+                  "max_price": null,
+                  "min_price": null,
+                  "tick_scheme": null,
+                  "info": null,
+                  "ts_event": 1791552077600342500,
+                  "ts_init": 1791552077600342500
+                }
+              }
+            },
+            "native_instruments": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": [
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077600342500,
+                    "ts_init": 1791552077600342500
+                  }
+                },
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077584660500,
+                    "ts_init": 1791552077584660500
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "account_source_start": 0,
+        "sources": {
+          "original_sources": [
+            {
+              "request_json": "{\"type\":\"userRole\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"role\":\"user\"}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "false"
+            },
+            {
+              "request_json": "{\"type\":\"meta\",\"dex\":\"io\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[{\"name\":\"io:SNDK\",\"szDecimals\":4,\"maxLeverage\":10,\"onlyIsolated\":true,\"marginMode\":\"strictIsolated\"}],\"collateralToken\":0}"
+            },
+            {
+              "request_json": "{\"type\":\"spotMeta\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[],\"tokens\":[{\"name\":\"USDC\",\"index\":0,\"szDecimals\":8,\"weiDecimals\":8,\"tokenId\":\"0x6d1e7cde53ba9467b783cb7c530ce054\",\"isCanonical\":true,\"fullName\":\"USD Coin\"}]}"
+            },
+            {
+              "request_json": "{\"type\":\"clearinghouseState\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "{\"marginSummary\":{\"accountValue\":\"100\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"100\",\"totalMarginUsed\":\"0\"},\"crossMarginSummary\":{\"accountValue\":\"0\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"0\",\"totalMarginUsed\":\"0\"},\"crossMaintenanceMarginUsed\":\"0\",\"withdrawable\":\"100\",\"assetPositions\":[],\"time\":1791552077631}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "false"
+            }
+          ],
+          "unavailable_sources": []
+        }
+      },
+      "tainted": false,
+      "economic_diagnostic": "Bounded economic report only; no native cache application proof",
+      "revision": 8,
+      "coverage": [
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userFunding",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userNonFundingLedgerUpdates",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userFunding",
+          "start_ms": 1791552077634,
+          "end_ms": 1791552077820,
+          "pages": 0,
+          "records": 0,
+          "complete": false,
+          "diagnostic": "Current interval was not requested by warm account recovery; coverage Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userNonFundingLedgerUpdates",
+          "start_ms": 1791552077634,
+          "end_ms": 1791552077820,
+          "pages": 0,
+          "records": 0,
+          "complete": false,
+          "diagnostic": "Current interval was not requested by warm account recovery; coverage Unknown"
+        }
+      ],
+      "fee_usdc": "0.001",
+      "durable_receipts": 1,
+      "actual_http_occurrences": 46,
+      "actual_fills": {
+        "io:SNDK:70001:1901": {
+          "coin": "io:SNDK",
+          "oid": 70001,
+          "tid": 1901,
+          "time": 1791552077741,
+          "is_buy": true,
+          "quantity": "0.12",
+          "price": "100",
+          "fee": "0.001",
+          "fee_token": "USDC",
+          "start_position": "0",
+          "closed_pnl": "0",
+          "hash": "0x000000000000000000000000000000000000000000000000000000000000076d",
+          "builder_fee": "0.0002"
+        }
+      }
+    },
+    {
+      "phase": "after_normal_warm_callback",
+      "query_completed": 1,
+      "query_in_flight": false,
+      "recovery_complete": true,
+      "last_query_reused_prerequisite": true,
+      "execution_diagnostic": "Bounded live owned warm io recovery; historical coverage remains independent",
+      "trusted": true,
+      "flat": false,
+      "financial_received_ms": 1791552077809,
+      "prerequisite": {
+        "schema_version": 1,
+        "account_id": "HYPERLIQUID-ENTROPY",
+        "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "policy": {
+          "schema_version": 1,
+          "strategy_id": "ENTROPY-001",
+          "journal_path": "C:\\Users\\myron\\AppData\\Local\\Temp\\.tmp9PYjaA\\io-intents.jsonl",
+          "max_order_notional": "100",
+          "max_gross_notional": "200",
+          "max_open_orders": 2,
+          "max_actions": 16,
+          "max_leverage": 1,
+          "margin_buffer": "5",
+          "fee_buffer_bps": "10",
+          "action_timeout_ms": 2000,
+          "recovery_timeout_ms": 3000,
+          "recovery_max_attempts": 2,
+          "recovery_retry_delay_ms": 10,
+          "metadata_max_age_ms": 30000,
+          "symbols": [
+            {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "max_quantity": "1",
+              "min_price": "95",
+              "max_price": "105"
+            }
+          ]
+        },
+        "generation": 1,
+        "epoch": 0,
+        "received_sequence": 6,
+        "hard_revision": 1,
+        "verification_started_ms": 1791552077630,
+        "verification_finished_ms": 1791552077631,
+        "effective_expires_ms": 1791552079630,
+        "maximum_age_ms": 2000,
+        "http_source_time_ms": 1791552077631,
+        "http_received_time_ms": 1791552077631,
+        "metadata": {
+          "universe": [
+            {
+              "name": "io:SNDK",
+              "szDecimals": 4,
+              "maxLeverage": 10,
+              "onlyIsolated": true,
+              "marginMode": "strictIsolated"
+            }
+          ],
+          "collateralToken": 0
+        },
+        "spot_metadata": {
+          "universe": [],
+          "tokens": [
+            {
+              "name": "USDC",
+              "index": 0,
+              "szDecimals": 8,
+              "weiDecimals": 8,
+              "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+              "isCanonical": true,
+              "fullName": "USD Coin"
+            }
+          ]
+        },
+        "native_http": {
+          "io:SNDK-USD-PERP.HYPERLIQUID": {
+            "CryptoPerpetual": {
+              "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "raw_symbol": "io:SNDK",
+              "base_currency": "io:SNDK",
+              "quote_currency": "USD",
+              "settlement_currency": "USDC",
+              "is_inverse": false,
+              "price_precision": 2,
+              "size_precision": 4,
+              "price_increment": "0.01",
+              "size_increment": "0.0001",
+              "multiplier": "1",
+              "lot_size": "1",
+              "margin_init": "0",
+              "margin_maint": "0",
+              "maker_fee": "0",
+              "taker_fee": "0",
+              "max_quantity": null,
+              "min_quantity": null,
+              "max_notional": null,
+              "min_notional": "10.00 USD",
+              "max_price": null,
+              "min_price": null,
+              "tick_scheme": null,
+              "info": null,
+              "ts_event": 1791552077600342500,
+              "ts_init": 1791552077600342500
+            }
+          }
+        },
+        "metadata_context": {
+          "metadata": {
+            "io:SNDK-USD-PERP.HYPERLIQUID": {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "coin": "io:SNDK",
+              "asset": 110000,
+              "dex_index": 1,
+              "universe_index": 0,
+              "size_decimals": 4,
+              "margin_mode": "strictIsolated",
+              "actual_leverage": 1,
+              "received_ms": 1791552077630,
+              "verification_started_ms": 1791552077628,
+              "user_asset_source_time_ms": null,
+              "max_trade_sizes": [
+                "1",
+                "1"
+              ],
+              "available_to_trade": [
+                "100",
+                "100"
+              ],
+              "mark_price": "100"
+            }
+          },
+          "origin": {
+            "generation": 1,
+            "epoch": 0,
+            "hard_revision": 1,
+            "selected_rows": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            },
+            "native_http": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "CryptoPerpetual": {
+                  "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                  "raw_symbol": "io:SNDK",
+                  "base_currency": "io:SNDK",
+                  "quote_currency": "USD",
+                  "settlement_currency": "USDC",
+                  "is_inverse": false,
+                  "price_precision": 2,
+                  "size_precision": 4,
+                  "price_increment": "0.01",
+                  "size_increment": "0.0001",
+                  "multiplier": "1",
+                  "lot_size": "1",
+                  "margin_init": "0",
+                  "margin_maint": "0",
+                  "maker_fee": "0",
+                  "taker_fee": "0",
+                  "max_quantity": null,
+                  "min_quantity": null,
+                  "max_notional": null,
+                  "min_notional": "10.00 USD",
+                  "max_price": null,
+                  "min_price": null,
+                  "tick_scheme": null,
+                  "info": null,
+                  "ts_event": 1791552077600342500,
+                  "ts_init": 1791552077600342500
+                }
+              }
+            },
+            "native_instruments": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": [
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077600342500,
+                    "ts_init": 1791552077600342500
+                  }
+                },
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077584660500,
+                    "ts_init": 1791552077584660500
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "account_source_start": 0,
+        "sources": {
+          "original_sources": [
+            {
+              "request_json": "{\"type\":\"userRole\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"role\":\"user\"}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "false"
+            },
+            {
+              "request_json": "{\"type\":\"meta\",\"dex\":\"io\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[{\"name\":\"io:SNDK\",\"szDecimals\":4,\"maxLeverage\":10,\"onlyIsolated\":true,\"marginMode\":\"strictIsolated\"}],\"collateralToken\":0}"
+            },
+            {
+              "request_json": "{\"type\":\"spotMeta\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[],\"tokens\":[{\"name\":\"USDC\",\"index\":0,\"szDecimals\":8,\"weiDecimals\":8,\"tokenId\":\"0x6d1e7cde53ba9467b783cb7c530ce054\",\"isCanonical\":true,\"fullName\":\"USD Coin\"}]}"
+            },
+            {
+              "request_json": "{\"type\":\"clearinghouseState\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "{\"marginSummary\":{\"accountValue\":\"100\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"100\",\"totalMarginUsed\":\"0\"},\"crossMarginSummary\":{\"accountValue\":\"0\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"0\",\"totalMarginUsed\":\"0\"},\"crossMaintenanceMarginUsed\":\"0\",\"withdrawable\":\"100\",\"assetPositions\":[],\"time\":1791552077631}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "false"
+            }
+          ],
+          "unavailable_sources": []
+        }
+      },
+      "tainted": false,
+      "economic_diagnostic": "Bounded economic report only; no native cache application proof",
+      "revision": 8,
+      "coverage": [
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userFunding",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userNonFundingLedgerUpdates",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userFunding",
+          "start_ms": 1791552077634,
+          "end_ms": 1791552077820,
+          "pages": 0,
+          "records": 0,
+          "complete": false,
+          "diagnostic": "Current interval was not requested by warm account recovery; coverage Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userNonFundingLedgerUpdates",
+          "start_ms": 1791552077634,
+          "end_ms": 1791552077820,
+          "pages": 0,
+          "records": 0,
+          "complete": false,
+          "diagnostic": "Current interval was not requested by warm account recovery; coverage Unknown"
+        }
+      ],
+      "fee_usdc": "0.001",
+      "durable_receipts": 1,
+      "actual_http_occurrences": 46,
+      "actual_fills": {
+        "io:SNDK:70001:1901": {
+          "coin": "io:SNDK",
+          "oid": 70001,
+          "tid": 1901,
+          "time": 1791552077741,
+          "is_buy": true,
+          "quantity": "0.12",
+          "price": "100",
+          "fee": "0.001",
+          "fee_token": "USDC",
+          "start_position": "0",
+          "closed_pnl": "0",
+          "hash": "0x000000000000000000000000000000000000000000000000000000000000076d",
+          "builder_fee": "0.0002"
+        }
+      }
+    },
+    {
+      "phase": "before_owned_submit",
+      "query_completed": 1,
+      "query_in_flight": false,
+      "recovery_complete": true,
+      "last_query_reused_prerequisite": true,
+      "execution_diagnostic": "Bounded live owned warm io recovery; historical coverage remains independent",
+      "trusted": true,
+      "flat": false,
+      "financial_received_ms": 1791552077809,
+      "prerequisite": {
+        "schema_version": 1,
+        "account_id": "HYPERLIQUID-ENTROPY",
+        "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "policy": {
+          "schema_version": 1,
+          "strategy_id": "ENTROPY-001",
+          "journal_path": "C:\\Users\\myron\\AppData\\Local\\Temp\\.tmp9PYjaA\\io-intents.jsonl",
+          "max_order_notional": "100",
+          "max_gross_notional": "200",
+          "max_open_orders": 2,
+          "max_actions": 16,
+          "max_leverage": 1,
+          "margin_buffer": "5",
+          "fee_buffer_bps": "10",
+          "action_timeout_ms": 2000,
+          "recovery_timeout_ms": 3000,
+          "recovery_max_attempts": 2,
+          "recovery_retry_delay_ms": 10,
+          "metadata_max_age_ms": 30000,
+          "symbols": [
+            {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "max_quantity": "1",
+              "min_price": "95",
+              "max_price": "105"
+            }
+          ]
+        },
+        "generation": 1,
+        "epoch": 0,
+        "received_sequence": 6,
+        "hard_revision": 1,
+        "verification_started_ms": 1791552077630,
+        "verification_finished_ms": 1791552077631,
+        "effective_expires_ms": 1791552079630,
+        "maximum_age_ms": 2000,
+        "http_source_time_ms": 1791552077631,
+        "http_received_time_ms": 1791552077631,
+        "metadata": {
+          "universe": [
+            {
+              "name": "io:SNDK",
+              "szDecimals": 4,
+              "maxLeverage": 10,
+              "onlyIsolated": true,
+              "marginMode": "strictIsolated"
+            }
+          ],
+          "collateralToken": 0
+        },
+        "spot_metadata": {
+          "universe": [],
+          "tokens": [
+            {
+              "name": "USDC",
+              "index": 0,
+              "szDecimals": 8,
+              "weiDecimals": 8,
+              "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+              "isCanonical": true,
+              "fullName": "USD Coin"
+            }
+          ]
+        },
+        "native_http": {
+          "io:SNDK-USD-PERP.HYPERLIQUID": {
+            "CryptoPerpetual": {
+              "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "raw_symbol": "io:SNDK",
+              "base_currency": "io:SNDK",
+              "quote_currency": "USD",
+              "settlement_currency": "USDC",
+              "is_inverse": false,
+              "price_precision": 2,
+              "size_precision": 4,
+              "price_increment": "0.01",
+              "size_increment": "0.0001",
+              "multiplier": "1",
+              "lot_size": "1",
+              "margin_init": "0",
+              "margin_maint": "0",
+              "maker_fee": "0",
+              "taker_fee": "0",
+              "max_quantity": null,
+              "min_quantity": null,
+              "max_notional": null,
+              "min_notional": "10.00 USD",
+              "max_price": null,
+              "min_price": null,
+              "tick_scheme": null,
+              "info": null,
+              "ts_event": 1791552077600342500,
+              "ts_init": 1791552077600342500
+            }
+          }
+        },
+        "metadata_context": {
+          "metadata": {
+            "io:SNDK-USD-PERP.HYPERLIQUID": {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "coin": "io:SNDK",
+              "asset": 110000,
+              "dex_index": 1,
+              "universe_index": 0,
+              "size_decimals": 4,
+              "margin_mode": "strictIsolated",
+              "actual_leverage": 1,
+              "received_ms": 1791552077630,
+              "verification_started_ms": 1791552077628,
+              "user_asset_source_time_ms": null,
+              "max_trade_sizes": [
+                "1",
+                "1"
+              ],
+              "available_to_trade": [
+                "100",
+                "100"
+              ],
+              "mark_price": "100"
+            }
+          },
+          "origin": {
+            "generation": 1,
+            "epoch": 0,
+            "hard_revision": 1,
+            "selected_rows": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            },
+            "native_http": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "CryptoPerpetual": {
+                  "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                  "raw_symbol": "io:SNDK",
+                  "base_currency": "io:SNDK",
+                  "quote_currency": "USD",
+                  "settlement_currency": "USDC",
+                  "is_inverse": false,
+                  "price_precision": 2,
+                  "size_precision": 4,
+                  "price_increment": "0.01",
+                  "size_increment": "0.0001",
+                  "multiplier": "1",
+                  "lot_size": "1",
+                  "margin_init": "0",
+                  "margin_maint": "0",
+                  "maker_fee": "0",
+                  "taker_fee": "0",
+                  "max_quantity": null,
+                  "min_quantity": null,
+                  "max_notional": null,
+                  "min_notional": "10.00 USD",
+                  "max_price": null,
+                  "min_price": null,
+                  "tick_scheme": null,
+                  "info": null,
+                  "ts_event": 1791552077600342500,
+                  "ts_init": 1791552077600342500
+                }
+              }
+            },
+            "native_instruments": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": [
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077600342500,
+                    "ts_init": 1791552077600342500
+                  }
+                },
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077584660500,
+                    "ts_init": 1791552077584660500
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "account_source_start": 0,
+        "sources": {
+          "original_sources": [
+            {
+              "request_json": "{\"type\":\"userRole\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"role\":\"user\"}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "false"
+            },
+            {
+              "request_json": "{\"type\":\"meta\",\"dex\":\"io\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[{\"name\":\"io:SNDK\",\"szDecimals\":4,\"maxLeverage\":10,\"onlyIsolated\":true,\"marginMode\":\"strictIsolated\"}],\"collateralToken\":0}"
+            },
+            {
+              "request_json": "{\"type\":\"spotMeta\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[],\"tokens\":[{\"name\":\"USDC\",\"index\":0,\"szDecimals\":8,\"weiDecimals\":8,\"tokenId\":\"0x6d1e7cde53ba9467b783cb7c530ce054\",\"isCanonical\":true,\"fullName\":\"USD Coin\"}]}"
+            },
+            {
+              "request_json": "{\"type\":\"clearinghouseState\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "{\"marginSummary\":{\"accountValue\":\"100\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"100\",\"totalMarginUsed\":\"0\"},\"crossMarginSummary\":{\"accountValue\":\"0\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"0\",\"totalMarginUsed\":\"0\"},\"crossMaintenanceMarginUsed\":\"0\",\"withdrawable\":\"100\",\"assetPositions\":[],\"time\":1791552077631}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "false"
+            }
+          ],
+          "unavailable_sources": []
+        }
+      },
+      "tainted": false,
+      "economic_diagnostic": "Bounded economic report only; no native cache application proof",
+      "revision": 8,
+      "coverage": [
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userFunding",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userNonFundingLedgerUpdates",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userFunding",
+          "start_ms": 1791552077634,
+          "end_ms": 1791552077820,
+          "pages": 0,
+          "records": 0,
+          "complete": false,
+          "diagnostic": "Current interval was not requested by warm account recovery; coverage Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userNonFundingLedgerUpdates",
+          "start_ms": 1791552077634,
+          "end_ms": 1791552077820,
+          "pages": 0,
+          "records": 0,
+          "complete": false,
+          "diagnostic": "Current interval was not requested by warm account recovery; coverage Unknown"
+        }
+      ],
+      "fee_usdc": "0.001",
+      "durable_receipts": 1,
+      "actual_http_occurrences": 46,
+      "actual_fills": {
+        "io:SNDK:70001:1901": {
+          "coin": "io:SNDK",
+          "oid": 70001,
+          "tid": 1901,
+          "time": 1791552077741,
+          "is_buy": true,
+          "quantity": "0.12",
+          "price": "100",
+          "fee": "0.001",
+          "fee_token": "USDC",
+          "start_position": "0",
+          "closed_pnl": "0",
+          "hash": "0x000000000000000000000000000000000000000000000000000000000000076d",
+          "builder_fee": "0.0002"
+        }
+      }
+    },
+    {
+      "phase": "aggregate_ack_without_trade",
+      "query_completed": 1,
+      "query_in_flight": false,
+      "recovery_complete": false,
+      "last_query_reused_prerequisite": true,
+      "execution_diagnostic": "io RecoveryIncomplete: Verified owned filled marker awaits complete actual fills",
+      "trusted": true,
+      "flat": false,
+      "financial_received_ms": 1791552077809,
+      "prerequisite": {
+        "schema_version": 1,
+        "account_id": "HYPERLIQUID-ENTROPY",
+        "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "policy": {
+          "schema_version": 1,
+          "strategy_id": "ENTROPY-001",
+          "journal_path": "C:\\Users\\myron\\AppData\\Local\\Temp\\.tmp9PYjaA\\io-intents.jsonl",
+          "max_order_notional": "100",
+          "max_gross_notional": "200",
+          "max_open_orders": 2,
+          "max_actions": 16,
+          "max_leverage": 1,
+          "margin_buffer": "5",
+          "fee_buffer_bps": "10",
+          "action_timeout_ms": 2000,
+          "recovery_timeout_ms": 3000,
+          "recovery_max_attempts": 2,
+          "recovery_retry_delay_ms": 10,
+          "metadata_max_age_ms": 30000,
+          "symbols": [
+            {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "max_quantity": "1",
+              "min_price": "95",
+              "max_price": "105"
+            }
+          ]
+        },
+        "generation": 1,
+        "epoch": 0,
+        "received_sequence": 6,
+        "hard_revision": 1,
+        "verification_started_ms": 1791552077630,
+        "verification_finished_ms": 1791552077631,
+        "effective_expires_ms": 1791552079630,
+        "maximum_age_ms": 2000,
+        "http_source_time_ms": 1791552077631,
+        "http_received_time_ms": 1791552077631,
+        "metadata": {
+          "universe": [
+            {
+              "name": "io:SNDK",
+              "szDecimals": 4,
+              "maxLeverage": 10,
+              "onlyIsolated": true,
+              "marginMode": "strictIsolated"
+            }
+          ],
+          "collateralToken": 0
+        },
+        "spot_metadata": {
+          "universe": [],
+          "tokens": [
+            {
+              "name": "USDC",
+              "index": 0,
+              "szDecimals": 8,
+              "weiDecimals": 8,
+              "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+              "isCanonical": true,
+              "fullName": "USD Coin"
+            }
+          ]
+        },
+        "native_http": {
+          "io:SNDK-USD-PERP.HYPERLIQUID": {
+            "CryptoPerpetual": {
+              "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "raw_symbol": "io:SNDK",
+              "base_currency": "io:SNDK",
+              "quote_currency": "USD",
+              "settlement_currency": "USDC",
+              "is_inverse": false,
+              "price_precision": 2,
+              "size_precision": 4,
+              "price_increment": "0.01",
+              "size_increment": "0.0001",
+              "multiplier": "1",
+              "lot_size": "1",
+              "margin_init": "0",
+              "margin_maint": "0",
+              "maker_fee": "0",
+              "taker_fee": "0",
+              "max_quantity": null,
+              "min_quantity": null,
+              "max_notional": null,
+              "min_notional": "10.00 USD",
+              "max_price": null,
+              "min_price": null,
+              "tick_scheme": null,
+              "info": null,
+              "ts_event": 1791552077600342500,
+              "ts_init": 1791552077600342500
+            }
+          }
+        },
+        "metadata_context": {
+          "metadata": {
+            "io:SNDK-USD-PERP.HYPERLIQUID": {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "coin": "io:SNDK",
+              "asset": 110000,
+              "dex_index": 1,
+              "universe_index": 0,
+              "size_decimals": 4,
+              "margin_mode": "strictIsolated",
+              "actual_leverage": 1,
+              "received_ms": 1791552077630,
+              "verification_started_ms": 1791552077628,
+              "user_asset_source_time_ms": null,
+              "max_trade_sizes": [
+                "1",
+                "1"
+              ],
+              "available_to_trade": [
+                "100",
+                "100"
+              ],
+              "mark_price": "100"
+            }
+          },
+          "origin": {
+            "generation": 1,
+            "epoch": 0,
+            "hard_revision": 1,
+            "selected_rows": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            },
+            "native_http": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "CryptoPerpetual": {
+                  "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                  "raw_symbol": "io:SNDK",
+                  "base_currency": "io:SNDK",
+                  "quote_currency": "USD",
+                  "settlement_currency": "USDC",
+                  "is_inverse": false,
+                  "price_precision": 2,
+                  "size_precision": 4,
+                  "price_increment": "0.01",
+                  "size_increment": "0.0001",
+                  "multiplier": "1",
+                  "lot_size": "1",
+                  "margin_init": "0",
+                  "margin_maint": "0",
+                  "maker_fee": "0",
+                  "taker_fee": "0",
+                  "max_quantity": null,
+                  "min_quantity": null,
+                  "max_notional": null,
+                  "min_notional": "10.00 USD",
+                  "max_price": null,
+                  "min_price": null,
+                  "tick_scheme": null,
+                  "info": null,
+                  "ts_event": 1791552077600342500,
+                  "ts_init": 1791552077600342500
+                }
+              }
+            },
+            "native_instruments": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": [
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077600342500,
+                    "ts_init": 1791552077600342500
+                  }
+                },
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077584660500,
+                    "ts_init": 1791552077584660500
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "account_source_start": 0,
+        "sources": {
+          "original_sources": [
+            {
+              "request_json": "{\"type\":\"userRole\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"role\":\"user\"}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "false"
+            },
+            {
+              "request_json": "{\"type\":\"meta\",\"dex\":\"io\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[{\"name\":\"io:SNDK\",\"szDecimals\":4,\"maxLeverage\":10,\"onlyIsolated\":true,\"marginMode\":\"strictIsolated\"}],\"collateralToken\":0}"
+            },
+            {
+              "request_json": "{\"type\":\"spotMeta\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[],\"tokens\":[{\"name\":\"USDC\",\"index\":0,\"szDecimals\":8,\"weiDecimals\":8,\"tokenId\":\"0x6d1e7cde53ba9467b783cb7c530ce054\",\"isCanonical\":true,\"fullName\":\"USD Coin\"}]}"
+            },
+            {
+              "request_json": "{\"type\":\"clearinghouseState\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "{\"marginSummary\":{\"accountValue\":\"100\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"100\",\"totalMarginUsed\":\"0\"},\"crossMarginSummary\":{\"accountValue\":\"0\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"0\",\"totalMarginUsed\":\"0\"},\"crossMaintenanceMarginUsed\":\"0\",\"withdrawable\":\"100\",\"assetPositions\":[],\"time\":1791552077631}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "false"
+            }
+          ],
+          "unavailable_sources": []
+        }
+      },
+      "tainted": false,
+      "economic_diagnostic": "Bounded economic report only; no native cache application proof",
+      "revision": 8,
+      "coverage": [
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userFunding",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userNonFundingLedgerUpdates",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userFunding",
+          "start_ms": 1791552077634,
+          "end_ms": 1791552077820,
+          "pages": 0,
+          "records": 0,
+          "complete": false,
+          "diagnostic": "Current interval was not requested by warm account recovery; coverage Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userNonFundingLedgerUpdates",
+          "start_ms": 1791552077634,
+          "end_ms": 1791552077820,
+          "pages": 0,
+          "records": 0,
+          "complete": false,
+          "diagnostic": "Current interval was not requested by warm account recovery; coverage Unknown"
+        }
+      ],
+      "fee_usdc": "0.001",
+      "durable_receipts": 1,
+      "actual_http_occurrences": 52,
+      "actual_fills": {
+        "io:SNDK:70001:1901": {
+          "coin": "io:SNDK",
+          "oid": 70001,
+          "tid": 1901,
+          "time": 1791552077741,
+          "is_buy": true,
+          "quantity": "0.12",
+          "price": "100",
+          "fee": "0.001",
+          "fee_token": "USDC",
+          "start_position": "0",
+          "closed_pnl": "0",
+          "hash": "0x000000000000000000000000000000000000000000000000000000000000076d",
+          "builder_fee": "0.0002"
+        }
+      }
+    },
+    {
+      "phase": "actual_owned_trade_consumed",
+      "query_completed": 1,
+      "query_in_flight": false,
+      "recovery_complete": false,
+      "last_query_reused_prerequisite": true,
+      "execution_diagnostic": "Actual io fill requires new complete scoped account absorption",
+      "trusted": false,
+      "flat": null,
+      "financial_received_ms": 1791552077809,
+      "prerequisite": {
+        "schema_version": 1,
+        "account_id": "HYPERLIQUID-ENTROPY",
+        "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "policy": {
+          "schema_version": 1,
+          "strategy_id": "ENTROPY-001",
+          "journal_path": "C:\\Users\\myron\\AppData\\Local\\Temp\\.tmp9PYjaA\\io-intents.jsonl",
+          "max_order_notional": "100",
+          "max_gross_notional": "200",
+          "max_open_orders": 2,
+          "max_actions": 16,
+          "max_leverage": 1,
+          "margin_buffer": "5",
+          "fee_buffer_bps": "10",
+          "action_timeout_ms": 2000,
+          "recovery_timeout_ms": 3000,
+          "recovery_max_attempts": 2,
+          "recovery_retry_delay_ms": 10,
+          "metadata_max_age_ms": 30000,
+          "symbols": [
+            {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "max_quantity": "1",
+              "min_price": "95",
+              "max_price": "105"
+            }
+          ]
+        },
+        "generation": 1,
+        "epoch": 0,
+        "received_sequence": 6,
+        "hard_revision": 1,
+        "verification_started_ms": 1791552077630,
+        "verification_finished_ms": 1791552077631,
+        "effective_expires_ms": 1791552079630,
+        "maximum_age_ms": 2000,
+        "http_source_time_ms": 1791552077631,
+        "http_received_time_ms": 1791552077631,
+        "metadata": {
+          "universe": [
+            {
+              "name": "io:SNDK",
+              "szDecimals": 4,
+              "maxLeverage": 10,
+              "onlyIsolated": true,
+              "marginMode": "strictIsolated"
+            }
+          ],
+          "collateralToken": 0
+        },
+        "spot_metadata": {
+          "universe": [],
+          "tokens": [
+            {
+              "name": "USDC",
+              "index": 0,
+              "szDecimals": 8,
+              "weiDecimals": 8,
+              "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+              "isCanonical": true,
+              "fullName": "USD Coin"
+            }
+          ]
+        },
+        "native_http": {
+          "io:SNDK-USD-PERP.HYPERLIQUID": {
+            "CryptoPerpetual": {
+              "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "raw_symbol": "io:SNDK",
+              "base_currency": "io:SNDK",
+              "quote_currency": "USD",
+              "settlement_currency": "USDC",
+              "is_inverse": false,
+              "price_precision": 2,
+              "size_precision": 4,
+              "price_increment": "0.01",
+              "size_increment": "0.0001",
+              "multiplier": "1",
+              "lot_size": "1",
+              "margin_init": "0",
+              "margin_maint": "0",
+              "maker_fee": "0",
+              "taker_fee": "0",
+              "max_quantity": null,
+              "min_quantity": null,
+              "max_notional": null,
+              "min_notional": "10.00 USD",
+              "max_price": null,
+              "min_price": null,
+              "tick_scheme": null,
+              "info": null,
+              "ts_event": 1791552077600342500,
+              "ts_init": 1791552077600342500
+            }
+          }
+        },
+        "metadata_context": {
+          "metadata": {
+            "io:SNDK-USD-PERP.HYPERLIQUID": {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "coin": "io:SNDK",
+              "asset": 110000,
+              "dex_index": 1,
+              "universe_index": 0,
+              "size_decimals": 4,
+              "margin_mode": "strictIsolated",
+              "actual_leverage": 1,
+              "received_ms": 1791552077630,
+              "verification_started_ms": 1791552077628,
+              "user_asset_source_time_ms": null,
+              "max_trade_sizes": [
+                "1",
+                "1"
+              ],
+              "available_to_trade": [
+                "100",
+                "100"
+              ],
+              "mark_price": "100"
+            }
+          },
+          "origin": {
+            "generation": 1,
+            "epoch": 0,
+            "hard_revision": 1,
+            "selected_rows": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            },
+            "native_http": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "CryptoPerpetual": {
+                  "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                  "raw_symbol": "io:SNDK",
+                  "base_currency": "io:SNDK",
+                  "quote_currency": "USD",
+                  "settlement_currency": "USDC",
+                  "is_inverse": false,
+                  "price_precision": 2,
+                  "size_precision": 4,
+                  "price_increment": "0.01",
+                  "size_increment": "0.0001",
+                  "multiplier": "1",
+                  "lot_size": "1",
+                  "margin_init": "0",
+                  "margin_maint": "0",
+                  "maker_fee": "0",
+                  "taker_fee": "0",
+                  "max_quantity": null,
+                  "min_quantity": null,
+                  "max_notional": null,
+                  "min_notional": "10.00 USD",
+                  "max_price": null,
+                  "min_price": null,
+                  "tick_scheme": null,
+                  "info": null,
+                  "ts_event": 1791552077600342500,
+                  "ts_init": 1791552077600342500
+                }
+              }
+            },
+            "native_instruments": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": [
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077600342500,
+                    "ts_init": 1791552077600342500
+                  }
+                },
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077584660500,
+                    "ts_init": 1791552077584660500
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "account_source_start": 0,
+        "sources": {
+          "original_sources": [
+            {
+              "request_json": "{\"type\":\"userRole\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"role\":\"user\"}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "false"
+            },
+            {
+              "request_json": "{\"type\":\"meta\",\"dex\":\"io\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[{\"name\":\"io:SNDK\",\"szDecimals\":4,\"maxLeverage\":10,\"onlyIsolated\":true,\"marginMode\":\"strictIsolated\"}],\"collateralToken\":0}"
+            },
+            {
+              "request_json": "{\"type\":\"spotMeta\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[],\"tokens\":[{\"name\":\"USDC\",\"index\":0,\"szDecimals\":8,\"weiDecimals\":8,\"tokenId\":\"0x6d1e7cde53ba9467b783cb7c530ce054\",\"isCanonical\":true,\"fullName\":\"USD Coin\"}]}"
+            },
+            {
+              "request_json": "{\"type\":\"clearinghouseState\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "{\"marginSummary\":{\"accountValue\":\"100\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"100\",\"totalMarginUsed\":\"0\"},\"crossMarginSummary\":{\"accountValue\":\"0\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"0\",\"totalMarginUsed\":\"0\"},\"crossMaintenanceMarginUsed\":\"0\",\"withdrawable\":\"100\",\"assetPositions\":[],\"time\":1791552077631}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "false"
+            }
+          ],
+          "unavailable_sources": []
+        }
+      },
+      "tainted": false,
+      "economic_diagnostic": "Bounded economic report only; no native cache application proof",
+      "revision": 10,
+      "coverage": [
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userFunding",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userNonFundingLedgerUpdates",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userFunding",
+          "start_ms": 1791552077634,
+          "end_ms": 1791552077820,
+          "pages": 0,
+          "records": 0,
+          "complete": false,
+          "diagnostic": "Current interval was not requested by warm account recovery; coverage Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userNonFundingLedgerUpdates",
+          "start_ms": 1791552077634,
+          "end_ms": 1791552077820,
+          "pages": 0,
+          "records": 0,
+          "complete": false,
+          "diagnostic": "Current interval was not requested by warm account recovery; coverage Unknown"
+        }
+      ],
+      "fee_usdc": "0.001",
+      "durable_receipts": 1,
+      "actual_http_occurrences": 52,
+      "actual_fills": {
+        "io:SNDK:70001:1901": {
+          "coin": "io:SNDK",
+          "oid": 70001,
+          "tid": 1901,
+          "time": 1791552077741,
+          "is_buy": true,
+          "quantity": "0.12",
+          "price": "100",
+          "fee": "0.001",
+          "fee_token": "USDC",
+          "start_position": "0",
+          "closed_pnl": "0",
+          "hash": "0x000000000000000000000000000000000000000000000000000000000000076d",
+          "builder_fee": "0.0002"
+        },
+        "io:SNDK:70002:1902": {
+          "coin": "io:SNDK",
+          "oid": 70002,
+          "tid": 1902,
+          "time": 1791552077962,
+          "is_buy": false,
+          "quantity": "0.12",
+          "price": "99",
+          "fee": "0.001",
+          "fee_token": "USDC",
+          "start_position": "0.12",
+          "closed_pnl": "0",
+          "hash": "0x000000000000000000000000000000000000000000000000000000000000076e",
+          "builder_fee": "0.0002"
+        }
+      }
+    },
+    {
+      "phase": "before_normal_warm_query",
+      "query_completed": 1,
+      "query_in_flight": false,
+      "recovery_complete": false,
+      "last_query_reused_prerequisite": true,
+      "execution_diagnostic": "Actual io fill requires new complete scoped account absorption",
+      "trusted": false,
+      "flat": null,
+      "financial_received_ms": 1791552077809,
+      "prerequisite": {
+        "schema_version": 1,
+        "account_id": "HYPERLIQUID-ENTROPY",
+        "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "policy": {
+          "schema_version": 1,
+          "strategy_id": "ENTROPY-001",
+          "journal_path": "C:\\Users\\myron\\AppData\\Local\\Temp\\.tmp9PYjaA\\io-intents.jsonl",
+          "max_order_notional": "100",
+          "max_gross_notional": "200",
+          "max_open_orders": 2,
+          "max_actions": 16,
+          "max_leverage": 1,
+          "margin_buffer": "5",
+          "fee_buffer_bps": "10",
+          "action_timeout_ms": 2000,
+          "recovery_timeout_ms": 3000,
+          "recovery_max_attempts": 2,
+          "recovery_retry_delay_ms": 10,
+          "metadata_max_age_ms": 30000,
+          "symbols": [
+            {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "max_quantity": "1",
+              "min_price": "95",
+              "max_price": "105"
+            }
+          ]
+        },
+        "generation": 1,
+        "epoch": 0,
+        "received_sequence": 6,
+        "hard_revision": 1,
+        "verification_started_ms": 1791552077630,
+        "verification_finished_ms": 1791552077631,
+        "effective_expires_ms": 1791552079630,
+        "maximum_age_ms": 2000,
+        "http_source_time_ms": 1791552077631,
+        "http_received_time_ms": 1791552077631,
+        "metadata": {
+          "universe": [
+            {
+              "name": "io:SNDK",
+              "szDecimals": 4,
+              "maxLeverage": 10,
+              "onlyIsolated": true,
+              "marginMode": "strictIsolated"
+            }
+          ],
+          "collateralToken": 0
+        },
+        "spot_metadata": {
+          "universe": [],
+          "tokens": [
+            {
+              "name": "USDC",
+              "index": 0,
+              "szDecimals": 8,
+              "weiDecimals": 8,
+              "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+              "isCanonical": true,
+              "fullName": "USD Coin"
+            }
+          ]
+        },
+        "native_http": {
+          "io:SNDK-USD-PERP.HYPERLIQUID": {
+            "CryptoPerpetual": {
+              "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "raw_symbol": "io:SNDK",
+              "base_currency": "io:SNDK",
+              "quote_currency": "USD",
+              "settlement_currency": "USDC",
+              "is_inverse": false,
+              "price_precision": 2,
+              "size_precision": 4,
+              "price_increment": "0.01",
+              "size_increment": "0.0001",
+              "multiplier": "1",
+              "lot_size": "1",
+              "margin_init": "0",
+              "margin_maint": "0",
+              "maker_fee": "0",
+              "taker_fee": "0",
+              "max_quantity": null,
+              "min_quantity": null,
+              "max_notional": null,
+              "min_notional": "10.00 USD",
+              "max_price": null,
+              "min_price": null,
+              "tick_scheme": null,
+              "info": null,
+              "ts_event": 1791552077600342500,
+              "ts_init": 1791552077600342500
+            }
+          }
+        },
+        "metadata_context": {
+          "metadata": {
+            "io:SNDK-USD-PERP.HYPERLIQUID": {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "coin": "io:SNDK",
+              "asset": 110000,
+              "dex_index": 1,
+              "universe_index": 0,
+              "size_decimals": 4,
+              "margin_mode": "strictIsolated",
+              "actual_leverage": 1,
+              "received_ms": 1791552077630,
+              "verification_started_ms": 1791552077628,
+              "user_asset_source_time_ms": null,
+              "max_trade_sizes": [
+                "1",
+                "1"
+              ],
+              "available_to_trade": [
+                "100",
+                "100"
+              ],
+              "mark_price": "100"
+            }
+          },
+          "origin": {
+            "generation": 1,
+            "epoch": 0,
+            "hard_revision": 1,
+            "selected_rows": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            },
+            "native_http": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "CryptoPerpetual": {
+                  "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                  "raw_symbol": "io:SNDK",
+                  "base_currency": "io:SNDK",
+                  "quote_currency": "USD",
+                  "settlement_currency": "USDC",
+                  "is_inverse": false,
+                  "price_precision": 2,
+                  "size_precision": 4,
+                  "price_increment": "0.01",
+                  "size_increment": "0.0001",
+                  "multiplier": "1",
+                  "lot_size": "1",
+                  "margin_init": "0",
+                  "margin_maint": "0",
+                  "maker_fee": "0",
+                  "taker_fee": "0",
+                  "max_quantity": null,
+                  "min_quantity": null,
+                  "max_notional": null,
+                  "min_notional": "10.00 USD",
+                  "max_price": null,
+                  "min_price": null,
+                  "tick_scheme": null,
+                  "info": null,
+                  "ts_event": 1791552077600342500,
+                  "ts_init": 1791552077600342500
+                }
+              }
+            },
+            "native_instruments": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": [
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077600342500,
+                    "ts_init": 1791552077600342500
+                  }
+                },
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077584660500,
+                    "ts_init": 1791552077584660500
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "account_source_start": 0,
+        "sources": {
+          "original_sources": [
+            {
+              "request_json": "{\"type\":\"userRole\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"role\":\"user\"}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "false"
+            },
+            {
+              "request_json": "{\"type\":\"meta\",\"dex\":\"io\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[{\"name\":\"io:SNDK\",\"szDecimals\":4,\"maxLeverage\":10,\"onlyIsolated\":true,\"marginMode\":\"strictIsolated\"}],\"collateralToken\":0}"
+            },
+            {
+              "request_json": "{\"type\":\"spotMeta\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[],\"tokens\":[{\"name\":\"USDC\",\"index\":0,\"szDecimals\":8,\"weiDecimals\":8,\"tokenId\":\"0x6d1e7cde53ba9467b783cb7c530ce054\",\"isCanonical\":true,\"fullName\":\"USD Coin\"}]}"
+            },
+            {
+              "request_json": "{\"type\":\"clearinghouseState\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "{\"marginSummary\":{\"accountValue\":\"100\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"100\",\"totalMarginUsed\":\"0\"},\"crossMarginSummary\":{\"accountValue\":\"0\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"0\",\"totalMarginUsed\":\"0\"},\"crossMaintenanceMarginUsed\":\"0\",\"withdrawable\":\"100\",\"assetPositions\":[],\"time\":1791552077631}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "false"
+            }
+          ],
+          "unavailable_sources": []
+        }
+      },
+      "tainted": false,
+      "economic_diagnostic": "Bounded economic report only; no native cache application proof",
+      "revision": 11,
+      "coverage": [
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userFunding",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userNonFundingLedgerUpdates",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userFunding",
+          "start_ms": 1791552077634,
+          "end_ms": 1791552077820,
+          "pages": 0,
+          "records": 0,
+          "complete": false,
+          "diagnostic": "Current interval was not requested by warm account recovery; coverage Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userNonFundingLedgerUpdates",
+          "start_ms": 1791552077634,
+          "end_ms": 1791552077820,
+          "pages": 0,
+          "records": 0,
+          "complete": false,
+          "diagnostic": "Current interval was not requested by warm account recovery; coverage Unknown"
+        }
+      ],
+      "fee_usdc": "0.002",
+      "durable_receipts": 2,
+      "actual_http_occurrences": 52,
+      "actual_fills": {
+        "io:SNDK:70001:1901": {
+          "coin": "io:SNDK",
+          "oid": 70001,
+          "tid": 1901,
+          "time": 1791552077741,
+          "is_buy": true,
+          "quantity": "0.12",
+          "price": "100",
+          "fee": "0.001",
+          "fee_token": "USDC",
+          "start_position": "0",
+          "closed_pnl": "0",
+          "hash": "0x000000000000000000000000000000000000000000000000000000000000076d",
+          "builder_fee": "0.0002"
+        },
+        "io:SNDK:70002:1902": {
+          "coin": "io:SNDK",
+          "oid": 70002,
+          "tid": 1902,
+          "time": 1791552077962,
+          "is_buy": false,
+          "quantity": "0.12",
+          "price": "99",
+          "fee": "0.001",
+          "fee_token": "USDC",
+          "start_position": "0.12",
+          "closed_pnl": "0",
+          "hash": "0x000000000000000000000000000000000000000000000000000000000000076e",
+          "builder_fee": "0.0002"
+        }
+      }
+    },
+    {
+      "phase": "economic_callback_settle_outcome",
+      "query_completed": 2,
+      "query_in_flight": false,
+      "recovery_complete": false,
+      "last_query_reused_prerequisite": true,
+      "execution_diagnostic": "Economic unrequested coverage could not be preserved",
+      "trusted": true,
+      "flat": true,
+      "financial_received_ms": 1791552078040,
+      "prerequisite": {
+        "schema_version": 1,
+        "account_id": "HYPERLIQUID-ENTROPY",
+        "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "policy": {
+          "schema_version": 1,
+          "strategy_id": "ENTROPY-001",
+          "journal_path": "C:\\Users\\myron\\AppData\\Local\\Temp\\.tmp9PYjaA\\io-intents.jsonl",
+          "max_order_notional": "100",
+          "max_gross_notional": "200",
+          "max_open_orders": 2,
+          "max_actions": 16,
+          "max_leverage": 1,
+          "margin_buffer": "5",
+          "fee_buffer_bps": "10",
+          "action_timeout_ms": 2000,
+          "recovery_timeout_ms": 3000,
+          "recovery_max_attempts": 2,
+          "recovery_retry_delay_ms": 10,
+          "metadata_max_age_ms": 30000,
+          "symbols": [
+            {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "max_quantity": "1",
+              "min_price": "95",
+              "max_price": "105"
+            }
+          ]
+        },
+        "generation": 1,
+        "epoch": 0,
+        "received_sequence": 6,
+        "hard_revision": 1,
+        "verification_started_ms": 1791552077630,
+        "verification_finished_ms": 1791552077631,
+        "effective_expires_ms": 1791552079630,
+        "maximum_age_ms": 2000,
+        "http_source_time_ms": 1791552077631,
+        "http_received_time_ms": 1791552077631,
+        "metadata": {
+          "universe": [
+            {
+              "name": "io:SNDK",
+              "szDecimals": 4,
+              "maxLeverage": 10,
+              "onlyIsolated": true,
+              "marginMode": "strictIsolated"
+            }
+          ],
+          "collateralToken": 0
+        },
+        "spot_metadata": {
+          "universe": [],
+          "tokens": [
+            {
+              "name": "USDC",
+              "index": 0,
+              "szDecimals": 8,
+              "weiDecimals": 8,
+              "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+              "isCanonical": true,
+              "fullName": "USD Coin"
+            }
+          ]
+        },
+        "native_http": {
+          "io:SNDK-USD-PERP.HYPERLIQUID": {
+            "CryptoPerpetual": {
+              "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "raw_symbol": "io:SNDK",
+              "base_currency": "io:SNDK",
+              "quote_currency": "USD",
+              "settlement_currency": "USDC",
+              "is_inverse": false,
+              "price_precision": 2,
+              "size_precision": 4,
+              "price_increment": "0.01",
+              "size_increment": "0.0001",
+              "multiplier": "1",
+              "lot_size": "1",
+              "margin_init": "0",
+              "margin_maint": "0",
+              "maker_fee": "0",
+              "taker_fee": "0",
+              "max_quantity": null,
+              "min_quantity": null,
+              "max_notional": null,
+              "min_notional": "10.00 USD",
+              "max_price": null,
+              "min_price": null,
+              "tick_scheme": null,
+              "info": null,
+              "ts_event": 1791552077600342500,
+              "ts_init": 1791552077600342500
+            }
+          }
+        },
+        "metadata_context": {
+          "metadata": {
+            "io:SNDK-USD-PERP.HYPERLIQUID": {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "coin": "io:SNDK",
+              "asset": 110000,
+              "dex_index": 1,
+              "universe_index": 0,
+              "size_decimals": 4,
+              "margin_mode": "strictIsolated",
+              "actual_leverage": 1,
+              "received_ms": 1791552077630,
+              "verification_started_ms": 1791552077628,
+              "user_asset_source_time_ms": null,
+              "max_trade_sizes": [
+                "1",
+                "1"
+              ],
+              "available_to_trade": [
+                "100",
+                "100"
+              ],
+              "mark_price": "100"
+            }
+          },
+          "origin": {
+            "generation": 1,
+            "epoch": 0,
+            "hard_revision": 1,
+            "selected_rows": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            },
+            "native_http": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "CryptoPerpetual": {
+                  "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                  "raw_symbol": "io:SNDK",
+                  "base_currency": "io:SNDK",
+                  "quote_currency": "USD",
+                  "settlement_currency": "USDC",
+                  "is_inverse": false,
+                  "price_precision": 2,
+                  "size_precision": 4,
+                  "price_increment": "0.01",
+                  "size_increment": "0.0001",
+                  "multiplier": "1",
+                  "lot_size": "1",
+                  "margin_init": "0",
+                  "margin_maint": "0",
+                  "maker_fee": "0",
+                  "taker_fee": "0",
+                  "max_quantity": null,
+                  "min_quantity": null,
+                  "max_notional": null,
+                  "min_notional": "10.00 USD",
+                  "max_price": null,
+                  "min_price": null,
+                  "tick_scheme": null,
+                  "info": null,
+                  "ts_event": 1791552077600342500,
+                  "ts_init": 1791552077600342500
+                }
+              }
+            },
+            "native_instruments": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": [
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077600342500,
+                    "ts_init": 1791552077600342500
+                  }
+                },
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077584660500,
+                    "ts_init": 1791552077584660500
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "account_source_start": 0,
+        "sources": {
+          "original_sources": [
+            {
+              "request_json": "{\"type\":\"userRole\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"role\":\"user\"}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "false"
+            },
+            {
+              "request_json": "{\"type\":\"meta\",\"dex\":\"io\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[{\"name\":\"io:SNDK\",\"szDecimals\":4,\"maxLeverage\":10,\"onlyIsolated\":true,\"marginMode\":\"strictIsolated\"}],\"collateralToken\":0}"
+            },
+            {
+              "request_json": "{\"type\":\"spotMeta\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[],\"tokens\":[{\"name\":\"USDC\",\"index\":0,\"szDecimals\":8,\"weiDecimals\":8,\"tokenId\":\"0x6d1e7cde53ba9467b783cb7c530ce054\",\"isCanonical\":true,\"fullName\":\"USD Coin\"}]}"
+            },
+            {
+              "request_json": "{\"type\":\"clearinghouseState\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "{\"marginSummary\":{\"accountValue\":\"100\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"100\",\"totalMarginUsed\":\"0\"},\"crossMarginSummary\":{\"accountValue\":\"0\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"0\",\"totalMarginUsed\":\"0\"},\"crossMaintenanceMarginUsed\":\"0\",\"withdrawable\":\"100\",\"assetPositions\":[],\"time\":1791552077631}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "false"
+            }
+          ],
+          "unavailable_sources": []
+        }
+      },
+      "tainted": true,
+      "economic_diagnostic": "io economic persistence failed: Economic source/consumer state regression",
+      "revision": 11,
+      "coverage": [
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userFunding",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userNonFundingLedgerUpdates",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userFunding",
+          "start_ms": 1791552077634,
+          "end_ms": 1791552077820,
+          "pages": 0,
+          "records": 0,
+          "complete": false,
+          "diagnostic": "Current interval was not requested by warm account recovery; coverage Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userNonFundingLedgerUpdates",
+          "start_ms": 1791552077634,
+          "end_ms": 1791552077820,
+          "pages": 0,
+          "records": 0,
+          "complete": false,
+          "diagnostic": "Current interval was not requested by warm account recovery; coverage Unknown"
+        }
+      ],
+      "fee_usdc": "0.002",
+      "durable_receipts": 2,
+      "actual_http_occurrences": 58,
+      "actual_fills": {
+        "io:SNDK:70001:1901": {
+          "coin": "io:SNDK",
+          "oid": 70001,
+          "tid": 1901,
+          "time": 1791552077741,
+          "is_buy": true,
+          "quantity": "0.12",
+          "price": "100",
+          "fee": "0.001",
+          "fee_token": "USDC",
+          "start_position": "0",
+          "closed_pnl": "0",
+          "hash": "0x000000000000000000000000000000000000000000000000000000000000076d",
+          "builder_fee": "0.0002"
+        },
+        "io:SNDK:70002:1902": {
+          "coin": "io:SNDK",
+          "oid": 70002,
+          "tid": 1902,
+          "time": 1791552077962,
+          "is_buy": false,
+          "quantity": "0.12",
+          "price": "99",
+          "fee": "0.001",
+          "fee_token": "USDC",
+          "start_position": "0.12",
+          "closed_pnl": "0",
+          "hash": "0x000000000000000000000000000000000000000000000000000000000000076e",
+          "builder_fee": "0.0002"
+        }
+      }
+    },
+    {
+      "phase": "after_normal_warm_callback",
+      "query_completed": 2,
+      "query_in_flight": false,
+      "recovery_complete": false,
+      "last_query_reused_prerequisite": true,
+      "execution_diagnostic": "Economic unrequested coverage could not be preserved",
+      "trusted": true,
+      "flat": true,
+      "financial_received_ms": 1791552078040,
+      "prerequisite": {
+        "schema_version": 1,
+        "account_id": "HYPERLIQUID-ENTROPY",
+        "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "policy": {
+          "schema_version": 1,
+          "strategy_id": "ENTROPY-001",
+          "journal_path": "C:\\Users\\myron\\AppData\\Local\\Temp\\.tmp9PYjaA\\io-intents.jsonl",
+          "max_order_notional": "100",
+          "max_gross_notional": "200",
+          "max_open_orders": 2,
+          "max_actions": 16,
+          "max_leverage": 1,
+          "margin_buffer": "5",
+          "fee_buffer_bps": "10",
+          "action_timeout_ms": 2000,
+          "recovery_timeout_ms": 3000,
+          "recovery_max_attempts": 2,
+          "recovery_retry_delay_ms": 10,
+          "metadata_max_age_ms": 30000,
+          "symbols": [
+            {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "max_quantity": "1",
+              "min_price": "95",
+              "max_price": "105"
+            }
+          ]
+        },
+        "generation": 1,
+        "epoch": 0,
+        "received_sequence": 6,
+        "hard_revision": 1,
+        "verification_started_ms": 1791552077630,
+        "verification_finished_ms": 1791552077631,
+        "effective_expires_ms": 1791552079630,
+        "maximum_age_ms": 2000,
+        "http_source_time_ms": 1791552077631,
+        "http_received_time_ms": 1791552077631,
+        "metadata": {
+          "universe": [
+            {
+              "name": "io:SNDK",
+              "szDecimals": 4,
+              "maxLeverage": 10,
+              "onlyIsolated": true,
+              "marginMode": "strictIsolated"
+            }
+          ],
+          "collateralToken": 0
+        },
+        "spot_metadata": {
+          "universe": [],
+          "tokens": [
+            {
+              "name": "USDC",
+              "index": 0,
+              "szDecimals": 8,
+              "weiDecimals": 8,
+              "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+              "isCanonical": true,
+              "fullName": "USD Coin"
+            }
+          ]
+        },
+        "native_http": {
+          "io:SNDK-USD-PERP.HYPERLIQUID": {
+            "CryptoPerpetual": {
+              "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "raw_symbol": "io:SNDK",
+              "base_currency": "io:SNDK",
+              "quote_currency": "USD",
+              "settlement_currency": "USDC",
+              "is_inverse": false,
+              "price_precision": 2,
+              "size_precision": 4,
+              "price_increment": "0.01",
+              "size_increment": "0.0001",
+              "multiplier": "1",
+              "lot_size": "1",
+              "margin_init": "0",
+              "margin_maint": "0",
+              "maker_fee": "0",
+              "taker_fee": "0",
+              "max_quantity": null,
+              "min_quantity": null,
+              "max_notional": null,
+              "min_notional": "10.00 USD",
+              "max_price": null,
+              "min_price": null,
+              "tick_scheme": null,
+              "info": null,
+              "ts_event": 1791552077600342500,
+              "ts_init": 1791552077600342500
+            }
+          }
+        },
+        "metadata_context": {
+          "metadata": {
+            "io:SNDK-USD-PERP.HYPERLIQUID": {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "coin": "io:SNDK",
+              "asset": 110000,
+              "dex_index": 1,
+              "universe_index": 0,
+              "size_decimals": 4,
+              "margin_mode": "strictIsolated",
+              "actual_leverage": 1,
+              "received_ms": 1791552077630,
+              "verification_started_ms": 1791552077628,
+              "user_asset_source_time_ms": null,
+              "max_trade_sizes": [
+                "1",
+                "1"
+              ],
+              "available_to_trade": [
+                "100",
+                "100"
+              ],
+              "mark_price": "100"
+            }
+          },
+          "origin": {
+            "generation": 1,
+            "epoch": 0,
+            "hard_revision": 1,
+            "selected_rows": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            },
+            "native_http": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "CryptoPerpetual": {
+                  "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                  "raw_symbol": "io:SNDK",
+                  "base_currency": "io:SNDK",
+                  "quote_currency": "USD",
+                  "settlement_currency": "USDC",
+                  "is_inverse": false,
+                  "price_precision": 2,
+                  "size_precision": 4,
+                  "price_increment": "0.01",
+                  "size_increment": "0.0001",
+                  "multiplier": "1",
+                  "lot_size": "1",
+                  "margin_init": "0",
+                  "margin_maint": "0",
+                  "maker_fee": "0",
+                  "taker_fee": "0",
+                  "max_quantity": null,
+                  "min_quantity": null,
+                  "max_notional": null,
+                  "min_notional": "10.00 USD",
+                  "max_price": null,
+                  "min_price": null,
+                  "tick_scheme": null,
+                  "info": null,
+                  "ts_event": 1791552077600342500,
+                  "ts_init": 1791552077600342500
+                }
+              }
+            },
+            "native_instruments": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": [
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077600342500,
+                    "ts_init": 1791552077600342500
+                  }
+                },
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077584660500,
+                    "ts_init": 1791552077584660500
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "account_source_start": 0,
+        "sources": {
+          "original_sources": [
+            {
+              "request_json": "{\"type\":\"userRole\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"role\":\"user\"}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "false"
+            },
+            {
+              "request_json": "{\"type\":\"meta\",\"dex\":\"io\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[{\"name\":\"io:SNDK\",\"szDecimals\":4,\"maxLeverage\":10,\"onlyIsolated\":true,\"marginMode\":\"strictIsolated\"}],\"collateralToken\":0}"
+            },
+            {
+              "request_json": "{\"type\":\"spotMeta\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[],\"tokens\":[{\"name\":\"USDC\",\"index\":0,\"szDecimals\":8,\"weiDecimals\":8,\"tokenId\":\"0x6d1e7cde53ba9467b783cb7c530ce054\",\"isCanonical\":true,\"fullName\":\"USD Coin\"}]}"
+            },
+            {
+              "request_json": "{\"type\":\"clearinghouseState\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "{\"marginSummary\":{\"accountValue\":\"100\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"100\",\"totalMarginUsed\":\"0\"},\"crossMarginSummary\":{\"accountValue\":\"0\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"0\",\"totalMarginUsed\":\"0\"},\"crossMaintenanceMarginUsed\":\"0\",\"withdrawable\":\"100\",\"assetPositions\":[],\"time\":1791552077631}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "false"
+            }
+          ],
+          "unavailable_sources": []
+        }
+      },
+      "tainted": true,
+      "economic_diagnostic": "io economic persistence failed: Economic source/consumer state regression",
+      "revision": 11,
+      "coverage": [
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userFunding",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userNonFundingLedgerUpdates",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userFunding",
+          "start_ms": 1791552077634,
+          "end_ms": 1791552077820,
+          "pages": 0,
+          "records": 0,
+          "complete": false,
+          "diagnostic": "Current interval was not requested by warm account recovery; coverage Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userNonFundingLedgerUpdates",
+          "start_ms": 1791552077634,
+          "end_ms": 1791552077820,
+          "pages": 0,
+          "records": 0,
+          "complete": false,
+          "diagnostic": "Current interval was not requested by warm account recovery; coverage Unknown"
+        }
+      ],
+      "fee_usdc": "0.002",
+      "durable_receipts": 2,
+      "actual_http_occurrences": 58,
+      "actual_fills": {
+        "io:SNDK:70001:1901": {
+          "coin": "io:SNDK",
+          "oid": 70001,
+          "tid": 1901,
+          "time": 1791552077741,
+          "is_buy": true,
+          "quantity": "0.12",
+          "price": "100",
+          "fee": "0.001",
+          "fee_token": "USDC",
+          "start_position": "0",
+          "closed_pnl": "0",
+          "hash": "0x000000000000000000000000000000000000000000000000000000000000076d",
+          "builder_fee": "0.0002"
+        },
+        "io:SNDK:70002:1902": {
+          "coin": "io:SNDK",
+          "oid": 70002,
+          "tid": 1902,
+          "time": 1791552077962,
+          "is_buy": false,
+          "quantity": "0.12",
+          "price": "99",
+          "fee": "0.001",
+          "fee_token": "USDC",
+          "start_position": "0.12",
+          "closed_pnl": "0",
+          "hash": "0x000000000000000000000000000000000000000000000000000000000000076e",
+          "builder_fee": "0.0002"
+        }
+      }
+    }
+  ],
+  "normal_settled_callbacks": [
+    {
+      "phase": "after_normal_warm_callback",
+      "query_completed": 1,
+      "query_in_flight": false,
+      "recovery_complete": true,
+      "last_query_reused_prerequisite": true,
+      "execution_diagnostic": "Bounded live owned warm io recovery; historical coverage remains independent",
+      "trusted": true,
+      "flat": false,
+      "financial_received_ms": 1791552077809,
+      "prerequisite": {
+        "schema_version": 1,
+        "account_id": "HYPERLIQUID-ENTROPY",
+        "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "policy": {
+          "schema_version": 1,
+          "strategy_id": "ENTROPY-001",
+          "journal_path": "C:\\Users\\myron\\AppData\\Local\\Temp\\.tmp9PYjaA\\io-intents.jsonl",
+          "max_order_notional": "100",
+          "max_gross_notional": "200",
+          "max_open_orders": 2,
+          "max_actions": 16,
+          "max_leverage": 1,
+          "margin_buffer": "5",
+          "fee_buffer_bps": "10",
+          "action_timeout_ms": 2000,
+          "recovery_timeout_ms": 3000,
+          "recovery_max_attempts": 2,
+          "recovery_retry_delay_ms": 10,
+          "metadata_max_age_ms": 30000,
+          "symbols": [
+            {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "max_quantity": "1",
+              "min_price": "95",
+              "max_price": "105"
+            }
+          ]
+        },
+        "generation": 1,
+        "epoch": 0,
+        "received_sequence": 6,
+        "hard_revision": 1,
+        "verification_started_ms": 1791552077630,
+        "verification_finished_ms": 1791552077631,
+        "effective_expires_ms": 1791552079630,
+        "maximum_age_ms": 2000,
+        "http_source_time_ms": 1791552077631,
+        "http_received_time_ms": 1791552077631,
+        "metadata": {
+          "universe": [
+            {
+              "name": "io:SNDK",
+              "szDecimals": 4,
+              "maxLeverage": 10,
+              "onlyIsolated": true,
+              "marginMode": "strictIsolated"
+            }
+          ],
+          "collateralToken": 0
+        },
+        "spot_metadata": {
+          "universe": [],
+          "tokens": [
+            {
+              "name": "USDC",
+              "index": 0,
+              "szDecimals": 8,
+              "weiDecimals": 8,
+              "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+              "isCanonical": true,
+              "fullName": "USD Coin"
+            }
+          ]
+        },
+        "native_http": {
+          "io:SNDK-USD-PERP.HYPERLIQUID": {
+            "CryptoPerpetual": {
+              "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "raw_symbol": "io:SNDK",
+              "base_currency": "io:SNDK",
+              "quote_currency": "USD",
+              "settlement_currency": "USDC",
+              "is_inverse": false,
+              "price_precision": 2,
+              "size_precision": 4,
+              "price_increment": "0.01",
+              "size_increment": "0.0001",
+              "multiplier": "1",
+              "lot_size": "1",
+              "margin_init": "0",
+              "margin_maint": "0",
+              "maker_fee": "0",
+              "taker_fee": "0",
+              "max_quantity": null,
+              "min_quantity": null,
+              "max_notional": null,
+              "min_notional": "10.00 USD",
+              "max_price": null,
+              "min_price": null,
+              "tick_scheme": null,
+              "info": null,
+              "ts_event": 1791552077600342500,
+              "ts_init": 1791552077600342500
+            }
+          }
+        },
+        "metadata_context": {
+          "metadata": {
+            "io:SNDK-USD-PERP.HYPERLIQUID": {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "coin": "io:SNDK",
+              "asset": 110000,
+              "dex_index": 1,
+              "universe_index": 0,
+              "size_decimals": 4,
+              "margin_mode": "strictIsolated",
+              "actual_leverage": 1,
+              "received_ms": 1791552077630,
+              "verification_started_ms": 1791552077628,
+              "user_asset_source_time_ms": null,
+              "max_trade_sizes": [
+                "1",
+                "1"
+              ],
+              "available_to_trade": [
+                "100",
+                "100"
+              ],
+              "mark_price": "100"
+            }
+          },
+          "origin": {
+            "generation": 1,
+            "epoch": 0,
+            "hard_revision": 1,
+            "selected_rows": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            },
+            "native_http": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "CryptoPerpetual": {
+                  "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                  "raw_symbol": "io:SNDK",
+                  "base_currency": "io:SNDK",
+                  "quote_currency": "USD",
+                  "settlement_currency": "USDC",
+                  "is_inverse": false,
+                  "price_precision": 2,
+                  "size_precision": 4,
+                  "price_increment": "0.01",
+                  "size_increment": "0.0001",
+                  "multiplier": "1",
+                  "lot_size": "1",
+                  "margin_init": "0",
+                  "margin_maint": "0",
+                  "maker_fee": "0",
+                  "taker_fee": "0",
+                  "max_quantity": null,
+                  "min_quantity": null,
+                  "max_notional": null,
+                  "min_notional": "10.00 USD",
+                  "max_price": null,
+                  "min_price": null,
+                  "tick_scheme": null,
+                  "info": null,
+                  "ts_event": 1791552077600342500,
+                  "ts_init": 1791552077600342500
+                }
+              }
+            },
+            "native_instruments": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": [
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077600342500,
+                    "ts_init": 1791552077600342500
+                  }
+                },
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077584660500,
+                    "ts_init": 1791552077584660500
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "account_source_start": 0,
+        "sources": {
+          "original_sources": [
+            {
+              "request_json": "{\"type\":\"userRole\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"role\":\"user\"}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "false"
+            },
+            {
+              "request_json": "{\"type\":\"meta\",\"dex\":\"io\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[{\"name\":\"io:SNDK\",\"szDecimals\":4,\"maxLeverage\":10,\"onlyIsolated\":true,\"marginMode\":\"strictIsolated\"}],\"collateralToken\":0}"
+            },
+            {
+              "request_json": "{\"type\":\"spotMeta\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[],\"tokens\":[{\"name\":\"USDC\",\"index\":0,\"szDecimals\":8,\"weiDecimals\":8,\"tokenId\":\"0x6d1e7cde53ba9467b783cb7c530ce054\",\"isCanonical\":true,\"fullName\":\"USD Coin\"}]}"
+            },
+            {
+              "request_json": "{\"type\":\"clearinghouseState\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "{\"marginSummary\":{\"accountValue\":\"100\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"100\",\"totalMarginUsed\":\"0\"},\"crossMarginSummary\":{\"accountValue\":\"0\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"0\",\"totalMarginUsed\":\"0\"},\"crossMaintenanceMarginUsed\":\"0\",\"withdrawable\":\"100\",\"assetPositions\":[],\"time\":1791552077631}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "false"
+            }
+          ],
+          "unavailable_sources": []
+        }
+      },
+      "tainted": false,
+      "economic_diagnostic": "Bounded economic report only; no native cache application proof",
+      "revision": 8,
+      "coverage": [
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userFunding",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userNonFundingLedgerUpdates",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userFunding",
+          "start_ms": 1791552077634,
+          "end_ms": 1791552077820,
+          "pages": 0,
+          "records": 0,
+          "complete": false,
+          "diagnostic": "Current interval was not requested by warm account recovery; coverage Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userNonFundingLedgerUpdates",
+          "start_ms": 1791552077634,
+          "end_ms": 1791552077820,
+          "pages": 0,
+          "records": 0,
+          "complete": false,
+          "diagnostic": "Current interval was not requested by warm account recovery; coverage Unknown"
+        }
+      ],
+      "fee_usdc": "0.001",
+      "durable_receipts": 1,
+      "actual_http_occurrences": 46,
+      "actual_fills": {
+        "io:SNDK:70001:1901": {
+          "coin": "io:SNDK",
+          "oid": 70001,
+          "tid": 1901,
+          "time": 1791552077741,
+          "is_buy": true,
+          "quantity": "0.12",
+          "price": "100",
+          "fee": "0.001",
+          "fee_token": "USDC",
+          "start_position": "0",
+          "closed_pnl": "0",
+          "hash": "0x000000000000000000000000000000000000000000000000000000000000076d",
+          "builder_fee": "0.0002"
+        }
+      }
+    },
+    {
+      "phase": "after_normal_warm_callback",
+      "query_completed": 2,
+      "query_in_flight": false,
+      "recovery_complete": false,
+      "last_query_reused_prerequisite": true,
+      "execution_diagnostic": "Economic unrequested coverage could not be preserved",
+      "trusted": true,
+      "flat": true,
+      "financial_received_ms": 1791552078040,
+      "prerequisite": {
+        "schema_version": 1,
+        "account_id": "HYPERLIQUID-ENTROPY",
+        "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "policy": {
+          "schema_version": 1,
+          "strategy_id": "ENTROPY-001",
+          "journal_path": "C:\\Users\\myron\\AppData\\Local\\Temp\\.tmp9PYjaA\\io-intents.jsonl",
+          "max_order_notional": "100",
+          "max_gross_notional": "200",
+          "max_open_orders": 2,
+          "max_actions": 16,
+          "max_leverage": 1,
+          "margin_buffer": "5",
+          "fee_buffer_bps": "10",
+          "action_timeout_ms": 2000,
+          "recovery_timeout_ms": 3000,
+          "recovery_max_attempts": 2,
+          "recovery_retry_delay_ms": 10,
+          "metadata_max_age_ms": 30000,
+          "symbols": [
+            {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "max_quantity": "1",
+              "min_price": "95",
+              "max_price": "105"
+            }
+          ]
+        },
+        "generation": 1,
+        "epoch": 0,
+        "received_sequence": 6,
+        "hard_revision": 1,
+        "verification_started_ms": 1791552077630,
+        "verification_finished_ms": 1791552077631,
+        "effective_expires_ms": 1791552079630,
+        "maximum_age_ms": 2000,
+        "http_source_time_ms": 1791552077631,
+        "http_received_time_ms": 1791552077631,
+        "metadata": {
+          "universe": [
+            {
+              "name": "io:SNDK",
+              "szDecimals": 4,
+              "maxLeverage": 10,
+              "onlyIsolated": true,
+              "marginMode": "strictIsolated"
+            }
+          ],
+          "collateralToken": 0
+        },
+        "spot_metadata": {
+          "universe": [],
+          "tokens": [
+            {
+              "name": "USDC",
+              "index": 0,
+              "szDecimals": 8,
+              "weiDecimals": 8,
+              "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+              "isCanonical": true,
+              "fullName": "USD Coin"
+            }
+          ]
+        },
+        "native_http": {
+          "io:SNDK-USD-PERP.HYPERLIQUID": {
+            "CryptoPerpetual": {
+              "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "raw_symbol": "io:SNDK",
+              "base_currency": "io:SNDK",
+              "quote_currency": "USD",
+              "settlement_currency": "USDC",
+              "is_inverse": false,
+              "price_precision": 2,
+              "size_precision": 4,
+              "price_increment": "0.01",
+              "size_increment": "0.0001",
+              "multiplier": "1",
+              "lot_size": "1",
+              "margin_init": "0",
+              "margin_maint": "0",
+              "maker_fee": "0",
+              "taker_fee": "0",
+              "max_quantity": null,
+              "min_quantity": null,
+              "max_notional": null,
+              "min_notional": "10.00 USD",
+              "max_price": null,
+              "min_price": null,
+              "tick_scheme": null,
+              "info": null,
+              "ts_event": 1791552077600342500,
+              "ts_init": 1791552077600342500
+            }
+          }
+        },
+        "metadata_context": {
+          "metadata": {
+            "io:SNDK-USD-PERP.HYPERLIQUID": {
+              "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+              "coin": "io:SNDK",
+              "asset": 110000,
+              "dex_index": 1,
+              "universe_index": 0,
+              "size_decimals": 4,
+              "margin_mode": "strictIsolated",
+              "actual_leverage": 1,
+              "received_ms": 1791552077630,
+              "verification_started_ms": 1791552077628,
+              "user_asset_source_time_ms": null,
+              "max_trade_sizes": [
+                "1",
+                "1"
+              ],
+              "available_to_trade": [
+                "100",
+                "100"
+              ],
+              "mark_price": "100"
+            }
+          },
+          "origin": {
+            "generation": 1,
+            "epoch": 0,
+            "hard_revision": 1,
+            "selected_rows": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            },
+            "native_http": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": {
+                "CryptoPerpetual": {
+                  "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                  "raw_symbol": "io:SNDK",
+                  "base_currency": "io:SNDK",
+                  "quote_currency": "USD",
+                  "settlement_currency": "USDC",
+                  "is_inverse": false,
+                  "price_precision": 2,
+                  "size_precision": 4,
+                  "price_increment": "0.01",
+                  "size_increment": "0.0001",
+                  "multiplier": "1",
+                  "lot_size": "1",
+                  "margin_init": "0",
+                  "margin_maint": "0",
+                  "maker_fee": "0",
+                  "taker_fee": "0",
+                  "max_quantity": null,
+                  "min_quantity": null,
+                  "max_notional": null,
+                  "min_notional": "10.00 USD",
+                  "max_price": null,
+                  "min_price": null,
+                  "tick_scheme": null,
+                  "info": null,
+                  "ts_event": 1791552077600342500,
+                  "ts_init": 1791552077600342500
+                }
+              }
+            },
+            "native_instruments": {
+              "io:SNDK-USD-PERP.HYPERLIQUID": [
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077600342500,
+                    "ts_init": 1791552077600342500
+                  }
+                },
+                {
+                  "CryptoPerpetual": {
+                    "id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "raw_symbol": "io:SNDK",
+                    "base_currency": "io:SNDK",
+                    "quote_currency": "USD",
+                    "settlement_currency": "USDC",
+                    "is_inverse": false,
+                    "price_precision": 2,
+                    "size_precision": 4,
+                    "price_increment": "0.01",
+                    "size_increment": "0.0001",
+                    "multiplier": "1",
+                    "lot_size": "1",
+                    "margin_init": "0",
+                    "margin_maint": "0",
+                    "maker_fee": "0",
+                    "taker_fee": "0",
+                    "max_quantity": null,
+                    "min_quantity": null,
+                    "max_notional": null,
+                    "min_notional": "10.00 USD",
+                    "max_price": null,
+                    "min_price": null,
+                    "tick_scheme": null,
+                    "info": null,
+                    "ts_event": 1791552077584660500,
+                    "ts_init": 1791552077584660500
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "account_source_start": 0,
+        "sources": {
+          "original_sources": [
+            {
+              "request_json": "{\"type\":\"userRole\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"role\":\"user\"}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "false"
+            },
+            {
+              "request_json": "{\"type\":\"meta\",\"dex\":\"io\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[{\"name\":\"io:SNDK\",\"szDecimals\":4,\"maxLeverage\":10,\"onlyIsolated\":true,\"marginMode\":\"strictIsolated\"}],\"collateralToken\":0}"
+            },
+            {
+              "request_json": "{\"type\":\"spotMeta\"}",
+              "received_ms": 1791552077630,
+              "raw_text": "{\"universe\":[],\"tokens\":[{\"name\":\"USDC\",\"index\":0,\"szDecimals\":8,\"weiDecimals\":8,\"tokenId\":\"0x6d1e7cde53ba9467b783cb7c530ce054\",\"isCanonical\":true,\"fullName\":\"USD Coin\"}]}"
+            },
+            {
+              "request_json": "{\"type\":\"clearinghouseState\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "{\"marginSummary\":{\"accountValue\":\"100\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"100\",\"totalMarginUsed\":\"0\"},\"crossMarginSummary\":{\"accountValue\":\"0\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"0\",\"totalMarginUsed\":\"0\"},\"crossMaintenanceMarginUsed\":\"0\",\"withdrawable\":\"100\",\"assetPositions\":[],\"time\":1791552077631}"
+            },
+            {
+              "request_json": "{\"type\":\"userAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "\"disabled\""
+            },
+            {
+              "request_json": "{\"type\":\"userDexAbstraction\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+              "received_ms": 1791552077631,
+              "raw_text": "false"
+            }
+          ],
+          "unavailable_sources": []
+        }
+      },
+      "tainted": true,
+      "economic_diagnostic": "io economic persistence failed: Economic source/consumer state regression",
+      "revision": 11,
+      "coverage": [
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userFunding",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userNonFundingLedgerUpdates",
+          "start_ms": 1791552076581,
+          "end_ms": 1791552077634,
+          "pages": 1,
+          "records": 0,
+          "complete": true,
+          "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userFunding",
+          "start_ms": 1791552077634,
+          "end_ms": 1791552077820,
+          "pages": 0,
+          "records": 0,
+          "complete": false,
+          "diagnostic": "Current interval was not requested by warm account recovery; coverage Unknown"
+        },
+        {
+          "generation": 1,
+          "epoch": 0,
+          "endpoint": "userNonFundingLedgerUpdates",
+          "start_ms": 1791552077634,
+          "end_ms": 1791552077820,
+          "pages": 0,
+          "records": 0,
+          "complete": false,
+          "diagnostic": "Current interval was not requested by warm account recovery; coverage Unknown"
+        }
+      ],
+      "fee_usdc": "0.002",
+      "durable_receipts": 2,
+      "actual_http_occurrences": 58,
+      "actual_fills": {
+        "io:SNDK:70001:1901": {
+          "coin": "io:SNDK",
+          "oid": 70001,
+          "tid": 1901,
+          "time": 1791552077741,
+          "is_buy": true,
+          "quantity": "0.12",
+          "price": "100",
+          "fee": "0.001",
+          "fee_token": "USDC",
+          "start_position": "0",
+          "closed_pnl": "0",
+          "hash": "0x000000000000000000000000000000000000000000000000000000000000076d",
+          "builder_fee": "0.0002"
+        },
+        "io:SNDK:70002:1902": {
+          "coin": "io:SNDK",
+          "oid": 70002,
+          "tid": 1902,
+          "time": 1791552077962,
+          "is_buy": false,
+          "quantity": "0.12",
+          "price": "99",
+          "fee": "0.001",
+          "fee_token": "USDC",
+          "start_position": "0.12",
+          "closed_pnl": "0",
+          "hash": "0x000000000000000000000000000000000000000000000000000000000000076e",
+          "builder_fee": "0.0002"
+        }
+      }
+    }
+  ],
+  "parser_test_executions": 0,
+  "note": "Source inference from the original installed failure is now directly observed in separate unchanged-production native regression. This does not add the lower-level string to the old installed raw log; RED runs overlap future full regression and are not independent reviewer executions."
+}

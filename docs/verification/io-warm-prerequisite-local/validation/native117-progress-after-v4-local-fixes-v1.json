@@ -1,0 +1,23 @@
+{
+  "tool": "github_add_comment_to_issue",
+  "args": {
+    "repo_full_name": "mmyyrroonn/nautilus_trader",
+    "pr_number": 117,
+    "comment": "进度留痕（尚未完成验收）：\n\n- 已保留 v1/v2 独立源码 review。两名 reviewer 发现的账户/原总期限最终门、metadata 原 30 秒最终门均已修正；格式化 v4 通过独立有限源码复审，41 份冻结输入匹配。源码 review 执行测试数为 0，不当作跨 TTL、mutex 或 fsync 时序实测。\n- 首轮新增用例实际为 36 PASS / 1 FAIL：原超时刺激先撞上单请求 HTTP 2 秒。修正为两个真实串行延迟，保留总 3 秒与全部 Unknown/双来源持久化断言；v3 新增 37 用例全部 PASS。原失败日志未打印 scope/raw，不能追溯补证；新刺激已在断言前记录原文。\n- 原 64 恢复用例的首次 v3 执行为 63 PASS / 1 FAIL。配额测试第三次完整预热在 account 原 2 秒内未完成，实际 2403ms，正确拒绝；尚未进入目标总期限。完整 actual HTTP/WS 与失败记录保留。\n- 独立核对执行客户端初始化权重为 624，Harness provider 另一个 bucket 的 60 不计入该 bucket。改用固定 7 次真实 82 权重复用查询，每次必须 fully-qualified 且原 source/metadata 不变，然后等待原 source 真正到期、接收实际新 WS 再作完整读取；setup ≤3 秒，目标原 2800..3800ms / exact total-deadline / Unknown 断言保留。v4 该用例实际 PASS（与原 64 重叠，非新增用例）。这些权重是源码与真实请求推导，未读取内部 bucket；重复同毫秒 mode/activeAssetData 请求按真实 occurrence 保留。\n- production Clippy v3 新增 1 处 needless_pass_by_value 失败已保留；窄改为借用 Arc，v4 production Clippy PASS，无 lint suppression。\n\n现在运行 v4 Hyperliquid 全量回归。之后仍需 official stubs、installed Python、clean wheel、全新 journal 下 app43 paired/其余场景、最终 review 与 exact-head CI。限额、来源 2 秒、metadata 30 秒、总恢复 3 秒及 journal/body 边界均保持原值；本次均为 synthetic numeric loopback，尚无 mainnet/kernel/E6 结论。旧 native115 paired FAIL 保留，不用于 native117 验收。"
+  },
+  "started": {
+    "current_time": "2026-10-09 12:21:43 UTC"
+  },
+  "finished": {
+    "current_time": "2026-10-09 12:21:49 UTC"
+  },
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "tool call error: tool call failed for `codex_apps/github.add_comment_to_issue`\n\nCaused by:\n    Transport send error: Transport [codex_rmcp_client::event_notification_transport::EventNotificationTransport<rmcp::transport::worker::WorkerTransport<rmcp::transport::streamable_http_client::StreamableHttpClientWorker<codex_rmcp_client::http_client_adapter::StreamableHttpClientAdapter>>>] error: Client error: HTTP request failed: http/request failed: error sending request for url (https://chatgpt.com/backend-api/ps/mcp)"
+      }
+    ],
+    "isError": true
+  }
+}

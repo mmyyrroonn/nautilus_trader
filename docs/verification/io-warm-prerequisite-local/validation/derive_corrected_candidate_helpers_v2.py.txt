@@ -1,0 +1,31 @@
+"""Keep first-candidate helpers intact; declare corrected candidate input scope."""
+
+import hashlib
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+root = Path(__file__).resolve().parent
+receipt = root / "native117-corrected-candidate-helper-preparation-v2.json"
+assert not receipt.exists()
+jobs = [
+    ("capture_identity.py", "capture_identity_v2.py", '    "crates/adapters/hyperliquid/src/economics_scope.rs",', '    "crates/adapters/hyperliquid/src/economics_scope.rs",\n    "crates/adapters/hyperliquid/src/economics_scope/store.rs",\n    "crates/adapters/hyperliquid/src/economics_scope/tests.rs",'),
+    ("capture_app_candidate.py", "capture_app_candidate_v2.py", 'WHEEL_DIRECTORY = Path("E:/persarb/_tmp/entropy117-wheel-nextest-20261009")', 'WHEEL_DIRECTORY = Path("E:/persarb/_tmp/entropy117-corrected-wheel-nextest-20261009")'),
+]
+records = []
+for original_name, corrected_name, needle, replacement in jobs:
+    original = root / original_name
+    corrected = root / corrected_name
+    assert not corrected.exists()
+    source = original.read_text(encoding="utf-8")
+    assert source.count(needle) == 1
+    result = source.replace(needle, replacement)
+    if corrected_name == "capture_app_candidate_v2.py":
+        extra = '        "crates/adapters/hyperliquid/src/economics_scope.rs",'
+        assert result.count(extra) == 1
+        result = result.replace(extra, extra + '\n        "crates/adapters/hyperliquid/src/economics_scope/store.rs",')
+    corrected.write_text(result, encoding="utf-8")
+    records.append({"original": {"path": str(original), "sha256": hashlib.sha256(original.read_bytes()).hexdigest()}, "corrected": {"path": str(corrected), "sha256": hashlib.sha256(corrected.read_bytes()).hexdigest()}})
+receipt.write_text(json.dumps({"created_utc": datetime.now(timezone.utc).isoformat(), "helpers": records, "note": "Source inputs now include economics store and test contract; corrected app captures use a new wheel directory and include unchanged store protections. Helpers were created, not executed; no test or candidate identity is inferred.", "tests_executed": 0}, indent=2) + "\n", encoding="utf-8")
+print(receipt.read_text(encoding="utf-8"))

@@ -1,0 +1,21 @@
+{
+  "created_utc": "2026-10-09T14:16:44.777243+00:00",
+  "files": [
+    {
+      "original": "E:/persarb/_tmp/entropy117-validation/native117-archive-command-v4.json",
+      "preserved": "E:/persarb/_tmp/entropy117-validation/native117-preserved-archive-v4-failure.json",
+      "sha256": "2cb279af5b0bc269e304fa8e14cb633282286a2f1343ea7c0cc656d342763f4f",
+      "bytes": 1064
+    },
+    {
+      "original": "E:/persarb/_tmp/entropy117-validation/native117-archive-command-v4.log",
+      "preserved": "E:/persarb/_tmp/entropy117-validation/native117-preserved-archive-v4-failure.log",
+      "sha256": "2c73df30162a046b43850f23e0096b8d4fb1522c23ac9a29b30fb0c3b9595513",
+      "bytes": 713
+    }
+  ],
+  "original_failed_invocations": 1,
+  "new_archive_invocations": 0,
+  "tests_executed": 0,
+  "reason": "The live archive-command prefix is excluded to avoid self-inclusion; this byte-identical copy retains the already completed failed v4 before the successful archive."
+}

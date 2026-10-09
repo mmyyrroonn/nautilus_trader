@@ -1,0 +1,7 @@
+# Native117 archive helper v5 — actual builder timestamp schema
+
+Root's actual v4 invocation at14:13 UTC (see exact receipt) stopped before mkdir with `ValueError: Build is unfinished`. The controlled builder does not emit `build.started_at`: its actual schema has clean `started_source`/`finished_source`, verified source fingerprints and `completed_at`. Both original and corrective builds actually completed; no provenance field or old failure record is fabricated or rewritten.
+
+V5 replaces only the two references to that nonexistent field. `verify_wheel` requires the assigned directory's actual completed build-command receipt/log and exit0, and brackets actual `completed_at` by that receipt's start/end. Candidate checks apply the same completed-command bracket. All clean source/commit/tree/pre-post identities, actual build-input and wheel bytes, strict installs, tested-source/binary, raw Clippy gate, separate failure/RED and seven-cohort guards remain unchanged. The first saved inner build receipt is0 while its outer GBK-printing failure remains preserved separately.
+
+This preparation only reads/writes versioned helper source and a note. V4 is preserved. V5 is unexecuted and awaits narrow source review; no test, native import, Cargo, Git, build, installation or archive runs occurred here.

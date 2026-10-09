@@ -1,0 +1,49 @@
+# Native117 production contract v1 — frozen implementation draft
+
+The assigned worktree is `E:/persarb/worktrees/entropy-warm-prerequisites`, base main `5db2761590dd824fa159625326b6eaf3923b999a`. This author changed only `crates/adapters/hyperliquid/src/account_scope.rs` and `crates/adapters/hyperliquid/src/execution_scope.rs`. Production writes stop at this revision. The exact UTC, bytes, hashes and copies are recorded in `production-source-contract-v1.json` and `production-source-v1-frozen/`.
+
+No Cargo, formatter, test, native import, build, install, Git or GitHub operation was performed by this author. This document describes implementation intent and static inspection, not successful compilation, test execution, independent approval or application paired acceptance. Root owns those checks and any next source revision.
+
+## Original and composed sources
+
+The new optional `WarmPrerequisiteSourceSeal` is distinct from native115's `FullAccountSourceSeal`. Only an actual fully qualified complete account transaction with the normal preexisting metadata and HTTP/Engine binding can create it. The early prebinding connect refresh cannot retrospectively mint a source when binding later arrives. The existing postbinding recovery account refresh can create both original seals while its actual ingress/account guards are held. A successful full warm transaction can prepare a new source and install it only after the ordinary owner commit. A reused warm transaction cannot create, renew or replace it.
+
+Diagnostics expose `warm_prerequisite_source` and `last_query_reused_prerequisite`. Source fields include actual original generation/epoch/sequence/hard revision, account/address/policy, metadata context with ordinary HTTP/Engine binding, original start/finish, `maximum_age_ms`, `effective_expires_ms`, original account HTTP source/receipt, and `sources.original_sources`. `account_source_start` selects the exact eight complete account responses inside a warm collector that also retains actual open/fill/status prefix and leverage-counterproof suffix responses. Complete account observations follow the existing role, two abstraction requests, metadata, spot metadata, full clearinghouse and repeated abstraction requests. Reuse omits the seven old nonfinancial reads and always obtains a new full clearinghouse response.
+
+The prerequisite remains eligible only in the same normal reader/lifecycle, hard revision, account, policy and unchanged metadata context. Financial-only invalidation clears the full financial startup seal while retaining the original optional nonfinancial object. Hard invalidation, stream rebinding or new metadata context revokes eligibility. Every new warm flight independently captures and rechecks the actual current applied ingress sequence, account/execution revisions, private facts, ordinary Cache/Portfolio-derived owned order/fill/fee evidence and exact native instruments. A changed frame during the new flight still refuses that flight, including an identical applied frame. Retaining an object diagnostically is not a Ready or funds grant.
+
+Fresh orders/fills/exact owned statuses and actual full financial HTTP are preserved. Selected symbols missing actual leverage evidence in the fresh full clearinghouse still require two genuine activeAssetData counterproofs. Old metadata source time, leverage, capacity and mark are not renewed. Reused source-based minimum weights are44 for a positioned one-CLOID flight and84 for flat one-CLOID with two counterproofs; zero-CLOID flat is82. These are source arithmetic, not measured token balances or a paired-liveness promise.
+
+Original prerequisite role/mode evidence is explicitly bounded and non-atomic. Unrequested silent remote role/mode changes are not observed by a financial-only flight and must not be described as continuous current authority.
+
+## Clocks, ownership and capacity
+
+`begin_warm_query` captures the existing recovery deadline before any guard acquisition, heavy copy or serialization. An already pending identical query is coalesced without updating that original flight's deadline. Original source expiration is its actual earliest account-group start plus the existing maximum age; reuse does not extend it. Warm account observations retain that original start while recording actual new financial start/source/receipt separately.
+
+Owner qualification prepares all candidate copies before its final clock checks. Reservation absorption uses the existing durable journal path. The original3s deadline, original2s source expiry and current private/metadata freshness are checked again after the actual persistence and heavy native-instrument comparison. A late failure restores the original reservation and refuses AccountState/Ready. Commit keeps the original ingress/account/execution guards; no synthetic financial event, hidden callback, production test hook, cold Cache bridge or debt clearing was added.
+
+Raw records use immutable `Arc` sharing. The original115 full seal and new prerequisite share the same original group; detached group copies share individual immutable raw records. The active group retains its own normal bounded responses. This avoids a third retained deep raw-history copy; it is not a whole-process allocation or RSS assertion.
+
+Existing limits remain unchanged:1MiB per HTTP body,4MiB per accepted HTTP raw group,1MiB escaped serialized JournalFacts,16MiB cumulative journal; account2s, recovery3s and normal quota limits remain unchanged. No provider, deadline or quota was relaxed.
+
+## Durable failed composition
+
+`UnknownSources` retains actual new query `original_sources` and unavailable-source context under the captured new identity. Optional `reused_prerequisite_source` embeds the complete original object, including original request JSON, actual receipt and original raw text. Old raw is not relabeled as new financial source. This representation remains reconstructible after normal stop/drop and does not depend on process Arc lookup or a new external blob store.
+
+If escaped old-plus-new Facts exceed the original1MiB bound, the existing refusal path persists a small explicit `RetentionFailed` record and captured original-origin diagnostic with `raw_retention_complete:false`. Successful bounded refusal remains Unknown and is not automatically called tainted. If the bounded refusal itself cannot fit, or the existing persistence path fails, the original taint/error behavior remains. No incomplete record claims complete raw retention.
+
+## Static checks and unresolved verification
+
+Static reads checked all internal observer/binding call sites, all new observation/query/guard initializers and the existing manually constructed execution state initializer. The sole complete account warm observer accepts the optional source; the existing open/fill/status observation signatures remain unchanged. Existing115 full-source JSON shape and equality semantics are retained despite internal shared ownership. Workspace serde `rc` support was confirmed by root; compiler and lint behavior remain unobserved here.
+
+The sibling test author separately froze37 statically expanded normal numeric-loopback cases in `warm-prerequisite-test-contract-v1.md`. This author did not collect or run them. Root's full original regressions, new source/debt tests, independent review, installed candidate and corrected application runs remain required. Exact isolated mutex waits, fsync crossings, actual memory allocation and total runtime liveness are not proven by static checks. Existing failed115 application raw debt remains untouched.
+
+## Baseline provenance and identities
+
+`source-v1-before/` contains exact copies from frozen native115 production, matching the assigned117 base. Because the directory already existed when the initial local archive command stopped and an account-source edit had already begun, these copies are honestly recorded as reference115 baseline copies, not as an author-captured pre-edit117 worktree snapshot. Root's fresh-main capture remains the authoritative pre-edit workspace evidence.
+
+- Frozen account_scope.rs:82,414 bytes, SHA256 `c6f1ab351e90d094cae19582ab3ddfc8c5ecc1955ce6a0a847536689775cbac5`.
+- Frozen execution_scope.rs:191,949 bytes, SHA256 `6580b1a54c89d8aaa623350462e41a54a0ad51c37d7638d305288cc4c38973f2`.
+- Manifest JSON SHA256 `2a983267ea9060493bb3770189becead77696071ddf8fbbb0d3bdc2a7550fd26`.
+
+No execution.rs, tests, public API, dependency, rule, workflow, old evidence, failed journal or application source was edited by this production author. Root's official formatter/compiler may create a separately archived revision; these v1 bytes must remain preserved.

@@ -1,0 +1,5 @@
+Read-only inspection procedure failure; no tests executed.
+Argv: E:/persarb/worktrees/entropy-execution-app/.venv/Scripts/python.exe E:/persarb/_tmp/entropy117-validation/reviewer-native117-gap-tests-v2-source-procedure-v1.py
+Actual exit_code: 1
+Traceback line50: assert current_matches -> AssertionError
+Cause: current producer legally changed after root handed off its fix, so historical43 cannot be claimed equal to current production. Original test snapshots/diffs and procedure remain unchanged. Exact original inspection UTC was not recorded by that failed procedure; do not invent it.

@@ -1,0 +1,40 @@
+# Independent native117 formatted-v2 addendum: tests style and final account deadline
+
+Scope: copied tests-v1 to officially formatted-v2 test style, and the narrow production-v1 to formatted-v2 account publication-time fix. This does **not** duplicate the separate agent's complete production review. Executed tests: **0**. No build, native imports, Git/GH, installer, format, production/test edits or environment operations. Source counts are **31 native + 10 app = 41**, not 32 native. The companion JSON verifies all 41 copied snapshot hashes/byte sizes against the root receipt and records 52 reviewed/captured inputs unchanged before/after this report window.
+
+## Test style comparison
+
+The four formatted test copies retain all business semantics from the independent unformatted-v1 review. A local stdlib-only lexical comparison preserves Rust normal/raw string literals, numeric/operator tokens and nested comments, then reports every non-whitespace/non-comment token difference; it is not a compiler or Rust AST proof. That procedure and its exact hash/output are bound in the JSON.
+
+- `entropy_account.rs`: byte/hash identical, normalized tokens exact.
+- `entropy_account/execution.rs`: normalized tokens exact; the module hook is unchanged.
+- `entropy_account/io_query_recovery.rs`: only one trailing comma added at an argument-list end. Old 64 business tests, authentic expiry/fresh-applied WS setup, exact new/old raw time separation, 44/82/84 protocol counts, source-age check and original quota deadline assertions are unchanged.
+- `entropy_account/warm_prerequisite.rs`: one optional trailing argument comma removed, five optional trailing commas inserted, and two formerly expression-bodied closures get a pair of enclosing block braces each. I inspected the differing closure contexts: they preserve the same expression/return and add no semicolon. All assertions, case literals, source identities/timestamps, near-bound raw padding, peer/body stimuli, configured caps and endpoint names remain equal. **16 test functions / 37 declared cases**, not 37 execution passes.
+
+These additional punctuation/closure-block tokens are why token streams are not falsely reported as exact. No literal, assertion predicate, endpoint, deadline, financial event, command count or test-case weakening was introduced by official formatting. Source review does not certify compilation or successful runtime fixture timing.
+
+## Final account-time correction
+
+Formatted `account_scope.rs:1309–1374` factors the original scalar source/private age predicate into `observation_sources_are_fresh`. It checks exact stream epoch, complete private ACKs, observation source/receipt/effective verification-start age, private receipt and optional source age, using the original maximum_age. The validator keeps its early fail-closed scalar check and all exact private position/universe/raw balance/equity/used/free/withdrawable/cross-maintenance comparisons. It now samples the same scalar predicate **again after potentially large position/financial comparisons**, so a previously fresh clock cannot authorize after that work.
+
+Formatted `account_scope.rs:1377–1413` commits with an explicit deadline parameter. It finishes `validate_observation` and fallible checked source-time nanosecond conversion first. At `1391–1397` it samples `Instant::now() < original deadline` and fresh observation/private scalar sources again, before mutating account facts or emitting AccountState. The remaining path performs field moves/state assignment and ordinary event submission; it does not perform another financial scan, JSON serialization, copied metadata proof or await before publication. This is the intended in-function eligibility linearization point, not a measured dispatch-time or scheduling guarantee.
+
+The sole caller at `execution_scope.rs:1114–1120` passes **query.deadline**; it does not create a replacement timeout. That caller still holds the original owner ingress/account/execution fences and live token context, after ordinary Cache comparison and durable absorption. An Err restores old full facts/reserves, closes recovery and persists refusal; successful old-prerequisite reuse does not mint a new prerequisite source. The original 3000 ms deadline, source clock and 2000 ms source/private age bounds are retained.
+
+The narrow **account/private clock gap is corrected in v2**. Original private/position financial predicates were extracted and repeated, not removed. This statement does not certify all of the broader final source fences.
+
+## Remaining metadata gate: do not sign off v2 completely
+
+I raised a separate caller-order concern with the complete production reviewer. Formatted `execution_scope.rs:1091–1095` calls warm_native_instruments with an early now_ms and checks 30000 ms metadata freshness before the later account validator's heavy financial comparisons. The new final scalar account/publication predicate at `account_scope.rs:1392` covers only account/private sources and the original query deadline; it does **not** re-sample the original metadata stamp after those comparisons. Thus a near-expiry metadata origin can cross its 30-second limit during that work while the independently fresh 2-second account fields still pass.
+
+The complete production reviewer independently confirmed this as a remaining gate required by the explicit native117 final-source contract and reported it to root/author. This ordering also existed in unformatted production-v1; the v2 account fix is an improvement, but does not close the metadata gap. V2 therefore receives **no complete production signoff** from this addendum. Root's forthcoming minimal final scalar metadata check must use original metadata timestamps/policy and occur after heavy validation/checked arithmetic, before mutation/financial publication, with no new stamp, TTL extension or fresh deadline. Review its exact new frozen source separately; no edit or future result is counted here.
+
+## Actual coverage limits
+
+Owner-channel expiry and real HTTP/WS source/Engine metadata races are meaningful narrow fixtures. They do not establish an actual final mutex wait or fsync wait crossing, exact actor-unapplied instant, general post-prepare Cache mutation fencing, or near-16-MiB exhaustion. The root's ongoing first compile/test execution is distinct from this source-only review; no future tests, root results or old overlapping runs are counted as independent passes.
+
+Raw durability retains the exact two origins in bounded serialized facts or truthful RetentionFailed/Unknown, with existing 1 MiB/body, 4 MiB/group, 1 MiB escaped facts and 16 MiB journal caps. The finite non-atomic original-source limitation and remote blind window remain explicit. Neither these style comparisons nor the account-time fix certify paired application success, continuous remote prerequisite modes, generic cold ownership/cache recovery, funding/run economics completeness or kernel isolation.
+
+## Analysis procedure correction
+
+The first attempt to pass the lexical procedure inline through PowerShell produced no output and no comparison artifact; a follow-up read confirmed the artifact absent. It was **not** counted as successful analysis. The retained explicit temporary Python procedure subsequently exited 0 and generated the actual structured token differences above. This is stdlib-only source parsing, not execution of Rust tests or native production.

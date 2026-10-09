@@ -1,0 +1,870 @@
+{
+  "captured_utc": "2026-10-09T14:09:19.764216+00:00",
+  "inputs": [
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-first-paired-20261009\\paired\\child-command.json",
+      "bytes": 624,
+      "sha256": "d3f6a7a9473768a927efccb53a2b54bb0a3329667df37a2c10a31c3f24d4a8fc"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-first-paired-20261009\\paired\\child-stderr.log",
+      "bytes": 175,
+      "sha256": "98b9464f67bd426b88b149c633039e828e0e4bad064f9bc2f9f907ae0040cb0c"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-first-paired-20261009\\paired\\child-stdout.log",
+      "bytes": 38494,
+      "sha256": "a1cfcc004acfcd37e85075d3800737b7011f1bb874c7b94656a0f534792c84bf"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-first-paired-20261009\\paired\\economic-report.json",
+      "bytes": 24851,
+      "sha256": "183c3d6579f983b9ddeb9982c84abfa775a6c18eff13f25465e0ae2d0e118053"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-first-paired-20261009\\paired\\events.jsonl",
+      "bytes": 181067,
+      "sha256": "9eae15c7fa42a7aa6e78bd0fed56317cfe8a89916f403485c5ea50408fcece31"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-first-paired-20261009\\paired\\manifest.json",
+      "bytes": 17919,
+      "sha256": "2e891b28e36b888fbb34ea574b26d584a9a8ad820ec3780f3637ed0ef5031380"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-first-paired-20261009\\paired\\native-io-economics.json",
+      "bytes": 12630,
+      "sha256": "d7d9a37d5d02c529a92bdb84d2a9519dedd0a4d9aa780c2911203530eba5916f"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-first-paired-20261009\\paired\\native-io-economics.json.lease",
+      "bytes": 151,
+      "sha256": "ae5149922c640c732c8b2dc853e1b9571313b637bd7d2d5ec7ae5fff1858a271"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-first-paired-20261009\\paired\\native-io-intents.jsonl",
+      "bytes": 25013,
+      "sha256": "da3751a3c1fddf287f1bffba3e1e7e8eb620939fc1affdabdcf358f75751e2ed"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-first-paired-20261009\\paired\\peer-evidence.json",
+      "bytes": 105073,
+      "sha256": "8fa6459fee0a1d74c42a529e0b3814d3d17827b02ef32c9419ebe0b57ad9235c"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-first-paired-20261009\\paired\\plan.json",
+      "bytes": 2207,
+      "sha256": "5e1b00c0eefe337df9c125d7191303bf554014894633c3600de6e09a381110d0"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-first-paired-20261009\\paired\\summary.json",
+      "bytes": 36105,
+      "sha256": "6a9815c6ad17f707536fd05bca663bf463c5435b4f88ad9b93f33510d195dcd1"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\cleanup_failure\\child-command.json",
+      "bytes": 649,
+      "sha256": "86277948dbf90f80cc2584aa541e05be133bbcf9e0a02d1debe5b07517b192c8"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\cleanup_failure\\child-stderr.log",
+      "bytes": 175,
+      "sha256": "960d6823aff0414c62b79ee848b6784b03ee2e1515c4d8d137da0074f4edef73"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\cleanup_failure\\child-stdout.log",
+      "bytes": 40472,
+      "sha256": "64a1be4a47a9faa947dd5158332c5f02134d10215c9ef19b58460006cc1949fc"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\cleanup_failure\\economic-report.json",
+      "bytes": 24481,
+      "sha256": "d29c8daf8fa20e1f1b234ee184a92b7ad0febf0be1c9acd19482d1ae1f9fe3d3"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\cleanup_failure\\events.jsonl",
+      "bytes": 491322,
+      "sha256": "aecc6eccecd132dfc6f35545012af713a09ddc2e0a2d01703cde254e009aff8f"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\cleanup_failure\\manifest.json",
+      "bytes": 17919,
+      "sha256": "955eeb46b7e52844e5859e61298ddc8bf44d203cbbd5b906fce882f4d143a471"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\cleanup_failure\\native-io-economics.json",
+      "bytes": 12630,
+      "sha256": "329f9902fc063af05f00d68b0e775b5c4d611b61225668d55295b858fc99ca6c"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\cleanup_failure\\native-io-economics.json.lease",
+      "bytes": 151,
+      "sha256": "40d467c5e9cf888d1f69995418e13c02441f4c398244ffa6275438ab4049e1df"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\cleanup_failure\\native-io-intents.jsonl",
+      "bytes": 32083,
+      "sha256": "5db4830d44895955fb25ea0bdbb2e89f97aec1c1e8939870529bc8c3fe1e64d3"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\cleanup_failure\\peer-evidence.json",
+      "bytes": 296312,
+      "sha256": "f41d1f4dc854944745e93fa3b4c872e055492f7aa7146310506022ccec862455"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\cleanup_failure\\plan.json",
+      "bytes": 2223,
+      "sha256": "d1cdbbf8f3da5a3b8c35db864114412f5a701f3b7ca7db6ba9bce61df22277fc"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\cleanup_failure\\summary.json",
+      "bytes": 38152,
+      "sha256": "ee2708171a67c8f68925721f93279f245ae7ca92d580ca4fe61fdb680dd5f79e"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\foreign\\child-command.json",
+      "bytes": 633,
+      "sha256": "24f4f442f4be0a08875961e5648e3e481e16595443f6a4aecabc347f35c27a1d"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\foreign\\child-stderr.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\foreign\\child-stdout.log",
+      "bytes": 17952,
+      "sha256": "3a070440b68da0318d97c9fd1f418b473463470d619254756ca09c7419c94748"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\foreign\\economic-report.json",
+      "bytes": 1800,
+      "sha256": "904255dda82be03d8c7788edd1fc4edce7116ef40f578c527cc6f590dd5b8004"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\foreign\\events.jsonl",
+      "bytes": 274802,
+      "sha256": "3f66d1ad65dbb438f1c422815a735703ab1c0576d832032ca9a35a32702f1a02"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\foreign\\manifest.json",
+      "bytes": 17919,
+      "sha256": "c19ba0b173ff6d7ed69e5d03deedf58cdac6aec496b01be2f5da5afc55d408f2"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\foreign\\native-io-economics.json",
+      "bytes": 1985,
+      "sha256": "d28e9c2ca753430d00b3749e9b59932b5bc0620a7a839e804efe870ab501c7d4"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\foreign\\native-io-economics.json.lease",
+      "bytes": 151,
+      "sha256": "650eecd815c6a179eea4438d1d4957d923d04274cea79eb770f2c8e35b4a9f2c"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\foreign\\native-io-intents.jsonl",
+      "bytes": 4289,
+      "sha256": "7fbca380e09e0dfb03948c0eea8d6f998dfa79d28eedea63cf8942b7f4c1318c"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\foreign\\peer-evidence.json",
+      "bytes": 198856,
+      "sha256": "cbba6dbbe095a0f907940ebf9183000fe2e992805c771801d5f6bb2c95280f7e"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\foreign\\plan.json",
+      "bytes": 2215,
+      "sha256": "d6271090e81909d47d50111b7cd562a777fedaa840c5e841643d34dadcd2d386"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\foreign\\summary.json",
+      "bytes": 16712,
+      "sha256": "622bd97f8e9009206bfbd855524cbeced2acbb868e4d91288daf8d6fdc1377d8"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\loss_fee\\child-command.json",
+      "bytes": 635,
+      "sha256": "fe7f2b652a94d64f87648f19013d86cc5a58fb79cce609fff9e07fe239c933e0"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\loss_fee\\child-stderr.log",
+      "bytes": 175,
+      "sha256": "0a640e1be4d158a13bb24380bbd6f8ef425330a3e73f0000e08eb85835d78dcb"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\loss_fee\\child-stdout.log",
+      "bytes": 36813,
+      "sha256": "31da267df0514505f2e49923a69e347e3a73dcc2fbccf6edfa5d5cfef806918d"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\loss_fee\\economic-report.json",
+      "bytes": 23826,
+      "sha256": "a85467e76c41a309da4c088e9a980e0fa81a06745494f165e66ce2aa2b26a26e"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\loss_fee\\events.jsonl",
+      "bytes": 160015,
+      "sha256": "8e414ec59d1ceba7182182ea0f8c82386ba5896ed8bd2b3a631f59dc4a8bd31e"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\loss_fee\\manifest.json",
+      "bytes": 17919,
+      "sha256": "fa24c41241eb4aaf5146369908510f7bbe220e833599dab88dfcf577bfb6d167"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\loss_fee\\native-io-economics.json",
+      "bytes": 12578,
+      "sha256": "eccecee03572396880f86d15a7746994603a0a2a0af2af8d9636ad9cf995298c"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\loss_fee\\native-io-economics.json.lease",
+      "bytes": 151,
+      "sha256": "e9f91c904bca28baeedb53300e3f6b3046b5b8033521580037490beeba1b1b65"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\loss_fee\\native-io-intents.jsonl",
+      "bytes": 24969,
+      "sha256": "fe8e6c53df65562159324e660637abf362184c32b75b10c5cdd6a7fb9fcc633f"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\loss_fee\\peer-evidence.json",
+      "bytes": 87751,
+      "sha256": "1a217cd1fd0ed48df0c242fecc4f045ee22ab5aa4fb2941e80a7a7da739c14a1"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\loss_fee\\plan.json",
+      "bytes": 2216,
+      "sha256": "070c99759ecd52cc08c290b92effaba64505c2b4bda3ebb10bf9243af9d1992f"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\loss_fee\\summary.json",
+      "bytes": 34537,
+      "sha256": "f5a08abae0160755b9ee519eb1ce3ae016f2f7155397736af0b41cda546ab10d"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\partial\\child-command.json",
+      "bytes": 633,
+      "sha256": "d7db5eb1d28a4915f5a1d9e966940d7e6637b43c900b2cd1b00ef2e623332d39"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\partial\\child-stderr.log",
+      "bytes": 175,
+      "sha256": "f87ea981310e524674e85e19a9b5578aa56b6a9505fa4e457e21d730cb1c2294"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\partial\\child-stdout.log",
+      "bytes": 38557,
+      "sha256": "11828172bd2252a54795b89e98f53b306093aef9ca1a0d5d442742f5fefca7a5"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\partial\\economic-report.json",
+      "bytes": 24862,
+      "sha256": "02bf31f3817b6bce674f2db35ce86d5e1bf401899708ce4b2e8cd0728ad38a2e"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\partial\\events.jsonl",
+      "bytes": 168578,
+      "sha256": "bad2981a4bb21e6dc1b684e5780ae7339082805fdfacf4e3a6b3187a98928366"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\partial\\manifest.json",
+      "bytes": 17919,
+      "sha256": "7325d2df753f5bee9f6d15f01db4a4050e243ca16c453c95b91676106220b3f6"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\partial\\native-io-economics.json",
+      "bytes": 12632,
+      "sha256": "ea18d882f0a79ca49ee657ff7fcd5cede774f1c03a07dab7773864433b10edfb"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\partial\\native-io-economics.json.lease",
+      "bytes": 151,
+      "sha256": "d3ea8652118b8067a90364f8c1ab314f26a32c79b5aa4b57c5c647e7a7f5c5e4"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\partial\\native-io-intents.jsonl",
+      "bytes": 25013,
+      "sha256": "1dc9495775a1d18570cb455bca1f59e424e5d9ade24c04182ea4cb2d90026a51"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\partial\\peer-evidence.json",
+      "bytes": 108426,
+      "sha256": "7d4041d54d9dcf8e604ff77355b687dade08f2a92d05d2a2cb956ba1861222b4"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\partial\\plan.json",
+      "bytes": 2215,
+      "sha256": "7fc75c28e37944b8d75b4e12340474ff498846f357931e99fd3de6c0cc64593e"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\partial\\summary.json",
+      "bytes": 36166,
+      "sha256": "1d711a2ebf31b498edc921ae8ec2f05717cb4120724d5bfb47a8f5f3901cdb5d"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\reject\\child-command.json",
+      "bytes": 631,
+      "sha256": "1d2c903e3ea47216a20fe9ce0e82806094998d6080f35f8185573c7e30238edd"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\reject\\child-stderr.log",
+      "bytes": 175,
+      "sha256": "82db491fb6f92d1520b026bce75cf21034afae19db0e6b2d30f8863a1b907a05"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\reject\\child-stdout.log",
+      "bytes": 37191,
+      "sha256": "527bea65359609cc27ae28d069891fa96bf0e312cce2e2624206ef2544c4566d"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\reject\\economic-report.json",
+      "bytes": 23882,
+      "sha256": "634a8b4da611a1bdab6538b96eb69c3bef9b78f198ca328bd0d763d4cf2460a9"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\reject\\events.jsonl",
+      "bytes": 166077,
+      "sha256": "be48f6d53bc9e58fdfbe60429fb512ba730e1ae31ff194532d90b111717f19d5"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\reject\\manifest.json",
+      "bytes": 17919,
+      "sha256": "aad7ca08d6eec01f88acdd872babd864036a81e200c0993bc63b199c5c57512e"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\reject\\native-io-economics.json",
+      "bytes": 12630,
+      "sha256": "132dab452cff2a22f257ae99b56929acf8081616b4b3e2c733267f29e5f34089"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\reject\\native-io-economics.json.lease",
+      "bytes": 151,
+      "sha256": "b9a54439025bb97db8635a824cfbe0bf2b6272668515b1b6647e9cc1b8fcf60d"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\reject\\native-io-intents.jsonl",
+      "bytes": 25013,
+      "sha256": "b3f14313a0e2fadc3eff791e09efadb4926dfe1ae649dd16c065acd74f718043"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\reject\\peer-evidence.json",
+      "bytes": 93017,
+      "sha256": "b941ae92edb58a678a83b682197cd11e44c56b3bdbf44351ea7db99cd6a73afd"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\reject\\plan.json",
+      "bytes": 2214,
+      "sha256": "95951406c280f7ee8864af9d32a7b0937fff10a040d311173e8b8917c74ae300"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\reject\\summary.json",
+      "bytes": 34888,
+      "sha256": "6110061692e58775cd6dfcdb950b848b270c2fa7f845ef6e14605a6d308ddb11"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\unknown\\child-command.json",
+      "bytes": 633,
+      "sha256": "baf123c8f8edffecf768b2eaa752cafa2f3ad3e9a56b7ebf4a4a3300bd76b14d"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\unknown\\child-stderr.log",
+      "bytes": 183,
+      "sha256": "80cfdb5bea3faa5e9d154984a382f3e6bccc44fdbb4601d8c7dec06e500a3e82"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\unknown\\child-stdout.log",
+      "bytes": 9580,
+      "sha256": "9c72c6f23ba00b6ffa7aca707ed33cfe2866416655e4fdb412e1d3aea6172e77"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\unknown\\economic-report.json",
+      "bytes": 1823,
+      "sha256": "57c4472692ee0152df6a4f5c58eda6c4e408faa5688e568ec92979a013d3d6dc"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\unknown\\events.jsonl",
+      "bytes": 242038,
+      "sha256": "8266a02fae5d4b9ae2db1c110b9dc0f3b901cbcc5c41574b5f4e3124cfc12f6a"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\unknown\\manifest.json",
+      "bytes": 17919,
+      "sha256": "9db8ee84fca0cce8703d7b4f623b6cf59d827e62cce57e91e2f2164b9dc3bb57"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\unknown\\native-io-economics.json",
+      "bytes": 1505,
+      "sha256": "04c181654820648bd5cbf68c471b6f0129ec2b1ed784e518b192bad70088ca55"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\unknown\\native-io-economics.json.lease",
+      "bytes": 151,
+      "sha256": "d112604346f60dabf2ef7750df1e1135938a14c387606ebe651be162cbf66576"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\unknown\\native-io-intents.jsonl",
+      "bytes": 3021,
+      "sha256": "d6a7241d759d789a63a7e9cb33b6f3d02a03b579d54c9e5749aa44a0955f15b7"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\unknown\\peer-evidence.json",
+      "bytes": 263510,
+      "sha256": "09b1b3c0402f7d5dc2fcddbce3d55c8394bf6691719fe28557ffafc1586ecc73"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\unknown\\plan.json",
+      "bytes": 2215,
+      "sha256": "c9284723c4519319848e60e659844f75be3985410931426fc26905be68d8092c"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\unknown\\summary.json",
+      "bytes": 8739,
+      "sha256": "d63e0a681a0c62f18c82dee42f48955afd49304396059063bc2a45b403cfebb6"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-first-paired-20261009\\paired\\child-command.json",
+      "bytes": 594,
+      "sha256": "608b8a6f4dcb93340191e2a65692aa2a04a01ff9086da1cb81aea497f72b7fca"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-first-paired-20261009\\paired\\child-stderr.log",
+      "bytes": 28722,
+      "sha256": "498945b51bddc6c291ae22eb377f3f86a9b78b52f9ba7bd1da64d887d2c5718b"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-first-paired-20261009\\paired\\child-stdout.log",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-first-paired-20261009\\paired\\economic-report.json",
+      "bytes": 24374,
+      "sha256": "aedd0282f1a0658d4b42511be8e8e260cd7da14a5a2e453defb0df19ede6316d"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-first-paired-20261009\\paired\\events.jsonl",
+      "bytes": 317101,
+      "sha256": "6c2abd3442043dfc481fe6a3c59165bf13dd1884976137dc644b32fe3f5a34de"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-first-paired-20261009\\paired\\manifest.json",
+      "bytes": 17879,
+      "sha256": "20c58888d934335d4e46f5a80d6fc6339b676a2d25f1eb2150528126a3e41f67"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-first-paired-20261009\\paired\\native-io-economics.json",
+      "bytes": 11724,
+      "sha256": "18e28d5dcab6c6587fa8396312014529545557a5ec6b10ee4d448f086cf48860"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-first-paired-20261009\\paired\\native-io-economics.json.lease",
+      "bytes": 151,
+      "sha256": "d58370a397a270bff709ab7419f34bf78d8137b50131a9eaf1f9a702684eee0e"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-first-paired-20261009\\paired\\native-io-intents.jsonl",
+      "bytes": 25013,
+      "sha256": "a7a3f43bca5ab4a8758f93b7f9dc3f39c9805eb91575824d39bcc34abbd3b81e"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-first-paired-20261009\\paired\\peer-evidence.json",
+      "bytes": 304823,
+      "sha256": "68aaa8992ade08b5dca47dc745f11f3c696b372db149733cabd49e56f4c60750"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-first-paired-20261009\\paired\\plan.json",
+      "bytes": 2197,
+      "sha256": "84ef1c8ef1088cb176c9760a27a9698a111ce8e9a46c794e42022e153cf432fc"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\app43-native117-first-paired-20261009\\paired\\summary.json",
+      "bytes": 26460,
+      "sha256": "9738ce961bfc899c6de0597e9cae8b02813c6cf5134c023f528b35a5218d823a"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-corrected-wheel-nextest-20261009\\native-provenance.json",
+      "bytes": 8209,
+      "sha256": "a430a728f9aa190e41428192b7ba10a224fa6b8b2b4ebff8d26844c9371aca47"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-corrected-wheel-nextest-20261009\\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+      "bytes": 109721942,
+      "sha256": "5187319f1754e37069904ce678f8526ddc47a8bc4d077209a95f97fe0205057a"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\app43-native117-corrected-after-first-paired-v1.json",
+      "bytes": 14601,
+      "sha256": "708a6cfcfd334e4c1bb3b0018e6948e9761ad8e8b7d89377f3ffb50ffb69f4a0"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\app43-native117-corrected-after-remaining-scenarios-v1.json",
+      "bytes": 14608,
+      "sha256": "36dc29570e2ca8f23dd78c922917bcff4ef17087bbe7ade8800520bedaa3a3d2"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\app43-native117-corrected-before-first-paired-v1.json",
+      "bytes": 14338,
+      "sha256": "1612fca5cd13e0eb83118fa1df27a6b5f5a29ce1ca86311a0ba85588551f8181"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\app43-native117-corrected-before-remaining-scenarios-v1.json",
+      "bytes": 14338,
+      "sha256": "d1aab9263705bd43a2758c33e66ea292fcd4afc1394f2f8f3f198544de878887"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\app43-native117-corrected-cohorts-unchanged-v1.json",
+      "bytes": 4340,
+      "sha256": "9e1215aee8e4e52bde8a0d19deee42257e7676d6cdb55fc34c5bd7d647d375e1"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\app43-native117-corrected-first-paired-v1.json",
+      "bytes": 1192,
+      "sha256": "59d6ec5428e81b32b9d222e7b0aed8f0f54e6d7d87888ac52acbef42f3470607"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\app43-native117-corrected-first-paired-v1.log",
+      "bytes": 100,
+      "sha256": "c90a7e6e9c02c376b89f3ba120d941e9b21863d818f30d9b5b156a8c8c907e00"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\app43-native117-corrected-remaining-scenarios-v1.json",
+      "bytes": 1313,
+      "sha256": "b88d2eb075cd9f21ce651f85e9b06cdbd9325abf1faef7c70b3dbe30ba1f982c"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\app43-native117-corrected-remaining-scenarios-v1.log",
+      "bytes": 125,
+      "sha256": "6f9d1525c13f5768c47bc30009ed9087d55971c26d66d401fdc7f4053d6985fd"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\app43-native117-first-paired.json",
+      "bytes": 1152,
+      "sha256": "48f72d68e48317231a5839b1ef83e2f3d75cb555542a5a3c2cd8932f40dfb7f3"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\app43-native117-first-paired.log",
+      "bytes": 18884,
+      "sha256": "a4c06c3d6ca295626460219b60ecb4859a8211ba1125b1c942ccec0a76ead73b"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-corrected-app-installed-identity-v1.json",
+      "bytes": 19730,
+      "sha256": "16c688d79753aa5867da4ce24670e32d05106f473e7bde9ea273e60b651d2c68"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-corrected-native-installed-identity-v1.json",
+      "bytes": 19740,
+      "sha256": "5bf993f75cddea827f9a571b4c47efa8304829b97cb1aa1d13d715584bc35234"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-economic-correction-implementation-commit.json",
+      "bytes": 2971,
+      "sha256": "5581730f5e1a75064935c153baa6bccc3715c87bde00a28384c79e3e61800965"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-formatted-v7.json",
+      "bytes": 11334,
+      "sha256": "6cca167d40b04a8e708a6022b3349bfb0fbe711ec51897944df90de37603a25a"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-gap-red-evidence-v2.json",
+      "bytes": 195708,
+      "sha256": "d24e8a23da7cfbdb861ae8217f8620d0229c3e96153122adb61d93e46d397c61"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\producer-review-native117-corrected-all7-v1.json",
+      "bytes": 1266914,
+      "sha256": "afeefb0bdb6f7835daaea9381815007798353514e627847d45e22aa1b4dfa253"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\producer-review-native117-corrected-all7-v1.md",
+      "bytes": 9170,
+      "sha256": "a13e050e3c6976aa7f402764a5803288b8968b770f82ddd5ceec605cee648199"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-corrected-all7-independent-v2-procedure.py",
+      "bytes": 19598,
+      "sha256": "3d3847c2af152da9b1c60394a73218ed82b7f348f4f77b07f527253774a1a8dd"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\_libnautilus.cp312-win_amd64.pyd",
+      "bytes": 390680064,
+      "sha256": "bad744cbe9b3a44aadc7262af68f8501c237957de05450bd320646c16188a885"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\__init__.pyi",
+      "bytes": 931,
+      "sha256": "b6f46e5fd703208605a3892ee1e09d7d361f68b3d58d0f435db30063765e2324"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\architect_ax\\__init__.pyi",
+      "bytes": 7849,
+      "sha256": "e7734c547cd35be5cf5367575f34a105b5714ca11e29c4688078264d62c9bb93"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\aster\\__init__.pyi",
+      "bytes": 3854,
+      "sha256": "3dc13e6d8cfca549f5d0396effbd3c14069075666f9b3cbb544332161fb179bf"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\backpack\\__init__.pyi",
+      "bytes": 10612,
+      "sha256": "1498096ee67e641cdc27ecab2ffecacf771d4552c79ce24ffbc2bf50154abc11"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\betfair\\__init__.pyi",
+      "bytes": 6156,
+      "sha256": "531091ad2a75b53f42e7da0029f9551f5779d5d3dce6adc24eaa85f159221637"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\binance\\__init__.pyi",
+      "bytes": 12941,
+      "sha256": "2e3e9c4253a8cac2414d456598f7ae682fe3e889871e83d241cb99f3b77c7368"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\bitmex\\__init__.pyi",
+      "bytes": 14264,
+      "sha256": "f44f4d8bd628688dce3405c62a3aa5f2572c3f0aad508807999b95aaa1e7d4db"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\blockchain\\__init__.pyi",
+      "bytes": 8565,
+      "sha256": "e7a9a7d88d3cf63fb924e64c065f39f7c83f27d2ca8635e9768412bfc30eb79f"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\bybit\\__init__.pyi",
+      "bytes": 20654,
+      "sha256": "10c5adb89788504f3bb4bd457e911182087183fd512cba7df87d62e723b9f86c"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\coinbase\\__init__.pyi",
+      "bytes": 4103,
+      "sha256": "563f757b9ce7e62e34ac7f0c9a674b4d7b02e3fcb3e9dcf3c2de8d4aa81263f6"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\databento\\__init__.pyi",
+      "bytes": 13131,
+      "sha256": "e4996914215dd9b1e2a24f9fd7c45d2c085e03d77034d617870d5c5a823b6148"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\deribit\\__init__.pyi",
+      "bytes": 11948,
+      "sha256": "052e4de1171ccb3f3e2d29d877d9f33fce52dd9f203880c52b7b399361d9e663"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\derive\\__init__.pyi",
+      "bytes": 4720,
+      "sha256": "2ef1919968809db7627dbb1ffd7d9d1b98fe251d55dc311422fb3bccbe0e8bd7"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\dydx\\__init__.pyi",
+      "bytes": 10190,
+      "sha256": "52888fdf72d97aadf496dc0e888e57e8eb1cec26ae9fa97815705002f51d5ceb"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\hyperliquid\\__init__.pyi",
+      "bytes": 20210,
+      "sha256": "016760dd07b4e7498769088ce6a7ac85100ba3fcaf07a0abd33e8e51614d7cfd"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\interactive_brokers\\__init__.pyi",
+      "bytes": 19473,
+      "sha256": "edf80aacbf93888ad7f9b518f660e0b1f874263e16d5dcbe9c582d601cfec7f6"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\kraken\\__init__.pyi",
+      "bytes": 13248,
+      "sha256": "f7cdfd712d3188a0bc816e02ab7a31ca2ce5fececc4df7c81b41cfd791853737"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\lighter\\__init__.pyi",
+      "bytes": 4632,
+      "sha256": "425f451b5fac36359dbad8d0f11779f892ce6801897c1d4768fabe911f5a7b00"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\okx\\__init__.pyi",
+      "bytes": 18502,
+      "sha256": "de8fda7bee851ec3faa58bcb81fb48a812c1ca391e5cb6b879b4bd97f7eac707"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\ondo\\__init__.pyi",
+      "bytes": 6287,
+      "sha256": "53323ad230833c03f4f6121061a256b059cc40b022d0b927d94903444b0bc187"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\polymarket\\__init__.pyi",
+      "bytes": 12926,
+      "sha256": "62d7f08ea762f17435fe471bc4ba732a65da58599cc74df694fcacb80ac843a0"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\sandbox\\__init__.pyi",
+      "bytes": 3116,
+      "sha256": "bc89c0b96a747963eff82153ba7eae5cd5ab5ef4f37efdd8285bd0803252ddd6"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Lib\\site-packages\\nautilus_trader\\adapters\\tardis\\__init__.pyi",
+      "bytes": 11257,
+      "sha256": "dc5f6d93e6bc60a96e9041ef2cabf044efc73430dde84c9aae703d4fba00aba0"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\AGENTS.md",
+      "bytes": 4070,
+      "sha256": "0db83eca19a5637b536145f71915c4d1d84c7b186eaf809e266b126eb9fde7e5"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\CLAUDE.md",
+      "bytes": 2551,
+      "sha256": "e88c45fda78397824437eba1ba8bf3aa8c33760940d377b3f6e3e04f0477e530"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\config\\entropy-loopback-execution.example.toml",
+      "bytes": 2322,
+      "sha256": "15b454493fcc39d2f074871b6a178322e17bc852a420fe5f312a5bf7285e8a27"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\config\\native-candidate.lock.json",
+      "bytes": 1888,
+      "sha256": "324d00eaf5e26220aa32a0d39b2b9540c331e5fda2611f71d5d6ede3a7336c27"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\pyproject.toml",
+      "bytes": 736,
+      "sha256": "398121ffe743271ad13da6c25b90322b2fbe70bb9b39e0b9229b976d4172c9bb"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\scripts\\verify_native_install.py",
+      "bytes": 12357,
+      "sha256": "8b177547f5be52a5f737d7d8c3e0ccfbdf392df326eb37badddecfdded56a9f9"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution.py",
+      "bytes": 73521,
+      "sha256": "fbde3f919a6813a47aeb8c388ac3689a33689139d876c6e7e6551d7a364ab882"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution_config.py",
+      "bytes": 12822,
+      "sha256": "45ed321317743d05a86b1a51058ad684dbd2e84f31bd86a9fd701845025d8c54"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution_core.py",
+      "bytes": 37382,
+      "sha256": "da5abc7ffa5d61439daaf814254aff4d99ad5a7f977790ee80f86dad910d2443"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution_report.py",
+      "bytes": 21940,
+      "sha256": "5b1a01d4762173c739a90daed4878f854ab0f78b2232a5de07c6969eab9deffa"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_universe.py",
+      "bytes": 18531,
+      "sha256": "1161fd7a4baf2251b2abbf2177e3f55cf99c0ea0c4c2104c053e86195ec7c461"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\entropy_execution_peer.py",
+      "bytes": 30306,
+      "sha256": "11930d360dabe0c8751b0f2451c1f8570489311a8526b419a72b25781075515d"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\fixtures\\entropy-execution\\README.md",
+      "bytes": 1291,
+      "sha256": "17aba7f3b897a695835e26bcc22f81803faf279208a5e88fb378e3eafb82bd6d"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\fixtures\\entropy-public\\synthetic-metadata.json",
+      "bytes": 6128,
+      "sha256": "166db5f747a4b9c5151e22d196051830ab27711fc6cf27a0c7e1a59ebe1211a3"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\test_entropy_execution_config.py",
+      "bytes": 5451,
+      "sha256": "8074c229469e950471e81b63e76d20fd4b46732248f04e5903b9a8250f902633"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\test_entropy_execution_core.py",
+      "bytes": 18119,
+      "sha256": "7776a99af108fb6477fbcc136355b3d7df02d7bb0df10511727a03378df8989e"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\test_entropy_execution_native.py",
+      "bytes": 31959,
+      "sha256": "9a975f5cca43b6b7cb778435a170b3a1223cf0db351417b7bfdd4f9788124120"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\test_entropy_execution_peer.py",
+      "bytes": 7419,
+      "sha256": "c649d24c2c68beb5758442e3eb5abfdd455b070627c179c734f66b8719eac35a"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\test_entropy_execution_report.py",
+      "bytes": 15174,
+      "sha256": "fc1ed72df406d5221c5393a41606d13f0d07f1858cfd327407d0648dcc07fa73"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-execution-app\\uv.lock",
+      "bytes": 36626,
+      "sha256": "b8d53b8754f95bf00a3cafe4019fb3d36f6156e37396900d3e43f288c02c2c16"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\Cargo.lock",
+      "bytes": 259667,
+      "sha256": "a802008d4363de0a4e28dd3b14990d0d79f95ef8a89431c5936fc31e1215463a"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\Cargo.toml",
+      "bytes": 24273,
+      "sha256": "46b62a317d15d8e2d1701bf3d0e834bed4973860ebb685749800f148f42f2d5a"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\account_scope.rs",
+      "bytes": 84490,
+      "sha256": "1ff6b1d2ea0050b2b31f0a053682b109b2fa0eb7ae94c9509afdb6b7ef4e5230"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\economics_scope\\store.rs",
+      "bytes": 20348,
+      "sha256": "45fe49e6b631b8f1a1758370166aa1c19e798ef5357d252ea0e3b60380ce5adf"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\economics_scope.rs",
+      "bytes": 34855,
+      "sha256": "a7c2d11299417c3f3cd82c485d5f834401e6cb65baffb4f89e8af8e34687a03e"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\execution.rs",
+      "bytes": 250478,
+      "sha256": "2b1e30b896b60b01edd257947426c5f132b841dc7fe7771602f1e810c81c3316"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+      "bytes": 194007,
+      "sha256": "05963a5c4d221b476cae64260cf956898105acbafbde8ce117b1e659f000be50"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\http\\client.rs",
+      "bytes": 176208,
+      "sha256": "ba66b53fcc6a6d1fb6e8bb34ac6faf677cd9e7eb6ffe89eea9e2c11ea398eab2"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\http\\rate_limits.rs",
+      "bytes": 15968,
+      "sha256": "47dd217c00b7a28358b2f28b7e1803c72e5817212300a2e62c2f0a419047dafc"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\websocket\\client.rs",
+      "bytes": 131462,
+      "sha256": "15a9fdde9cf9df8e491a63dde625de7029ac85868f19a8dc775d56f2ea160b9a"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\common\\src\\runner.rs",
+      "bytes": 37029,
+      "sha256": "8c97f8e42092665146c4e0ff976ee9e49a766cf003229b46de8131953000a845"
+    },
+    {
+      "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\live\\src\\runner.rs",
+      "bytes": 77300,
+      "sha256": "cc4a6b2928e4135c83220cf900244b8cdf430dc1f28cfb7803740504998520ac"
+    }
+  ]
+}

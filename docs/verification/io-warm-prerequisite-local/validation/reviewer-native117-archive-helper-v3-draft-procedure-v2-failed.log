@@ -1,0 +1,5 @@
+Read-only report procedure second failure; no tests or helper execution.
+Argv: E:/persarb/worktrees/entropy-execution-app/.venv/Scripts/python.exe E:/persarb/_tmp/entropy117-validation/reviewer-native117-archive-helper-v3-draft-procedure-v2.py
+Actual exit_code: 1
+Traceback line34: assert new_diagnostics==0 and inherited_diagnostics==10 -> AssertionError.
+Actual FILE schema: new_diagnostics=[] array and inherited_diagnostics=10 integer. A compact stdout summary transformed empty-list length into zero; it is not file schema. Failed exact inspection UTC not recorded; do not invent it.

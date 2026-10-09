@@ -1,0 +1,18 @@
+from pathlib import Path
+
+root=Path('E:/persarb/_tmp/entropy117-validation')
+old=root/'reviewer-native117-archive-helper-v3-draft-procedure-v2.py'
+new=root/'reviewer-native117-archive-helper-v3-draft-procedure-v3.py'
+assert not new.exists()
+text=old.read_text(encoding='utf-8')
+text=text.replace("label='reviewer-native117-archive-helper-v3-draft-review-v2'", "label='reviewer-native117-archive-helper-v3-draft-review-v3'")
+text=text.replace("comparison['new_diagnostics']==0 and comparison['inherited_diagnostics']==10", "comparison['new_diagnostics']==[] and comparison['inherited_diagnostics']==10")
+text=text.replace('new counter0 and empty set difference','new array[] and empty set difference')
+text=text.replace('new_diagnostics=0 plus an independently empty new diagnostic set','new_diagnostics=[] plus an independently empty new diagnostic set')
+text=text.replace('this revision reads actual counters0/10','a second read-only procedure exited1 by misreading compact stdout count0 as the raw-file new_diagnostics array. Both failures remain preserved. This final revision reads actual mixed schema new_diagnostics=[] array and inherited_diagnostics=10 integer')
+text=text.replace("inputs=[Path(__file__),helper", "inputs=[Path(__file__),root/'reviewer-native117-archive-helper-v3-draft-procedure-v2.py',root/'reviewer-native117-archive-helper-v3-draft-procedure-v2-failed.log',helper")
+new.write_text(text,encoding='utf-8')
+note=root/'reviewer-native117-archive-helper-v3-draft-procedure-v2-failed.log'
+assert not note.exists()
+note.write_text('Read-only report procedure second failure; no tests or helper execution.\nArgv: E:/persarb/worktrees/entropy-execution-app/.venv/Scripts/python.exe E:/persarb/_tmp/entropy117-validation/reviewer-native117-archive-helper-v3-draft-procedure-v2.py\nActual exit_code: 1\nTraceback line34: assert new_diagnostics==0 and inherited_diagnostics==10 -> AssertionError.\nActual FILE schema: new_diagnostics=[] array and inherited_diagnostics=10 integer. A compact stdout summary transformed empty-list length into zero; it is not file schema. Failed exact inspection UTC not recorded; do not invent it.\n',encoding='utf-8')
+print(str(new))

@@ -1,0 +1,36 @@
+"""Compare completed lint diagnostics; do not turn inherited errors into PASS."""
+
+import hashlib
+import json
+import re
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+root = Path(__file__).resolve().parent
+output = root / "native117-clippy-diagnostic-comparison-v7.json"
+assert not output.exists()
+
+
+def read(label):
+    path = root / (label + ".log")
+    receipt = root / (label + ".json")
+    record = json.loads(receipt.read_text(encoding="utf-8"))
+    assert record["exit_code"] == 101
+    raw = path.read_text(encoding="utf-8")
+    rows = []
+    for match in re.finditer(r"^error: (.+)\n\s*(?:-->|\s*--> )\s*(.+?)\n", raw, re.MULTILINE):
+        rows.append({"message": match.group(1), "location": match.group(2).strip().replace("\\", "/")})
+    return {"label": label, "log": {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}, "receipt": {"path": str(receipt), "sha256": hashlib.sha256(receipt.read_bytes()).hexdigest()}, "command": record, "diagnostics": rows}
+
+
+baseline = read("native117-tests-inclusive-clippy-v6")
+unit = read("native117-tests-inclusive-clippy-v7")
+integration = read("native117-integration-tests-clippy-v7")
+assert len(baseline["diagnostics"]) == 10
+assert len(unit["diagnostics"]) == 4
+assert len(integration["diagnostics"]) == 6
+current = unit["diagnostics"] + integration["diagnostics"]
+assert sorted((row["message"], row["location"]) for row in current) == sorted((row["message"], row["location"]) for row in baseline["diagnostics"])
+output.write_text(json.dumps({"captured_utc": datetime.now(timezone.utc).isoformat(), "baseline": baseline, "current": [unit, integration], "new_diagnostics": [], "inherited_diagnostics": 10, "tests_executed_by_comparison": 0, "note": "The v7 combined command stopped after four inherited library-test errors; the separate exact integration target exposed six inherited errors. Both commands failed. This comparison does not assert tests-inclusive Clippy PASS or imply the integration target was checked in the first v7 command."}, indent=2) + "\n", encoding="utf-8")
+print(json.dumps({"output": str(output), "current_commands_failed": 2, "unit_inherited": 4, "integration_inherited": 6, "new_diagnostics": 0}))

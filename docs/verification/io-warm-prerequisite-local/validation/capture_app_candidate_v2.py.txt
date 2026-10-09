@@ -1,0 +1,98 @@
+"""Capture explicit synthetic app/native inputs without credentials or env dumps."""
+
+import argparse
+import hashlib
+import importlib
+import json
+import subprocess
+from datetime import datetime, timezone
+from importlib import metadata
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+APP = Path("E:/persarb/worktrees/entropy-execution-app")
+NATIVE = Path("E:/persarb/worktrees/entropy-warm-prerequisites")
+WHEEL_DIRECTORY = Path("E:/persarb/_tmp/entropy117-corrected-wheel-nextest-20261009")
+
+
+def entry(path):
+    data = path.read_bytes()
+    return {"path": path.as_posix(), "bytes": len(data),
+            "sha256": hashlib.sha256(data).hexdigest()}
+
+
+def git(root, *args):
+    return subprocess.check_output(["git", *args], cwd=root, text=True).strip()
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("label")
+    parser.add_argument("--compare")
+    args = parser.parse_args()
+    target = ROOT / f"{args.label}.json"
+    assert not target.exists(), target
+    relative = (
+        "CLAUDE.md", "AGENTS.md", "pyproject.toml", "uv.lock",
+        "src/entropy_execution.py", "src/entropy_execution_config.py",
+        "src/entropy_execution_core.py", "src/entropy_execution_report.py",
+        "src/entropy_universe.py", "scripts/verify_native_install.py",
+        "tests/entropy_execution_peer.py", "tests/test_entropy_execution_peer.py", "tests/test_entropy_execution_native.py",
+        "tests/test_entropy_execution_config.py", "tests/test_entropy_execution_core.py",
+        "tests/test_entropy_execution_report.py",
+        "config/entropy-loopback-execution.example.toml", "config/native-candidate.lock.json",
+        "tests/fixtures/entropy-execution/README.md",
+        "tests/fixtures/entropy-public/synthetic-metadata.json",
+    )
+    native_relative = (
+        "Cargo.toml", "Cargo.lock", "crates/adapters/hyperliquid/src/execution.rs",
+        "crates/adapters/hyperliquid/src/execution_scope.rs",
+        "crates/adapters/hyperliquid/src/account_scope.rs",
+        "crates/adapters/hyperliquid/src/http/client.rs",
+        "crates/adapters/hyperliquid/src/websocket/client.rs",
+        "crates/adapters/hyperliquid/src/http/rate_limits.rs",
+        "crates/adapters/hyperliquid/src/economics_scope.rs",
+        "crates/adapters/hyperliquid/src/economics_scope/store.rs",
+        "crates/common/src/runner.rs", "crates/live/src/runner.rs",
+    )
+    record = {"captured_utc": datetime.now(timezone.utc).isoformat(),
+              "app_head": git(APP, "rev-parse", "HEAD"),
+              "native_current_checkout_head": git(NATIVE, "rev-parse", "HEAD"),
+              "source_files": [entry(APP / name) for name in relative]
+                              + [entry(NATIVE / name) for name in native_relative]}
+    provenance_path = WHEEL_DIRECTORY / "native-provenance.json"
+    provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    imported = Path(importlib.import_module("nautilus_trader._libnautilus").__file__)
+    distribution = metadata.distribution("nautilus-trader")
+    installed = [entry(imported)]
+    for item in provenance["embedded_adapter_stubs"]:
+        value = entry(Path(distribution.locate_file(item["path"])))
+        assert value["sha256"] == item["sha256"], item["path"]
+        installed.append(value)
+    wheel = WHEEL_DIRECTORY / provenance["wheel"]["filename"]
+    wheel_identity = entry(wheel)
+    assert wheel_identity["sha256"] == provenance["wheel"]["sha256"]
+    binaries = [item for item in provenance["embedded_native_objects"] if item["path"].endswith(".pyd")]
+    assert len(binaries) == 1
+    assert installed[0]["sha256"] == binaries[0]["sha256"]
+    record.update(installed_files=installed, artifacts=[wheel_identity, entry(provenance_path)],
+                  implementation=provenance["declared_native"], source_binding=provenance["source_binding"])
+    if args.compare:
+        before_path = ROOT / f"{args.compare}.json"
+        before = json.loads(before_path.read_text(encoding="utf-8"))
+        changes = []
+        for key in ("source_files", "installed_files", "artifacts"):
+            old = {row["path"]: row for row in before[key]}
+            new = {row["path"]: row for row in record[key]}
+            changes.extend(name for name in old.keys() | new.keys() if old.get(name) != new.get(name))
+        record["compared_before"] = entry(before_path)
+        record["differences"] = changes
+        assert not changes, changes
+    target.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({"capture": target.as_posix(), "source_files": len(record["source_files"]),
+                      "installed_files": len(installed), "differences": record.get("differences"),
+                      "wheel_sha256": wheel_identity["sha256"]}))
+
+
+if __name__ == "__main__":
+    main()

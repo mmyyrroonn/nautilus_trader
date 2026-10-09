@@ -1,0 +1,92 @@
+{
+  "verified_utc": "2026-10-09T13:45:28.253046+00:00",
+  "captures": [
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\app43-native117-corrected-before-first-paired-v1.json",
+      "sha256": "1612fca5cd13e0eb83118fa1df27a6b5f5a29ce1ca86311a0ba85588551f8181",
+      "captured_utc": "2026-10-09T13:42:17.809469+00:00"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\app43-native117-corrected-after-first-paired-v1.json",
+      "sha256": "708a6cfcfd334e4c1bb3b0018e6948e9761ad8e8b7d89377f3ffb50ffb69f4a0",
+      "captured_utc": "2026-10-09T13:42:42.377371+00:00"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\app43-native117-corrected-before-remaining-scenarios-v1.json",
+      "sha256": "d1aab9263705bd43a2758c33e66ea292fcd4afc1394f2f8f3f198544de878887",
+      "captured_utc": "2026-10-09T13:43:05.425812+00:00"
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\app43-native117-corrected-after-remaining-scenarios-v1.json",
+      "sha256": "36dc29570e2ca8f23dd78c922917bcff4ef17087bbe7ade8800520bedaa3a3d2",
+      "captured_utc": "2026-10-09T13:45:26.778352+00:00"
+    }
+  ],
+  "equal": true,
+  "inputs_per_capture": 58,
+  "source_files": 32,
+  "installed_files": 24,
+  "artifacts": 2,
+  "native_head": "b07a7e6e6bfc7613aa12c77cdee1110e25790ca1",
+  "commands": [
+    {
+      "argv": [
+        "E:/persarb/worktrees/entropy-execution-app/.venv/Scripts/python.exe",
+        "-X",
+        "utf8",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/test_entropy_execution_native.py::test_actual_installed_factory_two_leg_execution[paired]",
+        "--basetemp",
+        "E:/persarb/_tmp/app43-native117-corrected-first-paired-pytest-20261009"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-execution-app",
+      "started_utc": "2026-10-09T13:42:18.980560+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "uv_project_environment": null,
+      "nautilus_stub_profile": null,
+      "cargo_build_warnings": null,
+      "cargo_net_offline": null,
+      "entropy43_native_wheel": "E:/persarb/_tmp/entropy117-corrected-wheel-nextest-20261009/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+      "entropy43_native_sha256": "5187319f1754e37069904ce678f8526ddc47a8bc4d077209a95f97fe0205057a",
+      "entropy43_native_provenance": "E:/persarb/_tmp/entropy117-corrected-wheel-nextest-20261009/native-provenance.json",
+      "entropy43_evidence_root": "E:/persarb/_tmp/app43-native117-corrected-first-paired-20261009",
+      "exit_code": 0,
+      "finished_utc": "2026-10-09T13:42:24.022478+00:00"
+    },
+    {
+      "argv": [
+        "E:/persarb/worktrees/entropy-execution-app/.venv/Scripts/python.exe",
+        "-X",
+        "utf8",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/test_entropy_execution_native.py::test_actual_installed_factory_two_leg_execution",
+        "--deselect=tests/test_entropy_execution_native.py::test_actual_installed_factory_two_leg_execution[paired]",
+        "--basetemp",
+        "E:/persarb/_tmp/app43-native117-corrected-remaining-scenarios-pytest-20261009"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-execution-app",
+      "started_utc": "2026-10-09T13:43:06.509197+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "uv_project_environment": null,
+      "nautilus_stub_profile": null,
+      "cargo_build_warnings": null,
+      "cargo_net_offline": null,
+      "entropy43_native_wheel": "E:/persarb/_tmp/entropy117-corrected-wheel-nextest-20261009/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+      "entropy43_native_sha256": "5187319f1754e37069904ce678f8526ddc47a8bc4d077209a95f97fe0205057a",
+      "entropy43_native_provenance": "E:/persarb/_tmp/entropy117-corrected-wheel-nextest-20261009/native-provenance.json",
+      "entropy43_evidence_root": "E:/persarb/_tmp/app43-native117-corrected-remaining-scenarios-20261009",
+      "exit_code": 0,
+      "finished_utc": "2026-10-09T13:44:16.566533+00:00"
+    }
+  ],
+  "distinct_cases": 7,
+  "actual_case_commands": 2,
+  "additional_test_executions_by_comparison": 0,
+  "note": "One successful paired followed by six different original scenarios; no repeated paired and no all-APP43/E6 claim."
+}

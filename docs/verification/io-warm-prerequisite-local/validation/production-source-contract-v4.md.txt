@@ -1,0 +1,14 @@
+# Native117 production v4 — borrowed prerequisite retention argument
+
+Root's actual production Clippy v3 failed with `needless_pass_by_value` at execution_scope.rs1169. The original log remains `native117-production-clippy-v3.log`; the result is not relabeled as a pass. Root authorized this narrow follow-up after the separate App43 source-only report was completed.
+
+Only execution_scope.rs changes from the actual formatted v3 bytes; account_scope.rs is byte-identical. `IoWarmSourcesGuard::drop` borrows its optional original prerequisite Arc into `abandon_warm_sources`, which borrows it into the sole `retain_warm_source_debt` call. Only construction of durable `UnknownSources.reused_prerequisite_source` clones the Arc with `.cloned()`. The same borrowed original is available to produce the unchanged bounded `RetentionFailed` origin diagnostic. Propagating the borrow through the immediate helper avoids moving the same unconsumed-by-value pattern to another function.
+
+No lint suppression, debt/financial behavior, raw copy, policy, deadline, byte bound, public API, test hook or test assertion is changed. Existing captured identity/raw lifetime and persistence semantics remain the same. This author ran no formatter, Clippy, Cargo, tests, Git/GitHub, build or install; root must rerun the actual checks. All earlier versions remain preserved.
+
+Actual source before and after is copied to `production-source-v4-before/` and `production-source-v4-frozen/`. Exact UTC, identities, source ownership and failed-Clippy log SHA are in `production-source-contract-v4.json` (SHA256 `28b6c74aa3b4c8f60f3defb5b2cdfa6f00c4ff53f0c71bb677155dc0e3853885`).
+
+- Unchanged account_scope.rs:84,490 bytes, SHA256 `1ff6b1d2ea0050b2b31f0a053682b109b2fa0eb7ae94c9509afdb6b7ef4e5230`.
+- execution_scope.rs:194,007 bytes, SHA256 `05963a5c4d221b476cae64260cf956898105acbafbde8ce117b1e659f000be50`.
+
+Production writes stop at v4. Compilation/lint/tests of these exact bytes and App43 actual installed-native outcomes remain pending; the separate App43 source-only report is not runtime evidence.

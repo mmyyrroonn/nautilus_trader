@@ -1,0 +1,9254 @@
+{
+  "HYPERLIQUID": {
+    "requests": [
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "spotMeta"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "universe": [],
+            "tokens": [
+              {
+                "name": "USDC",
+                "index": 0,
+                "szDecimals": 8,
+                "weiDecimals": 8,
+                "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+                "isCanonical": true,
+                "fullName": "USD Coin"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "allPerpMetas"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "universe": [],
+              "collateralToken": 0
+            },
+            {
+              "universe": [
+                {
+                  "name": "io:SNDK",
+                  "szDecimals": 4,
+                  "maxLeverage": 10,
+                  "onlyIsolated": true,
+                  "marginMode": "strictIsolated"
+                }
+              ],
+              "collateralToken": 0
+            }
+          ]
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "outcomeMeta"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "outcomes": [],
+            "questions": []
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "allPerpMetas"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "universe": [],
+              "collateralToken": 0
+            },
+            {
+              "universe": [
+                {
+                  "name": "io:SNDK",
+                  "szDecimals": 4,
+                  "maxLeverage": 10,
+                  "onlyIsolated": true,
+                  "marginMode": "strictIsolated"
+                }
+              ],
+              "collateralToken": 0
+            }
+          ]
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "perpDexs"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": [
+            null,
+            {
+              "name": "io",
+              "fullName": "Synthetic Entropy"
+            }
+          ]
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "spotMeta"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "universe": [],
+            "tokens": [
+              {
+                "name": "USDC",
+                "index": 0,
+                "szDecimals": 8,
+                "weiDecimals": 8,
+                "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+                "isCanonical": true,
+                "fullName": "USD Coin"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "allPerpMetas"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "universe": [],
+              "collateralToken": 0
+            },
+            {
+              "universe": [
+                {
+                  "name": "io:SNDK",
+                  "szDecimals": 4,
+                  "maxLeverage": 10,
+                  "onlyIsolated": true,
+                  "marginMode": "strictIsolated"
+                }
+              ],
+              "collateralToken": 0
+            }
+          ]
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "outcomeMeta"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "outcomes": [],
+            "questions": []
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "spotMeta"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "universe": [],
+            "tokens": [
+              {
+                "name": "USDC",
+                "index": 0,
+                "szDecimals": 8,
+                "weiDecimals": 8,
+                "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+                "isCanonical": true,
+                "fullName": "USD Coin"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "allPerpMetas"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "universe": [],
+              "collateralToken": 0
+            },
+            {
+              "universe": [
+                {
+                  "name": "io:SNDK",
+                  "szDecimals": 4,
+                  "maxLeverage": 10,
+                  "onlyIsolated": true,
+                  "marginMode": "strictIsolated"
+                }
+              ],
+              "collateralToken": 0
+            }
+          ]
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "outcomeMeta"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "outcomes": [],
+            "questions": []
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userRole",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "role": "user"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userAbstraction",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": "disabled"
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userDexAbstraction",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": false
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "meta",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "universe": [
+              {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            ],
+            "collateralToken": 0
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "spotMeta"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "universe": [],
+            "tokens": [
+              {
+                "name": "USDC",
+                "index": 0,
+                "szDecimals": 8,
+                "weiDecimals": 8,
+                "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+                "isCanonical": true,
+                "fullName": "USD Coin"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "clearinghouseState",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "0",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [],
+            "time": 1791553435528
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userAbstraction",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": "disabled"
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userDexAbstraction",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": false
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "perpDexs"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": [
+            null,
+            {
+              "name": "io",
+              "fullName": "Synthetic Entropy"
+            }
+          ]
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "meta",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "universe": [
+              {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            ],
+            "collateralToken": 0
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "spotMeta"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "universe": [],
+            "tokens": [
+              {
+                "name": "USDC",
+                "index": 0,
+                "szDecimals": 8,
+                "weiDecimals": 8,
+                "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+                "isCanonical": true,
+                "fullName": "USD Coin"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "activeAssetData",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "coin": "io:SNDK"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+            "coin": "io:SNDK",
+            "leverage": {
+              "type": "isolated",
+              "value": 1
+            },
+            "maxTradeSzs": [
+              "1",
+              "1"
+            ],
+            "availableToTrade": [
+              "100",
+              "100"
+            ],
+            "markPx": "100"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "activeAssetData",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "coin": "io:SNDK"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+            "coin": "io:SNDK",
+            "leverage": {
+              "type": "isolated",
+              "value": 1
+            },
+            "maxTradeSzs": [
+              "1",
+              "1"
+            ],
+            "availableToTrade": [
+              "100",
+              "100"
+            ],
+            "markPx": "100"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "frontendOpenOrders",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userFills",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userRole",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "role": "user"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userAbstraction",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": "disabled"
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userDexAbstraction",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": false
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "meta",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "universe": [
+              {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            ],
+            "collateralToken": 0
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "spotMeta"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "universe": [],
+            "tokens": [
+              {
+                "name": "USDC",
+                "index": 0,
+                "szDecimals": 8,
+                "weiDecimals": 8,
+                "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+                "isCanonical": true,
+                "fullName": "USD Coin"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "clearinghouseState",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "0",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [],
+            "time": 1791553435651
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userAbstraction",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": "disabled"
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userDexAbstraction",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": false
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "meta",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "universe": [
+              {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            ],
+            "collateralToken": 0
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "spotMeta"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "universe": [],
+            "tokens": [
+              {
+                "name": "USDC",
+                "index": 0,
+                "szDecimals": 8,
+                "weiDecimals": 8,
+                "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+                "isCanonical": true,
+                "fullName": "USD Coin"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userFunding",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "startTime": 1791553434100,
+          "endTime": 1791553435654
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userNonFundingLedgerUpdates",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "startTime": 1791553434100,
+          "endTime": 1791553435654
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "frontendOpenOrders",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userFills",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "historicalOrders",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "frontendOpenOrders",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userFills",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "clearinghouseState",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "0",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [],
+            "time": 1791553436706
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "activeAssetData",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "coin": "io:SNDK"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+            "coin": "io:SNDK",
+            "leverage": {
+              "type": "isolated",
+              "value": 1
+            },
+            "maxTradeSzs": [
+              "1",
+              "1"
+            ],
+            "availableToTrade": [
+              "100",
+              "100"
+            ],
+            "markPx": "100"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "activeAssetData",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "coin": "io:SNDK"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+            "coin": "io:SNDK",
+            "leverage": {
+              "type": "isolated",
+              "value": 1
+            },
+            "maxTradeSzs": [
+              "1",
+              "1"
+            ],
+            "availableToTrade": [
+              "100",
+              "100"
+            ],
+            "markPx": "100"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "frontendOpenOrders",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userFills",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userRole",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "role": "user"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userAbstraction",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": "disabled"
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userDexAbstraction",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": false
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "meta",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "universe": [
+              {
+                "name": "io:SNDK",
+                "szDecimals": 4,
+                "maxLeverage": 10,
+                "onlyIsolated": true,
+                "marginMode": "strictIsolated"
+              }
+            ],
+            "collateralToken": 0
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "spotMeta"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "universe": [],
+            "tokens": [
+              {
+                "name": "USDC",
+                "index": 0,
+                "szDecimals": 8,
+                "weiDecimals": 8,
+                "tokenId": "0x6d1e7cde53ba9467b783cb7c530ce054",
+                "isCanonical": true,
+                "fullName": "USD Coin"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "clearinghouseState",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "0",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [],
+            "time": 1791553437706
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userAbstraction",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": "disabled"
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "userDexAbstraction",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": false
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "activeAssetData",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "coin": "io:SNDK"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+            "coin": "io:SNDK",
+            "leverage": {
+              "type": "isolated",
+              "value": 1
+            },
+            "maxTradeSzs": [
+              "1",
+              "1"
+            ],
+            "availableToTrade": [
+              "100",
+              "100"
+            ],
+            "markPx": "100"
+          }
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/info",
+        "body": {
+          "type": "activeAssetData",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "coin": "io:SNDK"
+        },
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+            "coin": "io:SNDK",
+            "leverage": {
+              "type": "isolated",
+              "value": 1
+            },
+            "maxTradeSzs": [
+              "1",
+              "1"
+            ],
+            "availableToTrade": [
+              "100",
+              "100"
+            ],
+            "markPx": "100"
+          }
+        }
+      }
+    ],
+    "commands": [
+      {
+        "method": "subscribe",
+        "subscription": {
+          "type": "orderUpdates",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        }
+      },
+      {
+        "method": "subscribe",
+        "subscription": {
+          "type": "userEvents",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        }
+      },
+      {
+        "method": "subscribe",
+        "subscription": {
+          "type": "clearinghouseState",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io"
+        }
+      },
+      {
+        "method": "subscribe",
+        "subscription": {
+          "type": "userFundings",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        }
+      },
+      {
+        "method": "subscribe",
+        "subscription": {
+          "type": "userNonFundingLedgerUpdates",
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+        }
+      },
+      {
+        "method": "subscribe",
+        "subscription": {
+          "type": "l2Book",
+          "coin": "io:SNDK"
+        }
+      },
+      {
+        "method": "unsubscribe",
+        "subscription": {
+          "type": "l2Book",
+          "coin": "io:SNDK"
+        }
+      }
+    ],
+    "frames": [
+      {
+        "channel": "clearinghouseState",
+        "data": {
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io",
+          "clearinghouseState": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "0",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [],
+            "time": 1791553435622
+          }
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553435690,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553435795,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553435901,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553435996,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553436105,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553436200,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553436295,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553436403,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553436499,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553436594,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553436685,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "clearinghouseState",
+        "data": {
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io",
+          "clearinghouseState": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "0",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [],
+            "time": 1791553436685
+          }
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553436780,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553436888,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553436999,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553437093,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553437187,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553437296,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553437404,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553437497,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553437605,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553437702,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "clearinghouseState",
+        "data": {
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io",
+          "clearinghouseState": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "0",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [],
+            "time": 1791553437702
+          }
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553437795,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553437902,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553437996,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553438105,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553438200,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553438295,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553438403,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553438497,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553438605,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553438700,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553438793,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "clearinghouseState",
+        "data": {
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io",
+          "clearinghouseState": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "0",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [],
+            "time": 1791553438793
+          }
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553438900,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553438994,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553439103,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553439199,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553439293,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553439402,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553439497,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553439606,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553439701,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553439793,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "clearinghouseState",
+        "data": {
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io",
+          "clearinghouseState": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "0",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [],
+            "time": 1791553439793
+          }
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553439901,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553439996,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553440106,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553440202,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553440295,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553440404,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553440500,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553440595,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553440689,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553440781,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "clearinghouseState",
+        "data": {
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io",
+          "clearinghouseState": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "0",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [],
+            "time": 1791553440798
+          }
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553440876,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553440985,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553441079,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553441187,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553441282,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553441376,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553441470,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553441580,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553441688,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553441783,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553441893,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "clearinghouseState",
+        "data": {
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io",
+          "clearinghouseState": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "0",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [],
+            "time": 1791553441893
+          }
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553442002,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553442098,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553442194,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553442302,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553442397,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553442505,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553442601,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553442696,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553442806,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553442901,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "clearinghouseState",
+        "data": {
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io",
+          "clearinghouseState": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "0",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [],
+            "time": 1791553442901
+          }
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553442995,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553443104,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553443199,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553443293,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553443401,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553443495,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553443603,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553443697,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553443793,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553443902,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "clearinghouseState",
+        "data": {
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io",
+          "clearinghouseState": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "0",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [],
+            "time": 1791553443902
+          }
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553443996,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553444105,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553444202,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553444295,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553444404,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553444499,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553444593,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553444702,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553444796,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553444903,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "clearinghouseState",
+        "data": {
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io",
+          "clearinghouseState": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "0",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [],
+            "time": 1791553444903
+          }
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553444997,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553445104,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553445200,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553445292,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553445402,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553445497,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553445606,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553445700,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553445794,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553445905,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "clearinghouseState",
+        "data": {
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io",
+          "clearinghouseState": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "0",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [],
+            "time": 1791553445905
+          }
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553446001,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553446124,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553446234,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553446343,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553446437,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553446531,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553446625,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553446734,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553446842,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553446953,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "clearinghouseState",
+        "data": {
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io",
+          "clearinghouseState": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "0",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [],
+            "time": 1791553446953
+          }
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553447061,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553447171,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553447281,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553447390,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553447500,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553447595,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553447703,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553447797,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553447893,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553448005,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "clearinghouseState",
+        "data": {
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io",
+          "clearinghouseState": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "0",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [],
+            "time": 1791553448005
+          }
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553448097,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553448204,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553448298,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553448394,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553448502,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553448598,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553448692,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553448802,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553448897,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553449005,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "clearinghouseState",
+        "data": {
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io",
+          "clearinghouseState": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "0",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [],
+            "time": 1791553449005
+          }
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553449100,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553449195,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553449303,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553449397,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553449505,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553449599,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553449695,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553449804,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553449900,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553449995,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553450103,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "clearinghouseState",
+        "data": {
+          "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+          "dex": "io",
+          "clearinghouseState": {
+            "marginSummary": {
+              "accountValue": "100",
+              "totalNtlPos": "0",
+              "totalRawUsd": "100",
+              "totalMarginUsed": "0"
+            },
+            "crossMarginSummary": {
+              "accountValue": "0",
+              "totalNtlPos": "0",
+              "totalRawUsd": "0",
+              "totalMarginUsed": "0"
+            },
+            "crossMaintenanceMarginUsed": "0",
+            "withdrawable": "100",
+            "assetPositions": [],
+            "time": 1791553450103
+          }
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553450197,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553450305,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553450400,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553450494,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553450603,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553450698,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      },
+      {
+        "channel": "l2Book",
+        "data": {
+          "coin": "io:SNDK",
+          "time": 1791553450792,
+          "levels": [
+            [
+              {
+                "px": "99.99",
+                "sz": "1",
+                "n": 1
+              }
+            ],
+            [
+              {
+                "px": "100.00",
+                "sz": "1",
+                "n": 1
+              }
+            ]
+          ]
+        }
+      }
+    ],
+    "actions": 0,
+    "fills": [],
+    "position": "0",
+    "errors": [],
+    "recording_point": "after runtime cleanup before peer teardown"
+  },
+  "ASTER": {
+    "requests": [
+      {
+        "method": "GET",
+        "path": "/fapi/v1/exchangeInfo",
+        "body": null,
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "timezone": "UTC",
+            "serverTime": 1791553435499,
+            "rateLimits": [
+              {
+                "rateLimitType": "REQUEST_WEIGHT",
+                "interval": "MINUTE",
+                "intervalNum": 1,
+                "limit": 2400
+              },
+              {
+                "rateLimitType": "ORDERS",
+                "interval": "MINUTE",
+                "intervalNum": 1,
+                "limit": 1200
+              },
+              {
+                "rateLimitType": "ORDERS",
+                "interval": "SECOND",
+                "intervalNum": 10,
+                "limit": 300
+              }
+            ],
+            "exchangeFilters": [],
+            "symbols": [
+              {
+                "symbol": "SNDKUSD1",
+                "filters": [
+                  {
+                    "minPrice": "0.01000",
+                    "maxPrice": "100000",
+                    "filterType": "PRICE_FILTER",
+                    "tickSize": "0.01000"
+                  },
+                  {
+                    "stepSize": "0.01",
+                    "filterType": "LOT_SIZE",
+                    "maxQty": "6000",
+                    "minQty": "0.01"
+                  },
+                  {
+                    "stepSize": "0.01",
+                    "filterType": "MARKET_LOT_SIZE",
+                    "maxQty": "600",
+                    "minQty": "0.01"
+                  },
+                  {
+                    "limit": 200,
+                    "filterType": "MAX_NUM_ORDERS"
+                  },
+                  {
+                    "limit": 10,
+                    "filterType": "MAX_NUM_ALGO_ORDERS"
+                  },
+                  {
+                    "notional": "5",
+                    "filterType": "MIN_NOTIONAL"
+                  },
+                  {
+                    "multiplierDown": "0.9500",
+                    "multiplierUp": "1.0500",
+                    "ltMultiplierDown": "0.9500",
+                    "multiplierDecimal": "4",
+                    "filterType": "PERCENT_PRICE",
+                    "ltMultiplierUp": "1.0500"
+                  }
+                ],
+                "orderTypes": [
+                  "LIMIT",
+                  "MARKET",
+                  "STOP",
+                  "STOP_MARKET",
+                  "TAKE_PROFIT",
+                  "TAKE_PROFIT_MARKET",
+                  "TRAILING_STOP_MARKET"
+                ],
+                "timeInForce": [
+                  "GTC",
+                  "IOC",
+                  "GTX",
+                  "HIDDEN"
+                ],
+                "createTime": 1787250558184,
+                "pair": "SNDKUSD1",
+                "contractType": "PERPETUAL",
+                "deliveryDate": 4133404800000,
+                "onboardDate": 1787254200000,
+                "status": "TRADING",
+                "maintMarginPercent": "16.6600",
+                "requiredMarginPercent": "33.3300",
+                "baseAsset": "SNDK",
+                "quoteAsset": "USD1",
+                "marginAsset": "USD1",
+                "pricePrecision": 5,
+                "quantityPrecision": 2,
+                "baseAssetPrecision": 8,
+                "quotePrecision": 8,
+                "underlyingType": "COIN",
+                "underlyingSubType": [
+                  "STOCK",
+                  "AOS2",
+                  "USD1-RWA"
+                ],
+                "symbolType": 1,
+                "tradingMode": 1,
+                "name": "",
+                "channel": "nasdaq",
+                "sequenceNo": 0,
+                "twapMinNotional": "1000",
+                "imn": "4000.00",
+                "tags": [
+                  "SanDisk",
+                  "Stock",
+                  "\u80a1\u7968",
+                  "\u95ea\u8fea",
+                  "\u95ea",
+                  "\u80a1\u7968",
+                  "\u9583\u8fea",
+                  "\u9583"
+                ],
+                "settlePlan": 0,
+                "triggerProtect": "0.0500",
+                "liquidationFee": "0.025000",
+                "marketTakeBound": "0.05"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v1/exchangeInfo",
+        "body": null,
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "timezone": "UTC",
+            "serverTime": 1791553435502,
+            "rateLimits": [
+              {
+                "rateLimitType": "REQUEST_WEIGHT",
+                "interval": "MINUTE",
+                "intervalNum": 1,
+                "limit": 2400
+              },
+              {
+                "rateLimitType": "ORDERS",
+                "interval": "MINUTE",
+                "intervalNum": 1,
+                "limit": 1200
+              },
+              {
+                "rateLimitType": "ORDERS",
+                "interval": "SECOND",
+                "intervalNum": 10,
+                "limit": 300
+              }
+            ],
+            "exchangeFilters": [],
+            "symbols": [
+              {
+                "symbol": "SNDKUSD1",
+                "filters": [
+                  {
+                    "minPrice": "0.01000",
+                    "maxPrice": "100000",
+                    "filterType": "PRICE_FILTER",
+                    "tickSize": "0.01000"
+                  },
+                  {
+                    "stepSize": "0.01",
+                    "filterType": "LOT_SIZE",
+                    "maxQty": "6000",
+                    "minQty": "0.01"
+                  },
+                  {
+                    "stepSize": "0.01",
+                    "filterType": "MARKET_LOT_SIZE",
+                    "maxQty": "600",
+                    "minQty": "0.01"
+                  },
+                  {
+                    "limit": 200,
+                    "filterType": "MAX_NUM_ORDERS"
+                  },
+                  {
+                    "limit": 10,
+                    "filterType": "MAX_NUM_ALGO_ORDERS"
+                  },
+                  {
+                    "notional": "5",
+                    "filterType": "MIN_NOTIONAL"
+                  },
+                  {
+                    "multiplierDown": "0.9500",
+                    "multiplierUp": "1.0500",
+                    "ltMultiplierDown": "0.9500",
+                    "multiplierDecimal": "4",
+                    "filterType": "PERCENT_PRICE",
+                    "ltMultiplierUp": "1.0500"
+                  }
+                ],
+                "orderTypes": [
+                  "LIMIT",
+                  "MARKET",
+                  "STOP",
+                  "STOP_MARKET",
+                  "TAKE_PROFIT",
+                  "TAKE_PROFIT_MARKET",
+                  "TRAILING_STOP_MARKET"
+                ],
+                "timeInForce": [
+                  "GTC",
+                  "IOC",
+                  "GTX",
+                  "HIDDEN"
+                ],
+                "createTime": 1787250558184,
+                "pair": "SNDKUSD1",
+                "contractType": "PERPETUAL",
+                "deliveryDate": 4133404800000,
+                "onboardDate": 1787254200000,
+                "status": "TRADING",
+                "maintMarginPercent": "16.6600",
+                "requiredMarginPercent": "33.3300",
+                "baseAsset": "SNDK",
+                "quoteAsset": "USD1",
+                "marginAsset": "USD1",
+                "pricePrecision": 5,
+                "quantityPrecision": 2,
+                "baseAssetPrecision": 8,
+                "quotePrecision": 8,
+                "underlyingType": "COIN",
+                "underlyingSubType": [
+                  "STOCK",
+                  "AOS2",
+                  "USD1-RWA"
+                ],
+                "symbolType": 1,
+                "tradingMode": 1,
+                "name": "",
+                "channel": "nasdaq",
+                "sequenceNo": 0,
+                "twapMinNotional": "1000",
+                "imn": "4000.00",
+                "tags": [
+                  "SanDisk",
+                  "Stock",
+                  "\u80a1\u7968",
+                  "\u95ea\u8fea",
+                  "\u95ea",
+                  "\u80a1\u7968",
+                  "\u9583\u8fea",
+                  "\u9583"
+                ],
+                "settlePlan": 0,
+                "triggerProtect": "0.0500",
+                "liquidationFee": "0.025000",
+                "marketTakeBound": "0.05"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v1/exchangeInfo",
+        "body": null,
+        "params": {},
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "timezone": "UTC",
+            "serverTime": 1791553435510,
+            "rateLimits": [
+              {
+                "rateLimitType": "REQUEST_WEIGHT",
+                "interval": "MINUTE",
+                "intervalNum": 1,
+                "limit": 2400
+              },
+              {
+                "rateLimitType": "ORDERS",
+                "interval": "MINUTE",
+                "intervalNum": 1,
+                "limit": 1200
+              },
+              {
+                "rateLimitType": "ORDERS",
+                "interval": "SECOND",
+                "intervalNum": 10,
+                "limit": 300
+              }
+            ],
+            "exchangeFilters": [],
+            "symbols": [
+              {
+                "symbol": "SNDKUSD1",
+                "filters": [
+                  {
+                    "minPrice": "0.01000",
+                    "maxPrice": "100000",
+                    "filterType": "PRICE_FILTER",
+                    "tickSize": "0.01000"
+                  },
+                  {
+                    "stepSize": "0.01",
+                    "filterType": "LOT_SIZE",
+                    "maxQty": "6000",
+                    "minQty": "0.01"
+                  },
+                  {
+                    "stepSize": "0.01",
+                    "filterType": "MARKET_LOT_SIZE",
+                    "maxQty": "600",
+                    "minQty": "0.01"
+                  },
+                  {
+                    "limit": 200,
+                    "filterType": "MAX_NUM_ORDERS"
+                  },
+                  {
+                    "limit": 10,
+                    "filterType": "MAX_NUM_ALGO_ORDERS"
+                  },
+                  {
+                    "notional": "5",
+                    "filterType": "MIN_NOTIONAL"
+                  },
+                  {
+                    "multiplierDown": "0.9500",
+                    "multiplierUp": "1.0500",
+                    "ltMultiplierDown": "0.9500",
+                    "multiplierDecimal": "4",
+                    "filterType": "PERCENT_PRICE",
+                    "ltMultiplierUp": "1.0500"
+                  }
+                ],
+                "orderTypes": [
+                  "LIMIT",
+                  "MARKET",
+                  "STOP",
+                  "STOP_MARKET",
+                  "TAKE_PROFIT",
+                  "TAKE_PROFIT_MARKET",
+                  "TRAILING_STOP_MARKET"
+                ],
+                "timeInForce": [
+                  "GTC",
+                  "IOC",
+                  "GTX",
+                  "HIDDEN"
+                ],
+                "createTime": 1787250558184,
+                "pair": "SNDKUSD1",
+                "contractType": "PERPETUAL",
+                "deliveryDate": 4133404800000,
+                "onboardDate": 1787254200000,
+                "status": "TRADING",
+                "maintMarginPercent": "16.6600",
+                "requiredMarginPercent": "33.3300",
+                "baseAsset": "SNDK",
+                "quoteAsset": "USD1",
+                "marginAsset": "USD1",
+                "pricePrecision": 5,
+                "quantityPrecision": 2,
+                "baseAssetPrecision": 8,
+                "quotePrecision": 8,
+                "underlyingType": "COIN",
+                "underlyingSubType": [
+                  "STOCK",
+                  "AOS2",
+                  "USD1-RWA"
+                ],
+                "symbolType": 1,
+                "tradingMode": 1,
+                "name": "",
+                "channel": "nasdaq",
+                "sequenceNo": 0,
+                "twapMinNotional": "1000",
+                "imn": "4000.00",
+                "tags": [
+                  "SanDisk",
+                  "Stock",
+                  "\u80a1\u7968",
+                  "\u95ea\u8fea",
+                  "\u95ea",
+                  "\u80a1\u7968",
+                  "\u9583\u8fea",
+                  "\u9583"
+                ],
+                "settlePlan": 0,
+                "triggerProtect": "0.0500",
+                "liquidationFee": "0.025000",
+                "marketTakeBound": "0.05"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/positionSide/dual",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553435511061"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "dualSidePosition": false
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/commissionRate",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553435512867"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "symbol": "SNDKUSD1",
+            "makerCommissionRate": "0.00005",
+            "takerCommissionRate": "0.0004"
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/balance",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553435514426"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "asset": "USD1",
+              "balance": "100",
+              "crossWalletBalance": "100",
+              "availableBalance": "100",
+              "crossUnPnl": "0",
+              "maxWithdrawAmount": "100",
+              "marginAvailable": true,
+              "updateTime": 1791553435514
+            }
+          ]
+        }
+      },
+      {
+        "method": "POST",
+        "path": "/fapi/v3/listenKey",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553435515710"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "listenKey": "entropy43-owned-synthetic"
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/openOrders",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553435518281"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/userTrades",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553435519930"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ],
+          "startTime": [
+            "1791553435515"
+          ],
+          "endTime": [
+            "1791553435519"
+          ],
+          "limit": [
+            "1000"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/openOrders",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553435521885"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/balance",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553435523682"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "asset": "USD1",
+              "balance": "100",
+              "crossWalletBalance": "100",
+              "availableBalance": "100",
+              "crossUnPnl": "0",
+              "maxWithdrawAmount": "100",
+              "marginAvailable": true,
+              "updateTime": 1791553435524
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/positionRisk",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553435525663"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "symbol": "SNDKUSD1",
+              "positionAmt": "0.03",
+              "entryPrice": "100",
+              "markPrice": "100",
+              "unRealizedProfit": "0",
+              "liquidationPrice": "0",
+              "leverage": "1",
+              "marginType": "isolated",
+              "positionSide": "BOTH",
+              "notional": "3.00",
+              "updateTime": 1791553435526
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/positionSide/dual",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553435527216"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "dualSidePosition": false
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/balance",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553435528461"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "asset": "USD1",
+              "balance": "100",
+              "crossWalletBalance": "100",
+              "availableBalance": "100",
+              "crossUnPnl": "0",
+              "maxWithdrawAmount": "100",
+              "marginAvailable": true,
+              "updateTime": 1791553435528
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/positionRisk",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553435529931"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "symbol": "SNDKUSD1",
+              "positionAmt": "0.03",
+              "entryPrice": "100",
+              "markPrice": "100",
+              "unRealizedProfit": "0",
+              "liquidationPrice": "0",
+              "leverage": "1",
+              "marginType": "isolated",
+              "positionSide": "BOTH",
+              "notional": "3.00",
+              "updateTime": 1791553435530
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/openOrders",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553435531282"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/allOrders",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553435686280"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ],
+          "startTime": [
+            "1790948635686"
+          ],
+          "endTime": [
+            "1791553435686"
+          ],
+          "limit": [
+            "1000"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/userTrades",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553435687342"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ],
+          "startTime": [
+            "1790948635686"
+          ],
+          "endTime": [
+            "1791553435686"
+          ],
+          "limit": [
+            "1000"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/positionRisk",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553435688274"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "symbol": "SNDKUSD1",
+              "positionAmt": "0.03",
+              "entryPrice": "100",
+              "markPrice": "100",
+              "unRealizedProfit": "0",
+              "liquidationPrice": "0",
+              "leverage": "1",
+              "marginType": "isolated",
+              "positionSide": "BOTH",
+              "notional": "3.00",
+              "updateTime": 1791553435688
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/userTrades",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553435795544"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ],
+          "startTime": [
+            "1791553435519"
+          ],
+          "endTime": [
+            "1791553435795"
+          ],
+          "limit": [
+            "1000"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/openOrders",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553435796909"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/balance",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553435797686"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "asset": "USD1",
+              "balance": "100",
+              "crossWalletBalance": "100",
+              "availableBalance": "100",
+              "crossUnPnl": "0",
+              "maxWithdrawAmount": "100",
+              "marginAvailable": true,
+              "updateTime": 1791553435798
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/positionRisk",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553435798400"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "symbol": "SNDKUSD1",
+              "positionAmt": "0.03",
+              "entryPrice": "100",
+              "markPrice": "100",
+              "unRealizedProfit": "0",
+              "liquidationPrice": "0",
+              "leverage": "1",
+              "marginType": "isolated",
+              "positionSide": "BOTH",
+              "notional": "3.00",
+              "updateTime": 1791553435798
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/positionSide/dual",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553435799069"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "dualSidePosition": false
+          }
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/balance",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553435799749"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "asset": "USD1",
+              "balance": "100",
+              "crossWalletBalance": "100",
+              "availableBalance": "100",
+              "crossUnPnl": "0",
+              "maxWithdrawAmount": "100",
+              "marginAvailable": true,
+              "updateTime": 1791553435799
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/positionRisk",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553435800333"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": [
+            {
+              "symbol": "SNDKUSD1",
+              "positionAmt": "0.03",
+              "entryPrice": "100",
+              "markPrice": "100",
+              "unRealizedProfit": "0",
+              "liquidationPrice": "0",
+              "leverage": "1",
+              "marginType": "isolated",
+              "positionSide": "BOTH",
+              "notional": "3.00",
+              "updateTime": 1791553435800
+            }
+          ]
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v3/openOrders",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553435800885"
+          ],
+          "symbol": [
+            "SNDKUSD1"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": []
+        }
+      },
+      {
+        "method": "GET",
+        "path": "/fapi/v1/depth",
+        "body": null,
+        "params": {
+          "symbol": [
+            "SNDKUSD1"
+          ],
+          "limit": [
+            "20"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": {
+            "lastUpdateId": 102,
+            "E": 1791553435903,
+            "T": 1791553435903,
+            "bids": [
+              [
+                "100.10",
+                "1"
+              ]
+            ],
+            "asks": [
+              [
+                "100.11",
+                "1"
+              ]
+            ]
+          }
+        }
+      },
+      {
+        "method": "DELETE",
+        "path": "/fapi/v3/listenKey",
+        "body": null,
+        "params": {
+          "nonce": [
+            "1791553451797307"
+          ]
+        },
+        "response": {
+          "status": "200 OK",
+          "body": {}
+        }
+      }
+    ],
+    "commands": [
+      {
+        "method": "SUBSCRIBE",
+        "params": [
+          "sndkusd1@depth@0ms"
+        ],
+        "id": 1
+      },
+      {
+        "method": "UNSUBSCRIBE",
+        "params": [
+          "sndkusd1@depth@0ms"
+        ],
+        "id": 2
+      }
+    ],
+    "frames": [
+      {
+        "e": "depthUpdate",
+        "E": 1791553435795,
+        "T": 1791553435795,
+        "s": "SNDKUSD1",
+        "U": 101,
+        "u": 101,
+        "pu": 100,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553435901,
+        "T": 1791553435901,
+        "s": "SNDKUSD1",
+        "U": 102,
+        "u": 102,
+        "pu": 101,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553435996,
+        "T": 1791553435996,
+        "s": "SNDKUSD1",
+        "U": 103,
+        "u": 103,
+        "pu": 102,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553436105,
+        "T": 1791553436105,
+        "s": "SNDKUSD1",
+        "U": 104,
+        "u": 104,
+        "pu": 103,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553436200,
+        "T": 1791553436200,
+        "s": "SNDKUSD1",
+        "U": 105,
+        "u": 105,
+        "pu": 104,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553436295,
+        "T": 1791553436295,
+        "s": "SNDKUSD1",
+        "U": 106,
+        "u": 106,
+        "pu": 105,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553436403,
+        "T": 1791553436403,
+        "s": "SNDKUSD1",
+        "U": 107,
+        "u": 107,
+        "pu": 106,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553436499,
+        "T": 1791553436499,
+        "s": "SNDKUSD1",
+        "U": 108,
+        "u": 108,
+        "pu": 107,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553436594,
+        "T": 1791553436594,
+        "s": "SNDKUSD1",
+        "U": 109,
+        "u": 109,
+        "pu": 108,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553436685,
+        "T": 1791553436685,
+        "s": "SNDKUSD1",
+        "U": 110,
+        "u": 110,
+        "pu": 109,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553436780,
+        "T": 1791553436780,
+        "s": "SNDKUSD1",
+        "U": 111,
+        "u": 111,
+        "pu": 110,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553436888,
+        "T": 1791553436888,
+        "s": "SNDKUSD1",
+        "U": 112,
+        "u": 112,
+        "pu": 111,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553436999,
+        "T": 1791553436999,
+        "s": "SNDKUSD1",
+        "U": 113,
+        "u": 113,
+        "pu": 112,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553437093,
+        "T": 1791553437093,
+        "s": "SNDKUSD1",
+        "U": 114,
+        "u": 114,
+        "pu": 113,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553437187,
+        "T": 1791553437187,
+        "s": "SNDKUSD1",
+        "U": 115,
+        "u": 115,
+        "pu": 114,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553437296,
+        "T": 1791553437296,
+        "s": "SNDKUSD1",
+        "U": 116,
+        "u": 116,
+        "pu": 115,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553437404,
+        "T": 1791553437404,
+        "s": "SNDKUSD1",
+        "U": 117,
+        "u": 117,
+        "pu": 116,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553437498,
+        "T": 1791553437498,
+        "s": "SNDKUSD1",
+        "U": 118,
+        "u": 118,
+        "pu": 117,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553437605,
+        "T": 1791553437605,
+        "s": "SNDKUSD1",
+        "U": 119,
+        "u": 119,
+        "pu": 118,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553437702,
+        "T": 1791553437702,
+        "s": "SNDKUSD1",
+        "U": 120,
+        "u": 120,
+        "pu": 119,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553437795,
+        "T": 1791553437795,
+        "s": "SNDKUSD1",
+        "U": 121,
+        "u": 121,
+        "pu": 120,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553437902,
+        "T": 1791553437902,
+        "s": "SNDKUSD1",
+        "U": 122,
+        "u": 122,
+        "pu": 121,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553437996,
+        "T": 1791553437996,
+        "s": "SNDKUSD1",
+        "U": 123,
+        "u": 123,
+        "pu": 122,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553438105,
+        "T": 1791553438105,
+        "s": "SNDKUSD1",
+        "U": 124,
+        "u": 124,
+        "pu": 123,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553438200,
+        "T": 1791553438200,
+        "s": "SNDKUSD1",
+        "U": 125,
+        "u": 125,
+        "pu": 124,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553438295,
+        "T": 1791553438295,
+        "s": "SNDKUSD1",
+        "U": 126,
+        "u": 126,
+        "pu": 125,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553438403,
+        "T": 1791553438403,
+        "s": "SNDKUSD1",
+        "U": 127,
+        "u": 127,
+        "pu": 126,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553438497,
+        "T": 1791553438497,
+        "s": "SNDKUSD1",
+        "U": 128,
+        "u": 128,
+        "pu": 127,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553438605,
+        "T": 1791553438605,
+        "s": "SNDKUSD1",
+        "U": 129,
+        "u": 129,
+        "pu": 128,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553438700,
+        "T": 1791553438700,
+        "s": "SNDKUSD1",
+        "U": 130,
+        "u": 130,
+        "pu": 129,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553438793,
+        "T": 1791553438793,
+        "s": "SNDKUSD1",
+        "U": 131,
+        "u": 131,
+        "pu": 130,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553438900,
+        "T": 1791553438900,
+        "s": "SNDKUSD1",
+        "U": 132,
+        "u": 132,
+        "pu": 131,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553438994,
+        "T": 1791553438994,
+        "s": "SNDKUSD1",
+        "U": 133,
+        "u": 133,
+        "pu": 132,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553439103,
+        "T": 1791553439103,
+        "s": "SNDKUSD1",
+        "U": 134,
+        "u": 134,
+        "pu": 133,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553439199,
+        "T": 1791553439199,
+        "s": "SNDKUSD1",
+        "U": 135,
+        "u": 135,
+        "pu": 134,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553439293,
+        "T": 1791553439293,
+        "s": "SNDKUSD1",
+        "U": 136,
+        "u": 136,
+        "pu": 135,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553439402,
+        "T": 1791553439402,
+        "s": "SNDKUSD1",
+        "U": 137,
+        "u": 137,
+        "pu": 136,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553439497,
+        "T": 1791553439497,
+        "s": "SNDKUSD1",
+        "U": 138,
+        "u": 138,
+        "pu": 137,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553439606,
+        "T": 1791553439606,
+        "s": "SNDKUSD1",
+        "U": 139,
+        "u": 139,
+        "pu": 138,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553439701,
+        "T": 1791553439701,
+        "s": "SNDKUSD1",
+        "U": 140,
+        "u": 140,
+        "pu": 139,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553439793,
+        "T": 1791553439793,
+        "s": "SNDKUSD1",
+        "U": 141,
+        "u": 141,
+        "pu": 140,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553439901,
+        "T": 1791553439901,
+        "s": "SNDKUSD1",
+        "U": 142,
+        "u": 142,
+        "pu": 141,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553439996,
+        "T": 1791553439996,
+        "s": "SNDKUSD1",
+        "U": 143,
+        "u": 143,
+        "pu": 142,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553440106,
+        "T": 1791553440106,
+        "s": "SNDKUSD1",
+        "U": 144,
+        "u": 144,
+        "pu": 143,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553440202,
+        "T": 1791553440202,
+        "s": "SNDKUSD1",
+        "U": 145,
+        "u": 145,
+        "pu": 144,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553440295,
+        "T": 1791553440295,
+        "s": "SNDKUSD1",
+        "U": 146,
+        "u": 146,
+        "pu": 145,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553440404,
+        "T": 1791553440404,
+        "s": "SNDKUSD1",
+        "U": 147,
+        "u": 147,
+        "pu": 146,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553440500,
+        "T": 1791553440500,
+        "s": "SNDKUSD1",
+        "U": 148,
+        "u": 148,
+        "pu": 147,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553440595,
+        "T": 1791553440595,
+        "s": "SNDKUSD1",
+        "U": 149,
+        "u": 149,
+        "pu": 148,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553440689,
+        "T": 1791553440689,
+        "s": "SNDKUSD1",
+        "U": 150,
+        "u": 150,
+        "pu": 149,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553440798,
+        "T": 1791553440798,
+        "s": "SNDKUSD1",
+        "U": 151,
+        "u": 151,
+        "pu": 150,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553440877,
+        "T": 1791553440877,
+        "s": "SNDKUSD1",
+        "U": 152,
+        "u": 152,
+        "pu": 151,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553440985,
+        "T": 1791553440985,
+        "s": "SNDKUSD1",
+        "U": 153,
+        "u": 153,
+        "pu": 152,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553441079,
+        "T": 1791553441079,
+        "s": "SNDKUSD1",
+        "U": 154,
+        "u": 154,
+        "pu": 153,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553441187,
+        "T": 1791553441187,
+        "s": "SNDKUSD1",
+        "U": 155,
+        "u": 155,
+        "pu": 154,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553441282,
+        "T": 1791553441282,
+        "s": "SNDKUSD1",
+        "U": 156,
+        "u": 156,
+        "pu": 155,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553441376,
+        "T": 1791553441376,
+        "s": "SNDKUSD1",
+        "U": 157,
+        "u": 157,
+        "pu": 156,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553441470,
+        "T": 1791553441470,
+        "s": "SNDKUSD1",
+        "U": 158,
+        "u": 158,
+        "pu": 157,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553441580,
+        "T": 1791553441580,
+        "s": "SNDKUSD1",
+        "U": 159,
+        "u": 159,
+        "pu": 158,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553441688,
+        "T": 1791553441688,
+        "s": "SNDKUSD1",
+        "U": 160,
+        "u": 160,
+        "pu": 159,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553441783,
+        "T": 1791553441783,
+        "s": "SNDKUSD1",
+        "U": 161,
+        "u": 161,
+        "pu": 160,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553441893,
+        "T": 1791553441893,
+        "s": "SNDKUSD1",
+        "U": 162,
+        "u": 162,
+        "pu": 161,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553442002,
+        "T": 1791553442002,
+        "s": "SNDKUSD1",
+        "U": 163,
+        "u": 163,
+        "pu": 162,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553442098,
+        "T": 1791553442098,
+        "s": "SNDKUSD1",
+        "U": 164,
+        "u": 164,
+        "pu": 163,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553442194,
+        "T": 1791553442194,
+        "s": "SNDKUSD1",
+        "U": 165,
+        "u": 165,
+        "pu": 164,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553442302,
+        "T": 1791553442302,
+        "s": "SNDKUSD1",
+        "U": 166,
+        "u": 166,
+        "pu": 165,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553442397,
+        "T": 1791553442397,
+        "s": "SNDKUSD1",
+        "U": 167,
+        "u": 167,
+        "pu": 166,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553442505,
+        "T": 1791553442505,
+        "s": "SNDKUSD1",
+        "U": 168,
+        "u": 168,
+        "pu": 167,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553442601,
+        "T": 1791553442601,
+        "s": "SNDKUSD1",
+        "U": 169,
+        "u": 169,
+        "pu": 168,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553442696,
+        "T": 1791553442696,
+        "s": "SNDKUSD1",
+        "U": 170,
+        "u": 170,
+        "pu": 169,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553442806,
+        "T": 1791553442806,
+        "s": "SNDKUSD1",
+        "U": 171,
+        "u": 171,
+        "pu": 170,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553442901,
+        "T": 1791553442901,
+        "s": "SNDKUSD1",
+        "U": 172,
+        "u": 172,
+        "pu": 171,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553442995,
+        "T": 1791553442995,
+        "s": "SNDKUSD1",
+        "U": 173,
+        "u": 173,
+        "pu": 172,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553443104,
+        "T": 1791553443104,
+        "s": "SNDKUSD1",
+        "U": 174,
+        "u": 174,
+        "pu": 173,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553443199,
+        "T": 1791553443199,
+        "s": "SNDKUSD1",
+        "U": 175,
+        "u": 175,
+        "pu": 174,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553443293,
+        "T": 1791553443293,
+        "s": "SNDKUSD1",
+        "U": 176,
+        "u": 176,
+        "pu": 175,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553443401,
+        "T": 1791553443401,
+        "s": "SNDKUSD1",
+        "U": 177,
+        "u": 177,
+        "pu": 176,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553443495,
+        "T": 1791553443495,
+        "s": "SNDKUSD1",
+        "U": 178,
+        "u": 178,
+        "pu": 177,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553443603,
+        "T": 1791553443603,
+        "s": "SNDKUSD1",
+        "U": 179,
+        "u": 179,
+        "pu": 178,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553443698,
+        "T": 1791553443698,
+        "s": "SNDKUSD1",
+        "U": 180,
+        "u": 180,
+        "pu": 179,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553443793,
+        "T": 1791553443793,
+        "s": "SNDKUSD1",
+        "U": 181,
+        "u": 181,
+        "pu": 180,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553443902,
+        "T": 1791553443902,
+        "s": "SNDKUSD1",
+        "U": 182,
+        "u": 182,
+        "pu": 181,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553443996,
+        "T": 1791553443996,
+        "s": "SNDKUSD1",
+        "U": 183,
+        "u": 183,
+        "pu": 182,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553444105,
+        "T": 1791553444105,
+        "s": "SNDKUSD1",
+        "U": 184,
+        "u": 184,
+        "pu": 183,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553444202,
+        "T": 1791553444202,
+        "s": "SNDKUSD1",
+        "U": 185,
+        "u": 185,
+        "pu": 184,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553444295,
+        "T": 1791553444295,
+        "s": "SNDKUSD1",
+        "U": 186,
+        "u": 186,
+        "pu": 185,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553444404,
+        "T": 1791553444404,
+        "s": "SNDKUSD1",
+        "U": 187,
+        "u": 187,
+        "pu": 186,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553444499,
+        "T": 1791553444499,
+        "s": "SNDKUSD1",
+        "U": 188,
+        "u": 188,
+        "pu": 187,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553444593,
+        "T": 1791553444593,
+        "s": "SNDKUSD1",
+        "U": 189,
+        "u": 189,
+        "pu": 188,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553444702,
+        "T": 1791553444702,
+        "s": "SNDKUSD1",
+        "U": 190,
+        "u": 190,
+        "pu": 189,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553444796,
+        "T": 1791553444796,
+        "s": "SNDKUSD1",
+        "U": 191,
+        "u": 191,
+        "pu": 190,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553444903,
+        "T": 1791553444903,
+        "s": "SNDKUSD1",
+        "U": 192,
+        "u": 192,
+        "pu": 191,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553444997,
+        "T": 1791553444997,
+        "s": "SNDKUSD1",
+        "U": 193,
+        "u": 193,
+        "pu": 192,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553445104,
+        "T": 1791553445104,
+        "s": "SNDKUSD1",
+        "U": 194,
+        "u": 194,
+        "pu": 193,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553445200,
+        "T": 1791553445200,
+        "s": "SNDKUSD1",
+        "U": 195,
+        "u": 195,
+        "pu": 194,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553445292,
+        "T": 1791553445292,
+        "s": "SNDKUSD1",
+        "U": 196,
+        "u": 196,
+        "pu": 195,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553445402,
+        "T": 1791553445402,
+        "s": "SNDKUSD1",
+        "U": 197,
+        "u": 197,
+        "pu": 196,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553445497,
+        "T": 1791553445497,
+        "s": "SNDKUSD1",
+        "U": 198,
+        "u": 198,
+        "pu": 197,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553445606,
+        "T": 1791553445606,
+        "s": "SNDKUSD1",
+        "U": 199,
+        "u": 199,
+        "pu": 198,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553445700,
+        "T": 1791553445700,
+        "s": "SNDKUSD1",
+        "U": 200,
+        "u": 200,
+        "pu": 199,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553445794,
+        "T": 1791553445794,
+        "s": "SNDKUSD1",
+        "U": 201,
+        "u": 201,
+        "pu": 200,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553445905,
+        "T": 1791553445905,
+        "s": "SNDKUSD1",
+        "U": 202,
+        "u": 202,
+        "pu": 201,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553446001,
+        "T": 1791553446001,
+        "s": "SNDKUSD1",
+        "U": 203,
+        "u": 203,
+        "pu": 202,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553446124,
+        "T": 1791553446124,
+        "s": "SNDKUSD1",
+        "U": 204,
+        "u": 204,
+        "pu": 203,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553446234,
+        "T": 1791553446234,
+        "s": "SNDKUSD1",
+        "U": 205,
+        "u": 205,
+        "pu": 204,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553446343,
+        "T": 1791553446343,
+        "s": "SNDKUSD1",
+        "U": 206,
+        "u": 206,
+        "pu": 205,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553446437,
+        "T": 1791553446437,
+        "s": "SNDKUSD1",
+        "U": 207,
+        "u": 207,
+        "pu": 206,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553446531,
+        "T": 1791553446531,
+        "s": "SNDKUSD1",
+        "U": 208,
+        "u": 208,
+        "pu": 207,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553446625,
+        "T": 1791553446625,
+        "s": "SNDKUSD1",
+        "U": 209,
+        "u": 209,
+        "pu": 208,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553446734,
+        "T": 1791553446734,
+        "s": "SNDKUSD1",
+        "U": 210,
+        "u": 210,
+        "pu": 209,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553446842,
+        "T": 1791553446842,
+        "s": "SNDKUSD1",
+        "U": 211,
+        "u": 211,
+        "pu": 210,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553446953,
+        "T": 1791553446953,
+        "s": "SNDKUSD1",
+        "U": 212,
+        "u": 212,
+        "pu": 211,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553447061,
+        "T": 1791553447061,
+        "s": "SNDKUSD1",
+        "U": 213,
+        "u": 213,
+        "pu": 212,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553447171,
+        "T": 1791553447171,
+        "s": "SNDKUSD1",
+        "U": 214,
+        "u": 214,
+        "pu": 213,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553447281,
+        "T": 1791553447281,
+        "s": "SNDKUSD1",
+        "U": 215,
+        "u": 215,
+        "pu": 214,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553447390,
+        "T": 1791553447390,
+        "s": "SNDKUSD1",
+        "U": 216,
+        "u": 216,
+        "pu": 215,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553447500,
+        "T": 1791553447500,
+        "s": "SNDKUSD1",
+        "U": 217,
+        "u": 217,
+        "pu": 216,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553447596,
+        "T": 1791553447596,
+        "s": "SNDKUSD1",
+        "U": 218,
+        "u": 218,
+        "pu": 217,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553447703,
+        "T": 1791553447703,
+        "s": "SNDKUSD1",
+        "U": 219,
+        "u": 219,
+        "pu": 218,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553447797,
+        "T": 1791553447797,
+        "s": "SNDKUSD1",
+        "U": 220,
+        "u": 220,
+        "pu": 219,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553447893,
+        "T": 1791553447893,
+        "s": "SNDKUSD1",
+        "U": 221,
+        "u": 221,
+        "pu": 220,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553448005,
+        "T": 1791553448005,
+        "s": "SNDKUSD1",
+        "U": 222,
+        "u": 222,
+        "pu": 221,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553448097,
+        "T": 1791553448097,
+        "s": "SNDKUSD1",
+        "U": 223,
+        "u": 223,
+        "pu": 222,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553448204,
+        "T": 1791553448204,
+        "s": "SNDKUSD1",
+        "U": 224,
+        "u": 224,
+        "pu": 223,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553448298,
+        "T": 1791553448298,
+        "s": "SNDKUSD1",
+        "U": 225,
+        "u": 225,
+        "pu": 224,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553448394,
+        "T": 1791553448394,
+        "s": "SNDKUSD1",
+        "U": 226,
+        "u": 226,
+        "pu": 225,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553448502,
+        "T": 1791553448502,
+        "s": "SNDKUSD1",
+        "U": 227,
+        "u": 227,
+        "pu": 226,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553448598,
+        "T": 1791553448598,
+        "s": "SNDKUSD1",
+        "U": 228,
+        "u": 228,
+        "pu": 227,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553448692,
+        "T": 1791553448692,
+        "s": "SNDKUSD1",
+        "U": 229,
+        "u": 229,
+        "pu": 228,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553448802,
+        "T": 1791553448802,
+        "s": "SNDKUSD1",
+        "U": 230,
+        "u": 230,
+        "pu": 229,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553448897,
+        "T": 1791553448897,
+        "s": "SNDKUSD1",
+        "U": 231,
+        "u": 231,
+        "pu": 230,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553449005,
+        "T": 1791553449005,
+        "s": "SNDKUSD1",
+        "U": 232,
+        "u": 232,
+        "pu": 231,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553449100,
+        "T": 1791553449100,
+        "s": "SNDKUSD1",
+        "U": 233,
+        "u": 233,
+        "pu": 232,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553449195,
+        "T": 1791553449195,
+        "s": "SNDKUSD1",
+        "U": 234,
+        "u": 234,
+        "pu": 233,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553449303,
+        "T": 1791553449303,
+        "s": "SNDKUSD1",
+        "U": 235,
+        "u": 235,
+        "pu": 234,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553449397,
+        "T": 1791553449397,
+        "s": "SNDKUSD1",
+        "U": 236,
+        "u": 236,
+        "pu": 235,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553449505,
+        "T": 1791553449505,
+        "s": "SNDKUSD1",
+        "U": 237,
+        "u": 237,
+        "pu": 236,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553449599,
+        "T": 1791553449599,
+        "s": "SNDKUSD1",
+        "U": 238,
+        "u": 238,
+        "pu": 237,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553449695,
+        "T": 1791553449695,
+        "s": "SNDKUSD1",
+        "U": 239,
+        "u": 239,
+        "pu": 238,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553449804,
+        "T": 1791553449804,
+        "s": "SNDKUSD1",
+        "U": 240,
+        "u": 240,
+        "pu": 239,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553449900,
+        "T": 1791553449900,
+        "s": "SNDKUSD1",
+        "U": 241,
+        "u": 241,
+        "pu": 240,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553449995,
+        "T": 1791553449995,
+        "s": "SNDKUSD1",
+        "U": 242,
+        "u": 242,
+        "pu": 241,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553450103,
+        "T": 1791553450103,
+        "s": "SNDKUSD1",
+        "U": 243,
+        "u": 243,
+        "pu": 242,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553450197,
+        "T": 1791553450197,
+        "s": "SNDKUSD1",
+        "U": 244,
+        "u": 244,
+        "pu": 243,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553450305,
+        "T": 1791553450305,
+        "s": "SNDKUSD1",
+        "U": 245,
+        "u": 245,
+        "pu": 244,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553450400,
+        "T": 1791553450400,
+        "s": "SNDKUSD1",
+        "U": 246,
+        "u": 246,
+        "pu": 245,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553450494,
+        "T": 1791553450494,
+        "s": "SNDKUSD1",
+        "U": 247,
+        "u": 247,
+        "pu": 246,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553450603,
+        "T": 1791553450603,
+        "s": "SNDKUSD1",
+        "U": 248,
+        "u": 248,
+        "pu": 247,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553450698,
+        "T": 1791553450698,
+        "s": "SNDKUSD1",
+        "U": 249,
+        "u": 249,
+        "pu": 248,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      },
+      {
+        "e": "depthUpdate",
+        "E": 1791553450792,
+        "T": 1791553450792,
+        "s": "SNDKUSD1",
+        "U": 250,
+        "u": 250,
+        "pu": 249,
+        "b": [
+          [
+            "100.10",
+            "1"
+          ]
+        ],
+        "a": [
+          [
+            "100.11",
+            "1"
+          ]
+        ]
+      }
+    ],
+    "actions": 0,
+    "fills": [],
+    "position": "0.03",
+    "errors": [],
+    "recording_point": "after runtime cleanup before peer teardown"
+  }
+}

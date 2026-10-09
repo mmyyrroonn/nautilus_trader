@@ -1,0 +1,110 @@
+{
+  "source_review_only": true,
+  "executed_tests": 0,
+  "candidate_actual_pass_claim": false,
+  "reviewed_final_sha256": "685f2efc6a71ace1990ff7da5817c83c16b49f75f01d57a6beb89f3be4757805",
+  "outside_quota_prefix_identical": true,
+  "outside_quota_suffix_identical": true,
+  "formatted_unformatted_identical": true,
+  "before": {
+    "utc": "2026-10-09T12:21:56.410193+00:00",
+    "files": [
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs",
+        "size": 80624,
+        "sha256": "f241151404aab9d14afe7d9711eff8fc7fac7d8c7a55db4df6c94aa26cf41b7a"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v4\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs",
+        "size": 80841,
+        "sha256": "685f2efc6a71ace1990ff7da5817c83c16b49f75f01d57a6beb89f3be4757805"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-unformatted-v4\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs",
+        "size": 80841,
+        "sha256": "685f2efc6a71ace1990ff7da5817c83c16b49f75f01d57a6beb89f3be4757805"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-formatted-v4.json",
+        "size": 10942,
+        "sha256": "aab6a96c7745f5333e4c1c1fc40b66c6194a5e8f0efbe7f3db134e31cc3ed65c"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-quota-v3-failure-analysis-v1.md",
+        "size": 8982,
+        "sha256": "2a0a6ae398e74c7f7e6dd07e25cc7bcf8ad00d8e6b9b33dd7164387c525df94c"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-quota-v3-failure-analysis-v1-parsed.json",
+        "size": 23511,
+        "sha256": "0dccf93f8a692487dcbd413d49670c5e4978b14f03081480c74805f652f51ed3"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-existing-io-recovery-v3.log",
+        "size": 77121,
+        "sha256": "1f5affa2a83ac9b964e27e26670a11288308430edd06cf9541c659e44c082198"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-existing-io-recovery-v3.json",
+        "size": 936,
+        "sha256": "1e9b5d9da6d88c22b35f33d15c995872cca3aebf103b8afb8fa3a1771db5fee2"
+      }
+    ]
+  },
+  "after": {
+    "utc": "2026-10-09T12:21:56.414192+00:00",
+    "files": [
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs",
+        "size": 80624,
+        "sha256": "f241151404aab9d14afe7d9711eff8fc7fac7d8c7a55db4df6c94aa26cf41b7a"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v4\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs",
+        "size": 80841,
+        "sha256": "685f2efc6a71ace1990ff7da5817c83c16b49f75f01d57a6beb89f3be4757805"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-unformatted-v4\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs",
+        "size": 80841,
+        "sha256": "685f2efc6a71ace1990ff7da5817c83c16b49f75f01d57a6beb89f3be4757805"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-formatted-v4.json",
+        "size": 10942,
+        "sha256": "aab6a96c7745f5333e4c1c1fc40b66c6194a5e8f0efbe7f3db134e31cc3ed65c"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-quota-v3-failure-analysis-v1.md",
+        "size": 8982,
+        "sha256": "2a0a6ae398e74c7f7e6dd07e25cc7bcf8ad00d8e6b9b33dd7164387c525df94c"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-quota-v3-failure-analysis-v1-parsed.json",
+        "size": 23511,
+        "sha256": "0dccf93f8a692487dcbd413d49670c5e4978b14f03081480c74805f652f51ed3"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-existing-io-recovery-v3.log",
+        "size": 77121,
+        "sha256": "1f5affa2a83ac9b964e27e26670a11288308430edd06cf9541c659e44c082198"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-existing-io-recovery-v3.json",
+        "size": 936,
+        "sha256": "1e9b5d9da6d88c22b35f33d15c995872cca3aebf103b8afb8fa3a1771db5fee2"
+      }
+    ]
+  },
+  "inputs_unchanged": true,
+  "report_sha256": "a1c71c045b0c7575c961dfac025a4ce8c0e860ae8e00ac8785c29f569e9b1c4e",
+  "root_original_failure_result": {
+    "passed": 63,
+    "failed": 1
+  },
+  "actual_failure_occurrences": 66,
+  "proposal_execution_initial_base": 624,
+  "proposal_preloads": 7,
+  "proposal_preload_base": 82,
+  "same_client_tokens_measured": false
+}

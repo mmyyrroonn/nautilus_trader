@@ -1,0 +1,38 @@
+"""Capture complete paginated current issue inventory without counting PRs."""
+import argparse
+import json
+import re
+from datetime import datetime, timezone
+from pathlib import Path
+from github_capture import api
+
+parser = argparse.ArgumentParser()
+parser.add_argument('label')
+args = parser.parse_args()
+assert re.fullmatch(r'[a-z0-9-]+', args.label)
+root = Path(__file__).resolve().parent
+destination = root / (args.label + '-result.json')
+assert not destination.exists()
+result = {'started_utc': datetime.now(timezone.utc).isoformat(), 'repositories': []}
+for repo in ('nautilus_trader', 'Nautilus-Perps'):
+    records = []
+    for page in range(1, 21):
+        rows = api(f'repos/mmyyrroonn/{repo}/issues?state=all&per_page=100&page={page}',
+                   f'{args.label}-{repo.lower()}-page-{page}')
+        records.extend(rows)
+        if len(rows) < 100:
+            break
+    else:
+        raise AssertionError('Issue inventory exceeds explicit finite paging limit')
+    issues = [row for row in records if 'pull_request' not in row]
+    assert len({row['id'] for row in issues}) == len(issues)
+    result['repositories'].append({'repository': repo, 'total': len(issues),
+        'closed': sum(row['state'] == 'closed' for row in issues),
+        'open': [{'number': row['number'], 'title': row['title'], 'url': row['html_url']}
+                 for row in issues if row['state'] == 'open'], 'pages': page})
+result['total'] = sum(row['total'] for row in result['repositories'])
+result['closed'] = sum(row['closed'] for row in result['repositories'])
+result['open'] = sum(len(row['open']) for row in result['repositories'])
+result['finished_utc'] = datetime.now(timezone.utc).isoformat()
+destination.write_text(json.dumps(result, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+print(json.dumps(result, ensure_ascii=False))

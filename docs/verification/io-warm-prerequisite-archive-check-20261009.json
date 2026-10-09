@@ -1,0 +1,81 @@
+{
+  "started_utc": "2026-10-09T14:27:00.733328+00:00",
+  "finished_utc": "2026-10-09T14:27:01.406565+00:00",
+  "archive": "E:/persarb/worktrees/entropy-warm-prerequisites/docs/verification/io-warm-prerequisite-local",
+  "manifest_sha256": "fd84588406c1089f4d210f5fc63fb300152cf6fd1037ae942e0f714b82411bba",
+  "manifest_records": 1294,
+  "actual_files": 1295,
+  "copied_bytes": 64301139,
+  "all_recorded_hashes_equal": true,
+  "all_original_copy_sources_unchanged": true,
+  "native_passed": 1435,
+  "native_ignored": 18,
+  "original_app_parameters_passed": 7,
+  "actual_app_commands": 2,
+  "distinct_inherited_lint_failures": 10,
+  "application_issue43_complete": false,
+  "real_venue_e6_verified": false,
+  "tests_executed": 0,
+  "native_imports": 0,
+  "check_script_sha256": "9b6239ac3bcf0457f96b171b3ead73ca7bc1eeefd65b1e68a021347ed891e254",
+  "actual_archive_command": {
+    "argv": [
+      "E:/persarb/worktrees/entropy-warm-prerequisites/.venv/Scripts/python.exe",
+      "-X",
+      "utf8",
+      "E:/persarb/_tmp/entropy117-validation/archive_native117_v6.py",
+      "--implementation",
+      "b07a7e6e6bfc7613aa12c77cdee1110e25790ca1",
+      "--regression",
+      "native117-full-hyperliquid-regression-v7",
+      "--paired-root",
+      "E:/persarb/_tmp/app43-native117-corrected-first-paired-20261009",
+      "--scenarios-root",
+      "E:/persarb/_tmp/app43-native117-corrected-remaining-scenarios-20261009"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-warm-prerequisites",
+    "started_utc": "2026-10-09T14:26:18.608605+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "uv_project_environment": null,
+    "nautilus_stub_profile": null,
+    "cargo_build_warnings": null,
+    "cargo_net_offline": null,
+    "entropy43_native_wheel": null,
+    "entropy43_native_sha256": null,
+    "entropy43_native_provenance": null,
+    "entropy43_evidence_root": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T14:26:29.784737+00:00"
+  },
+  "actual_byte_check_command": {
+    "argv": [
+      "E:/persarb/worktrees/entropy-warm-prerequisites/.venv/Scripts/python.exe",
+      "-X",
+      "utf8",
+      "E:/persarb/_tmp/entropy117-validation/archive_check_native117_v1.py"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-warm-prerequisites",
+    "started_utc": "2026-10-09T14:27:00.691092+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "uv_project_environment": null,
+    "nautilus_stub_profile": null,
+    "cargo_build_warnings": null,
+    "cargo_net_offline": null,
+    "entropy43_native_wheel": null,
+    "entropy43_native_sha256": null,
+    "entropy43_native_provenance": null,
+    "entropy43_evidence_root": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T14:27:01.415067+00:00"
+  },
+  "archive_stdout": {
+    "sha256": "6959abf7f423cdf4865e56bf4e0a8a70f4b1cee274a92f3f071e3714ff8f57ae",
+    "text": "{\"archive\": \"E:/persarb/worktrees/entropy-warm-prerequisites/docs/verification/io-warm-prerequisite-local\", \"files\": 1294, \"commands\": 98, \"connectors\": 3, \"passed\": 1435, \"ignored\": 18, \"corrected_first_paired_result\": \"PASS\", \"all_seven_scenarios_passed\": true}\n"
+  },
+  "byte_check_stdout": {
+    "sha256": "320cfe7246b802c868c9ab6818a7b41da139268d9b5177855af7ad7d6a954510",
+    "text": "{\"started_utc\": \"2026-10-09T14:27:00.733328+00:00\", \"finished_utc\": \"2026-10-09T14:27:01.406565+00:00\", \"archive\": \"E:/persarb/worktrees/entropy-warm-prerequisites/docs/verification/io-warm-prerequisite-local\", \"manifest_sha256\": \"fd84588406c1089f4d210f5fc63fb300152cf6fd1037ae942e0f714b82411bba\", \"manifest_records\": 1294, \"actual_files\": 1295, \"copied_bytes\": 64301139, \"all_recorded_hashes_equal\": true, \"all_original_copy_sources_unchanged\": true, \"native_passed\": 1435, \"native_ignored\": 18, \"original_app_parameters_passed\": 7, \"actual_app_commands\": 2, \"distinct_inherited_lint_failures\": 10, \"application_issue43_complete\": false, \"real_venue_e6_verified\": false, \"tests_executed\": 0, \"native_imports\": 0, \"check_script_sha256\": \"9b6239ac3bcf0457f96b171b3ead73ca7bc1eeefd65b1e68a021347ed891e254\"}\n"
+  }
+}

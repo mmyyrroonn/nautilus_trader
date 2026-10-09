@@ -1,0 +1,30 @@
+{
+  "argv": [
+    "E:/persarb/worktrees/entropy-warm-prerequisites/.venv/Scripts/python.exe",
+    "-X",
+    "utf8",
+    "E:/persarb/_tmp/entropy117-validation/archive_native117_v5.py",
+    "--implementation",
+    "b07a7e6e6bfc7613aa12c77cdee1110e25790ca1",
+    "--regression",
+    "native117-full-hyperliquid-regression-v7",
+    "--paired-root",
+    "E:/persarb/_tmp/app43-native117-corrected-first-paired-20261009",
+    "--scenarios-root",
+    "E:/persarb/_tmp/app43-native117-corrected-remaining-scenarios-20261009"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-warm-prerequisites",
+  "started_utc": "2026-10-09T14:19:05.158784+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "uv_project_environment": null,
+  "nautilus_stub_profile": null,
+  "cargo_build_warnings": null,
+  "cargo_net_offline": null,
+  "entropy43_native_wheel": null,
+  "entropy43_native_sha256": null,
+  "entropy43_native_provenance": null,
+  "entropy43_evidence_root": null,
+  "exit_code": 1,
+  "finished_utc": "2026-10-09T14:19:06.087884+00:00"
+}

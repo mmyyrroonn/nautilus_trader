@@ -1,0 +1,27 @@
+"""Preserve the failed parser and correct its full-log diagnostic accounting."""
+
+import hashlib
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+root = Path(__file__).resolve().parent
+before = root / "compare_clippy_v7.py"
+after = root / "compare_clippy_v7_v2.py"
+receipt = root / "native117-clippy-comparison-parser-correction-v2.json"
+assert not after.exists() and not receipt.exists()
+source = before.read_text(encoding="utf-8")
+edits = (
+    ('"native117-clippy-diagnostic-comparison-v7.json"', '"native117-clippy-diagnostic-comparison-v7-v2.json"'),
+    ('assert len(unit["diagnostics"]) == 4', 'assert len(unit["diagnostics"]) == 10'),
+    ('current = unit["diagnostics"] + integration["diagnostics"]', 'current = unit["diagnostics"]\nassert all(row in current for row in integration["diagnostics"])'),
+    ('The v7 combined command stopped after four inherited library-test errors; the separate exact integration target exposed six inherited errors. Both commands failed. This comparison does not assert tests-inclusive Clippy PASS or imply the integration target was checked in the first v7 command.', 'The full v7 combined log contains ten inherited diagnostics: four library-test and six integration. The separately targeted integration command repeats the same six, so it is overlapping evidence and adds no distinct diagnostics. Both commands failed. The first parser wrongly inferred a four-error combined count from the output tail and raised AssertionError; it is retained. No tests-inclusive Clippy PASS is asserted.'),
+    ('"unit_inherited": 4, "integration_inherited": 6', '"combined_inherited": 10, "targeted_integration_inherited": 6, "distinct_inherited": 10'),
+)
+for needle, replacement in edits:
+    assert source.count(needle) == 1
+    source = source.replace(needle, replacement)
+after.write_text(source, encoding="utf-8")
+receipt.write_text(json.dumps({"created_utc": datetime.now(timezone.utc).isoformat(), "original": {"path": str(before), "sha256": hashlib.sha256(before.read_bytes()).hexdigest()}, "corrected": {"path": str(after), "sha256": hashlib.sha256(after.read_bytes()).hexdigest()}, "original_attempt": "Original tool command exited 1 with AssertionError at len(unit diagnostics)==4. No completed comparison JSON was produced; original source remains immutable.", "full_log_result": "Combined ten inherited diagnostics; targeted six overlap. No new diagnostic and no Clippy PASS inferred", "tests_executed": 0}, indent=2) + "\n", encoding="utf-8")
+print(receipt.read_text(encoding="utf-8"))

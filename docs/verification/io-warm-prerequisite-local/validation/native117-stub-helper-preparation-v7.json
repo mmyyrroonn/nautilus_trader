@@ -1,0 +1,13 @@
+{
+  "created_utc": "2026-10-09T13:27:36.975053+00:00",
+  "original": {
+    "path": "E:\\persarb\\_tmp\\entropy117-validation\\postprocess_stubs.py",
+    "sha256": "f90c174a6b4fd26283ebf53338dc4f46744dc413a915184768ccb9ea003134b9"
+  },
+  "derived": {
+    "path": "E:\\persarb\\_tmp\\entropy117-validation\\postprocess_stubs_v7.py",
+    "sha256": "3a9e7a97b8f19ef692d6e9d4a2cf4b1f159a43475f0e54ea190a86d60ae26b17"
+  },
+  "differences": "Only two output labels; all official Ruff, AST, and normalized-text checks remain unchanged",
+  "tests_executed": 0
+}

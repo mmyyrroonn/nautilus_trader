@@ -1,0 +1,20 @@
+{
+  "created_utc": "2026-10-09T14:24:18.952649+00:00",
+  "files": [
+    {
+      "original": "reviewer-native117-archive-helper-v4-narrow-review-v1-delta.diff",
+      "supported_copy": "reviewer-native117-archive-helper-v4-narrow-review-v1-delta.diff.txt",
+      "sha256": "d42f4de7ee3a0743bc3eaffaeb6ad739a3cfde3426b398bd705c4176055c7355",
+      "bytes": 8486
+    },
+    {
+      "original": "reviewer-native117-archive-helper-v5-schema-review-v1-delta.diff",
+      "supported_copy": "reviewer-native117-archive-helper-v5-schema-review-v1-delta.diff.txt",
+      "sha256": "7ac1ad5d520685176f8f256e015b08a8b1f63faf20be8c88b5c4a4f9c74ae1b3",
+      "bytes": 2407
+    }
+  ],
+  "tests_executed": 0,
+  "source_changes": 0,
+  "reason": "Preserve original diff occurrences and provide byte-identical .txt copies eligible for the immutable evidence archive."
+}

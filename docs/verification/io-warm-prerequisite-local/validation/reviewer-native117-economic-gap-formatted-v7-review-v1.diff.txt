@@ -1,0 +1,68 @@
+--- unchanged567
++++ formatted-v7
+@@ -358,7 +358,13 @@
+             .context("Economic demand window overflow")?
+             .min(now);
+         let mut state = self.state.lock();
++        anyhow::ensure!(
++            !state.tainted,
++            "io economic store tainted; facts retained but writes prohibited"
++        );
+         let mut candidate = state.checkpoint.clone();
++        let diagnostic =
++            "Current interval was not requested by warm account recovery; coverage Unknown";
+         for endpoint in ["userFunding", "userNonFundingLedgerUpdates"] {
+             let start = candidate
+                 .coverage
+@@ -367,7 +373,11 @@
+                     row.generation == generation
+                         && row.epoch == epoch
+                         && row.endpoint == endpoint
+-                        && row.complete
++                        && (row.complete
++                            || (row.pages == 0
++                                && row.records == 0
++                                && !row.complete
++                                && row.diagnostic == diagnostic))
+                 })
+                 .map(|row| row.end_ms)
+                 .max()
+@@ -384,29 +394,16 @@
+                 pages: 0,
+                 records: 0,
+                 complete: false,
+-                diagnostic:
+-                    "Current interval was not requested by warm account recovery; coverage Unknown"
+-                        .into(),
++                diagnostic: diagnostic.into(),
+             };
+-            if let Some(previous) = candidate.coverage.iter_mut().find(|row| {
+-                row.generation == generation
+-                    && row.epoch == epoch
+-                    && row.endpoint == endpoint
+-                    && row.pages == 0
+-                    && row.records == 0
+-                    && !row.complete
+-                    && row
+-                        .diagnostic
+-                        .starts_with("Current interval was not requested")
+-            }) {
+-                *previous = gap;
+-            } else {
+-                anyhow::ensure!(
+-                    candidate.coverage.len() < self.policy.history_max_pages * 3,
+-                    "io economic coverage retention exhausted"
+-                );
+-                candidate.coverage.push(gap);
+-            }
++            anyhow::ensure!(
++                candidate.coverage.len() < self.policy.history_max_pages * 3,
++                "io economic coverage retention exhausted"
++            );
++            candidate.coverage.push(gap);
++        }
++        if candidate.coverage.len() == state.checkpoint.coverage.len() {
++            return Ok(());
+         }
+         state.commit(candidate, &self.policy)
+     }

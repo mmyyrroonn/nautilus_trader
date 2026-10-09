@@ -1,0 +1,71 @@
+{
+  "implementation_commit": "b07a7e6e6bfc7613aa12c77cdee1110e25790ca1",
+  "implementation_tree": "3f07ad7a6133c0085dfc691f1d1f193d78b1bd4c",
+  "base_main": "5db2761590dd824fa159625326b6eaf3923b999a",
+  "preserved_first_implementation": "56705ce873d5fc4e568e5f9ea8f2c614d5d35230",
+  "source_files": {
+    "crates/adapters/hyperliquid/src/account_scope.rs": {
+      "git_blob_sha256": "1ff6b1d2ea0050b2b31f0a053682b109b2fa0eb7ae94c9509afdb6b7ef4e5230",
+      "current_file_sha256": "1ff6b1d2ea0050b2b31f0a053682b109b2fa0eb7ae94c9509afdb6b7ef4e5230",
+      "git_object": "0540b3923f9a44cf2da008cf0366c58765778912",
+      "tested_file_sha256": "1ff6b1d2ea0050b2b31f0a053682b109b2fa0eb7ae94c9509afdb6b7ef4e5230",
+      "tested_file_bytes": 84490,
+      "tested_source_manifest": "E:/persarb/_tmp/entropy117-validation/native117-formatted-v7.json"
+    },
+    "crates/adapters/hyperliquid/src/economics_scope.rs": {
+      "git_blob_sha256": "a7c2d11299417c3f3cd82c485d5f834401e6cb65baffb4f89e8af8e34687a03e",
+      "current_file_sha256": "a7c2d11299417c3f3cd82c485d5f834401e6cb65baffb4f89e8af8e34687a03e",
+      "git_object": "6f9bfda612105573590559d01b52fad8c3b8dd7c",
+      "tested_file_sha256": "a7c2d11299417c3f3cd82c485d5f834401e6cb65baffb4f89e8af8e34687a03e",
+      "tested_file_bytes": 34855,
+      "tested_source_manifest": "E:/persarb/_tmp/entropy117-validation/native117-formatted-v7.json"
+    },
+    "crates/adapters/hyperliquid/src/economics_scope/tests.rs": {
+      "git_blob_sha256": "30eeca1e404c9a75e5a7a972c15c4cb28875c5cb37e5be48ee419db1676f1b02",
+      "current_file_sha256": "30eeca1e404c9a75e5a7a972c15c4cb28875c5cb37e5be48ee419db1676f1b02",
+      "git_object": "1b38da711d85445dcf8d5afb1f8b454bab80e744",
+      "tested_file_sha256": "30eeca1e404c9a75e5a7a972c15c4cb28875c5cb37e5be48ee419db1676f1b02",
+      "tested_file_bytes": 37453,
+      "tested_source_manifest": "E:/persarb/_tmp/entropy117-validation/native117-formatted-v7.json"
+    },
+    "crates/adapters/hyperliquid/src/execution_scope.rs": {
+      "git_blob_sha256": "05963a5c4d221b476cae64260cf956898105acbafbde8ce117b1e659f000be50",
+      "current_file_sha256": "05963a5c4d221b476cae64260cf956898105acbafbde8ce117b1e659f000be50",
+      "git_object": "f3d1d57c8b6e8a1059c3dc263b7891fb30d72e44",
+      "tested_file_sha256": "05963a5c4d221b476cae64260cf956898105acbafbde8ce117b1e659f000be50",
+      "tested_file_bytes": 194007,
+      "tested_source_manifest": "E:/persarb/_tmp/entropy117-validation/native117-formatted-v7.json"
+    },
+    "crates/adapters/hyperliquid/tests/entropy_account/execution.rs": {
+      "git_blob_sha256": "fbc4a4efc0eb867d9f52322f948e5a601d0990cece044b05deca33c557af4196",
+      "current_file_sha256": "fbc4a4efc0eb867d9f52322f948e5a601d0990cece044b05deca33c557af4196",
+      "git_object": "125c1b21877a04a291e465c39a87ec25fe40b587",
+      "tested_file_sha256": "fbc4a4efc0eb867d9f52322f948e5a601d0990cece044b05deca33c557af4196",
+      "tested_file_bytes": 59056,
+      "tested_source_manifest": "E:/persarb/_tmp/entropy117-validation/native117-formatted-v7.json"
+    },
+    "crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs": {
+      "git_blob_sha256": "c9fa192e272c7121ba5b98a5dca692aaea5a616e35ff24c41e9974b97fb2fd12",
+      "current_file_sha256": "c9fa192e272c7121ba5b98a5dca692aaea5a616e35ff24c41e9974b97fb2fd12",
+      "git_object": "7c07d98391927c62ca993b9a3717645e02203670",
+      "tested_file_sha256": "c9fa192e272c7121ba5b98a5dca692aaea5a616e35ff24c41e9974b97fb2fd12",
+      "tested_file_bytes": 88625,
+      "tested_source_manifest": "E:/persarb/_tmp/entropy117-validation/native117-formatted-v7.json"
+    },
+    "crates/adapters/hyperliquid/tests/entropy_account/warm_prerequisite.rs": {
+      "git_blob_sha256": "4df0b91c82c998df6d60950e3ead30417ec0891dc73f06811b1768b503b3bb40",
+      "current_file_sha256": "4df0b91c82c998df6d60950e3ead30417ec0891dc73f06811b1768b503b3bb40",
+      "git_object": "0e18563908f2200ba7e8ec90b1bb82a962a7f500",
+      "tested_file_sha256": "4df0b91c82c998df6d60950e3ead30417ec0891dc73f06811b1768b503b3bb40",
+      "tested_file_bytes": 45212,
+      "tested_source_manifest": "E:/persarb/_tmp/entropy117-validation/native117-formatted-v7.json"
+    }
+  },
+  "corrective_files": [
+    "crates/adapters/hyperliquid/src/economics_scope.rs",
+    "crates/adapters/hyperliquid/src/economics_scope/tests.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs"
+  ],
+  "receipt_sha256": "5581730f5e1a75064935c153baa6bccc3715c87bde00a28384c79e3e61800965",
+  "first_receipt_sha256": "1b29309793eba1747329dcb161932df3259e8443b7dbd72f7470452aa2534a98"
+}

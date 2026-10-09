@@ -1,0 +1,64 @@
+[feature/entropy-warm-prerequisites b07a7e6e6b] Append immutable warm economic demand coverage
+ 3 files changed, 510 insertions(+), 23 deletions(-)
+{
+  "committed_utc": "2026-10-09T13:38:26.957910+00:00",
+  "base_main": "5db2761590dd824fa159625326b6eaf3923b999a",
+  "preserved_first_implementation": "56705ce873d5fc4e568e5f9ea8f2c614d5d35230",
+  "commit": "b07a7e6e6bfc7613aa12c77cdee1110e25790ca1",
+  "tree": "3f07ad7a6133c0085dfc691f1d1f193d78b1bd4c",
+  "command": [
+    "git",
+    "commit",
+    "-m",
+    "Append immutable warm economic demand coverage",
+    "-m",
+    "Preserve prior finite coverage and append bounded Unknown tails after normal warm completion. Make repeated boundaries no-ops while retaining taint rejection and atomic capacity checks. Add durable and ordinary-client regressions. Preserve the first failed candidate commit.\n\nReferences #117."
+  ],
+  "files": {
+    "crates/adapters/hyperliquid/src/economics_scope.rs": "a7c2d11299417c3f3cd82c485d5f834401e6cb65baffb4f89e8af8e34687a03e",
+    "crates/adapters/hyperliquid/src/economics_scope/tests.rs": "30eeca1e404c9a75e5a7a972c15c4cb28875c5cb37e5be48ee419db1676f1b02",
+    "crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs": "c9fa192e272c7121ba5b98a5dca692aaea5a616e35ff24c41e9974b97fb2fd12"
+  },
+  "clean": true,
+  "reviewed_manifest": {
+    "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-formatted-v7.json",
+    "sha256": "6cca167d40b04a8e708a6022b3349bfb0fbe711ec51897944df90de37603a25a"
+  },
+  "independent_review": {
+    "path": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-economic-gap-formatted-v7-review-v1.md",
+    "sha256": "2f1524e1ad47742ff431d058d56e1a9d53e41633b5729e80323f82d852d5014c"
+  },
+  "successful_checks": [
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-gap-unit-green-v7.json",
+      "sha256": "04b3655bbe43de60bf28b6f6482f9fe44054f7532e7c53150a8641d0c5d6f4b6",
+      "exit_code": 0
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-gap-normal-callback-green-v7.json",
+      "sha256": "263063e106fcab89c7794ff2d7630d9a94ea59a534d8423a9bb6e760b6002854",
+      "exit_code": 0
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-full-hyperliquid-regression-v7.json",
+      "sha256": "c99dfc3e63c2ac3310b12e8d2f77de326a64894b1427d2863680a8b463a04529",
+      "exit_code": 0
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-production-clippy-v7.json",
+      "sha256": "e343d2226be1134db7fe1c94e386e165a125052bdda5fa5cc22d9f5190e1c82e",
+      "exit_code": 0
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-official-stubs-utf8-v7.json",
+      "sha256": "7737d6cfa9dea45cc01d60e980704312a83f10cb308aaa23823a8ae49ec4e0b2",
+      "exit_code": 0
+    },
+    {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-stub-comparison-v7.json",
+      "sha256": "68dc99e9161c3a4a22b814a01bac3cf67af29455509feca0283bec5efaf3c947",
+      "exit_code": 0
+    }
+  ]
+}
+

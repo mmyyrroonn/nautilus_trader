@@ -1,0 +1,90 @@
+# Native117 first installed App43 paired failure: read-only causal review
+
+This report reviews one existing failed run. It does not report a new execution, a passing paired acceptance, or a passing seven-scenario suite. Production, application sources, the installed wheel, and original evidence were not modified.
+
+## Run and evidence identity
+
+Root ran `tests/test_entropy_execution_native.py::test_actual_installed_factory_two_leg_execution[paired]` from `E:/persarb/worktrees/entropy-execution-app` at 2026-10-09 12:48:15.893970–12:48:34.684631 UTC. Exit code was 1: one failure in 18.56 seconds. The frozen implementation was `56705ce873d5fc4e568e5f9ea8f2c614d5d35230`; installed wheel SHA256 was `47486c076bfaa7afac05a02071b11d485280dca5718a0d806d6dd6fe1eb4a05e`.
+
+Original run directory: `E:/persarb/_tmp/app43-native117-first-paired-20261009/paired`. Root wrappers and pre/post identities remain under `E:/persarb/_tmp/entropy117-validation/app43-native117-first-paired*`. Root's before/after manifests contain 57 unchanged inputs. This review additionally hashed 13 closed-run files and five native source files before and after parsing; all 18 identities matched.
+
+Machine-readable review: `reviewer-native117-first-paired-v1.json`, SHA256 `e73b05663b456dd690ce1a6f861f49ef8421a961c33aa8bd77622e5c3301b28a`. Its raw evidence identities, exact integer times, full native scope sequence, original prerequisite source group, decoded HTTP responses, terminal journal, and durable economics checkpoint support the observations below. A stdlib-only evidence parser was executed once with `python.exe -I -S`; it did not import the application/native module or execute a test. Parser SHA256: `c1bf70ad6b50797f8a729f789d278821554d3d5acd4bc671127081dcfdbf3e1f`. No Cargo, Git/GitHub, venue traffic, or environment-file access occurred in this review. The initial PowerShell JSON attempt rejected case-distinct `e`/`E` peer keys; its apparent zero-count output was discarded and replaced by the successful case-sensitive stdlib parse.
+
+## Finding
+
+Both actual Hyperliquid warm account recoveries committed successfully, including the reduce-only close. The subsequent economic demand-boundary record failed. The observed native diagnostic is `Economic unrequested coverage could not be preserved`. Source analysis identifies an attempt to replace an already durable Unknown coverage row, conflicting with the store's append-only prefix invariant. The precise inner error, `Economic source/consumer state regression`, is a source-derived diagnosis; it was not independently printed in the original child log.
+
+This differs from the historical native115 paired failure, where the close warm transaction itself exhausted its total deadline. The native117 close transaction completed before the original prerequisite expiry. Quota exhaustion, source expiry, unapplied ingress, and raw recovery debt are not supported as the first native117 failure cause.
+
+## Actual chronology
+
+All table times are 2026-10-09 UTC. Source/execution times and delivery/callback times remain distinct.
+
+| Time | Observed fact |
+|---|---|
+| 12:48:18.265–18.272 | Original qualified eight-request prerequisite group; generation 1, epoch 0, received sequence 6, hard revision 1. Original absolute expiry is 12:48:20.265. |
+| 18.414785900 | First sampled normal Ready/trusted scope, actual flat cache/portfolio and sealed original prerequisite. |
+| 18.616928500 | Owned Hyperliquid entry prepared: buy 0.12 IOC. |
+| 18.621 source; 18.764977600 callback | Actual entry OID 70001/TID 60001, 0.1200, commission 0.001 USDC; native scoped TradeId `io:io:SNDK:70001:60001`. |
+| 18.820211300 | Ordinary entry account query after the real fill and applied sequence 9. |
+| 18.913348000 | First warm observed complete/trusted/Ready, `query_completed=1`, `last_query_warm=true`, `last_query_reused_prerequisite=true`. Entry native phase Terminal and reserve zero. New clearinghouse source 18.831, receipt 18.832. |
+| 18.915350400; 19.071433100 callback | Aster hedge submitted and actually filled: sell 0.12, OID 80001/TID 90000, fee 0.001 USD1. |
+| 19.119503100 | Earliest controller stop reason: `cleanup_not_currently_proven_or_budget_exhausted`; Aster refresh was still pending. Hyperliquid reduce-only close prepared. This predates the economic failure. |
+| 19.120507200; 19.122201300 | Immediate owned cancel prepared; native engine rejected it with `io cancel scope/remaining order facts are incomplete`. No Hyperliquid venue cancel was recorded. |
+| 19.122 source; 19.282378400 callback | Actual Hyperliquid close OID 70002/TID 60002, sell 0.1200, fee 0.001 USDC; scoped TradeId `io:io:SNDK:70002:60002`. |
+| 19.321425000 | Ordinary close account query with sequence 13 applied. |
+| 19.322423700 | Aster reduce-only buy cleanup prepared; an immediate cancel was also prepared. |
+| 19.335 source; 19.336 receipt | New complete clearinghouse confirms Hyperliquid current flat account facts. Original prerequisite start remains 18.265. |
+| 19.416793500 | Close warm completion already committed: `query_completed=2`, both warm/reuse flags true, account trusted, both native owned intents Terminal, reservations zero. Execution recovery is now false with the economic-unrequested diagnostic; warm metadata origin is null. This is about 848 ms before original expiry. |
+| 19.494604300 | Actual Aster cleanup fill: buy 0.12, OID 80002/TID 90001, fee 0.001 USD1. |
+| 20.265 and later | Original prerequisite expiry, then later invalidation/fallback/deadline failures. These follow the economic failure. |
+| End | Four true fills, two entries and two cleanups; all four controller orders Filled/non-Unknown. Controller positions/reservations and ordinary Cache/Portfolio net quantities are zero. State remains StoppedUnknown, including `cleanup_deadline_exhausted`, because current Hyperliquid flat admission could not be restored. Shutdown verified; watchdog false. |
+
+The transient initial cleanup reason and the decisive native economic invalidation are separate observations. Zero physical quantities do not establish a fresh current-scope flat proof. The last retained Hyperliquid projection witness predated the close and still reflected the entry quantity.
+
+## Original and new source identities
+
+The original prerequisite contains eight native received raw sources: userRole at 18.266, userAbstraction 18.267, userDexAbstraction 18.268, meta 18.269, spotMeta 18.269, full clearinghouse 18.270 (source time 18.269), and repeated abstraction reads 18.271/18.272. The original start, finish, expiry, generation/epoch and metadata context remain unchanged through both successful warm recoveries. This is genuine reuse, without renewing its two-second clock.
+
+The entry and close warm financial source receipts are respectively 18.832 and 19.336, with applied sequences 9 and 13. No recovery-source debt appears in the recorded native snapshots or final intent journal. That journal is not tainted and does not require native projection recovery. Successful composed financial bodies are represented in the peer response recording and account diagnostics; there is no failed-flight debt containing them. The parsed peer JSON is a decoded delivered-body record, not a substitute for a native transport raw receipt. Original prerequisite raw text/receipts are retained by the native getter.
+
+## Economic persistence contradiction and consumer clock
+
+The durable economics checkpoint remains revision 11 with two immutable fee receipts, four accepted raw observations, no unknown observations, actual fee total 0.002 USDC, and four coverage rows:
+
+| Endpoint pair | Start ms | End ms | Pages/records | Completeness |
+|---|---:|---:|---|---|
+| userFunding and userNonFundingLedgerUpdates | 1791550096681 | 1791550098273 | 1/0 each | Complete, original finite requested interval |
+| Same endpoints, first warm demand boundary | 1791550098273 | 1791550098833 | 0/0 each | Unknown; current interval was not requested |
+
+The normal callback in `execution.rs:2214–2233` calls `record_unrequested_history` only after owner account commit succeeds. Its end input is actual `account_scope::now_ms()`, not the composed account snapshot's old verification start. `economics_scope.rs:348–411` selects the latest COMPLETE coverage end as the new gap start, then replaces the earlier same-endpoint zero-page Unknown row. `economics_scope/store.rs:490` requires `candidate.coverage.starts_with(&previous.coverage)`. Updating the first gap end violates that exact invariant before writing a new checkpoint.
+
+The second attempted gap's precise end is not retained in the failed checkpoint or logged as an argument. It lies after the close financial receipt at 19.336 and before the observed failure at 19.416793500. There is no evidence of time backtracking: 8273 is the economic complete interval end, not the old prerequisite start 8265. The policy's maximum window end also exceeds this real current time. The consumer-clock hypothesis is therefore rejected; changing the snapshot's original source start would renew an unrelated authority clock and would not fix the immutable prefix conflict.
+
+`IoEconomicsState::commit` marks its live state tainted on a store failure, as source behavior. A current post-error economics getter was not recorded: the application timer's persist step raised `RuntimeError` before replacing its saved successful economics snapshot. Thus `summary.evidence.economics.tainted=false` and the unchanged on-disk checkpoint refer to the last accepted receipt, not proof of current economic health. The application properly retains economics/funding/run-PnL completeness as Unknown. Only four coverage rows were present under a 24-row cap; retention exhaustion did not cause this particular attempt.
+
+## Requests and later invalidation chain
+
+Actual peers recorded 79 Hyperliquid HTTP requests, all status 200, two actions/two fills/final position zero/errors empty; Aster recorded 144 HTTP requests, all 200, three actions/two fills/final position zero/errors empty. Peer request entries lack a universal send/receive timestamp, so arbitrary per-request timing or internal bucket balances cannot be measured from them.
+
+Zero-index Hyperliquid request groups distinguish automatic ACK recovery from explicit warm queries: original seal group 26–33; startup finite history metadata/funding/ledger 34–37; startup three empty arrays 38–40; entry ACK recovery 41–46; explicit entry warm 47–50 (open/fills/status/current clearinghouse); close ACK recovery 51–56; explicit close warm 57–62 (open/fills/status/current clearinghouse/two flat leverage counterproofs). Neither explicit warm reread role/mode/meta/spot or extended economic history. Actual close warm succeeded quickly, so later quota-delay inference cannot explain its already completed transaction.
+
+After economic invalidation, the original metadata origin is no longer available. Subsequent full account reads 63–70 include current flat clearinghouse source 12:48:22.531; metadata reload 71–75 and later role reads follow. Private current frames continue normally; brief unapplied snapshots are visible later. Subsequent native total-recovery deadline diagnostics and eventual application cleanup deadline failure are downstream effects. No new funding/ledger requests occurred. Provider weights and shared limiter behavior can explain possible later waiting only as source inference; neither internal remaining quota nor an exact blocked-request wait was measured.
+
+## Minimal corrective contract for root review
+
+Preserve the store's append-only prefix validation and original completed history rows, raw facts, fee receipts, time clocks and all caps. Root subsequently froze `native117-economic-gap-correction-contract-v1.md`, choosing disjoint Unknown tails: for each generation/epoch/endpoint, start at the maximum end among COMPLETE rows and the same-class zero-page Unknown demand rows, retaining every old row unchanged. A genuinely equal or earlier boundary is a no-op, including when capacity is full. A later boundary appends an Unknown tail; it never becomes requested/complete coverage. Candidate construction and both endpoint cap checks precede one existing durable commit; a later demand at full capacity must still refuse without deleting old facts or expanding the bound.
+
+Expected implementation scope is `economics_scope.rs`; `execution.rs`'s normal `now_ms` consumer and `economics_scope/store.rs`'s prefix check should remain intact. Necessary regression evidence includes two consecutive normal owned entry/close warm recoveries with unchanged earlier rows/fees, true journal persistence after stop/drop, idempotent repeated boundaries, generation/epoch isolation, finite cap exhaustion preserving old durable content, and unchanged hard-history demand/timeout failure behavior. No implementation or regression was performed here. Root must separately freeze the correction contract and authorize source ownership.
+
+App43's broader source-only acceptance watchpoints remain in `reviewer-app43-source-only-v1.md`; they are not new observed native117 failures. This report establishes one installed failure and a specific source contradiction, without claiming complete App43 acceptance, new all-seven results, account-wide/cold-recovery authority, real venue trading, or kernel egress isolation.
+
+## Native source SHA256
+
+| Source under crates/adapters/hyperliquid/src | SHA256 |
+|---|---|
+| execution.rs | 2b1e30b896b60b01edd257947426c5f132b841dc7fe7771602f1e810c81c3316 |
+| execution_scope.rs | 05963a5c4d221b476cae64260cf956898105acbafbde8ce117b1e659f000be50 |
+| account_scope.rs | 1ff6b1d2ea0050b2b31f0a053682b109b2fa0eb7ae94c9509afdb6b7ef4e5230 |
+| economics_scope.rs | 2ebdf3756f39ea0cd32cfdc79d84ef7babdcabd6c2d7fea0b0f00d4c151f7f47 |
+| economics_scope/store.rs | 45fe49e6b631b8f1a1758370166aa1c19e798ef5357d252ea0e3b60380ce5adf |

@@ -1,0 +1,128 @@
+{
+  "kind": "readonly actual root failure parse and replacement source proposal",
+  "new_executions": 0,
+  "root_actual_result": {
+    "passed": 63,
+    "failed": 1
+  },
+  "proposal_observed_pass": false,
+  "before": {
+    "utc": "2026-10-09T12:20:03.779650+00:00",
+    "files": [
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-existing-io-recovery-v3.log",
+        "size": 77121,
+        "sha256": "1f5affa2a83ac9b964e27e26670a11288308430edd06cf9541c659e44c082198"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-existing-io-recovery-v3.json",
+        "size": 936,
+        "sha256": "1e9b5d9da6d88c22b35f33d15c995872cca3aebf103b8afb8fa3a1771db5fee2"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-formatted-v3.json",
+        "size": 10942,
+        "sha256": "2f2a68e716694e39061450f9e4409878dc8aa92704222fcbb62752d4d3f221f4"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\src\\execution.rs",
+        "size": 250478,
+        "sha256": "2b1e30b896b60b01edd257947426c5f132b841dc7fe7771602f1e810c81c3316"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\src\\http\\client.rs",
+        "size": 176208,
+        "sha256": "ba66b53fcc6a6d1fb6e8bb34ac6faf677cd9e7eb6ffe89eea9e2c11ea398eab2"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\src\\http\\rate_limits.rs",
+        "size": 15968,
+        "sha256": "47dd217c00b7a28358b2f28b7e1803c72e5817212300a2e62c2f0a419047dafc"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+        "size": 194012,
+        "sha256": "57df3fa269f02a16c900b38894bdc3fd2de4a4528c22e954afbeccb53c5da19d"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\execution.rs",
+        "size": 59056,
+        "sha256": "fbc4a4efc0eb867d9f52322f948e5a601d0990cece044b05deca33c557af4196"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs",
+        "size": 80624,
+        "sha256": "f241151404aab9d14afe7d9711eff8fc7fac7d8c7a55db4df6c94aa26cf41b7a"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs",
+        "size": 80841,
+        "sha256": "685f2efc6a71ace1990ff7da5817c83c16b49f75f01d57a6beb89f3be4757805"
+      }
+    ]
+  },
+  "after": {
+    "utc": "2026-10-09T12:20:03.782649+00:00",
+    "files": [
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-existing-io-recovery-v3.log",
+        "size": 77121,
+        "sha256": "1f5affa2a83ac9b964e27e26670a11288308430edd06cf9541c659e44c082198"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-existing-io-recovery-v3.json",
+        "size": 936,
+        "sha256": "1e9b5d9da6d88c22b35f33d15c995872cca3aebf103b8afb8fa3a1771db5fee2"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-formatted-v3.json",
+        "size": 10942,
+        "sha256": "2f2a68e716694e39061450f9e4409878dc8aa92704222fcbb62752d4d3f221f4"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\src\\execution.rs",
+        "size": 250478,
+        "sha256": "2b1e30b896b60b01edd257947426c5f132b841dc7fe7771602f1e810c81c3316"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\src\\http\\client.rs",
+        "size": 176208,
+        "sha256": "ba66b53fcc6a6d1fb6e8bb34ac6faf677cd9e7eb6ffe89eea9e2c11ea398eab2"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\src\\http\\rate_limits.rs",
+        "size": 15968,
+        "sha256": "47dd217c00b7a28358b2f28b7e1803c72e5817212300a2e62c2f0a419047dafc"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+        "size": 194012,
+        "sha256": "57df3fa269f02a16c900b38894bdc3fd2de4a4528c22e954afbeccb53c5da19d"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\execution.rs",
+        "size": 59056,
+        "sha256": "fbc4a4efc0eb867d9f52322f948e5a601d0990cece044b05deca33c557af4196"
+      },
+      {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs",
+        "size": 80624,
+        "sha256": "f241151404aab9d14afe7d9711eff8fc7fac7d8c7a55db4df6c94aa26cf41b7a"
+      },
+      {
+        "path": "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs",
+        "size": 80841,
+        "sha256": "685f2efc6a71ace1990ff7da5817c83c16b49f75f01d57a6beb89f3be4757805"
+      }
+    ]
+  },
+  "inputs_unchanged": true,
+  "report_sha256": "2a0a6ae398e74c7f7e6dd07e25cc7bcf8ad00d8e6b9b33dd7164387c525df94c",
+  "parsed_receipt_sha256": "0dccf93f8a692487dcbd413d49670c5e4978b14f03081480c74805f652f51ed3",
+  "correct_execution_init_base": 624,
+  "proposal_preload_count": 7,
+  "proposal_preload_base": 82,
+  "proposal_target_budget_ms": 3000,
+  "source_bound": true,
+  "discarded_exploratory_dedup": "59 keys erased 7 genuine same-ms repeated observations; accepted calculation uses66 occurrence indices"
+}

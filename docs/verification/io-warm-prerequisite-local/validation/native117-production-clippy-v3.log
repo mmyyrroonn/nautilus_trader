@@ -1,0 +1,30 @@
+   Compiling nautilus-core v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\core)
+   Compiling nautilus-common v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\common)
+   Compiling nautilus-persistence-macros v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\persistence\macros)
+    Checking nautilus-model v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\model)
+    Checking nautilus-cryptography v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\cryptography)
+warning: linker stdout: 正在创建库 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-e8531d52ba21303c.dll.lib 和对象 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-e8531d52ba21303c.dll.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-persistence-macros` (lib) generated 1 warning
+    Checking nautilus-network v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\network)
+    Checking nautilus-execution v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\execution)
+    Checking nautilus-live v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\live)
+    Checking nautilus-hyperliquid v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\adapters\hyperliquid)
+error: this argument is passed by value, but not consumed in the function body
+    --> crates\adapters\hyperliquid\src\execution_scope.rs:1169:26
+     |
+1169 |     prerequisite_source: Option<Arc<WarmPrerequisiteSourceSeal>>,
+     |                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#needless_pass_by_value
+     = note: `-D clippy::needless-pass-by-value` implied by `-D warnings`
+     = help: to override `-D warnings` add `#[allow(clippy::needless_pass_by_value)]`
+help: consider taking a reference instead
+     |
+1169 |     prerequisite_source: Option<&Arc<WarmPrerequisiteSourceSeal>>,
+     |                                 +
+
+error: could not compile `nautilus-hyperliquid` (lib) due to 1 previous error

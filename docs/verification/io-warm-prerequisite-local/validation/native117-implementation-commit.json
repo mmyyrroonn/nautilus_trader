@@ -1,0 +1,23 @@
+{
+  "committed_utc": "2026-10-09T12:41:52.854674+00:00",
+  "base_main": "5db2761590dd824fa159625326b6eaf3923b999a",
+  "commit": "56705ce873d5fc4e568e5f9ea8f2c614d5d35230",
+  "tree": "3cdb794ea505e67390676ca68b70762b15ea6771",
+  "command": [
+    "git",
+    "commit",
+    "-m",
+    "Reuse bounded Hyperliquid io warm prerequisites",
+    "-m",
+    "Retain complete original nonfinancial sources across validated owned financial changes. Require fresh native financial reads and preserve original expiry and owner fences. Keep durable separate old and new raw provenance within existing journal bounds.\n\nReferences #117."
+  ],
+  "files": {
+    "crates/adapters/hyperliquid/src/account_scope.rs": "1ff6b1d2ea0050b2b31f0a053682b109b2fa0eb7ae94c9509afdb6b7ef4e5230",
+    "crates/adapters/hyperliquid/src/execution_scope.rs": "05963a5c4d221b476cae64260cf956898105acbafbde8ce117b1e659f000be50",
+    "crates/adapters/hyperliquid/tests/entropy_account/execution.rs": "fbc4a4efc0eb867d9f52322f948e5a601d0990cece044b05deca33c557af4196",
+    "crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs": "23566164a25e0470777180fdbd9e25491ca85f9a6e15cd83b2ca69054bbb994c",
+    "crates/adapters/hyperliquid/tests/entropy_account/warm_prerequisite.rs": "4df0b91c82c998df6d60950e3ead30417ec0891dc73f06811b1768b503b3bb40"
+  },
+  "clean": true,
+  "reviewed_manifest_sha256": "97dd8aa22e399c40aac2156de708157bde002694bfa68699d99a746672bc377c"
+}
