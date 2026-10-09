@@ -1,0 +1,7 @@
+warning: linker stdout: 正在创建库 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-e8531d52ba21303c.dll.lib 和对象 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-e8531d52ba21303c.dll.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+error: `nautilus-persistence-macros` (lib) generated 1 warning
+error: warnings are denied by `build.warnings` configuration

@@ -1,0 +1,26 @@
+{
+  "issue": 113,
+  "revision": 2,
+  "source_record_clock_utc": "2026-10-09T06:20:11Z",
+  "worktree": "E:/persarb/worktrees/entropy-io-recovery",
+  "expanded_integration_cases": 55,
+  "prior_revision_cases": 49,
+  "compiled": false,
+  "executed": false,
+  "pass_claims": 0,
+  "captured_origin_debt_schema": "unknown_sources",
+  "source_sha256": {
+    "crates/adapters/hyperliquid/tests/entropy_account.rs": "943245715213f3e599c02ca35efd7777683bf56051df84f83a589393e9637798",
+    "crates/adapters/hyperliquid/tests/entropy_account/execution.rs": "2f01e14cd9b75cc3e6ceb26b7e4984a1984836c6e4aa128bc0eafce4db2ff30e",
+    "crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs": "cdb3505365c0821845f42f4449efce08a1b47fb12cd4f1b36515d3f71a1d6ae9"
+  },
+  "normal_source_failure_combinations": [
+    "identical-private-frame/parse",
+    "changed-funds/parse",
+    "reader-close/parse",
+    "identical-private-frame/deadline",
+    "changed-funds/deadline",
+    "reader-close/deadline"
+  ],
+  "no_later_flight_adoption_claim": true
+}

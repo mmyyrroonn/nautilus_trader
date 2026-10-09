@@ -1,0 +1,40 @@
+# #113 收紧后的 warm 合同架构补充审查
+
+父 Agent 选择的最小合同可接受：warm 只核对正常 WS 已 actual accepted 的 owned facts，普通 owner-thread Cache 已实际消费；REST 不产生新增金融投影。REST 新增、未知或冲突 facts 拒绝并保留 raw/debt/reservations，不通过自动 cold fallback 借旧 proof。cold/expired/no witness 保留已有完整路径；本单明确不宣称修复其全部事务投影或 generic cold/PnL/cache restore，也不关闭 #89。
+
+经济历史不采用前报告讨论的 timeout softening，因此不需要新增 soft-failure 例外。所有实际 history failure 保持原 failclosed。successful warm 不自动重复旧 finite window 或把 end 推到 now；原 complete 只属于原 start/end，新范围 Unknown。以下为架构/API 预审，**新生产实现正在写作，未冻结；本报告不是 source signoff 或测试通过**。
+
+## normal owner callback 的实际 API 约束
+
+- `common/src/runner.rs:283–301` 对 `RustLocal` 在调用 `TimeEventMessage::new` 的线程注册 callback。`334–361` 在别的线程 dispatch 会 drop 并返回 false。`try_get_time_event_sender` (`497–498`) 也是 TLS。因此正常 QueryAccount owner thread 应创建 callback/message、取得 sender，再将可 Send 的 message 移交 HTTP worker；不能在 worker 创建捕获 owner Cache 的 RustLocal callback，也不能使用测试专用 production 分支。
+- `live/src/runner.rs:415–416` 正常 `AsyncRunner::handle_time_event` 调用 message.dispatch，可以作为正常合同测试路径，不需要 unsafe 或修改 common/core。
+- `live/src/runner.rs:117–120` 的 TimeEventSender send 没有成功/失败返回值，closed queue 仅日志。总 deadline 必须覆盖排队、错线程/未 dispatch、callback acknowledgment 等待。没有 acknowledgment 保持 Unknown；取消、stop/drop、旧 deadline 后的消息不可提交。
+- 单次 callback 必须重新读取当前 actual Cache，再持 ingress→account→execution 的最终短锁校验同 query identity、shared lifetime/cancellation token、source fences、最新 TTL。callback 的清理只能操作本 transaction，不能清理或完成 successor；队列里的 message/lease 生命周期不能被当成实际 client alive。
+- **具体容易漏掉的事实：**`execution/src/client/core.rs:54–75` 的 Clone 把 connected/started AtomicBool 的当前值复制到新 AtomicBool。captured core clone 的 `is_connected()` 不能作为真实 stop/drop guard。它共享 CacheView 可以读当前 Cache，但生命周期需要独立共享 token 与 account hard invalidation，不能凭被复制的 true 授予提交资格。
+- `ExecutionClientCore` (`core.rs:39–50`) 只有 CacheView，没有 Portfolio 权威字段。原生可以证明正常 Cache 订单/position/event facts 已消费，不能由此诊断声称 certified Portfolio。实际 installed app 的现有 Portfolio gate 仍必须正向检查，或文档将两类证据分开。
+
+## REST 重复核对也须 exact current projection
+
+完整 REST fills 只允许已有 actual accepted、当前正常 Cache 精确对应的重复。必须检查 raw financial payload/CID/OID/TID/coin/account/strategy/qty/price/commission 与当前原生事件，不能用 TID 集合、累计 filled quantity 或“already terminal”替代。所有策略/同账户的 foreign facts 与 account-less routed io facts仍闭合；未 selected 的 full-io inventory 不能被过滤掉当空。
+
+status 的既有终态必须保持真实 CANCELED/EXPIRED/REJECTED 等语义，不把 closed 当 FILLED；状态自身新增或与现有 raw/cache 不符仍拒绝。只在 actual final full account source 足以吸收此前实际 terminal 的情况下释放 TerminalPending reservation。staging 解析不提交，拒绝不删除已收到事实，也不造金融事件来让投影相等。
+
+最终 AccountState 与 Ready enqueue 的线性化不等于新 AccountState 已被 Portfolio 消费。此前 fills 的 actual cache consumption 与新账户报告 consumption 分开披露；app 必须继续当前普通 Cache/Portfolio/events join。
+
+## Economic demand 表必须明确
+
+| 来源/需求 | 最小保守行为 |
+|---|---|
+| 正常 cold/startup，reader replacement gap，未建立 finite demand coverage | 走原有有界 history 需求；所有实际 failure 仍 failclosed，coverage Unknown |
+| 正常 WS exact accepted owned fill，fee/raw/nativeCache 完整一致，无其他 funding/ledger/unsupported 来源 | 可仅恢复 fresh current funds；不自动重复 funding/ledger finite window，旧 end 不变，新 end Unknown；不称 whole-run funding/PnL complete |
+| 新 userFunding/nonFundingLedger，unattributed/unsupported/current raw 保存失败等实际金融来源 | 立即按原规则撤权，并建立对应有限 source demand；不能因为 metadata qualified 或本次走 warm 就跳过历史需求/失败合同 |
+| 只有 now 前进，旧范围已 complete | 旧范围仍 complete，新范围 Unknown；时间流逝不能扩大 complete，也无需每次 funds query 自动再读旧历史 |
+| 后来的 HTTP 历史请求失败或新增/冲突金融事实 | 保留既有 failclosed/source invalidation、immutable raw、Unknown coverage；不得回滚旧收入、重放 commission 或解除 reserve/debt |
+
+不能将“warm=true”作为“no economic demand”的替代条件。是否有 source demand 应绑定 generation/epoch、有限窗口、原 source identity 和明确 source类别；重复 accepted-owned fee 本身不能冒充新 funding/ledger coverage，未知 raw 也不能因计数为零逃过 demand。
+
+## 后续冻结实现需特别覆盖的负例
+
+wrong owner/no sender/closed sender、HTTP 完成后未消费 TimeEvent、总 deadline 过期后消费、取消后消费、stop/drop 后 core clone 仍 true、旧 callback 在新 query 后消费、相同私有 frame/new sequence 与未 applied ingress、final metadata/cache 变化、REST 新事实以及 status 不同真实终态、raw history demand被warm误跳过、旧 coverage end 被now扩大。
+
+本轮仅 rg/Get-Content 读取未修改的正常 runner/core API 与既有 economics source、预览生产作者尚未冻结的字段名；没有运行测试、项目 helper、Git/GH、Cargo/build/install 或 loopback。前报告四类 source fence 要求仍有效。待作者冻结完整实现后必须正式 hash-bound 逐行审查，再按 root 提供的实际 exes/wheel 独立验证。

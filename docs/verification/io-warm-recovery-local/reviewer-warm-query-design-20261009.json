@@ -1,0 +1,107 @@
+{
+    "kind":  "independent source/design review only",
+    "issue":  113,
+    "identity_capture_pre_utc":  "2026-10-09T05:42:05.5933605Z",
+    "identity_capture_post_utc":  "2026-10-09T05:45:01.6311830Z",
+    "provided_source_commit":  "6f46bad474f850b9279a3a8950f5b300570f179d",
+    "source_commit_attribution":  "parent supplied; no Git command executed",
+    "reviewed_worktree":  "E:/persarb/worktrees/entropy-io-startup",
+    "new_implementation_reviewed":  false,
+    "files":  [
+                  {
+                      "path":  "E:/persarb/_tmp/entropy43-validation/io-query-account-quota-design.md",
+                      "bytes":  15764,
+                      "sha256_pre":  "4e22ce0ff3bba5bf03530d6d2e226d44ce41c0291576d3861cc2c6ab61d49b50",
+                      "sha256_post":  "4e22ce0ff3bba5bf03530d6d2e226d44ce41c0291576d3861cc2c6ab61d49b50",
+                      "unchanged":  true
+                  },
+                  {
+                      "path":  "E:/persarb/_tmp/entropy43-validation/io-query-account-quota-design.json",
+                      "bytes":  6026,
+                      "sha256_pre":  "e5e10bdaf5309e9a03070d7589b6af938de7ad497ff66a719903de3f14e01a43",
+                      "sha256_post":  "e5e10bdaf5309e9a03070d7589b6af938de7ad497ff66a719903de3f14e01a43",
+                      "unchanged":  true
+                  },
+                  {
+                      "path":  "E:/persarb/_tmp/entropy43-validation/native-recovery-create-input.json",
+                      "bytes":  4422,
+                      "sha256_pre":  "77356b896fe39d8fe0b7a7ecd6b7955fd45c0fa65098d861703fb27a2b0b0c02",
+                      "sha256_post":  "77356b896fe39d8fe0b7a7ecd6b7955fd45c0fa65098d861703fb27a2b0b0c02",
+                      "unchanged":  true
+                  },
+                  {
+                      "path":  "E:/persarb/worktrees/entropy-io-startup/crates/adapters/hyperliquid/src/execution.rs",
+                      "bytes":  240623,
+                      "sha256_pre":  "37ffc31a63db29877d4d6bd286a4f48e6edf63866be58eaf67f7e58c97cd78f0",
+                      "sha256_post":  "37ffc31a63db29877d4d6bd286a4f48e6edf63866be58eaf67f7e58c97cd78f0",
+                      "unchanged":  true
+                  },
+                  {
+                      "path":  "E:/persarb/worktrees/entropy-io-startup/crates/adapters/hyperliquid/src/execution_scope.rs",
+                      "bytes":  128905,
+                      "sha256_pre":  "bd3e1b4b4a1c25a2acaf1053d245c2ccd51e7e17a6068846be41caed4557ced1",
+                      "sha256_post":  "bd3e1b4b4a1c25a2acaf1053d245c2ccd51e7e17a6068846be41caed4557ced1",
+                      "unchanged":  true
+                  },
+                  {
+                      "path":  "E:/persarb/worktrees/entropy-io-startup/crates/adapters/hyperliquid/src/account_scope.rs",
+                      "bytes":  45966,
+                      "sha256_pre":  "edfa6945224f6575baa4872668f6022df0911675e5ee442004f78813c485b69f",
+                      "sha256_post":  "edfa6945224f6575baa4872668f6022df0911675e5ee442004f78813c485b69f",
+                      "unchanged":  true
+                  },
+                  {
+                      "path":  "E:/persarb/worktrees/entropy-io-startup/crates/adapters/hyperliquid/src/economics_scope.rs",
+                      "bytes":  32427,
+                      "sha256_pre":  "bcb748af8a343f19b9806021e1a19bf23f81956fa43a7cec4db34185c465bc84",
+                      "sha256_post":  "bcb748af8a343f19b9806021e1a19bf23f81956fa43a7cec4db34185c465bc84",
+                      "unchanged":  true
+                  },
+                  {
+                      "path":  "E:/persarb/worktrees/entropy-io-startup/crates/adapters/hyperliquid/src/websocket/client.rs",
+                      "bytes":  131462,
+                      "sha256_pre":  "15a9fdde9cf9df8e491a63dde625de7029ac85868f19a8dc775d56f2ea160b9a",
+                      "sha256_post":  "15a9fdde9cf9df8e491a63dde625de7029ac85868f19a8dc775d56f2ea160b9a",
+                      "unchanged":  true
+                  },
+                  {
+                      "path":  "E:/persarb/worktrees/entropy-io-startup/crates/adapters/hyperliquid/src/http/client.rs",
+                      "bytes":  174885,
+                      "sha256_pre":  "028af06905f49846751ad4f9e49a168417db7c03946de5723a1c6cebdeff6d6a",
+                      "sha256_post":  "028af06905f49846751ad4f9e49a168417db7c03946de5723a1c6cebdeff6d6a",
+                      "unchanged":  true
+                  },
+                  {
+                      "path":  "E:/persarb/worktrees/entropy-io-startup/crates/adapters/hyperliquid/src/http/rate_limits.rs",
+                      "bytes":  15968,
+                      "sha256_pre":  "47dd217c00b7a28358b2f28b7e1803c72e5817212300a2e62c2f0a419047dafc",
+                      "sha256_post":  "47dd217c00b7a28358b2f28b7e1803c72e5817212300a2e62c2f0a419047dafc",
+                      "unchanged":  true
+                  }
+              ],
+    "independent_tests_run":  0,
+    "implementation_acceptance":  false,
+    "network_run":  false,
+    "source_edits":  false,
+    "limits":  {
+                   "account_ttl_ms":  2000,
+                   "metadata_ttl_ms":  30000,
+                   "recovery_deadline_ms":  3000,
+                   "limiter_capacity_per_minute":  1200,
+                   "limiter_refill_per_second":  20
+               },
+    "cost_lower_bounds":  {
+                              "cold_one_symbol_one_cloid":  506,
+                              "warm_one_cloid":  224,
+                              "economic_history_empty_initial":  80,
+                              "kind":  "source derived minima, not measured client quota or paired acceptance"
+                          },
+    "blockers":  [
+                     "Explicit hard metadata witness and final actual HTTP metadata comparison",
+                     "Source-qualified linearization before every financial mutation/emission, not only final Ready",
+                     "Same-reader received sequence plus applied/private-funds fence and bounded transaction identity",
+                     "Typed no-new-body history timeout exception with Unknown coverage and hard failures retained"
+                 ],
+    "report":  "E:/persarb/_tmp/entropy113-validation/reviewer-warm-query-design-20261009.md",
+    "report_sha256":  "b61150b374aab9029250f87c3eba237f0b28154e96f640a419ab8cc9a8379224"
+}

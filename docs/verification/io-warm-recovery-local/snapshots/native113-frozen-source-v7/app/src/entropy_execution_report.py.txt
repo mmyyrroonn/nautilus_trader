@@ -1,0 +1,511 @@
+"""Receipt-preserving economic evidence, independent of trading and native balances."""
+
+from __future__ import annotations
+
+import hashlib
+import re
+from copy import deepcopy
+from dataclasses import dataclass
+from decimal import Decimal
+
+from entropy_execution_config import (
+    ExecutionConfigError,
+    canonical_json,
+    exact_add,
+    exact_mul,
+)
+
+
+def native_decimal(value, label="native amount", *, positive=False):
+    if (
+        type(value) is not str
+        or len(value) > 64
+        or not re.fullmatch(r"-?(?:0|[1-9]\d{0,28})(?:\.\d{1,28})?", value)
+    ):
+        raise ExecutionConfigError(f"{label} is not a supported exact native decimal")
+    amount = Decimal(value)
+    if len(amount.as_tuple().digits) > 29 or (positive and amount <= 0):
+        raise ExecutionConfigError(f"{label} exceeds native decimal precision")
+    return amount
+
+
+def native_io_trade_id(instrument_id, venue_order_id, raw_trade_id):
+    """Reconstruct the native identity without losing its instrument/order scope."""
+    suffix = "-USD-PERP.HYPERLIQUID"
+    if type(instrument_id) is not str or not instrument_id.endswith(suffix):
+        return None
+    coin = instrument_id.removesuffix(suffix)
+    if not re.fullmatch(r"io:[A-Z][A-Z0-9._-]{0,63}", coin):
+        return None
+    for value in (venue_order_id, raw_trade_id):
+        if (
+            type(value) is not str
+            or not re.fullmatch(r"[1-9][0-9]{0,19}", value)
+            or int(value) >= 2**64
+        ):
+            return None
+    return f"io:{coin}:{venue_order_id}:{raw_trade_id}"
+
+
+@dataclass(frozen=True)
+class ValuationEvidence:
+    currency: str
+    quote_to_usd: Decimal
+    source_id: str
+    source_time_ns: int
+    received_ns: int
+    basis_assumption: str
+
+
+class EconomicReport:
+    """Do not consume a native observation by setting a caller-supplied flag.
+
+    Only receipts present in a detached post-persist native factory snapshot are
+    reportable as durable native consumption. Native commission events and receipt
+    amounts are parallel evidence; they are never added together as two fees.
+    """
+
+    def __init__(self, plan):
+        self.plan = plan
+        self.native = None
+        self.receipts = {}
+        self.receipt_conflicts = []
+        self.native_revisions = []
+        self.reasons = []
+        self.valuations = {}
+
+    def _unknown(self, reason):
+        if reason not in self.reasons:
+            self.reasons.append(reason)
+
+    def observe_valuation(self, value: ValuationEvidence):
+        try:
+            policy = self.plan.fx(value.currency)
+        except StopIteration:
+            self._unknown("unsupported_valuation_currency")
+            return
+        if (
+            type(value.quote_to_usd) is not Decimal
+            or not value.quote_to_usd.is_finite()
+            or value.quote_to_usd <= 0
+            or value.quote_to_usd != policy.quote_to_usd
+            or value.source_id != policy.source_id
+            or value.basis_assumption != policy.basis_assumption
+            or type(value.source_time_ns) is not int
+            or type(value.received_ns) is not int
+            or value.source_time_ns < 0
+            or value.received_ns < value.source_time_ns
+        ):
+            self._unknown("invalid_valuation_evidence")
+            return
+        self.valuations[value.currency] = value
+
+    def observe_native_snapshot(self, snapshot):
+        """Preserve real Phase-A/B facts; never create receipts or alter a checkpoint."""
+        if type(snapshot) is not dict:
+            self._unknown("missing_native_economic_snapshot")
+            return
+        try:
+            encoded = canonical_json(snapshot).encode()
+        except (ValueError, TypeError):
+            self._unknown("invalid_native_economic_snapshot")
+            return
+        if len(encoded) > self.plan.limits.max_evidence_bytes:
+            self._unknown("economic_evidence_capacity_exhausted")
+            return
+        required = (
+            "schema_version",
+            "account_id",
+            "consumer_id",
+            "checkpoint_revision",
+            "observations",
+            "raw_envelopes",
+            "report",
+            "coverage",
+            "financial_identity_complete",
+            "tainted",
+        )
+        if (
+            any(key not in snapshot for key in required)
+            or snapshot["schema_version"] != 1
+            or snapshot["account_id"] != self.plan.legs[0].account_id
+            or not snapshot["consumer_id"]
+            or type(snapshot["checkpoint_revision"]) is not int
+            or snapshot["checkpoint_revision"] < 0
+            or type(snapshot["observations"]) is not dict
+            or type(snapshot["raw_envelopes"]) is not dict
+            or type(snapshot["report"]) is not dict
+            or type(snapshot["coverage"]) is not list
+        ):
+            self._unknown("economic_scope_or_schema_mismatch")
+            return
+        if self.native and (
+            snapshot["consumer_id"] != self.native["consumer_id"]
+            or snapshot["checkpoint_revision"] < self.native["checkpoint_revision"]
+        ):
+            self._unknown("economic_consumer_changed_or_revision_regressed")
+            return
+        report = snapshot["report"]
+        if (
+            type(report.get("receipts")) is not dict
+            or type(report.get("consumed_observations")) is not list
+            or type(report.get("unknown_observations")) is not list
+        ):
+            self._unknown("missing_native_receipt_state")
+            return
+        if snapshot.get("tainted") is not False:
+            self._unknown("native_economic_checkpoint_tainted")
+        try:
+            native_decimal(report["actual_fee_usdc"], "actual fee")
+            native_decimal(report["funding_usdc"], "funding")
+        except (KeyError, ExecutionConfigError):
+            self._unknown("unsupported_native_report_amount")
+            return
+        retained = deepcopy(snapshot)
+        for key, receipt in report["receipts"].items():
+            if type(receipt) is not dict:
+                self._unknown("malformed_native_receipt")
+                continue
+            observation = snapshot["observations"].get(receipt.get("observation_id"))
+            envelope = (
+                snapshot["raw_envelopes"].get(observation.get("raw_envelope_ref"))
+                if isinstance(observation, dict)
+                else None
+            )
+            if (
+                not observation
+                or receipt.get("key") != key
+                or receipt.get("consumer_id") != snapshot["consumer_id"]
+                or receipt.get("financial_digest")
+                != observation.get("financial_digest")
+                or receipt.get("source_seq") != observation.get("source_seq")
+                or observation.get("receipt_key") != key
+                or receipt.get("observation_id") not in report["consumed_observations"]
+                or type(envelope) is not str
+                or not re.fullmatch(
+                    r"0x[0-9a-f]{64}", observation.get("raw_envelope_ref", "")
+                )
+                or type(receipt.get("consumed_revision")) is not int
+                or not 0
+                < receipt["consumed_revision"]
+                <= snapshot["checkpoint_revision"]
+            ):
+                self._unknown("native_receipt_link_mismatch")
+                continue
+            previous = self.receipts.get(key)
+            # The native reference is Keccak-256. Preserve it, and add a separately
+            # named SHA256 witness rather than compare different hash algorithms.
+            item = {
+                "receipt": deepcopy(receipt),
+                "observation": deepcopy(observation),
+                "raw_envelope_sha256": hashlib.sha256(envelope.encode()).hexdigest(),
+            }
+            if previous and previous["receipt"] != receipt:
+                if key not in self.receipt_conflicts:
+                    self.receipt_conflicts.append(key)
+                self._unknown("immutable_native_receipt_changed")
+            elif previous is None:
+                self.receipts[key] = item
+        if self.native and set(self.native["report"]["receipts"]) - set(
+            report["receipts"]
+        ):
+            self._unknown("immutable_native_receipt_disappeared")
+        self.native = retained
+        digest = hashlib.sha256(encoded).hexdigest()
+        if digest not in self.native_revisions:
+            if len(self.native_revisions) < 32:
+                self.native_revisions.append(digest)
+            else:
+                self._unknown("economic_snapshot_history_capacity_exhausted")
+
+    def _valuation(self, currency, amount, now_ns):
+        evidence = self.valuations.get(currency)
+        policy = self.plan.fx(currency)
+        if (
+            evidence is None
+            or not 0 <= now_ns - evidence.received_ns <= policy.max_age_ms * 1000000
+            or not 0 <= now_ns - evidence.source_time_ns <= policy.max_age_ms * 1000000
+        ):
+            return {
+                "original_currency": currency,
+                "original_amount": format(amount, "f"),
+                "usd_amount": None,
+                "status": "Unknown",
+                "reason": "missing_or_stale_valuation",
+            }
+        return {
+            "original_currency": currency,
+            "original_amount": format(amount, "f"),
+            "usd_amount": format(exact_mul(amount, evidence.quote_to_usd), "f"),
+            "status": "Assumed",
+            "source_id": evidence.source_id,
+            "source_time_ns": evidence.source_time_ns,
+            "received_ns": evidence.received_ns,
+            "basis_assumption": evidence.basis_assumption,
+        }
+
+    def build(
+        self,
+        controller_snapshot,
+        now_ns,
+        *,
+        shutdown_verified="Unknown",
+        estimated=None,
+    ):
+        """Derive an app view from accepted native fills and receipt witnesses.
+
+        Funding cannot be allocated to the run from account/coin/time overlap alone.
+        Aster's missing native actual funding history remains explicitly incomplete.
+        """
+        if controller_snapshot.get("plan_sha256") != self.plan.sha256:
+            raise ValueError("controller/report plan mismatch")
+        fills = deepcopy(controller_snapshot.get("fills", []))
+        if len(fills) > self.plan.limits.max_events:
+            raise ValueError("fill evidence exceeds run cap")
+        orders = controller_snapshot.get("orders", {})
+        fees = {}
+        consideration = {}
+        accepted_fills = {}
+        for fill in fills:
+            try:
+                leg = self.plan.leg(fill["leg"])
+                order = orders[fill["client_order_id"]]["intent"]
+                quantity = native_decimal(
+                    fill["quantity"], "native fill quantity", positive=True
+                )
+                price = native_decimal(
+                    fill["price"], "native fill price", positive=True
+                )
+                fee = (
+                    native_decimal(fill["fee"], "native commission")
+                    if fill["fee"] is not None
+                    else None
+                )
+            except (StopIteration, KeyError, ExecutionConfigError):
+                self._unknown("invalid_run_fill_evidence")
+                continue
+            if (
+                fill["account_id"] != leg.account_id
+                or fill["instrument_id"] != leg.instrument_id
+                or order["leg"] != leg.name
+                or order["side"] != fill["side"]
+                or fill.get("native_applied") is not True
+            ):
+                self._unknown("foreign_or_unapplied_run_fill")
+                continue
+            key = (fill["account_id"], fill["instrument_id"], fill["trade_id"])
+            if key in accepted_fills:
+                if accepted_fills[key] != fill:
+                    self._unknown("conflicting_run_fill_evidence")
+                continue
+            accepted_fills[key] = fill
+            signed = quantity if fill["side"] == "BUY" else -quantity
+            consideration[leg.quote_currency] = exact_add(
+                consideration.get(leg.quote_currency, Decimal(0)),
+                exact_mul(signed, leg.quantity_multiplier, price),
+            )
+            if fee is None or fill["fee_currency"] != leg.settlement_currency:
+                self._unknown("missing_or_unsupported_native_commission")
+            else:
+                fees[leg.settlement_currency] = exact_add(
+                    fees.get(leg.settlement_currency, Decimal(0)), fee
+                )
+        linked_receipts = []
+        account_movements = []
+        venue_closed_pnl_unattributed = []
+        for key, item in self.receipts.items():
+            observation = item["observation"]
+            fact = observation.get("fact", {})
+            components = fact.get("components", {})
+            if fact.get("category") == "fill_fee" and "closedPnl" in components:
+                raw_closed_pnl = components["closedPnl"]
+                try:
+                    exact_closed_pnl = format(
+                        native_decimal(raw_closed_pnl, "venue closed PnL"), "f"
+                    )
+                except ExecutionConfigError:
+                    exact_closed_pnl = None
+                    self._unknown("unsupported_venue_closed_pnl")
+                venue_closed_pnl_unattributed.append(
+                    {
+                        "receipt_key": key,
+                        "receipt": deepcopy(item["receipt"]),
+                        "observation_id": observation.get("id"),
+                        "instrument_id": fact.get("instrument_id"),
+                        "trade_id": components.get("tid"),
+                        "venue_order_id": components.get("oid"),
+                        "amount": exact_closed_pnl,
+                        "raw_amount": raw_closed_pnl,
+                        "currency": "USDC",
+                        "run_allocation": "Unknown",
+                        "ownership_basis": observation.get("ownership_basis"),
+                        "basis": "venue/order fact; initial inventory and run opening lineage are unproven",
+                        "raw_envelope_ref": observation.get("raw_envelope_ref"),
+                    }
+                )
+            native_trade_id = native_io_trade_id(
+                fact.get("instrument_id"), components.get("oid"), components.get("tid")
+            )
+            match = (
+                accepted_fills.get(
+                    (
+                        self.plan.legs[0].account_id,
+                        fact.get("instrument_id"),
+                        native_trade_id,
+                    )
+                )
+                if native_trade_id
+                else None
+            )
+            linked = False
+            if fact.get("category") == "fill_fee" and fact.get("dex") == "io" and match:
+                try:
+                    linked = (
+                        native_decimal(components["sz"])
+                        == native_decimal(match["quantity"])
+                        and native_decimal(components["px"])
+                        == native_decimal(match["price"])
+                        and native_decimal(fact["amount"])
+                        == native_decimal(match["fee"])
+                        and fact.get("currency") == match["fee_currency"] == "USDC"
+                        and components["side"]
+                        == ("B" if match["side"] == "BUY" else "A")
+                        and (
+                            match.get("venue_order_id") is not None
+                            and components.get("oid") == match["venue_order_id"]
+                        )
+                    )
+                except (KeyError, ExecutionConfigError):
+                    linked = False
+                if linked:
+                    linked_receipts.append(
+                        {
+                            "key": key,
+                            "receipt": deepcopy(item["receipt"]),
+                            "run_id": self.plan.run_id,
+                            "leg": "entropy",
+                            "trade_id": match["trade_id"],
+                            "client_order_id": match["client_order_id"],
+                            "raw_envelope_ref": observation.get("raw_envelope_ref"),
+                            "native_applied": fact.get("native_applied", "Unknown"),
+                            "double_charge": False,
+                        }
+                    )
+            if not linked:
+                account_movements.append(
+                    {
+                        "key": key,
+                        "receipt": deepcopy(item["receipt"]),
+                        "observation_id": observation.get("id"),
+                        "category": fact.get("category"),
+                        "amount": fact.get("amount"),
+                        "currency": fact.get("currency"),
+                        "instrument_id": fact.get("instrument_id"),
+                        "run_allocation": "Unknown",
+                        "raw_envelope_ref": observation.get("raw_envelope_ref"),
+                    }
+                )
+        native = deepcopy(self.native)
+        identity_complete = bool(
+            native
+            and native.get("financial_identity_complete") is True
+            and not native["report"].get("unknown_observations")
+            and not self.receipt_conflicts
+            and not self.reasons
+            and native.get("tainted") is False
+        )
+        coverage = native.get("coverage", []) if native else []
+        # Native complete means only its requested finite interval, not complete life history.
+        coverage_complete = bool(
+            coverage and all(row.get("complete") is True for row in coverage)
+        )
+        io_fill_count = sum(
+            fill["leg"] == "entropy" for fill in accepted_fills.values()
+        )
+        attributed = (
+            identity_complete
+            and io_fill_count > 0
+            and len(linked_receipts) == io_fill_count
+            and not account_movements
+        )
+        independent = {
+            key: controller_snapshot.get(key, "Unknown")
+            for key in (
+                "orders_terminal",
+                "owned_flat_verified",
+                "account_flat_verified",
+                "current_projection_verified",
+            )
+        }
+        independent["native_cache_recovery"] = "Unknown"
+        independent.update(
+            {
+                "shutdown_verified": True if shutdown_verified is True else "Unknown",
+                "economic_identity_complete": True if identity_complete else "Unknown",
+                "history_coverage_complete": True if coverage_complete else "Unknown",
+                "fill_fee_attribution_complete": True if attributed else "Unknown",
+                "run_attribution_complete": "Unknown",
+                "economics_complete": "Unknown",
+            }
+        )
+        original = {
+            "trade_consideration": {
+                currency: format(amount, "f")
+                for currency, amount in consideration.items()
+            },
+            "consideration_basis": "signed quantity times contract multiplier times execution price; perpetual consideration, not account cash transfer",
+            "actual_native_commission": {
+                currency: format(amount, "f") for currency, amount in fees.items()
+            },
+            "actual_realized_pnl_usdc": None,
+            "run_actual_realized_pnl": "Unknown",
+            "actual_realized_pnl_basis": "initial inventory and run opening lineage are unproven; venue closedPnl is unattributed",
+            "run_funding": None,
+            "account_funding_usdc": native["report"]["funding_usdc"]
+            if native
+            else None,
+            "funding_allocation": "Unknown",
+            "aster_actual_funding": "Unknown",
+            "actual_open_close_cash_transfers": "Unknown",
+            "usd_net": None,
+        }
+        values = [
+            self._valuation(currency, amount, now_ns)
+            for currency, amount in fees.items()
+        ]
+        result = {
+            "schema_version": 1,
+            "run_id": self.plan.run_id,
+            "plan_sha256": self.plan.sha256,
+            "status": "Incomplete",
+            "flags": independent,
+            "original_amounts": original,
+            "valuations": values,
+            "linked_receipts": linked_receipts,
+            "unallocated_account_movements": account_movements,
+            "venue_closed_pnl_unattributed": venue_closed_pnl_unattributed,
+            "native_economic_snapshot": native,
+            "immutable_receipts": deepcopy(self.receipts),
+            "native_snapshot_sha256s": list(self.native_revisions),
+            "receipt_conflicts": list(self.receipt_conflicts),
+            "residual_positions": deepcopy(controller_snapshot.get("positions", {})),
+            "unresolved_reservations": [
+                key for key, value in orders.items() if value.get("unknown")
+            ],
+            "actual_fills": list(accepted_fills.values()),
+            "estimates": deepcopy(estimated or {}),
+            "incomplete_reasons": list(self.reasons)
+            + [
+                "aster_actual_funding_unavailable",
+                "run_funding_allocation_unproven",
+                "whole_account_flat_unproven",
+                "actual_cash_transfer_coverage_unproven",
+                "run_actual_realized_pnl_unproven",
+                "durable_native_cache_recovery_unproven",
+            ],
+            "balance_adjustment": False,
+            "native_commission_reapplied": False,
+        }
+        if len(canonical_json(result).encode()) > self.plan.limits.max_evidence_bytes:
+            raise ValueError("final economic evidence exceeds run byte cap")
+        return result

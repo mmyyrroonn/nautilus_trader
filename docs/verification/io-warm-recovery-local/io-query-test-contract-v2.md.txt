@@ -1,0 +1,34 @@
+# Native issue #113 test revision 2
+
+Source record clock reading: 2026-10-09 06:20:11 UTC. This revision adds the independent review's captured raw-source debt requirements to the original 49-case source contract. The old contract and hashes remain untouched. The new module now has **55 expanded cases**. Nothing has been formatted, compiled or executed by this test author; there are zero PASS claims.
+
+Only `crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs` changed in this revision. The parent peer and shared Harness remain at the original frozen hashes. All prior business behavior assertions remain; diagnostic debt assertions were adapted from the earlier array to the new native tagged source-debt schema.
+
+| File | SHA256 before official formatting |
+| --- | --- |
+| `crates/adapters/hyperliquid/tests/entropy_account.rs` | `943245715213f3e599c02ca35efd7777683bf56051df84f83a589393e9637798` |
+| `crates/adapters/hyperliquid/tests/entropy_account/execution.rs` | `2f01e14cd9b75cc3e6ceb26b7e4984a1984836c6e4aa128bc0eafce4db2ff30e` |
+| `crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs` | `cdb3505365c0821845f42f4449efce08a1b47fb12cd4f1b36515d3f71a1d6ae9` |
+
+## Added source-retention contract
+
+Tests capture the actual active native query token and the verified metadata reader generation/epoch at query start. Debt must have kind `unknown_sources`, retain the captured token/generation/epoch/account/address/policy, and expose a native received-sequence identity. Each original source request JSON and raw body must match an actually recorded normal peer request/response. Its native transport `received_ms` must be within the measured query interval. Peer server times establish only a lower bound; they do not replace native client receive timestamps.
+
+The original assertions for source races, owner dispatch expiry, identical private frame after staging, normal disconnect, closed runner channel, and retired epoch-zero factory now require original source preservation alongside no Ready and no financial effects. The stopped callback cannot replace existing debt. A new normal epoch-zero factory cannot adopt the old factory's retained evidence.
+
+The finite completion helper waits until the actual query-in-flight diagnostic is false before treating a negative diagnostic as settled. An earlier private invalidation cannot masquerade as completed raw preservation.
+
+Six new normal peer cases combine:
+
+- A real identical private frame, changed funds frame, or reader close.
+- A later malformed actual `userFills` body or the unchanged three-second query deadline.
+
+Each case first waits for the normal `userFills` request. This proves the preceding actual frontendOpenOrders body was received and parsed. The subsequent real reader change cannot discard that received original body. A malformed body must remain original evidence; a timed-out body must remain explicitly unavailable with its original request and null receive time. Neither outcome can become a financial grant, gain a native projection, or be reassigned to a later query. A repeated ordinary QueryAccount is rejected without additional HTTP, preserves exact debt, and makes no signed action. Normal stop/drop releases the Windows journal lock, after which the actual persisted final record must contain debt exactly equal to the observed native snapshot.
+
+These tests preserve the existing native byte/deadline/event/action limits. The oversized-source test continues to distinguish finite missing-raw debt from claims that an over-cap body was durably preserved. Original complete raw bodies in the ordinary race cases are small and remain within the existing journal bound.
+
+## Limits and status
+
+All limitations in revision 1 still apply: no exact actor-unapplied-only scheduling control, no exact final native mutex lock-wait integration control, and no in-place same-number epoch reader replacement claim. Retained debt deliberately prevents a later ordinary warm flight; tests therefore verify rejection and exact identity preservation rather than inventing an admitted later flight or calling an internal completion hook.
+
+No production source was edited by this test author. No native executable, old or new, was run. Root owns official formatting, compilation, first-attempt execution and failure evidence.

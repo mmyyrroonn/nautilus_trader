@@ -1,0 +1,27 @@
+import datetime
+import hashlib
+import json
+import pathlib
+import sys
+from collections import Counter
+
+root = pathlib.Path("E:/persarb/_tmp/entropy113-validation")
+source = root / "native113-hyperliquid-regression-v8.log"
+raw = source.read_text(encoding="utf-8-sig")
+line = next(row for row in raw.splitlines() if row.startswith("hard_history_actual_requests="))
+traffic = next(row for row in raw.splitlines() if row.startswith("hard_history_actual_http="))
+decoder = json.JSONDecoder()
+def field(text, key):
+    return decoder.raw_decode(text[text.index(key + "=") + len(key) + 1:])[0]
+requests = field(line, "hard_history_actual_requests")
+before = field(line, "initial_economics")
+after = field(line, "final_economics")
+scope = field(line, "native_scope")
+http = field(traffic, "hard_history_actual_http")
+ws = field(traffic, "actual_ws")
+last = http[-10:]
+new = [row for row in after["coverage"] if row not in before["coverage"]]
+out = {"utc": datetime.datetime.now(datetime.timezone.utc).isoformat(), "argv": sys.argv, "source": str(source), "source_sha256": hashlib.sha256(source.read_bytes()).hexdigest(), "script_sha256": hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest(), "request_counts_after_query": dict(Counter(row["type"] for row in requests)), "before_coverage": before["coverage"], "new_coverage": new, "before_raw_envelopes": before["raw_envelopes"], "after_raw_envelopes": after["raw_envelopes"], "http_tail": last, "ws": ws, "scope": scope, "independent_product_tests": 0}
+path = root / "reviewer-native113-history-criterion-extract.json"
+path.write_text(json.dumps(out, ensure_ascii=False, indent=2) + "\n")
+print(json.dumps({"utc":out["utc"], "source_sha256":out["source_sha256"], "report":str(path), "counts":out["request_counts_after_query"], "new_coverage":new, "http_tail":[{k:v for k,v in row.items() if k!="raw_body"} for row in last], "scope_flags":{k:scope.get(k) for k in ("recovery_complete","warm_metadata_origin","actions","diagnostic")}, "initial_raw":before["raw_envelopes"]}, ensure_ascii=False, indent=2))

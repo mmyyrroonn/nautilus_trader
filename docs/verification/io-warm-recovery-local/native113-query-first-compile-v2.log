@@ -1,0 +1,103 @@
+warning: linker stdout: 正在创建库 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-63fd5ed65377140a.dll.lib 和对象 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-63fd5ed65377140a.dll.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-persistence-macros` (lib) generated 1 warning
+   Compiling nautilus-hyperliquid v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\hyperliquid)
+error[E0308]: `match` arms have incompatible types
+   --> crates\adapters\hyperliquid\tests\entropy_account\io_query_recovery.rs:723:13
+    |
+710 |       match race {
+    |       ---------- `match` arms have incompatible types
+711 |           "identical" => harness
+    |  ________________________-
+712 | |             .peer
+713 | |             .state
+714 | |             .instructions
+...   |
+717 | |             ))
+718 | |             .unwrap(),
+    | |_____________________- this is found to be of type `usize`
+...
+723 | /             harness
+724 | |                 .peer
+725 | |                 .state
+726 | |                 .instructions
+...   |
+729 | |                 ))
+730 | |                 .unwrap();
+    | |                          ^
+    | |                          |
+    | |__________________________help: consider removing this semicolon
+    |                            expected `usize`, found `()`
+
+For more information about this error, try `rustc --explain E0308`.
+error: could not compile `nautilus-hyperliquid` (test "entropy_account") due to 1 previous error
+warning: build failed, waiting for other jobs to finish...
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_public.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_public.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_approve.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_approve.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_revoke.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_revoke.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_capture_test_data.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_capture_test_data.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_user_outcome.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_user_outcome.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_private.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_private.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_exec.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_exec.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_outcome_order.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_outcome_order.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_flatten.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_flatten.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_exec.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_exec.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_data.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_data.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (bin "hyperliquid-builder-fee-approve") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-public") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-builder-fee-revoke") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-capture-test-data") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-user-outcome") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-private") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-exec") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-flatten") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-outcome-order") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-ws-exec") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-ws-data") generated 1 warning

@@ -1,0 +1,13 @@
+# 原生 113 v7 → v8 独立差异复核
+
+结论：v8 与 v7 的五份生产源码字节相同。变化仅在两份 peer tests，未改变测试刺激、旧断言或 financial authority；本附录不能覆盖仍需实际诊断的 fullHL failure。
+
+实际执行明确 app venv Python `reviewer-native113-v8-capture.py pre/post`，只读 source/snapshots/hash/diff 并写临时报告，不 import native/network/Git helper。07:25:44.468260 UTC 的 pre-capture 35/35 匹配 `native113-frozen-source-v8.json`，后置 capture 独立记录。完整 argv、脚本/manifest/files SHA 在两份 identity JSON 中。产品测试执行数为0。
+
+独立全文 diff 已保存为 `reviewer-native113-v7-v8-test-diff.txt`。实际变更：
+
+- entropy_account.rs 的记录辅助函数 raw参数从 owned String 改为 &str，调用方传相同字符串或原 body 引用。serde_json::json! 在持有 data 锁期间序列化成 owned Value，记录的原文字节和 HTTP 回包未变；仅减少无用 clone/临时字符串 ownership。WS record 的两个 nested if 合并为同顺序 short-circuit let-chain，delivery/result 条件相同。
+- io_query_recovery.rs 的两处 match arm assignment 增加末尾分号，返回 unit 与原赋值表达式一致。
+- hard history case 新增仅 eprintln 的 actual HTTP/WS/request/economic/scope诊断与原 assert message参数；没有替换实际网络路径、调用 executor/event hooks 或更改断言谓词。30ms history_timeout 保留；`count(userFunding)+count(userNonFundingLedgerUpdates)>0` 条件、bounded Unknown检查、recovery_complete=false、原 checkpoint raw保留断言均未改变。
+
+v7 既有 four-old assertion bodies 及 economics tests保持原样，所有生产判断继承独立v7源码报告。当前 root 的 fullHL v8 diagnostic rerun 仍是其实际测试证据，不记为 reviewer执行，也不预填成功。先前v6 full4FAIL、v7 hard-demand/source1FAIL及旧独立报告均保留。

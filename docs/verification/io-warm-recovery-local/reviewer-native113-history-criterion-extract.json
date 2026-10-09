@@ -1,0 +1,311 @@
+{
+  "utc": "2026-10-09T07:28:40.928390+00:00",
+  "argv": [
+    "E:/persarb/_tmp/entropy113-validation/reviewer-native113-history-criterion-extract.py"
+  ],
+  "source": "E:\\persarb\\_tmp\\entropy113-validation\\native113-hyperliquid-regression-v8.log",
+  "source_sha256": "8c4f50ba61b89a449a8399875c310dc1e9ec184a1da83373b52714fb43ac74f7",
+  "script_sha256": "1160538a7925342c22563f95502cc2fbcd4230b50a8d0a5c9e150617ac74eee6",
+  "request_counts_after_query": {
+    "userRole": 2,
+    "userAbstraction": 4,
+    "userDexAbstraction": 4,
+    "meta": 4,
+    "spotMeta": 4,
+    "clearinghouseState": 2,
+    "perpDexs": 1,
+    "activeAssetData": 2,
+    "frontendOpenOrders": 1,
+    "userFills": 1
+  },
+  "before_coverage": [
+    {
+      "generation": 1,
+      "epoch": 0,
+      "endpoint": "userFunding",
+      "start_ms": 1791530706483,
+      "end_ms": 1791530707522,
+      "pages": 1,
+      "records": 0,
+      "complete": true,
+      "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+    },
+    {
+      "generation": 1,
+      "epoch": 0,
+      "endpoint": "userNonFundingLedgerUpdates",
+      "start_ms": 1791530706483,
+      "end_ms": 1791530707522,
+      "pages": 1,
+      "records": 0,
+      "complete": true,
+      "diagnostic": "Requested finite pagination window terminated; venue retention remains Unknown"
+    }
+  ],
+  "new_coverage": [
+    {
+      "generation": 1,
+      "epoch": 0,
+      "endpoint": "userFunding",
+      "start_ms": 1791530706483,
+      "end_ms": 1791530707906,
+      "pages": 0,
+      "records": 0,
+      "complete": false,
+      "diagnostic": "Economic history total deadline exhausted (quota/retries/metadata included)"
+    },
+    {
+      "generation": 1,
+      "epoch": 0,
+      "endpoint": "userNonFundingLedgerUpdates",
+      "start_ms": 1791530706483,
+      "end_ms": 1791530707906,
+      "pages": 0,
+      "records": 0,
+      "complete": false,
+      "diagnostic": "Economic history total deadline exhausted (quota/retries/metadata included)"
+    }
+  ],
+  "before_raw_envelopes": {
+    "0x7b9e28da21013fa69018477e318d54a5292e622bd4cfebba9c402dcf14246a64": "{\"channel\":\"userNonFundingLedgerUpdates\",\"data\":{\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"nonFundingLedgerUpdates\":[{\"time\":1791530707557,\"hash\":\"0x00000000000000000000000000000000000000000000000000000000000003df\",\"delta\":{\"type\":\"withdraw\",\"usdc\":\"1\",\"fee\":\"0\"}}]}}"
+  },
+  "after_raw_envelopes": {
+    "0x7b9e28da21013fa69018477e318d54a5292e622bd4cfebba9c402dcf14246a64": "{\"channel\":\"userNonFundingLedgerUpdates\",\"data\":{\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"nonFundingLedgerUpdates\":[{\"time\":1791530707557,\"hash\":\"0x00000000000000000000000000000000000000000000000000000000000003df\",\"delta\":{\"type\":\"withdraw\",\"usdc\":\"1\",\"fee\":\"0\"}}]}}"
+  },
+  "http_tail": [
+    {
+      "request": {
+        "type": "userRole",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "started_ms": 1791530707596,
+      "completed_ms": 1791530707596,
+      "status": 200,
+      "raw_body": "{\"role\":\"user\"}"
+    },
+    {
+      "request": {
+        "type": "userAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "started_ms": 1791530707596,
+      "completed_ms": 1791530707596,
+      "status": 200,
+      "raw_body": "\"disabled\""
+    },
+    {
+      "request": {
+        "type": "userDexAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "started_ms": 1791530707596,
+      "completed_ms": 1791530707596,
+      "status": 200,
+      "raw_body": "false"
+    },
+    {
+      "request": {
+        "type": "meta",
+        "dex": "io"
+      },
+      "started_ms": 1791530707596,
+      "completed_ms": 1791530707597,
+      "status": 200,
+      "raw_body": "{\"universe\":[{\"name\":\"io:SNDK\",\"szDecimals\":4,\"maxLeverage\":10,\"onlyIsolated\":true,\"marginMode\":\"strictIsolated\"}],\"collateralToken\":0}"
+    },
+    {
+      "request": {
+        "type": "spotMeta"
+      },
+      "started_ms": 1791530707597,
+      "completed_ms": 1791530707597,
+      "status": 200,
+      "raw_body": "{\"universe\":[],\"tokens\":[{\"name\":\"USDC\",\"index\":0,\"szDecimals\":8,\"weiDecimals\":8,\"tokenId\":\"0x6d1e7cde53ba9467b783cb7c530ce054\",\"isCanonical\":true,\"fullName\":\"USD Coin\"}]}"
+    },
+    {
+      "request": {
+        "type": "clearinghouseState",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "dex": "io"
+      },
+      "started_ms": 1791530707597,
+      "completed_ms": 1791530707597,
+      "status": 200,
+      "raw_body": "{\"marginSummary\":{\"accountValue\":\"100\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"100\",\"totalMarginUsed\":\"0\"},\"crossMarginSummary\":{\"accountValue\":\"0\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"0\",\"totalMarginUsed\":\"0\"},\"crossMaintenanceMarginUsed\":\"0\",\"withdrawable\":\"100\",\"assetPositions\":[],\"time\":1791530707597}"
+    },
+    {
+      "request": {
+        "type": "userAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "started_ms": 1791530707597,
+      "completed_ms": 1791530707597,
+      "status": 200,
+      "raw_body": "\"disabled\""
+    },
+    {
+      "request": {
+        "type": "userDexAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "started_ms": 1791530707903,
+      "completed_ms": 1791530707903,
+      "status": 200,
+      "raw_body": "false"
+    },
+    {
+      "request": {
+        "type": "meta",
+        "dex": "io"
+      },
+      "started_ms": 1791530708914,
+      "completed_ms": 1791530708914,
+      "status": 200,
+      "raw_body": "{\"universe\":[{\"name\":\"io:SNDK\",\"szDecimals\":4,\"maxLeverage\":10,\"onlyIsolated\":true,\"marginMode\":\"strictIsolated\"}],\"collateralToken\":0}"
+    },
+    {
+      "request": {
+        "type": "spotMeta"
+      },
+      "started_ms": 1791530709914,
+      "completed_ms": 1791530709914,
+      "status": 200,
+      "raw_body": "{\"universe\":[],\"tokens\":[{\"name\":\"USDC\",\"index\":0,\"szDecimals\":8,\"weiDecimals\":8,\"tokenId\":\"0x6d1e7cde53ba9467b783cb7c530ce054\",\"isCanonical\":true,\"fullName\":\"USD Coin\"}]}"
+    }
+  ],
+  "ws": [
+    {
+      "completed_ms": 1791530707502,
+      "raw_body": "{\"channel\":\"subscriptionResponse\",\"data\":{\"method\":\"subscribe\",\"subscription\":{\"type\":\"orderUpdates\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}}}",
+      "delivered": true
+    },
+    {
+      "completed_ms": 1791530707502,
+      "raw_body": "{\"channel\":\"subscriptionResponse\",\"data\":{\"method\":\"subscribe\",\"subscription\":{\"type\":\"userEvents\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}}}",
+      "delivered": true
+    },
+    {
+      "completed_ms": 1791530707502,
+      "raw_body": "{\"channel\":\"subscriptionResponse\",\"data\":{\"method\":\"subscribe\",\"subscription\":{\"type\":\"clearinghouseState\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\"}}}",
+      "delivered": true
+    },
+    {
+      "completed_ms": 1791530707502,
+      "raw_body": "{\"channel\":\"subscriptionResponse\",\"data\":{\"method\":\"subscribe\",\"subscription\":{\"type\":\"userFundings\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}}}",
+      "delivered": true
+    },
+    {
+      "completed_ms": 1791530707502,
+      "raw_body": "{\"channel\":\"subscriptionResponse\",\"data\":{\"method\":\"subscribe\",\"subscription\":{\"type\":\"userNonFundingLedgerUpdates\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}}}",
+      "delivered": true
+    },
+    {
+      "completed_ms": 1791530707503,
+      "raw_body": "{\"channel\":\"clearinghouseState\",\"data\":{\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\",\"clearinghouseState\":{\"marginSummary\":{\"accountValue\":\"100\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"100\",\"totalMarginUsed\":\"0\"},\"crossMarginSummary\":{\"accountValue\":\"0\",\"totalNtlPos\":\"0\",\"totalRawUsd\":\"0\",\"totalMarginUsed\":\"0\"},\"crossMaintenanceMarginUsed\":\"0\",\"withdrawable\":\"100\",\"assetPositions\":[]}}}",
+      "delivered": true
+    },
+    {
+      "completed_ms": 1791530707558,
+      "raw_body": "{\"channel\":\"userNonFundingLedgerUpdates\",\"data\":{\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"nonFundingLedgerUpdates\":[{\"time\":1791530707557,\"hash\":\"0x00000000000000000000000000000000000000000000000000000000000003df\",\"delta\":{\"type\":\"withdraw\",\"usdc\":\"1\",\"fee\":\"0\"}}]}}",
+      "delivered": true
+    }
+  ],
+  "scope": {
+    "policy": {
+      "schema_version": 1,
+      "strategy_id": "ENTROPY-001",
+      "journal_path": "C:\\Users\\myron\\AppData\\Local\\Temp\\.tmpx9BxYK\\io-intents.jsonl",
+      "max_order_notional": "100",
+      "max_gross_notional": "200",
+      "max_open_orders": 2,
+      "max_actions": 16,
+      "max_leverage": 1,
+      "margin_buffer": "5",
+      "fee_buffer_bps": "10",
+      "action_timeout_ms": 2000,
+      "recovery_timeout_ms": 3000,
+      "recovery_max_attempts": 2,
+      "recovery_retry_delay_ms": 10,
+      "metadata_max_age_ms": 30000,
+      "symbols": [
+        {
+          "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+          "max_quantity": "1",
+          "min_price": "95",
+          "max_price": "105"
+        }
+      ]
+    },
+    "account": {
+      "dex": "io",
+      "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+      "account_mode": "standard_disabled_inferred",
+      "collateral_token_id": "0x6d1e7cde53ba9467b783cb7c530ce054",
+      "balance": "100",
+      "equity": "100",
+      "withdrawable": "100",
+      "used": "0",
+      "free": "100",
+      "total_maintenance": null,
+      "positions": [],
+      "http_source_time_ms": 1791530707597,
+      "http_received_time_ms": 1791530707597,
+      "http_verification_started_time_ms": 1791530707596,
+      "private_stream_epoch": 0,
+      "ws_received_time_ms": 1791530707503,
+      "ws_source_time_ms": null,
+      "trusted": false,
+      "flat": null,
+      "diagnostic": "Economic history total deadline exhausted (quota/retries/metadata included)",
+      "provenance": "Explicit io REST request scope; marginSummary includes isolated positions; disabled-to-standard is an SDK-supported inference; mode/role/collateral requests are not atomic; WS source time is not synthesized"
+    },
+    "latest_private_funds": {
+      "free": "100",
+      "withdrawable": "100",
+      "received_time_ms": 1791530707503,
+      "source_time_ms": null
+    },
+    "metadata": {
+      "io:SNDK-USD-PERP.HYPERLIQUID": {
+        "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+        "coin": "io:SNDK",
+        "asset": 110000,
+        "dex_index": 1,
+        "universe_index": 0,
+        "size_decimals": 4,
+        "margin_mode": "strictIsolated",
+        "actual_leverage": 1,
+        "received_ms": 1791530707596,
+        "verification_started_ms": 1791530707596,
+        "user_asset_source_time_ms": null,
+        "max_trade_sizes": [
+          "1",
+          "1"
+        ],
+        "available_to_trade": [
+          "100",
+          "100"
+        ],
+        "mark_price": "100"
+      }
+    },
+    "warm_metadata_origin": null,
+    "query_in_flight": false,
+    "query_token": null,
+    "query_completed": 0,
+    "last_query_warm": false,
+    "recovery_source_debt": null,
+    "recovery_complete": false,
+    "recovered_epoch": 0,
+    "diagnostic": "Economic history total deadline exhausted (quota/retries/metadata included)",
+    "journal_tainted": false,
+    "fresh_journal_origin": true,
+    "native_projection_recovery_required": false,
+    "actions": 0,
+    "owned_intents": {},
+    "actual_fills": {},
+    "margin_basis": "conservative full-notional entry estimate using minimum HTTP/private free and withdrawable; isolated total maintenance unknown; non-atomic source observations",
+    "user_asset_source_time_ms": null
+  },
+  "independent_product_tests": 0
+}

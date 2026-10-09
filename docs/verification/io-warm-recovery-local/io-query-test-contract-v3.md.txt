@@ -1,0 +1,43 @@
+# Native issue #113 test revision 3
+
+Source record clock reading: 2026-10-09 06:45:27 UTC. The root's first actual run of the previous 55-case candidate completed at 06:37:40–06:38:35 UTC with **30 PASS and 25 FAIL**, recorded in `native113-query-first-compile-v3.log` and `native113-query-first-compile-v3-failure-summary.json`. Those first-attempt artifacts remain untouched. This new test-source revision has **57 expanded cases** and has not been compiled or run.
+
+## Source identity before the next official formatting
+
+| File | SHA256 |
+| --- | --- |
+| `crates/adapters/hyperliquid/tests/entropy_account.rs` | `07996db9e58fec3ff8f5b8d4b39621a0115c5b9ca8ea099bcbdca559f2f668d2` |
+| `crates/adapters/hyperliquid/tests/entropy_account/execution.rs` | `b604dac78ce5370847fadd0db3240639847c8ec52c51ea275cb15901dc8c423f` |
+| `crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs` | `9576d9ad2b33260aba2239776a1d1a8fa60642bc7c50ff090994d6fb967dfae9` |
+
+The parent and Harness hashes reflect root's previous official formatting. This revision's author only changed the new query test module. No Cargo, formatting, build, source edit, wheel installation, Git/GH or executable invocation was performed by the test author.
+
+## Two added normal terminal projection cases
+
+An ordinary GTC order receives its actual owned ACK and normal Cache Accepted status. A genuine normal WS orderUpdates canceled status reaches the native owned journal with original remaining quantity 0.12 and zero actual fills. The test intentionally preserves the venue's unfilled cancellation semantics rather than using the older helper's filled-order size-zero convenience.
+
+- With its ordinary terminal ExecutionReport still unconsumed, Cache remains Accepted. A query cannot borrow that mismatched projection to regain Ready or release the full reservation. Only later normal Engine application may move the Cache to Canceled.
+- With the actual report consumed normally, Cache is Canceled. The genuine warm full-source group must absorb the reservation once, use source-derived minimum weight 224, and retain the actual canceled status. Quantity filled, trades, commissions and Portfolio position remain zero. No Filled event is manufactured.
+
+Both cases use normal peer/factory/config/WS/Engine/report paths. There are no fake financial events or private test hooks.
+
+## Three independently established fixture corrections
+
+1. The native ordinary QueryAccount may synchronously refuse an Unknown owned submission. The earlier test unconditionally unwrapped success. The corrected test records that actual refusal and still requires Unknown, unchanged reservation, no repeated signed write and no financial projection. It does not turn refusal into a Ready claim.
+2. Native `prepare_cancel` requires a trusted current account snapshot and complete recovery. A query deliberately invalidates those proofs; an ordinary cancel command in that interval is denied before wire. The earlier test incorrectly assumed a second signed write occurred. The corrected test asserts actual denial, one total wire action, the owned Open reservation retained, and restoration only from the original genuinely complete current read group. The newly added real WS-terminal tests separately exercise actual terminal facts and Cache adoption.
+3. Economic history result diagnostics are stored in coverage entries, not the top-level persistence diagnostic. The corrected test waits for an actually newer coverage end with incomplete/deadline diagnostic. It still requires real economic HTTP demand, Unknown proof, preservation of prior raw facts, and zero fills/actions; no timeout or history assertion was removed.
+
+## First-run production-dependent failures retained
+
+The remaining 22 first-run failures are source/protocol/lifecycle dependent rather than waived:
+
+- One actual native fill with an unconsumed Engine projection improperly regained proof through cold fallback.
+- Four owner-stage/late-callback tests never reached staging because the reused array-only transport parser rejected the actual role object.
+- Two flat warm/quota positives failed at that same role-object boundary.
+- Eight post-fill or economic/financial-source cases lost the verified metadata origin and fell into expensive cold recovery; one missing-owned-fill case incorrectly regained proof instead of preserving Unknown.
+- Three actual malformed-body combinations lost the already received original body before the preserving transport layer.
+- Four normal shutdown/drop journal reads failed with Windows error 33 because an owner-TLS callback retained a strong native runtime after worker-side message destruction.
+
+No housekeeping timer, no-op callback registration, private cleanup helper or retry was added to hide the journal lock. The original normal stop/drop and actual journal-read assertions remain. Root assigned the minimal Weak-state production callback fix to the source author.
+
+These are diagnoses of the recorded first candidate, not predictions that the next candidate will pass. Root must compile and execute the next frozen source once, retain actual outcomes, and review any additional failures. All earlier source-debt/limits/unsupported-boundary statements remain in force.

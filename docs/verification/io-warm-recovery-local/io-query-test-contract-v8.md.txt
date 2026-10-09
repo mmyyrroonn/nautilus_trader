@@ -1,0 +1,23 @@
+# Native #113 integration test contract v8
+
+Frozen 2026-10-09 07:35:56 UTC; 64 expanded scenarios. No test, Cargo, format, Git, build or install was executed by this agent. No production source, quota, TTL or product deadline changed.
+
+## Evidence for the fixture correction
+
+The preserved root actual v8 full run produced 210 PASS / 1 FAIL. Its exact hard WS raw body was already present in native E5 before QueryAccount. Real normal cold account, metadata, open-order and fill reads ran, then successful economic history metadata reads arrived. The existing 3000ms total economic deadline expired during existing limiter waits before either economic endpoint HTTP request. Both newly recorded coverage rows had pages=0, records=0, complete=false and exact diagnostic: Economic history total deadline exhausted (quota/retries/metadata included). The old unconditional history-endpoint request-count assertion was therefore incorrect. This corrects the fixture using concrete actual evidence; it does not exempt timeout behavior.
+
+The fixed 30ms sleep is replaced with bounded observation of the exact durable native raw body and actual hard invalidation before normal QueryAccount. The existing 8s outer wait and 3s product history budget remain unchanged; there is no pre-refill wait.
+
+If economic HTTP reaches the peer, genuine bounded timeout/incomplete coverage is mandatory. If none reaches the peer, both new endpoint coverage rows must have the captured generation/epoch and one common new end, zero pages/records, complete=false and the exact native total-deadline diagnostic. Actual normal cold sources must be present; meta and spotMeta must each appear at least four times, and actual successful history metadata responses must have started at or after the new end. Arbitrary Unknown, prior coverage and warm-not-requested outcomes cannot pass.
+
+Prior finite coverage, raw envelopes and financial receipts are kept exact. No fee replay, fills, actions or signed writes can occur.
+
+The final candidate additionally waits for both endpoint outcomes with identical generation/epoch/end before exiting the completion loop and asserts final account.trusted=false alongside execution recovery_complete=false.
+
+## Source identity
+
+- crates/adapters/hyperliquid/tests/entropy_account.rs: 5976b5e8e5b9e19314679ca009365024817a2ad4e3a07ac65c7cdf1d06a79c07
+- crates/adapters/hyperliquid/tests/entropy_account/execution.rs: c7765f65fc74d682c9245a54df47aacb428c1f394c0ff9903691057f765c7a95
+- crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs: 9a9cffa0a71cad20dd6823b069f3fc0f2a62f90dfb322552bc3df3cde4e9d288
+
+The root subsequently applied official formatting. Current hashes are recorded separately in the JSON; no current bytes are represented as an earlier snapshot. The original hashes were sent to the root before formatting. All failed actual logs remain intact. No revised actual test result is claimed.

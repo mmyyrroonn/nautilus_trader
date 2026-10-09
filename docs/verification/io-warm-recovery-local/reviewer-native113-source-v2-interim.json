@@ -1,0 +1,32 @@
+{
+    "kind":  "independent frozen source v2 interim; blocked and superseded by pending v4 repair",
+    "utc":  "2026-10-09T06:43:03.3644307Z",
+    "report":  "E:/persarb/_tmp/entropy113-validation/reviewer-native113-source-v2-interim.md",
+    "report_sha256":  "13bdd2b15c8b3fdeb532c699bdbdd6161138f34f98d9af61c19f72af2a268c2d",
+    "identity_record":  "E:/persarb/_tmp/entropy113-validation/reviewer-native113-source-v2-identities.json",
+    "identity_record_sha256":  "0c0562a6a9fd4c6da532e75b8642cf58d934b6aed2f77d7a419be201a8e2cb99",
+    "independent_tests_run":  0,
+    "source_signoff":  false,
+    "source_edits":  false,
+    "network_run":  false,
+    "blockers":  [
+                     "Warm existing terminal/order status lacks positive normal Cache consumption gate; root assigned repair"
+                 ],
+    "closed_at_source_only":  [
+                                  "Captured raw source RAII survives rejection independently of current-reader/flight qualification"
+                              ],
+    "inherited_limits":  [
+                             "No generic Engine Cache metadata mutation fence across prepare/sign/quota/finalwriter",
+                             "No native core Portfolio authority",
+                             "No generic cold/durable cache adoption"
+                         ],
+    "final_source_contract_clarification":  "Parent accepted already accepted exact owned live native facts consumed by normal Engine Cache/event path in this runtime. Original WS vs REST source is Unknown if not stored; no reconciliation boolean proxy. Current warm HTTP identity is retained separately. Warm adds no new REST-only financial projection.",
+    "parent_reported_tests":  {
+                                  "cases":  55,
+                                  "passed":  30,
+                                  "failed":  25,
+                                  "independent_reviewer_execution":  false,
+                                  "attribution":  "parent supplied actual first run status; not added to reviewer counts"
+                              },
+    "next_candidate":  "root will supply v4 formatted freeze; not reviewed or accepted here"
+}

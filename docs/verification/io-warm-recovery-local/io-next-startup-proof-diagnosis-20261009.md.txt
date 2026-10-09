@@ -1,0 +1,105 @@
+# Next io dependency: source-scoped startup proof reuse
+
+Read-only diagnosis of the first application paired run with the actual issue-113 wheel. No source, tests, limits or artifacts were changed, and no new test, build, installation, Git or venue operation was executed. This is a proposed next dependency, not a claim that another QueryAccount or a paired run will succeed.
+
+## Bound evidence
+
+Evidence root: `E:/persarb/_tmp/app43-native113-first-paired-20261009/paired`.
+
+The wrapper `E:/persarb/_tmp/entropy113-validation/app43-native113-first-paired.json` records exit 1, UTC `08:03:35.377481` through `08:03:54.022892` on 2026-10-09. Before/after captures bind 30 source files, 24 installed files and two artifacts; the after capture reports zero differences. The installed source binding is verified for native commit `13064e9a9a199f517480d207f828438f13d05cca`, wheel SHA256 `c2bcce1e98939e1304fa3556463f987eb57266406a18d38e4a713436eca485fd`, and installed native module SHA256 `01d27c8b25e53e57bd842206e5bfc9edcf21c3001c17ff566079356a4102d5f1`. Issue 113 began from main `667f424e123e177a87c257cdc7f6b4e2e776d138`; a future implementation must independently start from the then-latest merged main.
+
+| Actual input | SHA256 |
+| --- | --- |
+| `paired/summary.json` | `e4876783df00a45623b498c6b89f052b1650f56278c467e62fad8ea43617e7e2` |
+| `paired/peer-evidence.json` | `166ecd652263babe1f97e0c30b3ad01fc97d1643824b75dec77ef7a2810c84cb` |
+| `paired/events.jsonl` | `b34dd103f700fb44ca2610986dda91e07d5be8f5684addde07e3c819c63083ca` |
+
+The peer records 66 Hyperliquid HTTP requests, their order, response status and bodies. Its request entries do not contain request/response wall-clock timestamps or a native limiter identity. Clearinghouse body `time` is a remote source timestamp; `summary.native_selected_scopes.entropy.recovery_source_debt.original_sources[].received_ms` is the native transport receive timestamp. They must not be interchanged.
+
+## Observed warm failure
+
+The warm debt belongs to reader generation 1, epoch 0, received sequence 9 and query token 6. The first native actual fill has quantity 0.12, a real native Cache/Portfolio position of 0.12 and the expected owned OID/TID. This failure does not establish a missing fill or an out-of-policy leverage change.
+
+| Request, in actual order | Native received ms | Relative to first body |
+| --- | ---: | ---: |
+| frontendOpenOrders | 1791533018184 | 0 |
+| userFills | 1791533018185 | 1 |
+| exact CLOID orderStatus | 1791533018185 | 1 |
+| userRole | 1791533018186 | 2 |
+| first userAbstraction | 1791533018186 | 2 |
+| first userDexAbstraction | 1791533018187 | 3 |
+| meta(io) | 1791533018187 | 3 |
+| spotMeta | 1791533018188 | 4 |
+| full io clearinghouseState | 1791533018299 | 115 |
+| repeated userAbstraction | 1791533019297 | 1113 |
+| repeated userDexAbstraction | 1791533020294 | 2110 |
+
+The full account source time is `1791533018298`. All eleven actual bodies are retained, with no unavailable source in this group. `events.jsonl` records the first warm pending observation at `1791533018266` and the failed completion at `1791533020372`.
+
+`account_scope.rs:595` starts the account verification interval before its role request, then reads mode, metadata, collateral, account and both repeated modes. It requires both the account source and that original verification start to remain within 2000 ms. The final body arrives at least 2108 ms after the role receipt; the true interval began no later than that receipt. Thus the verification interval is stale even though all bodies arrive inside the separate 3000 ms recovery bound. By the observed failed completion the account source is also 2074 ms old. The exact internal failure-check timestamp is not exposed, so the report does not infer which freshness predicate failed first.
+
+The diagnostic is `io warm RecoveryIncomplete: io account proof source or verification interval is stale`. Final account trust and recovery completeness are false, metadata origin is null, and native projection recovery debt is true. The original terminal-pending intent retains native reservation 12.7260. The application stops Unknown with one entropy entry and no completed second leg or cleanup. This is a correct bounded refusal, not paired acceptance.
+
+The approximately one-second gaps preceding the repeated 20-weight mode reads are consistent with the existing 20-token/second limiter. They do not prove its internal balance, exclude scheduling/transport costs, or identify which client consumed earlier tokens. Each independently constructed HTTP inner has its own limiter; the merged peer sequence cannot be summed into one measured bucket.
+
+## Redundant work visible in the normal path
+
+The peer's zero-based requests 11-18 are the first full account group; 19-23 are independent selected metadata/leverage verification; 24-33 are owned recovery plus another complete account group; 34-37 are finite economic metadata/history. Requests 38-45 are a further full account group, followed by the three actual empty startup arrays at 46-48. Requests 49-54 show two normal post-action recovery attempts before actual fills; the final warm sequence is 55-65.
+
+The existing startup account snapshot explicitly retains verification start `1791533017754`, clearinghouse source `1791533017758`, and native receive `1791533017759`. The earlier connect-recovery clearinghouse body has source `1791533017717`; this peer request entry does not expose its native verification start/end or receive timestamp. The report therefore does not invent those times or prove that earlier source was eligible for reuse. A future witness must retain its true original complete verification interval, source and transport receive times and test all of them against the unchanged TTL at final report commit. A new startup/history request must not reset any of those clocks.
+
+Source-derived base costs are:
+
+- Full role/mode/collateral/io account group: 182, including both repeated modes.
+- Selected metadata verification: `60 + 40S`; S=1 here.
+- Connect's first account plus metadata plus owned recovery's open/fills and final account: `182 + 100 + 40 + 182 = 504` for S=1 and no owned CLOID.
+- First empty finite economic group: at least 80.
+- Fresh startup mass report: another `182 + 60 = 242`.
+- Each observed pre-fill owned recovery attempt: at least 42.
+- Warm: `222 + 2N + 40A`; this current-position group has N=1, A=0, hence 224.
+
+These are request-source lower bounds, not observed balances. Instrument/bootstrap/data loads are separately visible and cannot be assigned to a particular bucket from this peer file. Endpoint item costs, retries and concurrent consumers can add work. Repeated instrument loads also exist, but cross-client cache sharing is a broader provenance problem and is not the recommended first change.
+
+## Recommended next focused contract
+
+Audit and implement optional **fresh-origin startup reuse of an already verified complete normal account source**, rather than changing the warm freshness rule or clearing its debt. The normal connect path has already obtained a complete account group before the startup report. Reusing that exact, still-fresh group could remove the additional 182 startup cost while preserving actual empty open/fill/history reads and every existing startup fence. This is sufficient source-derived savings to justify a focused experiment; it is not a prediction of continuous or paired liveness.
+
+Current `AccountScopeState` stores financial facts, timestamps and universe sets. Those alone are not a sealed full role/mode/collateral provenance object. Simply deleting startup's refresh or trusting a prior Ready flag would be incorrect. The proposed private witness must originate from an actual successful complete normal account group, retain its original role and repeated-mode facts, metadata/collateral objects, full parsed positions/financial precision and original source/receive/verification times, and bind its actual reader generation, epoch, hard revision, account revision and private financial facts. Installation must use a real native final source guard; a later snapshot cannot retrospectively authorize an older HTTP response.
+
+Reuse is eligible only for the existing explicit policy, fresh descriptor origin, empty durable facts/reservations, no taint or projection/source debt, normal recovery complete, current exact instruments, actually applied ingress and an unchanged trusted full io flat source. Initial and final owner Cache scans retain all-account/all-strategy history and ambiguous routed-order rejection. The three normal bounded array reads must still succeed and be explicitly empty. Final ingress/account/execution locking, same actual sequence, expected revisions and financial facts, metadata/native-object equality, source TTL after waits, and report-window qualification remain mandatory.
+
+Both changed private funds and an otherwise identical financial frame arriving under a new received sequence invalidate that captured reuse transaction. Matching balances or positions do not authorize ignoring an unapplied frame, same-reader sequence change, conflicting financial payload, epoch/reader replacement, metadata change, or hard revision change. Sampling TTL before a lock wait is insufficient; final original-start/end/source/receipt freshness and exact financial facts must be checked after waits under the existing lock order, without an await.
+
+The report uses the reused group's original source timestamp and original observation start. Reuse creates no new AccountState, cash proof, metadata time, Ready authority, or history completeness. Missing, expired, changed or unsealed origin can use the existing complete refresh path, or fail finitely; partial eligibility never yields a flat report. Existing unknown source debt is immutable and cannot be cleared or reclassified by this optimization. It does not rescue this already-failed run.
+
+## Alternatives and risks
+
+1. **Reordering alone:** moving repeated modes before the account might make the account timestamp newer but leaves the original verification interval stale and weakens the existing bracket. Resetting its start after quota waits or dropping repeated role/mode/collateral reads would borrow old authority. Parallelization does not create tokens or establish an atomic remote snapshot.
+2. **Finite group quota admission:** reserve the unchanged group base costs before the first financial request, under the original total deadline, then debit each planned request exactly once through the normal limiter. This could prevent a known-impossible group from collecting bodies that must become debt. It requires a narrowly scoped production permit, correct retry/item accounting, cancellation and stale-reader handling; it is a heavier alternative if startup reuse is insufficient. A preflight estimate without reservation races concurrent consumers and cannot guarantee freshness.
+3. **Earlier cutoff and fresh QueryAccount:** a cutoff before any body can remain ordinary incomplete without inventing financial debt. After bodies are received, issue 113 correctly preserves immutable Unknown debt. A retry cannot erase it merely because the bodies look plausible or the failure was temporal; treating a fully validated expired duplicate group differently would need its own explicit provenance/validation contract and is not proposed here.
+
+There is also a separately observed fixture chronology risk, currently masked by the earlier freshness failure. The retained warm REST Filled status has `statusTimestamp=1791533017975`, while the accepted actual fill and journal terminal time are `1791533018126`. `validate_warm_recovery` requires a Filled status source time at least that known terminal time. The application peer creates Filled status immediately at ACK (`tests/entropy_execution_peer.py:595`), then creates the actual fill timestamp after a 150 ms sleep (`634` onward). Thus removing quota delay alone would not prove this same paired input can pass the later unchanged status gate. This report does not change the fixture or propose weakening the native gate: the peer must represent a coherent execution/source chronology through actual normal paths, and any correction requires its own retained diff and tests. Delayed delivery time must not masquerade as a later venue execution time.
+
+## Required acceptance before a new dependency can close
+
+- Normal factory fresh startup reuses a source only when its full witness was actually produced and unchanged; prove original source/report times and the three real empty arrays. Observe the omitted 182 group on that positive path, without filling buckets, changing TTLs/deadlines or bypassing current metadata/financial gates.
+- Every original issue-111 freshness, malformed/nonempty array, original-nonempty journal, taint, cache history, exact precision, metadata, ingress/sequence/applied, lock-wait TTL and lifecycle negative remains effective. Missing or stale witness must never infer flat; source change during empty reads must reject.
+- All issue-113 actual facts, terminal Cache consumption, leverage counterproof, raw debt, cancellation, quota, finite history and weak-owner cases remain passing, with immutable debt/reserves and no new REST-only projections.
+- An actual bounded group that cannot afford its unchanged costs still fails; no diagnostic claims a measured bucket without observing one. Run a new clean-source installed-wheel paired acceptance after native source review and native regressions. Preserve original failing evidence and do not claim paired success before that run.
+
+- Explicitly reproduce the observed ACK/status-versus-actual-fill source-time conflict and distinguish venue execution time from delivery time. A new successful paired fixture cannot satisfy the native chronology contract by backdating evidence or bypassing normal events.
+
+## Read source identities
+
+All paths below are relative to `E:/persarb/worktrees/entropy-io-recovery`. These were read and hashed; no Git operation was used.
+
+| Path and relevant boundary | SHA256 |
+| --- | --- |
+| `crates/adapters/hyperliquid/src/account_scope.rs` (`AccountScopeState:134`, refresh:408, staged observation:595, freshness:815) | `586839f5e0a2bc598330d28a6b22746bb12f44ca2bb2df0fad10fcc5e632483c` |
+| `crates/adapters/hyperliquid/src/execution_scope.rs` (debt:1047, startup:1496/1624, recovery:3211) | `fd10b2e0deb1b90e42dcb0756eb68d2227b3bffe7d383807a93cf962e67270d2` |
+| `crates/adapters/hyperliquid/src/execution.rs` (instrument initialization:847, connect:2452, economics:2880 onward) | `2b1e30b896b60b01edd257947426c5f132b841dc7fe7771602f1e810c81c3316` |
+| `crates/adapters/hyperliquid/src/http/client.rs` (per-inner limiter:193/230/265, instrument requests:1480, scope transport:1830) | `ba66b53fcc6a6d1fb6e8bb34ac6faf677cd9e7eb6ffe89eea9e2c11ea398eab2` |
+| `crates/adapters/hyperliquid/src/http/rate_limits.rs` (acquire and endpoint costs:131/148) | `47dd217c00b7a28358b2f28b7e1803c72e5817212300a2e62c2f0a419047dafc` |
+| `crates/adapters/hyperliquid/src/economics_scope.rs` (finite unrequested interval:348) | `2ebdf3756f39ea0cd32cfdc79d84ef7babdcabd6c2d7fea0b0f00d4c151f7f47` |
+
+Additional read-only application source: `E:/persarb/worktrees/entropy-execution-app/tests/entropy_execution_peer.py`, SHA256 `e288616d1ae21a79457f2a7ad49ce5859f9d22da585f31ecc95d08253eb7bc3a`, for the observed status/fill source-time construction above.

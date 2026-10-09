@@ -1,0 +1,35 @@
+# Native issue #113 test revision 5
+
+Source record clock reading: 2026-10-09 07:06:49 UTC. This revision has **64 expanded cases**. The new candidate has not been formatted, compiled or run by the test author. Previous actual records remain untouched, including root's 57-case PASS candidate and the subsequent complete Hyperliquid regression with four old-test failures. This document does not claim a complete regression PASS.
+
+## Authorized flat leverage counterproof change
+
+The final full clearinghouse snapshot provides actual leverage when the selected symbol has a real current position. When it is flat, the snapshot lacks that leverage row; the native warm transaction must actually request and validate activeAssetData twice for each absent selected symbol. Those bodies are staged and retained through the same bounded source guard. Counterproofs must match user/coin/isolated mode, policy leverage, each other and the original verified metadata leverage. They never refresh original metadata times, mark, trade capacity or availability.
+
+Source-derived minimum weights now reflect the genuine additional requests:
+
+- One selected flat symbol, no active owned intent: 262 (original 222 plus two 20-weight actual reads).
+- One selected flat symbol, one active exact CLOID: 264.
+- One selected actual owned position whose final full clearinghouse row supplies leverage, one exact CLOID: still 224.
+
+These are source minima, not measured quota balances. The existing native quota, account/metadata freshness, three-second deadline and all business budget limits are unchanged. The existing quota-deadline test still requires actual bounded failure after two genuine completed flat groups. The owned-fill 224 assertions remain.
+
+## Added normal peer cases
+
+Six flat negative cases mutate only the actual normal peer HTTP asset response after startup: out-of-policy leverage, wrong user, wrong coin, cross mode, changed leverage still within a fixed policy bound, and conflicting repeated values. The final two use a policy with max leverage 2 from construction, while the original verified metadata leverage remains 1. They prove that simply remaining within policy cannot justify changed or inconsistent actual leverage.
+
+The repeated-conflict peer uses an optional two-response queue, empty by default and populated only after normal startup. Shared old peer behavior remains unchanged. Every refusal preserves actual captured raw debt and original metadata/fill/intent facts, emits no financial fill and makes no signed write.
+
+A seventh positive verifies that valid repeated actual leverage counterproof can complete while its returned mark/capacity/availability differ from the original metadata. The original metadata JSON, including verification time and capacity/mark fields, must remain exactly unchanged. No timestamp or capacity is refreshed by these new reads.
+
+The previous 57 financial, terminal Cache, debt, persistence, deadline, fee and budget assertions remain. Flat minimum/count assertions are corrected for the intentionally added actual verification requests. No old economics or execution behavior assertion was edited or waived; the four actual old regression failures remain product acceptance requirements.
+
+## Frozen files
+
+| File | SHA256 before next official formatting |
+| --- | --- |
+| `crates/adapters/hyperliquid/tests/entropy_account.rs` | `07996db9e58fec3ff8f5b8d4b39621a0115c5b9ca8ea099bcbdca559f2f668d2` |
+| `crates/adapters/hyperliquid/tests/entropy_account/execution.rs` | `c7765f65fc74d682c9245a54df47aacb428c1f394c0ff9903691057f765c7a95` |
+| `crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs` | `0fdb01706ad82ac7c2d3cad72f3253085a21d9f58e1c4f31bd44db5d7a3a9925` |
+
+Changed this revision: optional peer response queue/helper in execution.rs and new warm test module. Parent entropy_account.rs is unchanged. No production source, Cargo, formatting, build, executable, installation or Git/GH action was performed by this test author. Root owns the next official validation.

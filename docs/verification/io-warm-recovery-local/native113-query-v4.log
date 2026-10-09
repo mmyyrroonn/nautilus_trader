@@ -1,0 +1,143 @@
+warning: linker stdout: 正在创建库 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-63fd5ed65377140a.dll.lib 和对象 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-63fd5ed65377140a.dll.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-persistence-macros` (lib) generated 1 warning
+   Compiling nautilus-hyperliquid v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\hyperliquid)
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_revoke.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_revoke.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (bin "hyperliquid-builder-fee-revoke") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_approve.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_builder_fee_approve.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_private.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_private.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_exec.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_exec.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_public.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_public.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (bin "hyperliquid-builder-fee-approve") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-private") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-public") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_capture_test_data.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_capture_test_data.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_user_outcome.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_user_outcome.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (bin "hyperliquid-ws-exec") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_outcome_order.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_outcome_order.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_exec.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_http_exec.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_flatten.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_flatten.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_data.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\hyperliquid_ws_data.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (bin "hyperliquid-capture-test-data") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-user-outcome") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-outcome-order") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-http-exec") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-flatten") generated 1 warning
+warning: `nautilus-hyperliquid` (bin "hyperliquid-ws-data") generated 1 warning
+warning: linker stdout: 正在创建库 E:\persarb\nautilus_trader\target\nextest\deps\entropy_account-69bad49fe9dc76e8.lib 和对象 E:\persarb\nautilus_trader\target\nextest\deps\entropy_account-69bad49fe9dc76e8.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-hyperliquid` (test "entropy_account") generated 1 warning
+    Finished `nextest` profile [unoptimized] target(s) in 15.32s
+     Running tests\entropy_account.rs (E:/persarb/nautilus_trader/target\nextest\deps\entropy_account-69bad49fe9dc76e8.exe)
+
+running 57 tests
+test execution::io_query_recovery::actual_native_fill_without_engine_application_is_not_a_warm_cache_witness ... ok
+test execution::io_query_recovery::actual_owned_ws_cancel_requires_matching_consumed_native_cache_terminal::case_1 ... ok
+test execution::io_query_recovery::actual_owned_ws_cancel_requires_matching_consumed_native_cache_terminal::case_2 ... ok
+test execution::io_query_recovery::actual_owner_dispatch_delay_cannot_refresh_expired_account_evidence ... ok
+test execution::io_query_recovery::actual_post_fill_warm_query_absorbs_reservation_with_one_final_account_group ... ok
+test execution::io_query_recovery::actual_warm_http_body_cap_rejects_oversize_without_projection ... ok
+test execution::io_query_recovery::closed_normal_runner_channel_releases_staged_query_without_ready_or_projection ... ok
+test execution::io_query_recovery::cold_original_journal_identity_and_damage_survive_normal_query::case_1 ... ok
+test execution::io_query_recovery::cold_original_journal_identity_and_damage_survive_normal_query::case_2 ... ok
+test execution::io_query_recovery::cold_original_journal_identity_and_damage_survive_normal_query::case_3 ... ok
+test execution::io_query_recovery::duplicate_or_saturated_actual_owned_open_rows_are_not_complete_sources::case_1 ... ok
+test execution::io_query_recovery::duplicate_or_saturated_actual_owned_open_rows_are_not_complete_sources::case_2 ... ok
+test execution::io_query_recovery::equivalent_normal_queries_singleflight_without_extra_reads_or_borrowed_ready ... ok
+test execution::io_query_recovery::existing_weighted_quota_wait_is_inside_unchanged_three_second_query_deadline ... ok
+test execution::io_query_recovery::genuine_durable_fill_cold_restart_keeps_cache_debt_and_never_reapplies_financial_facts ... ok
+test execution::io_query_recovery::genuine_hard_financial_demand_and_history_timeout_remain_unknown_and_fail_closed ... ok
+test execution::io_query_recovery::genuine_unknown_owned_submission_is_not_freed_or_retried_by_account_query ... ok
+test execution::io_query_recovery::missing_actual_sources_preserve_owned_inventory_and_reservation::case_1 ... ok
+test execution::io_query_recovery::missing_actual_sources_preserve_owned_inventory_and_reservation::case_2 ... ok
+test execution::io_query_recovery::missing_actual_sources_preserve_owned_inventory_and_reservation::case_3 ... ok
+test execution::io_query_recovery::missing_actual_sources_preserve_owned_inventory_and_reservation::case_4 ... ok
+test execution::io_query_recovery::missing_actual_sources_preserve_owned_inventory_and_reservation::case_5 ... ok
+test execution::io_query_recovery::missing_actual_sources_preserve_owned_inventory_and_reservation::case_6 ... ok
+test execution::io_query_recovery::missing_actual_sources_preserve_owned_inventory_and_reservation::case_7 ... ok
+test execution::io_query_recovery::normal_shutdown_cancels_queued_owner_commit_without_emitting_old_account_facts ... ok
+test execution::io_query_recovery::ordinary_new_risk_during_pending_query_cannot_borrow_old_ready_or_reach_wire ... ok
+test execution::io_query_recovery::ordinary_owned_cancel_during_query_is_denied_before_wire_and_keeps_reservation ... ok
+test execution::io_query_recovery::received_original_body_survives_reader_race_and_later_source_failure::case_1 ... ok
+test execution::io_query_recovery::received_original_body_survives_reader_race_and_later_source_failure::case_2 ... ok
+test execution::io_query_recovery::received_original_body_survives_reader_race_and_later_source_failure::case_3 ... ok
+test execution::io_query_recovery::received_original_body_survives_reader_race_and_later_source_failure::case_4 ... ok
+test execution::io_query_recovery::received_original_body_survives_reader_race_and_later_source_failure::case_5 ... ok
+test execution::io_query_recovery::received_original_body_survives_reader_race_and_later_source_failure::case_6 ... ok
+test execution::io_query_recovery::same_reader_identical_private_frame_after_http_stage_rejects_old_owner_commit ... ok
+test execution::io_query_recovery::same_zero_epoch_new_factory_reader_cannot_apply_retired_readers_queued_source ... ok
+test execution::io_query_recovery::stale_metadata_uses_normal_full_fallback_without_extending_its_ttl ... ok
+test execution::io_query_recovery::successful_warm_query_keeps_prior_finite_economic_coverage_and_immutable_fees ... ok
+test execution::io_query_recovery::warm_metadata_never_substitutes_for_actual_final_account_sources::case_1 ... ok
+test execution::io_query_recovery::warm_metadata_never_substitutes_for_actual_final_account_sources::case_2 ... ok
+test execution::io_query_recovery::warm_metadata_never_substitutes_for_actual_final_account_sources::case_3 ... ok
+test execution::io_query_recovery::warm_metadata_never_substitutes_for_actual_final_account_sources::case_4 ... ok
+test execution::io_query_recovery::warm_metadata_never_substitutes_for_actual_final_account_sources::case_5 ... ok
+test execution::io_query_recovery::warm_metadata_never_substitutes_for_actual_final_account_sources::case_6 ... ok
+test execution::io_query_recovery::warm_metadata_never_substitutes_for_actual_final_account_sources::case_7 ... ok
+test execution::io_query_recovery::warm_query_rejects_source_changes_across_delayed_actual_reads::case_1 ... ok
+test execution::io_query_recovery::warm_query_rejects_source_changes_across_delayed_actual_reads::case_2 ... ok
+test execution::io_query_recovery::warm_query_rejects_source_changes_across_delayed_actual_reads::case_3 ... ok
+test execution::io_query_recovery::warm_query_rejects_source_changes_across_delayed_actual_reads::case_4 ... ok
+test execution::io_query_recovery::warm_query_rejects_source_changes_across_delayed_actual_reads::case_5 ... ok
+test execution::io_query_recovery::warm_query_rejects_source_changes_across_delayed_actual_reads::case_6 ... ok
+test execution::io_query_recovery::warm_query_rejects_source_changes_across_delayed_actual_reads::case_7 ... ok
+test execution::io_query_recovery::warm_rest_sources_cannot_adopt_new_or_missing_owned_financial_facts::case_1 ... ok
+test execution::io_query_recovery::warm_rest_sources_cannot_adopt_new_or_missing_owned_financial_facts::case_2 ... ok
+test execution::io_query_recovery::warm_rest_sources_cannot_adopt_new_or_missing_owned_financial_facts::case_3 ... ok
+test execution::io_query_recovery::warm_rest_sources_cannot_adopt_new_or_missing_owned_financial_facts::case_4 ... ok
+test execution::io_query_recovery::warm_rest_sources_cannot_adopt_new_or_missing_owned_financial_facts::case_5 ... ok
+test execution::io_query_recovery::warm_rest_sources_cannot_adopt_new_or_missing_owned_financial_facts::case_6 ... ok
+
+test result: ok. 57 passed; 0 failed; 0 ignored; 0 measured; 147 filtered out; finished in 44.63s
+

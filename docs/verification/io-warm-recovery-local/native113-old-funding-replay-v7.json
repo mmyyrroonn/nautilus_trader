@@ -1,0 +1,30 @@
+{
+  "argv": [
+    "cargo",
+    "test",
+    "-p",
+    "nautilus-hyperliquid",
+    "--test",
+    "entropy_account",
+    "--profile",
+    "nextest",
+    "--locked",
+    "--offline",
+    "--config",
+    "build.warnings='warn'",
+    "execution::economics::persisted_funding_does_not_restore_ready_but_current_account_recovery_can_absorb_exact_replay",
+    "--",
+    "--test-threads=1",
+    "--exact"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-io-recovery",
+  "started_utc": "2026-10-09T07:14:47.188410+00:00",
+  "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+  "pyo3_python": "E:/persarb/worktrees/entropy-io-recovery/.venv/Scripts/python.exe",
+  "uv_project_environment": null,
+  "nautilus_stub_profile": null,
+  "cargo_build_warnings": null,
+  "cargo_net_offline": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T07:14:53.472353+00:00"
+}

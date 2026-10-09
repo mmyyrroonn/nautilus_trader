@@ -1,0 +1,30 @@
+# Full regression revision 6 remains failed
+
+The 57-case focused normal-peer run passed; the full Hyperliquid command did not.
+`native113-hyperliquid-regression-v6.log` and `.json` preserve the actual command
+at 06:55:51–06:57:00 UTC. Its entropy target has 200 passed and four failed cases.
+Cargo stopped at that failed target, so later targets are not counted as run.
+
+Two existing empty-Cache fresh-factory restart cases failed because normal
+connect now propagated the optional warm Cache binding failure. They must retain
+normal readonly connection and durable recovery debt without admitting a write.
+
+The actual funding replay test completed an independent normal cold account
+recovery, but its newly verified metadata origin had no owner Cache binding yet.
+Owner pre-prepare may complete an absent binding once under unchanged true
+source identity; it cannot overwrite an existing binding or grant account funds.
+
+The existing flat actual-user-leverage-change case exposed a financial safety
+regression: complete clearinghouse positions were empty, and warm recovery did
+not query activeAssetData, so an actual change from leverage one to two was not
+detected. That old safety assertion is retained. Revision 7 will require two
+actual bounded active-asset counterchecks when a selected symbol lacks leverage
+in the current complete position source. Original metadata timestamps and
+capacity values remain unchanged; the additional real request weights remain
+inside existing quota/TTL/deadline limits. Unknown or conflicting sources close
+authority and remain raw source debt.
+
+These are production corrections, not waivers or passing claims. The independent
+v6 source review is preserved as a limited source-review result and is superseded
+for final acceptance by the unresolved full regression. New frozen-source review
+and the actual corrected regression must pass before clean-source wheel acceptance.

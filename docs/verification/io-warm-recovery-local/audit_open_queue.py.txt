@@ -1,0 +1,28 @@
+"""Read the authorized remaining issue queue without changing its state."""
+
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, "E:/persarb/_tmp/entropy43-validation")
+from start_dependency import api
+
+
+if __name__ == "__main__":
+    directory = Path(__file__).resolve().parent
+    output = directory / "open-issue-queue-after-native111.json"
+    assert not output.exists()
+    rows = []
+    for repo in ("nautilus_trader", "Nautilus-Perps"):
+        issues = api(
+            f"repos/mmyyrroonn/{repo}/issues?state=open&per_page=100",
+            "native113-open-queue-" + repo,
+        )
+        for issue in issues:
+            if "pull_request" in issue:
+                continue
+            rows.append({key: issue[key] for key in ("number", "title", "html_url", "body")}
+                        | {"repo": repo})
+    output.write_text(json.dumps(rows, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    for row in rows:
+        print(f"{row['repo']} #{row['number']}: {row['title']}")

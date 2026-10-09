@@ -1,0 +1,849 @@
+{
+  "raw_log": "E:\\persarb\\_tmp\\entropy113-validation\\native113-query-first-compile-v3.log",
+  "failures": [
+    {
+      "test": "execution::io_query_recovery::actual_native_fill_without_engine_application_is_not_a_warm_cache_witness",
+      "messages": [
+        "thread 'execution::io_query_recovery::actual_native_fill_without_engine_application_is_not_a_warm_cache_witness' (12184) panicked at crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs:559:5:",
+        "assertion `left == right` failed: absent native Engine projection borrowed proof: {\"policy\":{\"schema_version\":1,\"strategy_id\":\"ENTROPY-001\",\"journal_path\":\"C:\\\\Users\\\\myron\\\\AppData\\\\Local\\\\Temp\\\\.tmpguW3ND\\\\io-intents.jsonl\",\"max_order_notional\":\"100\",\"max_gross_notional\":\"200\",\"max_open_orders\":2,\"max_actions\":16,\"max_leverage\":1,\"margin_buffer\":\"5\",\"fee_buffer_bps\":\"10\",\"action_timeout_ms\":2000,\"recovery_timeout_ms\":3000,\"recovery_max_attempts\":2,\"recovery_retry_delay_ms\":10,\"metadata_max_age_ms\":30000,\"symbols\":[{\"instrument_id\":\"io:SNDK-USD-PERP.HYPERLIQUID\",\"max_quantity\":\"1\",\"min_price\":\"95\",\"max_price\":\"105\"}]},\"account\":{\"dex\":\"io\",\"address\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"account_mode\":\"standard_disabled_inferred\",\"collateral_token_id\":\"0x6d1e7cde53ba9467b783cb7c530",
+        "  left: Bool(true)",
+        " right: false"
+      ],
+      "scopes": []
+    },
+    {
+      "test": "execution::io_query_recovery::actual_owner_dispatch_delay_cannot_refresh_expired_account_evidence",
+      "messages": [
+        "thread 'execution::io_query_recovery::actual_owner_dispatch_delay_cannot_refresh_expired_account_evidence' (12944) panicked at crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs:911:6:"
+      ],
+      "scopes": []
+    },
+    {
+      "test": "execution::io_query_recovery::actual_post_fill_warm_query_absorbs_reservation_with_one_final_account_group",
+      "messages": [
+        "thread 'execution::io_query_recovery::actual_post_fill_warm_query_absorbs_reservation_with_one_final_account_group' (52708) panicked at crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs:302:5:",
+        "assertion `left == right` failed",
+        "  left: Bool(false)",
+        " right: true"
+      ],
+      "scopes": []
+    },
+    {
+      "test": "execution::io_query_recovery::cold_original_journal_identity_and_damage_survive_normal_query::case_1",
+      "messages": [
+        "thread 'execution::io_query_recovery::cold_original_journal_identity_and_damage_survive_normal_query::case_1' (11708) panicked at crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs:1026:34:"
+      ],
+      "scopes": [
+        {
+          "diagnostic": "io warm RecoveryIncomplete: serde error: invalid type: map, expected a sequence at line 1 column 0: invalid type: map, expected a sequence at line 1 column 0",
+          "recovery_complete": false,
+          "query_in_flight": false,
+          "query_token": null,
+          "query_completed": 1,
+          "last_query_warm": true,
+          "warm_metadata_origin": null,
+          "recovery_source_debt": {
+            "kind": "unknown_sources",
+            "identity": {
+              "query_token": 3,
+              "generation": 1,
+              "epoch": 0,
+              "received_sequence": 4,
+              "account_id": "HYPERLIQUID-ENTROPY",
+              "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+              "policy": {
+                "schema_version": 1,
+                "strategy_id": "ENTROPY-001",
+                "journal_path": "C:\\Users\\myron\\AppData\\Local\\Temp\\.tmpYFbcWA\\io-intents.jsonl",
+                "max_order_notional": "100",
+                "max_gross_notional": "200",
+                "max_open_orders": 2,
+                "max_actions": 16,
+                "max_leverage": 1,
+                "margin_buffer": "5",
+                "fee_buffer_bps": "10",
+                "action_timeout_ms": 2000,
+                "recovery_timeout_ms": 3000,
+                "recovery_max_attempts": 2,
+                "recovery_retry_delay_ms": 10,
+                "metadata_max_age_ms": 30000,
+                "symbols": [
+                  {
+                    "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "max_quantity": "1",
+                    "min_price": "95",
+                    "max_price": "105"
+                  }
+                ]
+              }
+            },
+            "original_sources": [
+              {
+                "request_json": "{\"type\":\"frontendOpenOrders\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\"}",
+                "received_ms": 1791527869272,
+                "raw_text": "[]"
+              },
+              {
+                "request_json": "{\"type\":\"userFills\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+                "received_ms": 1791527869272,
+                "raw_text": "[]"
+              }
+            ],
+            "unavailable_sources": [
+              {
+                "request_json": "{\"type\":\"userRole\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+                "received_ms": null,
+                "diagnostic": "Request failed before a complete bounded raw body was available"
+              }
+            ]
+          },
+          "native_projection_recovery_required": true
+        }
+      ]
+    },
+    {
+      "test": "execution::io_query_recovery::equivalent_normal_queries_singleflight_without_extra_reads_or_borrowed_ready",
+      "messages": [
+        "thread 'execution::io_query_recovery::equivalent_normal_queries_singleflight_without_extra_reads_or_borrowed_ready' (48892) panicked at crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs:230:5:",
+        "assertion `left == right` failed: {\"policy\":{\"schema_version\":1,\"strategy_id\":\"ENTROPY-001\",\"journal_path\":\"C:\\\\Users\\\\myron\\\\AppData\\\\Local\\\\Temp\\\\.tmpzBsO65\\\\io-intents.jsonl\",\"max_order_notional\":\"100\",\"max_gross_notional\":\"200\",\"max_open_orders\":2,\"max_actions\":16,\"max_leverage\":1,\"margin_buffer\":\"5\",\"fee_buffer_bps\":\"10\",\"action_timeout_ms\":2000,\"recovery_timeout_ms\":3000,\"recovery_max_attempts\":2,\"recovery_retry_delay_ms\":10,\"metadata_max_age_ms\":30000,\"symbols\":[{\"instrument_id\":\"io:SNDK-USD-PERP.HYPERLIQUID\",\"max_quantity\":\"1\",\"min_price\":\"95\",\"max_price\":\"105\"}]},\"account\":{\"dex\":\"io\",\"address\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"account_mode\":\"standard_disabled_inferred\",\"collateral_token_id\":\"0x6d1e7cde53ba9467b783cb7c530ce054\",\"balance\":\"100\",\"equity\":\"100\",\"withdrawa",
+        "  left: Bool(false)",
+        " right: true"
+      ],
+      "scopes": [
+        {
+          "diagnostic": "io warm RecoveryIncomplete: serde error: invalid type: map, expected a sequence at line 1 column 0: invalid type: map, expected a sequence at line 1 column 0",
+          "recovery_complete": false,
+          "query_in_flight": false,
+          "query_token": null,
+          "query_completed": 1,
+          "last_query_warm": true,
+          "warm_metadata_origin": null,
+          "recovery_source_debt": {
+            "kind": "unknown_sources",
+            "identity": {
+              "query_token": 3,
+              "generation": 1,
+              "epoch": 0,
+              "received_sequence": 4,
+              "account_id": "HYPERLIQUID-ENTROPY",
+              "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+              "policy": {
+                "schema_version": 1,
+                "strategy_id": "ENTROPY-001",
+                "journal_path": "C:\\Users\\myron\\AppData\\Local\\Temp\\.tmpzBsO65\\io-intents.jsonl",
+                "max_order_notional": "100",
+                "max_gross_notional": "200",
+                "max_open_orders": 2,
+                "max_actions": 16,
+                "max_leverage": 1,
+                "margin_buffer": "5",
+                "fee_buffer_bps": "10",
+                "action_timeout_ms": 2000,
+                "recovery_timeout_ms": 3000,
+                "recovery_max_attempts": 2,
+                "recovery_retry_delay_ms": 10,
+                "metadata_max_age_ms": 30000,
+                "symbols": [
+                  {
+                    "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "max_quantity": "1",
+                    "min_price": "95",
+                    "max_price": "105"
+                  }
+                ]
+              }
+            },
+            "original_sources": [
+              {
+                "request_json": "{\"type\":\"frontendOpenOrders\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\"}",
+                "received_ms": 1791527876405,
+                "raw_text": "[]"
+              },
+              {
+                "request_json": "{\"type\":\"userFills\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+                "received_ms": 1791527876405,
+                "raw_text": "[]"
+              }
+            ],
+            "unavailable_sources": [
+              {
+                "request_json": "{\"type\":\"userRole\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+                "received_ms": null,
+                "diagnostic": "Request failed before a complete bounded raw body was available"
+              }
+            ]
+          },
+          "native_projection_recovery_required": true
+        }
+      ]
+    },
+    {
+      "test": "execution::io_query_recovery::existing_weighted_quota_wait_is_inside_unchanged_three_second_query_deadline",
+      "messages": [
+        "thread 'execution::io_query_recovery::existing_weighted_quota_wait_is_inside_unchanged_three_second_query_deadline' (50820) panicked at crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs:230:5:",
+        "assertion `left == right` failed: {\"policy\":{\"schema_version\":1,\"strategy_id\":\"ENTROPY-001\",\"journal_path\":\"C:\\\\Users\\\\myron\\\\AppData\\\\Local\\\\Temp\\\\.tmpbbODer\\\\io-intents.jsonl\",\"max_order_notional\":\"100\",\"max_gross_notional\":\"200\",\"max_open_orders\":2,\"max_actions\":16,\"max_leverage\":1,\"margin_buffer\":\"5\",\"fee_buffer_bps\":\"10\",\"action_timeout_ms\":2000,\"recovery_timeout_ms\":3000,\"recovery_max_attempts\":2,\"recovery_retry_delay_ms\":10,\"metadata_max_age_ms\":30000,\"symbols\":[{\"instrument_id\":\"io:SNDK-USD-PERP.HYPERLIQUID\",\"max_quantity\":\"1\",\"min_price\":\"95\",\"max_price\":\"105\"}]},\"account\":{\"dex\":\"io\",\"address\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"account_mode\":\"standard_disabled_inferred\",\"collateral_token_id\":\"0x6d1e7cde53ba9467b783cb7c530ce054\",\"balance\":\"100\",\"equity\":\"100\",\"withdrawa",
+        "  left: Bool(false)",
+        " right: true"
+      ],
+      "scopes": [
+        {
+          "diagnostic": "io warm RecoveryIncomplete: serde error: invalid type: map, expected a sequence at line 1 column 0: invalid type: map, expected a sequence at line 1 column 0",
+          "recovery_complete": false,
+          "query_in_flight": false,
+          "query_token": null,
+          "query_completed": 1,
+          "last_query_warm": true,
+          "warm_metadata_origin": null,
+          "recovery_source_debt": {
+            "kind": "unknown_sources",
+            "identity": {
+              "query_token": 3,
+              "generation": 1,
+              "epoch": 0,
+              "received_sequence": 4,
+              "account_id": "HYPERLIQUID-ENTROPY",
+              "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+              "policy": {
+                "schema_version": 1,
+                "strategy_id": "ENTROPY-001",
+                "journal_path": "C:\\Users\\myron\\AppData\\Local\\Temp\\.tmpbbODer\\io-intents.jsonl",
+                "max_order_notional": "100",
+                "max_gross_notional": "200",
+                "max_open_orders": 2,
+                "max_actions": 16,
+                "max_leverage": 1,
+                "margin_buffer": "5",
+                "fee_buffer_bps": "10",
+                "action_timeout_ms": 2000,
+                "recovery_timeout_ms": 3000,
+                "recovery_max_attempts": 2,
+                "recovery_retry_delay_ms": 10,
+                "metadata_max_age_ms": 30000,
+                "symbols": [
+                  {
+                    "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "max_quantity": "1",
+                    "min_price": "95",
+                    "max_price": "105"
+                  }
+                ]
+              }
+            },
+            "original_sources": [
+              {
+                "request_json": "{\"type\":\"frontendOpenOrders\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\"}",
+                "received_ms": 1791527876459,
+                "raw_text": "[]"
+              },
+              {
+                "request_json": "{\"type\":\"userFills\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+                "received_ms": 1791527876459,
+                "raw_text": "[]"
+              }
+            ],
+            "unavailable_sources": [
+              {
+                "request_json": "{\"type\":\"userRole\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+                "received_ms": null,
+                "diagnostic": "Request failed before a complete bounded raw body was available"
+              }
+            ]
+          },
+          "native_projection_recovery_required": true
+        }
+      ]
+    },
+    {
+      "test": "execution::io_query_recovery::genuine_hard_financial_demand_and_history_timeout_remain_unknown_and_fail_closed",
+      "messages": [
+        "thread 'execution::io_query_recovery::genuine_hard_financial_demand_and_history_timeout_remain_unknown_and_fail_closed' (56280) panicked at crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs:1554:6:"
+      ],
+      "scopes": []
+    },
+    {
+      "test": "execution::io_query_recovery::genuine_unknown_owned_submission_is_not_freed_or_retried_by_account_query",
+      "messages": [
+        "thread 'execution::io_query_recovery::genuine_unknown_owned_submission_is_not_freed_or_retried_by_account_query' (24820) panicked at crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs:44:45:"
+      ],
+      "scopes": []
+    },
+    {
+      "test": "execution::io_query_recovery::normal_shutdown_cancels_queued_owner_commit_without_emitting_old_account_facts",
+      "messages": [
+        "thread 'execution::io_query_recovery::normal_shutdown_cancels_queued_owner_commit_without_emitting_old_account_facts' (50968) panicked at crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs:911:6:"
+      ],
+      "scopes": []
+    },
+    {
+      "test": "execution::io_query_recovery::ordinary_owned_cancel_supersedes_delayed_query_without_borrowing_its_final_source",
+      "messages": [
+        "thread 'execution::io_query_recovery::ordinary_owned_cancel_supersedes_delayed_query_without_borrowing_its_final_source' (35304) panicked at crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs:1360:10:"
+      ],
+      "scopes": []
+    },
+    {
+      "test": "execution::io_query_recovery::received_original_body_survives_reader_race_and_later_source_failure::case_1",
+      "messages": [
+        "thread 'execution::io_query_recovery::received_original_body_survives_reader_race_and_later_source_failure::case_1' (52692) panicked at crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs:760:9:"
+      ],
+      "scopes": [
+        {
+          "diagnostic": "io warm RecoveryIncomplete: serde error: EOF while parsing a list at line 1 column 1: EOF while parsing a list at line 1 column 1",
+          "recovery_complete": false,
+          "query_in_flight": false,
+          "query_token": null,
+          "query_completed": 1,
+          "last_query_warm": true,
+          "warm_metadata_origin": null,
+          "recovery_source_debt": {
+            "kind": "unknown_sources",
+            "identity": {
+              "query_token": 3,
+              "generation": 1,
+              "epoch": 0,
+              "received_sequence": 4,
+              "account_id": "HYPERLIQUID-ENTROPY",
+              "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+              "policy": {
+                "schema_version": 1,
+                "strategy_id": "ENTROPY-001",
+                "journal_path": "C:\\Users\\myron\\AppData\\Local\\Temp\\.tmpCyffc8\\io-intents.jsonl",
+                "max_order_notional": "100",
+                "max_gross_notional": "200",
+                "max_open_orders": 2,
+                "max_actions": 16,
+                "max_leverage": 1,
+                "margin_buffer": "5",
+                "fee_buffer_bps": "10",
+                "action_timeout_ms": 2000,
+                "recovery_timeout_ms": 3000,
+                "recovery_max_attempts": 2,
+                "recovery_retry_delay_ms": 10,
+                "metadata_max_age_ms": 30000,
+                "symbols": [
+                  {
+                    "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "max_quantity": "1",
+                    "min_price": "95",
+                    "max_price": "105"
+                  }
+                ]
+              }
+            },
+            "original_sources": [
+              {
+                "request_json": "{\"type\":\"frontendOpenOrders\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\"}",
+                "received_ms": 1791527892973,
+                "raw_text": "[]"
+              }
+            ],
+            "unavailable_sources": [
+              {
+                "request_json": "{\"type\":\"userFills\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+                "received_ms": null,
+                "diagnostic": "Request failed before a complete bounded raw body was available"
+              }
+            ]
+          },
+          "native_projection_recovery_required": true
+        }
+      ]
+    },
+    {
+      "test": "execution::io_query_recovery::received_original_body_survives_reader_race_and_later_source_failure::case_2",
+      "messages": [
+        "thread 'execution::io_query_recovery::received_original_body_survives_reader_race_and_later_source_failure::case_2' (46756) panicked at crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs:760:9:"
+      ],
+      "scopes": [
+        {
+          "diagnostic": "io warm RecoveryIncomplete: serde error: EOF while parsing a list at line 1 column 1: EOF while parsing a list at line 1 column 1",
+          "recovery_complete": false,
+          "query_in_flight": false,
+          "query_token": null,
+          "query_completed": 1,
+          "last_query_warm": true,
+          "warm_metadata_origin": null,
+          "recovery_source_debt": {
+            "kind": "unknown_sources",
+            "identity": {
+              "query_token": 3,
+              "generation": 1,
+              "epoch": 0,
+              "received_sequence": 4,
+              "account_id": "HYPERLIQUID-ENTROPY",
+              "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+              "policy": {
+                "schema_version": 1,
+                "strategy_id": "ENTROPY-001",
+                "journal_path": "C:\\Users\\myron\\AppData\\Local\\Temp\\.tmpGecWVY\\io-intents.jsonl",
+                "max_order_notional": "100",
+                "max_gross_notional": "200",
+                "max_open_orders": 2,
+                "max_actions": 16,
+                "max_leverage": 1,
+                "margin_buffer": "5",
+                "fee_buffer_bps": "10",
+                "action_timeout_ms": 2000,
+                "recovery_timeout_ms": 3000,
+                "recovery_max_attempts": 2,
+                "recovery_retry_delay_ms": 10,
+                "metadata_max_age_ms": 30000,
+                "symbols": [
+                  {
+                    "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "max_quantity": "1",
+                    "min_price": "95",
+                    "max_price": "105"
+                  }
+                ]
+              }
+            },
+            "original_sources": [
+              {
+                "request_json": "{\"type\":\"frontendOpenOrders\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\"}",
+                "received_ms": 1791527893214,
+                "raw_text": "[]"
+              }
+            ],
+            "unavailable_sources": [
+              {
+                "request_json": "{\"type\":\"userFills\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+                "received_ms": null,
+                "diagnostic": "Request failed before a complete bounded raw body was available"
+              }
+            ]
+          },
+          "native_projection_recovery_required": true
+        }
+      ]
+    },
+    {
+      "test": "execution::io_query_recovery::received_original_body_survives_reader_race_and_later_source_failure::case_3",
+      "messages": [
+        "thread 'execution::io_query_recovery::received_original_body_survives_reader_race_and_later_source_failure::case_3' (41856) panicked at crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs:760:9:"
+      ],
+      "scopes": [
+        {
+          "diagnostic": "io warm RecoveryIncomplete: serde error: EOF while parsing a list at line 1 column 1: EOF while parsing a list at line 1 column 1",
+          "recovery_complete": false,
+          "query_in_flight": false,
+          "query_token": null,
+          "query_completed": 1,
+          "last_query_warm": true,
+          "warm_metadata_origin": null,
+          "recovery_source_debt": {
+            "kind": "unknown_sources",
+            "identity": {
+              "query_token": 3,
+              "generation": 1,
+              "epoch": 0,
+              "received_sequence": 4,
+              "account_id": "HYPERLIQUID-ENTROPY",
+              "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+              "policy": {
+                "schema_version": 1,
+                "strategy_id": "ENTROPY-001",
+                "journal_path": "C:\\Users\\myron\\AppData\\Local\\Temp\\.tmpiSg04H\\io-intents.jsonl",
+                "max_order_notional": "100",
+                "max_gross_notional": "200",
+                "max_open_orders": 2,
+                "max_actions": 16,
+                "max_leverage": 1,
+                "margin_buffer": "5",
+                "fee_buffer_bps": "10",
+                "action_timeout_ms": 2000,
+                "recovery_timeout_ms": 3000,
+                "recovery_max_attempts": 2,
+                "recovery_retry_delay_ms": 10,
+                "metadata_max_age_ms": 30000,
+                "symbols": [
+                  {
+                    "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "max_quantity": "1",
+                    "min_price": "95",
+                    "max_price": "105"
+                  }
+                ]
+              }
+            },
+            "original_sources": [
+              {
+                "request_json": "{\"type\":\"frontendOpenOrders\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\"}",
+                "received_ms": 1791527893450,
+                "raw_text": "[]"
+              }
+            ],
+            "unavailable_sources": [
+              {
+                "request_json": "{\"type\":\"userFills\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+                "received_ms": null,
+                "diagnostic": "Request failed before a complete bounded raw body was available"
+              }
+            ]
+          },
+          "native_projection_recovery_required": true
+        }
+      ]
+    },
+    {
+      "test": "execution::io_query_recovery::received_original_body_survives_reader_race_and_later_source_failure::case_4",
+      "messages": [
+        "thread 'execution::io_query_recovery::received_original_body_survives_reader_race_and_later_source_failure::case_4' (53748) panicked at crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs:813:50:"
+      ],
+      "scopes": [
+        {
+          "diagnostic": "io warm RecoveryIncomplete: transport error: HTTP client error: HTTP request timed out: error sending request for url (http://127.0.0.1:5445/info): operation timed out",
+          "recovery_complete": false,
+          "query_in_flight": false,
+          "query_token": null,
+          "query_completed": 1,
+          "last_query_warm": true,
+          "warm_metadata_origin": null,
+          "recovery_source_debt": {
+            "kind": "unknown_sources",
+            "identity": {
+              "query_token": 3,
+              "generation": 1,
+              "epoch": 0,
+              "received_sequence": 4,
+              "account_id": "HYPERLIQUID-ENTROPY",
+              "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+              "policy": {
+                "schema_version": 1,
+                "strategy_id": "ENTROPY-001",
+                "journal_path": "C:\\Users\\myron\\AppData\\Local\\Temp\\.tmpKi01BT\\io-intents.jsonl",
+                "max_order_notional": "100",
+                "max_gross_notional": "200",
+                "max_open_orders": 2,
+                "max_actions": 16,
+                "max_leverage": 1,
+                "margin_buffer": "5",
+                "fee_buffer_bps": "10",
+                "action_timeout_ms": 2000,
+                "recovery_timeout_ms": 3000,
+                "recovery_max_attempts": 2,
+                "recovery_retry_delay_ms": 10,
+                "metadata_max_age_ms": 30000,
+                "symbols": [
+                  {
+                    "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "max_quantity": "1",
+                    "min_price": "95",
+                    "max_price": "105"
+                  }
+                ]
+              }
+            },
+            "original_sources": [
+              {
+                "request_json": "{\"type\":\"frontendOpenOrders\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\"}",
+                "received_ms": 1791527893686,
+                "raw_text": "[]"
+              }
+            ],
+            "unavailable_sources": [
+              {
+                "request_json": "{\"type\":\"userFills\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+                "received_ms": null,
+                "diagnostic": "Request failed before a complete bounded raw body was available"
+              }
+            ]
+          },
+          "native_projection_recovery_required": true
+        }
+      ]
+    },
+    {
+      "test": "execution::io_query_recovery::received_original_body_survives_reader_race_and_later_source_failure::case_5",
+      "messages": [
+        "thread 'execution::io_query_recovery::received_original_body_survives_reader_race_and_later_source_failure::case_5' (7408) panicked at crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs:813:50:"
+      ],
+      "scopes": [
+        {
+          "diagnostic": "io warm RecoveryIncomplete: transport error: HTTP client error: HTTP request timed out: error sending request for url (http://127.0.0.1:5449/info): operation timed out",
+          "recovery_complete": false,
+          "query_in_flight": false,
+          "query_token": null,
+          "query_completed": 1,
+          "last_query_warm": true,
+          "warm_metadata_origin": null,
+          "recovery_source_debt": {
+            "kind": "unknown_sources",
+            "identity": {
+              "query_token": 3,
+              "generation": 1,
+              "epoch": 0,
+              "received_sequence": 4,
+              "account_id": "HYPERLIQUID-ENTROPY",
+              "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+              "policy": {
+                "schema_version": 1,
+                "strategy_id": "ENTROPY-001",
+                "journal_path": "C:\\Users\\myron\\AppData\\Local\\Temp\\.tmpVDXV3G\\io-intents.jsonl",
+                "max_order_notional": "100",
+                "max_gross_notional": "200",
+                "max_open_orders": 2,
+                "max_actions": 16,
+                "max_leverage": 1,
+                "margin_buffer": "5",
+                "fee_buffer_bps": "10",
+                "action_timeout_ms": 2000,
+                "recovery_timeout_ms": 3000,
+                "recovery_max_attempts": 2,
+                "recovery_retry_delay_ms": 10,
+                "metadata_max_age_ms": 30000,
+                "symbols": [
+                  {
+                    "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "max_quantity": "1",
+                    "min_price": "95",
+                    "max_price": "105"
+                  }
+                ]
+              }
+            },
+            "original_sources": [
+              {
+                "request_json": "{\"type\":\"frontendOpenOrders\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\"}",
+                "received_ms": 1791527895905,
+                "raw_text": "[]"
+              }
+            ],
+            "unavailable_sources": [
+              {
+                "request_json": "{\"type\":\"userFills\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+                "received_ms": null,
+                "diagnostic": "Request failed before a complete bounded raw body was available"
+              }
+            ]
+          },
+          "native_projection_recovery_required": true
+        }
+      ]
+    },
+    {
+      "test": "execution::io_query_recovery::received_original_body_survives_reader_race_and_later_source_failure::case_6",
+      "messages": [
+        "thread 'execution::io_query_recovery::received_original_body_survives_reader_race_and_later_source_failure::case_6' (10880) panicked at crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs:813:50:"
+      ],
+      "scopes": [
+        {
+          "diagnostic": "io warm RecoveryIncomplete: transport error: HTTP client error: HTTP request timed out: error sending request for url (http://127.0.0.1:5822/info): operation timed out",
+          "recovery_complete": false,
+          "query_in_flight": false,
+          "query_token": null,
+          "query_completed": 1,
+          "last_query_warm": true,
+          "warm_metadata_origin": null,
+          "recovery_source_debt": {
+            "kind": "unknown_sources",
+            "identity": {
+              "query_token": 3,
+              "generation": 1,
+              "epoch": 0,
+              "received_sequence": 4,
+              "account_id": "HYPERLIQUID-ENTROPY",
+              "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+              "policy": {
+                "schema_version": 1,
+                "strategy_id": "ENTROPY-001",
+                "journal_path": "C:\\Users\\myron\\AppData\\Local\\Temp\\.tmpDTjgoI\\io-intents.jsonl",
+                "max_order_notional": "100",
+                "max_gross_notional": "200",
+                "max_open_orders": 2,
+                "max_actions": 16,
+                "max_leverage": 1,
+                "margin_buffer": "5",
+                "fee_buffer_bps": "10",
+                "action_timeout_ms": 2000,
+                "recovery_timeout_ms": 3000,
+                "recovery_max_attempts": 2,
+                "recovery_retry_delay_ms": 10,
+                "metadata_max_age_ms": 30000,
+                "symbols": [
+                  {
+                    "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+                    "max_quantity": "1",
+                    "min_price": "95",
+                    "max_price": "105"
+                  }
+                ]
+              }
+            },
+            "original_sources": [
+              {
+                "request_json": "{\"type\":\"frontendOpenOrders\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"dex\":\"io\"}",
+                "received_ms": 1791527898119,
+                "raw_text": "[]"
+              }
+            ],
+            "unavailable_sources": [
+              {
+                "request_json": "{\"type\":\"userFills\",\"user\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\"}",
+                "received_ms": null,
+                "diagnostic": "Request failed before a complete bounded raw body was available"
+              }
+            ]
+          },
+          "native_projection_recovery_required": true
+        }
+      ]
+    },
+    {
+      "test": "execution::io_query_recovery::same_reader_identical_private_frame_after_http_stage_rejects_old_owner_commit",
+      "messages": [
+        "thread 'execution::io_query_recovery::same_reader_identical_private_frame_after_http_stage_rejects_old_owner_commit' (53528) panicked at crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs:911:6:"
+      ],
+      "scopes": []
+    },
+    {
+      "test": "execution::io_query_recovery::same_zero_epoch_new_factory_reader_cannot_apply_retired_readers_queued_source",
+      "messages": [
+        "thread 'execution::io_query_recovery::same_zero_epoch_new_factory_reader_cannot_apply_retired_readers_queued_source' (55860) panicked at crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs:911:6:"
+      ],
+      "scopes": []
+    },
+    {
+      "test": "execution::io_query_recovery::successful_warm_query_keeps_prior_finite_economic_coverage_and_immutable_fees",
+      "messages": [
+        "thread 'execution::io_query_recovery::successful_warm_query_keeps_prior_finite_economic_coverage_and_immutable_fees' (46712) panicked at crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs:230:5:",
+        "assertion `left == right` failed: {\"policy\":{\"schema_version\":1,\"strategy_id\":\"ENTROPY-001\",\"journal_path\":\"C:\\\\Users\\\\myron\\\\AppData\\\\Local\\\\Temp\\\\.tmpSE7Vj5\\\\io-intents.jsonl\",\"max_order_notional\":\"100\",\"max_gross_notional\":\"200\",\"max_open_orders\":2,\"max_actions\":16,\"max_leverage\":1,\"margin_buffer\":\"5\",\"fee_buffer_bps\":\"10\",\"action_timeout_ms\":2000,\"recovery_timeout_ms\":3000,\"recovery_max_attempts\":2,\"recovery_retry_delay_ms\":10,\"metadata_max_age_ms\":30000,\"symbols\":[{\"instrument_id\":\"io:SNDK-USD-PERP.HYPERLIQUID\",\"max_quantity\":\"1\",\"min_price\":\"95\",\"max_price\":\"105\"}]},\"account\":{\"dex\":\"io\",\"address\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"account_mode\":\"standard_disabled_inferred\",\"collateral_token_id\":\"0x6d1e7cde53ba9467b783cb7c530ce054\",\"balance\":\"100\",\"equity\":\"100\",\"withdrawa",
+        "  left: Bool(false)",
+        " right: true"
+      ],
+      "scopes": [
+        {
+          "diagnostic": "io verification/recovery failed: io RecoveryIncomplete: io scoped recovery deadline exhausted",
+          "recovery_complete": false,
+          "query_in_flight": false,
+          "query_token": null,
+          "query_completed": 0,
+          "last_query_warm": false,
+          "warm_metadata_origin": null,
+          "recovery_source_debt": null,
+          "native_projection_recovery_required": false
+        }
+      ]
+    },
+    {
+      "test": "execution::io_query_recovery::warm_rest_sources_cannot_adopt_new_or_missing_owned_financial_facts::case_1",
+      "messages": [
+        "thread 'execution::io_query_recovery::warm_rest_sources_cannot_adopt_new_or_missing_owned_financial_facts::case_1' (54144) panicked at crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs:1082:5:",
+        "assertion `left == right` failed",
+        "  left: Bool(false)",
+        " right: true"
+      ],
+      "scopes": [
+        {
+          "diagnostic": "io verification/recovery failed: io RecoveryIncomplete: io scoped recovery deadline exhausted",
+          "recovery_complete": false,
+          "query_in_flight": false,
+          "query_token": null,
+          "query_completed": 0,
+          "last_query_warm": false,
+          "warm_metadata_origin": null,
+          "recovery_source_debt": null,
+          "native_projection_recovery_required": false
+        }
+      ]
+    },
+    {
+      "test": "execution::io_query_recovery::warm_rest_sources_cannot_adopt_new_or_missing_owned_financial_facts::case_2",
+      "messages": [
+        "thread 'execution::io_query_recovery::warm_rest_sources_cannot_adopt_new_or_missing_owned_financial_facts::case_2' (55696) panicked at crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs:1080:5:",
+        "assertion `left == right` failed: missing_owned_fill: {\"policy\":{\"schema_version\":1,\"strategy_id\":\"ENTROPY-001\",\"journal_path\":\"C:\\\\Users\\\\myron\\\\AppData\\\\Local\\\\Temp\\\\.tmpc86mnW\\\\io-intents.jsonl\",\"max_order_notional\":\"100\",\"max_gross_notional\":\"200\",\"max_open_orders\":2,\"max_actions\":16,\"max_leverage\":1,\"margin_buffer\":\"5\",\"fee_buffer_bps\":\"10\",\"action_timeout_ms\":2000,\"recovery_timeout_ms\":3000,\"recovery_max_attempts\":2,\"recovery_retry_delay_ms\":10,\"metadata_max_age_ms\":30000,\"symbols\":[{\"instrument_id\":\"io:SNDK-USD-PERP.HYPERLIQUID\",\"max_quantity\":\"1\",\"min_price\":\"95\",\"max_price\":\"105\"}]},\"account\":{\"dex\":\"io\",\"address\":\"0xc96aaa54e2d44c299564da76e1cd3184a2386b8d\",\"account_mode\":\"standard_disabled_inferred\",\"collateral_token_id\":\"0x6d1e7cde53ba9467b783cb7c530ce054\",\"balance\":\"100\",\"equi",
+        "  left: Bool(true)",
+        " right: false"
+      ],
+      "scopes": []
+    },
+    {
+      "test": "execution::io_query_recovery::warm_rest_sources_cannot_adopt_new_or_missing_owned_financial_facts::case_3",
+      "messages": [
+        "thread 'execution::io_query_recovery::warm_rest_sources_cannot_adopt_new_or_missing_owned_financial_facts::case_3' (55608) panicked at crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs:1082:5:",
+        "assertion `left == right` failed",
+        "  left: Bool(false)",
+        " right: true"
+      ],
+      "scopes": [
+        {
+          "diagnostic": "io verification/recovery failed: io RecoveryIncomplete: Conflicting io venue trade ID ownership/financial payload",
+          "recovery_complete": false,
+          "query_in_flight": false,
+          "query_token": null,
+          "query_completed": 0,
+          "last_query_warm": false,
+          "warm_metadata_origin": null,
+          "recovery_source_debt": null,
+          "native_projection_recovery_required": false
+        }
+      ]
+    },
+    {
+      "test": "execution::io_query_recovery::warm_rest_sources_cannot_adopt_new_or_missing_owned_financial_facts::case_4",
+      "messages": [
+        "thread 'execution::io_query_recovery::warm_rest_sources_cannot_adopt_new_or_missing_owned_financial_facts::case_4' (51668) panicked at crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs:1082:5:",
+        "assertion `left == right` failed",
+        "  left: Bool(false)",
+        " right: true"
+      ],
+      "scopes": [
+        {
+          "diagnostic": "io verification/recovery failed: io RecoveryIncomplete: Conflicting io venue trade ID ownership/financial payload",
+          "recovery_complete": false,
+          "query_in_flight": false,
+          "query_token": null,
+          "query_completed": 0,
+          "last_query_warm": false,
+          "warm_metadata_origin": null,
+          "recovery_source_debt": null,
+          "native_projection_recovery_required": false
+        }
+      ]
+    },
+    {
+      "test": "execution::io_query_recovery::warm_rest_sources_cannot_adopt_new_or_missing_owned_financial_facts::case_5",
+      "messages": [
+        "thread 'execution::io_query_recovery::warm_rest_sources_cannot_adopt_new_or_missing_owned_financial_facts::case_5' (34768) panicked at crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs:1082:5:",
+        "assertion `left == right` failed",
+        "  left: Bool(false)",
+        " right: true"
+      ],
+      "scopes": [
+        {
+          "diagnostic": "io verification/recovery failed: io RecoveryIncomplete: Missing exact io decimal fee",
+          "recovery_complete": false,
+          "query_in_flight": false,
+          "query_token": null,
+          "query_completed": 0,
+          "last_query_warm": false,
+          "warm_metadata_origin": null,
+          "recovery_source_debt": null,
+          "native_projection_recovery_required": false
+        }
+      ]
+    },
+    {
+      "test": "execution::io_query_recovery::warm_rest_sources_cannot_adopt_new_or_missing_owned_financial_facts::case_6",
+      "messages": [
+        "thread 'execution::io_query_recovery::warm_rest_sources_cannot_adopt_new_or_missing_owned_financial_facts::case_6' (4272) panicked at crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs:1082:5:",
+        "assertion `left == right` failed",
+        "  left: Bool(false)",
+        " right: true"
+      ],
+      "scopes": [
+        {
+          "diagnostic": "io RecoveryIncomplete: Retained actual-fill history is truncated; recovery window is unknown",
+          "recovery_complete": false,
+          "query_in_flight": false,
+          "query_token": null,
+          "query_completed": 0,
+          "last_query_warm": false,
+          "warm_metadata_origin": null,
+          "recovery_source_debt": null,
+          "native_projection_recovery_required": false
+        }
+      ]
+    }
+  ]
+}

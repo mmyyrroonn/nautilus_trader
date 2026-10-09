@@ -1,0 +1,19 @@
+{
+  "argv": [
+    "cargo",
+    "+nightly",
+    "fmt",
+    "-p",
+    "nautilus-hyperliquid"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-io-recovery",
+  "started_utc": "2026-10-09T06:55:49.539665+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "uv_project_environment": null,
+  "nautilus_stub_profile": null,
+  "cargo_build_warnings": null,
+  "cargo_net_offline": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T06:55:50.173867+00:00"
+}

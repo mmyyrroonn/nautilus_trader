@@ -1,0 +1,30 @@
+﻿{
+    "utc":  "2026-10-09T07:05:48.4467761Z",
+    "kind":  "prospective v7 conditional design review; supersedes v6 acceptance use",
+    "files":  [
+                  {
+                      "path":  "E:\\persarb\\_tmp\\entropy113-validation\\reviewer-native113-v7-conditional-design.md",
+                      "size":  5600,
+                      "sha256":  "27262acbf5d1d74df73c7d97888f6fa98b4ac157f51f09e7ac97f89646498516"
+                  },
+                  {
+                      "path":  "E:\\persarb\\_tmp\\entropy113-validation\\reviewer-native113-source-v6.md",
+                      "size":  8410,
+                      "sha256":  "aa440ee6607ca22942f4f357997e3336fb5ec606e3c0f60ab46b0cdfd7733ca7"
+                  },
+                  {
+                      "path":  "E:\\persarb\\_tmp\\entropy113-validation\\reviewer-native113-source-v6.json",
+                      "size":  4155,
+                      "sha256":  "e4d31a96fd77c3e05010dcf78bae870c5b96f7491e456d09f60fbbf1d9207934"
+                  },
+                  {
+                      "path":  "E:\\persarb\\_tmp\\entropy113-validation\\native113-hyperliquid-regression-v6.log",
+                      "size":  110210,
+                      "sha256":  "3f07cd87067657f3190bcce54d6f8bcbe6341f38b643d7441607ea960671bf44"
+                  }
+              ],
+    "independent_product_tests":  0,
+    "production_freeze_review":  "pending v7+ final source",
+    "root_regression_status":  "entropy_account v6 200 PASS 4 FAIL; root run, not reviewer",
+    "old_report_preserved":  true
+}

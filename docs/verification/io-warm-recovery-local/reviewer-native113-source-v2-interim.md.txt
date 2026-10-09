@@ -1,0 +1,48 @@
+# #113 frozen source v2 独立审查中间报告
+
+**状态：blocked，不能 source signoff。**原 raw-retention blocker 在当前收紧合同的 v2 源中已闭合；发现普通 Cache terminal-status consumption 证据缺口，主代理已交作者修复。主代理随后报告首轮实际55例30 PASS/25 FAIL，并启动 v4 源/测试修复；这些不是本 reviewer 的执行结果。本报告只记录实际读过的 v1/v2 源，不提前接受未来 v4。
+
+本轮没有 Cargo/Git/GH/build/install、项目 helper、loopback、测试执行或生产修改。独立 tests executed=0。源码基于 `native113-first-compile-source-v1.json`，在 root 修正 v1 strict warnings 后切换 v2：保留 IoWarmFlight 整体 async capture、在 economic gap persistence后 set_succeeded，移除 exhaustive PositionSide unreachable wildcard。root 的修复/失败编译日志不被当作产品通过。
+
+2026-10-09T06:41:23.5089619Z 独立核对 `native113-first-compile-source-v2.json`：四份生产 SHA 与 v2 全匹配；35个源/规则/生成工具/测试/app输入34 match。唯一测试 module 因 root 的机械编译修正已变，不能宣称全输入冻结不变。实际检查记录在 `reviewer-native113-source-v2-identities.json`，manifest SHA `545a23dcd7fe2eaa31fc7f5ec01500eea808acb03eaba77e73138f6536aac261`。
+
+| 四份实际审核生产源 | v2 SHA-256 |
+|---|---|
+| execution_scope.rs | f1ca3091d7d80b1313481bc7bcf7b35822c869cd79c7b075de8c6574ee29536c |
+| execution.rs | f984a652e76f2fc7494143fc8e6d086a56509b0058a27273927766b36466e5e2 |
+| account_scope.rs | 8c5489344a88042bd5aadc7f0ae9d88ebcb09dcf96b381cf9cb8c013cdc0c81f |
+| economics_scope.rs | 2ebdf3756f39ea0cd32cfdc79d84ef7babdcabd6c2d7fea0b0f00d4c151f7f47 |
+
+## 必须修复：现有 terminal status 尚未证明普通 Cache 消费
+
+`warm_native_owned` (`execution_scope.rs:1114–1130`) 检查同账户/strategy/instrument、qty/price/filled_qty/OID，但不检查当前 native status 与 journal phase 对应。其后的 exact OrderFilled events 检查可以证明 fills 已消费，不能证明 cancel/其他 terminal 状态已消费。
+
+正常 WS order status 路径 `observe_order_entry:3334–3344,3381–3386` 先持久化 `TerminalPending`，之后 enqueue OrderStatusReport。若 owner QueryAccount 在普通 execution engine消费该报告前进入，Cache 仍是 Open，其 qty/price/filled_qty/OID 全可匹配。warm 实际 REST canceled/status、flat full account 可通过现有验证并吸收 reservation/Ready；本查询不投影 REST status，因而并没有建立承诺的“已有 status已被普通 Cache 实际消费”。
+
+需要在 warm origin capture/commit 使用当前真实 native Open/terminal status与对应正常事件的正向证据，并与实际已接受 terminal/status事实精确相符。不能统一 `is_closed` 为 FILLED、不能将 status/source 未消费解释为未来一定会到，也不能注入金融事件让 Cache相等。正常 cancel的未消费负例与消费正例应覆盖该路径。主代理已接受并指派作者/root测试修复。
+
+## 已通过源码审查的 raw retention 修复（不是测试 PASS）
+
+- `IoWarmSourcesGuard` 从首个 actual HTTP 请求前建立，整体进入 Observation，仅成功 owner commit 最后 disarm (`execution_scope.rs:461–474,743–809,976`)。worker parse/error/timeout、future-drop、staged discard、owner early-fence Err 都保存原捕获 source；函数参数中的 guard在 commit local proof locks释放后drop，未发现该路径的自锁反向获取。
+- `abandon_warm_sources:709–737` 独立于当前 generation/seq/applied/query_token，不错误归新 reader；资金/新风险只保持 Unknown。原 source保存与 token-bound finish/cleanup 分离。
+- `UnknownSources` 带 captured query token/generation/epoch/receivedseq/account/address/policy，实际每个 request_json/transport received_ms/raw_text，未收到完整 bounded body有真实 unavailable marker。超过有限 group/record bounds明确 RetentionFailed且不声称已保存original。
+- first debt不可覆盖/清除，replay检查 immutable/account/policy并导致cold native projection debt。由于 source debt禁止后继 normalwarm，本合同只承诺first retained debt，不声称可无界留存多个后继金融源。底层durability失败 taint/Unknown；无reserve下降或金融adoption。
+- 没有收到完整body的 quota/transport pending 单独不会伪造金融原文。该判断仅 source保留层，不授予funds Ready或延期TTL。
+
+## 其他范围与源码结果
+
+owner QueryAccount创建 TLS sender/RustLocal message，worker只移交 Send message；normal AsyncRunner dispatch维护owner thread资格。IoWarmFlight的 active短锁、client-onlyWeak token、总deadline与token-boundfinish保护取消/迟到callback；root v2的整体capture修复对这点必要。native core Clone的copied connected bool未当authoritative clientlife。
+
+warm capture/commit锁顺序 active（commit）→ingress→account→execution；HTTP无proof锁跨await。finalcheck包含generation/epoch/receivedseq/applied、exactfunds/revisions/ownedfacts、完整policy/两份nativeinstrument、原始metadataTTL。最终actualrole/两组mode/meta/spot/collateral/io clearinghouse未省略；selected raw metadata行与原witness精确比较，private/fullaccount资金与position精确相符，nativeMoney可roundtrip。terminal absorption在fallible validation之后，persist后再检查deadline/TTL；失败恢复worstreserve、无法durable恢复时保守taint。普通AccountState enqueue不是Portfolio已消费证据。
+
+scope metadata hard revision与funds-only invalidation区分明确；绑定Engine Cache的原witness仅一次，不通过owner Cache更新重新贴新verification/receipt时间。old activeAssetData容量/mark/mode字段仍是原有bounded观察，不被当作new current funds。
+
+economic source分支：真实新 funding/ledger source会hard revoke metadata origin，unknown/unattributed/raw保存失败也关闭；cold/source需求沿用actualhistory读与原失败invalidations。successfulwarm记录pages=0/records=0/complete=false unrequested gap，不修改旧complete窗口、receipt或把end推进为complete。这个gap没有正向金融授权，不能宣称whole-run funding/PnL。此处只验证源码行为，未运行normal economic正负peer。
+
+## 显式继承限制与合同措辞
+
+1. `submit_io_order` (`execution.rs:398–403`) 新增的是 normal owner pre-prepare metadata gate。final Send writer无法直接读取Rc Engine Cache，原admission只有receive-bound metadata/actual ingress/account/state/action/TTL/ownership检查；prepare→sign/quota→write间的任意普通Cache metadata更新没有通用Send-safe mutation fence。父 Agent明确本单不扩common Cache framework；这属于继承限制而非本单warmcommit阻断，文档不能声称覆盖这种任意mutation，也不能拿owner snapshot冒充finalcurrentCache。
+2. `IoFillFacts` 未储存WS/REST origin；`observe_fill` 同时由existing recover_once REST与observe_frame WS调用，普通Cache精确events也不能独自证明只来自WS。合同若称“仅正常WS事实”需正向origin证据；更准确的最窄描述是同client已actualaccepted+普通Cache已完整消费的live native facts，非generic coldrestore。不能以reconciliation bool单独分类真实来源。
+3. genericcold REST预投影事务、durablecache restore/#89、Portfolio权威、wholeaccount/funding/runPnL、kernelisolation仍未由本单证明。默认non-io path未被上述warm分支替代。
+
+后续必须按实际修复冻结源重新身份核对/审查，尤其terminal/status gate、actual完整replytransport、metadata生命周期正负cases；root完成编译与回归后，再交真实stableexes/wheel独立执行。旧失败日志、作者源码测试合同、root实测与reviewer实测分别计数，不累加重叠或未来tests。

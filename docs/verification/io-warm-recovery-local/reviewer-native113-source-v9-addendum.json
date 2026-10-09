@@ -1,0 +1,16 @@
+﻿{
+    "utc":  "2026-10-09T07:41:35.4103179Z",
+    "kind":  "independent v9 source fixture addendum",
+    "report":  "E:/persarb/_tmp/entropy113-validation/reviewer-native113-source-v9-addendum.md",
+    "report_sha256":  "7d91779313b3ec12e9f1d9538a0dca230c4f8745fb6e420bfeae3af18fa080d4",
+    "manifest":  "E:/persarb/_tmp/entropy113-validation/native113-frozen-source-v9.json",
+    "inputs":  36,
+    "pre_match":  true,
+    "post_match":  true,
+    "pre_post_identical":  true,
+    "production_changed":  false,
+    "criterion":  "Accepted justified exact deadline branch plus genuine cold/history metadata reads",
+    "independent_product_tests":  0,
+    "actual_binary_review":  "Starting separately after root grant",
+    "prior_reports_preserved":  true
+}

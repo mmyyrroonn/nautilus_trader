@@ -1,0 +1,38 @@
+# 原生 113 v7 条件来源补丁设计复核
+
+这是 v7 尚未冻结时的设计复核，不是最终源码或测试验收。v6 的旧独立报告保持原字节；其“无新增源码 blocker”结论不能作为后续验收结论。
+
+## 已证实的 v6 回归与审查纠正
+
+父 Agent 实际运行的 `native113-hyperliquid-regression-v6.log` 显示 entropy_account 200 PASS / 4 FAIL，新 57 项 warm tests 在其中通过。四项既有失败是：durable actual fill restart、missing ack / unknown OID restart、actual user leverage change、persisted funding recovery 后新风险提交。此为父 Agent 的产品测试，不是本 reviewer 的独立执行。
+
+前两项实际报 Missing warm Engine Cache instrument；funding 后报 new risk cannot borrow changed native metadata or reader identity；leverage change 旧负面测试超时。v6 的 `execution_scope.rs:911–935` 仅遍历实际 clearinghouse assetPositions，flat 响应没有 selected row 时不会检查当前 user leverage。v6 源码 review 漏了这个空循环来源缺口，是父 Agent 的既有回归捕获；不将其记为 reviewer 原先已发现的问题。新 activeAssetData counterproof 是所需生产修复，而不是放宽旧测试。
+
+## 条件 current leverage 证明
+
+认可最小修复方向，正式冻结源码仍须逐项复核：
+
+- 必须先有真实、显式完整的 io clearinghouse assetPositions 数组。selected coin 的 row 存在时，继续验证该 row 的 actual isolated leverage；malformed/missing leverage 不得当作“absent”转去读取替代来源。
+- 对确实没有 row 的每个 selected coin，两次普通 InfoRequest::active_asset_data 必须各自具 exact account user / coin、isolated type、positive leverage <= policy，并等于 metadata 原 actual_leverage。两次彼此相等但已改变，不能保留资格。
+- 两次 body 属于同一 warm group 的原文 RAII、captured identity 和原 recovery deadline。parse/quota/timeout/取消/old owner 等退出仍独立保存 captured Unknown/debt。最终 owner 的 ingress sequence/applied/epoch/generation、exact metadata/native Cache/account/funds fences 保留。
+- worker 在 queue owner completion 之前验证实际 negative source；既有 leverage-change 测试即使没有 TimeEvent pump，也应观察真实拒绝诊断、非 Ready 和零新执行，而不是依赖一个永不消费的 owner callback 才失效。
+- 新读取只补当前 leverage counterproof，不更新原 metadata received/verification timestamps、mark、capacity、original leverage 验证 origin 或 Engine instruments，不将这些旧字段宣称为刚读取的当前值。原 metadata 30s TTL、cash 2s TTL、recovery 3s、quota 1200/min / refill20/s 不变。
+- 不宣称 HTTP role/mode/account/leverage group 是原子远端快照。两次值验证和本地 reader fence只能拒绝实际观察到的冲突；无 venue transaction/version source 的未观察变化仍不认证。
+
+flat 来源成本改变，应在文档和 peer assertions 真实反映 `222 + 40 * absent_selected_count + 2 * active_owned_CLOID_count` 的 source-derived minimum；item/retry/other reads 和 quota wait 仍另计。不能用新的成本下限推导 paired 成功或无限持续查询。完整会计/历史证明仍 Unknown。
+
+## Optional read-only native Cache binding
+
+connect 对没有普通 Engine Cache instrument 的只读 fresh/restart 可以保留连接；这样避免把“无法授权交易”误变成“诊断读连接不能建立”。约束是：
+
+- binding 失败仅保留 origin.native_instruments=None，不生成假的对象，不清除 journal/projection debt，不恢复 new-risk authority。已有 binding mismatch 不得被 replacement binding 静默修复；origin/metadata 时间不刷新。
+- 原始 refresh_metadata、recovery 的账户/reader/hard源验证必须仍真正执行；不得以 optional binding 吞掉别的源错误或跳过恢复。
+- 之后在 normal owner new-risk pre-prepare 路径，可对原本 None 的 binding 一次性绑定。当时必须核对 current generation/epoch/applied/active/hard revision、尚未过期的完整 origin，以及 actual HTTP instruments == original verified native HTTP；再做 Engine Cache exact metadata 检查和正常 prepare financial/ownership/budget gate。binding 不自行授予 Ready。
+- 已有 binding 恒等性保留。current warm Query 若 Engine Cache 缺失或不符，不能假 warm成功；只读 connect 与 new-risk/Query资格分开。
+- owned reduce-only close 保留原 native owned ledger、实际 position、cash/metadata/TTL、writer action/ingress admission；不能把 optional read-only binding解释为关闭所有 write资格检查。通用 prepare→writer Engine Cache revision 窗口仍属于先前明确的框架限制。
+
+## 后续验收
+
+旧四项测试要保持业务断言不变并实际通过；新增 flat absent current source 的 positive、wrong identity、missing shape、different/unsupported leverage、second-read transition、deadline、raw debt、mixed selected absent/present 条件 peer cases。必须证明 present leverage 冲突不能走替代成功路径、来源不改变旧 timestamps/capacity/mark、无 Engine Cache restart 可读但不得新风险、实际 cold funding 后 normal owner 能一次性完成 eligible绑定。随后全量回归、新冻结 hash review、稳定原生二进制和 installed wheel / normal paired 验收分别记录。
+
+本 reviewer 本轮仅只读 source/log/design；没有 Cargo/Git/GH/build/install/网络或产品测试，也没有修改生产和 tests。

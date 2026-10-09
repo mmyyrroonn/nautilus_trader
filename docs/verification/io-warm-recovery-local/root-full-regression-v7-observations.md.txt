@@ -1,0 +1,46 @@
+# Root observations of formatted production v7 and test v5
+
+The four existing regression failures from v6 each passed under the unchanged
+business assertions in separate exact Cargo runs on 2026-10-09 at
+07:14:02–07:14:53 UTC. Their command records and raw outputs are retained as
+`native113-old-*-v7.json` and `.log`. These overlapping runs are not additional
+distinct test cases.
+
+The first full Hyperliquid v7 command ran from 07:15:02 to 07:16:03 UTC and
+failed with exit code 101. Before failure, the actual library, data-client and
+dispatch targets reported 867, 46 and 40 passes. The entropy account target
+reported 210 passes and one failure in
+`genuine_hard_financial_demand_and_history_timeout_remain_unknown_and_fail_closed`.
+Cargo stopped there; later execution, HTTP and WS targets were not run by that
+command. This is not a complete passing regression result.
+
+The failing assertion required at least one economic-history HTTP request after
+the test's query. Its earlier bounded Unknown coverage check had completed. The
+original failure output does not contain that query's request sequence or full
+coverage/source timing, so the reason for zero history requests is unproven.
+The unchanged isolated test passed at 07:16:34–07:16:38 UTC. This does not erase
+the full-run failure or establish the cause.
+
+Source inspection independently confirms that normal connect awaits economic
+history recovery and that the fixture awaits the entire connect future. A
+suggestion that startup history remained in the background was therefore
+rejected. Actual quota waiting can legitimately exhaust a finite history
+deadline before a history request is sent. Source-derived minimum weights are
+not an observation of the limiter's actual balance. The original fixed 30ms
+sleep after the synthetic WS financial source is also insufficient by itself
+to prove native consumption. Both remain diagnostic questions.
+
+The first strict production Clippy invocation omitted the existing Windows
+Cargo warning-mode override and failed before the target on the MSVC
+`linker_messages` import-library notice. The separate invocation preserving
+`-D warnings` and using `build.warnings='warn'` passed at 07:17:34–07:17:39 UTC.
+No production lint allowance or source suppression was added.
+
+The entropy integration-test Clippy command reported ten errors. Six occur in
+the unchanged integration-test baseline; four were introduced by the new peer
+recording and warm tests. The test author fixed only those four new style
+issues and added actual request/response and scope/coverage failure diagnostics.
+The old business assertions, original fixed sleep and product bounds remain
+unchanged in test revision v6. Formatted capture v8 preserves all 35 explicit
+inputs and their byte snapshots. Its full diagnostic regression result must be
+recorded separately; no acceptance is granted by this note.

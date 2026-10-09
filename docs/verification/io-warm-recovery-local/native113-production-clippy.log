@@ -1,0 +1,82 @@
+   Compiling nautilus-core v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\core)
+   Compiling nautilus-common v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\common)
+   Compiling nautilus-persistence-macros v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\persistence\macros)
+    Checking nautilus-model v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\model)
+    Checking nautilus-cryptography v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\cryptography)
+warning: linker stdout: 正在创建库 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-e8531d52ba21303c.dll.lib 和对象 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-e8531d52ba21303c.dll.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-persistence-macros` (lib) generated 1 warning
+    Checking nautilus-network v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\network)
+    Checking nautilus-execution v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\execution)
+    Checking nautilus-live v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\live)
+    Checking nautilus-hyperliquid v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\hyperliquid)
+error: this `if` statement can be collapsed
+    --> crates\adapters\hyperliquid\src\execution.rs:2122:17
+     |
+2122 | /                 if current_warm_metadata && runtime.metadata_needs_native_cache() {
+2123 | |                     if let Err(e) =
+2124 | |                         runtime.bind_metadata_native_cache(&self.http_client, &self.core)
+...    |
+2134 | |                 }
+     | |_________________^
+     |
+     = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#collapsible_if
+     = note: `-D clippy::collapsible-if` implied by `-D warnings`
+     = help: to override `-D warnings` add `#[allow(clippy::collapsible_if)]`
+help: collapse nested if block
+     |
+2122 ~                 if current_warm_metadata && runtime.metadata_needs_native_cache()
+2123 ~                     && let Err(e) =
+2124 |                         runtime.bind_metadata_native_cache(&self.http_client, &self.core)
+ ...
+2132 |                         return Err(e);
+2133 ~                     }
+     |
+
+error: this `if` statement can be collapsed
+   --> crates\adapters\hyperliquid\src\execution_scope.rs:763:9
+    |
+763 | /         if state.facts.recovery_source_debt.is_none() {
+764 | |             if let Err(e) = retain_warm_source_debt(&mut state, identity, sources) {
+765 | |                 state.journal_tainted = true;
+766 | |                 state.diagnostic =
+...   |
+769 | |         }
+    | |_________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#collapsible_if
+help: collapse nested if block
+    |
+763 ~         if state.facts.recovery_source_debt.is_none()
+764 ~             && let Err(e) = retain_warm_source_debt(&mut state, identity, sources) {
+765 |                 state.journal_tainted = true;
+766 |                 state.diagnostic =
+767 |                     format!("io warm abandoned original source retention failed: {e}");
+768 ~             }
+    |
+
+error: returning the result of a `let` binding from a block
+   --> crates\adapters\hyperliquid\src\execution_scope.rs:842:9
+    |
+839 | /         let result = timed_result
+840 | |             .map_err(|_| anyhow::anyhow!("io warm recovery total deadline exhausted"))
+841 | |             .and_then(|result| result);
+    | |_______________________________________- unnecessary `let` binding
+842 |           result
+    |           ^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#let_and_return
+    = note: `-D clippy::let-and-return` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::let_and_return)]`
+help: return the expression directly
+    |
+839 ~         
+840 ~         timed_result
+841 +             .map_err(|_| anyhow::anyhow!("io warm recovery total deadline exhausted"))
+842 +             .and_then(|result| result)
+    |
+
+error: could not compile `nautilus-hyperliquid` (lib) due to 3 previous errors

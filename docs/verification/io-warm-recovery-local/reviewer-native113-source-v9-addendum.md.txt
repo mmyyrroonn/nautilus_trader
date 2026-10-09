@@ -1,0 +1,25 @@
+# 原生 113 v9 最终 fixture / archive 差异独立复核
+
+结论：v9 的源码差异符合已独立验证和父 Agent 授权的判据修正，没有扩大产品资格或预算。五份生产源码完全等同独立review v7；正式产品验收仍待实际稳定二进制/最终wheel证据。本轮独立产品测试执行数0，不把root serial fullHL结果记为reviewer执行。
+
+07:38:35.765135 UTC pre-capture实际读取 `native113-frozen-source-v9.json` 的36inputs，全部匹配。后置capture另保存UTC/argv/解释器/脚本及manifest/file SHA；临时脚本仅只读原文件/snapshots/hash/diff并写report，没有native imports/Git helper/Cargo/network。v8→v9实际差异只为 io_query_recovery.rs 和新纳入身份的 .gitattributes；其他35inputs中五prod、peerparent/helpers及全部应用冻结输入不变。
+
+## Hard-history 判据
+
+`io_query_recovery.rs:1837–1866` 捕获此次完整actual WS raw_text，等待native经济snapshot raw_envelopes精确保留该文本，同时 execution recovery_complete=false、warm_metadata_origin=null、确切hard funding/ledger recovery诊断。等待仅2s harness bound及5ms poll，不再用固定sleep30ms冒充native消费；actual history_timeout_ms=3000及所有产品TTL/deadline/quota不变。此仅证明当前runtime实际正常E5消费，未扩写为generic cold durable restore。
+
+`1871–1914` 等待两个新coverage共同落地，end必须大于旧coverage最大end；两个endpoint各一个、同generation/epoch/newend、complete=false且有失败诊断。源history recovery正常依次record两个outcomes，原先仅看到第一条就返回存在观测race；现在不把还未保存的第二条当作已完成。
+
+`1957–2020` 最终严格分支：若实际 history request >0，诊断必须是bounded deadline或明确timeout/timed out的incomplete；若实际request为0，两个coverage都必须exact `Economic history total deadline exhausted (quota/retries/metadata included)`，pages0/records0/completefalse。后一分支另外要求真实cold路径role/clearinghouse各至少2、open/fills各1、perpDexs1、activeAssetData2、meta/spot各4；两份实际HTTP200 meta/spot receipt要在新history demand end之后开始。不能以无请求、旧Unknown、warm not-requested interval或本地replay满足。
+
+这一判据修正的理由由未通过的真实v8原文和normal production caller已验证，详见 `reviewer-native113-history-criterion-review.md/.json`，不是对任意失败放行。before两个old complete windows必须原样仍在after coverage；old raw_envelopes逐项相等，receipts整体相等，native fill_events=0、signed writes=0、actions=0保留/加强；最终execution recovery_complete=false和account.trusted=false明确关闭。不能由本test宣称全异步流程每个瞬间都未有任何中间source资格；case没有strategy提交，断言验证最终closed及真实零动作。
+
+## 属性规则身份
+
+v8 manifest及snapshot没有绑定 .gitattributes，因此机械manifestdiff显示整个文件为新增输入，不能把它当作仓库新增文件的证据。独立只读参考之前已验收的 `E:/persarb/worktrees/entropy-io-startup/.gitattributes`：SHA `17a674e0ffea73458009ca1168d306f3d12f9ee751efdca7b5e0a80a95f747ad`。当前SHA `7b3788d537d7f27cc6bb86436c4c15f9ab32febd126467530ab69b1920856ce2`，实际字节精确等于该参考 + 单行 `docs/verification/io-warm-recovery-local/** -text -whitespace` 和LF。
+
+该行限定本次local evidence archive，保持captured bytes通过checkout不被text/line-ending或whitespace规则重写；未触及Rust/Python生产文件、全局标准text规则或CI workflows。参考比对身份/结果保存 `reviewer-native113-v9-attributes-reference.json`，reviewer没有调用Git也不以此宣称root Git status。
+
+## 验收边界
+
+新fixture官方格式化SHA `2fca06baee1dc91a94ac1956db71c555db980c3566fd25c453ad7b99bfc4f58b`，parent5976b5.../executionc7765...保持v8。先前v7/v8 hard-history FAIL、v6 four-old FAIL、旧review和30ms表述纠正记录保留原bytes。本文仅源码addendum；旧source limits（WS marker-before-fill cold/Unknown、旧fill ingestion provenance unknown、无通用prepare→writer Engine Cache revision fence、genericcold/Portfolio/wholeaccount/history/funding/runPnL/kernel isolation未知）不变。新source-bound actual测试及normal wheel/paired验收未执行，不能预填成功。

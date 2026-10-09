@@ -1,0 +1,26 @@
+{
+  "argv": [
+    "cargo",
+    "test",
+    "-p",
+    "nautilus-hyperliquid",
+    "--lib",
+    "--tests",
+    "--profile",
+    "nextest",
+    "--locked",
+    "--offline",
+    "--config",
+    "build.warnings='warn'"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-io-recovery",
+  "started_utc": "2026-10-09T06:55:51.201274+00:00",
+  "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+  "pyo3_python": "E:/persarb/worktrees/entropy-io-recovery/.venv/Scripts/python.exe",
+  "uv_project_environment": null,
+  "nautilus_stub_profile": null,
+  "cargo_build_warnings": null,
+  "cargo_net_offline": null,
+  "exit_code": 101,
+  "finished_utc": "2026-10-09T06:57:00.738186+00:00"
+}

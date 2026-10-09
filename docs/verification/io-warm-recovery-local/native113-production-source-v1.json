@@ -1,0 +1,29 @@
+{
+    "utc":  "2026-10-09T06:29:24.1863729Z",
+    "issue":  113,
+    "main":  "667f424e123e177a87c257cdc7f6b4e2e776d138",
+    "branch":  "feature/entropy-io-recovery",
+    "author_checks":  "Read-only source inspection only. Cargo, formatting, build, stubs, install, Git and GH not run by this agent.",
+    "files":  [
+                  {
+                      "path":  "crates/adapters/hyperliquid/src/account_scope.rs",
+                      "sha256":  "cf90cc4e8494a06fb1db538139c9dce023ec6ac652b6bad68ceb809e46783e03",
+                      "bytes":  58171
+                  },
+                  {
+                      "path":  "crates/adapters/hyperliquid/src/execution_scope.rs",
+                      "sha256":  "4e9ee5c3a4f2da4ae99e7400201e5f42e0a43347a5adc2d50e5a51c2572a9b9f",
+                      "bytes":  170718
+                  },
+                  {
+                      "path":  "crates/adapters/hyperliquid/src/execution.rs",
+                      "sha256":  "f17d8d7720101989ef70ad15631852960b9818fe4f28a03154774de1fcb76d8d",
+                      "bytes":  254008
+                  },
+                  {
+                      "path":  "crates/adapters/hyperliquid/src/economics_scope.rs",
+                      "sha256":  "b49a9939f868d5f9816330532a22bc61b86f118cef5f2b71099ba71a171a3568",
+                      "bytes":  34362
+                  }
+              ]
+}

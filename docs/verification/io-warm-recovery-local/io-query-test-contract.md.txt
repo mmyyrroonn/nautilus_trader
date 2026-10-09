@@ -1,0 +1,58 @@
+# Native issue #113 integration test contract
+
+Frozen source record clock reading: 2026-10-09 06:11:50 UTC, before root formatting/compilation. This is a source contract, not an execution result. No Cargo, formatting, build, wheel installation, Git/GH, venue network, or actual app run was performed by this test author. Root owns compilation and actual executable validation.
+
+Worktree: `E:/persarb/worktrees/entropy-io-recovery`, authorized base main `667f424e123e177a87c257cdc7f6b4e2e776d138`. Application sources remain frozen.
+
+## Files and source identity
+
+| Test file | SHA256 before official formatting |
+| --- | --- |
+| `crates/adapters/hyperliquid/tests/entropy_account.rs` | `943245715213f3e599c02ca35efd7777683bf56051df84f83a589393e9637798` |
+| `crates/adapters/hyperliquid/tests/entropy_account/execution.rs` | `2f01e14cd9b75cc3e6ceb26b7e4984a1984836c6e4aa128bc0eafce4db2ff30e` |
+| `crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs` | `7008abb59b04f24ca07e0c562994f242465fd4a808dcf66f7f6562069077255e` |
+
+The new module contains 49 expanded test cases. The only shared Harness changes install and drain the normal owner time-event channel through `AsyncRunner::handle_time_event`; existing execution event processing remains intact. A child module declaration connects the new tests. Existing cold actual-fill recovery test bodies and their refusal assertions were not changed.
+
+The shared peer can opt into actual HTTP request/body/status/start/end UTC milliseconds and actual outbound WS bytes/send result recording. The option defaults to false. Existing response fixtures, subscriptions, heartbeat, signed action handling, and native configuration are preserved. New tests print actual source evidence for Unknown outcomes and the positive post-fill transaction. Oversized and saturated responses intentionally retain their actual raw body in the captured test output.
+
+## Normal execution contract
+
+All factory/configuration/HTTP/WS/QueryAccount/order/cancel operations use ordinary public native paths and hard numeric loopback peers. No private completion API or production test hook is used. Native financial events reach the normal ExecutionEngine and Portfolio; no synthetic financial cache event is inserted.
+
+The application-equivalent positive policy retains account freshness 2,000 ms, metadata freshness 30,000 ms and total query deadline 3,000 ms. Existing native weighted quota is unchanged. Exact duplicate normal queries coalesce; no second task can borrow the first task's old proof. Prior Ready is invalid during the read group. Final authority must include actual account/private/current reader fences and the normal owner Cache.
+
+The post-fill positive sends a normal IOC, waits for the actual aggregate-ACK recovery refusal, then sends one normal native WS fill and its current scoped position snapshot. The real Engine Cache and Portfolio must contain quantity 0.12 and commission USDC 0.001 before warm admission. The normal complete read group absorbs its retained reservation once; fill events, trade IDs and commission must not duplicate.
+
+For one selected instrument the warm flat group requires actual frontendOpenOrders and userFills plus one full final account group: userRole once, both mode endpoints twice each, meta once, spotMeta once, clearinghouseState once. No perpDexs or activeAssetData refresh is allowed in a valid warm group. Source-derived minimum weight is 222 for zero owned intents and 224 when one exact CLOID orderStatus is required. These are request-weight lower bounds from source, not measured token balances.
+
+## Test coverage
+
+- Actual owned post-fill/Cache/Portfolio/fee positive and singleflight flat positive.
+- Metadata expiry uses normal full fallback; stale source timestamps are not relabeled as fresh.
+- Pending query blocks ordinary new risk before any signed wire action.
+- Actual WS fill journal facts without ordinary Engine application cannot become a warm Cache witness. Subsequent Engine application uses the actual queued events.
+- Missing/null/malformed full order/fill/status sources; unknown order status; missing owned fills; new/unbound fills; conflicting fee; missing fee; saturated fills; duplicate and saturated actual owned open rows.
+- Actual HTTP body beyond the existing 1 MiB byte cap remains Unknown with zero financial projection.
+- Real private same-funds frame, changed funds, unknown financial raw frame, reader close, leverage change and HTTP/native Engine metadata changes across delayed reads reject the old source group.
+- Final role/mode/collateral/metadata/position/time sources cannot be substituted by an old metadata witness.
+- Existing quota waits remain inside the original total deadline; two completed warm reads consume actual requests before the next bounded refusal.
+- Ordinary owner-channel dispatch delay expires account evidence; identical actual private ingress after HTTP staging revokes the queued completion.
+- Cold empty-record origin cannot become fresh; tainted/truncated journals remain refused; Windows file locks are released through normal stop/drop before original-prefix reads.
+- Source debt preserves actual rejected raw facts and refuses repeated QueryAccount fallback without additional HTTP or actions.
+- Normal disconnect cancels queued commit; closed runner channel fails finitely; old epoch-zero factory completion cannot emit into a replacement normal epoch-zero factory.
+- Actual unknown owned submission retains its reservation and is not retried by account reads; ordinary owned cancel supersedes a delayed read.
+- Genuine actual-fill cold restart retains native Cache debt and never reapplies financial fills into the new empty Cache/Portfolio.
+- Successful warm recovery preserves exact prior finite economic coverage, raw envelopes, receipts and immutable fees. Newly demanded intervals may only be appended as unrequested/pages-zero/incomplete coverage. Actual hard financial demand still makes real bounded history requests; timeout/conflict remains Unknown and cannot reapply fees.
+
+## Deliberate limitations
+
+These integration cases do not claim exact externally-controlled actor-unapplied-only ingress or final native mutex lock-wait boundaries. The real applied/received WS races and real owner queue delay are different boundaries. Existing production unit mechanisms are separately located in `src/websocket/client.rs`: `prepared_private_ingress_requires_contiguous_actor_application`, `prepared_private_ingress_rejects_old_epoch_and_fresh_connection_markers`, and `prepared_private_ingress_lock_serializes_receipt_and_write_boundary`. They were inspected, not run by this author.
+
+The same epoch-zero replacement case creates a new normal factory and reader, then dispatches the retired reader's actual queued callback. It does not claim to force an in-place private reader replacement while holding the exact numeric epoch. Immutable policy identity and precise native final lock timing also require source review or separately authorized production-unit validation; no test hook was added.
+
+The single normal cancel race asserts the original read cannot regain Ready from its superseded group. Root must inspect any actual failure to distinguish a new independently verified current recovery from an old response; no retries or fixture weakening are authorized to force this assertion.
+
+## Status
+
+**Not compiled. Not run. Zero PASS claims.** Root may now perform official formatting, compile the new module, preserve actual first-attempt failures and review any compiler or protocol diagnosis before executable validation.

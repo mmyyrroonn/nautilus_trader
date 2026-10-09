@@ -1,0 +1,8 @@
+﻿{
+    "reference":  "E:/persarb/worktrees/entropy-io-startup/.gitattributes",
+    "reference_sha256":  "17a674e0ffea73458009ca1168d306f3d12f9ee751efdca7b5e0a80a95f747ad",
+    "current_sha256":  "7b3788d537d7f27cc6bb86436c4c15f9ab32febd126467530ab69b1920856ce2",
+    "single_appended_line_match":  true,
+    "new_line":  "docs/verification/io-warm-recovery-local/** -text -whitespace",
+    "source_type":  "Readonly previous accepted startup worktree reference; no Git command"
+}

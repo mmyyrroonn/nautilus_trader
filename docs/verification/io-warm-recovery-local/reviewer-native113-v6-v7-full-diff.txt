@@ -1,0 +1,396 @@
+--- E:\persarb\_tmp\entropy113-validation\snapshots\native113-frozen-source-v6\native\crates\adapters\hyperliquid\src\execution_scope.rs
++++ E:\persarb\_tmp\entropy113-validation\snapshots\native113-frozen-source-v7\native\crates\adapters\hyperliquid\src\execution_scope.rs
+@@ -488,6 +488,7 @@
+     fills: Value,
+     statuses: Vec<(String, Value)>,
+     account: crate::account_scope::AccountScopeObservation,
++    absent_position_leverage: BTreeMap<String, (Value, Value)>,
+     source_guard: IoWarmSourcesGuard,
+ }
+ 
+@@ -825,12 +826,35 @@
+                 &raw_sources,
+             )
+             .await?;
++            let present = warm_current_position_leverage(
++                &query.metadata,
++                &account.clearinghouse,
++                self.policy.max_leverage,
++            ).context("io metadata verification failed")?;
++            let mut absent_position_leverage = BTreeMap::new();
++            for meta in query.metadata.values().filter(|meta| !present.contains(&meta.coin)) {
++                let request = InfoRequest::active_asset_data(address, &meta.coin);
++                let first = crate::account_scope::bounded_scope_observation(http, &request, &raw_sources)
++                    .await.context("io metadata verification failed")?;
++                let actual = validate_user_asset(&first, address, &meta.coin, self.policy.max_leverage)
++                    .context("io metadata verification failed")?;
++                let second = crate::account_scope::bounded_scope_observation(http, &request, &raw_sources)
++                    .await.context("io metadata verification failed")?;
++                let repeated = validate_user_asset(&second, address, &meta.coin, self.policy.max_leverage)
++                    .context("io metadata verification failed")?;
++                anyhow::ensure!(actual == repeated && actual == meta.actual_leverage,
++                    "io metadata verification failed: current actual leverage changed from original metadata");
++                // These are counterproofs only. Original metadata times, mark,
++                // capacity, and availability remain unchanged and receive-bounded.
++                absent_position_leverage.insert(meta.instrument_id.clone(), (first, second));
++            }
+             Ok(IoWarmObservation {
+                 query,
+                 open,
+                 fills,
+                 statuses,
+                 account,
++                absent_position_leverage,
+                 source_guard,
+             })
+         })
+@@ -908,32 +932,43 @@
+                     "Final HTTP io selected metadata differs from the verified warm origin"
+                 );
+             }
+-            for row in observation
+-                .account
+-                .clearinghouse
+-                .get("assetPositions")
+-                .and_then(Value::as_array)
+-                .context("Missing complete final io leverage positions")?
++            let present = warm_current_position_leverage(
++                &state.metadata,
++                &observation.account.clearinghouse,
++                self.policy.max_leverage,
++            )?;
++            let mut missing = 0;
++            for meta in state
++                .metadata
++                .values()
++                .filter(|meta| !present.contains(&meta.coin))
+             {
+-                let position = row
+-                    .get("position")
+-                    .context("Missing final io position identity")?;
+-                let coin = position
+-                    .get("coin")
+-                    .and_then(Value::as_str)
+-                    .context("Missing final io position coin")?;
+-                if let Some(meta) = state.metadata.values().find(|meta| meta.coin == coin) {
+-                    let leverage = position
+-                        .get("leverage")
+-                        .context("Missing final io actual leverage")?;
+-                    anyhow::ensure!(
+-                        leverage.get("type").and_then(Value::as_str) == Some("isolated")
+-                            && leverage.get("value").and_then(Value::as_u64)
+-                                == Some(meta.actual_leverage),
+-                        "Final HTTP io leverage differs from the warm verification"
+-                    );
+-                }
++                missing += 1;
++                let (first, second) = observation
++                    .absent_position_leverage
++                    .get(&meta.instrument_id)
++                    .context("Missing current actual leverage counterproof for flat io symbol")?;
++                let actual = validate_user_asset(
++                    first,
++                    &state.facts.address,
++                    &meta.coin,
++                    self.policy.max_leverage,
++                )?;
++                let repeated = validate_user_asset(
++                    second,
++                    &state.facts.address,
++                    &meta.coin,
++                    self.policy.max_leverage,
++                )?;
++                anyhow::ensure!(
++                    actual == repeated && actual == meta.actual_leverage,
++                    "Final actual io leverage differs from original metadata"
++                );
+             }
++            anyhow::ensure!(
++                missing == observation.absent_position_leverage.len(),
++                "Unexpected io leverage counterproof identities"
++            );
+             account.validate_observation(&observation.account, query.epoch)?;
+             validate_warm_recovery(&state, &observation)
+         })();
+@@ -2760,6 +2795,49 @@
+         state.persist()?;
+         outcome
+     }
++}
++
++/// Returns only selected coins whose actual complete position row counterverifies leverage.
++/// A present malformed row is a failure, never an absent-position shortcut.
++fn warm_current_position_leverage(
++    metadata: &BTreeMap<String, IoInstrumentProof>,
++    clearinghouse: &Value,
++    max_leverage: u64,
++) -> anyhow::Result<std::collections::BTreeSet<String>> {
++    let rows = clearinghouse
++        .get("assetPositions")
++        .and_then(Value::as_array)
++        .context("Missing complete final io leverage positions")?;
++    let mut present = std::collections::BTreeSet::new();
++    for row in rows {
++        let position = row
++            .get("position")
++            .context("Missing final io position identity")?;
++        let coin = position
++            .get("coin")
++            .and_then(Value::as_str)
++            .context("Missing final io position coin")?;
++        if let Some(meta) = metadata.values().find(|meta| meta.coin == coin) {
++            anyhow::ensure!(
++                present.insert(coin.to_string()),
++                "Duplicate final selected io leverage position"
++            );
++            let leverage = position
++                .get("leverage")
++                .context("Missing final io actual leverage")?;
++            anyhow::ensure!(
++                leverage.get("type").and_then(Value::as_str) == Some("isolated")
++                    && leverage
++                        .get("value")
++                        .and_then(Value::as_u64)
++                        .is_some_and(|value| value > 0
++                            && value <= max_leverage
++                            && value == meta.actual_leverage),
++                "Final HTTP io leverage differs from original verified metadata"
++            );
++        }
++    }
++    Ok(present)
+ }
+ 
+ fn validate_user_asset(
+--- E:\persarb\_tmp\entropy113-validation\snapshots\native113-frozen-source-v6\native\crates\adapters\hyperliquid\src\execution.rs
++++ E:\persarb\_tmp\entropy113-validation\snapshots\native113-frozen-source-v7\native\crates\adapters\hyperliquid\src\execution.rs
+@@ -398,7 +398,12 @@
+         let admission = if order.is_reduce_only() {
+             Ok(())
+         } else {
+-            runtime.validate_current_native_metadata(&self.http_client, &self.core)
++            (|| {
++                if runtime.current_warm_metadata() && runtime.metadata_needs_native_cache() {
++                    runtime.bind_metadata_native_cache(&self.http_client, &self.core)?;
++                }
++                runtime.validate_current_native_metadata(&self.http_client, &self.core)
++            })()
+         };
+         let prepared = match admission.and_then(|()| runtime.prepare_order(&order)) {
+             Ok(prepared) => prepared,
+@@ -2491,7 +2496,14 @@
+                     Duration::from_millis(runtime.policy.recovery_timeout_ms),
+                     async {
+                         runtime.refresh_metadata(&self.http_client).await?;
+-                        runtime.bind_metadata_native_cache(&self.http_client, &self.core)?;
++                        if let Err(error) =
++                            runtime.bind_metadata_native_cache(&self.http_client, &self.core)
++                        {
++                            // A restart can connect read-only with durable projection debt
++                            // and an intentionally empty Engine Cache. Missing binding
++                            // remains ineligible for new risk; it is never manufactured.
++                            log::warn!("io metadata Cache binding remains read-only: {error:#}");
++                        }
+                         if let Err(error) = runtime.recover(&self.http_client, &self.emitter).await
+                         {
+                             if let Some(scope) = &self.account_scope {
+--- E:\persarb\_tmp\entropy113-validation\snapshots\native113-frozen-source-v6\native\crates\adapters\hyperliquid\tests\entropy_account\execution.rs
++++ E:\persarb\_tmp\entropy113-validation\snapshots\native113-frozen-source-v7\native\crates\adapters\hyperliquid\tests\entropy_account\execution.rs
+@@ -59,6 +59,7 @@
+     pub acknowledge_posts: bool,
+     pub observable_orders: bool,
+     pub asset_data: Value,
++    pub warm_asset_data_pages: VecDeque<String>,
+     pub funding_pages: VecDeque<String>,
+     pub ledger_pages: VecDeque<String>,
+     pub history_delay_ms: u64,
+@@ -77,6 +78,7 @@
+             observable_orders: true,
+             asset_data: json!({"user":USER,"coin":"io:SNDK","leverage":{"type":"isolated","value":1},
+                 "maxTradeSzs":["1","1"],"availableToTrade":["100","100"],"markPx":"100"}),
++            warm_asset_data_pages: VecDeque::new(),
+             funding_pages: VecDeque::from(["[]".to_string()]),
+             ledger_pages: VecDeque::from(["[]".to_string()]),
+             history_delay_ms: 0,
+@@ -87,9 +89,17 @@
+ }
+ 
+ pub(super) fn startup_info_response(state: &PeerState, request: &Value) -> Option<(u64, String)> {
+-    let data = state.data.lock();
+-    data.execution
+-        .as_ref()?
++    let mut data = state.data.lock();
++    let execution = data.execution.as_mut()?;
++    if request["type"] == "activeAssetData" && !execution.warm_asset_data_pages.is_empty() {
++        let body = if execution.warm_asset_data_pages.len() > 1 {
++            execution.warm_asset_data_pages.pop_front().unwrap()
++        } else {
++            execution.warm_asset_data_pages.front().unwrap().clone()
++        };
++        return Some((0, body));
++    }
++    execution
+         .startup_responses
+         .get(request["type"].as_str()?)
+         .cloned()
+--- E:\persarb\_tmp\entropy113-validation\snapshots\native113-frozen-source-v6\native\crates\adapters\hyperliquid\tests\entropy_account\io_query_recovery.rs
++++ E:\persarb\_tmp\entropy113-validation\snapshots\native113-frozen-source-v7\native\crates\adapters\hyperliquid\tests\entropy_account\io_query_recovery.rs
+@@ -408,6 +408,7 @@
+ #[tokio::test]
+ async fn equivalent_normal_queries_singleflight_without_extra_reads_or_borrowed_ready() {
+     let mut harness = normal().await;
++    let before_metadata = harness.scope()["metadata"].clone();
+     override_response(&harness, "frontendOpenOrders", 120, "[]".into());
+     let after = harness.peer.state.data.lock().requests.len();
+     for _ in 0..4 {
+@@ -426,7 +427,12 @@
+     let requests = requests_since(&harness, after);
+     assert_eq!(count(&requests, "frontendOpenOrders"), 1);
+     assert_eq!(count(&requests, "userRole"), 1);
+-    assert_eq!(cost(&requests), 222);
++    assert_eq!(count(&requests, "activeAssetData"), 2);
++    assert_eq!(cost(&requests), 262);
++    assert_eq!(
++        result["metadata"], before_metadata,
++        "warm leverage counterproof relabeled original metadata"
++    );
+     assert_eq!(harness.fill_events, 0);
+     assert_eq!(harness.peer.state.writes.load(Ordering::SeqCst), 0);
+     harness.stop().await;
+@@ -459,6 +465,123 @@
+     assert_eq!(count(&requests, "activeAssetData"), 2);
+     assert_eq!(count(&requests, "userRole"), 2);
+     assert_eq!(harness.fill_events, 0);
++    harness.stop().await;
++}
++
++#[rstest]
++#[case("out_of_policy")]
++#[case("user")]
++#[case("coin")]
++#[case("cross")]
++#[case("changed_in_policy")]
++#[case("conflicting_repeat")]
++#[tokio::test]
++async fn flat_warm_requires_actual_repeated_selected_leverage_counterproof(#[case] fault: &str) {
++    let mut harness = Harness::with_configuration(
++        "100",
++        |peer| {
++            peer.record_http = true;
++        },
++        |config, directory| {
++            configure(config, directory);
++            if matches!(fault, "changed_in_policy" | "conflicting_repeat") {
++                let mut selected: Value =
++                    serde_json::from_str(config.io_execution_policy_json.as_ref().unwrap())
++                        .unwrap();
++                selected["max_leverage"] = json!(2);
++                config.io_execution_policy_json = Some(selected.to_string());
++            }
++        },
++    )
++    .await;
++    let before = harness.scope();
++    let mut actual = harness
++        .peer
++        .state
++        .data
++        .lock()
++        .execution
++        .as_ref()
++        .unwrap()
++        .asset_data
++        .clone();
++    let original = actual.clone();
++    match fault {
++        "out_of_policy" | "changed_in_policy" | "conflicting_repeat" => {
++            actual["leverage"]["value"] = json!(2)
++        }
++        "user" => actual["user"] = json!("0x0000000000000000000000000000000000000001"),
++        "coin" => actual["coin"] = json!("io:OTHER"),
++        "cross" => actual["leverage"]["type"] = json!("cross"),
++        _ => unreachable!(),
++    }
++    {
++        let mut data = harness.peer.state.data.lock();
++        let execution = data.execution.as_mut().unwrap();
++        if fault == "conflicting_repeat" {
++            execution.warm_asset_data_pages =
++                VecDeque::from([original.to_string(), actual.to_string()]);
++        } else {
++            execution.asset_data = actual;
++        }
++    }
++    let after = harness.peer.state.data.lock().requests.len();
++    let captured = issue_captured(&harness);
++    let result = finished(&harness).await;
++    harness.apply_events();
++    assert_eq!(
++        result["recovery_complete"], false,
++        "flat account omitted selected leverage evidence: {fault}: {result}"
++    );
++    assert_original_debt(&harness, &captured);
++    let requests = requests_since(&harness, after);
++    assert!((1..=2).contains(&count(&requests, "activeAssetData")));
++    if fault == "conflicting_repeat" {
++        assert_eq!(count(&requests, "activeAssetData"), 2);
++    }
++    assert_eq!(
++        result["metadata"], before["metadata"],
++        "failed actual leverage source refreshed metadata time/capacity/mark"
++    );
++    assert_eq!(result["actual_fills"], before["actual_fills"]);
++    assert_eq!(result["owned_intents"], before["owned_intents"]);
++    assert_eq!(harness.fill_events, 0);
++    assert_eq!(
++        harness
++            .portfolio
++            .net_position(&InstrumentId::from(SELECTED)),
++        Decimal::ZERO
++    );
++    assert_eq!(harness.peer.state.writes.load(Ordering::SeqCst), 0);
++    harness.stop().await;
++}
++
++#[tokio::test]
++async fn flat_warm_leverage_counterproof_never_refreshes_original_metadata_capacity_or_mark() {
++    let mut harness = normal().await;
++    let before = harness.scope();
++    {
++        let mut data = harness.peer.state.data.lock();
++        let actual = &mut data.execution.as_mut().unwrap().asset_data;
++        actual["maxTradeSzs"] = json!(["2", "2"]);
++        actual["availableToTrade"] = json!(["200", "200"]);
++        actual["markPx"] = json!("101");
++    }
++    let after = harness.peer.state.data.lock().requests.len();
++    issue(&harness);
++    let result = finished(&harness).await;
++    harness.apply_events();
++    assert_current(&harness, &result);
++    let requests = requests_since(&harness, after);
++    assert_eq!(count(&requests, "activeAssetData"), 2);
++    assert_eq!(cost(&requests), 262);
++    assert_eq!(
++        result["metadata"], before["metadata"],
++        "leverage counterproof widened or relabeled original metadata"
++    );
++    assert_eq!(result["actual_fills"], before["actual_fills"]);
++    assert_eq!(harness.fill_events, 0);
++    assert_eq!(harness.peer.state.writes.load(Ordering::SeqCst), 0);
+     harness.stop().await;
+ }
+ 
+@@ -1548,7 +1671,11 @@
+     if consume_terminal {
+         assert_current(&harness, &result);
+         assert_eq!(result["last_query_warm"], true);
+-        assert_eq!(cost(&requests_since(&harness, after)), 224);
++        assert_eq!(
++            count(&requests_since(&harness, after), "activeAssetData"),
++            2
++        );
++        assert_eq!(cost(&requests_since(&harness, after)), 264);
+         assert_eq!(
+             result["owned_intents"][order.client_order_id().as_str()]["phase"],
+             "terminal"

@@ -1,0 +1,46 @@
+# #113 warm 原文/debt focused independent review
+
+**结论：当前写作中快照存在阻断，尚不能接受原文留痕合同。**失去 current authority 应拒绝金融提交，但不能同时丢掉已接收的原始 HTTP 证据。应按 captured identity 独立保存 readonly Unknown/debt，并将它与 current-flight completion/cleanup 分开。
+
+父 Agent 指定只审查 error/raw debt 路径。生产作者仍在收尾；本轮没有测试、Cargo、Git/GH、build/install、loopback 或源码编辑。为避免审查期间源码变动导致错误绑定，2026-10-09T06:13:38.8191811Z 保存了三个只读源副本到 `reviewer-raw-debt-snapshot-20261009-0614/`；下面行号均指这些副本，不能称为最终冻结源。此前工具读取到较早版本，之后新增 RAII/abandon helper，下面结论已按新副本再次核对。
+
+| 源副本 | SHA-256 |
+|---|---|
+| execution_scope.rs.txt | 7483c70f877f7ae4a6f6bf5b0d1c9838cc178d022327ec39edaf1acae0060738 |
+| execution.rs.txt | 57aecc988aba4f0dc2df807d4984adf2e65bb1502abfc2f3d326f30c25c5a991 |
+| account_scope.rs.txt | 75e637583954b1decf880d4462c9688b83d021a724a94b186db44a6ff4a2a190 |
+
+## B1：收到原文后的拒权/error/cancel 可以无痕丢失原文
+
+`execution_scope.rs:645–659` 的 `observe_warm_query` 仅当 generation/epoch/applied/received_sequence/query_token 仍与捕获值一致时保存 `raw_sources`。随后不论成功或错误，`source_guard.completed=true`。因此已读到 openOrders/fills 等 body 后，同一 reader 新私有 frame 到达（包括 identical/same-position/same-ms），再发生 parse error/timeout，主保存 gate false，RAII 也不补保存。reader replacement 同样如此。
+
+新增 `IoWarmSourcesGuard:448–453` 可以覆盖部分 future-drop，但 `abandon_warm_sources:593` 又要求当前 query_token 相同才继续，无法独立于 successor-flight 身份留存原文。`abandon_warm_observation` 已用于 `IoWarmFlight::drop` (`execution.rs:221–228`)，这是方向正确的补充，但不能替代全部错误分支。
+
+正常 owner callback 在 `execution.rs:2137–2140` take observation 后直接传入 commit。`commit_warm_query:681–699` 的 source/deadline/current-cache/metadata early ensure 在 `retain_warm_source_debt:714` 之前。early Err 时 observation 被消耗并 drop；flight.staged 已为空，后续 drop helper拿不到 body，仍丢失原文。terminal-source 检查、persist/deadline/commit 等后续 fallible 分支也需要同一 reject-retention 合同，不能只覆盖一段 validation closure。
+
+修复需使每个已收 source 从收据创建起一直由 source-retention guard 所有，直到明确成功消费或 durable readonly Unknown/debt保存；授权检查不应决定是否保留它。错误、timeout、取消、owner early fence、错线程/closed queue、deadline 后回调均遵守该合同。任何 guard 的 lock/drop 顺序都要避免在已持 account/execution lock 时再次反向加锁。不得跨 await 持 proof lock。
+
+## B2：Original 原文没有 captured 来源身份
+
+`IoRecoverySourceDebt::Original { sources: Vec<String> }` (`execution_scope.rs:323–327`) 只保存匿名字符串。`IoObservationSources` (`account_scope.rs:503`) 与 `bounded_scope_observation:510–515` 丢弃实际 `EconomicHistoryBody.received_ms` 与每个 InfoRequest 的请求种类/范围；依赖数组顺序猜端点不可审计。`RetentionFailed` 也只有通用 diagnostic，没有原查询身份。
+
+最小 readonly source-context 至少要包含：capture generation/epoch/received sequence/query token、确定 account/user/dex、query start、每个实际 request kind/显式 scope/owned CLOID 与原 HTTP body receipt time、完整 body 原文或明确 retention failure。字段必须来自捕获值与实际 HTTP transport receipt，不能错误标为后来 reader 的值、后来恢复的 proof时间，或伪造为 WS frame/venue source timestamp。HTTP body由原请求范围说明，不应声称 body 本身独立认证了捕获的私人 reader。
+
+超过已有有限 raw/journal 预算时保留同 captured context 的明确 retention-failed：保存了哪些完整来源、缺失/拒绝了哪些来源、实际可知字节范围/原因。可保存摘要帮助审计，但摘要不等于 original retained。不要放宽 1MiB journal record/4MiB group/16MiB journal bounds，也不要把 body 计数为零当无收到来源。transport 尚未得到完整 body 时明确 missing-raw，而不是捏造 original。
+
+## B3：source preservation 与 flight 清理须分离
+
+留存旧 source 不应归属新 reader、不 adopt owned fills、不 grant Ready、不操作后继 query 的 token/finished/succeeded。旧源明确 Unknown，资金/新风险仍闭合，既有 worst reservations 与 durable owned facts保留。若旧源发现全局 unresolved financial debt，可以把同账户恢复置为保守 Unknown，但该全局 debt 不等于“完成/取消后继 flight”。
+
+现 helper `retain_warm_source_debt:780–784` 直接替换单个 debt 字段，而 replay 验证要求既有 debt 不被替换。已存在 debt 时必须保留原记录；若还有另一个 captured source，应按有限 append/独立 evidence设计保存，或明确额外原文留存失败及其 captured context，不能无声跳过或覆盖第一份债务。停止新 warm/cold fallback 与证据保存是两个职责。
+
+## 必需补充负面验收（没有运行）
+
+- 在 actual HTTP fills/body 已收到后触发 normal 同 reader private frame（same financial data 与 changed funds 两例），随后延迟下一请求超时：金融提交/Ready拒绝，journal中仍保留原 captured source identity/body或明确 bounded retention failure。
+- 同步骤换 reader，同 epoch 新 generation；确认旧 body 没被标新 reader，current funds/newrisk闭合。
+- HTTP已全部完成，将 normal owner TimeEvent 暂缓至 deadline/stop/cancel/新 flight之后，或 finalcache/source fence失败：staged body不会随 take/drop消失，旧callback不清后继token/不发金融事件。
+- task future 在多份 body 之间被中止；原文保存 guard覆盖 partial group，有原 request/receipt labels；malformed/oversize/group-budget错误不伪装“无原文金融事实”。
+- 同一旧 source重复拒绝只保留 exact不可变来源；已有另一debt不被替换；重开journal可见 debt，reserve不下降、没有自动冷恢复借proof。
+- 保存/record overflow失败有显式 Unknown/taint/retention-failed，实际未保存原文不能宣称 Original retained。
+
+本报告不评价其他尚未冻结 source/token/cache 合同、不引用作者49 cases为 reviewer PASS。上述 blocker 已即时发送作者与主代理；修复冻结后应重新 hash-bound审查与实际 peer验收。

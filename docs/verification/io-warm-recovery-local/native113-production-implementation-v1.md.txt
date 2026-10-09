@@ -1,0 +1,31 @@
+# Native issue 113 implementation handoff
+
+The four production files listed in `native113-production-source-v1.json` are frozen for root compilation and independent review. No Cargo, formatting, build, stubs, wheel installation, Git, GH, native tests, loopback, or venue calls were run by the implementation agent.
+
+## Narrow normal-path contract
+
+Normal successful metadata verification records the actual reader generation/epoch, typed account hard-revision, complete selected remote metadata rows, original native HTTP instrument objects, and original leverage/precision verification times. The normal owner thread completes an initially absent Engine Cache binding exactly once. Existing bindings are immutable until another actual metadata verification. Binding alone never grants Ready or refreshes cash or remote metadata timestamps. Native new-risk submission checks the current immutable metadata binding; owned reduce-only submission retains the existing ownership, position, financial, and writer admission checks.
+
+An eligible ordinary QueryAccount invalidates financial/recovery authority, captures current applied ingress sequence and exact native owned facts, and coalesces an equivalent in-flight query. Changed private/native/owned facts cannot join the old query. The warm group reads actual full io frontendOpenOrders, userFills, active owned CLOID statuses, then one complete role/mode/collateral/clearinghouse group with repeated mode checks. Source-derived minimum is 222 plus two tokens per active CLOID; item weights, quota waiting and other requests can increase this. Existing quota, TTL, recovery deadline, action and cleanup budgets are unchanged.
+
+Warm reconciliation only confirms already accepted live native facts and actual normal Cache projections. Every retained owned fill must appear exactly in the actual fill array. New, missing, conflicting or unsupported REST-only facts cannot create fill/status projections or fall back within this query. Full open-order uniqueness/coverage and complete full-io owned inventory are checked. Actual quantities, prices, fees and OID/CID/TID/native instrument identities are compared. Native Cache consumption is checked; Portfolio remains a separate application gate.
+
+HTTP sources remain staged until a normal runner RustLocal TimeEvent completion on its registering owner thread. The callback re-reads Engine Cache, holds cancellation and ingress/account/execution guards, checks reader generation/epoch/received sequence/applied state, revisions, exact current financial facts, immutable metadata/policy/native instruments, and samples TTL/deadline after lock waits. All remote checks precede reservation mutation. Durable absorption failure restores the original reserve in memory; late durability completion restores and re-persists original facts before any account event or Ready. Source validation and deadline are checked again before emission. Ready still depends on current account freshness at subsequent admission.
+
+## Original-source preservation and cancellation
+
+A source RAII guard exists before the first request and moves into the staged observation. Only successful owner commit disarms it. Every parse/error/timeout/early-fence/cancel/late-callback/stage-discard/drop exit independently saves readonly Unknown debt. Preservation has no current-reader, applied-sequence or flight-token qualification. Current authority cleanup is separately token-bound; a previous cleanup cannot clear a successor flight.
+
+`recovery_source_debt.kind=unknown_sources` contains immutable captured `identity` (query_token, generation, epoch, received_sequence, account_id, address, full policy), `original_sources` (actual request_json string, native transport received_ms, original raw_text), and `unavailable_sources` (request_json, received_ms null or actual received time, truthful diagnostic). A pending request with no accepted body alone is not fabricated as a financial observation. The first recorded debt cannot be replaced or cleared by later queries/replay. Debt revokes metadata/Ready and retains existing ledger/reserves. A debt record exceeding one MiB becomes explicit `retention_failed` with the same captured identity; original-body retention is then not claimed. Durability failure taints and closes the native runtime. Existing overall journal growth remains an issue 89 limitation; no existing cap was enlarged.
+
+## Economic-history demand
+
+Successful warm recovery does not request history, advance an old completed coverage endpoint, replay receipts, or upgrade native cache application. Prior finite actual coverage remains unchanged; any newly elapsed unrequested interval is recorded with pages=0, records=0 and complete=false/Unknown. Cold/reader-gap/new funding or ledger source demand retains existing actual history requests and fail-closed failure handling. Unsupported/unattributed/persistence-failed economic sources revoke the warm origin. Old activeAssetData capacity/mark values retain their original receive/verification times. Funding, full-history completeness, whole-run economics and run PnL are not newly certified.
+
+## Root work outstanding
+
+1. Mechanically initialize the new private JournalFacts `recovery_source_debt: None` in the existing embedded unit-test `journal()` literal. The implementation agent did not edit tests.
+2. Apply official formatting, compile and run the frozen peer regressions; fix any actual compiler or test failures with preserved raw logs.
+3. Perform independent hash-bound source review, broader regressions, clean-source wheel/stubs/install and actual paired application acceptance.
+
+The existing generic cold REST transaction/native cache projection limitations remain outside this focused warm change. An insufficient quota or incomplete source stays closed; this source handoff does not assert paired PASS or sustained unlimited Ready.

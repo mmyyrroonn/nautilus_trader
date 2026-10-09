@@ -1,0 +1,11 @@
+# Root final bounded warm recovery review
+
+Reviewed final official source bytes against frozen v9, clean implementation `13064e9a9a199f517480d207f828438f13d05cca` and actual final regression/independent binary and installed records. All 36 explicit source inputs matched. No additional code or test changes were made after final full regression. The implementation is accepted for the narrow finite fail-closed native contract described in the checked-in contract and acceptance.
+
+The final boundary validates actual owner Cache, exact source identity/facts, metadata/HTTP stores, policy, TTL/deadline and conservative journal ownership. Unknown retention precedes parsing and item waits; first debt remains immutable. Leverage counterproofs cannot borrow malformed/absent fields. Weak completion ownership and whole-flight RAII preserve lifetime and journal disposal boundaries. Current authority and finite economic history remain distinct. No quota/TTL/deadline expansion, fabricated Ready, REST-only fill projection or economic replay was accepted.
+
+Actual independent tests and normal installed LiveNode corroborate this finite scope. Six inherited test-Clippy diagnostics and unavailable make checks remain explicit. Precisely unobserved integration lock/intermediate states and generic prepare-to-Send mutation are not claimed as full runtime certification.
+
+The actual paired FAIL and durable expired-group debt are material follow-up evidence, preserved without downgrading acceptance criteria. Native113 completion does not claim paired liveness or close app43/E6. A next dependency must start at newly merged main, preserve original bounds and demonstrate actual recovery under ordinary native/Cache/Portfolio paths. No real-mainnet operations were authorized or executed.
+
+Review recorded UTC: 2026-10-09T08:17:48.902940+00:00.

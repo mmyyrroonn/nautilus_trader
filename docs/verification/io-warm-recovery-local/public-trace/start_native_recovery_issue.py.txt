@@ -1,0 +1,39 @@
+import json
+from start_dependency import api
+
+
+if __name__ == "__main__":
+    base = "667f424e123e177a87c257cdc7f6b4e2e776d138"
+    repo = "repos/mmyyrroonn/nautilus_trader/"
+    main = api(repo + "git/ref/heads/main", "native-recovery-create-main")
+    assert main["object"]["sha"] == base
+    current = api(repo + "issues?state=open&per_page=100", "native-recovery-create-open")
+    assert not any("warm io" in row["title"] or "io QueryAccount" in row["title"] for row in current)
+    body = f"""应用 [#43](https://github.com/mmyyrroonn/Nautilus-Perps/issues/43) 的必要原生依赖，按用户已授权的逐 issue 实现、子代理、review、PR/合并流程处理。从重新 fetch 的最新 `main@{base}` 新建 `feature/entropy-io-recovery`，不在已完成 #111 分支上继续实现。
+
+#111 / [PR #112](https://github.com/mmyyrroonn/nautilus_trader/pull/112) 已完成正常 reconciliation=true 的有界 fresh-flat startup。应用最新 fresh-process paired 实际失败：首腿 0.12 的 native fill、Cache/Portfolio、完整 `io:io:SNDK:OID:TID`、USDC 0.00100000 fee 与持久化 E5 receipt 已精确关联，无重复费用；正常 io QueryAccount 仍在既有 weighted quota/recovery deadline 下无法完成，尚无 Aster hedge/cleanup。实际失败与相同 52 份 source/install/artifact 输入身份均保留，不把这个状态当双腿通过。
+
+源码审计表明，普通 query 对 1 个 selected symbol / 1 个 active CLOID 的最低读取成本为 **506 tokens**，经济历史另至少 **80**；有严格原生 witness 的 warm recovery 可减少重复 metadata/前置完整 account 读取，但最终实际完整 account 证明仍必须取得。数字是源码推导下界，包含额外行、重试和竞争请求后可能更多，尚非实现验收。
+
+## 有限交付
+
+- [ ] 新增最小 crate-private warm metadata witness，仅由正常成功 metadata 验证产生；绑定完整 policy/selected IDs、真实 reader generation 与 epoch、原生 HTTP 与普通 Engine Cache instrument facts、验证时点/precision/leverage/collateral identity。TTL 或旧 Ready 不能单独授予资格；cold/stale/replacement/taint/unknown debt 明确回退或拒绝。
+- [ ] ordinary QueryAccount 先撤销资金/新风险/recovery 权限，仅保留合格 metadata identity；等价进行中的账户 query 有界 single-flight 合并，不能使新私有事实、另一 command 或取消任务借旧结果授予 Ready。真实新的私有 ingress 正常失效，journal/Unknown reservation 不被清除。
+- [ ] warm 路径仍读实际完整 io openOrders、真实 fills、精确 owned CLOID status，并取得一次完整最终 role/mode/collateral/io clearinghouse source（保留重复 mode 核对）。对所有 HTTP 到状态变更/金融事件/最终 Ready 执行 reader-generation/epoch/received-sequence/applied/exact-funds/expected-owned-facts/native-cache/policy/TTL fence；无锁跨 await，最终采样包含锁等待，旧源不能被更新 proof 掩盖。
+- [ ] 保留原始 1200/min limiter、20/sec refill、account TTL 2000ms、metadata TTL 30000ms、recovery deadline 3000ms 及实际执行/cleanup 预算。记录真实请求和成本，不透支/重复扣账/退款绕过。配额不足、来源缺失、Unknown ownership 或全 io inventory 不匹配均有限失败关闭；不承诺持续无限 Ready。
+- [ ] 明确经济历史 demand/有限 coverage 与当前账户证明的边界，避免重复读同一已核对窗口；实际新增/冲突/unsupported financial facts 仍失效。若调整无新事实 history timeout 对 current funds 的影响，必须独立论证并加负面测试，coverage 保持 Unknown、原文 immutable、无自动原文升级/手续费重放/虚构 run PnL。
+- [ ] source-bound 原生正负合同与正常 installed factory/numeric-loopback 验证覆盖实际 warm post-fill、cold/stale、新 reader 同 epoch、未应用 ingress、同仓位资金变化、metadata/cache 变化、所有 ownership/source 缺失、并发 query/action/cancel、有限 deadline/配额及经济 timeout/新事实；独立 review 关闭阻断，完整原始命令/失败/artifact 身份归档。
+- [ ] 全相关本地回归、官方 stubs、clean-source wheel/install、实际 CI 后开 review-ready PR 并合并，逐项回填验收；应用 #43 恢复实际场景，只有真实通过的场景才计 PASS。#43、Epic E6、真实场所与全账户经济验收不随本单提前关闭。
+
+只使用 normal native path 与 numeric-loopback 合成账户，不关闭 reconciliation、不手工填 Cache/Portfolio、不添加 production test hooks、不放大 TTL/配额/timeout、不向真实主网下单。旧 #89 的持续 readiness/journal 增长、#88/#107 dependency、Windows kernel #29 继续独立未完成。"""
+    issue = api(repo + "issues", "native-recovery-create", "POST", {
+        "title": "[P1][Entropy] Support bounded warm io QueryAccount recovery",
+        "body": body,
+    })
+    comment = f"""2026-10-09 更新：[#111 / PR #112](https://github.com/mmyyrroonn/nautilus_trader/pull/112) 已通过最终提交 CI 并合并至 `main@{base}`，正常 native fresh-flat startup 已完成。
+
+应用当前实现已在本地独立提交 `5b8c144c39ebcbcfd03ca07f8e53b103741b130a`，相关 pure tests **152 passed / 7 actual deselected**，source review 阻断已修复。最新 fresh-process paired **仍失败**：有界原生 Submitted→终态 handoff 避免了过早 query；首腿实际 0.12 fill/USDC 0.00100000 fee/持久化 receipt 精确关联，原生 Cache/Portfolio 0.12，未发对冲或 cleanup。5 次串行普通 io query 受原生 metadata/recovery 刷新成本与原有 deadline 阻断，正常退出，残余 0.12 保持 Unknown；52 份输入前后 byte-identical。
+
+必要原生缺口另立 [#{issue['number']}]({issue['html_url']})，从本次最新 main 新建分支，以真实 metadata witness、普通 recovery 的严格源 fence 和有限经济 history demand 解决冗余读取。保留原 quota、TTL、deadline 与所有安全准入要求，子代理实现、独立 source/实际测试 review、主代理最终验收后再开 PR 合并。应用 #43、E6、真实场所/全账户/内核隔离项继续未完成；正式 candidate `802e8eea…` 未改动。"""
+    trace = api("repos/mmyyrroonn/Nautilus-Perps/issues/43/comments", "app43-native-recovery-start", "POST", {"body": comment})
+    print(json.dumps({"number": issue["number"], "url": issue["html_url"], "base": base, "app_comment": trace["html_url"]}))

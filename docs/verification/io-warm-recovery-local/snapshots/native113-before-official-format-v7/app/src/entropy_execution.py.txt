@@ -1,0 +1,1809 @@
+"""Run one bounded synthetic Entropy/Aster cycle through ordinary native factories.
+
+This executable has no venue mode: all four transports must be numeric loopback.
+The dry-run path reads only the supplied TOML and imports no native or dotenv code.
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import hashlib
+import importlib.util
+import json
+import threading
+import time
+from datetime import timedelta
+from decimal import Decimal
+from pathlib import Path
+
+from entropy_execution_config import (
+    ExecutionConfigError,
+    canonical_json,
+    exact_add,
+    exact_mul,
+    load_plan,
+    parse_plan,
+    plan_document,
+    preview_plan,
+)
+
+ROOT = Path(__file__).resolve().parents[1]
+SYNTHETIC_KEY = "0x" + "deadbeef" * 8
+SYNTHETIC_USER = "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+
+
+class CapabilityError(RuntimeError):
+    pass
+
+
+class ScopeRefreshScheduler:
+    """Pace reads independently; this class cannot establish native readiness."""
+
+    def __init__(self, deadlines_ms, *, max_reads=24):
+        self.deadlines_ns = {
+            name: value * 1000000 for name, value in deadlines_ms.items()
+        }
+        self.max_reads, self.reads = max_reads, 0
+        self.active, self.last_dispatched_ns = {}, {}
+
+    def observe(
+        self,
+        leg,
+        now_ns,
+        *,
+        ready,
+        generation,
+        received_ns,
+        source_reference,
+        native_pending=False,
+    ):
+        pending = self.active.get(leg)
+        if pending is not None:
+            completed = (
+                ready is True
+                and type(generation) is int
+                and generation >= 0
+                and type(received_ns) is int
+                and pending["since_ns"] < received_ns <= now_ns
+                and bool(source_reference)
+                and source_reference != pending["source_reference"]
+                and (
+                    pending["generation"] is None or generation >= pending["generation"]
+                )
+            )
+            if completed or (
+                not native_pending
+                and now_ns - pending["since_ns"] >= self.deadlines_ns[leg] + 100000000
+            ):
+                del self.active[leg]
+        if native_pending and leg not in self.active:
+            self.active[leg] = {
+                "since_ns": now_ns,
+                "generation": generation,
+                "source_reference": source_reference,
+                "origin": "native",
+            }
+
+    def request(self, leg, now_ns, *, generation, source_reference):
+        if (
+            leg in self.active
+            or self.reads >= self.max_reads
+            or now_ns - self.last_dispatched_ns.get(leg, -500000000) < 500000000
+        ):
+            return False
+        self.active[leg] = {
+            "since_ns": now_ns,
+            "generation": generation,
+            "source_reference": source_reference,
+            "origin": "application",
+        }
+        self.last_dispatched_ns[leg] = now_ns
+        self.reads += 1
+        return True
+
+
+def pending_owned_actions(
+    leg, owned_orders, dispatched_ns, handed_off_ns, now_ns, action_timeout_ms
+):
+    """Delay only new reads during the original bounded, observed native handoff."""
+    pending = []
+    for identifier, owned in owned_orders.items():
+        dispatched, handed_off = (
+            dispatched_ns.get(identifier),
+            handed_off_ns.get(identifier),
+        )
+        if (
+            owned.intent.client_order_id == identifier
+            and owned.intent.leg == leg
+            and owned.terminal is None
+            and not owned.unknown
+            and type(dispatched) is int
+            and type(handed_off) is int
+            and dispatched <= handed_off <= now_ns
+            and 0 <= now_ns - dispatched < action_timeout_ms * 1000000
+        ):
+            pending.append(identifier)
+    return tuple(pending)
+
+
+def native_handoff_matches(event, cached, leg, strategy_id, identifier):
+    """Attribute the normal Submitted callback to its exact cached owned order."""
+    return (
+        cached is not None
+        and str(event.client_order_id) == str(cached.client_order_id) == identifier
+        and str(event.strategy_id) == str(cached.strategy_id) == strategy_id
+        and str(event.account_id) == str(cached.account_id) == leg.account_id
+        and str(event.instrument_id) == str(cached.instrument_id) == leg.instrument_id
+        and any(str(item.event_id) == str(event.event_id) for item in cached.events())
+    )
+
+
+def verify_candidate(wheel, sha256, provenance):
+    """Verify actual installed binaries/stubs before constructing any transport client."""
+    spec = importlib.util.spec_from_file_location(
+        "entropy_native_verifier", ROOT / "scripts/verify_native_install.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    verified = module.verify(
+        Path(wheel),
+        sha256,
+        provenance=Path(provenance),
+        require_source_binding=True,
+        require_ondo=False,
+        additional_adapters=("hyperliquid", "aster"),
+    )
+    from nautilus_trader.adapters.aster import AsterExecutionClientFactory
+    from nautilus_trader.adapters.hyperliquid import HyperliquidExecutionClientFactory
+
+    for cls, names in (
+        (AsterExecutionClientFactory, ("selected_scope_snapshot_json",)),
+        (
+            HyperliquidExecutionClientFactory,
+            (
+                "account_scope_snapshot_json",
+                "execution_scope_snapshot_json",
+                "economics_scope_snapshot_json",
+                "pending_economics_json",
+                "persist_economics",
+            ),
+        ),
+    ):
+        if any(not callable(getattr(cls, name, None)) for name in names):
+            raise CapabilityError(
+                f"installed {cls.__name__} lacks required native scoped capabilities"
+            )
+    return verified
+
+
+class Evidence:
+    """Exclusive finite durable application facts; never a venue ledger/cache restore."""
+
+    def __init__(self, plan, *, candidate, matching_path, fixture_path):
+        self.plan = plan
+        requested = Path(plan.run_directory)
+        if any(path.is_symlink() for path in (requested, *requested.parents)):
+            raise ExecutionConfigError("run directory cannot traverse a symbolic link")
+        self.directory = requested.resolve(strict=True)
+        if not self.directory.is_dir():
+            raise ExecutionConfigError(
+                "run directory must be an existing ordinary directory"
+            )
+        for path, digest in (
+            (matching_path, plan.matching_sha256),
+            (fixture_path, plan.fixture_sha256),
+        ):
+            if hashlib.sha256(Path(path).read_bytes()).hexdigest() != digest:
+                raise ExecutionConfigError(
+                    "matching/fixture SHA256 does not match the immutable plan"
+                )
+        self.rows, self.bytes = 0, 0
+        self.failure, self.handle = None, None
+        self.started, self.stopped, self.watchdog_fired = False, False, False
+        self.fills = []
+        self.latest_scopes = {}
+        self.projection_witnesses = {}
+        self.initial_selected_flat = {}
+        self.unattributed_native_events = []
+        self.economics = None
+        self.economic_error = None
+        self.loss_estimate = None
+        self.controller = None
+        self.events_path = self.directory / "events.jsonl"
+        # Exclusive creation prevents a second process from adopting an earlier run's facts.
+        self.events = self.events_path.open("xb")
+        try:
+            self.write_once("plan.json", plan_document(plan))
+            self.write_once(
+                "manifest.json",
+                {
+                    "schema_version": 1,
+                    "synthetic_numeric_loopback": True,
+                    "native_identity": candidate,
+                    "plan_sha256": plan.sha256,
+                    "fixture_sha256": plan.fixture_sha256,
+                    "matching_sha256": plan.matching_sha256,
+                    "started_at_ns": time.time_ns(),
+                    "native_network_isolation": "requires external operating-system integration guard",
+                },
+            )
+        except (OSError, ValueError, RuntimeError, TypeError):
+            self.events.close()
+            raise
+
+    def write_once(self, name, value):
+        raw = canonical_json(value).encode()
+        if self.bytes + len(raw) > self.plan.limits.max_evidence_bytes:
+            raise ExecutionConfigError(
+                "individual evidence exceeds configured byte bound"
+            )
+        with (self.directory / name).open("xb") as stream:
+            stream.write(raw)
+            stream.flush()
+            import os
+
+            os.fsync(stream.fileno())
+        self.bytes += len(raw)
+
+    def record(self, kind, value):
+        raw = (
+            canonical_json(
+                {"kind": kind, "received_ns": time.time_ns(), "value": value}
+            )
+            + "\n"
+        ).encode()
+        # Leave a fixed failure-summary reserve. No unresolved facts are evicted.
+        if (
+            self.rows >= self.plan.limits.max_events
+            or self.bytes + len(raw) > self.plan.limits.max_evidence_bytes - 8192
+        ):
+            self.failure = "application_evidence_capacity_exhausted"
+            raise RuntimeError(self.failure)
+        self.events.write(raw)
+        self.events.flush()
+        self.rows += 1
+        self.bytes += len(raw)
+
+    def persist_intent(self, snapshot, intent):
+        """Write and fsync BEFORE handing a normal order to native execution."""
+        from dataclasses import asdict
+
+        self.record(
+            "prepared_native_intent",
+            {"controller": snapshot, "intent": _jsonable(asdict(intent))},
+        )
+        import os
+
+        os.fsync(self.events.fileno())
+
+    def close(self):
+        self.events.close()
+
+
+def _jsonable(value):
+    if isinstance(value, Decimal):
+        return format(value, "f")
+    if isinstance(value, dict):
+        return {key: _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    return value
+
+
+def native_open_orders_owned(leg, strategy_id, rows, owned_orders, cache_orders):
+    """Join selected native open-order facts to exact run intent and live Cache identity."""
+    if not isinstance(rows, list):
+        return False
+    seen_clients, seen_venues = set(), set()
+    for row in rows:
+        if not isinstance(row, dict):
+            return False
+        identifier, venue_id, instrument = (
+            row.get("client_order_id"),
+            row.get("venue_order_id"),
+            row.get("instrument_id"),
+        )
+        if (
+            any(
+                not isinstance(value, str) or not value
+                for value in (identifier, venue_id, instrument)
+            )
+            or identifier in seen_clients
+            or venue_id in seen_venues
+            or instrument != leg.instrument_id
+        ):
+            return False
+        seen_clients.add(identifier)
+        seen_venues.add(venue_id)
+        owned = owned_orders.get(identifier)
+        matching = [
+            cached
+            for cached in cache_orders
+            if str(cached.client_order_id) == identifier
+        ]
+        if (
+            owned is None
+            or owned.intent.client_order_id != identifier
+            or owned.intent.leg != leg.name
+            or owned.unknown
+            or owned.terminal is not None
+            or len(matching) != 1
+        ):
+            return False
+        cached = matching[0]
+        if (
+            str(cached.strategy_id) != strategy_id
+            or str(cached.account_id) != leg.account_id
+            or str(cached.instrument_id) != instrument
+            or cached.venue_order_id is None
+            or str(cached.venue_order_id) != venue_id
+            or cached.is_open is not True
+        ):
+            return False
+    return True
+
+
+def validate_projection(
+    leg,
+    strategy_id,
+    selected_position,
+    ledger_position,
+    owned_orders,
+    fills,
+    cache_orders,
+    cache_positions,
+    portfolio_position,
+):
+    """Cross-check current ordinary engine projection; never certify a cold restore.
+
+    Inputs are read from the account-qualified native Cache and Portfolio at the
+    call site. This guard creates no events, positions, commissions or readiness.
+    """
+    by_order = {}
+    for fact in fills:
+        if fact.leg == leg.name:
+            by_order.setdefault(fact.client_order_id, []).append(fact)
+    for cached in cache_orders:
+        identifier = str(cached.client_order_id)
+        if (
+            str(cached.strategy_id) != strategy_id
+            or identifier not in owned_orders
+            or str(cached.instrument_id) != leg.instrument_id
+            or str(cached.account_id) != leg.account_id
+        ):
+            return False, "foreign_account_qualified_native_order", {}
+    for identifier, owned in owned_orders.items():
+        if owned.intent.leg != leg.name:
+            continue
+        cached = next(
+            (row for row in cache_orders if str(row.client_order_id) == identifier),
+            None,
+        )
+        facts = by_order.get(identifier, [])
+        if cached is None:
+            # A denied-before-routing order has no account. There is no positive
+            # fill/projection proof to borrow from it; all filled orders must exist.
+            if facts or owned.unknown or owned.terminal not in {"DENIED", "REJECTED"}:
+                return False, "owned_native_order_projection_missing", {}
+            continue
+        if Decimal(str(cached.filled_qty)) != exact_add(
+            *(fact.quantity for fact in facts)
+        ):
+            return False, "native_order_fill_quantity_disagrees", {}
+        if {str(value) for value in cached.trade_ids} != {
+            fact.trade_id for fact in facts
+        }:
+            return False, "native_order_trade_identity_disagrees", {}
+        projected_events = [
+            event for event in cached.events() if hasattr(event, "trade_id")
+        ]
+        if len(projected_events) != len(facts):
+            return False, "native_order_fill_events_disagree", {}
+        for event in projected_events:
+            matching = [fact for fact in facts if fact.trade_id == str(event.trade_id)]
+            if len(matching) != 1 or not native_fill_matches(
+                event, matching[0], strategy_id
+            ):
+                return (
+                    False,
+                    "native_fill_event_scope_or_financial_payload_disagrees",
+                    {},
+                )
+        expected_fees = {}
+        for fact in facts:
+            if fact.fee is None or fact.fee_currency is None:
+                return False, "owned_native_commission_unknown", {}
+            expected_fees[fact.fee_currency] = exact_add(
+                expected_fees.get(fact.fee_currency, Decimal(0)), fact.fee
+            )
+        actual_fees = {
+            str(currency): Decimal(str(value.as_decimal()))
+            for currency, value in cached.commissions().items()
+        }
+        if {key: value for key, value in actual_fees.items() if value} != {
+            key: value for key, value in expected_fees.items() if value
+        }:
+            return False, "native_order_commission_projection_disagrees", {}
+    quantity = Decimal(0)
+    position_events = []
+    for position in cache_positions:
+        if (
+            str(position.account_id) != leg.account_id
+            or str(position.instrument_id) != leg.instrument_id
+            or str(position.strategy_id) != strategy_id
+            or any(
+                str(identifier) not in owned_orders
+                for identifier in position.client_order_ids()
+            )
+            or position.adjustments()
+        ):
+            return False, "foreign_or_adjusted_native_position", {}
+        for event in position.events():
+            matching = [
+                fact
+                for fact in by_order.get(str(event.client_order_id), [])
+                if fact.trade_id == str(event.trade_id)
+            ]
+            if len(matching) != 1 or not native_fill_matches(
+                event, matching[0], strategy_id
+            ):
+                return False, "unowned_or_reconciled_native_position_event", {}
+            position_events.append((str(event.client_order_id), str(event.trade_id)))
+        if position.side.name == "LONG":
+            quantity = exact_add(quantity, Decimal(str(position.quantity)))
+        elif position.side.name == "SHORT":
+            quantity = exact_add(quantity, -Decimal(str(position.quantity)))
+        elif position.side.name != "FLAT" or Decimal(str(position.quantity)) != 0:
+            return False, "unknown_native_position_side", {}
+    expected_events = [
+        (fact.client_order_id, fact.trade_id)
+        for facts in by_order.values()
+        for fact in facts
+    ]
+    if sorted(position_events) != sorted(expected_events):
+        return False, "native_position_fill_projection_missing_or_duplicate", {}
+    if (
+        type(portfolio_position) is not Decimal
+        or portfolio_position != ledger_position
+        or quantity != ledger_position
+        or selected_position != ledger_position
+    ):
+        return False, "scope_cache_portfolio_owned_ledger_disagree", {}
+    return (
+        True,
+        "current_native_projection_consistent",
+        {
+            "account_id": leg.account_id,
+            "instrument_id": leg.instrument_id,
+            "strategy_id": strategy_id,
+            "signed_quantity": str(quantity),
+            "portfolio_signed_quantity": str(portfolio_position),
+            "ordinary_order_count": len(cache_orders),
+            "ordinary_position_count": len(cache_positions),
+            "actual_fill_count": len(expected_events),
+            "cold_native_cache_restore_verified": False,
+            "whole_account_verified": False,
+        },
+    )
+
+
+def native_venue_trade_id(fact):
+    """Decode the native adapter identity; this alone never proves a fill source."""
+    value = fact.trade_id
+    maximum = 2**63 - 1
+    if fact.leg == "entropy":
+        suffix = "-USD-PERP.HYPERLIQUID"
+        if not fact.instrument_id.startswith("io:") or not fact.instrument_id.endswith(
+            suffix
+        ):
+            return None
+        oid = fact.venue_order_id
+        if not (
+            isinstance(oid, str)
+            and oid.isascii()
+            and oid.isdigit()
+            and len(oid) <= 20
+            and 0 < int(oid) < 2**64
+            and str(int(oid)) == oid
+        ):
+            return None
+        coin = fact.instrument_id.removesuffix(suffix)
+        prefix = f"io:{coin}:{fact.venue_order_id}:"
+        if not value.startswith(prefix):
+            return None
+        value = value[len(prefix) :]
+        maximum = 2**64 - 1
+    elif fact.leg != "aster" or not fact.instrument_id.endswith("-PERP.ASTER"):
+        return None
+    return (
+        value
+        if (
+            value.isascii()
+            and value.isdigit()
+            and len(value) <= 20
+            and 0 < int(value) <= maximum
+            and str(int(value)) == value
+        )
+        else None
+    )
+
+
+def native_fill_matches(event, fact, strategy_id):
+    """Match native io scoped or Aster integer identities plus exact cache facts.
+
+    An actual owned REST fill may carry reconciliation=True. The native io adapter
+    scopes TradeId as io:<coin>:<OID>:<TID>; preserve that identity in the ledger.
+    """
+    return (
+        native_venue_trade_id(fact) is not None
+        and str(event.strategy_id) == strategy_id
+        and str(event.account_id) == fact.account_id
+        and str(event.instrument_id) == fact.instrument_id
+        and str(event.client_order_id) == fact.client_order_id
+        and str(event.trade_id) == fact.trade_id
+        and str(event.venue_order_id) == fact.venue_order_id
+        and event.order_side.name == fact.side
+        and Decimal(str(event.last_qty)) == fact.quantity
+        and Decimal(str(event.last_px)) == fact.price
+        and event.commission is not None
+        and str(event.commission.currency) == fact.fee_currency
+        and Decimal(str(event.commission.as_decimal())) == fact.fee
+    )
+
+
+def native_terminal_status(order):
+    """Preserve exact native terminal state when reconciling an actual cached fill."""
+    status = order.status.name
+    return (
+        status
+        if status in {"FILLED", "CANCELED", "EXPIRED", "REJECTED", "DENIED"}
+        else None
+    )
+
+
+def io_raw_fill_source(fact, snapshot):
+    """Bind an ordinary native fill to actual retained E5 source facts, not income."""
+    raw_tid = native_venue_trade_id(fact)
+    if (
+        raw_tid is None
+        or not isinstance(snapshot, dict)
+        or snapshot.get("account_id") != fact.account_id
+    ):
+        return None
+    matches = []
+    for row in snapshot.get("observations", {}).values():
+        financial = row.get("fact", {})
+        components = financial.get("components", {})
+        scope = row.get("scope_evidence") or {}
+        if (
+            financial.get("category") != "fill_fee"
+            or financial.get("dex") != "io"
+            or financial.get("instrument_id") != fact.instrument_id
+            or row.get("identity_quality") != "EvidencedLocalComposite"
+            or scope.get("attribution_verified") is not True
+            or components.get("tid") != raw_tid
+            or components.get("oid") != fact.venue_order_id
+        ):
+            continue
+        try:
+            exact = (
+                Decimal(components["sz"]) == fact.quantity
+                and Decimal(components["px"]) == fact.price
+                and Decimal(financial["amount"]) == fact.fee
+                and financial.get("currency") == fact.fee_currency
+                and components.get("side") == ("B" if fact.side == "BUY" else "A")
+            )
+        except (KeyError, TypeError, ValueError, ArithmeticError):
+            exact = False
+        if exact:
+            matches.append(
+                {
+                    "observation_id": row.get("id"),
+                    "financial_digest": row.get("financial_digest"),
+                    "raw_envelope_ref": row.get("raw_envelope_ref"),
+                    "source_seq": row.get("source_seq"),
+                    "ownership_basis": row.get("ownership_basis"),
+                    "native_applied": financial.get("native_applied"),
+                }
+            )
+    return (
+        matches
+        if matches and len({row["financial_digest"] for row in matches}) == 1
+        else None
+    )
+
+
+def native_policies(plan):
+    """The app supplies explicit finite native bounds; no caller readiness flags."""
+    leg = plan.legs[0]
+    limits = plan.limits
+    return {
+        "execution": {
+            "schema_version": 1,
+            "strategy_id": plan.strategy_id,
+            "journal_path": str(Path(plan.run_directory) / "native-io-intents.jsonl"),
+            "max_order_notional": str(limits.max_order_notional_usd),
+            "max_gross_notional": str(limits.max_gross_notional_usd),
+            "max_open_orders": 2,
+            "max_actions": limits.max_actions,
+            "max_leverage": 1,
+            "margin_buffer": "1",
+            "fee_buffer_bps": str(limits.fee_buffer_bps),
+            "action_timeout_ms": limits.action_timeout_ms,
+            "recovery_timeout_ms": 3000,
+            "recovery_max_attempts": 2,
+            "recovery_retry_delay_ms": 10,
+            "metadata_max_age_ms": 30000,
+            "symbols": [
+                {
+                    "instrument_id": leg.instrument_id,
+                    "max_quantity": str(leg.entry_quantity),
+                    "min_price": str(leg.price_min),
+                    "max_price": str(leg.price_max),
+                }
+            ],
+        },
+        "economics": {
+            "schema_version": 1,
+            "checkpoint_path": str(
+                Path(plan.run_directory) / "native-io-economics.json"
+            ),
+            "instruments": [leg.instrument_id],
+            "history_start_ms": time.time_ns() // 1000000 - 1000,
+            "history_max_window_ms": limits.duration_ms + 30000,
+            "history_timeout_ms": 3000,
+            "history_max_pages": 8,
+            "history_max_records": 1000,
+            "max_observations": 256,
+            "max_receipts": 128,
+            "max_checkpoint_bytes": 1048576,
+            "max_raw_frame_bytes": 65536,
+            "max_history_body_bytes": 262144,
+        },
+        "aster": {
+            "instrument_ids": [plan.legs[1].instrument_id],
+            "balance_asset": "USD1",
+            "max_age_ms": limits.proof_max_age_ms,
+            "max_refresh_ms": 15000,
+        },
+    }
+
+
+def clients(plan, policies):
+    from nautilus_trader.adapters.aster import (
+        AsterDataClientConfig,
+        AsterDataClientFactory,
+        AsterEnvironment,
+        AsterExecutionClientConfig,
+        AsterExecutionClientFactory,
+    )
+    from nautilus_trader.adapters.binance import BinanceInstrumentProviderConfig
+    from nautilus_trader.adapters.hyperliquid import (
+        HyperliquidDataClientConfig,
+        HyperliquidDataClientFactory,
+        HyperliquidEnvironment,
+        HyperliquidExecutionClientConfig,
+        HyperliquidExecutionClientFactory,
+    )
+    from nautilus_trader.model import AccountId
+    from nautilus_trader.network import TransportBackend
+
+    io, aster = plan.legs
+    provider = BinanceInstrumentProviderConfig(
+        load_all=False, load_ids=[aster.instrument_id]
+    )
+    return (
+        (
+            io.client_id,
+            HyperliquidDataClientFactory(),
+            HyperliquidDataClientConfig(
+                environment=HyperliquidEnvironment.TESTNET,
+                base_url_http=io.http_url + "/info",
+                base_url_ws=io.ws_url,
+                http_timeout_secs=2,
+                ws_timeout_secs=2,
+                transport_backend=TransportBackend.TUNGSTENITE,
+            ),
+            HyperliquidExecutionClientFactory(),
+            HyperliquidExecutionClientConfig(
+                account_id=AccountId.from_str(io.account_id),
+                private_key=SYNTHETIC_KEY,
+                account_address=SYNTHETIC_USER,
+                account_dex="io",
+                account_snapshot_max_age_ms=plan.limits.proof_max_age_ms,
+                environment=HyperliquidEnvironment.TESTNET,
+                base_url_http=io.http_url + "/info",
+                base_url_ws=io.ws_url,
+                base_url_exchange=io.http_url + "/exchange",
+                http_timeout_secs=2,
+                ws_post_timeout_secs=1,
+                max_retries=0,
+                normalize_prices=False,
+                include_builder_attribution=False,
+                transport_backend=TransportBackend.TUNGSTENITE,
+                io_execution_policy_json=canonical_json(policies["execution"]),
+                io_economics_policy_json=canonical_json(policies["economics"]),
+            ),
+        ),
+        (
+            aster.client_id,
+            AsterDataClientFactory(),
+            AsterDataClientConfig(
+                environment=AsterEnvironment.TESTNET,
+                instrument_provider=provider,
+                base_url_http=aster.http_url,
+                base_url_ws=aster.ws_url,
+            ),
+            AsterExecutionClientFactory(),
+            AsterExecutionClientConfig(
+                account_id=AccountId.from_str(aster.account_id),
+                environment=AsterEnvironment.TESTNET,
+                user_address=SYNTHETIC_USER,
+                signer_address=SYNTHETIC_USER,
+                signer_private_key=SYNTHETIC_KEY,
+                base_url_http=aster.http_url,
+                base_url_ws=aster.ws_url,
+                instrument_provider=provider,
+                http_timeout_secs=2,
+                ws_connect_timeout_secs=2,
+                assume_one_way_mode_when_unconfirmed=False,
+                selected_scope_policy_json=canonical_json(policies["aster"]),
+            ),
+        ),
+    )
+
+
+def _strategy(plan, evidence, factories):
+    from nautilus_trader.model import (
+        AccountId,
+        BookType,
+        ClientId,
+        ClientOrderId,
+        InstrumentId,
+        OrderBook,
+        OrderSide,
+        Price,
+        Quantity,
+        RecordFlag,
+        StrategyId,
+        TimeInForce,
+    )
+    from nautilus_trader.trading import Strategy, StrategyConfig
+
+    from entropy_execution_core import (
+        BookEvidence,
+        FillFact,
+        ScopeProof,
+        TwoLegController,
+    )
+
+    controller = TwoLegController(plan)
+    evidence.controller = controller
+
+    class BoundedEntropy(Strategy):
+        def __init__(self):
+            super().__init__(
+                StrategyConfig(
+                    strategy_id=StrategyId.from_str(plan.strategy_id),
+                    log_events=False,
+                    log_commands=False,
+                    manage_stop=False,
+                )
+            )
+            self.legs = {
+                InstrumentId.from_str(leg.instrument_id): leg for leg in plan.legs
+            }
+            self.books = {
+                instrument_id: OrderBook(instrument_id, BookType.L2_MBP)
+                for instrument_id in self.legs
+            }
+            self.snapshots, self.book_stamps = set(), {}
+            self.started = False
+            self.refreshes = ScopeRefreshScheduler(
+                {
+                    "entropy": native_policies(plan)["execution"][
+                        "recovery_timeout_ms"
+                    ],
+                    "aster": native_policies(plan)["aster"]["max_refresh_ms"],
+                }
+            )
+            self.start_ns = None
+            self.cleanup_started = False
+            self.terminal_ns = None
+            self.dispatched_ns = {}
+            self.handed_off_ns = {}
+            self.deferred_queries = set()
+
+        def fail(self, reason):
+            evidence.failure = reason
+            if evidence.handle is not None:
+                evidence.handle.stop()
+
+        def on_start(self):
+            try:
+                for instrument_id, leg in self.legs.items():
+                    instrument = self.cache.instrument(instrument_id)
+                    if instrument is None:
+                        raise CapabilityError(
+                            "normal factory did not load the selected native instrument"
+                        )
+                    if (
+                        Decimal(str(instrument.size_increment)) != leg.quantity_step
+                        or Decimal(str(instrument.price_increment)) != leg.price_step
+                        or Decimal(str(instrument.multiplier))
+                        != leg.quantity_multiplier
+                        or str(instrument.quote_currency) != leg.quote_currency
+                        or str(instrument.settlement_currency)
+                        != leg.settlement_currency
+                    ):
+                        raise CapabilityError(
+                            "actual native metadata disagrees with immutable sizing/currency plan"
+                        )
+                    minimum = instrument.min_notional
+                    if (
+                        minimum is None
+                        or str(minimum.currency) != leg.quote_currency
+                        or leg.min_notional < Decimal(str(minimum.as_decimal()))
+                    ):
+                        raise CapabilityError(
+                            "native minimum notional is unknown or exceeds the immutable minimum"
+                        )
+                    if (
+                        instrument.min_quantity is not None
+                        and leg.min_quantity < Decimal(str(instrument.min_quantity))
+                    ):
+                        raise CapabilityError(
+                            "immutable minimum quantity is below actual native metadata"
+                        )
+                    self.subscribe_book_deltas(
+                        instrument_id,
+                        BookType.L2_MBP,
+                        client_id=ClientId.from_str(leg.client_id),
+                        managed=False,
+                        **({"depth": 20} if leg.name == "aster" else {}),
+                    )
+                self.clock.set_timer("entropy-progress", timedelta(milliseconds=100))
+                self.started = evidence.started = True
+                self.start_ns = time.time_ns()
+                evidence.record(
+                    "strategy_started", {"strategy_id": str(self.strategy_id)}
+                )
+            except (
+                ValueError,
+                RuntimeError,
+                TypeError,
+                KeyError,
+                AttributeError,
+                OSError,
+                ArithmeticError,
+            ) as exc:
+                self.fail(f"native_startup:{type(exc).__name__}:{exc}")
+
+        def on_stop(self):
+            if self.started:
+                self.clock.cancel_timer("entropy-progress")
+                for instrument_id, leg in self.legs.items():
+                    self.unsubscribe_book_deltas(
+                        instrument_id, client_id=ClientId.from_str(leg.client_id)
+                    )
+            self.started = False
+            evidence.stopped = True
+
+        def on_book_deltas(self, batch):
+            try:
+                instrument_id = batch.instrument_id
+                if instrument_id not in self.books:
+                    return
+                if any(
+                    delta.action.name == "CLEAR"
+                    or RecordFlag.F_SNAPSHOT.matches(delta.flags)
+                    for delta in batch.deltas
+                ):
+                    self.books[instrument_id].reset()
+                    self.snapshots.add(instrument_id)
+                if instrument_id not in self.snapshots:
+                    return
+                self.books[instrument_id].apply_deltas(batch)
+                if not RecordFlag.F_LAST.matches(batch.flags):
+                    return
+                book = self.books[instrument_id]
+                bids, asks = book.bids_to_dict(20), book.asks_to_dict(20)
+                if not bids or not asks:
+                    controller.invalidate_book(
+                        self.legs[instrument_id].name, "empty_native_book"
+                    )
+                    return
+                leg = self.legs[instrument_id]
+                reference = f"native-book:{leg.client_id}:{batch.sequence}:{batch.ts_event}:{batch.ts_init}"
+                self.book_stamps[instrument_id] = (batch.ts_event, batch.ts_init)
+                controller.observe_book(
+                    BookEvidence(
+                        leg.name,
+                        leg.instrument_id,
+                        max(Decimal(str(price)) for price in bids),
+                        min(Decimal(str(price)) for price in asks),
+                        int(batch.ts_init),
+                        reference,
+                        source_time_ns=int(batch.ts_event),
+                    )
+                )
+            except (
+                ValueError,
+                RuntimeError,
+                TypeError,
+                KeyError,
+                AttributeError,
+                OSError,
+                ArithmeticError,
+            ) as exc:
+                self.fail(f"native_book:{type(exc).__name__}:{exc}")
+
+        def poll_proofs(self, now):
+            needed = set()
+            identities = {}
+            for leg in plan.legs:
+                factory = factories[leg.name]
+                method = (
+                    factory.execution_scope_snapshot_json
+                    if leg.name == "entropy"
+                    else factory.selected_scope_snapshot_json
+                )
+                raw = method()
+                value = None if raw is None else json.loads(raw)
+                native_pending = bool(
+                    value
+                    and (
+                        value.get("phase") == "reconciling"
+                        if leg.name == "aster"
+                        else value.get("diagnostic")
+                        in {
+                            "io metadata/recovery refresh is pending",
+                            "io explicit query/recovery pending",
+                            "io account proof refresh is pending",
+                        }
+                    )
+                )
+                generation = (
+                    None
+                    if value is None
+                    else (
+                        (value.get("account") or {}).get("private_stream_epoch")
+                        if leg.name == "entropy"
+                        else value.get("generation")
+                    )
+                )
+                source_reference = (
+                    None if raw is None else hashlib.sha256(raw.encode()).hexdigest()
+                )
+                identities[leg.name] = (generation, source_reference)
+                self.refreshes.observe(
+                    leg.name,
+                    now,
+                    ready=False,
+                    generation=generation,
+                    received_ns=None,
+                    source_reference=source_reference,
+                    native_pending=native_pending,
+                )
+                if value != evidence.latest_scopes.get(leg.name):
+                    evidence.record(
+                        "native_scope", {"leg": leg.name, "snapshot": value}
+                    )
+                    evidence.latest_scopes[leg.name] = value
+                if value is None:
+                    controller.invalidate_proof(leg.name, "native_scope_unavailable")
+                    needed.add(leg.name)
+                    continue
+                cache_orders = list(
+                    self.cache.orders(account_id=AccountId.from_str(leg.account_id))
+                )
+                if leg.name == "entropy":
+                    account = value.get("account") or {}
+                    trusted = (
+                        account.get("trusted") is True
+                        and account.get("dex") == "io"
+                        and account.get("address", "").lower() == SYNTHETIC_USER
+                        and account.get("collateral_token_id")
+                        == "0x6d1e7cde53ba9467b783cb7c530ce054"
+                    )
+                    complete = value.get("recovery_complete") is True
+                    no_barrier = (
+                        value.get("native_projection_recovery_required") is False
+                    )
+                    received = account.get("http_received_time_ms")
+                    generation = account.get("private_stream_epoch")
+                    position = sum(
+                        (
+                            Decimal(row["signed_size"])
+                            for row in account.get("positions", [])
+                            if row["coin"] == "io:SNDK"
+                        ),
+                        Decimal(0),
+                    )
+                    foreign = any(
+                        row["coin"] != "io:SNDK" for row in account.get("positions", [])
+                    )
+                    available = Decimal(account.get("free", "0"))
+                    source_time = account.get("http_source_time_ms")
+                    source_time = None if source_time is None else source_time * 1000000
+                    mode = account.get("account_mode") == "standard_disabled_inferred"
+                else:
+                    trusted = (
+                        value.get("trusted") is True
+                        and value.get("ready") is True
+                        and value.get("stream_live") is True
+                    )
+                    complete = value.get("recovery_complete") is True
+                    rows = value.get("positions", [])
+                    exact = [
+                        row
+                        for row in rows
+                        if row.get("instrument_id") == leg.instrument_id
+                    ]
+                    trusted = (
+                        trusted
+                        and len(rows) == len(exact) == 1
+                        and value.get("account_id") == leg.account_id
+                    )
+                    position = (
+                        Decimal(exact[0]["signed_quantity"])
+                        if len(exact) == 1
+                        else Decimal(0)
+                    )
+                    foreign = not native_open_orders_owned(
+                        leg,
+                        plan.strategy_id,
+                        value.get("open_orders"),
+                        controller.orders,
+                        cache_orders,
+                    )
+                    received, generation = (
+                        value.get("received_time_ns"),
+                        value.get("generation"),
+                    )
+                    source_time = value.get("source_time_ns")
+                    balance = value.get("balance") or {}
+                    available = Decimal(balance.get("free", "0"))
+                    trusted = (
+                        trusted and balance.get("asset") == leg.settlement_currency
+                    )
+                    mode = value.get("mode_verified") is True
+                    no_barrier = complete
+                if leg.name == "entropy":
+                    received = None if received is None else received * 1000000
+                if not (
+                    trusted
+                    and complete
+                    and mode
+                    and no_barrier
+                    and type(received) is int
+                    and type(generation) is int
+                ):
+                    controller.invalidate_proof(
+                        leg.name, "native_scope_not_current_ready"
+                    )
+                    needed.add(leg.name)
+                    continue
+                if leg.name == "aster" and foreign:
+                    reason = "foreign_or_unknown_selected_native_open_order"
+                    controller.invalidate_proof(leg.name, reason)
+                    controller.external_activity(reason)
+                    if (
+                        evidence.projection_witnesses.get(leg.name, {}).get("reason")
+                        != reason
+                    ):
+                        evidence.record(
+                            "native_projection_unknown",
+                            {"leg": leg.name, "reason": reason},
+                        )
+                    evidence.projection_witnesses[leg.name] = {
+                        "verified": False,
+                        "reason": reason,
+                    }
+                    continue
+                projected, projection_reason, witness = validate_projection(
+                    leg,
+                    plan.strategy_id,
+                    position,
+                    controller.positions[leg.name],
+                    controller.orders,
+                    controller.fills.values(),
+                    cache_orders,
+                    self.cache.positions(account_id=AccountId.from_str(leg.account_id)),
+                    self.portfolio.net_position(
+                        InstrumentId.from_str(leg.instrument_id),
+                        account_id=AccountId.from_str(leg.account_id),
+                    ),
+                )
+                if (
+                    projected
+                    and leg.name == "entropy"
+                    and any(fact.leg == leg.name for fact in controller.fills.values())
+                ):
+                    economic_raw = factory.economics_scope_snapshot_json()
+                    economic_source = (
+                        None if economic_raw is None else json.loads(economic_raw)
+                    )
+                    source_links = {}
+                    for fact in controller.fills.values():
+                        if fact.leg != leg.name:
+                            continue
+                        references = io_raw_fill_source(fact, economic_source)
+                        if references is None:
+                            projected, projection_reason = (
+                                False,
+                                "owned_io_fill_raw_source_unknown",
+                            )
+                            break
+                        source_links[fact.trade_id] = references
+                    witness["io_actual_fill_source_refs"] = source_links
+                if not projected:
+                    controller.invalidate_proof(leg.name, projection_reason)
+                    if projection_reason.startswith(("foreign_", "unowned_")):
+                        controller.external_activity(projection_reason)
+                    if (
+                        evidence.projection_witnesses.get(leg.name, {}).get("reason")
+                        != projection_reason
+                    ):
+                        evidence.record(
+                            "native_projection_unknown",
+                            {"leg": leg.name, "reason": projection_reason},
+                        )
+                    evidence.projection_witnesses[leg.name] = {
+                        "verified": False,
+                        "reason": projection_reason,
+                    }
+                    needed.add(leg.name)
+                    continue
+                scope_hash = hashlib.sha256(raw.encode()).hexdigest()
+                witness.update(
+                    verified=True,
+                    scope_sha256=scope_hash,
+                    observed_at_ns=now,
+                    native_scope_received_ns=received,
+                )
+                evidence.projection_witnesses[leg.name] = witness
+                if (
+                    leg.name not in evidence.initial_selected_flat
+                    and not controller.orders
+                    and position == 0
+                ):
+                    evidence.initial_selected_flat[leg.name] = dict(witness)
+                    evidence.record("initial_selected_flat_projection", witness)
+                proof = ScopeProof(
+                    leg.name,
+                    leg.account_id,
+                    leg.instrument_id,
+                    generation,
+                    received,
+                    "native-scope-sha256:" + scope_hash,
+                    True,
+                    mode,
+                    True,
+                    complete,
+                    True,
+                    projected,
+                    foreign,
+                    available,
+                    position,
+                    source_time_ns=source_time,
+                    source_time_origin="venue_snapshot"
+                    if source_time is not None
+                    else "venue_does_not_supply_snapshot_time",
+                )
+                if proof != controller.proofs.get(leg.name):
+                    controller.observe_proof(proof)
+                self.refreshes.observe(
+                    leg.name,
+                    now,
+                    ready=True,
+                    generation=generation,
+                    received_ns=received,
+                    source_reference=scope_hash,
+                    native_pending=False,
+                )
+                if now - received > plan.limits.proof_max_age_ms * 1000000 // 2:
+                    needed.add(leg.name)
+            for leg in plan.legs:
+                generation, reference = identities[leg.name]
+                if leg.name in needed:
+                    pending = pending_owned_actions(
+                        leg.name,
+                        controller.orders,
+                        self.dispatched_ns,
+                        self.handed_off_ns,
+                        now,
+                        plan.limits.action_timeout_ms,
+                    )
+                    if pending:
+                        controller.invalidate_proof(
+                            leg.name, "owned_native_action_awaiting_terminal"
+                        )
+                        for identifier in pending:
+                            if identifier not in self.deferred_queries:
+                                self.deferred_queries.add(identifier)
+                                evidence.record(
+                                    "native_account_query_deferred_owned_action",
+                                    {
+                                        "leg": leg.name,
+                                        "client_order_id": identifier,
+                                        "native_command_handed_off": True,
+                                        "handoff_ns": self.handed_off_ns[identifier],
+                                        "action_deadline_ns": self.dispatched_ns[
+                                            identifier
+                                        ]
+                                        + plan.limits.action_timeout_ms * 1000000,
+                                        "native_ready_claimed": False,
+                                    },
+                                )
+                        continue
+                if leg.name in needed and self.refreshes.request(
+                    leg.name, now, generation=generation, source_reference=reference
+                ):
+                    evidence.record(
+                        "native_account_query",
+                        {
+                            "leg": leg.name,
+                            "read_action": self.refreshes.reads,
+                            "baseline_generation": generation,
+                            "baseline_source_reference": reference,
+                        },
+                    )
+                    self.query_account(
+                        AccountId.from_str(leg.account_id),
+                        client_id=ClientId.from_str(leg.client_id),
+                    )
+                    controller.invalidate_proof(
+                        leg.name, "ordinary_native_account_query_pending"
+                    )
+
+        def dispatch(self, intents):
+            for intent in intents:
+                if intent.action == "submit" and not intent.reduce_only:
+                    self.observe_loss_estimate(time.time_ns())
+                    if controller.new_risk_closed:
+                        controller.mark_unknown(
+                            intent.client_order_id,
+                            "application_guard_refused_before_native_dispatch",
+                        )
+                        evidence.record(
+                            "native_dispatch_not_handed_off",
+                            {
+                                "client_order_id": intent.client_order_id,
+                                "reason": "loss_or_valuation_guard_closed",
+                                "native_command_handed_off": False,
+                            },
+                        )
+                        continue
+                evidence.persist_intent(controller.snapshot(), intent)
+                self.dispatched_ns.setdefault(intent.client_order_id, time.time_ns())
+                leg = plan.leg(intent.leg)
+                try:
+                    if intent.action == "cancel":
+                        self.cancel_order(
+                            ClientOrderId.from_str(intent.client_order_id),
+                            client_id=ClientId.from_str(leg.client_id),
+                        )
+                    else:
+                        order = self.order_factory.limit(
+                            InstrumentId.from_str(leg.instrument_id),
+                            OrderSide.BUY if intent.side == "BUY" else OrderSide.SELL,
+                            Quantity.from_str(str(intent.quantity)),
+                            Price.from_str(str(intent.limit_price)),
+                            time_in_force=TimeInForce.IOC,
+                            reduce_only=intent.reduce_only,
+                            post_only=False,
+                            client_order_id=ClientOrderId.from_str(
+                                intent.client_order_id
+                            ),
+                        )
+                        self.submit_order(
+                            order, client_id=ClientId.from_str(leg.client_id)
+                        )
+                except (
+                    ValueError,
+                    RuntimeError,
+                    TypeError,
+                    KeyError,
+                    AttributeError,
+                    OSError,
+                    ArithmeticError,
+                ) as exc:
+                    controller.mark_unknown(
+                        intent.client_order_id, "native_dispatch_exception"
+                    )
+                    evidence.record(
+                        "dispatch_unknown",
+                        {
+                            "client_order_id": intent.client_order_id,
+                            "exception": type(exc).__name__,
+                        },
+                    )
+
+        def observe_loss_estimate(self, now):
+            if not controller.fills:
+                return
+            if any(order.unknown for order in controller.orders.values()):
+                controller.observe_loss(None)
+                evidence.loss_estimate = {
+                    "status": "Unknown",
+                    "reason": "unresolved_native_order_reservations",
+                }
+                return
+            costs, fees = {}, Decimal(0)
+            for fill in controller.fills.values():
+                signed = fill.quantity if fill.side == "BUY" else -fill.quantity
+                leg = plan.leg(fill.leg)
+                costs[fill.leg] = exact_add(
+                    costs.get(fill.leg, Decimal(0)),
+                    exact_mul(signed, fill.price, leg.quantity_multiplier),
+                )
+                if fill.fee is None or fill.fee_currency not in {
+                    value.currency for value in plan.valuation
+                }:
+                    controller.observe_loss(None)
+                    evidence.loss_estimate = {
+                        "status": "Unknown",
+                        "reason": "native_fee_currency_or_amount_missing",
+                    }
+                    return
+                fees = exact_add(
+                    fees,
+                    exact_mul(
+                        max(fill.fee, Decimal(0)),
+                        plan.fx(fill.fee_currency).quote_to_usd,
+                    ),
+                )
+            loss = fees
+            for leg_name, consideration in costs.items():
+                leg = plan.leg(leg_name)
+                position = controller.positions[leg_name]
+                book = controller.books.get(leg_name)
+                if position and (
+                    book is None
+                    or not 0
+                    <= now - book.received_ns
+                    <= plan.limits.book_max_age_ms * 1000000
+                    or book.source_time_ns is None
+                    or not 0
+                    <= now - book.source_time_ns
+                    <= plan.limits.book_max_age_ms * 1000000
+                ):
+                    controller.observe_loss(None)
+                    evidence.loss_estimate = {
+                        "status": "Unknown",
+                        "reason": "open_inventory_liquidation_mark_not_current",
+                    }
+                    return
+                liquidation = (
+                    Decimal(0)
+                    if not position
+                    else exact_mul(
+                        position,
+                        book.bid if position > 0 else book.ask,
+                        leg.quantity_multiplier,
+                    )
+                )
+                cost = max(exact_add(consideration, -liquidation), Decimal(0))
+                loss = exact_add(
+                    loss, exact_mul(cost, plan.fx(leg.quote_currency).quote_to_usd)
+                )
+            controller.observe_loss(loss)
+            evidence.loss_estimate = {
+                "status": "Estimate",
+                "conservative_loss_usd": str(loss),
+                "basis": "observed native fills and current liquidation touch; configured parity assumption; ignores gains/rebates",
+                "actual_cashflow": False,
+                "current_market_fx_verified": False,
+            }
+
+        def on_time_event(self, _event):
+            if not self.started:
+                return
+            try:
+                now = time.time_ns()
+                self.poll_proofs(now)
+                self.observe_loss_estimate(now)
+                for identifier, dispatched_at in tuple(self.dispatched_ns.items()):
+                    owned = controller.orders[identifier]
+                    if (
+                        not owned.terminal
+                        and not owned.unknown
+                        and now - dispatched_at
+                        >= plan.limits.action_timeout_ms * 1000000
+                    ):
+                        controller.mark_unknown(
+                            identifier, "bounded_native_terminal_timeout"
+                        )
+                if controller.start_ns is None:
+                    self.dispatch(controller.start(now))
+                else:
+                    self.dispatch(controller.advance(now))
+                if (
+                    controller.state in {"Hedged", "StoppedUnknown"}
+                    or now - self.start_ns
+                    >= (plan.limits.duration_ms - plan.limits.cleanup_ms) * 1000000
+                ):
+                    self.cleanup_started = True
+                    self.dispatch(controller.begin_cleanup(now))
+                if self.cleanup_started and controller.state != "Completed":
+                    self.dispatch(controller.begin_cleanup(now))
+                # Always leave a native receipt, even when no cash can be attributed.
+                if evidence.fills:
+                    try:
+                        factories["entropy"].persist_economics()
+                        result = factories["entropy"].economics_scope_snapshot_json()
+                        evidence.economics = (
+                            None if result is None else json.loads(result)
+                        )
+                    except RuntimeError as exc:
+                        evidence.economic_error = type(exc).__name__
+                if (
+                    controller.state == "Completed"
+                    and controller.snapshot(now)["owned_flat_verified"] is True
+                ) or now - self.start_ns >= plan.limits.duration_ms * 1000000:
+                    evidence.handle.stop()
+            except (
+                ValueError,
+                RuntimeError,
+                TypeError,
+                KeyError,
+                AttributeError,
+                OSError,
+                ArithmeticError,
+            ) as exc:
+                self.fail(f"native_progress:{type(exc).__name__}:{exc}")
+
+        def order_event(self, name, event, *, terminal=None):
+            try:
+                client_order_id = str(event.client_order_id)
+                row = {
+                    "client_order_id": client_order_id,
+                    "instrument_id": str(event.instrument_id),
+                    "ts_event_ns": int(event.ts_event),
+                }
+                if hasattr(event, "reason"):
+                    row["reason"] = str(event.reason)[:256]
+                evidence.record(name, row)
+                if client_order_id not in controller.orders:
+                    controller.external_activity("unowned_native_order_event")
+                elif name == "order_submitted":
+                    owned = controller.orders[client_order_id]
+                    leg = plan.leg(owned.intent.leg)
+                    cached = self.cache.order(event.client_order_id)
+                    if not native_handoff_matches(
+                        event, cached, leg, plan.strategy_id, client_order_id
+                    ):
+                        controller.mark_unknown(
+                            client_order_id, "native_handoff_identity_not_attributed"
+                        )
+                    elif client_order_id not in self.handed_off_ns:
+                        handed_off = time.time_ns()
+                        self.handed_off_ns[client_order_id] = handed_off
+                        evidence.record(
+                            "native_command_handed_off",
+                            {
+                                "leg": leg.name,
+                                "client_order_id": client_order_id,
+                                "native_command_handed_off": True,
+                                "source": "normal_native_submitted_callback_and_cache_event",
+                                "native_event_id": str(event.event_id),
+                                "handoff_ns": handed_off,
+                                "venue_write_or_acceptance_claimed": False,
+                            },
+                        )
+                elif terminal is not None:
+                    self.observe_loss_estimate(time.time_ns())
+                    self.poll_proofs(time.time_ns())
+                    self.dispatch(
+                        controller.observe_terminal(
+                            client_order_id, terminal, time.time_ns()
+                        )
+                    )
+            except (
+                ValueError,
+                RuntimeError,
+                TypeError,
+                KeyError,
+                AttributeError,
+                OSError,
+                ArithmeticError,
+            ) as exc:
+                self.fail(f"native_event:{type(exc).__name__}:{exc}")
+
+        def on_order_submitted(self, event):
+            self.order_event("order_submitted", event)
+
+        def on_order_accepted(self, event):
+            self.order_event("order_accepted", event)
+
+        def on_order_denied(self, event):
+            self.order_event("order_denied", event, terminal="DENIED")
+
+        def on_order_rejected(self, event):
+            self.order_event("order_rejected", event, terminal="REJECTED")
+
+        def on_order_canceled(self, event):
+            self.order_event("order_canceled", event, terminal="CANCELED")
+
+        def on_order_expired(self, event):
+            self.order_event("order_expired", event, terminal="EXPIRED")
+
+        def on_order_filled(self, event):
+            try:
+                leg = self.legs[event.instrument_id]
+                fact = FillFact(
+                    leg.name,
+                    str(event.account_id),
+                    str(event.instrument_id),
+                    str(event.client_order_id),
+                    str(event.trade_id),
+                    event.order_side.name,
+                    Decimal(str(event.last_qty)),
+                    Decimal(str(event.last_px)),
+                    Decimal(str(event.commission.as_decimal()))
+                    if event.commission is not None
+                    else None,
+                    str(event.commission.currency)
+                    if event.commission is not None
+                    else None,
+                    time.time_ns(),
+                    "native-order-filled:" + str(event.event_id),
+                    False,
+                    venue_order_id=str(event.venue_order_id),
+                )
+                from dataclasses import asdict, replace
+
+                evidence.record("native_order_filled", _jsonable(asdict(fact)))
+                current = self.cache.order(event.client_order_id)
+                if (
+                    str(event.strategy_id) != plan.strategy_id
+                    or fact.client_order_id not in controller.orders
+                    or current is None
+                    or str(current.instrument_id) != leg.instrument_id
+                    or str(current.account_id) != leg.account_id
+                    or str(current.venue_order_id) != fact.venue_order_id
+                    or str(event.trade_id)
+                    not in {str(value) for value in current.trade_ids}
+                    or not native_fill_matches(event, fact, plan.strategy_id)
+                    or not any(
+                        str(item.event_id) == str(event.event_id)
+                        for item in current.events()
+                    )
+                ):
+                    evidence.unattributed_native_events.append(
+                        {
+                            "event": _jsonable(asdict(fact)),
+                            "reconciliation": event.reconciliation,
+                            "classification": "Unknown_or_foreign_native_projection",
+                        }
+                    )
+                    if fact.client_order_id in controller.orders:
+                        controller.mark_unknown(
+                            fact.client_order_id,
+                            "native_fill_projection_not_attributed_to_owned_intent",
+                        )
+                    else:
+                        controller.external_activity("foreign_native_fill_projection")
+                    return
+                fact = replace(fact, native_applied=True)
+                evidence.record(
+                    "native_fill_order_cache_attributed", _jsonable(asdict(fact))
+                )
+                evidence.fills.append(fact)
+                result = controller.observe_fill(fact, fact.received_ns)
+                self.observe_loss_estimate(time.time_ns())
+                self.poll_proofs(time.time_ns())
+                self.dispatch(result)
+                terminal = native_terminal_status(current)
+                if terminal is not None:
+                    self.dispatch(
+                        controller.observe_terminal(
+                            str(event.client_order_id), terminal, time.time_ns()
+                        )
+                    )
+            except (
+                ValueError,
+                RuntimeError,
+                TypeError,
+                KeyError,
+                AttributeError,
+                OSError,
+                ArithmeticError,
+            ) as exc:
+                self.fail(f"native_fill:{type(exc).__name__}:{exc}")
+
+    return BoundedEntropy()
+
+
+def build_node(plan, evidence):
+    # Revalidate dataclass callers; endpoint authority never comes from env/runtime overrides.
+    parse_plan(plan_document(plan))
+    from nautilus_trader.common import Environment, LoggerConfig, LogLevel
+    from nautilus_trader.live import LiveExecutionEngineConfig, LiveNode
+    from nautilus_trader.model import TraderId
+
+    policies = native_policies(plan)
+    configurations = clients(plan, policies)
+    builder = LiveNode.builder(
+        "ENTROPY-LOOPBACK", TraderId.from_str("ENTROPY-001"), Environment.LIVE
+    )
+    builder = builder.with_logging(LoggerConfig(stdout_level=LogLevel.ERROR))
+    builder = (
+        builder.with_timeout_connection(5)
+        .with_timeout_reconciliation(5)
+        .with_timeout_portfolio(5)
+        .with_timeout_disconnection_secs(5)
+        .with_delay_post_stop_secs(0)
+        .with_delay_shutdown_secs(0)
+    )
+    builder = builder.with_exec_engine_config(
+        LiveExecutionEngineConfig(
+            reconciliation=True,
+            filter_unclaimed_external_orders=False,
+            inflight_check_interval_ms=0,
+            open_check_interval_secs=None,
+            position_check_interval_secs=None,
+        )
+    )
+    factories = {}
+    for (
+        name,
+        data_factory,
+        data_config,
+        execution_factory,
+        execution_config,
+    ) in configurations:
+        builder = builder.add_data_client(
+            name, data_factory, data_config
+        ).add_exec_client(name, execution_factory, execution_config)
+        factories["entropy" if name == plan.legs[0].client_id else "aster"] = (
+            execution_factory
+        )
+    node = builder.build()
+    evidence.handle = node.handle()
+    strategy = _strategy(plan, evidence, factories)
+    node.add_strategy(strategy)
+    evidence.record("native_policies", policies)
+    return node, strategy, factories
+
+
+async def run_loopback(plan, *, wheel, sha256, provenance, matching_path, fixture_path):
+    parse_plan(plan_document(plan))
+    candidate = verify_candidate(wheel, sha256, provenance)
+    evidence = Evidence(
+        plan,
+        candidate=candidate,
+        matching_path=matching_path,
+        fixture_path=fixture_path,
+    )
+    node = None
+    try:
+        node, strategy, _factories = build_node(plan, evidence)
+
+        def watchdog():
+            evidence.watchdog_fired = True
+            evidence.handle.stop()
+
+        timer = threading.Timer(plan.limits.duration_ms / 1000 + 15, watchdog)
+        timer.daemon = True
+        timer.start()
+        try:
+            await asyncio.wait_for(
+                node.run_async(), plan.limits.duration_ms / 1000 + 25
+            )
+        finally:
+            timer.cancel()
+        controller = evidence.controller
+        from nautilus_trader.model import AccountId, InstrumentId
+
+        from entropy_execution_report import EconomicReport
+
+        report = EconomicReport(plan)
+        report.observe_native_snapshot(evidence.economics)
+        shutdown_verified = (
+            evidence.stopped
+            and not evidence.handle.is_running
+            and not evidence.watchdog_fired
+        )
+        economic_report = report.build(
+            controller.snapshot(time.time_ns()),
+            time.time_ns(),
+            shutdown_verified=shutdown_verified,
+            estimated={"conservative_loss": evidence.loss_estimate},
+        )
+        evidence.write_once("economic-report.json", economic_report)
+        summary = {
+            "schema_version": 1,
+            "synthetic_numeric_loopback": True,
+            "native_host_egress_isolation_verified": False,
+            "controller": controller.snapshot(time.time_ns()),
+            "started": evidence.started,
+            "stopped": evidence.stopped,
+            "shutdown_verified": shutdown_verified,
+            "watchdog_fired": evidence.watchdog_fired,
+            "failure": evidence.failure,
+            "economic_error": evidence.economic_error,
+            "native_economic_receipt": evidence.economics,
+            "account_flat_verified": "Unknown",
+            "aster_actual_funding": "Unknown",
+            "economics_complete": False,
+            "events": evidence.rows,
+            "event_bytes": evidence.bytes,
+            "native_selected_scopes": evidence.latest_scopes,
+            "current_projection_witnesses": evidence.projection_witnesses,
+            "initial_selected_flat_projection": evidence.initial_selected_flat,
+            "unattributed_native_events": evidence.unattributed_native_events,
+            "durable_cold_native_cache_restore_verified": False,
+            "native_cache_positions": {
+                leg.name: [
+                    str(position)
+                    for position in strategy.cache.positions(
+                        instrument_id=InstrumentId.from_str(leg.instrument_id),
+                        account_id=AccountId.from_str(leg.account_id),
+                    )
+                ]
+                for leg in plan.legs
+            },
+            "native_portfolio_net_positions": {
+                leg.name: str(
+                    strategy.portfolio.net_position(
+                        InstrumentId.from_str(leg.instrument_id),
+                        account_id=AccountId.from_str(leg.account_id),
+                    )
+                )
+                for leg in plan.legs
+            },
+            "economic_flags": economic_report["flags"],
+        }
+        evidence.write_once("summary.json", summary)
+        return summary
+    finally:
+        if node is not None:
+            node.dispose()
+        evidence.close()
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("config", type=Path)
+    modes = parser.add_mutually_exclusive_group(required=True)
+    modes.add_argument("--dry-run", action="store_true")
+    modes.add_argument("--loopback", action="store_true")
+    parser.add_argument("--wheel", type=Path)
+    parser.add_argument("--sha256")
+    parser.add_argument("--native-provenance", type=Path)
+    parser.add_argument("--matching", type=Path)
+    parser.add_argument("--fixture", type=Path)
+    args = parser.parse_args(argv)
+    plan = load_plan(args.config)
+    if args.dry_run:
+        print(canonical_json(preview_plan(plan)))
+        return 0
+    if not all(
+        (args.wheel, args.sha256, args.native_provenance, args.matching, args.fixture)
+    ):
+        parser.error(
+            "loopback requires exact wheel/source provenance/matching/fixture inputs"
+        )
+    result = asyncio.run(
+        run_loopback(
+            plan,
+            wheel=args.wheel,
+            sha256=args.sha256,
+            provenance=args.native_provenance,
+            matching_path=args.matching,
+            fixture_path=args.fixture,
+        )
+    )
+    print(canonical_json(result))
+    return (
+        0
+        if result["shutdown_verified"] and result["controller"]["state"] == "Completed"
+        else 1
+    )
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

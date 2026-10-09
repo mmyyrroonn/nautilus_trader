@@ -1,0 +1,52 @@
+   Compiling nautilus-core v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\core)
+   Compiling nautilus-common v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\common)
+   Compiling nautilus-persistence-macros v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\persistence\macros)
+   Compiling nautilus-serialization v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\serialization)
+warning: linker stdout: 正在创建库 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-63fd5ed65377140a.dll.lib 和对象 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-63fd5ed65377140a.dll.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-persistence-macros` (lib) generated 1 warning
+   Compiling nautilus-model v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\model)
+   Compiling nautilus-cryptography v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\cryptography)
+   Compiling nautilus-network v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\network)
+   Compiling nautilus-analysis v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\analysis)
+   Compiling nautilus-execution v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\execution)
+   Compiling nautilus-portfolio v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\portfolio)
+   Compiling nautilus-persistence v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\persistence)
+   Compiling nautilus-live v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\live)
+   Compiling nautilus-trading v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\trading)
+   Compiling nautilus-testkit v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\testkit)
+   Compiling nautilus-hyperliquid v0.63.0 (E:\persarb\worktrees\entropy-io-recovery\crates\adapters\hyperliquid)
+error: value assigned to `flight` is never read
+    --> crates\adapters\hyperliquid\src\execution.rs:2210:29
+     |
+2210 | ...                   flight.succeeded = result.is_ok();
+     |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+     = help: maybe it is overwritten before being read?
+     = note: `-D unused-assignments` implied by `-D warnings`
+     = help: to override `-D warnings` add `#[allow(unused_assignments)]`
+
+error: unreachable pattern
+    --> crates\adapters\hyperliquid\src\execution_scope.rs:1196:13
+     |
+1196 |             _ => anyhow::bail!("Unknown warm native position side"),
+     |             ^ no value can reach this
+     |
+note: multiple earlier patterns match some of the same values
+    --> crates\adapters\hyperliquid\src\execution_scope.rs:1196:13
+     |
+1193 |             PositionSide::Long => position.quantity.as_decimal(),
+     |             ------------------ matches some of the same values
+1194 |             PositionSide::Short => -position.quantity.as_decimal(),
+     |             ------------------- matches some of the same values
+1195 |             PositionSide::Flat => Decimal::ZERO,
+     |             ------------------ matches some of the same values
+1196 |             _ => anyhow::bail!("Unknown warm native position side"),
+     |             ^ collectively making this unreachable
+     = note: `-D unreachable-patterns` implied by `-D warnings`
+     = help: to override `-D warnings` add `#[allow(unreachable_patterns)]`
+
+error: could not compile `nautilus-hyperliquid` (lib) due to 2 previous errors

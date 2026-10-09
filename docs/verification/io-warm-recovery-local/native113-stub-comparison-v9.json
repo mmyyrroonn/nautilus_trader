@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "E:/persarb/worktrees/entropy-io-recovery/.venv/Scripts/python.exe",
+    "E:/persarb/_tmp/entropy113-validation/postprocess_stubs.py"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-io-recovery",
+  "started_utc": "2026-10-09T07:55:30.730625+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "uv_project_environment": null,
+  "nautilus_stub_profile": null,
+  "cargo_build_warnings": null,
+  "cargo_net_offline": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T07:55:32.152304+00:00"
+}

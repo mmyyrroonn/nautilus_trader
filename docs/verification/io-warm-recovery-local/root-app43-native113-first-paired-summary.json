@@ -1,0 +1,198 @@
+{
+  "captured_utc": "2026-10-09T08:17:48.901939+00:00",
+  "actual_command": {
+    "argv": [
+      "E:/persarb/worktrees/entropy-execution-app/.venv/Scripts/python.exe",
+      "-m",
+      "pytest",
+      "-q",
+      "tests/test_entropy_execution_native.py::test_actual_installed_factory_two_leg_execution[paired]",
+      "--basetemp",
+      "E:/persarb/_tmp/app43-native113-first-paired-pytest-20261009"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-execution-app",
+    "started_utc": "2026-10-09T08:03:35.377481+00:00",
+    "cargo_target_dir": null,
+    "pyo3_python": null,
+    "uv_project_environment": null,
+    "nautilus_stub_profile": null,
+    "cargo_build_warnings": null,
+    "cargo_net_offline": null,
+    "entropy43_native_wheel": "E:/persarb/_tmp/entropy113-wheel-nextest-20261009/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+    "entropy43_native_sha256": "c2bcce1e98939e1304fa3556463f987eb57266406a18d38e4a713436eca485fd",
+    "entropy43_native_provenance": "E:/persarb/_tmp/entropy113-wheel-nextest-20261009/native-provenance.json",
+    "entropy43_evidence_root": "E:/persarb/_tmp/app43-native113-first-paired-20261009",
+    "exit_code": 1,
+    "finished_utc": "2026-10-09T08:03:54.022892+00:00"
+  },
+  "actual_result": "FAIL: StoppedUnknown",
+  "summary_sha256": "e4876783df00a45623b498c6b89f052b1650f56278c467e62fad8ea43617e7e2",
+  "peer_sha256": "166ecd652263babe1f97e0c30b3ad01fc97d1643824b75dec77ef7a2810c84cb",
+  "events_sha256": "b34dd103f700fb44ca2610986dda91e07d5be8f5684addde07e3c819c63083ca",
+  "normal_native_fills": [
+    {
+      "account_id": "HYPERLIQUID-ENTROPY43",
+      "client_order_id": "ENTROPY43_LOCAL-entropy-1",
+      "fee": "0.00100000",
+      "fee_currency": "USDC",
+      "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+      "leg": "entropy",
+      "native_applied": true,
+      "price": "100.00",
+      "quantity": "0.1200",
+      "received_ns": 1791533018135947000,
+      "side": "BUY",
+      "source_reference": "native-order-filled:e7c4544a-4536-4398-8c36-23a141d1a34d",
+      "trade_id": "io:io:SNDK:70001:60000",
+      "venue_order_id": "70001"
+    }
+  ],
+  "actions": 1,
+  "portfolio_net": {
+    "aster": "0",
+    "entropy": "0.12"
+  },
+  "native_diagnostic": "io warm RecoveryIncomplete: io account proof source or verification interval is stale",
+  "recovery_complete": false,
+  "account_trusted": false,
+  "warm_origin": null,
+  "retained_source_identity": {
+    "account_id": "HYPERLIQUID-ENTROPY43",
+    "address": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+    "epoch": 0,
+    "generation": 1,
+    "policy": {
+      "action_timeout_ms": 2000,
+      "fee_buffer_bps": "100",
+      "journal_path": "E:\\persarb\\_tmp\\app43-native113-first-paired-20261009\\paired\\native-io-intents.jsonl",
+      "margin_buffer": "1",
+      "max_actions": 6,
+      "max_gross_notional": "40",
+      "max_leverage": 1,
+      "max_open_orders": 2,
+      "max_order_notional": "20",
+      "metadata_max_age_ms": 30000,
+      "recovery_max_attempts": 2,
+      "recovery_retry_delay_ms": 10,
+      "recovery_timeout_ms": 3000,
+      "schema_version": 1,
+      "strategy_id": "ENTROPY-043",
+      "symbols": [
+        {
+          "instrument_id": "io:SNDK-USD-PERP.HYPERLIQUID",
+          "max_price": "105",
+          "max_quantity": "0.12",
+          "min_price": "95"
+        }
+      ]
+    },
+    "query_token": 6,
+    "received_sequence": 9
+  },
+  "retained_actual_sources": [
+    {
+      "request": {
+        "type": "frontendOpenOrders",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "dex": "io"
+      },
+      "received_ms": 1791533018184,
+      "raw_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "request": {
+        "type": "userFills",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "received_ms": 1791533018185,
+      "raw_sha256": "804cf387c210aa4eb7fec622a4e6c0bbbbc2d28d29f8ce24448a632cd748a01f"
+    },
+    {
+      "request": {
+        "type": "orderStatus",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "oid": "0x765fde8d8d4a9ae99a37a1f3deb3a35e"
+      },
+      "received_ms": 1791533018185,
+      "raw_sha256": "9b50dcc37a60569a26718d359783a329077ddb6967f9f2b504f9a235b373f73c"
+    },
+    {
+      "request": {
+        "type": "userRole",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "received_ms": 1791533018186,
+      "raw_sha256": "6b3061507ef8cc2ca95320f790a9f9ccb3c850ae081df4b6f6e56e40d57203e4"
+    },
+    {
+      "request": {
+        "type": "userAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "received_ms": 1791533018186,
+      "raw_sha256": "f693b9deb860600fb93d749df324c55991afe7eba6300113ab381339b23d12d5"
+    },
+    {
+      "request": {
+        "type": "userDexAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "received_ms": 1791533018187,
+      "raw_sha256": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa"
+    },
+    {
+      "request": {
+        "type": "meta",
+        "dex": "io"
+      },
+      "received_ms": 1791533018187,
+      "raw_sha256": "2de53819992dceeaca73994fac076d3078e21bc9a46d45e44982656dcdce2993"
+    },
+    {
+      "request": {
+        "type": "spotMeta"
+      },
+      "received_ms": 1791533018188,
+      "raw_sha256": "beb6e434f0a6d64b67efde703c18c8b6d104f8e5ba6ea5ab8ef47f448b55c555"
+    },
+    {
+      "request": {
+        "type": "clearinghouseState",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d",
+        "dex": "io"
+      },
+      "received_ms": 1791533018299,
+      "raw_sha256": "ef1aa826433b6e9755112f16a73e2550da1ae7895124a1b5cbb09c9d7ddf8777"
+    },
+    {
+      "request": {
+        "type": "userAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "received_ms": 1791533019297,
+      "raw_sha256": "f693b9deb860600fb93d749df324c55991afe7eba6300113ab381339b23d12d5"
+    },
+    {
+      "request": {
+        "type": "userDexAbstraction",
+        "user": "0xc96aaa54e2d44c299564da76e1cd3184a2386b8d"
+      },
+      "received_ms": 1791533020294,
+      "raw_sha256": "fcbcf165908dd18a9e49f7ff27810176db8e9f63b4352213741664245224f8aa"
+    }
+  ],
+  "identity_counts": {
+    "source_files": 30,
+    "installed_files": 24,
+    "artifacts": 2
+  },
+  "identity_differences": [],
+  "shutdown_verified": true,
+  "watchdog_fired": false,
+  "not_verified": [
+    "two-leg success",
+    "actual venues",
+    "kernel isolation",
+    "whole-account economics"
+  ]
+}

@@ -1,0 +1,62 @@
+﻿{
+    "utc":  "2026-10-09T07:17:35.4950836Z",
+    "kind":  "independent formatted v7 source review only",
+    "manifest":  "E:/persarb/_tmp/entropy113-validation/native113-frozen-source-v7.json",
+    "report":  "E:/persarb/_tmp/entropy113-validation/reviewer-native113-source-v7.md",
+    "report_sha256":  "e01318d6233a4c77f5f710f6f1591f09690239ca2007b58d5bc296109bfeab9d",
+    "bound_input_count":  35,
+    "pre_match":  true,
+    "post_match":  true,
+    "pre_post_identical":  true,
+    "pre_identity":  "E:/persarb/_tmp/entropy113-validation/reviewer-native113-source-v7-pre-identities.json",
+    "post_identity":  "E:/persarb/_tmp/entropy113-validation/reviewer-native113-source-v7-post-identities.json",
+    "independent_product_tests":  0,
+    "new_source_blockers":  [
+
+                            ],
+    "root_reported_product_status":  "Four old regressions exact PASS; v7 fullHL entropy_account 210 PASS 1 FAIL hard financial demand/history actual-source case; unaccepted pending root diagnosis",
+    "product_acceptance":  "Not granted",
+    "limitations":  [
+                        "No general postprepare Engine Cache fence",
+                        "No generic cold restore/Portfolio/fullaccount/history/funding/runPnL/kernel isolation",
+                        "Actual WS filled-before-fill still hard invalidates",
+                        "Original preexisting fills WS versus REST source may be unknown"
+                    ],
+    "production":  [
+                       {
+                           "path":  "E:\\persarb\\worktrees\\entropy-io-recovery\\crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+                           "size":  182824,
+                           "sha256":  "fd10b2e0deb1b90e42dcb0756eb68d2227b3bffe7d383807a93cf962e67270d2",
+                           "manifest_sha256":  "fd10b2e0deb1b90e42dcb0756eb68d2227b3bffe7d383807a93cf962e67270d2",
+                           "matches":  true
+                       },
+                       {
+                           "path":  "E:\\persarb\\worktrees\\entropy-io-recovery\\crates\\adapters\\hyperliquid\\src\\execution.rs",
+                           "size":  250478,
+                           "sha256":  "2b1e30b896b60b01edd257947426c5f132b841dc7fe7771602f1e810c81c3316",
+                           "manifest_sha256":  "2b1e30b896b60b01edd257947426c5f132b841dc7fe7771602f1e810c81c3316",
+                           "matches":  true
+                       },
+                       {
+                           "path":  "E:\\persarb\\worktrees\\entropy-io-recovery\\crates\\adapters\\hyperliquid\\src\\http\\client.rs",
+                           "size":  176208,
+                           "sha256":  "ba66b53fcc6a6d1fb6e8bb34ac6faf677cd9e7eb6ffe89eea9e2c11ea398eab2",
+                           "manifest_sha256":  "ba66b53fcc6a6d1fb6e8bb34ac6faf677cd9e7eb6ffe89eea9e2c11ea398eab2",
+                           "matches":  true
+                       },
+                       {
+                           "path":  "E:\\persarb\\worktrees\\entropy-io-recovery\\crates\\adapters\\hyperliquid\\src\\account_scope.rs",
+                           "size":  58494,
+                           "sha256":  "586839f5e0a2bc598330d28a6b22746bb12f44ca2bb2df0fad10fcc5e632483c",
+                           "manifest_sha256":  "586839f5e0a2bc598330d28a6b22746bb12f44ca2bb2df0fad10fcc5e632483c",
+                           "matches":  true
+                       },
+                       {
+                           "path":  "E:\\persarb\\worktrees\\entropy-io-recovery\\crates\\adapters\\hyperliquid\\src\\economics_scope.rs",
+                           "size":  34956,
+                           "sha256":  "2ebdf3756f39ea0cd32cfdc79d84ef7babdcabd6c2d7fea0b0f00d4c151f7f47",
+                           "manifest_sha256":  "2ebdf3756f39ea0cd32cfdc79d84ef7babdcabd6c2d7fea0b0f00d4c151f7f47",
+                           "matches":  true
+                       }
+                   ]
+}

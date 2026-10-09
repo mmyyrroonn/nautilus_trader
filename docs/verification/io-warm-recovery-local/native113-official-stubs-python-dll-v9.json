@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "E:/persarb/worktrees/entropy-io-recovery/.venv/Scripts/python.exe",
+    "python/generate_stubs.py"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-io-recovery",
+  "started_utc": "2026-10-09T07:55:09.744493+00:00",
+  "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+  "pyo3_python": "E:/persarb/worktrees/entropy-io-recovery/.venv/Scripts/python.exe",
+  "uv_project_environment": null,
+  "nautilus_stub_profile": "nextest",
+  "cargo_build_warnings": "allow",
+  "cargo_net_offline": "true",
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T07:55:18.195387+00:00"
+}

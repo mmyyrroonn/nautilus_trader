@@ -1,0 +1,125 @@
+# Bounded warm io account recovery
+
+This contract is for native issue #113, based on freshly fetched
+`main@667f424e123e177a87c257cdc7f6b4e2e776d138`. Implementation and acceptance
+are still pending. This draft records the reviewed scope, not a test result.
+
+## Required behavior
+
+A normal io `QueryAccount` can reuse independently verified metadata while
+rebuilding current account authority. The witness belongs to the actual private
+reader generation and epoch, the explicit policy and selected instruments, the
+original verification times, and the exact native instrument facts. It cannot
+originate from a diagnostic, a cached Ready flag, an empty account, or an elapsed
+time assumption. Hard source changes revoke it; a valid owned financial event
+still revokes current funds and execution recovery authority.
+
+Warm recovery is intentionally limited to actual owned facts already accepted
+by the live native path and consumed by the ordinary Engine Cache. Its REST
+reads confirm complete io open orders, actual fills and exact owned CLOID
+statuses. They do not project a new REST-only fill, synthesize finality or adopt
+an external order. New, missing, malformed, unowned or conflicting facts keep
+recovery incomplete and preserve conservative debt and reservations. Cold
+native projection recovery remains a separate capability.
+
+The existing native fill ledger does not retain a WS/REST channel tag. This
+contract therefore does not claim that every earlier accepted fill originated
+from WebSocket. It requires exact facts and their actual ordinary Cache events
+in this runtime; the warm query itself cannot create a new financial projection.
+An open or terminal journal phase must agree with the current native order status.
+
+One final actual account group verifies user role, account modes, collateral,
+full io positions and funds, with the existing repeated mode checks. Its actual
+selected metadata and collateral facts must agree with the warm witness. The
+original active-asset verification time is retained; its historical mark and
+capacity values are not relabeled as current money.
+
+## Source and commit boundary
+
+HTTP observations are staged without a financial projection. A normal runner
+TimeEvent returns completion to the thread that owns the ordinary Engine Cache.
+The existing RustLocal callback is registered on that owner thread before its
+send-safe message moves to the worker. There is no framework change, unsafe
+Cache access, production test hook or manual Cache/Portfolio population.
+
+The final short transaction holds ingress, account and execution guards in that
+order, without an HTTP await. It checks actual reader generation, epoch,
+received sequence and applied state; exact private funds and receive/source
+facts; account and execution revisions; independent metadata origin and policy;
+expected durable owned facts; both native instrument stores and current ordinary
+Cache orders, fills and positions. It samples deadlines and TTL after lock waits
+and includes the cost of durable absorption before granting authority or
+emitting a current account event. Native Cache checks do not certify Portfolio;
+the application independently observes its ordinary Cache and Portfolio.
+
+Equivalent active queries can share a finite flight only under the same captured
+source identity. A stale completion, canceled task, stopped client, closed
+queue, wrong-thread message or undrained callback cannot commit or grant Ready.
+Cleanup must be bound to its own query and session token, including cancellation;
+an old task cannot clear a subsequent flight. Received unknown financial source
+bodies cannot disappear merely because later parsing or the group fails.
+
+Each retained original source carries its actual request JSON, transport receive
+time and exact body, together with the captured generation, epoch, ingress sequence,
+query token, account, address and policy. Staging precedes parsing and any extra
+response-item quota wait. The first readonly Unknown debt is immutable and is
+independent of later reader eligibility. A body that cannot fit existing finite
+retention limits becomes explicit missing-raw debt; it is not claimed as retained.
+An owner completion captures the runtime state weakly so an undelivered callback
+does not retain its journal after ordinary shutdown. Acceptance of this behavior
+still requires the actual stop/drop persistence tests.
+
+The Cache metadata binding may be completed once for an otherwise unchanged
+successful normal metadata witness; an existing binding cannot be overwritten on
+each query. New risk has an additional owner pre-prepare metadata check. The
+existing Send writer continues to check its receive-bounded original metadata and
+account/action fences, but this change does not provide transactional isolation
+from arbitrary Engine Cache metadata mutation after preparation.
+
+## Bounds and economics
+
+The existing limiter capacity and refill, the caller's account and metadata TTL,
+and the total recovery deadline remain unchanged. For application #43 these are
+1200 tokens/minute, 20 tokens/second, 2000 ms, 30000 ms and 3000 ms respectively.
+Waiting for quota, retries, response item costs, lock waits and owner completion
+belong to the real bounds. Consumed quota is not refunded or double charged.
+Insufficient capacity remains a bounded failure; this is no promise of
+continuous authority at one query per second.
+
+Source-derived minimum execution weights are 506 for the old one-symbol,
+one-active-CLOID full query. Warm recovery starts at 222 + 2 per active CLOID
+when the actual complete account position supplies the selected symbol's leverage.
+Each selected symbol absent from that actual position source requires two genuine
+active-asset counterchecks, adding 40 tokens. A one-symbol flat query therefore
+starts at 262 tokens (264 with one active CLOID). These proposed corrected minima
+remain pending actual revision 7 verification.
+Economic history adds at least 80 for its first empty pages. These are lower
+bounds; they are not measured limiter balances or a claim that paired passes.
+
+Successful warm recovery does not automatically reread or extend funding and
+ledger coverage. Completed history retains its actual finite end. A later
+unrequested interval remains explicitly Unknown. Actual new or unsupported
+financial sources, source gaps and cold recovery keep their independent finite
+history demand. Existing history failure behavior remains conservative; this
+change does not add a timeout exception. Raw sources and consumed receipts stay
+immutable, fees are not reapplied and neither coverage nor economics grants
+current funds authority.
+
+The actual current leverage countercheck is mandatory even for a flat selected
+symbol. A prior metadata TTL alone cannot hide a newly changed out-of-policy
+leverage value. Counterchecks confirm the original leverage and retain their raw
+source identity; they do not update the original metadata receive times or turn
+the accompanying old/new capacity and mark values into current funds.
+
+## Acceptance limits
+
+Acceptance requires frozen source review, meaningful normal-peer positive and
+negative native tests, relevant local regressions, official stubs, a clean-source
+wheel and verified installation, normal factory acceptance and the actual final
+PR checks. Exact failures, commands, timestamps, source and artifact identities
+must be retained. Only actually passing cases can be counted.
+
+Native issue completion cannot close application #43 or Epic E6 automatically.
+Real venue execution, whole-account/funding/run economics, durable cold Cache
+restore, continuous readiness and Windows kernel isolation are separate open
+capabilities. No real mainnet order is authorized in this session.

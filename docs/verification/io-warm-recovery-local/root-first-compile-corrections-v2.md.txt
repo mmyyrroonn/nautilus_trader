@@ -1,0 +1,11 @@
+# Native warm-query first compilation corrections
+
+The first `io_query_recovery` Cargo attempt failed before any tests ran. The exact command, timestamps and diagnostic output are preserved in `native113-query-first-compile-v1.json` and `.log`; no passing result is substituted for it.
+
+Rust reported an unread assignment to `flight.succeeded`. Rust's disjoint capture of the individual fields used by the async move block meant the `IoWarmFlight` destructor was not necessarily captured with those fields. This matters because its destructor cancels owner completion, abandons staged sources and closes only its own query token. Root added a private `set_succeeded(&mut self, bool)` method and calls it after successful economic demand recording. Using the entire guard through the method causes the asynchronous task to own the guard throughout its work. An economic recording error leaves it unsuccessful, and cancellation still uses the destructor. No lint suppression or test-only interface was added.
+
+The second diagnostic was an unreachable wildcard for the exhaustive `PositionSide` enum. Root removed the wildcard and retained all three actual variants.
+
+Root also initialized `recovery_source_debt: None` in the existing embedded `JournalFacts` unit fixture before formatting. This was the mechanical test change requested in the production handoff.
+
+Official nightly formatting completed successfully. `native113-first-compile-source-v2.json` identifies the resulting exact source and test bytes. Compilation and independent review of this revision are pending; this note does not certify runtime correctness, retained raw sources, financial permission, or paired application acceptance.

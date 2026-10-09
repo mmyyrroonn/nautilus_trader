@@ -1,0 +1,15 @@
+--- E:\persarb\_tmp\entropy113-validation\snapshots\native113-frozen-source-v5\native\crates\adapters\hyperliquid\src\execution_scope.rs
++++ E:\persarb\_tmp\entropy113-validation\snapshots\native113-frozen-source-v6\native\crates\adapters\hyperliquid\src\execution_scope.rs
+@@ -4444,6 +4444,12 @@
+             journal_tainted: false,
+             native_projection_recovery_required: false,
+             fresh_journal_origin: false,
++            metadata_origin: None,
++            query_in_flight: false,
++            query_key: None,
++            query_token: None,
++            query_completed: 0,
++            last_query_warm: false,
+         };
+         assert!(state.persist().is_err());
+         assert!(state.journal_tainted);

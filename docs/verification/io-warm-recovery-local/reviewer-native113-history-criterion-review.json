@@ -1,0 +1,14 @@
+﻿{
+    "utc":  "2026-10-09T07:31:44.8712361Z",
+    "report":  "E:/persarb/_tmp/entropy113-validation/reviewer-native113-history-criterion-review.md",
+    "report_sha256":  "3685e3ac45761a7ffb3570ed21f5834c3d391989efa35ee4051fe2ea22fdc313",
+    "source_log":  "E:/persarb/_tmp/entropy113-validation/native113-hyperliquid-regression-v8.log",
+    "source_log_sha256":  "8c4f50ba61b89a449a8399875c310dc1e9ec184a1da83373b52714fb43ac74f7",
+    "independent_extract":  "E:/persarb/_tmp/entropy113-validation/reviewer-native113-history-criterion-extract.json",
+    "independent_product_tests":  0,
+    "criterion_correction":  "Accepted only strict actual history failure OR new source-bound zero-page deadline coverage plus actual cold/history metadata reads",
+    "fixture_freeze_acceptance":  "Pending final corrected source and actual outcome",
+    "prior_report_correction":  "30ms was private-source sleep; actual history timeout3000ms unchanged",
+    "prior_bytes_preserved":  true,
+    "internal_token_balance":  "Unknown; source-derived lower bound only"
+}

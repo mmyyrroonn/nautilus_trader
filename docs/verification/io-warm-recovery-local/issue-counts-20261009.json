@@ -1,0 +1,20 @@
+{
+  "captured_utc": "2026-10-09T05:57:12.416930+00:00",
+  "repos": {
+    "nautilus_trader": {
+      "total": 67,
+      "open": 10,
+      "closed": 57
+    },
+    "Nautilus-Perps": {
+      "total": 26,
+      "open": 7,
+      "closed": 19
+    }
+  },
+  "totals": {
+    "total": 93,
+    "open": 17,
+    "closed": 76
+  }
+}
