@@ -1,0 +1,5 @@
+Read-only report procedure original failure; no tests or helper execution.
+Argv: E:/persarb/worktrees/entropy-execution-app/.venv/Scripts/python.exe E:/persarb/_tmp/entropy117-validation/reviewer-native117-archive-helper-v3-draft-procedure-v1.py
+Actual exit_code: 1
+Traceback line32: len(comparison['inherited_diagnostics']) -> TypeError: object of type int has no len().
+Comparison schema counters are new_diagnostics=0/inherited_diagnostics=10; arrays are baseline/current diagnostics. Original inspection UTC was not recorded by failed procedure; do not invent it.

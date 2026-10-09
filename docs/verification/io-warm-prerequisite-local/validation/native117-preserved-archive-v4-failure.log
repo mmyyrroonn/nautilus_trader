@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "E:\persarb\_tmp\entropy117-validation\archive_native117_v4.py", line 753, in <module>
+    main()
+  File "E:\persarb\_tmp\entropy117-validation\archive_native117_v4.py", line 648, in main
+    provenance = verify_wheel(args.implementation)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\persarb\_tmp\entropy117-validation\archive_native117_v4.py", line 311, in verify_wheel
+    require(provenance["build"].get("started_at") and provenance["build"].get("completed_at"), "Build is unfinished")
+  File "E:\persarb\_tmp\entropy117-validation\archive_native117_v4.py", line 47, in require
+    raise ValueError(message)
+ValueError: Build is unfinished

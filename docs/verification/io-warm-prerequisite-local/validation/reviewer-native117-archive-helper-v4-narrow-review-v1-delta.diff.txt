@@ -1,0 +1,126 @@
+--- archive_native117_v3.py
++++ archive_native117_v4.py
+@@ -391,6 +391,92 @@
+             "actual_result": "PASS" if command["exit_code"] == 0 else "FAIL"}
+ 
+ 
++def parse_clippy_error_blocks(raw, expected_summaries):
++    """Account for every error header, including compiler errors and Cargo summaries."""
++    require("\x1b" not in raw, "ANSI control sequences cannot conceal lint errors")
++    text = raw.replace("\r\n", "\n")
++    headers = list(re.finditer(r"(?m)^[ \t]*error[^\n]*$", text))
++    require(headers, "Lint failure has no parsed error headers")
++    diagnostics, summaries = [], []
++    for index, match in enumerate(headers):
++        header = match.group().strip()
++        summary = re.fullmatch(
++            r'error: could not compile `nautilus-hyperliquid` \((lib test|test "entropy_account")\) due to (\d+) previous errors',
++            header,
++        )
++        if summary:
++            summaries.append((summary.group(1), int(summary.group(2))))
++            continue
++        require(header.startswith("error: ") and not header.startswith("error["),
++                f"Unparsed compiler/error header: {header}")
++        block_end = headers[index + 1].start() if index + 1 < len(headers) else len(text)
++        block = text[match.end():block_end]
++        location = re.match(r"\n[ \t]*-->[ \t]*([^\n]+)\n", block)
++        require(location is not None, f"Error block lacks its primary location: {header}")
++        primary = location.group(1).strip().replace("\\", "/")
++        require(re.fullmatch(r"crates/adapters/hyperliquid/[A-Za-z0-9_/.\-]+\.rs:\d+:\d+", primary),
++                f"Error block has an unsupported primary location: {primary}")
++        diagnostics.append({"message": header[len("error: "):], "location": primary})
++    require(sorted(summaries) == sorted(expected_summaries), "Unparsed or extra Cargo error summaries")
++    require(sum(count for _, count in summaries) == len(diagnostics),
++            "Cargo error totals do not account for every actual diagnostic")
++    return diagnostics
++
++
++def verify_inherited_clippy(combined_check):
++    """Prove inherited-only from complete bound raw logs, retaining actual FAIL."""
++    path = ROOT / "native117-clippy-diagnostic-comparison-v7-v2.json"
++    expected_hash = digest(path)
++    comparison = load_json(path)
++    require(type(comparison.get("new_diagnostics")) is list and comparison["new_diagnostics"] == []
++            and type(comparison.get("inherited_diagnostics")) is int
++            and comparison["inherited_diagnostics"] == 10,
++            "Actual lint comparison does not declare the required empty array and integer ten")
++    require(type(comparison.get("current")) is list and len(comparison["current"]) == 2,
++            "Actual lint comparison current command inventory differs")
++    labels = ("native117-tests-inclusive-clippy-v6", "native117-tests-inclusive-clippy-v7",
++              "native117-integration-tests-clippy-v7")
++    records = [comparison["baseline"], *comparison["current"]]
++    common = ["cargo", "clippy", "-p", "nautilus-hyperliquid"]
++    suffix = ["--no-deps", "--profile", "nextest", "--locked", "--offline",
++              "--config", "build.warnings='warn'", "--", "-D", "warnings"]
++    verified = []
++    for index, (record, label) in enumerate(zip(records, labels, strict=True)):
++        require(record["label"] == label, "Clippy comparison command label/order differs")
++        receipt = completed_command(label, 101)
++        command = verify_reference(record["receipt"], ROOT / (label + ".json"))
++        require(command == record["command"] == receipt["command"], "Nested actual lint command differs")
++        target = ["--test", "entropy_account"] if index == 2 else ["--lib", "--tests"]
++        require(command["argv"] == common + target + suffix
++                and Path(command["cwd"]).resolve() == NATIVE.resolve(),
++                "Actual strict lint command/target/checkout differs")
++        log = ROOT / (label + ".log")
++        verify_reference(record["log"], log)
++        require(receipt["log_sha256"] == record["log"]["sha256"]
++                and receipt["command_sha256"] == record["receipt"]["sha256"],
++                "Lint comparison command/log hashes differ")
++        summaries = [('test "entropy_account"', 6)]
++        if index != 2:
++            summaries.append(("lib test", 4))
++        diagnostics = parse_clippy_error_blocks(log.read_text(encoding="utf-8"), summaries)
++        require(type(record["diagnostics"]) is list and diagnostics == record["diagnostics"],
++                "Raw lint diagnostics differ from comparison rows")
++        require(len(diagnostics) == (6 if index == 2 else 10), "Actual raw lint diagnostic count differs")
++        verified.append({"command": receipt, "diagnostics": diagnostics})
++    tuples = [sorted((row["message"], row["location"]) for row in item["diagnostics"]) for item in verified]
++    require(len(set(tuples[0])) == len(set(tuples[1])) == 10 and len(set(tuples[2])) == 6,
++            "Duplicated lint diagnostics cannot mask an extra or missing error")
++    require(tuples[0] == tuples[1] and set(tuples[2]).issubset(set(tuples[1])),
++            "Current lint errors are new or targeted errors are not an overlapping subset")
++    require(verified[1]["command"] == combined_check, "Candidate lint check and comparison use different receipts")
++    require(digest(path) == expected_hash, "Lint comparison changed during preflight")
++    return {"comparison_path": path.as_posix(), "comparison_sha256": expected_hash,
++            "commands": verified, "distinct_inherited_diagnostics": 10,
++            "targeted_overlapping_diagnostics": 6, "new_diagnostics": [],
++            "actual_command_results": ["FAIL", "FAIL", "FAIL"],
++            "note": "Inherited-only is proved from every raw error block, not exit101. Target six overlaps combined ten; no tests-inclusive PASS is asserted."}
++
++
+ def verify_candidate_checks(provenance):
+     """Bind v7 stubs/lint and corrected clean build/install to actual receipts."""
+     labels = (("native117-official-stubs-utf8-v7", 0), ("native117-stub-comparison-v7", 0),
+@@ -411,6 +497,7 @@
+                 and "--locked" in argv and "--offline" in argv, "Strict Clippy command differs")
+     require("--tests" not in checks[2]["command"]["argv"]
+             and "--tests" in checks[3]["command"]["argv"], "Production/test lint targets differ")
++    inherited_clippy = verify_inherited_clippy(checks[3])
+     stubs_path = ROOT / "native117-generated-stub-comparison-v7.json"
+     stubs = load_json(stubs_path)
+     require(len(stubs["stubs"]) == 44 and len({row["path"] for row in stubs["stubs"]}) == 44,
+@@ -451,7 +538,8 @@
+     require(totals == ["242"], "Installed Python contract result differs")
+     return {"commands": checks, "generated_stub_comparison_sha256": digest(stubs_path),
+             "installed_identities": installed, "installed_python_passed": 242,
+-            "tests_inclusive_clippy": "FAIL; retained actual inherited diagnostics, not production strict PASS"}
++            "inherited_clippy_source_proof": inherited_clippy,
++            "tests_inclusive_clippy": "FAIL; ten exact inherited diagnostics independently verified from raw logs, not production strict PASS"}
+ 
+ 
+ def verify_app_cohort(label, before_label, after_label, modes, evidence_root, provenance, expected_exit=None):
+@@ -593,6 +681,12 @@
+             entries.append((source, Path(prefix) / name, digest(source), source.stat().st_size))
+     targets = [str(row[1]) for row in entries]
+     require(len(targets) == len(set(targets)), "Archive paths collide")
++    comparison = candidate_checks["inherited_clippy_source_proof"]
++    require(any(source.resolve() == Path(comparison["comparison_path"]).resolve()
++                and expected_hash == comparison["comparison_sha256"] for source, _, expected_hash, _ in entries),
++            "Hard-gated lint comparison is not bound to the immutable archive inventory")
++    require(digest(Path(comparison["comparison_path"])) == comparison["comparison_sha256"],
++            "Hard-gated lint comparison changed before archive creation")
+     ARCHIVE.mkdir(parents=True, exist_ok=False)
+     files, commands, connectors, non_json_responses = [], [], [], []
+     for source, relative, expected_hash, expected_size in entries:

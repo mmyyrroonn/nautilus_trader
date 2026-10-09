@@ -1,0 +1,24 @@
+"""Preserve the closed failed preflight outside the live-archive exclusion prefix."""
+import hashlib
+import json
+import shutil
+from datetime import datetime, timezone
+from pathlib import Path
+
+root = Path(__file__).resolve().parent
+receipt = json.loads((root / "native117-archive-command-v4.json").read_text(encoding="utf-8"))
+assert receipt["exit_code"] == 1
+assert not Path("E:/persarb/worktrees/entropy-warm-prerequisites/docs/verification/io-warm-prerequisite-local").exists()
+records = []
+for suffix in (".json", ".log"):
+    original = root / ("native117-archive-command-v4" + suffix)
+    preserved = root / ("native117-preserved-archive-v4-failure" + suffix)
+    assert not preserved.exists()
+    expected = hashlib.sha256(original.read_bytes()).hexdigest()
+    shutil.copyfile(original, preserved)
+    assert hashlib.sha256(preserved.read_bytes()).hexdigest() == expected == hashlib.sha256(original.read_bytes()).hexdigest()
+    records.append({"original": original.as_posix(), "preserved": preserved.as_posix(), "sha256": expected, "bytes": original.stat().st_size})
+path = root / "native117-preserved-archive-v4-failure-copy-v1.json"
+assert not path.exists()
+path.write_text(json.dumps({"created_utc": datetime.now(timezone.utc).isoformat(), "files": records, "original_failed_invocations": 1, "new_archive_invocations": 0, "tests_executed": 0, "reason": "The live archive-command prefix is excluded to avoid self-inclusion; this byte-identical copy retains the already completed failed v4 before the successful archive."}, indent=2) + "\n", encoding="utf-8")
+print(path.read_text(encoding="utf-8"))

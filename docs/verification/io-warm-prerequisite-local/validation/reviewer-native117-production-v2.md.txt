@@ -1,0 +1,24 @@
+# Independent production follow-up — native117 formatted v2
+
+Verdict: **the original account/private/deadline gap is corrected, but production approval remains BLOCKED by the final selected-metadata freshness gap below.** Zero tests were executed by this reviewer. This is independent review of production only; the reviewer authored the new test module.
+
+All **31** copied native inputs in `native117-formatted-v2.json` independently match their recorded byte sizes and SHA-256. The reviewed files are the frozen copies under `snapshots/native117-formatted-v2/native/`, not current workspace source. Production identities:
+
+- `account_scope.rs`: 84,329 bytes, SHA-256 `5380d902310c477418335e941f9962061fe86f1fffacafc858f990409557fca5`.
+- `execution_scope.rs`: 192,698 bytes, SHA-256 `b5b8ba952f432750c0d3d711eaa1b5818a959b922e92787ff372e7bbe4c2c18f`.
+
+The v1-to-unformatted-v2 diff is narrow: the existing source/private timestamp predicates are factored into a scalar helper, validation resamples them after full position/financial comparisons, and the sole commit call passes the captured original query deadline. Official formatting subsequently changes source layout; the following references use the formatted frozen bytes.
+
+## Corrected finding
+
+`account_scope.rs:1341–1373` repeats scalar source/private freshness after the heavy comparison. `1377–1410` validates, performs checked source nanosecond conversion, then checks the actual original query deadline and scalar source/private ages immediately before moving account facts and enqueuing AccountState. The sole caller passes `query.deadline` at `execution_scope.rs:1114–1119`. Errors return through the existing original reserve restoration/persistence path. No new timeout, time renewal, financial source, quota, cap or source permission was introduced.
+
+## Remaining blocker: independent metadata clock
+
+At `execution_scope.rs:1095–1096`, the final `warm_native_instruments` call samples selected metadata freshness using the existing 30-second original verification-start/receipt bounds. It precedes `account.commit_observation`, whose `account_scope.rs:1385` call repeats the potentially heavy full private/position comparisons. The last scalar gate at `1392–1395` checks the original recovery deadline and account/private ages only. It does not recheck the independent selected-metadata expiry.
+
+A previously verified metadata origin near its 30-second expiry may pass `warm_native_instruments`, then expire during the subsequent comparison while the old account prerequisite's two-second expiry and captured three-second query deadline remain valid. The final gate can then emit AccountState and the caller can absorb reservations/set recovery complete using expired selected metadata. Held ingress/account/execution guards protect identities, but cannot stop time advancing. This is an existing warm sequence made subject to the mandatory final-source fence in the native117 contract; it is not claimed as an executed native117 regression.
+
+Carry the already validated original selected-metadata scalar expiry to the actual final publication check, or provide an equivalent no-copy scalar check under the existing guards after all heavy account validation. Preserve original metadata times and all current native pair/reader/Cache checks. Do not refresh metadata, add time, create an authority hook, or claim a deterministic crossing test from source inspection. Root and the production author were notified before this report was written.
+
+Other creation, bounded reuse, new financial sources, exact ordinary Cache, current-flight fencing, raw sharing and immutable durable two-origin debt conclusions remain as recorded in the separate frozen-v1 report. No additional distinct production blocker was found. Binary/installed/paired/CI approval remains outside this source review.

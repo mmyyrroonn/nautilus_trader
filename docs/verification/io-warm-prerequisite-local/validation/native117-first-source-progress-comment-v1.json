@@ -1,0 +1,26 @@
+{
+  "tool": "mcp__codex_apps__github_add_comment_to_issue",
+  "started": {
+    "current_time": "2026-10-09 11:36:55 UTC"
+  },
+  "args": {
+    "repo_full_name": "mmyyrroonn/nautilus_trader",
+    "pr_number": 117,
+    "comment": "Implementation progress from fresh main5db2761590dd824fa159625326b6eaf3923b999a, branch feature/entropy-warm-prerequisites.\n\nIndependent design v2 review4ea0af412443a25f1b5679dc078679b3f99df36772d9a475b09a0859e971bdcd found34 source/contract inputs unchanged and accepted bounded design principles, with zero tests. Both final clarifications are in this issue: one old4MiB raw group plus one active4MiB group (not an RSS claim), and an eligible postbinding creation hook whose individual crossed/unqualified runs may remain unsealed.\n\nProduction ownership is limited to account_scope.rs and execution_scope.rs. A separate test author froze a new normal HTTP/WS module with16 async functions/37 source-expanded cases; no compilation/execution is claimed. Root froze explicit adaptations to existing64 warm scenarios: immutable original verification time plus real new financial receipt, source-derived44/82/84 request minima, genuine original2s expiry/fresh applied WS for four future-HTTP faults, and preserved new-raw lower bounds with separate original-prerequisite raw checks. Business fill/fee/Cache/Portfolio/reserve/refusal assertions remain.\n\nThe quota negative's former two full preloads no longer produces equivalent demand under reuse. Its candidate now requires three actual successful complete full262 groups before a fourth full target, unchanged3s deadline/1200-per-minute/20-per-second supply and a <=10s fixture setup bound. Actual early TTL refusal, missing source receipt or a slow setup will be a fixture FAIL, not quota coverage. This source-derived feasibility argument is not a measured bucket balance or a test PASS.\n\nSource review and actual native tests/build/stubs/installed/application scenarios remain pending. Prior115 corrected paired failure, raw evidence and immutable Unknown debt remain unchanged; no repeat of that failed candidate is being used to manufacture success."
+  },
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Action completed."
+      }
+    ],
+    "structuredContent": {
+      "id": 6080079999
+    },
+    "isError": false
+  },
+  "finished": {
+    "current_time": "2026-10-09 11:36:57 UTC"
+  }
+}

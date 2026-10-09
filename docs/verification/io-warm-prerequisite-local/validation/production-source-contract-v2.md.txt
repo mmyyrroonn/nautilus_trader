@@ -1,0 +1,17 @@
+# Native117 production v2 — final publication clock fence
+
+This revision follows root's static source review of the frozen v1. All v1 source copies and contracts remain untouched. Only the same two assigned production files changed; no tests, execution.rs, public API, hooks, policy, deadline, quota or byte cap changed.
+
+The identified gap was a last full account/private financial comparison after the outer owner deadline check. `validate_observation` previously sampled freshness before potentially large position/universe comparisons. `commit_observation` then repeated that validation without knowing the original flight deadline and could publish AccountState after the previous clock check had aged.
+
+V2 preserves the existing predicates and financial comparisons. A private scalar helper checks the original HTTP source, receipt, verification start, stream epoch, subscription acknowledgements and actual private source/receipt ages. Validation retains its initial refusal check and repeats this scalar freshness check after every financial/position comparison. The sole ordinary commit caller now passes the actual captured original query deadline. After all validation and the fallible source timestamp multiplication, commit checks that original deadline and scalar source/private freshness immediately before mutating account facts or emitting AccountState. Failure returns through the existing owner restoration path; it cannot mint a new timeout or renew a source.
+
+Exact compiler behavior and a heavy comparison crossing3s have not been observed by this author. This correction is based on actual source structure, not a claimed executed mutex/fsync exhaustion test. Root must format, compile and test the new revision. This author executed zero formatter, Cargo, tests, Git, GitHub, build or install operations.
+
+Source copies are in `production-source-v2-frozen/`; exact UTC and identities are in `production-source-contract-v2.json`. All production writes stop at this version.
+
+- account_scope.rs:83,284 bytes, SHA256 `b9a04afc4cafcf4c781133eecb97457d594da8dc8fa4fb34e5a6c2d08fcbe92a`.
+- execution_scope.rs:191,965 bytes, SHA256 `31801cf59b1641a7a96eef9b1dcd5a9edbbf60bf6e6f82553e23d1ade4c00b88`.
+- Manifest JSON SHA256 `8945059b6ea4ea1777b110f501165db3a27da88a5222b9ff56d951cf4609e100`.
+
+Every other v1 original/composed provenance, debt-retention, source/reader/Cache, reservation and bounded non-atomic authority contract remains unchanged. No acceptance or paired success is claimed.

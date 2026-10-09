@@ -1,0 +1,34 @@
+"""Freeze exact normal native test inputs without touching moving production."""
+import argparse
+import hashlib
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+root = Path(__file__).resolve().parent
+native = Path('E:/persarb/worktrees/entropy-warm-prerequisites')
+parser = argparse.ArgumentParser()
+parser.add_argument('label')
+args = parser.parse_args()
+target = root / (args.label + '.json')
+snapshot = root / 'snapshots' / args.label / 'native'
+assert not target.exists() and not snapshot.exists()
+paths = ('crates/adapters/hyperliquid/tests/entropy_account/execution.rs',
+    'crates/adapters/hyperliquid/tests/entropy_account/warm_prerequisite.rs',
+    'crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs',
+    'crates/adapters/hyperliquid/tests/entropy_account.rs')
+before = {relative: hashlib.sha256((native / relative).read_bytes()).hexdigest() for relative in paths}
+files = []
+for relative in paths:
+    data = (native / relative).read_bytes()
+    assert hashlib.sha256(data).hexdigest() == before[relative]
+    destination = snapshot / relative
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_bytes(data)
+    files.append({'relative': relative, 'path': str(native / relative), 'snapshot': str(destination),
+        'bytes': len(data), 'sha256': before[relative]})
+after = {relative: hashlib.sha256((native / relative).read_bytes()).hexdigest() for relative in paths}
+assert before == after
+target.write_text(json.dumps({'captured_utc': datetime.now(timezone.utc).isoformat(),
+    'files': files, 'source_unchanged_across_capture': True, 'executed_tests': 0}, indent=2) + '\n', encoding='utf-8')
+print(json.dumps({'capture': str(target), 'files': len(files), 'executed_tests': 0}))

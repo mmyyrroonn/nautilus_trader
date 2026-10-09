@@ -1,0 +1,45 @@
+"""Capture GitHub operations once, retaining command identity and failures."""
+
+import json
+import os
+import subprocess
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent
+
+
+def api(path, label, method="GET", payload=None):
+    destinations = [ROOT / (label + suffix) for suffix in ("-response.json", "-stderr.log", "-command.json")]
+    if payload is not None:
+        destinations.append(ROOT / (label + "-input.json"))
+    assert all(not item.exists() for item in destinations), "Choose a new capture label"
+    argv = ["gh", "api", path]
+    if method != "GET":
+        argv += ["--method", method]
+    if payload is not None:
+        destinations[-1].write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
+        argv += ["--input", str(destinations[-1])]
+    started = datetime.now(timezone.utc).isoformat()
+    attempts = 0
+    for attempts in range(1, (3 if method == "GET" else 1) + 1):
+        result = subprocess.run(argv, capture_output=True, env=dict(os.environ, GODEBUG="http2client=0"))
+        if result.returncode == 0:
+            break
+        if method == "GET" and attempts < 3:
+            time.sleep(1)
+    destinations[0].write_bytes(result.stdout)
+    destinations[1].write_bytes(result.stderr)
+    destinations[2].write_text(json.dumps({
+        "argv": argv, "started_utc": started, "finished_utc": datetime.now(timezone.utc).isoformat(),
+        "exit_code": result.returncode, "attempts": attempts,
+    }, indent=2) + "\n", encoding="utf-8")
+    if result.returncode:
+        raise RuntimeError(label + ": inspect remote state before retrying a mutation")
+    return json.loads(result.stdout) if result.stdout else None
+
+
+if __name__ == "__main__":
+    issue = api("repos/mmyyrroonn/nautilus_trader/issues/113", "native113-pre-package-issue")
+    print(json.dumps({"number": issue["number"], "state": issue["state"], "body": issue["body"]}, ensure_ascii=False))

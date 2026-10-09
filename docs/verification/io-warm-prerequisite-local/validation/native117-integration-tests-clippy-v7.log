@@ -1,0 +1,84 @@
+warning: linker stdout: 正在创建库 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-e8531d52ba21303c.dll.lib 和对象 E:/persarb/nautilus_trader/target\nextest\deps\nautilus_persistence_macros-e8531d52ba21303c.dll.exp
+  |
+  = note: `#[warn(linker_messages)]` on by default
+  = note: the `linker_messages` lint ignores `-D warnings`
+
+warning: `nautilus-persistence-macros` (lib) generated 1 warning
+    Checking nautilus-hyperliquid v0.63.0 (E:\persarb\worktrees\entropy-warm-prerequisites\crates\adapters\hyperliquid)
+error: this argument is passed by value, but not consumed in the function body
+   --> crates\adapters\hyperliquid\tests\entropy_account\execution.rs:527:31
+    |
+527 |     fn send_fill(&self, fill: Value) {
+    |                               ^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#needless_pass_by_value
+    = note: `-D clippy::needless-pass-by-value` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::needless_pass_by_value)]`
+help: consider taking a reference instead
+    |
+527 |     fn send_fill(&self, fill: &Value) {
+    |                               +
+
+error: this `RefCell` reference is held across an await point
+   --> crates\adapters\hyperliquid\tests\entropy_account\execution.rs:876:9
+    |
+876 |     let cache = harness.cache.borrow();
+    |         ^^^^^
+    |
+    = help: ensure the reference is dropped before calling `await`
+note: these are all the await points this reference is held through
+   --> crates\adapters\hyperliquid\tests\entropy_account\execution.rs:894:20
+    |
+894 |     harness.stop().await;
+    |                    ^^^^^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#await_holding_refcell_ref
+    = note: `-D clippy::await-holding-refcell-ref` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::await_holding_refcell_ref)]`
+
+error: called `map(<f>).unwrap_or_else(<g>)` on an `Option` value
+   --> crates\adapters\hyperliquid\tests\entropy_account.rs:501:5
+    |
+501 | /     client
+502 | |         .account_scope_snapshot_json()
+503 | |         .unwrap()
+504 | |         .map(|value| serde_json::from_str(&value).unwrap())
+505 | |         .unwrap_or_else(|| json!({"trusted":false, "flat":null}))
+    | |_________________________________________________________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#map_unwrap_or
+    = note: `-D clippy::map-unwrap-or` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::map_unwrap_or)]`
+help: try
+    |
+501 ~     client
+502 +         .account_scope_snapshot_json()
+503 +         .unwrap().map_or_else(|| json!({"trusted":false, "flat":null}), |value| serde_json::from_str(&value).unwrap())
+    |
+
+error: consider adding a `;` to the last statement for consistent formatting
+   --> crates\adapters\hyperliquid\tests\entropy_account.rs:746:17
+    |
+746 |                 data.token_id = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string()
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: add a `;` here: `data.token_id = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".to_string();`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#semicolon_if_nothing_returned
+    = note: `-D clippy::semicolon-if-nothing-returned` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::semicolon_if_nothing_returned)]`
+
+error: consider adding a `;` to the last statement for consistent formatting
+   --> crates\adapters\hyperliquid\tests\entropy_account.rs:749:17
+    |
+749 |                 data.io["assetPositions"][0]["position"]["coin"] = json!("xyz:SNDK")
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: add a `;` here: `data.io["assetPositions"][0]["position"]["coin"] = json!("xyz:SNDK");`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#semicolon_if_nothing_returned
+
+error: consider adding a `;` to the last statement for consistent formatting
+   --> crates\adapters\hyperliquid\tests\entropy_account.rs:753:17
+    |
+753 |                 data.io["assetPositions"][0]["position"]["szi"] = json!("not-a-size")
+    |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: add a `;` here: `data.io["assetPositions"][0]["position"]["szi"] = json!("not-a-size");`
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.98.0/index.html#semicolon_if_nothing_returned
+
+error: could not compile `nautilus-hyperliquid` (test "entropy_account") due to 6 previous errors

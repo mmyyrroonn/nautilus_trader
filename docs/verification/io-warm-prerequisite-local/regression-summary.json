@@ -1,0 +1,117 @@
+{
+  "passed": 1435,
+  "failed": 0,
+  "ignored": 18,
+  "groups": [
+    [
+      877,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      46,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      40,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      271,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      102,
+      0,
+      1,
+      0,
+      0
+    ],
+    [
+      46,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      5,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      6,
+      0,
+      0
+    ],
+    [
+      53,
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      6,
+      0,
+      0
+    ]
+  ],
+  "log_sha256": "5a5520ffbd651468e89ccf0929d9491d77ad2473ab473677742b821b0db39f0c",
+  "command_sha256": "c99dfc3e63c2ac3310b12e8d2f77de326a64894b1427d2863680a8b463a04529",
+  "command": {
+    "argv": [
+      "cargo",
+      "test",
+      "-p",
+      "nautilus-hyperliquid",
+      "--profile",
+      "nextest",
+      "--locked",
+      "--offline",
+      "--config",
+      "build.warnings='warn'",
+      "--",
+      "--test-threads=1"
+    ],
+    "cwd": "E:\\persarb\\worktrees\\entropy-warm-prerequisites",
+    "started_utc": "2026-10-09T13:29:38.111985+00:00",
+    "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+    "pyo3_python": "E:/persarb/worktrees/entropy-warm-prerequisites/.venv/Scripts/python.exe",
+    "uv_project_environment": null,
+    "nautilus_stub_profile": null,
+    "cargo_build_warnings": null,
+    "cargo_net_offline": null,
+    "entropy43_native_wheel": null,
+    "entropy43_native_sha256": null,
+    "entropy43_native_provenance": null,
+    "entropy43_evidence_root": null,
+    "exit_code": 0,
+    "finished_utc": "2026-10-09T13:34:14.589295+00:00"
+  },
+  "distinct_counts_note": "Reruns overlap and are not added to these totals"
+}

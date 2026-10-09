@@ -1,0 +1,49 @@
+"""Derive path-specific capture helpers while keeping earlier evidence immutable."""
+import hashlib
+import json
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+
+root = Path(__file__).resolve().parent
+prior = Path('E:/persarb/_tmp/entropy115-validation')
+native = Path('E:/persarb/worktrees/entropy-warm-prerequisites')
+base = '5db2761590dd824fa159625326b6eaf3923b999a'
+source = prior / 'capture_identity.py'
+text = source.read_text(encoding='utf-8')
+text = text.replace('E:/persarb/worktrees/entropy-startup-account-proof', str(native).replace('\\', '/'))
+text = text.replace('    "crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs",',
+    '    "crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs",\n'
+    '    "crates/adapters/hyperliquid/tests/entropy_account/warm_prerequisite.rs",')
+text = text.replace('    "tests/entropy_execution_peer.py",',
+    '    "tests/entropy_execution_peer.py",\n    "tests/test_entropy_execution_peer.py",')
+destination = root / 'capture_identity.py'
+assert not destination.exists()
+destination.write_text(text, encoding='utf-8')
+import capture_identity as capture
+assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=native, text=True).strip() == base
+tracked = set(subprocess.check_output(['git', 'ls-tree', '-r', '--name-only', base],
+    cwd=native, text=True).splitlines())
+snapshot = root / 'snapshots' / 'native117-base-main-v1' / 'native'
+assert not snapshot.exists()
+files = []
+missing = []
+for relative in capture.NATIVE_INPUTS:
+    if relative not in tracked:
+        missing.append(relative)
+        continue
+    data = subprocess.check_output(['git', 'show', f'{base}:{relative}'], cwd=native)
+    target = snapshot / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(data)
+    files.append({'relative': relative, 'bytes': len(data),
+        'sha256': hashlib.sha256(data).hexdigest(), 'snapshot': str(target)})
+record = {'captured_utc': datetime.now(timezone.utc).isoformat(), 'native': str(native),
+    'base_main': base, 'source_kind': 'immutable actual Git main blobs; not a working-tree clean claim',
+    'base_files': files, 'not_present_in_base': missing,
+    'derived_helper': {'source': str(source), 'source_sha256': hashlib.sha256(source.read_bytes()).hexdigest(),
+        'path': str(destination), 'sha256': hashlib.sha256(destination.read_bytes()).hexdigest()}}
+target = root / 'native117-base-main-v1.json'
+assert not target.exists()
+target.write_text(json.dumps(record, indent=2) + '\n', encoding='utf-8')
+print(json.dumps({'base_main': base, 'immutable_base_files': len(files), 'new_missing_in_base': missing}))

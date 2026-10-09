@@ -1,0 +1,33 @@
+--- v4
++++ v5
+@@ -308,7 +308,15 @@
+         require(record["commit"] == implementation and record["dirty_count"] == 0 and record["dirty"] == [],
+                 "Build did not use clean immutable implementation bytes")
+         require(record["tree"] == provenance["declared_native"]["tree"], "Build source trees differ")
+-    require(provenance["build"].get("started_at") and provenance["build"].get("completed_at"), "Build is unfinished")
++    build_label = ("native117-corrected-source-bound-wheel-build-v1"
++                   if wheel_root == WHEEL else "native117-source-bound-wheel-build")
++    require(wheel_root in (WHEEL, FIRST_WHEEL), "Unassigned controlled wheel directory")
++    actual_build = completed_command(build_label, 0)["command"]
++    require(provenance["build"].get("completed_at"), "Build completion is absent")
++    require(datetime.fromisoformat(actual_build["started_utc"])
++            <= datetime.fromisoformat(provenance["build"]["completed_at"])
++            <= datetime.fromisoformat(actual_build["finished_utc"]),
++            "Build completion is outside its actual completed command")
+     require(provenance["declared_evidence"]["sha256"] == digest(wheel_root / "native-build-input.json"),
+             "Build-input provenance hash differs")
+     wheel = Path(provenance["wheel"]["path"])
+@@ -510,9 +518,10 @@
+                 "Actual stub comparison path escapes the approved tree")
+         require(digest(path) == row["baseline_sha256"], "Restored stub baseline bytes differ")
+     build = checks[4]["command"]
+-    require(datetime.fromisoformat(build["started_utc"]) <= datetime.fromisoformat(provenance["build"]["started_at"])
+-            <= datetime.fromisoformat(provenance["build"]["completed_at"]) <= datetime.fromisoformat(build["finished_utc"]),
+-            "Clean build provenance is not bracketed by the actual build command")
++    require(datetime.fromisoformat(build["started_utc"])
++            <= datetime.fromisoformat(provenance["build"]["completed_at"])
++            <= datetime.fromisoformat(build["finished_utc"]),
++            "Clean build completion is not bracketed by the actual build command")
+     native_objects = [row for row in provenance["embedded_native_objects"] if row["path"].endswith(".pyd")]
+     require(len(native_objects) == 1, "Candidate native module inventory differs")
+     installed = []

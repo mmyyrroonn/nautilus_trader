@@ -1,0 +1,34 @@
+{
+  "started_utc": "2026-10-09T13:35:10.437328+00:00",
+  "before": {
+    "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-formatted-v7.json",
+    "sha256": "6cca167d40b04a8e708a6022b3349bfb0fbe711ec51897944df90de37603a25a"
+  },
+  "after": {
+    "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-after-full-regression-v7.json",
+    "sha256": "db7864ff74bf0294731f0c77b8dd0b03186fe01aa2e32d3a623d932e121a4049"
+  },
+  "repositories": {
+    "native": {
+      "inputs": 33,
+      "missing_before": [],
+      "missing_after": [],
+      "head_before": "56705ce873d5fc4e568e5f9ea8f2c614d5d35230",
+      "head_after": "56705ce873d5fc4e568e5f9ea8f2c614d5d35230",
+      "differences": [],
+      "equal": true
+    },
+    "app": {
+      "inputs": 10,
+      "missing_before": [],
+      "missing_after": [],
+      "head_before": "5b8c144c39ebcbcfd03ca07f8e53b103741b130a",
+      "head_after": "5b8c144c39ebcbcfd03ca07f8e53b103741b130a",
+      "differences": [],
+      "equal": true
+    }
+  },
+  "finished_utc": "2026-10-09T13:35:10.437328+00:00",
+  "equal": true,
+  "test_executions": 0
+}

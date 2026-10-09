@@ -1,0 +1,960 @@
+"""Finite two-leg orchestration; only observed native fills create owned inventory."""
+
+from __future__ import annotations
+
+from dataclasses import asdict, dataclass, replace
+from decimal import ROUND_DOWN, Decimal, localcontext
+
+from entropy_execution_config import ExecutionPlan, decimal, exact_add, exact_mul
+
+
+class ExecutionStateError(ValueError):
+    pass
+
+
+@dataclass(frozen=True)
+class ScopeProof:
+    leg: str
+    account_id: str
+    instrument_id: str
+    generation: int
+    received_ns: int
+    source_reference: str
+    native_ready: bool
+    mode_verified: bool
+    margin_verified: bool
+    recovery_complete: bool
+    position_scope_complete: bool
+    current_projection_verified: bool
+    external_activity: bool
+    available_margin: Decimal
+    verified_position: Decimal
+    source_time_ns: int | None = None
+    source_time_origin: str = "venue_does_not_supply_snapshot_time"
+
+
+@dataclass(frozen=True)
+class BookEvidence:
+    leg: str
+    instrument_id: str
+    bid: Decimal
+    ask: Decimal
+    received_ns: int
+    source_reference: str
+    source_time_ns: int | None = None
+
+
+@dataclass(frozen=True)
+class FillFact:
+    leg: str
+    account_id: str
+    instrument_id: str
+    client_order_id: str
+    trade_id: str
+    side: str
+    quantity: Decimal
+    price: Decimal
+    fee: Decimal | None
+    fee_currency: str | None
+    received_ns: int
+    source_reference: str
+    native_applied: bool
+    venue_order_id: str | None = None
+
+
+@dataclass(frozen=True)
+class OrderIntent:
+    action: str
+    leg: str
+    client_order_id: str
+    side: str
+    quantity: Decimal
+    limit_price: Decimal
+    reduce_only: bool
+    time_in_force: str = "IOC"
+    reason: str = ""
+
+
+@dataclass
+class OwnedOrder:
+    intent: OrderIntent
+    reserved_usd: Decimal
+    filled_quantity: Decimal = Decimal(0)
+    terminal: str | None = None
+    unknown: bool = False
+    cancel_attempted: bool = False
+
+
+def _finite_decimal(value, *, positive=False):
+    return (
+        type(value) is Decimal
+        and value.is_finite()
+        and abs(value.adjusted()) <= 36
+        and len(value.as_tuple().digits) <= 48
+        and (value > 0 if positive else True)
+    )
+
+
+def _floor_lot(quantity, step):
+    with localcontext() as context:
+        context.prec = 160
+        return (quantity / step).to_integral_value(rounding=ROUND_DOWN) * step
+
+
+class TwoLegController:
+    """Emit bounded intents, never transmit them or reconstruct a native cache.
+
+    The caller must durably persist snapshot() BEFORE dispatching each emitted intent.
+    A hedge waits for the first IOC's terminal event, so multiple partial fills produce
+    at most one hedge using their observed cumulative quantity.
+    """
+
+    def __init__(self, plan: ExecutionPlan):
+        self.plan = plan
+        self.state = "AwaitingProof"
+        self.start_ns = None
+        self.cleanup_started_ns = None
+        self.proofs = {}
+        self.proof_generations = {}
+        self.books = {}
+        self.orders = {}
+        self.fills = {}
+        self.positions = {leg.name: Decimal(0) for leg in plan.legs}
+        self.entry_orders = 0
+        self.cleanup_orders = 0
+        self.actions = 0
+        self.entry_notional_usd = Decimal(0)
+        self.loss_usd = Decimal(0)
+        self.reasons = []
+        self.events = 0
+        self.new_risk_closed = False
+        self.native_cache_recovery = "Unknown"
+        self.current_projection_verified = "Unknown"
+
+    @classmethod
+    def from_snapshot(cls, plan, snapshot):
+        """Recover finite counters/reservations only; cold restart never admits new risk."""
+        result = cls(plan)
+        if (
+            type(snapshot) is not dict
+            or snapshot.get("schema_version") != 1
+            or snapshot.get("plan_sha256") != plan.sha256
+            or snapshot.get("run_id") != plan.run_id
+        ):
+            raise ExecutionStateError("restart plan identity mismatch")
+        for key, cap in (
+            ("actions", plan.limits.max_actions),
+            ("entry_orders", plan.limits.max_entry_orders),
+            ("cleanup_orders", plan.limits.max_cleanup_orders),
+        ):
+            value = snapshot.get(key)
+            if type(value) is not int or not 0 <= value <= cap:
+                raise ExecutionStateError("restart counter is missing or exceeds cap")
+            setattr(result, key, value)
+        if (
+            type(snapshot.get("orders")) is not dict
+            or len(snapshot["orders"]) > plan.limits.max_actions
+        ):
+            raise ExecutionStateError("restart order set exceeds cap")
+        for identifier, item in snapshot["orders"].items():
+            try:
+                if type(item) is not dict or set(item) != set(
+                    OwnedOrder.__dataclass_fields__
+                ):
+                    raise ExecutionStateError("restart order schema mismatch")
+                raw = dict(item["intent"])
+                for key in ("quantity", "limit_price"):
+                    raw[key] = decimal(raw[key], key, positive=True)
+                intent = OrderIntent(**raw)
+                if (
+                    identifier != intent.client_order_id
+                    or not identifier.startswith(f"{plan.run_id}-{intent.leg}-")
+                    or intent.action != "submit"
+                    or intent.time_in_force != "IOC"
+                    or intent.leg not in result.positions
+                    or type(intent.reduce_only) is not bool
+                    or intent.side not in ("BUY", "SELL")
+                    or result._worst_notional(intent.leg, intent.quantity)
+                    > plan.limits.max_order_notional_usd
+                    or not plan.leg(intent.leg).price_min
+                    <= intent.limit_price
+                    <= plan.leg(intent.leg).price_max
+                    or _floor_lot(intent.quantity, plan.leg(intent.leg).quantity_step)
+                    != intent.quantity
+                ):
+                    raise ExecutionStateError("restart owned intent invalid")
+                result.orders[identifier] = OwnedOrder(
+                    intent, decimal(item["reserved_usd"], "reserved USD")
+                )
+            except (KeyError, TypeError, ValueError) as error:
+                raise ExecutionStateError("invalid restart order evidence") from error
+        if len(
+            result.orders
+        ) != result.entry_orders + result.cleanup_orders or result.actions < len(
+            result.orders
+        ):
+            raise ExecutionStateError("restart counters disagree with owned intents")
+        fills = snapshot.get("fills")
+        if type(fills) is not list or len(fills) > plan.limits.max_events:
+            raise ExecutionStateError("restart fill set exceeds cap")
+        for raw in fills:
+            try:
+                values = dict(raw)
+                for key in ("quantity", "price", "fee"):
+                    if values[key] is not None:
+                        values[key] = Decimal(values[key])
+                fact = FillFact(**values)
+                result.observe_fill(fact, fact.received_ns)
+            except (KeyError, TypeError, ValueError) as error:
+                raise ExecutionStateError("invalid restart fill evidence") from error
+            if result.new_risk_closed:
+                raise ExecutionStateError("restart fill ledger cannot reconcile")
+        if snapshot.get("positions") != {
+            key: format(value, "f") for key, value in result.positions.items()
+        }:
+            raise ExecutionStateError(
+                "restart positions disagree with actual fill ledger"
+            )
+        for identifier, order in result.orders.items():
+            item = snapshot["orders"][identifier]
+            if (
+                decimal(item["filled_quantity"], "filled quantity")
+                != order.filled_quantity
+            ):
+                raise ExecutionStateError("restart cumulative fill mismatch")
+            if item["terminal"] not in (
+                None,
+                "FILLED",
+                "CANCELED",
+                "REJECTED",
+                "DENIED",
+                "EXPIRED",
+            ):
+                raise ExecutionStateError("restart terminal invalid")
+            if (
+                item["terminal"] == "FILLED"
+                and order.filled_quantity != order.intent.quantity
+            ):
+                raise ExecutionStateError(
+                    "restart filled terminal lacks actual complete fills"
+                )
+            if any(
+                type(item[key]) is not bool for key in ("unknown", "cancel_attempted")
+            ):
+                raise ExecutionStateError("restart ambiguity flags invalid")
+            order.terminal = item["terminal"]
+            order.cancel_attempted = item["cancel_attempted"]
+            order.unknown = item["unknown"] or order.terminal is None
+            if order.unknown and not order.intent.reduce_only:
+                order.reserved_usd = exact_mul(
+                    result._worst_notional(order.intent.leg, order.intent.quantity),
+                    exact_add(Decimal(1), plan.limits.fee_buffer_bps / Decimal(10000)),
+                )
+        for key in ("start_ns", "cleanup_started_ns"):
+            value = snapshot.get(key)
+            if value is not None and (type(value) is not int or value < 0):
+                raise ExecutionStateError("invalid restart clock")
+            setattr(result, key, value)
+        if (
+            result.actions
+            and result.start_ns is None
+            or (
+                result.cleanup_started_ns is not None
+                and (
+                    result.start_ns is None
+                    or result.cleanup_started_ns < result.start_ns
+                )
+            )
+            or result.actions
+            != len(result.orders)
+            + sum(value.cancel_attempted for value in result.orders.values())
+        ):
+            raise ExecutionStateError("restart action counters or clocks disagree")
+        result.entry_notional_usd = decimal(
+            snapshot["entry_notional_usd"], "entry notional"
+        )
+        expected_entry = exact_add(
+            *(
+                result._worst_notional(value.intent.leg, value.intent.quantity)
+                for value in result.orders.values()
+                if not value.intent.reduce_only
+            )
+        )
+        if (
+            result.entry_notional_usd != expected_entry
+            or expected_entry > plan.limits.max_entry_notional_usd
+        ):
+            raise ExecutionStateError("restart entry notional counters disagree")
+        result.loss_usd = decimal(snapshot["loss_usd"], "loss")
+        result._stop("cold_application_restart_requires_native_cache_recovery")
+        return result
+
+    def _event(self):
+        if self.events >= self.plan.limits.max_events:
+            for identifier, order in self.orders.items():
+                if not order.terminal:
+                    self.mark_unknown(identifier, "event_capacity_exhausted")
+            self._stop("event_capacity_exhausted")
+            return False
+        self.events += 1
+        return True
+
+    def _stop(self, reason):
+        self.new_risk_closed = True
+        if reason not in self.reasons:
+            self.reasons.append(reason)
+        self.state = "StoppedUnknown"
+
+    def observe_proof(self, proof: ScopeProof):
+        if not self._event():
+            return
+        leg = self.plan.leg(proof.leg)
+        previous = self.proofs.get(proof.leg)
+        flags = (
+            proof.native_ready,
+            proof.mode_verified,
+            proof.margin_verified,
+            proof.recovery_complete,
+            proof.position_scope_complete,
+            proof.current_projection_verified,
+            proof.external_activity,
+        )
+        if (
+            proof.account_id != leg.account_id
+            or proof.instrument_id != leg.instrument_id
+            or type(proof.generation) is not int
+            or proof.generation < 0
+            or type(proof.received_ns) is not int
+            or proof.received_ns < 0
+            or not proof.source_reference
+            or any(type(flag) is not bool for flag in flags)
+            or not _finite_decimal(proof.available_margin)
+            or not _finite_decimal(proof.verified_position)
+            or proof.generation < self.proof_generations.get(proof.leg, 0)
+            or (
+                previous
+                and (
+                    proof.generation < previous.generation
+                    or proof.received_ns < previous.received_ns
+                )
+            )
+        ):
+            self.proofs.pop(proof.leg, None)
+            self._stop("invalid_or_regressed_scope_proof")
+            return
+        self.proofs[proof.leg] = proof
+        self.proof_generations[proof.leg] = proof.generation
+        if (
+            proof.external_activity
+            or proof.verified_position != self.positions[proof.leg]
+        ):
+            self._stop("external_or_unreconciled_inventory")
+        self.current_projection_verified = (
+            True
+            if len(self.proofs) == 2
+            and all(value.current_projection_verified for value in self.proofs.values())
+            else "Unknown"
+        )
+
+    def observe_book(self, book: BookEvidence):
+        if not self._event():
+            return
+        leg = self.plan.leg(book.leg)
+        previous = self.books.get(book.leg)
+        if (
+            book.instrument_id != leg.instrument_id
+            or not book.source_reference
+            or not _finite_decimal(book.bid, positive=True)
+            or not _finite_decimal(book.ask, positive=True)
+            or book.bid > book.ask
+            or type(book.received_ns) is not int
+            or book.received_ns < 0
+            or type(book.source_time_ns) is not int
+            or book.source_time_ns < 0
+            or (previous and book.received_ns < previous.received_ns)
+        ):
+            self.books.pop(book.leg, None)
+            self._stop("invalid_or_regressed_book")
+            return
+        self.books[book.leg] = book
+
+    def invalidate_proof(self, leg_name, reason="native_proof_invalidated"):
+        """Drop admission without discarding confirmed fills or resetting reservations."""
+        self.plan.leg(leg_name)
+        self.proofs.pop(leg_name, None)
+        self.native_cache_recovery = "Unknown"
+        self.current_projection_verified = "Unknown"
+
+    def invalidate_book(self, leg_name, reason="native_book_invalidated"):
+        self.plan.leg(leg_name)
+        self.books.pop(leg_name, None)
+
+    def external_activity(self, reason="external_activity_observed"):
+        self._stop(reason)
+
+    def _fresh_proof(self, leg_name, now_ns, *, new_risk):
+        proof = self.proofs.get(leg_name)
+        if (
+            proof is None
+            or not 0
+            <= now_ns - proof.received_ns
+            <= self.plan.limits.proof_max_age_ms * 1000000
+        ):
+            return False
+        if (
+            proof.external_activity
+            or not proof.mode_verified
+            or not proof.position_scope_complete
+            or not proof.current_projection_verified
+            or proof.verified_position != self.positions[leg_name]
+        ):
+            return False
+        return not (
+            new_risk
+            and not (
+                proof.native_ready and proof.margin_verified and proof.recovery_complete
+            )
+        )
+
+    def _price(self, leg_name, side, now_ns):
+        leg = self.plan.leg(leg_name)
+        book = self.books.get(leg_name)
+        if (
+            book is None
+            or not 0
+            <= now_ns - book.received_ns
+            <= self.plan.limits.book_max_age_ms * 1000000
+        ):
+            return None
+        if type(
+            book.source_time_ns
+        ) is not int or not 0 <= now_ns - book.source_time_ns <= (
+            self.plan.limits.book_max_age_ms * 1000000
+        ):
+            return None
+        # An explicit IOC at the current touch must stay inside the immutable interval.
+        price = book.ask if side == "BUY" else book.bid
+        if (
+            not leg.price_min <= price <= leg.price_max
+            or _floor_lot(price, leg.price_step) != price
+        ):
+            return None
+        return price
+
+    def _worst_notional(self, leg_name, quantity):
+        leg = self.plan.leg(leg_name)
+        return exact_mul(
+            abs(quantity),
+            leg.quantity_multiplier,
+            leg.price_max,
+            self.plan.fx(leg.quote_currency).quote_to_usd,
+        )
+
+    def gross_reserved_usd(self):
+        return exact_add(
+            *(
+                self._worst_notional(name, quantity)
+                for name, quantity in self.positions.items()
+            ),
+            *(
+                order.reserved_usd
+                for order in self.orders.values()
+                if not order.intent.reduce_only
+                and (not order.terminal or order.unknown)
+            ),
+        )
+
+    def unhedged_reserved_usd(self):
+        canonical = exact_add(
+            *(
+                exact_mul(quantity, self.plan.leg(name).quantity_multiplier)
+                for name, quantity in self.positions.items()
+            )
+        )
+        # Canonical units already include the contract multiplier. Prices are per
+        # canonical unit, so dividing by the multiplier would understate residual risk.
+        unit_values = [
+            exact_mul(leg.price_max, self.plan.fx(leg.quote_currency).quote_to_usd)
+            for leg in self.plan.legs
+        ]
+        actual = exact_mul(abs(canonical), max(unit_values))
+        ambiguous = exact_add(
+            *(
+                order.reserved_usd
+                for order in self.orders.values()
+                if order.unknown and not order.intent.reduce_only
+            )
+        )
+        return exact_add(actual, ambiguous)
+
+    def _new_risk_allowed(self, now_ns):
+        if self.new_risk_closed or self.start_ns is None:
+            return False
+        if (
+            now_ns < self.start_ns
+            or now_ns - self.start_ns
+            >= (self.plan.limits.duration_ms - self.plan.limits.cleanup_ms) * 1000000
+        ):
+            return False
+        if self.loss_usd >= self.plan.limits.max_loss_usd:
+            return False
+        return self._risk_evidence_allowed(now_ns)
+
+    def _risk_evidence_allowed(self, now_ns):
+        if not all(
+            self._fresh_proof(leg.name, now_ns, new_risk=True) for leg in self.plan.legs
+        ):
+            return False
+        if len(self.books) != 2 or abs(
+            self.books["entropy"].source_time_ns - self.books["aster"].source_time_ns
+        ) > (self.plan.limits.book_max_skew_ms * 1000000):
+            return False
+        for leg in self.plan.legs:
+            if self._price(leg.name, leg.side, now_ns) is None:
+                return False
+            minimum_margin = exact_mul(
+                self._worst_notional(leg.name, leg.entry_quantity),
+                exact_add(Decimal(1), self.plan.limits.fee_buffer_bps / Decimal(10000)),
+            )
+            available = exact_mul(
+                self.proofs[leg.name].available_margin,
+                self.plan.fx(leg.settlement_currency).quote_to_usd,
+            )
+            if available < minimum_margin:
+                return False
+        return True
+
+    def can_start(self, now_ns):
+        """Wait for asynchronous native proof/books without spending a cycle or action."""
+        if (
+            self.start_ns is not None
+            or self.state != "AwaitingProof"
+            or self.new_risk_closed
+            or type(now_ns) is not int
+            or now_ns < 0
+            or not self._risk_evidence_allowed(now_ns)
+        ):
+            return False
+        limits = self.plan.limits
+        planned = exact_add(
+            *(
+                self._worst_notional(leg.name, leg.entry_quantity)
+                for leg in self.plan.legs
+            )
+        )
+        reserved = exact_mul(
+            planned, exact_add(Decimal(1), limits.fee_buffer_bps / Decimal(10000))
+        )
+        return (
+            limits.max_entry_orders == 2
+            and limits.max_actions >= 4
+            and limits.max_cleanup_orders == 2
+            and planned <= limits.max_entry_notional_usd
+            and reserved <= limits.max_gross_notional_usd
+            and exact_mul(
+                self._worst_notional("entropy", self.plan.legs[0].entry_quantity),
+                exact_add(Decimal(1), limits.fee_buffer_bps / Decimal(10000)),
+            )
+            <= limits.max_unhedged_notional_usd
+        )
+
+    def _intent(self, leg_name, quantity, now_ns, *, reduce_only=False):
+        leg = self.plan.leg(leg_name)
+        side = (
+            ("SELL" if self.positions[leg_name] > 0 else "BUY")
+            if reduce_only
+            else leg.side
+        )
+        price = self._price(leg_name, side, now_ns)
+        if (
+            not _finite_decimal(quantity, positive=True)
+            or quantity != _floor_lot(quantity, leg.quantity_step)
+            or quantity < leg.min_quantity
+            or price is None
+            or exact_mul(quantity, leg.quantity_multiplier, price) < leg.min_notional
+        ):
+            self._stop("lot_minimum_or_price_unavailable")
+            return ()
+        limits = self.plan.limits
+        notional = self._worst_notional(leg_name, quantity)
+        if (
+            self.actions >= limits.max_actions
+            or notional > limits.max_order_notional_usd
+        ):
+            self._stop("action_or_order_budget_exhausted")
+            return ()
+        if reduce_only:
+            if (
+                self.cleanup_orders >= limits.max_cleanup_orders
+                or quantity > abs(self.positions[leg_name])
+                or not self._fresh_proof(leg_name, now_ns, new_risk=False)
+                or any(
+                    order.intent.leg == leg_name and not order.terminal
+                    for order in self.orders.values()
+                )
+            ):
+                self._stop("cleanup_not_currently_proven_or_budget_exhausted")
+                return ()
+            self.cleanup_orders += 1
+        else:
+            reserve = exact_mul(
+                notional, exact_add(Decimal(1), limits.fee_buffer_bps / Decimal(10000))
+            )
+            proof = self.proofs.get(leg_name)
+            margin_usd = (
+                exact_mul(
+                    proof.available_margin,
+                    self.plan.fx(leg.settlement_currency).quote_to_usd,
+                )
+                if proof
+                else Decimal(0)
+            )
+            if (
+                not self._new_risk_allowed(now_ns)
+                or self.entry_orders >= limits.max_entry_orders
+                or exact_add(self.entry_notional_usd, notional)
+                > limits.max_entry_notional_usd
+                or exact_add(self.gross_reserved_usd(), reserve)
+                > limits.max_gross_notional_usd
+                or margin_usd < reserve
+                or (
+                    leg_name == "entropy" and reserve > limits.max_unhedged_notional_usd
+                )
+                or self.unhedged_reserved_usd() > limits.max_unhedged_notional_usd
+            ):
+                self._stop("new_risk_proof_or_budget_unavailable")
+                return ()
+            self.entry_orders += 1
+            self.entry_notional_usd = exact_add(self.entry_notional_usd, notional)
+        self.actions += 1
+        identifier = f"{self.plan.run_id}-{leg_name}-{self.actions}"
+        intent = OrderIntent(
+            "submit",
+            leg_name,
+            identifier,
+            side,
+            quantity,
+            price,
+            reduce_only,
+            reason="owned cleanup" if reduce_only else "one finite entry cycle",
+        )
+        self.orders[identifier] = OwnedOrder(
+            intent, Decimal(0) if reduce_only else reserve
+        )
+        return (intent,)
+
+    def start(self, now_ns):
+        if not self.can_start(now_ns):
+            return ()
+        self.start_ns = now_ns
+        result = self._intent("entropy", self.plan.legs[0].entry_quantity, now_ns)
+        if result:
+            self.state = "EntryPending"
+        return result
+
+    def observe_fill(self, fact: FillFact, now_ns):
+        if not self._event():
+            return ()
+        leg = self.plan.leg(fact.leg)
+        order = self.orders.get(fact.client_order_id)
+        key = (fact.account_id, fact.instrument_id, fact.trade_id)
+        previous = self.fills.get(key)
+        if previous:
+            # Receive time/envelope may differ for the exact same immutable financial fact.
+            financial = lambda fill: (
+                fill.leg,
+                fill.account_id,
+                fill.instrument_id,
+                fill.client_order_id,
+                fill.trade_id,
+                fill.venue_order_id,
+                fill.side,
+                fill.quantity,
+                fill.price,
+                fill.fee,
+                fill.fee_currency,
+                fill.native_applied,
+            )
+            if financial(previous) != financial(fact):
+                self._stop("conflicting_trade_identity")
+                for identifier in {previous.client_order_id, fact.client_order_id}:
+                    if identifier in self.orders:
+                        self.mark_unknown(identifier, "conflicting_trade_identity")
+            return ()
+        if (
+            order is None
+            or order.intent.leg != fact.leg
+            or fact.account_id != leg.account_id
+            or fact.instrument_id != leg.instrument_id
+            or fact.side != order.intent.side
+            or not fact.trade_id
+            or not fact.source_reference
+            or fact.native_applied is not True
+            or not _finite_decimal(fact.quantity, positive=True)
+            or not _finite_decimal(fact.price, positive=True)
+            or (fact.fee is not None and not _finite_decimal(fact.fee))
+            or type(fact.received_ns) is not int
+            or fact.received_ns > now_ns
+            or fact.received_ns < 0
+            or _floor_lot(fact.quantity, leg.quantity_step) != fact.quantity
+            or (order.intent.side == "BUY" and fact.price > order.intent.limit_price)
+            or (order.intent.side == "SELL" and fact.price < order.intent.limit_price)
+            or exact_add(order.filled_quantity, fact.quantity) > order.intent.quantity
+        ):
+            self._stop("foreign_or_invalid_native_fill")
+            if order:
+                self.mark_unknown(
+                    fact.client_order_id, "foreign_or_invalid_native_fill"
+                )
+            return ()
+        signed = fact.quantity if fact.side == "BUY" else -fact.quantity
+        after = exact_add(self.positions[fact.leg], signed)
+        if order.intent.reduce_only and (
+            abs(after) > abs(self.positions[fact.leg])
+            or after * self.positions[fact.leg] < 0
+        ):
+            self._stop("reduce_only_fill_would_flip_inventory")
+            order.unknown = True
+            return ()
+        self.fills[key] = fact
+        self.positions[fact.leg] = after
+        order.filled_quantity = exact_add(order.filled_quantity, fact.quantity)
+        if order.terminal:
+            self.mark_unknown(fact.client_order_id, "late_native_fill_after_terminal")
+        # Known actual fills shrink ordinary pending reserves. Ambiguity retains its
+        # original worst-risk reserve in addition to confirmed observed inventory.
+        if not order.unknown and not order.intent.reduce_only:
+            unfilled = exact_add(order.intent.quantity, -order.filled_quantity)
+            order.reserved_usd = exact_mul(
+                self._worst_notional(fact.leg, unfilled),
+                exact_add(Decimal(1), self.plan.limits.fee_buffer_bps / Decimal(10000)),
+            )
+        if self.unhedged_reserved_usd() > self.plan.limits.max_unhedged_notional_usd:
+            self._stop("unhedged_budget_exhausted")
+        return ()
+
+    def observe_terminal(self, client_order_id, status, now_ns):
+        if not self._event():
+            return ()
+        order = self.orders.get(client_order_id)
+        if order is None:
+            self._stop("foreign_terminal_event")
+            return ()
+        if status not in ("FILLED", "CANCELED", "REJECTED", "DENIED", "EXPIRED"):
+            self._stop("unsupported_terminal_status")
+            return ()
+        if order.terminal is not None:
+            if order.terminal != status:
+                self.mark_unknown(client_order_id, "conflicting_terminal_event")
+            return ()
+        if status == "FILLED" and order.filled_quantity != order.intent.quantity:
+            self.mark_unknown(
+                client_order_id, "filled_terminal_without_complete_native_fills"
+            )
+        order.terminal = status
+        if order.intent.reduce_only:
+            if any(self.positions.values()) or any(
+                value.unknown for value in self.orders.values()
+            ):
+                self.state = "StoppedUnknown" if self.new_risk_closed else "Closing"
+            elif all(value.terminal for value in self.orders.values()):
+                self.state = "Completed"
+            return ()
+        if order.intent.leg == "entropy" and self.entry_orders == 1:
+            return self.advance(now_ns)
+        if order.intent.leg == "aster":
+            residual = exact_add(
+                *(
+                    exact_mul(quantity, self.plan.leg(name).quantity_multiplier)
+                    for name, quantity in self.positions.items()
+                )
+            )
+            self.state = (
+                "Hedged" if residual == 0 and not order.unknown else "StoppedUnknown"
+            )
+            if residual != 0:
+                self._stop("partial_hedge_or_dust_residual")
+        return ()
+
+    def advance(self, now_ns):
+        """Admit a single hedge after actual terminal fills and refreshed native proof."""
+        first_orders = [
+            order
+            for order in self.orders.values()
+            if order.intent.leg == "entropy" and not order.intent.reduce_only
+        ]
+        if (
+            self.entry_orders == 1
+            and len(first_orders) == 1
+            and first_orders[0].terminal
+        ):
+            order = first_orders[0]
+            if self.new_risk_closed or order.unknown or not self.positions["entropy"]:
+                return ()
+            if not self._new_risk_allowed(now_ns):
+                return ()
+            first, hedge = self.plan.legs
+            with localcontext() as context:
+                context.prec = 160
+                canonical = exact_mul(
+                    self.positions["entropy"], first.quantity_multiplier
+                )
+                quantity = _floor_lot(
+                    canonical / hedge.quantity_multiplier, hedge.quantity_step
+                )
+            if quantity > hedge.entry_quantity:
+                self._stop("hedge_quantity_exceeds_plan")
+                return ()
+            result = self._intent("aster", quantity, now_ns)
+            if result:
+                self.state = "HedgePending"
+            return result
+        return ()
+
+    def mark_unknown(self, client_order_id, reason="submission_may_have_written"):
+        order = self.orders.get(client_order_id)
+        if order is None:
+            raise ExecutionStateError(
+                "unknown reservation must refer to an owned intent"
+            )
+        order.unknown = True
+        if not order.intent.reduce_only:
+            order.reserved_usd = exact_mul(
+                self._worst_notional(order.intent.leg, order.intent.quantity),
+                exact_add(Decimal(1), self.plan.limits.fee_buffer_bps / Decimal(10000)),
+            )
+        self._stop(reason)
+
+    def observe_loss(self, loss_usd):
+        if not _finite_decimal(loss_usd) or loss_usd < 0:
+            self._stop("loss_valuation_unknown")
+            return
+        self.loss_usd = max(self.loss_usd, loss_usd)
+        if self.loss_usd >= self.plan.limits.max_loss_usd:
+            self._stop("loss_budget_exhausted")
+
+    def begin_cleanup(self, now_ns):
+        self.new_risk_closed = True
+        if self.start_ns is None:
+            self._stop("cleanup_without_started_run")
+            return ()
+        if self.cleanup_started_ns is None:
+            self.cleanup_started_ns = now_ns
+        if (
+            now_ns < self.start_ns
+            or now_ns - self.start_ns >= self.plan.limits.duration_ms * 1000000
+            or now_ns - self.cleanup_started_ns >= self.plan.limits.cleanup_ms * 1000000
+        ):
+            self._stop("cleanup_deadline_exhausted")
+            return ()
+        self.state = "Closing"
+        cancel = []
+        for order in self.orders.values():
+            if (
+                not order.terminal
+                and not order.cancel_attempted
+                and self.actions < self.plan.limits.max_actions
+            ):
+                # Exact owned IDs only; ambiguity survives a cancellation request.
+                self.actions += 1
+                order.cancel_attempted = True
+                cancel.append(
+                    replace(
+                        order.intent,
+                        action="cancel",
+                        reason="owned terminal reconciliation",
+                    )
+                )
+        if cancel or any(not order.terminal for order in self.orders.values()):
+            return tuple(cancel)
+        result = []
+        for leg in self.plan.legs:
+            if self.positions[leg.name]:
+                result.extend(
+                    self._intent(
+                        leg.name,
+                        abs(self.positions[leg.name]),
+                        now_ns,
+                        reduce_only=True,
+                    )
+                )
+        if not result and not any(self.positions.values()):
+            self.state = (
+                "StoppedUnknown"
+                if any(order.unknown for order in self.orders.values())
+                else "Completed"
+            )
+        return tuple(result)
+
+    def snapshot(self, now_ns=None):
+        def document(value):
+            if isinstance(value, Decimal):
+                return format(value, "f")
+            if isinstance(value, dict):
+                return {key: document(item) for key, item in value.items()}
+            if isinstance(value, (tuple, list)):
+                return [document(item) for item in value]
+            return value
+
+        return document(
+            {
+                "schema_version": 1,
+                "plan_sha256": self.plan.sha256,
+                "run_id": self.plan.run_id,
+                "state": self.state,
+                "start_ns": self.start_ns,
+                "cleanup_started_ns": self.cleanup_started_ns,
+                "actions": self.actions,
+                "entry_orders": self.entry_orders,
+                "cleanup_orders": self.cleanup_orders,
+                "entry_notional_usd": self.entry_notional_usd,
+                "loss_usd": self.loss_usd,
+                "positions": self.positions,
+                "orders": {key: asdict(value) for key, value in self.orders.items()},
+                "fills": [asdict(value) for value in self.fills.values()],
+                "reasons": self.reasons,
+                "new_risk_closed": self.new_risk_closed,
+                "native_cache_recovery": "Unknown",
+                "current_projection_verified": (
+                    True
+                    if now_ns is not None
+                    and len(self.proofs) == 2
+                    and all(
+                        self._fresh_proof(leg.name, now_ns, new_risk=False)
+                        for leg in self.plan.legs
+                    )
+                    else "Unknown"
+                ),
+                "gross_reserved_usd": self.gross_reserved_usd(),
+                "unhedged_reserved_usd": self.unhedged_reserved_usd(),
+                "orders_terminal": all(
+                    value.terminal is not None and not value.unknown
+                    for value in self.orders.values()
+                )
+                if self.orders
+                else "Unknown",
+                "owned_flat_verified": (
+                    True
+                    if self.orders
+                    and not any(self.positions.values())
+                    and "event_capacity_exhausted" not in self.reasons
+                    and all(
+                        value.terminal and not value.unknown
+                        for value in self.orders.values()
+                    )
+                    and now_ns is not None
+                    and len(self.proofs) == 2
+                    and all(
+                        self._fresh_proof(leg.name, now_ns, new_risk=False)
+                        for leg in self.plan.legs
+                    )
+                    and all(
+                        value.position_scope_complete and value.verified_position == 0
+                        for value in self.proofs.values()
+                    )
+                    else "Unknown"
+                ),
+                "account_flat_verified": "Unknown",
+                "shutdown_verified": "Unknown",
+            }
+        )

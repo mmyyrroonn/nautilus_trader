@@ -1,0 +1,11 @@
+{
+  "argv": [
+    "gh",
+    "api",
+    "repos/mmyyrroonn/Nautilus-Perps/issues?state=all&per_page=100&page=1"
+  ],
+  "started_utc": "2026-10-09T11:13:26.884304+00:00",
+  "finished_utc": "2026-10-09T11:13:27.905348+00:00",
+  "exit_code": 0,
+  "attempts": 1
+}

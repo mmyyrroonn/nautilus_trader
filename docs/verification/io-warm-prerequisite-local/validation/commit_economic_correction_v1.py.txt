@@ -1,0 +1,90 @@
+"""Commit a reviewed corrective source without rewriting the failed candidate."""
+
+import argparse
+import hashlib
+import json
+import subprocess
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parent
+NATIVE = Path("E:/persarb/worktrees/entropy-warm-prerequisites")
+BASE = "5db2761590dd824fa159625326b6eaf3923b999a"
+FIRST = "56705ce873d5fc4e568e5f9ea8f2c614d5d35230"
+FILES = (
+    "crates/adapters/hyperliquid/src/economics_scope.rs",
+    "crates/adapters/hyperliquid/src/economics_scope/tests.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs",
+)
+
+
+def git(*args):
+    return subprocess.check_output(["git", *args], cwd=NATIVE)
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--source", required=True)
+    parser.add_argument("--checks", nargs="+", required=True)
+    parser.add_argument("--review", required=True)
+    args = parser.parse_args()
+    output = ROOT / "native117-economic-correction-implementation-commit.json"
+    assert not output.exists()
+    assert git("rev-parse", "HEAD").decode().strip() == FIRST
+    assert git("rev-parse", "origin/main").decode().strip() == BASE
+    assert git("rev-parse", "HEAD^").decode().strip() == BASE
+    assert not git("diff", "--cached", "--name-only").strip()
+    assert set(git("diff", "--name-only").decode().splitlines()) == set(FILES)
+    assert not git("ls-files", "--others", "--exclude-standard").strip()
+    manifest_path = ROOT / (args.source + ".json")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["native"]["head"] == FIRST
+    assert len(manifest["native"]["files"]) == 33
+    assert len(manifest["app"]["files"]) == 10
+    for repository in ("native", "app"):
+        assert not manifest[repository]["missing_inputs"]
+        for row in manifest[repository]["files"]:
+            assert digest(Path(row["path"])) == row["sha256"], row["path"]
+    checks = []
+    for label in args.checks:
+        path = ROOT / (label + ".json")
+        record = json.loads(path.read_text(encoding="utf-8"))
+        assert record["exit_code"] == 0, label
+        checks.append({"path": str(path), "sha256": digest(path), "exit_code": record["exit_code"]})
+    review_path = ROOT / args.review
+    assert review_path.is_file() and review_path.stat().st_size > 0
+    # Root checks the independent review's conclusion and exact source identities.
+    # A file's existence here is recorded evidence, not an automated approval claim.
+    subprocess.run(["git", "add", "--", *FILES], cwd=NATIVE, check=True)
+    subprocess.run(["git", "diff", "--cached", "--check"], cwd=NATIVE, check=True)
+    assert set(git("diff", "--cached", "--name-only").decode().splitlines()) == set(FILES)
+    command = ["git", "commit", "-m", "Append immutable warm economic demand coverage", "-m",
+               "Preserve prior finite coverage and append bounded Unknown tails after normal warm completion. "
+               "Make repeated boundaries no-ops while retaining taint rejection and atomic capacity checks. "
+               "Add durable and ordinary-client regressions. Preserve the first failed candidate commit.\n\nReferences #117."]
+    subprocess.run(command, cwd=NATIVE, check=True)
+    assert not git("status", "--porcelain").strip()
+    commit = git("rev-parse", "HEAD").decode().strip()
+    assert git("rev-parse", "HEAD^").decode().strip() == FIRST
+    identities = {}
+    for name in FILES:
+        current = digest(NATIVE / name)
+        assert hashlib.sha256(git("show", f"{commit}:{name}")).hexdigest() == current
+        identities[name] = current
+    output.write_text(json.dumps({"committed_utc": datetime.now(timezone.utc).isoformat(), "base_main": BASE,
+                                 "preserved_first_implementation": FIRST, "commit": commit,
+                                 "tree": git("rev-parse", "HEAD^{tree}").decode().strip(), "command": command,
+                                 "files": identities, "clean": True,
+                                 "reviewed_manifest": {"path": str(manifest_path), "sha256": digest(manifest_path)},
+                                 "independent_review": {"path": str(review_path), "sha256": digest(review_path)},
+                                 "successful_checks": checks}, indent=2) + "\n", encoding="utf-8")
+    print(output.read_text(encoding="utf-8"))
+
+
+if __name__ == "__main__":
+    main()

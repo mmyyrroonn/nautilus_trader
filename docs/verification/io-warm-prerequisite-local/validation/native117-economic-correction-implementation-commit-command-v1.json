@@ -1,0 +1,33 @@
+{
+  "argv": [
+    "E:/persarb/worktrees/entropy-warm-prerequisites/.venv/Scripts/python.exe",
+    "-X",
+    "utf8",
+    "E:/persarb/_tmp/entropy117-validation/commit_economic_correction_v1.py",
+    "--source",
+    "native117-formatted-v7",
+    "--checks",
+    "native117-gap-unit-green-v7",
+    "native117-gap-normal-callback-green-v7",
+    "native117-full-hyperliquid-regression-v7",
+    "native117-production-clippy-v7",
+    "native117-official-stubs-utf8-v7",
+    "native117-stub-comparison-v7",
+    "--review",
+    "reviewer-native117-economic-gap-formatted-v7-review-v1.md"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-warm-prerequisites",
+  "started_utc": "2026-10-09T13:38:26.386967+00:00",
+  "cargo_target_dir": null,
+  "pyo3_python": null,
+  "uv_project_environment": null,
+  "nautilus_stub_profile": null,
+  "cargo_build_warnings": null,
+  "cargo_net_offline": null,
+  "entropy43_native_wheel": null,
+  "entropy43_native_sha256": null,
+  "entropy43_native_provenance": null,
+  "entropy43_evidence_root": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T13:38:26.994010+00:00"
+}

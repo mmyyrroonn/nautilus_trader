@@ -1,0 +1,49 @@
+"""Extract facts from completed RED logs without re-executing either case."""
+
+import hashlib
+import json
+import re
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+root = Path(__file__).resolve().parent
+output = root / "native117-gap-red-evidence-v2.json"
+assert not output.exists()
+labels = ("native117-gap-unit-red-v2", "native117-gap-normal-callback-red-v2")
+commands = []
+for label in labels:
+    receipt_path = root / (label + ".json")
+    log_path = root / (label + ".log")
+    command = json.loads(receipt_path.read_text(encoding="utf-8"))
+    assert command["exit_code"] == 101
+    raw = log_path.read_text(encoding="utf-8")
+    groups = re.findall(r"test result: FAILED\. (\d+) passed; (\d+) failed; (\d+) ignored; .*? (\d+) filtered out", raw)
+    assert len(groups) == 1
+    commands.append({"receipt": {"path": str(receipt_path), "sha256": hashlib.sha256(receipt_path.read_bytes()).hexdigest()}, "log": {"path": str(log_path), "sha256": hashlib.sha256(log_path.read_bytes()).hexdigest()}, "command": command, "passed": int(groups[0][0]), "failed": int(groups[0][1]), "ignored": int(groups[0][2]), "filtered": int(groups[0][3])})
+assert (commands[0]["passed"], commands[0]["failed"]) == (4, 6)
+assert (commands[1]["passed"], commands[1]["failed"]) == (0, 1)
+raw = (root / (labels[1] + ".log")).read_text(encoding="utf-8")
+decoder = json.JSONDecoder()
+observations = []
+for line in raw.splitlines():
+    marker = "economic_callback_phase="
+    if marker not in line or " native_scope=" not in line:
+        continue
+    phase = line.split(marker, 1)[1].split(" ", 1)[0]
+    scope, _ = decoder.raw_decode(line.split(" native_scope=", 1)[1])
+    economic, _ = decoder.raw_decode(line.split(" economics=", 1)[1])
+    http, _ = decoder.raw_decode(line.split(" actual_http=", 1)[1])
+    rows = economic["coverage"]
+    observations.append({"phase": phase, "query_completed": scope["query_completed"], "query_in_flight": scope["query_in_flight"], "recovery_complete": scope["recovery_complete"], "last_query_reused_prerequisite": scope["last_query_reused_prerequisite"], "execution_diagnostic": scope["diagnostic"], "trusted": scope["account"]["trusted"], "flat": scope["account"]["flat"], "financial_received_ms": scope["account"]["http_received_time_ms"], "prerequisite": scope.get("warm_prerequisite_source"), "tainted": economic["tainted"], "economic_diagnostic": economic["diagnostic"], "revision": economic["checkpoint_revision"], "coverage": rows, "fee_usdc": economic["report"]["actual_fee_usdc"], "durable_receipts": economic["durable_receipts"], "actual_http_occurrences": len(http), "actual_fills": scope["actual_fills"]})
+settled = [row for row in observations if row["phase"] == "after_normal_warm_callback"]
+assert len(settled) == 2
+assert settled[0]["query_completed"] == 1 and settled[0]["recovery_complete"]
+assert settled[1]["query_completed"] == 2 and not settled[1]["recovery_complete"]
+assert settled[1]["last_query_reused_prerequisite"] and settled[1]["trusted"] and settled[1]["flat"]
+assert settled[1]["tainted"]
+assert settled[1]["economic_diagnostic"] == "io economic persistence failed: Economic source/consumer state regression"
+assert settled[1]["execution_diagnostic"] == "Economic unrequested coverage could not be preserved"
+assert len(settled[1]["actual_fills"]) == 2
+output.write_text(json.dumps({"parsed_utc": datetime.now(timezone.utc).isoformat(), "commands": commands, "normal_callback_observations": observations, "normal_settled_callbacks": settled, "parser_test_executions": 0, "note": "Source inference from the original installed failure is now directly observed in separate unchanged-production native regression. This does not add the lower-level string to the old installed raw log; RED runs overlap future full regression and are not independent reviewer executions."}, indent=2) + "\n", encoding="utf-8")
+print(json.dumps({"output": str(output), "direct_passed": 4, "direct_failed": 6, "normal_passed": 0, "normal_failed": 1, "normal_callbacks": [{key: row[key] for key in ("query_completed", "recovery_complete", "tainted", "economic_diagnostic", "fee_usdc", "financial_received_ms")} for row in settled]}))

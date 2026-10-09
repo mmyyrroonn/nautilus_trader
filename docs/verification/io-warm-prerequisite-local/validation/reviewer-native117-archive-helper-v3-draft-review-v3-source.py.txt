@@ -1,0 +1,659 @@
+"""Draft: archive the corrected native117 candidate and preserve its failed predecessor."""
+
+import argparse
+import hashlib
+import json
+import re
+import shutil
+import subprocess
+from datetime import datetime, timezone
+from decimal import Decimal
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parent
+NATIVE = Path("E:/persarb/worktrees/entropy-warm-prerequisites")
+APP = Path("E:/persarb/worktrees/entropy-execution-app")
+ARCHIVE = NATIVE / "docs/verification/io-warm-prerequisite-local"
+WHEEL = Path("E:/persarb/_tmp/entropy117-corrected-wheel-nextest-20261009")
+BASE = "5db2761590dd824fa159625326b6eaf3923b999a"
+FIRST = "56705ce873d5fc4e568e5f9ea8f2c614d5d35230"
+FIRST_WHEEL_SHA256 = "47486c076bfaa7afac05a02071b11d485280dca5718a0d806d6dd6fe1eb4a05e"
+FIRST_WHEEL = Path("E:/persarb/_tmp/entropy117-wheel-nextest-20261009")
+FIRST_PAIRED = Path("E:/persarb/_tmp/app43-native117-first-paired-20261009")
+FIRST_IMPLEMENTATION_FILES = {
+    "crates/adapters/hyperliquid/src/account_scope.rs",
+    "crates/adapters/hyperliquid/src/execution_scope.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account/execution.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account/warm_prerequisite.rs",
+}
+CORRECTION_FILES = {
+    "crates/adapters/hyperliquid/src/economics_scope.rs",
+    "crates/adapters/hyperliquid/src/economics_scope/tests.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs",
+}
+IMPLEMENTATION_FILES = FIRST_IMPLEMENTATION_FILES | CORRECTION_FILES
+SCENARIOS = ("paired", "reject", "partial", "unknown", "cleanup_failure", "foreign", "loss_fee")
+EXTENSIONS = {".json", ".jsonl", ".log", ".md", ".py", ".txt", ".rs", ".toml", ".lock", ".pyi"}
+TEXT_SNAPSHOTS = {".md", ".py", ".rs", ".toml", ".lock", ".pyi"}
+EXCLUDED_PREFIXES = ("native117-archive-command", "native117-archive-check", "archive-check")
+RESULT_PREFIX = "ENTROPY43_NATIVE_RESULT "
+
+
+def require(condition, message):
+    """Raise even when Python assertion optimization is enabled."""
+    if not condition:
+        raise ValueError(message)
+
+
+def digest(path):
+    """Hash original bytes without decoding evidence."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def load_json(path):
+    """Load a required completed JSON evidence file."""
+    require(path.is_file() and not path.is_symlink(), f"Missing regular evidence: {path}")
+    return json.loads(path.read_text(encoding="utf-8-sig"))
+
+
+def git(*args):
+    """Read immutable Git objects only when root executes this helper."""
+    return subprocess.check_output(["git", *args], cwd=NATIVE).strip()
+
+
+def eligible(source, source_root):
+    """Select captured evidence, excluding credentials and live archive output."""
+    relative = source.relative_to(source_root)
+    if any(part in {"__pycache__", ".git", ".venv"} for part in relative.parts):
+        return False
+    if any(part.startswith(".env") for part in relative.parts):
+        return False
+    if source.name.startswith(EXCLUDED_PREFIXES):
+        return False
+    return source.is_file() and (source.suffix in EXTENSIONS or source.name == ".gitattributes")
+
+
+def inventory(source_root, prefix):
+    """Prepare a complete bounded-scope inventory before archive creation."""
+    require(source_root.is_dir() and not source_root.is_symlink(), f"Missing evidence root: {source_root}")
+    entries = []
+    for source in sorted(source_root.rglob("*")):
+        if not eligible(source, source_root):
+            continue
+        require(not source.is_symlink(), f"Symbolic evidence file is not accepted: {source}")
+        require(source.resolve().is_relative_to(source_root.resolve()), f"Escaping evidence: {source}")
+        target = prefix / source.relative_to(source_root)
+        if source.suffix in TEXT_SNAPSHOTS or source.name == ".gitattributes":
+            target = Path(str(target) + ".txt")
+        entries.append((source, target, digest(source), source.stat().st_size))
+    require(entries, f"No evidence in {source_root}")
+    return entries
+
+
+def verify_regression(label):
+    """Require the actual complete unfiltered Hyperliquid 1435/0/18 run."""
+    require(re.fullmatch(r"native117-[A-Za-z0-9_-]+", label), "Invalid regression capture label")
+    log = ROOT / (label + ".log")
+    command_path = ROOT / (label + ".json")
+    command = load_json(command_path)
+    require(type(command.get("exit_code")) is int and command["exit_code"] == 0,
+            "Final full regression did not pass")
+    require(command.get("started_utc") and command.get("finished_utc"), "Regression is unfinished")
+    require(Path(command["cwd"]).resolve() == NATIVE.resolve(), "Regression used another checkout")
+    argv = command["argv"]
+    prefix = ["cargo", "test", "-p", "nautilus-hyperliquid", "--profile", "nextest", "--locked", "--offline"]
+    require(argv[:8] == prefix, "Unexpected full-regression command")
+    tail = argv[8:]
+    if tail[:1] == ["--config"]:
+        require(len(tail) >= 2 and tail[1] in {"build.warnings='warn'", "build.warnings='allow'"},
+                "Unexpected regression configuration")
+        tail = tail[2:]
+    require(tail in ([], ["--", "--test-threads=1"]), "Filtered or altered regression command")
+    text = log.read_text(encoding="utf-8")
+    rows = re.findall(
+        r"test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored; "
+        r"(\d+) measured; (\d+) filtered out", text,
+    )
+    groups = [list(map(int, row)) for row in rows]
+    require(len(groups) >= 10, "A focused target cannot stand for the complete regression")
+    counts = tuple(sum(row[index] for row in groups) for index in range(5))
+    require(counts == (1435, 0, 18, 0, 0), f"Unexpected actual full regression totals: {counts}")
+    require("Doc-tests nautilus_hyperliquid" in text, "Doctest evidence is absent")
+    return {"passed": counts[0], "failed": counts[1], "ignored": counts[2],
+            "groups": groups, "log_sha256": digest(log), "command_sha256": digest(command_path),
+            "command": command, "distinct_counts_note": "Reruns overlap and are not added to these totals"}
+
+
+def verify_implementation(commit):
+    """Bind the preserved first commit and the distinct three-path corrective child."""
+    require(re.fullmatch(r"[0-9a-f]{40}", commit), "Implementation must be an exact commit identity")
+    require(git("rev-parse", "--verify", commit + "^{commit}").decode() == commit, "Unknown implementation")
+    require(commit != FIRST and git("rev-parse", commit + "^").decode() == FIRST,
+            "Correction must be a new child, never an amended first implementation")
+    require(git("rev-parse", FIRST + "^").decode() == BASE, "Preserved first implementation base differs")
+    require(git("rev-parse", "HEAD").decode() == commit, "Archive checkout is not the implementation head")
+    require(not git("status", "--porcelain"), "Corrective archive checkout is not clean")
+    changed = set(git("diff-tree", "--no-commit-id", "--name-only", "-r", commit).decode().splitlines())
+    require(changed == CORRECTION_FILES, f"Corrective commit file scope differs: {sorted(changed)}")
+    first_changed = set(git("diff-tree", "--no-commit-id", "--name-only", "-r", FIRST).decode().splitlines())
+    require(first_changed == FIRST_IMPLEMENTATION_FILES, "Preserved first commit scope differs")
+    combined = set(git("diff", "--name-only", BASE, commit).decode().splitlines())
+    require(combined == IMPLEMENTATION_FILES, "Combined seven-path implementation scope differs")
+    identities = {}
+    for relative in sorted(IMPLEMENTATION_FILES):
+        blob = subprocess.check_output(["git", "show", f"{commit}:{relative}"], cwd=NATIVE)
+        current = NATIVE / relative
+        blob_hash = hashlib.sha256(blob).hexdigest()
+        require(digest(current) == blob_hash, f"Current implementation bytes changed: {relative}")
+        identities[relative] = {"git_blob_sha256": blob_hash, "current_file_sha256": digest(current),
+                                "git_object": git("rev-parse", f"{commit}:{relative}").decode()}
+    first_path = ROOT / "native117-implementation-commit.json"
+    first_receipt = load_json(first_path)
+    require(first_receipt["commit"] == FIRST and first_receipt["base_main"] == BASE
+            and first_receipt["clean"] is True
+            and first_receipt["tree"] == git("rev-parse", FIRST + "^{tree}").decode(),
+            "Preserved first implementation receipt differs")
+    require(set(first_receipt["files"]) == FIRST_IMPLEMENTATION_FILES, "First receipt file scope differs")
+    for relative, expected in first_receipt["files"].items():
+        blob = subprocess.check_output(["git", "show", f"{FIRST}:{relative}"], cwd=NATIVE)
+        require(hashlib.sha256(blob).hexdigest() == expected, f"Preserved first blob differs: {relative}")
+    receipt_path = ROOT / "native117-economic-correction-implementation-commit.json"
+    receipt = load_json(receipt_path)
+    require(receipt["commit"] == commit and receipt["base_main"] == BASE and receipt["clean"] is True
+            and receipt["preserved_first_implementation"] == FIRST,
+            "Implementation receipt identity/clean source differs")
+    require(receipt["tree"] == git("rev-parse", commit + "^{tree}").decode(), "Corrective receipt tree differs")
+    require(receipt["files"] == {path: identities[path]["git_blob_sha256"] for path in CORRECTION_FILES},
+            "Implementation receipt does not bind exact source bytes")
+    require(receipt["successful_checks"], "Corrective implementation check receipts are absent")
+    for reference in receipt["successful_checks"]:
+        check_path = Path(reference["path"])
+        check = verify_reference(reference, check_path)
+        require(reference["exit_code"] == check["exit_code"] == 0, "Corrective implementation check did not pass")
+    review_reference = receipt["independent_review"]
+    verify_reference(review_reference, Path(review_reference["path"]))
+    return {"implementation_commit": commit, "implementation_tree": git("rev-parse", commit + "^{tree}").decode(),
+            "base_main": BASE, "preserved_first_implementation": FIRST, "source_files": identities,
+            "corrective_files": sorted(CORRECTION_FILES), "receipt_sha256": digest(receipt_path),
+            "first_receipt_sha256": digest(first_path)}
+
+
+def verify_reference(reference, expected):
+    """Verify the exact named receipt path and its actual bytes."""
+    require(Path(reference["path"]).resolve() == expected.resolve(), f"Receipt path differs: {expected}")
+    require(expected.resolve().is_relative_to(ROOT.resolve()), f"Receipt escapes validation root: {expected}")
+    require(not expected.name.startswith(".env") and expected.suffix in EXTENSIONS,
+            "Unapproved receipt path")
+    require(digest(expected) == reference["sha256"], f"Receipt byte hash differs: {expected}")
+    return load_json(expected) if expected.suffix == ".json" else None
+
+
+def verify_tested_source(label, implementation):
+    """Link actual v7 regression, immutable binaries and captured source to Git."""
+    require(label == "native117-full-hyperliquid-regression-v7", "Only the finalized v7 full run is accepted")
+    binaries_path = ROOT / "native117-verified-binaries-v7.json"
+    unchanged_path = ROOT / "native117-full-inputs-unchanged-v7.json"
+    verified = load_json(binaries_path)
+    comparison = load_json(unchanged_path)
+    before_path = ROOT / "native117-formatted-v7.json"
+    after_path = ROOT / "native117-after-full-regression-v7.json"
+    before = verify_reference(verified["source_manifest"], before_path)
+    command_path, log_path = ROOT / (label + ".json"), ROOT / (label + ".log")
+    command = verify_reference(verified["actual_cargo_command"], command_path)
+    verify_reference(verified["actual_cargo_log"], log_path)
+    require(verified["actual_cargo_command"]["command"] == command, "Embedded actual Cargo command differs")
+    require(verified["source_files_unchanged"] is True and verified["regression_passed"] == 1435
+            and verified["regression_ignored"] == 18, "Verified-binary receipt does not describe this full run")
+    require(comparison["equal"] is True, "Actual post-regression input comparison failed")
+    require(verify_reference(comparison["before"], before_path) == before, "Before capture receipts differ")
+    after = verify_reference(comparison["after"], after_path)
+    require(before["native"]["head"] == after["native"]["head"] == FIRST,
+            "Corrective tested source must be captured at the preserved first precommit head")
+    require(Path(before["native"]["root"]).resolve() == NATIVE.resolve()
+            and before["native"]["root"] == after["native"]["root"], "Tested native checkout differs")
+    require(datetime.fromisoformat(before["finished_utc"]) <= datetime.fromisoformat(command["started_utc"])
+            <= datetime.fromisoformat(command["finished_utc"]) <= datetime.fromisoformat(after["started_utc"]),
+            "Actual source captures do not bracket the actual regression")
+    correction = load_json(ROOT / "native117-economic-correction-implementation-commit.json")
+    require(implementation["implementation_tree"] == correction["tree"],
+            "Implementation receipt tree differs")
+    require(verify_reference(correction["reviewed_manifest"], before_path) == before,
+            "Corrective implementation receipt names a different final reviewed source")
+    checked = []
+    native_rows = {}
+    for side, expected_count in (("native", 33), ("app", 10)):
+        result = comparison["repositories"][side]
+        require(result["equal"] is True and result["inputs"] == expected_count
+                and result["missing_before"] == result["missing_after"] == result["differences"] == [],
+                f"Incomplete or changed actual {side} comparison")
+        require(result["head_before"] == before[side]["head"]
+                and result["head_after"] == after[side]["head"]
+                and before[side]["head"] == after[side]["head"], f"{side} heads differ")
+        require(Path(before[side]["root"]).resolve() == Path(after[side]["root"]).resolve(),
+                f"{side} captured checkout roots differ")
+        require(before[side]["missing_inputs"] == after[side]["missing_inputs"] == [], f"Missing {side} capture inputs")
+        maps = []
+        for capture in (before, after):
+            source_root = Path(capture[side]["root"]).resolve()
+            rows = {}
+            require(len(capture[side]["files"]) == expected_count, f"Wrong actual {side} input count")
+            for row in capture[side]["files"]:
+                actual = Path(row["path"]).resolve()
+                require(actual.is_relative_to(source_root), f"Captured path escapes {side} root")
+                relative = actual.relative_to(source_root).as_posix()
+                require(relative not in rows, f"Duplicate captured source: {relative}")
+                rows[relative] = row
+            maps.append(rows)
+        require(set(maps[0]) == set(maps[1]), f"{side} source path sets differ")
+        for relative, row in sorted(maps[0].items()):
+            later = maps[1][relative]
+            require(row["sha256"] == later["sha256"] and row["size"] == later["size"],
+                    f"Actual tested before/after bytes differ: {relative}")
+            copies = []
+            for capture in (before, after):
+                snapshot = capture.get("snapshot_directory")
+                if not snapshot:
+                    continue
+                snapshot_root = Path(snapshot).resolve()
+                require(snapshot_root.is_relative_to((ROOT / "snapshots").resolve()), "Source snapshot escapes validation root")
+                frozen = snapshot_root / side / relative
+                require(not frozen.is_symlink() and frozen.resolve().is_relative_to(snapshot_root), "Unsafe frozen source path")
+                require(digest(frozen) == row["sha256"] and frozen.stat().st_size == row["size"],
+                        f"Actual frozen source copy differs: {relative}")
+                copies.append(frozen.as_posix())
+            require(copies, f"No actual frozen source copy: {relative}")
+            checked.append({"repository": side, "relative_path": relative, "sha256": row["sha256"],
+                            "bytes": row["size"], "frozen_copies": copies})
+            if side == "native":
+                native_rows[relative] = row
+    for relative in sorted(IMPLEMENTATION_FILES):
+        row = native_rows[relative]
+        identity = implementation["source_files"][relative]
+        require(row["sha256"] == identity["git_blob_sha256"] == identity["current_file_sha256"],
+                f"Actual tested source differs from implementation/current source: {relative}")
+        require(row["size"] == (NATIVE / relative).stat().st_size, f"Implementation source size differs: {relative}")
+        identity["tested_file_sha256"] = row["sha256"]
+        identity["tested_file_bytes"] = row["size"]
+        identity["tested_source_manifest"] = before_path.as_posix()
+    require(len(verified["binaries"]) == 2, "Immutable binary receipt count differs")
+    binary_rows = []
+    for row in verified["binaries"]:
+        frozen = Path(row["immutable_copy_path"]).resolve()
+        require(frozen.is_relative_to((ROOT / "verified-bin/native117-verified-binaries-v7").resolve())
+                and frozen.suffix == ".exe" and not frozen.is_symlink(), "Unsafe immutable binary path")
+        require(digest(frozen) == row["sha256"] and frozen.stat().st_size == row["bytes"],
+                "Immutable tested binary bytes differ")
+        binary_rows.append({**row, "archived_binary": False})
+    return {"verified_binaries_receipt_sha256": digest(binaries_path),
+            "unchanged_comparison_sha256": digest(unchanged_path),
+            "before_manifest_sha256": digest(before_path), "after_manifest_sha256": digest(after_path),
+            "actual_cargo_command_sha256": digest(command_path), "actual_cargo_log_sha256": digest(log_path),
+            "note": "Before has actual frozen copies; after supplies actual post-run hashes, not fabricated duplicate snapshots",
+            "source_files": checked, "immutable_binaries": binary_rows}
+
+
+def verify_wheel(implementation, wheel_root=WHEEL):
+    """Require actual clean build provenance and the original wheel artifact."""
+    provenance = load_json(wheel_root / "native-provenance.json")
+    build_input = load_json(wheel_root / "native-build-input.json")
+    require(provenance["source_binding"] == "verified", "Native source binding is unverified")
+    require(provenance["declared_native"]["commit"] == implementation, "Provenance implementation differs")
+    require(provenance["declared_native"]["tree"] == git("rev-parse", implementation + "^{tree}").decode(),
+            "Provenance Git tree differs from the actual implementation")
+    require(build_input["native"] == provenance["declared_native"], "Build-input identity differs")
+    for record in (provenance["declared_native"], provenance["build"]["started_source"],
+                   provenance["build"]["finished_source"]):
+        require(record["commit"] == implementation and record["dirty_count"] == 0 and record["dirty"] == [],
+                "Build did not use clean immutable implementation bytes")
+        require(record["tree"] == provenance["declared_native"]["tree"], "Build source trees differ")
+    require(provenance["build"].get("started_at") and provenance["build"].get("completed_at"), "Build is unfinished")
+    require(provenance["declared_evidence"]["sha256"] == digest(wheel_root / "native-build-input.json"),
+            "Build-input provenance hash differs")
+    wheel = Path(provenance["wheel"]["path"])
+    require(wheel.resolve().is_relative_to(wheel_root.resolve()) and wheel.suffix == ".whl" and wheel.is_file(),
+            "Original wheel artifact is absent or outside the assigned directory")
+    require(digest(wheel) == provenance["wheel"]["sha256"] and wheel.stat().st_size == provenance["wheel"]["size"],
+            "Wheel bytes differ from actual provenance")
+    return provenance
+
+
+def verify_case(directory, mode, provenance, wheel_root=WHEEL):
+    """Bind a completed numeric-loopback case, preserving honest failures."""
+    required = ("summary.json", "child-command.json", "child-stdout.log", "child-stderr.log",
+                "manifest.json", "peer-evidence.json", "plan.json", "events.jsonl", "economic-report.json")
+    for name in required:
+        require((directory / name).is_file(), f"Incomplete actual {mode} case: {directory / name}")
+    summary = load_json(directory / "summary.json")
+    command = load_json(directory / "child-command.json")
+    manifest = load_json(directory / "manifest.json")
+    require(summary.get("synthetic_numeric_loopback") is True, "Case is not synthetic numeric loopback")
+    require(type(command.get("exit_code")) is int and command["exit_code"] >= 0, "Case command is unfinished")
+    argv = command["argv"]
+    require("--entropy43-child" in argv, "Missing actual ordinary child command")
+    index = argv.index("--entropy43-child")
+    require(len(argv[index + 1:]) == 5 and argv[index + 1] == mode, "Case command scenario differs")
+    require(Path(argv[index + 2]).resolve() == directory.resolve(), "Child evidence directory differs")
+    require(Path(argv[index + 3]).resolve() == Path(provenance["wheel"]["path"]).resolve()
+            and argv[index + 4] == provenance["wheel"]["sha256"]
+            and Path(argv[index + 5]).resolve() == (wheel_root / "native-provenance.json").resolve(),
+            "Child command used another candidate")
+    identity = manifest["native_identity"]
+    require(identity["strict_source_binding_passed"] is True
+            and identity["wheel"]["sha256"] == provenance["wheel"]["sha256"], "Installed candidate binding differs")
+    require(identity["native_provenance"] == provenance, "Installed provenance object differs")
+    native_objects = [row for row in provenance["embedded_native_objects"] if row["path"].endswith(".pyd")]
+    require(len(native_objects) == 1
+            and identity["installed"]["native_module_sha256"] == native_objects[0]["sha256"],
+            "Actual installed native module differs from the candidate object")
+    controller = summary.get("controller")
+    require(isinstance(controller, dict), "Current controller summary is absent")
+    stdout = (directory / "child-stdout.log").read_text(encoding="utf-8")
+    records = [json.loads(line[len(RESULT_PREFIX):]) for line in stdout.splitlines() if line.startswith(RESULT_PREFIX)]
+    passed = command["exit_code"] == 0
+    if passed:
+        require(len(records) == 1, "Successful child lacks its exact actual result")
+        record = records[0]
+        require(record["mode"] == mode and record["summary"] == summary
+                and record["wheel_sha256"] == provenance["wheel"]["sha256"]
+                and record["active_sockets_after_teardown"] == 0, "Actual child result and summary differ")
+        require(summary["started"] is True and summary["stopped"] is True
+                and summary["shutdown_verified"] is True and summary["watchdog_fired"] is False,
+                "Successful command contradicts lifecycle summary")
+        if mode == "paired":
+            require(controller["state"] == "Completed" and controller["orders_terminal"] is True
+                    and controller["owned_flat_verified"] is True and len(controller["fills"]) == 4
+                    and controller["entry_orders"] == controller["cleanup_orders"] == 2
+                    and all(Decimal(value) == 0 for value in controller["positions"].values())
+                    and all(Decimal(value) == 0 for value in summary["native_portfolio_net_positions"].values()),
+                    "Successful paired command contradicts finite execution/flat facts")
+    else:
+        require(not records, "Failed child contradicts an emitted successful assertion result")
+    return {"mode": mode, "directory": directory.as_posix(), "command_exit_code": command["exit_code"],
+            "actual_assertion_result": "PASS" if passed else "FAIL", "controller_state": controller.get("state"),
+            "owned_flat_verified": controller.get("owned_flat_verified"), "summary_sha256": digest(directory / "summary.json"),
+            "command_sha256": digest(directory / "child-command.json"), "synthetic_numeric_loopback": True}
+
+
+def completed_command(label, expected_exit=None):
+    """Require the actual completed command and log, without manufacturing PASS."""
+    path, log = ROOT / (label + ".json"), ROOT / (label + ".log")
+    command = load_json(path)
+    require(type(command.get("exit_code")) is int and command["exit_code"] >= 0
+            and command.get("started_utc") and command.get("finished_utc"), f"Unfinished command: {label}")
+    require(log.is_file() and not log.is_symlink(), f"Missing actual command log: {label}")
+    require(datetime.fromisoformat(command["started_utc"]) <= datetime.fromisoformat(command["finished_utc"]),
+            f"Reversed actual command times: {label}")
+    if expected_exit is not None:
+        require(command["exit_code"] == expected_exit, f"Unexpected actual command result: {label}")
+    return {"label": label, "command": command, "command_sha256": digest(path), "log_sha256": digest(log),
+            "actual_result": "PASS" if command["exit_code"] == 0 else "FAIL"}
+
+
+def verify_candidate_checks(provenance):
+    """Bind v7 stubs/lint and corrected clean build/install to actual receipts."""
+    labels = (("native117-official-stubs-utf8-v7", 0), ("native117-stub-comparison-v7", 0),
+              ("native117-production-clippy-v7", 0), ("native117-tests-inclusive-clippy-v7", 101),
+              ("native117-corrected-source-bound-wheel-build-v1", 0),
+              ("native117-corrected-native-installed-wheel-v1", 0),
+              ("native117-corrected-app-installed-wheel-v1", 0),
+              ("native117-corrected-installed-python-contracts-v1", 0))
+    checks = [completed_command(label, code) for label, code in labels]
+    for row in checks[:4]:
+        require(Path(row["command"]["cwd"]).resolve() == NATIVE.resolve(), "Native check checkout differs")
+    official = checks[0]["command"]["argv"]
+    require(official[-3:] == ["-X", "utf8", "python/generate_stubs.py"], "Official UTF-8 stub command differs")
+    for row in checks[2:4]:
+        argv = row["command"]["argv"]
+        require(argv[:4] == ["cargo", "clippy", "-p", "nautilus-hyperliquid"]
+                and argv[-3:] == ["--", "-D", "warnings"] and "--no-deps" in argv
+                and "--locked" in argv and "--offline" in argv, "Strict Clippy command differs")
+    require("--tests" not in checks[2]["command"]["argv"]
+            and "--tests" in checks[3]["command"]["argv"], "Production/test lint targets differ")
+    stubs_path = ROOT / "native117-generated-stub-comparison-v7.json"
+    stubs = load_json(stubs_path)
+    require(len(stubs["stubs"]) == 44 and len({row["path"] for row in stubs["stubs"]}) == 44,
+            "Incomplete actual generated stub comparison")
+    require(all(row["public_ast_equal"] is True and row["normalized_text_equal"] is True for row in stubs["stubs"]),
+            "Actual generated stub API/text differs")
+    for row in stubs["stubs"]:
+        path = NATIVE / row["path"]
+        require(path.resolve().is_relative_to((NATIVE / "python").resolve()) and path.suffix == ".pyi",
+                "Actual stub comparison path escapes the approved tree")
+        require(digest(path) == row["baseline_sha256"], "Restored stub baseline bytes differ")
+    build = checks[4]["command"]
+    require(datetime.fromisoformat(build["started_utc"]) <= datetime.fromisoformat(provenance["build"]["started_at"])
+            <= datetime.fromisoformat(provenance["build"]["completed_at"]) <= datetime.fromisoformat(build["finished_utc"]),
+            "Clean build provenance is not bracketed by the actual build command")
+    native_objects = [row for row in provenance["embedded_native_objects"] if row["path"].endswith(".pyd")]
+    require(len(native_objects) == 1, "Candidate native module inventory differs")
+    installed = []
+    for name in ("native", "app"):
+        path = ROOT / f"native117-corrected-{name}-installed-identity-v1.json"
+        identity = load_json(path)
+        require(identity["strict_source_binding_passed"] is True and identity["native_provenance"] == provenance
+                and identity["wheel"]["sha256"] == provenance["wheel"]["sha256"]
+                and Path(identity["wheel"]["path"]).resolve() == Path(provenance["wheel"]["path"]).resolve()
+                and identity["installed"]["native_module_sha256"] == native_objects[0]["sha256"],
+                f"Corrected {name} installed identity differs")
+        checkout = NATIVE if name == "native" else APP
+        require(Path(identity["installed"]["interpreter"]).resolve() == (checkout / ".venv/Scripts/python.exe").resolve(),
+                f"Corrected {name} installed interpreter differs")
+        installed.append({"name": name, "identity_path": path.as_posix(), "sha256": digest(path), "identity": identity})
+    python_log = ROOT / "native117-corrected-installed-python-contracts-v1.log"
+    python = checks[-1]["command"]
+    require(Path(python["cwd"]).resolve() == NATIVE.resolve()
+            and "--import-mode=importlib" in python["argv"]
+            and "pythonpath=" in python["argv"] and "pytest" in python["argv"],
+            "Installed-only Python contract command differs")
+    totals = re.findall(r"(?m)^(\d+) passed in [^\r\n]+$", python_log.read_text(encoding="utf-8"))
+    require(totals == ["242"], "Installed Python contract result differs")
+    return {"commands": checks, "generated_stub_comparison_sha256": digest(stubs_path),
+            "installed_identities": installed, "installed_python_passed": 242,
+            "tests_inclusive_clippy": "FAIL; retained actual inherited diagnostics, not production strict PASS"}
+
+
+def verify_app_cohort(label, before_label, after_label, modes, evidence_root, provenance, expected_exit=None):
+    """Check one actual command and its immutable source/install/candidate boundary."""
+    receipt = completed_command(label, expected_exit)
+    command = receipt["command"]
+    argv = command["argv"]
+    selected = "tests/test_entropy_execution_native.py::test_actual_installed_factory_two_leg_execution"
+    require("pytest" in argv and "-m" in argv and "-q" in argv, "Unexpected application cohort command")
+    if modes == ("paired",):
+        require(selected + "[paired]" in argv and not any(word.startswith("--deselect") for word in argv),
+                "Paired cohort command is not exactly the first paired test")
+    else:
+        require(modes == SCENARIOS[1:] and selected in argv
+                and "--deselect=" + selected + "[paired]" in argv,
+                "Remaining cohort must run the original seven parameters with paired deselected")
+    require(Path(command["entropy43_evidence_root"]).resolve() == evidence_root.resolve()
+            and Path(command["entropy43_native_wheel"]).resolve() == Path(provenance["wheel"]["path"]).resolve()
+            and command["entropy43_native_sha256"] == provenance["wheel"]["sha256"]
+            and Path(command["entropy43_native_provenance"]).resolve() == (WHEEL / "native-provenance.json").resolve(),
+            "Actual cohort command candidate/root differs")
+    before_path, after_path = ROOT / (before_label + ".json"), ROOT / (after_label + ".json")
+    before, after = load_json(before_path), load_json(after_path)
+    require(verify_reference(after["compared_before"], before_path) == before and after["differences"] == [],
+            "Actual application source/install/artifacts changed across the cohort")
+    require(datetime.fromisoformat(before["captured_utc"]) <= datetime.fromisoformat(command["started_utc"])
+            <= datetime.fromisoformat(command["finished_utc"]) <= datetime.fromisoformat(after["captured_utc"]),
+            "Application input captures do not bracket the actual cohort")
+    require(before["native_current_checkout_head"] == after["native_current_checkout_head"]
+            == provenance["declared_native"]["commit"] and before["app_head"] == after["app_head"],
+            "Application/native captured heads differ")
+    for capture in (before, after):
+        require(capture["source_binding"] == "verified" and capture["implementation"] == provenance["declared_native"],
+                "Cohort candidate source binding differs")
+    inputs = []
+    for key, count in (("source_files", 32), ("installed_files", 24), ("artifacts", 2)):
+        require(len(before[key]) == len(after[key]) == count, f"Incomplete {key} cohort capture")
+        old = {row["path"]: row for row in before[key]}
+        new = {row["path"]: row for row in after[key]}
+        require(len(old) == len(new) == count and old == new, f"Actual {key} cohort bytes differ")
+        inputs.extend({"kind": key, **row} for row in old.values())
+    for row in before["source_files"]:
+        path = Path(row["path"]).resolve()
+        require(path.is_relative_to(NATIVE.resolve()) or path.is_relative_to(APP.resolve()), "Cohort source escapes checkouts")
+        require(not path.name.startswith(".env") and path.suffix in EXTENSIONS, "Unapproved cohort source path")
+        require(digest(path) == row["sha256"] and path.stat().st_size == row["bytes"], "Current cohort source bytes differ")
+    native_objects = [row for row in provenance["embedded_native_objects"] if row["path"].endswith(".pyd")]
+    imported = [row for row in before["installed_files"] if row["path"].endswith(".pyd")]
+    require(len(native_objects) == len(imported) == 1 and imported[0]["sha256"] == native_objects[0]["sha256"],
+            "Cohort installed module differs from corrected wheel")
+    for stub in provenance["embedded_adapter_stubs"]:
+        matches = [row for row in before["installed_files"] if Path(row["path"]).as_posix().endswith(stub["path"])]
+        require(len(matches) == 1 and matches[0]["sha256"] == stub["sha256"], "Cohort installed stub differs from corrected wheel")
+    artifacts = {Path(row["path"]).resolve(): row for row in before["artifacts"]}
+    require(artifacts[Path(provenance["wheel"]["path"]).resolve()]["sha256"] == provenance["wheel"]["sha256"]
+            and artifacts[(WHEEL / "native-provenance.json").resolve()]["sha256"] == digest(WHEEL / "native-provenance.json"),
+            "Captured candidate artifacts differ")
+    cases = [verify_case(evidence_root / mode, mode, provenance) for mode in modes]
+    require((command["exit_code"] == 0) == all(row["actual_assertion_result"] == "PASS" for row in cases),
+            "Outer application command and actual child outcomes disagree")
+    if command["exit_code"] == 0:
+        text = (ROOT / (label + ".log")).read_text(encoding="utf-8")
+        expected = r"(?m)^1 passed in " if modes == ("paired",) else r"(?m)^6 passed, 1 deselected in "
+        require(re.search(expected, text), "Actual successful pytest cohort count differs")
+    return {"command": receipt, "before_sha256": digest(before_path), "after_sha256": digest(after_path),
+            "inputs": inputs, "cases": cases, "distinct_parameters": len(modes)}
+
+
+def verify_preserved_failure():
+    """Keep original failed wheel/run and unchanged-production RED outcomes separate."""
+    provenance = verify_wheel(FIRST, FIRST_WHEEL)
+    require(provenance["wheel"]["sha256"] == FIRST_WHEEL_SHA256, "Preserved first wheel identity differs")
+    failed = verify_case(FIRST_PAIRED / "paired", "paired", provenance, FIRST_WHEEL)
+    require(failed["actual_assertion_result"] == "FAIL", "Original first paired failure was replaced")
+    outer = completed_command("app43-native117-first-paired", 1)
+    require(outer["command"]["entropy43_native_sha256"] == FIRST_WHEEL_SHA256
+            and Path(outer["command"]["entropy43_evidence_root"]).resolve() == FIRST_PAIRED.resolve(),
+            "Original first paired command identity differs")
+    red_path = ROOT / "native117-gap-red-evidence-v2.json"
+    red = load_json(red_path)
+    expected = (("native117-gap-unit-red-v2", 4, 6), ("native117-gap-normal-callback-red-v2", 0, 1))
+    require(len(red["commands"]) == len(expected), "Actual RED command inventory differs")
+    for row, (label, passed, failed_count) in zip(red["commands"], expected, strict=True):
+        command = completed_command(label, 101)
+        require(verify_reference(row["receipt"], ROOT / (label + ".json")) == command["command"], "RED command receipt differs")
+        verify_reference(row["log"], ROOT / (label + ".log"))
+        require(row["passed"] == passed and row["failed"] == failed_count, "Actual RED counts differ")
+    return {"first_implementation": FIRST, "first_wheel_sha256": FIRST_WHEEL_SHA256,
+            "paired_case": failed, "outer_command": outer, "red_evidence_sha256": digest(red_path),
+            "red_counts": [{"passed": passed, "failed": failed_count} for _, passed, failed_count in expected],
+            "note": "Preserved failed predecessor and RED cohort; not additional corrected acceptance passes"}
+
+
+def main():
+    """Preflight all actual evidence before copying immutable bytes."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--implementation", required=True)
+    parser.add_argument("--regression", required=True)
+    parser.add_argument("--paired-root", required=True, type=Path)
+    parser.add_argument("--scenarios-root", required=True, type=Path)
+    args = parser.parse_args()
+    require(not ARCHIVE.exists(), "An archive must never replace any prior capture")
+    implementation = verify_implementation(args.implementation)
+    regression = verify_regression(args.regression)
+    tested_source = verify_tested_source(args.regression, implementation)
+    provenance = verify_wheel(args.implementation)
+    candidate_checks = verify_candidate_checks(provenance)
+    preserved_failure = verify_preserved_failure()
+    paired_root = args.paired_root.resolve()
+    scenarios_root = args.scenarios_root.resolve()
+    require(paired_root != scenarios_root, "Corrected paired and remaining-six roots must be distinct")
+    require(paired_root.name == "app43-native117-corrected-first-paired-20261009"
+            and scenarios_root.name == "app43-native117-corrected-remaining-scenarios-20261009", "Unexpected evidence roots")
+    require(paired_root.parent == ROOT.parent and scenarios_root.parent == ROOT.parent,
+            "Scenario roots must stay inside the assigned temporary workspace")
+    paired_cohort = verify_app_cohort("app43-native117-corrected-first-paired-v1",
+                                    "app43-native117-corrected-before-first-paired-v1",
+                                    "app43-native117-corrected-after-first-paired-v1",
+                                    ("paired",), paired_root, provenance, expected_exit=0)
+    remaining_cohort = verify_app_cohort("app43-native117-corrected-remaining-scenarios-v1",
+                                       "app43-native117-corrected-before-remaining-scenarios-v1",
+                                       "app43-native117-corrected-after-remaining-scenarios-v1",
+                                       SCENARIOS[1:], scenarios_root, provenance)
+    require(paired_cohort["inputs"] == remaining_cohort["inputs"],
+            "The corrected paired and remaining-six cohorts used different source/install/artifact inputs")
+    require(datetime.fromisoformat(paired_cohort["command"]["command"]["finished_utc"])
+            <= datetime.fromisoformat(remaining_cohort["command"]["command"]["started_utc"]),
+            "Remaining-six command preceded successful corrected first paired")
+    require(not (scenarios_root / "paired").exists(), "Paired must not be repeated in the remaining-six cohort")
+    cases = paired_cohort["cases"] + remaining_cohort["cases"]
+    require(tuple(row["mode"] for row in cases) == SCENARIOS, "Corrected distinct scenario inventory differs")
+    entries = inventory(ROOT, Path("validation"))
+    entries += inventory(FIRST_PAIRED, Path("application/preserved-first-failure"))
+    entries += inventory(paired_root, Path("application/corrected-first-paired"))
+    entries += inventory(scenarios_root, Path("application/corrected-remaining-six"))
+    for wheel_root, prefix in ((FIRST_WHEEL, "preserved-first-wheel"), (WHEEL, "corrected-wheel")):
+        for name in ("native-provenance.json", "native-build-input.json"):
+            source = wheel_root / name
+            entries.append((source, Path(prefix) / name, digest(source), source.stat().st_size))
+    targets = [str(row[1]) for row in entries]
+    require(len(targets) == len(set(targets)), "Archive paths collide")
+    ARCHIVE.mkdir(parents=True, exist_ok=False)
+    files, commands, connectors, non_json_responses = [], [], [], []
+    for source, relative, expected_hash, expected_size in entries:
+        target = ARCHIVE / relative
+        require(target.resolve().is_relative_to(ARCHIVE.resolve()), f"Escaping archive target: {relative}")
+        require(not target.exists(), f"Archive capture already exists: {target}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        require(digest(source) == expected_hash and source.stat().st_size == expected_size,
+                f"Evidence changed after preflight: {source}")
+        shutil.copyfile(source, target)
+        require(digest(target) == expected_hash and digest(source) == expected_hash
+                and target.stat().st_size == expected_size, f"Copied evidence changed: {source}")
+        row = {"path": relative.as_posix(), "source_path": source.as_posix(),
+               "bytes": expected_size, "sha256": expected_hash}
+        files.append(row)
+        if source.suffix == ".json":
+            try:
+                data = load_json(target)
+            except (ValueError, UnicodeError):
+                non_json_responses.append(relative.as_posix())
+                continue
+            if isinstance(data, dict) and {"argv", "exit_code"}.issubset(data):
+                commands.append({"capture": relative.as_posix(), **data})
+            if isinstance(data, dict) and {"tool", "args", "result"}.issubset(data):
+                connectors.append({"capture": relative.as_posix(), **data})
+    ledgers = {"commands.json": commands, "connector-operations.json": connectors,
+               "implementation-identities.json": implementation, "regression-summary.json": regression,
+               "tested-source-binding.json": tested_source,
+               "corrected-candidate-checks.json": candidate_checks,
+               "preserved-failure-cohort.json": preserved_failure,
+               "application-scenarios.json": {"cases": cases,
+                   "cohorts": [paired_cohort, remaining_cohort],
+                   "all_seven_scenarios_passed": all(row["actual_assertion_result"] == "PASS" for row in cases),
+                   "corrected_first_paired_passed": cases[0]["actual_assertion_result"] == "PASS",
+                   "distinct_corrected_parameters": 7, "actual_corrected_commands": 2,
+                   "note": "One first paired plus six remaining parameters on one corrected wheel; not a single seven-test command or eight independent tests",
+                   "application_issue43_complete": False, "real_venue_e6_verified": False}}
+    for name, data in ledgers.items():
+        target = ARCHIVE / name
+        require(not target.exists(), f"Generated ledger already exists: {name}")
+        target.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        files.append({"path": name, "bytes": target.stat().st_size, "sha256": digest(target)})
+    manifest = {"archived_utc": datetime.now(timezone.utc).isoformat(), "native_issue": 117,
+                "implementation_commit": args.implementation, "files": files,
+                "preserved_first_implementation": FIRST, "preserved_first_wheel_sha256": FIRST_WHEEL_SHA256,
+                "non_json_raw_responses": non_json_responses,
+                "exclusions": ["credential/environment files", "__pycache__/.git/.venv", "executables and wheel binary",
+                               *EXCLUDED_PREFIXES],
+                "note": "Original failures, superseded reviews, fixture receipts and snapshots retain their bytes and occurrences. "
+                        "Code snapshots have .txt suffixes. Executables and wheel are identified by actual evidence hashes, not committed. "
+                        "Overlapping reruns are not additional distinct tests. Root evidence inventory preserves actual source capture gaps. "
+                        "Source review is not binary acceptance. Failed application cases stay FAIL; seven local passes do not close "
+                        "application43/E6, real venue, whole economics/history, kernel or continuous remote authority."}
+    target = ARCHIVE / "manifest.json"
+    require(not target.exists(), "Manifest already exists")
+    target.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({"archive": ARCHIVE.as_posix(), "files": len(files), "commands": len(commands),
+                      "connectors": len(connectors), "passed": regression["passed"], "ignored": regression["ignored"],
+                      "corrected_first_paired_result": cases[0]["actual_assertion_result"],
+                      "all_seven_scenarios_passed": ledgers["application-scenarios.json"]["all_seven_scenarios_passed"]}))
+
+
+if __name__ == "__main__":
+    main()

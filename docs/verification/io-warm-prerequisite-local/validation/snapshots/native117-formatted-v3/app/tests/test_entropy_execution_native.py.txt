@@ -1,0 +1,965 @@
+"""Actual ordinary installed-native two-leg loopback acceptance in fresh processes.
+
+The explicit runner selects a source-bound candidate. No absent capability is counted
+as a passing execution case, and no Python network patch is kernel-isolation proof.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import hashlib
+import json
+import os
+import subprocess
+import sys
+import traceback
+from dataclasses import replace
+from decimal import Decimal
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "src"))
+from entropy_execution_config import DECIMAL_CAPS, INTEGER_CAPS, parse_plan
+
+PREFIX = "ENTROPY43_NATIVE_RESULT "
+PEER = Path(__file__).parent / "entropy_execution_peer.py"
+MATCHING = Path(__file__).parent / "fixtures/entropy-public/synthetic-metadata.json"
+
+
+def native_plan(directory, hl, aster):
+    limits = {key: str(value) for key, value in DECIMAL_CAPS.items()}
+    limits.update(INTEGER_CAPS)
+    limits.update(duration_ms=15000, cleanup_ms=5000, action_timeout_ms=2000)
+    legs = []
+    for (
+        name,
+        client,
+        account,
+        instrument,
+        quote,
+        settlement,
+        side,
+        step,
+        price_step,
+        peer,
+    ) in (
+        (
+            "entropy",
+            "HYPERLIQUID",
+            "HYPERLIQUID-ENTROPY43",
+            "io:SNDK-USD-PERP.HYPERLIQUID",
+            "USD",
+            "USDC",
+            "BUY",
+            "0.0001",
+            "0.01",
+            hl,
+        ),
+        (
+            "aster",
+            "ASTER",
+            "ASTER-ENTROPY43",
+            "SNDKUSD1-PERP.ASTER",
+            "USD1",
+            "USD1",
+            "SELL",
+            "0.01",
+            "0.01",
+            aster,
+        ),
+    ):
+        legs.append(
+            {
+                "name": name,
+                "client_id": client,
+                "account_id": account,
+                "instrument_id": instrument,
+                "quote_currency": quote,
+                "settlement_currency": settlement,
+                "side": side,
+                "quantity_multiplier": "1",
+                "quantity_step": step,
+                "min_quantity": step,
+                "min_notional": "10" if name == "entropy" else "5",
+                "price_step": price_step,
+                "price_min": "95",
+                "price_max": "105",
+                "entry_quantity": "0.12",
+                "http_url": peer.http_url,
+                "ws_url": peer.ws_url,
+            }
+        )
+    return parse_plan(
+        {
+            "schema_version": 1,
+            "run_id": "ENTROPY43_LOCAL",
+            "strategy_id": "ENTROPY-043",
+            "run_directory": str(directory.resolve()),
+            "matching_sha256": hashlib.sha256(MATCHING.read_bytes()).hexdigest(),
+            "fixture_sha256": hashlib.sha256(PEER.read_bytes()).hexdigest(),
+            "limits": limits,
+            "legs": legs,
+            "valuation": [
+                {
+                    "currency": currency,
+                    "quote_to_usd": "1",
+                    "source_id": "synthetic-configured-parity",
+                    "basis_assumption": "Synthetic USD/USDC/USD1 parity is an assumption, not an observed market rate",
+                    "max_age_ms": 2000,
+                }
+                for currency in ("USD", "USDC", "USD1")
+            ],
+        }
+    )
+
+
+def _environment():
+    environment = os.environ.copy()
+    for name in tuple(environment):
+        if name.startswith(
+            (
+                "ASTER_",
+                "BINANCE_",
+                "HYPERLIQUID_",
+                "LIGHTER_",
+                "ONDO_",
+                "CONDA_",
+                "FUTU_",
+            )
+        ) or name.endswith(
+            ("_API_KEY", "_API_SECRET", "_PRIVATE_KEY", "_PASSWORD", "_TOKEN")
+        ):
+            environment.pop(name, None)
+    environment.pop("PYTHONPATH", None)
+    environment["PYTHON_DOTENV_DISABLED"] = "1"
+    environment["PYTHONNOUSERSITE"] = "1"
+    environment["PYTHONUTF8"] = "1"
+    return environment
+
+
+async def child_case(mode, directory, wheel, sha256, provenance):
+    from entropy_execution_peer import ExecutionPeer
+
+    from entropy_execution import run_loopback
+
+    hl_fault = {"unknown": "missing_response", "loss_fee": "loss_fee"}.get(mode, "none")
+    aster_fault = {
+        "reject": "reject",
+        "partial": "partial",
+        "cleanup_failure": "cleanup_reject",
+    }.get(mode, "none")
+    async with (
+        ExecutionPeer("HYPERLIQUID", fault=hl_fault) as hl,
+        ExecutionPeer("ASTER", fault=aster_fault) as aster,
+    ):
+        if mode == "foreign":
+            aster.position = Decimal("0.03")
+        plan = native_plan(directory, hl, aster)
+        try:
+            summary = await run_loopback(
+                plan,
+                wheel=wheel,
+                sha256=sha256,
+                provenance=provenance,
+                matching_path=MATCHING,
+                fixture_path=PEER,
+            )
+        finally:
+            # Retain actual traffic even when normal native startup fails.
+            peers = {
+                peer.venue: {
+                    "requests": peer.requests,
+                    "commands": peer.commands,
+                    "frames": peer.frames,
+                    "actions": peer.actions,
+                    "fills": peer.fills,
+                    "position": str(peer.position),
+                    "errors": peer.errors,
+                    "recording_point": "after runtime cleanup before peer teardown",
+                }
+                for peer in (hl, aster)
+            }
+            (directory / "peer-evidence.json").write_text(
+                json.dumps(peers, indent=2), encoding="utf-8"
+            )
+        for peer in (hl, aster):
+            assert len(peer.requests) <= 150 and peer.actions <= 6
+            assert not peer.errors, peer.errors
+    assert not hl.sessions and not aster.sessions, (
+        "native sockets did not finish teardown"
+    )
+    assert summary["started"] and summary["stopped"] and summary["shutdown_verified"]
+    assert not summary["watchdog_fired"]
+    assert summary["account_flat_verified"] == "Unknown"
+    assert summary["native_host_egress_isolation_verified"] is False
+    assert (
+        summary["aster_actual_funding"] == "Unknown"
+        and summary["economics_complete"] is False
+    )
+    controller = summary["controller"]
+    assert controller["native_cache_recovery"] == "Unknown"
+    assert summary["economic_flags"]["native_cache_recovery"] == "Unknown"
+    assert summary["durable_cold_native_cache_restore_verified"] is False
+    if mode == "paired":
+        assert controller["state"] == "Completed", summary
+        assert controller["entry_orders"] == controller["cleanup_orders"] == 2
+        assert all(Decimal(value) == 0 for value in controller["positions"].values())
+        assert len(controller["fills"]) == 4
+        assert (
+            controller["orders_terminal"] is True
+            and controller["owned_flat_verified"] is True
+        )
+        assert all(
+            Decimal(value) == 0
+            for value in summary["native_portfolio_net_positions"].values()
+        )
+        assert len(hl.fills) == len(aster.fills) == 2
+    elif mode == "loss_fee":
+        assert any(fill["leg"] == "entropy" for fill in controller["fills"])
+        assert controller["new_risk_closed"] is True
+        assert Decimal(controller["loss_usd"]) >= plan.limits.max_loss_usd
+        assert not aster.actions and not aster.fills, (
+            "native terminal callback bypassed actual-fee loss guard"
+        )
+    elif mode == "foreign":
+        assert not hl.actions and not aster.actions
+        assert not controller["fills"]
+        assert any(
+            reason == "external_or_unreconciled_inventory"
+            or reason.startswith(("foreign_", "unowned_"))
+            for reason in controller["reasons"]
+        ), controller["reasons"]
+        assert Decimal(aster.position) == Decimal("0.03")
+        assert controller["current_projection_verified"] == "Unknown"
+        assert controller["owned_flat_verified"] == "Unknown"
+    elif mode == "unknown":
+        assert controller["state"] != "Completed"
+        assert hl.actions <= 2, "uncertain original submit was retransmitted"
+        assert controller["orders_terminal"] is False
+        assert any(row["unknown"] for row in controller["orders"].values())
+        assert Decimal(controller["gross_reserved_usd"]) > 0
+        assert not aster.fills, "unknown first leg generated an invented hedge"
+    else:
+        assert any(fill["leg"] == "entropy" for fill in controller["fills"])
+        assert controller["new_risk_closed"] is True
+        if mode == "cleanup_failure":
+            assert Decimal(controller["positions"]["aster"]) != 0
+            assert controller["owned_flat_verified"] == "Unknown"
+        if mode == "partial":
+            assert controller["entry_orders"] == 2
+            assert "partial_hedge_or_dust_residual" in controller["reasons"]
+    return {
+        "mode": mode,
+        "summary": summary,
+        "wire_actions": {"HYPERLIQUID": hl.actions, "ASTER": aster.actions},
+        "wheel_sha256": hashlib.sha256(Path(wheel).read_bytes()).hexdigest(),
+        "active_sockets_after_teardown": 0,
+        "native_host_egress_isolation_verified": False,
+    }
+
+
+@pytest.mark.parametrize(
+    "mode",
+    [
+        "paired",
+        "reject",
+        "partial",
+        "unknown",
+        "cleanup_failure",
+        "foreign",
+        "loss_fee",
+    ],
+)
+def test_actual_installed_factory_two_leg_execution(tmp_path, mode):
+    wheel = os.environ.get("ENTROPY43_NATIVE_WHEEL")
+    sha256 = os.environ.get("ENTROPY43_NATIVE_SHA256")
+    provenance = os.environ.get("ENTROPY43_NATIVE_PROVENANCE")
+    if not all((wheel, sha256, provenance)):
+        pytest.skip(
+            "requires an explicitly selected source-bound native Entropy/Aster candidate"
+        )
+    evidence_root = os.environ.get("ENTROPY43_EVIDENCE_ROOT")
+    directory = Path(evidence_root) / mode if evidence_root else tmp_path / mode
+    directory.mkdir(parents=True, exist_ok=False)
+    command = [
+        sys.executable,
+        str(Path(__file__).resolve()),
+        "--entropy43-child",
+        mode,
+        str(directory),
+        wheel,
+        sha256,
+        provenance,
+    ]
+    result = subprocess.run(
+        command,
+        cwd=ROOT,
+        env=_environment(),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        timeout=55,
+        check=False,
+    )
+    (directory / "child-command.json").write_text(
+        json.dumps({"argv": command, "exit_code": result.returncode}, indent=2),
+        encoding="utf-8",
+    )
+    (directory / "child-stdout.log").write_text(result.stdout, encoding="utf-8")
+    (directory / "child-stderr.log").write_text(result.stderr, encoding="utf-8")
+    assert result.returncode == 0, result.stdout[-16000:] + result.stderr[-16000:]
+    records = [
+        line.removeprefix(PREFIX)
+        for line in result.stdout.splitlines()
+        if line.startswith(PREFIX)
+    ]
+    assert len(records) == 1
+    record = json.loads(records[0])
+    assert record["wheel_sha256"] == sha256
+    assert record["active_sockets_after_teardown"] == 0
+
+
+def _child_main():
+    try:
+        mode, directory, wheel, sha256, provenance = sys.argv[2:]
+        record = asyncio.run(
+            child_case(mode, Path(directory), wheel, sha256, provenance)
+        )
+        print(PREFIX + json.dumps(record, sort_keys=True), flush=True)
+        return 0
+    except (
+        ValueError,
+        RuntimeError,
+        TypeError,
+        KeyError,
+        AttributeError,
+        OSError,
+        ArithmeticError,
+        AssertionError,
+    ):
+        traceback.print_exc()
+        return 1
+
+
+def test_runtime_cli_preview_has_no_native_credential_network_or_output_access(
+    monkeypatch, capsys
+):
+    import builtins
+    import socket
+
+    import entropy_execution as runtime
+
+    example = ROOT / "config/entropy-loopback-execution.example.toml"
+    real_open, real_import = builtins.open, builtins.__import__
+    reads = []
+
+    def guarded_open(path, mode="r", *args, **kwargs):
+        assert Path(path) == example and mode == "rb"
+        reads.append(str(path))
+        return real_open(path, mode, *args, **kwargs)
+
+    def guarded_import(name, *args, **kwargs):
+        assert not name.startswith(("nautilus_trader", "dotenv"))
+        return real_import(name, *args, **kwargs)
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("dry-run touched an external capability")
+
+    monkeypatch.setattr(builtins, "open", guarded_open)
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+    monkeypatch.setattr(os, "getenv", forbidden)
+    monkeypatch.setattr(socket, "socket", forbidden)
+    assert runtime.main([str(example), "--dry-run"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert reads == [str(example)]
+    assert result["readiness"]["account"] == "Unknown"
+    assert result["real_execution_authorized"] is False
+
+
+def test_dataclass_endpoint_bypass_refused_before_native_candidate_or_output(
+    tmp_path, monkeypatch
+):
+    from types import SimpleNamespace
+
+    import entropy_execution as runtime
+
+    hl = SimpleNamespace(
+        http_url="http://127.0.0.1:19041", ws_url="ws://127.0.0.1:19042"
+    )
+    aster = SimpleNamespace(
+        http_url="http://127.0.0.1:19043", ws_url="ws://127.0.0.1:19044"
+    )
+    plan = native_plan(tmp_path, hl, aster)
+    plan = replace(
+        plan,
+        legs=(
+            replace(plan.legs[0], http_url="https://api.hyperliquid.xyz"),
+            plan.legs[1],
+        ),
+    )
+
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError("invalid endpoint reached native candidate verification")
+
+    monkeypatch.setattr(runtime, "verify_candidate", forbidden)
+    with pytest.raises(ValueError, match="numeric-loopback"):
+        asyncio.run(
+            runtime.run_loopback(
+                plan,
+                wheel=None,
+                sha256=None,
+                provenance=None,
+                matching_path=MATCHING,
+                fixture_path=PEER,
+            )
+        )
+    assert list(tmp_path.iterdir()) == []
+
+
+def _projection_fixture(tmp_path):
+    from types import SimpleNamespace
+
+    from entropy_execution_core import FillFact, OrderIntent, OwnedOrder
+
+    hl = SimpleNamespace(
+        http_url="http://127.0.0.1:19041", ws_url="ws://127.0.0.1:19042"
+    )
+    aster = SimpleNamespace(
+        http_url="http://127.0.0.1:19043", ws_url="ws://127.0.0.1:19044"
+    )
+    plan = native_plan(tmp_path, hl, aster)
+    leg = plan.legs[0]
+    fact = FillFact(
+        leg.name,
+        leg.account_id,
+        leg.instrument_id,
+        "OWNED-001",
+        "io:io:SNDK:70001:60001",
+        "BUY",
+        Decimal("0.12"),
+        Decimal(100),
+        Decimal("0.001"),
+        "USDC",
+        1000,
+        "unit-contract-native-event",
+        True,
+        "70001",
+    )
+    money = SimpleNamespace(currency="USDC", as_decimal=lambda: Decimal("0.001"))
+    event = SimpleNamespace(
+        reconciliation=False,
+        strategy_id=plan.strategy_id,
+        account_id=leg.account_id,
+        instrument_id=leg.instrument_id,
+        client_order_id=fact.client_order_id,
+        trade_id=fact.trade_id,
+        venue_order_id=fact.venue_order_id,
+        order_side=SimpleNamespace(name="BUY"),
+        last_qty=fact.quantity,
+        last_px=fact.price,
+        commission=money,
+    )
+    cached = SimpleNamespace(
+        strategy_id=plan.strategy_id,
+        account_id=leg.account_id,
+        instrument_id=leg.instrument_id,
+        client_order_id=fact.client_order_id,
+        filled_qty=fact.quantity,
+        trade_ids=[fact.trade_id],
+        events=lambda: [event],
+        commissions=lambda: {"USDC": money},
+    )
+    position = SimpleNamespace(
+        strategy_id=plan.strategy_id,
+        account_id=leg.account_id,
+        instrument_id=leg.instrument_id,
+        side=SimpleNamespace(name="LONG"),
+        quantity=fact.quantity,
+        client_order_ids=lambda: [fact.client_order_id],
+        adjustments=list,
+        events=lambda: [event],
+    )
+    intent = OrderIntent(
+        "submit",
+        leg.name,
+        fact.client_order_id,
+        "BUY",
+        fact.quantity,
+        fact.price,
+        False,
+    )
+    owned = {
+        fact.client_order_id: OwnedOrder(
+            intent, Decimal(0), filled_quantity=fact.quantity, terminal="FILLED"
+        )
+    }
+    return plan, leg, fact, event, cached, position, owned
+
+
+def test_current_projection_guard_is_not_a_durable_cold_restore_grant(tmp_path):
+    from entropy_execution import validate_projection
+
+    plan, leg, fact, _event, cached, position, owned = _projection_fixture(tmp_path)
+    verified, reason, witness = validate_projection(
+        leg,
+        plan.strategy_id,
+        fact.quantity,
+        fact.quantity,
+        owned,
+        [fact],
+        [cached],
+        [position],
+        fact.quantity,
+    )
+    assert verified and reason == "current_native_projection_consistent"
+    assert witness["cold_native_cache_restore_verified"] is False
+    assert witness["whole_account_verified"] is False
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        None,
+        "cloned_cid_wrong_oid",
+        "other_leg_intent",
+        "wrong_instrument",
+        "absent_oid",
+        "absent_cache",
+        "wrong_account",
+        "wrong_strategy",
+        "closed_cache",
+        "duplicate_row",
+        "duplicate_cache",
+        "unknown_owned_intent",
+        "absent_cache_oid",
+    ],
+)
+def test_selected_open_order_requires_exact_live_owned_cache_join(tmp_path, fault):
+    from entropy_execution import native_open_orders_owned
+
+    plan, _leg, fact, _event, cached, _position, owned = _projection_fixture(tmp_path)
+    leg = plan.legs[1]
+    order = owned[fact.client_order_id]
+    order.intent = replace(order.intent, leg=leg.name)
+    order.terminal = None
+    cached.account_id = leg.account_id
+    cached.instrument_id = leg.instrument_id
+    cached.venue_order_id = "80001"
+    cached.is_open = True
+    row = {
+        "client_order_id": fact.client_order_id,
+        "venue_order_id": "80001",
+        "instrument_id": leg.instrument_id,
+    }
+    rows, orders = [row], [cached]
+    if fault == "cloned_cid_wrong_oid":
+        row["venue_order_id"] = "80002"
+    elif fault == "other_leg_intent":
+        order.intent = replace(order.intent, leg="entropy")
+    elif fault == "wrong_instrument":
+        row["instrument_id"] = plan.legs[0].instrument_id
+    elif fault == "absent_oid":
+        del row["venue_order_id"]
+    elif fault == "absent_cache":
+        orders = []
+    elif fault == "wrong_account":
+        cached.account_id = "ASTER-FOREIGN"
+    elif fault == "wrong_strategy":
+        cached.strategy_id = "EXTERNAL"
+    elif fault == "closed_cache":
+        cached.is_open = False
+    elif fault == "duplicate_row":
+        rows.append(dict(row))
+    elif fault == "duplicate_cache":
+        orders.append(cached)
+    elif fault == "unknown_owned_intent":
+        order.unknown = True
+    elif fault == "absent_cache_oid":
+        cached.venue_order_id = None
+    assert native_open_orders_owned(leg, plan.strategy_id, rows, owned, orders) is (
+        fault is None
+    )
+    # The identity guard cannot rewrite native facts or invent run ownership.
+    assert order.terminal is None
+    assert order.filled_quantity == fact.quantity
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "selected_zero",
+        "portfolio_zero",
+        "position_missing",
+        "external_position",
+        "foreign_order",
+        "native_commission_mismatch",
+        "synthetic_discrepancy_trade",
+    ],
+)
+def test_current_selected_scope_cannot_borrow_missing_or_foreign_projection(
+    tmp_path, fault
+):
+    from entropy_execution import validate_projection
+
+    plan, leg, fact, event, cached, position, owned = _projection_fixture(tmp_path)
+    selected = portfolio = fact.quantity
+    positions = [position]
+    if fault == "selected_zero":
+        selected = Decimal(0)
+    elif fault == "portfolio_zero":
+        portfolio = Decimal(0)
+    elif fault == "position_missing":
+        positions = []
+    elif fault == "external_position":
+        position.strategy_id = "EXTERNAL"
+    elif fault == "foreign_order":
+        cached.client_order_id = "UI-FOREIGN"
+    elif fault == "native_commission_mismatch":
+        from types import SimpleNamespace
+
+        cached.commissions = lambda: {
+            "USDC": SimpleNamespace(as_decimal=lambda: Decimal("0.002"))
+        }
+    else:
+        event.trade_id = "T-DISCREPANCY-001"
+        cached.trade_ids = [event.trade_id]
+        fact = replace(fact, trade_id=event.trade_id)
+    verified, _reason, _witness = validate_projection(
+        leg,
+        plan.strategy_id,
+        selected,
+        fact.quantity,
+        owned,
+        [fact],
+        [cached],
+        positions,
+        portfolio,
+    )
+    assert verified is False
+
+
+def test_genuine_scoped_rest_reconciliation_fill_can_match_exact_owned_native_event(
+    tmp_path,
+):
+    from entropy_execution import native_fill_matches
+
+    plan, _leg, fact, event, _cached, _position, _owned = _projection_fixture(tmp_path)
+    event.reconciliation = True
+    assert native_fill_matches(event, fact, plan.strategy_id)
+    event.trade_id = "T-INFERRED-0001"
+    assert not native_fill_matches(
+        event, replace(fact, trade_id=event.trade_id), plan.strategy_id
+    )
+
+
+@pytest.mark.parametrize("status", ["CANCELED", "EXPIRED"])
+def test_partial_reconciliation_fill_preserves_exact_native_terminal(tmp_path, status):
+    from types import SimpleNamespace
+
+    from entropy_execution import native_fill_matches, native_terminal_status
+    from entropy_execution_core import OwnedOrder, TwoLegController
+
+    plan, _leg, fact, event, cached, _position, owned = _projection_fixture(tmp_path)
+    fact = replace(fact, quantity=Decimal("0.06"))
+    event.last_qty = fact.quantity
+    event.reconciliation = True
+    cached.filled_qty = fact.quantity
+    cached.status = SimpleNamespace(name=status)
+    cached.is_closed = True
+    controller = TwoLegController(plan)
+    controller.orders[fact.client_order_id] = OwnedOrder(
+        owned[fact.client_order_id].intent, Decimal("12.726")
+    )
+    assert native_fill_matches(event, fact, plan.strategy_id)
+    assert controller.observe_fill(fact, fact.received_ns) == ()
+    terminal = native_terminal_status(cached)
+    assert terminal == status
+    assert (
+        controller.observe_terminal(fact.client_order_id, terminal, fact.received_ns)
+        == ()
+    )
+    order = controller.orders[fact.client_order_id]
+    assert order.terminal == status
+    assert order.filled_quantity == Decimal("0.06")
+    assert controller.positions["entropy"] == Decimal("0.06")
+    assert not order.unknown
+
+
+@pytest.mark.parametrize("status", ["PARTIALLY_FILLED", "PENDING_CANCEL", "ACCEPTED"])
+def test_closed_flag_alone_cannot_grant_filled_terminal(status):
+    from types import SimpleNamespace
+
+    from entropy_execution import native_terminal_status
+
+    assert (
+        native_terminal_status(
+            SimpleNamespace(status=SimpleNamespace(name=status), is_closed=True)
+        )
+        is None
+    )
+
+
+def test_io_current_projection_requires_exact_retained_native_raw_fill_source(tmp_path):
+    from copy import deepcopy
+
+    from entropy_execution import io_raw_fill_source
+
+    _plan, leg, fact, _event, _cached, _position, _owned = _projection_fixture(tmp_path)
+    row = {
+        "id": "observation-1",
+        "identity_quality": "EvidencedLocalComposite",
+        "scope_evidence": {"attribution_verified": True},
+        "financial_digest": "native-financial-digest",
+        "source_seq": 1,
+        "raw_envelope_ref": "native-keccak-ref",
+        "ownership_basis": "AccountRaw",
+        "fact": {
+            "category": "fill_fee",
+            "dex": "io",
+            "instrument_id": leg.instrument_id,
+            "amount": "0.001",
+            "currency": "USDC",
+            "native_applied": "Unknown",
+            "components": {
+                "tid": "60001",
+                "oid": fact.venue_order_id,
+                "sz": "0.12",
+                "px": "100",
+                "side": "B",
+            },
+        },
+    }
+    snapshot = {"account_id": leg.account_id, "observations": {"observation-1": row}}
+    sources = io_raw_fill_source(fact, snapshot)
+    assert sources and sources[0]["native_applied"] == "Unknown"
+    for key, value in (("oid", "999"), ("tid", "999"), ("sz", "0.13"), ("px", "101")):
+        changed = deepcopy(snapshot)
+        changed["observations"]["observation-1"]["fact"]["components"][key] = value
+        assert io_raw_fill_source(fact, changed) is None
+    changed = deepcopy(snapshot)
+    changed["observations"]["observation-1"]["scope_evidence"][
+        "attribution_verified"
+    ] = False
+    assert io_raw_fill_source(fact, changed) is None
+
+
+@pytest.mark.parametrize(
+    "identity",
+    [
+        "60001",
+        "io:xyz:SNDK:70001:60001",
+        "io:io:SNDK:70002:60001",
+        "io:io:OTHER:70001:60001",
+        "io:io:SNDK:70001:060001",
+        "io:io:SNDK:70001:0",
+        "io:io:SNDK:70001:18446744073709551616",
+        "io:io:SNDK:70001:60001:extra",
+    ],
+)
+def test_scoped_native_identity_cannot_borrow_another_coin_oid_or_synthetic_trade(
+    tmp_path, identity
+):
+    from entropy_execution import native_fill_matches
+
+    plan, _leg, fact, event, _cached, _position, _owned = _projection_fixture(tmp_path)
+    event.trade_id = identity
+    assert not native_fill_matches(
+        event, replace(fact, trade_id=identity), plan.strategy_id
+    )
+
+
+def test_refresh_scheduler_keeps_leg_queries_independent_and_caps_reads():
+    from entropy_execution import ScopeRefreshScheduler
+
+    scheduler = ScopeRefreshScheduler({"entropy": 3000, "aster": 15000}, max_reads=2)
+    assert scheduler.request("aster", 1000000000, generation=4, source_reference="a0")
+    assert "entropy" not in scheduler.active
+    assert not scheduler.request(
+        "aster", 1500000000, generation=4, source_reference="a0"
+    )
+    assert scheduler.request("entropy", 1500000000, generation=0, source_reference="h0")
+    assert scheduler.reads == 2
+    scheduler.observe(
+        "entropy",
+        5000000000,
+        ready=False,
+        generation=0,
+        received_ns=None,
+        source_reference="failure",
+    )
+    assert not scheduler.request(
+        "entropy", 5000000000, generation=0, source_reference="failure"
+    )
+
+
+@pytest.mark.parametrize(
+    "ready,generation,received,reference",
+    [
+        (False, 0, 2000000000, "h1"),
+        (True, 0, 1000000000, "h1"),
+        (True, 0, 2000000000, "h0"),
+        (True, -1, 2000000000, "h1"),
+        (True, True, 2000000000, "h1"),
+        (True, 0, 4000000000, "h1"),
+    ],
+)
+def test_refresh_scheduler_does_not_complete_from_old_invalid_or_unready_scope(
+    ready,
+    generation,
+    received,
+    reference,
+):
+    from entropy_execution import ScopeRefreshScheduler
+
+    scheduler = ScopeRefreshScheduler({"entropy": 3000})
+    assert scheduler.request("entropy", 1000000000, generation=0, source_reference="h0")
+    scheduler.observe(
+        "entropy",
+        2000000000,
+        ready=ready,
+        generation=generation,
+        received_ns=received,
+        source_reference=reference,
+    )
+    assert "entropy" in scheduler.active
+    assert not scheduler.request(
+        "entropy", 2000000000, generation=0, source_reference="h1"
+    )
+
+
+def test_refresh_scheduler_accepts_actual_zero_epoch_but_retains_pending_native_work():
+    from entropy_execution import ScopeRefreshScheduler
+
+    scheduler = ScopeRefreshScheduler({"entropy": 3000})
+    assert scheduler.request("entropy", 1000000000, generation=0, source_reference="h0")
+    scheduler.observe(
+        "entropy",
+        5000000000,
+        ready=False,
+        generation=0,
+        received_ns=None,
+        source_reference="pending",
+        native_pending=True,
+    )
+    assert not scheduler.request(
+        "entropy", 5000000000, generation=0, source_reference="pending"
+    )
+    scheduler.observe(
+        "entropy",
+        5000000000,
+        ready=True,
+        generation=0,
+        received_ns=4900000000,
+        source_reference="h1",
+    )
+    assert "entropy" not in scheduler.active
+    assert scheduler.reads == 1
+    scheduler.observe(
+        "entropy",
+        5100000000,
+        ready=False,
+        generation=0,
+        received_ns=None,
+        source_reference="nativepending",
+        native_pending=True,
+    )
+    assert not scheduler.request(
+        "entropy", 5200000000, generation=0, source_reference="nativepending"
+    )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "pending",
+        "other_leg",
+        "terminal",
+        "timeout",
+        "unknown",
+        "no_handoff",
+        "before_dispatch",
+        "future_handoff",
+        "unowned_intent",
+        "handoff_before_dispatch",
+    ],
+)
+def test_pending_owned_action_defers_only_bounded_observed_handoff(tmp_path, case):
+    from entropy_execution import ScopeRefreshScheduler, pending_owned_actions
+
+    _plan, _leg, fact, _event, _cached, _position, owned = _projection_fixture(tmp_path)
+    identifier = fact.client_order_id
+    order = owned[identifier]
+    order.terminal = None
+    dispatched = {identifier: 1000000000}
+    handed_off = {identifier: 1000000001}
+    now, leg = 1100000000, "entropy"
+    if case == "other_leg":
+        leg = "aster"
+    elif case == "terminal":
+        order.terminal = "FILLED"
+    elif case == "timeout":
+        now = 3000000000
+    elif case == "unknown":
+        order.unknown = True
+    elif case == "no_handoff":
+        handed_off = {}
+    elif case == "before_dispatch":
+        now = 999999999
+    elif case == "future_handoff":
+        handed_off[identifier] = now + 1
+    elif case == "unowned_intent":
+        order.intent = replace(order.intent, client_order_id="OTHER-CID")
+    elif case == "handoff_before_dispatch":
+        handed_off[identifier] = dispatched[identifier] - 1
+    scheduler = ScopeRefreshScheduler({"entropy": 3000, "aster": 15000})
+    actual = pending_owned_actions(leg, owned, dispatched, handed_off, now, 2000)
+    assert actual == ((identifier,) if case == "pending" else ())
+    # Read deferral cannot consume read budget or produce a scope-ready witness.
+    assert scheduler.reads == 0 and scheduler.active == {}
+    assert (
+        pending_owned_actions("aster", owned, dispatched, handed_off, now, 2000) == ()
+    )
+    assert order.filled_quantity == fact.quantity
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        None,
+        "cid",
+        "account",
+        "strategy",
+        "instrument",
+        "missing_cache",
+        "missing_cache_event",
+    ],
+)
+def test_native_handoff_requires_exact_owned_submitted_callback_cache_identity(
+    tmp_path, fault
+):
+    from entropy_execution import native_handoff_matches
+
+    plan, leg, fact, event, cached, _position, _owned = _projection_fixture(tmp_path)
+    event.event_id = "submitted-contract-event"
+    if fault == "cid":
+        event.client_order_id = "OTHER-CID"
+    elif fault == "account":
+        event.account_id = "HYPERLIQUID-FOREIGN"
+    elif fault == "strategy":
+        event.strategy_id = "EXTERNAL"
+    elif fault == "instrument":
+        event.instrument_id = plan.legs[1].instrument_id
+    elif fault == "missing_cache":
+        cached = None
+    elif fault == "missing_cache_event":
+        cached.events = list
+    assert native_handoff_matches(
+        event, cached, leg, plan.strategy_id, fact.client_order_id
+    ) is (fault is None)
+
+
+if __name__ == "__main__" and "--entropy43-child" in sys.argv:
+    raise SystemExit(_child_main())

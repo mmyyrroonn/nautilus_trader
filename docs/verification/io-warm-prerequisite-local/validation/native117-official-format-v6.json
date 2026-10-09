@@ -1,0 +1,23 @@
+{
+  "argv": [
+    "cargo",
+    "+nightly",
+    "fmt",
+    "-p",
+    "nautilus-hyperliquid"
+  ],
+  "cwd": "E:\\persarb\\worktrees\\entropy-warm-prerequisites",
+  "started_utc": "2026-10-09T12:30:39.480524+00:00",
+  "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+  "pyo3_python": "E:/persarb/worktrees/entropy-warm-prerequisites/.venv/Scripts/python.exe",
+  "uv_project_environment": null,
+  "nautilus_stub_profile": null,
+  "cargo_build_warnings": null,
+  "cargo_net_offline": null,
+  "entropy43_native_wheel": null,
+  "entropy43_native_sha256": null,
+  "entropy43_native_provenance": null,
+  "entropy43_evidence_root": null,
+  "exit_code": 0,
+  "finished_utc": "2026-10-09T12:30:40.196577+00:00"
+}

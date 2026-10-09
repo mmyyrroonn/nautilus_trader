@@ -1,0 +1,54 @@
+"""Compare exact recorded inputs and heads without inventing a test result."""
+
+import argparse
+import datetime as dt
+import hashlib
+import json
+from pathlib import Path
+
+
+DIRECTORY = Path(__file__).resolve().parent
+
+
+def load(name):
+    path = DIRECTORY / (name + ".json")
+    raw = path.read_bytes()
+    return path, hashlib.sha256(raw).hexdigest(), json.loads(raw)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("label")
+    parser.add_argument("before")
+    parser.add_argument("after")
+    args = parser.parse_args()
+    output = DIRECTORY / (args.label + ".json")
+    assert not output.exists()
+    before_path, before_sha, before = load(args.before)
+    after_path, after_sha, after = load(args.after)
+    record = {"started_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+              "before": {"path": str(before_path), "sha256": before_sha},
+              "after": {"path": str(after_path), "sha256": after_sha}, "repositories": {}}
+    for repository in ("native", "app"):
+        left = before[repository]
+        right = after[repository]
+        old = {row["path"]: (row["sha256"], row["size"]) for row in left["files"]}
+        new = {row["path"]: (row["sha256"], row["size"]) for row in right["files"]}
+        differences = sorted(path for path in old.keys() | new.keys() if old.get(path) != new.get(path))
+        record["repositories"][repository] = {
+            "inputs": len(old), "missing_before": left["missing_inputs"],
+            "missing_after": right["missing_inputs"], "head_before": left["head"],
+            "head_after": right["head"], "differences": differences,
+            "equal": not differences and left["head"] == right["head"]
+                     and not left["missing_inputs"] and not right["missing_inputs"],
+        }
+    record.update(finished_utc=dt.datetime.now(dt.timezone.utc).isoformat(),
+                  equal=all(row["equal"] for row in record["repositories"].values()),
+                  test_executions=0)
+    output.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(record))
+    assert record["equal"], "Recorded source or HEAD changed; inspect preserved comparison"
+
+
+if __name__ == "__main__":
+    main()

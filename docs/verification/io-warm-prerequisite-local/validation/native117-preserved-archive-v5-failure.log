@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "E:\persarb\_tmp\entropy117-validation\archive_native117_v5.py", line 762, in <module>
+    main()
+  File "E:\persarb\_tmp\entropy117-validation\archive_native117_v5.py", line 658, in main
+    candidate_checks = verify_candidate_checks(provenance)
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\persarb\_tmp\entropy117-validation\archive_native117_v5.py", line 531, in verify_candidate_checks
+    require(identity["strict_source_binding_passed"] is True and identity["native_provenance"] == provenance
+  File "E:\persarb\_tmp\entropy117-validation\archive_native117_v5.py", line 47, in require
+    raise ValueError(message)
+ValueError: Corrected native installed identity differs

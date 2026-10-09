@@ -1,0 +1,133 @@
+import datetime
+import difflib
+import hashlib
+import json
+from pathlib import Path
+
+root = Path('E:/persarb/_tmp/entropy117-validation')
+label = 'reviewer-native117-gap-tests-v2-source-review-v2'
+manifest = root / 'native117-gap-test-v2-formatted.json'
+load = lambda p: json.loads(p.read_text(encoding='utf-8-sig'))
+sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+now = lambda: datetime.datetime.now(datetime.timezone.utc).isoformat()
+started = now()
+m = load(manifest)
+oldroot = root / 'economic-gap-tests-before-v1'
+unit = 'crates/adapters/hyperliquid/src/economics_scope/tests.rs'
+io = 'crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs'
+snaproot = Path(m['snapshot_directory'])
+paths = [manifest, Path(__file__), root / 'native117-economic-gap-correction-contract-v2.md',
+         root / 'economic-gap-test-contract-v2.md', root / 'economic-gap-test-source-v2.json']
+rows = {}
+for group,count in [('native',33),('app',10)]:
+    assert len(m[group]['files']) == count and not m[group]['missing_inputs']
+    for r in m[group]['files']:
+        rel = Path(r['path']).relative_to(Path(m[group]['root'])).as_posix()
+        copy = snaproot / group / rel
+        assert sha(copy) == r['sha256'] and copy.stat().st_size == r['size']
+        paths.append(copy)
+        if group == 'native' and rel in (unit, io):
+            paths.append(Path(r['path']))
+        rows[group+'/'+rel] = r
+old_sources = [oldroot / unit, oldroot / io]
+paths += old_sources
+paths += [root / name for name in ['native117-gap-red-evidence-v2.json', 'native117-gap-red-inputs-unchanged-v2.json', 'native117-gap-test-v2-after-red.json', 'native117-gap-unit-red-v2.json', 'native117-gap-unit-red-v2.log', 'native117-gap-normal-callback-red-v2.json', 'native117-gap-normal-callback-red-v2.log', 'reviewer-native117-gap-tests-v2-source-procedure-v1.py', 'reviewer-native117-gap-tests-v2-source-procedure-v1-failed.log']]
+paths = list(dict.fromkeys(paths))
+before = [{'path':str(p),'sha256':sha(p)} for p in paths]
+u_old,u_new = (oldroot/unit).read_text(encoding='utf-8'),(snaproot/'native'/unit).read_text(encoding='utf-8')
+i_old,i_new = (oldroot/io).read_text(encoding='utf-8'),(snaproot/'native'/io).read_text(encoding='utf-8')
+u_marker = 'fn finite_demand_test_coverage('
+assert u_new.split(u_marker,1)[0].rstrip() == u_old.rstrip()
+i_start,i_end = 'fn print_economic_callback_evidence(', '#[tokio::test]\nasync fn genuine_hard_financial_demand_and_history_timeout_remain_unknown_and_fail_closed()'
+prefix, newtail = i_new.split(i_start,1)
+newblock, suffix = newtail.split(i_end,1)
+oldprefix, oldsuffix = i_old.split(i_end,1)
+assert prefix.rstrip() == oldprefix.rstrip() and suffix == oldsuffix
+for rel,a,b in [(unit,u_old,u_new),(io,i_old,i_new)]:
+    out = root/(label+'-'+Path(rel).name+'.diff.txt')
+    assert not out.exists()
+    out.write_text(''.join(difflib.unified_diff(a.splitlines(keepends=True),b.splitlines(keepends=True),fromfile='original/'+rel,tofile='formatted-v2/'+rel)),encoding='utf-8')
+after = [{'path':str(p),'sha256':sha(p)} for p in paths]
+assert before == after
+current_matches = all(sha(Path(rows['native/'+rel]['path'])) == rows['native/'+rel]['sha256'] for rel in (unit,io))
+assert current_matches
+result = {'started_utc':started,'finished_utc':now(),'manifest':str(manifest),'manifest_sha256':sha(manifest),
+          'reviewer_tests':0,'read_in_progress_log':False,'cargo_git_native_imports':0,
+          'before':before,'after':after,'unchanged':True,'current_two_test_hashes_match':current_matches,'frozen_43_input_hashes_verified':True,
+          'old_unit_baseline_preserved':True,'old_io_prefix_suffix_preserved':True,
+          'unit_cases':10,'unit_functions':6,'integration_cases':1,
+          'unit_sha256':rows['native/'+unit]['sha256'],'io_sha256':rows['native/'+io]['sha256'],
+          'verdict':'No source-level blocker in the new test stimuli/criteria. Execution outcomes remain unaccepted until root provides closed receipts.',
+          'limits':['No test execution or compile claim.', 'No exact mutex/fsync clock crossing integration claim.', 'Direct economic tests use existing synthetic Rust fixtures; only the normal integration exercises native HTTP/WS and owner callbacks.', 'Existing store I/O invariants are source-preserved, not newly retested here.']}
+
+# Inspect only closed RED evidence with the standard-library JSON decoder.
+import re
+red = load(root/'native117-gap-red-evidence-v2.json')
+comparison = load(root/'native117-gap-red-inputs-unchanged-v2.json')
+assert comparison['equal'] is True
+for row in red['commands']:
+    for key in ('receipt','log'):
+        assert sha(Path(row[key]['path'])) == row[key]['sha256']
+    assert row['command']['exit_code'] == 101
+assert [(x['passed'],x['failed']) for x in red['commands']] == [(4,6),(0,1)]
+rawlog = (root/'native117-gap-normal-callback-red-v2.log').read_text(encoding='utf-8')
+settled = []
+decoder = json.JSONDecoder()
+for line in rawlog.splitlines():
+    if 'economic_callback_phase=economic_callback_settle_outcome' not in line:
+        continue
+    scope, _ = decoder.raw_decode(line.split('native_scope=',1)[1])
+    economic, _ = decoder.raw_decode(line.split(' economics=',1)[1])
+    settled.append({'query_completed':scope['query_completed'], 'recovery_complete':scope['recovery_complete'],
+                    'scope_diagnostic':scope['diagnostic'], 'query_in_flight':scope['query_in_flight'],
+                    'account_trusted':scope['account']['trusted'],'account_flat':scope['account']['flat'],
+                    'reused':scope['last_query_reused_prerequisite'],
+                    'economic_tainted':economic['tainted'], 'economic_diagnostic':economic['diagnostic']})
+assert len(settled)==2 and settled[0]['query_completed']==1 and settled[0]['recovery_complete'] is True
+assert settled[1]['query_completed']==2 and settled[1]['economic_tainted'] is True
+assert settled[1]['economic_diagnostic']=='io economic persistence failed: Economic source/consumer state regression'
+result['closed_root_red_commands'] = red['commands']
+result['closed_root_red_observed_settled_callbacks'] = settled
+result['verdict']='No test-source blocker; closed root RED confirms the unchanged-production bug. Zero reviewer tests.'
+
+final_after = [{'path':str(p),'sha256':sha(p)} for p in paths]
+assert before == final_after
+result['after'] = final_after
+result['finished_utc'] = now()
+
+out=root/(label+'.json'); assert not out.exists(); out.write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
+md=f'''# Native117 append-only gap TEST v2: independent source review
+
+**No source-level blocker in the requested new test scope.** Review is bound to root formatted manifest `{manifest.name}` SHA `{result['manifest_sha256']}` and actual byte snapshots. All 33 native and ten app frozen copies match the historical RED-before manifest and remain unchanged across the read-only procedure. The two current test files also match; current production has separately entered the authorized fix stage and is not represented as unchanged 567. Capture interval ({started} through {result['finished_utc']}). Tests executed by reviewer: **0**. No Cargo/Git/native imports/source writes, and no in-progress RED log was read.
+
+Changed tests: unit `{unit}` SHA `{result['unit_sha256']}`; integration `{io}` SHA `{result['io_sha256']}`. Six unit functions expand to ten cases: four diagnostic/shape cases, two free-capacity cases, and four single cases. One normal entry/close callback test is added. Original unit file is preserved before the appended new helper/tests; integration's entire old prefix/suffix is preserved around its new helper/test block. Exact source-text diffs are retained. Original E5 single-warm and hard-history tests and all old 2s source/3s recovery/30s metadata/quota/cap stimuli/assertions remain unchanged. This statement is source comparison, not an unchanged-old-suite runtime pass.
+
+## Meaningful direct contract coverage
+
+Three increasing boundaries require original coverage as an exact prefix, two appended zero-page/zero-record Unknown tails, and one revision increment per call. An intervening finite COMPLETE funding row ending at 2750 must itself be appended and must not erase earlier Unknown. Later funding starts at 2750 while the other endpoint uses its own retained boundary; reopen validates durable coverage/revision and exact raw envelopes, observations, fees, funding and immutable consumer receipts.
+
+Same/earlier boundaries (including zero) and clipping to the original finite policy end require byte-exact disk and snapshot/revision no-op. The four shape negatives separate private-stream-gap diagnostics, a merely matching diagnostic prefix with extra suffix, nonzero pages, and nonzero records; these cannot supply a warm-demand frontier. Distinct generation/epoch and endpoint assertions prevent borrowing another scope's frontier. Capacity cases with zero or one free row require healthy true-noop success and later dual-endpoint failure with unchanged durable bytes/revision, then reopen. The taint test triggers the existing real persistence validation error using a second observation beyond capacity, observes taint, and requires represented/earlier boundary rejection without clearing state or changing disk bytes. This is a real checkpoint refusal test, not an OS I/O failure or fsync-crossing claim.
+
+These checks preserve the exact v2 correction contract: max matching COMPLETE/exact warm-Unknown demand frontier, append-only Unknown tails, no-op after taint gate, no extra source requests or complete-history promotion. They do not mirror a proposed implementation's internal vector positions alone: externally observed durable bytes, reopen, immutable facts and normal callbacks are checked.
+
+## Normal callback completion and raw failure retention
+
+The new ordinary integration submits a real owned IOC entry and reduce-only close through existing Harness/native client paths; actual HTTP ACK waits for RecoveryIncomplete, then typed real peer fill/terminal/private clearinghouse facts flow to ordinary native Cache/Portfolio. It performs no alternate signer or manual production native-event/Cache injection. Original finite policy/deadline/TTL remains.
+
+`settle_owned_economic_callback` pumps the existing owner time-event queue but requires the current query's completion counter **and** no in-flight query, then separately requires increased economic coverage, taint, or the exact preservation-refusal diagnostic. Source `finish_warm_query` clears flight/increments completion only when the guarded worker exits after its economic coverage call. Hence owner Ready alone cannot prematurely satisfy the settle gate. Failed economic completion is returned as observable evidence, then fails strict `assert_current`/untainted/append-only criteria; it is not silently accepted or retried. Other failure/timeout prints raw scope/economics/actual HTTP/WS before the observation-bound assertion.
+
+Each entry/close query requires current qualified native proof, exact query count, unchanged original prerequisite, existing fill map/reservation identity, correct current flatness, actual one current clearinghouse and userFills request, and zero history/role requests. Economic original prefix/tails and exact raw observation/report invariance are checked. Ordinary cached order Filled/one TID/USDC fee 0.001 and one fill event per order are required; final two actual writes/two native fills and zero normal Portfolio are required. These are source requirements, not actual results.
+
+## Existing mechanisms and limitations
+
+No lock guard in the new helpers is held across an await. Evidence-print guard is synchronous; native cached order is cloned from its temporary RefCell borrow before later stop. This review does not claim Clippy passed. The old finite-capacity, raw/receipt/checkpoint tamper and persistence byte/I/O mechanisms remain untouched; duplicate new tests for all those old storage internals are unnecessary. New count atomicity/no-op and reopened immutable-state cases specifically cover the changed producer contract. No exact lock-wait/fsync-expiry, OS write/rename failure, total whole-history completeness, generic cold restore, installed paired or real venue acceptance follows from this source review. Closed root RED receipts were supplied after the initial source review. Separate addendum below records actual observations without counting them as reviewer executions.
+'''
+md += f'''
+## Closed root RED addendum
+
+Root actual unit RED is 4 passed/6 failed; normal callback RED is 0 passed/1 failed. Both completed with exit101 on the unchanged 567 producer and the historical 43 input rows are equal across execution. Independent read-only parsing of the closed normal log observes two settled callbacks: first query 1 recovery true/economic taint false, then query 2 reused original prerequisite/account trusted flat true/recovery false with current economic taint true and exact diagnostic `io economic persistence failed: Economic source/consumer state regression`. This strengthens source inference in a separate actual test; it does not inject that lower-level error into the earlier installed paired raw evidence. Actual commands and precise UTCs/hashes are retained in the JSON. These eleven cases are root executions, not reviewer runs or new distinct counts to add to a future full regression.
+
+The first report procedure returned exit1 because it still asserted all current production bytes matched the historical snapshot just after the authorized producer edit began. Its source and failure note remain preserved. This procedure correctly binds frozen 43 inputs plus current two test files; it does not relabel the newly edited producer as the RED-tested source.
+''';
+out=root/(label+'.md'); assert not out.exists(); out.write_text(md,encoding='utf-8')
+print(json.dumps({'report':str(out),'sha256':sha(out),'manifest_sha256':sha(manifest),'unit_sha256':result['unit_sha256'],'io_sha256':result['io_sha256'],'inputs':len(paths),'tests':0}))

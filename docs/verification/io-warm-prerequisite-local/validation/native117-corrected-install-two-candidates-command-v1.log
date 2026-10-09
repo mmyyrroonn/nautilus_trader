@@ -1,0 +1,23 @@
+{"argv": ["E:\\persarb\\worktrees\\entropy-warm-prerequisites\\.venv\\Scripts\\python.exe", "-X", "utf8", "E:\\persarb\\worktrees\\entropy-execution-app\\scripts\\install_native.py", "--python", "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\.venv\\Scripts\\python.exe", "--local-override", "--native-root", "E:\\persarb\\worktrees\\entropy-warm-prerequisites", "--wheel", "E:\\persarb\\_tmp\\entropy117-corrected-wheel-nextest-20261009\\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl", "--provenance", "E:\\persarb\\_tmp\\entropy117-corrected-wheel-nextest-20261009\\native-provenance.json", "--sha256", "5187319f1754e37069904ce678f8526ddc47a8bc4d077209a95f97fe0205057a", "--additional-adapter", "hyperliquid", "--additional-adapter", "aster", "--output", "E:\\persarb\\_tmp\\entropy117-validation\\native117-corrected-native-installed-identity-v1.json"], "cwd": "E:\\persarb\\worktrees\\entropy-execution-app", "started_utc": "2026-10-09T13:41:05.299300+00:00", "cargo_target_dir": null, "pyo3_python": null, "uv_project_environment": null, "nautilus_stub_profile": null, "cargo_build_warnings": null, "cargo_net_offline": null, "entropy43_native_wheel": null, "entropy43_native_sha256": null, "entropy43_native_provenance": null, "entropy43_evidence_root": null, "exit_code": 0, "finished_utc": "2026-10-09T13:41:09.724020+00:00"}
+Using Python 3.12.9 environment at: E:\persarb\worktrees\entropy-warm-prerequisites\.venv
+Resolved 1 package in 1ms
+Prepared 1 package in 463ms
+Uninstalled 1 package in 51ms
+warning: Failed to hardlink files; falling back to full copy. This may lead to degraded performance.
+         If the cache and target directories are on different filesystems, hardlinking may not be supported.
+         If this is intentional, set `export UV_LINK_MODE=copy` or use `--link-mode=copy` to suppress this warning.
+Installed 1 package in 169ms
+ - nautilus-trader==2.0.0rc4 (from file:///E:/persarb/_tmp/entropy117-wheel-nextest-20261009/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl)
+ + nautilus-trader==2.0.0rc4 (from file:///E:/persarb/_tmp/entropy117-corrected-wheel-nextest-20261009/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl)
+installed source-bound native candidate: 5187319f1754e37069904ce678f8526ddc47a8bc4d077209a95f97fe0205057a
+{"argv": ["E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Scripts\\python.exe", "-X", "utf8", "E:\\persarb\\worktrees\\entropy-execution-app\\scripts\\install_native.py", "--python", "E:\\persarb\\worktrees\\entropy-execution-app\\.venv\\Scripts\\python.exe", "--local-override", "--native-root", "E:\\persarb\\worktrees\\entropy-warm-prerequisites", "--wheel", "E:\\persarb\\_tmp\\entropy117-corrected-wheel-nextest-20261009\\nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl", "--provenance", "E:\\persarb\\_tmp\\entropy117-corrected-wheel-nextest-20261009\\native-provenance.json", "--sha256", "5187319f1754e37069904ce678f8526ddc47a8bc4d077209a95f97fe0205057a", "--additional-adapter", "hyperliquid", "--additional-adapter", "aster", "--output", "E:\\persarb\\_tmp\\entropy117-validation\\native117-corrected-app-installed-identity-v1.json"], "cwd": "E:\\persarb\\worktrees\\entropy-execution-app", "started_utc": "2026-10-09T13:41:09.787830+00:00", "cargo_target_dir": null, "pyo3_python": null, "uv_project_environment": null, "nautilus_stub_profile": null, "cargo_build_warnings": null, "cargo_net_offline": null, "entropy43_native_wheel": null, "entropy43_native_sha256": null, "entropy43_native_provenance": null, "entropy43_evidence_root": null, "exit_code": 0, "finished_utc": "2026-10-09T13:41:13.742488+00:00"}
+Resolved 1 package in 1ms
+Prepared 1 package in 0.50ms
+Uninstalled 1 package in 58ms
+warning: Failed to hardlink files; falling back to full copy. This may lead to degraded performance.
+         If the cache and target directories are on different filesystems, hardlinking may not be supported.
+         If this is intentional, set `export UV_LINK_MODE=copy` or use `--link-mode=copy` to suppress this warning.
+Installed 1 package in 164ms
+ - nautilus-trader==2.0.0rc4 (from file:///E:/persarb/_tmp/entropy117-wheel-nextest-20261009/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl)
+ + nautilus-trader==2.0.0rc4 (from file:///E:/persarb/_tmp/entropy117-corrected-wheel-nextest-20261009/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl)
+installed source-bound native candidate: 5187319f1754e37069904ce678f8526ddc47a8bc4d077209a95f97fe0205057a

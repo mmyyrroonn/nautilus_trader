@@ -1,0 +1,15 @@
+Normal owned financial changes previously forced a full io account source refresh, and the post-close installed application run exhausted its original recovery deadline. Retain an optional complete original nonfinancial prerequisite group across validated owned changes, while every warm query still obtains current financial/order/fill/status facts, ordinary Engine/Cache witnesses, and the original absolute expiry. Failed composed flights preserve distinct original and new raw provenance within the existing journal bounds.
+
+The first candidate also exposed an economic producer/store mismatch on the second ordinary warm callback. Preserve prior finite coverage and append bounded Unknown demand tails instead of rewriting a durable row. Repeated boundaries are genuine no-ops; tainted state still rejects them. The original candidate, installed failure and recorded RED regression remain in the evidence history.
+
+Validation on the corrective source and clean source-bound wheel:
+
+- Full Hyperliquid regression: 1,435 passed, 18 inherited ignores; 43 recorded source inputs unchanged.
+- Installed Python contracts: 242 passed. Official 44 generated stubs retain identical public AST and normalized text.
+- Production Clippy passed. Tests-inclusive Clippy failed with the same 10 inherited diagnostics; the separate integration check repeats six of them. No new diagnostic was introduced.
+- Fresh installed paired: 1 passed; the six other original parameters: 6 passed, 1 deselected. All four cohort captures contain the same 58 source/install/artifact identities. Paired was not repeated.
+- Independent source, tests, failed-run, artifact and evidence reviews are retained with their exact scope and zero independent reruns where applicable.
+
+The implementation preserves the original two-second prerequisite TTL, three-second recovery deadline, metadata expiry, quota, ownership/source fences and all count/byte caps. Unknown economic tails do not become requested or complete history. This finite native dependency does not close the larger application #43 acceptance, E6, whole-history, kernel-isolation or real-venue work.
+
+References #117 and [Nautilus-Perps #43](https://github.com/mmyyrroonn/Nautilus-Perps/issues/43). Final evidence links and exact-head CI will be recorded before merge.

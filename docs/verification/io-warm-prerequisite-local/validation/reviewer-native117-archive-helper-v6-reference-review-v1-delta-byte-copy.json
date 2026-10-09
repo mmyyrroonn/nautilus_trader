@@ -1,0 +1,11 @@
+{
+  "copied_utc": "2026-10-09T14:25:26.061512+00:00",
+  "original": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v6-reference-review-v1-delta.diff",
+  "archivable_copy": "E:\\persarb\\_tmp\\entropy117-validation\\reviewer-native117-archive-helper-v6-reference-review-v1-delta.diff.txt",
+  "bytes": 2723,
+  "sha256": "d376aa4430ff81ec0fac7567603e02b885a8337f10d94684fd6a83dc62d18288",
+  "equal": true,
+  "original_unchanged": true,
+  "helper_executions": 0,
+  "tests": 0
+}

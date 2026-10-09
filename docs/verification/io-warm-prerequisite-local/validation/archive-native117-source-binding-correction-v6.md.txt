@@ -1,0 +1,7 @@
+# Native117 archive helper v6 — exact installed provenance reference
+
+Root's actual v5 invocation14:19:05–06 UTC failed before mkdir with `Corrected native installed identity differs`. The actual install verifier intentionally records a seven-field provenance reference: path, SHA256 and five selected source/build fields. It does not inline every top-level collector/stub/wheel field. Source: app `scripts/verify_native_install.py:220–228`; actual two installed identities and all case manifests follow that schema.
+
+V6 replaces only the two impossible reference-vs-whole-object equality checks. A shared finite verifier requires exactly the documented seven fields, exact assigned original/corrective provenance path, actual whole-file SHA256 and decoded full provenance content, plus exact equality of all five source/build fields. Both corrected venv identities and every original/corrective case use it. Wheel/native object hashes, strict source binding, source/commit/tree/build input/pre-post identity and all other guards are unchanged. This binds the full original provenance bytes rather than waiving a missing field.
+
+The actual v5 receipt/log is copied byte-identically outside the live archive exclusion prefix, so its real failed invocation is retained in the successful inventory. V4 originals/copies remain unchanged. V6 is new and unexecuted, pending narrow review; this preparation did not run a helper/archive, tests, native imports, Cargo, Git, build or installation and changed no product source.

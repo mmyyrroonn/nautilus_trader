@@ -1,0 +1,26 @@
+{
+  "tool": "mcp__codex_apps__github_add_comment_to_issue",
+  "started": {
+    "current_time": "2026-10-09 11:14:21 UTC"
+  },
+  "args": {
+    "repo_full_name": "mmyyrroonn/Nautilus-Perps",
+    "pr_number": 43,
+    "comment": "Native prerequisite115 is completed and PR116 actually merged as main5db2761590dd824fa159625326b6eaf3923b999a after exact-head CI37918361381 success: https://github.com/mmyyrroonn/nautilus_trader/pull/116.\n\nThe first corrected-fixture application paired run10:11:46–10:12:04 UTC on source-bound wheel7ea01172... remains FAIL. Four orders were actually Filled, current Cache/Portfolio quantities were zero and native fees/receipts were retained, but the post-close warm flight exhausted its original3s deadline after open/fills/status and role/mode reads. Its immutable Unknown debt and full raw evidence remain preserved in native115's acceptance/archive; zero positions do not replace current account proof. No successful all-seven claim is made.\n\nThe next finite dependency is https://github.com/mmyyrroonn/nautilus_trader/issues/117. A new clean feature/entropy-warm-prerequisites branch was created from freshly fetched main5db2761. Separate implementation/test subagents and independent review are assigned. It retains original nonfinancial source times/2s expiration and rereads real current finances/orders/fills/status plus required flat leverage counterproofs under original3s/quota/caps. Old failed journals will not be reused or repaired.\n\nCurrent fully paginated two-repository inventory at11:13:24–27 UTC is95 issues total,78 closed,17 open (PRs excluded). Application43 remains open; real venue/mainnet/kernel/whole economics are not certified by these local results."
+  },
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Action completed."
+      }
+    ],
+    "structuredContent": {
+      "id": 6079754512
+    },
+    "isError": false
+  },
+  "finished": {
+    "current_time": "2026-10-09 11:14:23 UTC"
+  }
+}

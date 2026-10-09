@@ -1,0 +1,17 @@
+{
+  "utc": "2026-10-09T11:27:54.575123+00:00",
+  "path": "E:\\persarb\\_tmp\\entropy115-validation\\reviewer-native115-direct-v5-20261009T094006Z\\warm-64.stderr.log",
+  "sha256_before": "a671fb5eb5a6c1f2cc78030e753e588c4474b44600abc9bc465dc0d2c0b5c522",
+  "sha256_after": "a671fb5eb5a6c1f2cc78030e753e588c4474b44600abc9bc465dc0d2c0b5c522",
+  "parsed_evidence": {
+    "diagnostic": "io warm RecoveryIncomplete: io warm recovery total deadline exhausted",
+    "query_completed": 3,
+    "peer_request_count": 59,
+    "last_actual_requests": [
+      "frontendOpenOrders",
+      "userFills",
+      "userRole"
+    ],
+    "source_claim": "Previously completed native115 execution only; read-only parsing, zero new tests."
+  }
+}

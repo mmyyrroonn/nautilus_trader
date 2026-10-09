@@ -1,0 +1,134 @@
+import datetime
+import hashlib
+import json
+from pathlib import Path
+
+root = Path('E:/persarb/_tmp/entropy117-validation')
+raw = Path('E:/persarb/_tmp/app43-native117-first-paired-20261009/paired')
+native = Path('E:/persarb/worktrees/entropy-warm-prerequisites')
+label = 'reviewer-native117-paired-economic-coverage-v1'
+sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
+now = lambda: datetime.datetime.now(datetime.timezone.utc).isoformat()
+load = lambda p: json.loads(p.read_text(encoding='utf-8-sig'))
+started = now()
+before_run = load(root / 'app43-native117-before-first-paired.json')
+after_run = load(root / 'app43-native117-after-first-paired.json')
+assert after_run['differences'] == []
+identity_keys = ['source_files', 'installed_files', 'artifacts']
+assert all(before_run[k] == after_run[k] for k in identity_keys)
+assert sum(len(before_run[k]) for k in identity_keys) == 57
+source_relatives = ['crates/adapters/hyperliquid/src/execution.rs',
+                    'crates/adapters/hyperliquid/src/execution_scope.rs',
+                    'crates/adapters/hyperliquid/src/economics_scope.rs',
+                    'crates/adapters/hyperliquid/src/economics_scope/store.rs',
+                    'crates/adapters/hyperliquid/src/economics_scope/tests.rs']
+sources = [native / x for x in source_relatives]
+for relative, p in zip(source_relatives, sources):
+    copy = root / (label + '-source-' + relative.rsplit('/', 1)[-1] + '.txt')
+    # economics_scope.rs and store.rs/tests.rs have distinct basenames.
+    assert not copy.exists()
+    copy.write_bytes(p.read_bytes())
+inputs = [Path(__file__)] + sources + [p for p in raw.iterdir() if p.is_file()]
+inputs += [root / name for name in ['app43-native117-first-paired.json', 'app43-native117-first-paired.log',
+           'app43-native117-before-first-paired.json', 'app43-native117-after-first-paired.json',
+           'native117-economic-gap-correction-contract-v1.md', 'native117-economic-gap-correction-contract-v2.md',
+           'native117-economic-gap-correction-contract-v2.json', 'native117-implementation-commit.json']]
+inputs += [Path(x['path']) for k in identity_keys for x in before_run[k]]
+inputs = list(dict.fromkeys(inputs))
+before = [{'path': str(p), 'sha256': sha(p)} for p in inputs]
+summary = load(raw / 'summary.json')
+controller = summary['controller']
+disk = load(raw / 'native-io-economics.json')['checkpoint']
+receipt = summary['native_economic_receipt']
+assert receipt['coverage'] == disk['coverage'] and receipt['observations'] == disk['observations'] and receipt['report'] == disk['report']
+events = [json.loads(line) for line in (raw / 'events.jsonl').read_text(encoding='utf-8').splitlines()]
+scopes = []
+for row in events:
+    if row['kind'] == 'native_scope' and row['value']['leg'] == 'entropy':
+        s = row['value']['snapshot']
+        scopes.append({'received_ns': row['received_ns'], 'diagnostic': s['diagnostic'],
+                       'query_completed': s['query_completed'], 'recovery_complete': s['recovery_complete'],
+                       'last_query_warm': s['last_query_warm'], 'last_query_reused_prerequisite': s['last_query_reused_prerequisite'],
+                       'journal_tainted': s['journal_tainted'], 'recovery_source_debt': s['recovery_source_debt'],
+                       'actual_fill_count': len(s['actual_fills']), 'account_trusted': s['account']['trusted'],
+                       'account_http_received_ms': s['account']['http_received_time_ms']})
+initial = next(x['value']['snapshot'] for x in events if x['kind'] == 'native_scope' and x['value']['leg'] == 'entropy')
+prerequisite = {k: initial['warm_prerequisite_source'][k] for k in ['verification_started_ms', 'verification_finished_ms', 'effective_expires_ms', 'generation', 'epoch']}
+first_success = next(x for x in scopes if x['query_completed'] == 1 and x['recovery_complete'])
+first_failure = next(x for x in scopes if x['diagnostic'] == 'Economic unrequested coverage could not be preserved')
+assert first_failure['query_completed'] == 2 and first_failure['last_query_warm'] and first_failure['last_query_reused_prerequisite']
+assert first_failure['received_ns'] // 1_000_000 < prerequisite['effective_expires_ms']
+command = load(root / 'app43-native117-first-paired.json')
+assert command['exit_code'] == 1 and controller['state'] == 'StoppedUnknown'
+peer = load(raw / 'peer-evidence.json')
+after = [{'path': str(p), 'sha256': sha(p)} for p in inputs]
+assert before == after
+source_hashes = {relative: sha(p) for relative, p in zip(source_relatives, sources)}
+original_lookup = {x['path'].replace('\\', '/'): x for x in before_run['source_files']}
+matched_to_historical = {relative: original_lookup.get(p.as_posix(), {}).get('sha256') == sha(p) for relative, p in zip(source_relatives, sources) if p.as_posix() in original_lookup}
+assert all(matched_to_historical.values())
+data = {'started_utc': started, 'finished_utc': now(), 'reviewer_tests': 0, 'paired_reruns': 0,
+        'git_cargo_native_imports': 0, 'before': before, 'after': after, 'unchanged': True,
+        'historical_57_before_after_identity_rows_equal': True,
+        'current_selected_sources_match_historical_capture_when_listed': matched_to_historical,
+        'source_sha256': source_hashes, 'actual_root_command': command,
+        'actual_first_warm_success': first_success, 'actual_first_postcompletion_failure': first_failure,
+        'actual_prerequisite_original_clock': prerequisite, 'actual_scope_timeline': scopes,
+        'actual_controller': {'state': controller['state'], 'reasons': controller['reasons'], 'actions': controller['actions'],
+                              'positions': controller['positions'], 'orders_terminal': controller['orders_terminal'],
+                              'owned_flat_verified': controller['owned_flat_verified'], 'fills': controller['fills']},
+        'actual_portfolio': summary['native_portfolio_net_positions'], 'actual_shutdown_verified': summary['shutdown_verified'],
+        'actual_disk': {'revision': disk['revision'], 'source_seq': disk['source_seq'], 'coverage': disk['coverage'],
+                        'observations': len(disk['observations']), 'receipt_count': len(disk['report']['receipts']),
+                        'actual_fee_usdc': disk['report']['actual_fee_usdc'], 'funding_usdc': disk['report']['funding_usdc']},
+        'last_successful_economic_receipt_tainted': receipt['tainted'],
+        'peer_counts': {k: {name: d[name] for name in ['requests', 'commands', 'frames', 'actions', 'fills', 'position', 'errors']} for k,d in peer.items()},
+        'source_inference': 'Replacing the prior zero-page Unknown rows makes candidate.coverage fail starts_with(previous.coverage); economic state commit taints on that error; warm client invalidates and finishes unsuccessfully.',
+        'not_observed_directly': ['The underlying store regression string and failed current economic taint are not printed in the installed raw evidence.',
+                                  'Disk checkpoint has no runtime taint field; last successful receipt tainted=false is not failed-current-state evidence.'],
+        'contract_v2_sha256': sha(root / 'native117-economic-gap-correction-contract-v2.md'),
+        'contract_verdict': 'Bounded append-only correction with taint-before-noop is suitable for implementation and adversarial verification, not implementation/runtime acceptance.'}
+out = root / (label + '.json')
+assert not out.exists()
+out.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
+hashes = '\n'.join(f'- `{p}`: `{v}`' for p,v in source_hashes.items())
+md = f'''# Native117 first paired economic coverage failure: independent review
+
+Zero tests/reruns, Cargo, Git, native imports, installs or production edits. Read-only evidence procedure UTC {started} to {data['finished_utc']}. Actual root run was {command['started_utc']} to {command['finished_utc']}, exit **1**, using implementation `56705ce873d5fc4e568e5f9ea8f2c614d5d35230` and wheel `47486c076bfaa7afac05a02071b11d485280dca5718a0d806d6dd6fe1eb4a05e` (root receipts, not reviewer Git). Historical before/after 57 source/install/artifact rows agree. All inputs read in this procedure remain byte-identical; selected source bytes and raw artifacts were hashed, with source copies preserved. The companion JSON distinguishes historical captures from this read-only pre/post capture.
+
+## Actual observations
+
+All four owned entry/close fills arrived with exact native TIDs: Hyperliquid `io:io:SNDK:70001:60001` and `io:io:SNDK:70002:60002`, Aster `90000` and `90001`. Four orders are terminal. Controller positions, native ordinary Cache position strings, and native Portfolio are flat at teardown, but current authoritative cleanup proof is incomplete: controller remains `StoppedUnknown`, reasons `cleanup_not_currently_proven_or_budget_exhausted` and `cleanup_deadline_exhausted`, owned/account flat remain Unknown. Six prepared controller actions comprise four submits/two cancel intents; peer counters show two actual HL actions and three Aster actions. Shutdown is verified; economics is incomplete. Raw scope snapshots, not inferred callback timing alone, establish:
+
+- First warm is observed complete/reused at {first_success['received_ns']//1_000_000} ms, query_completed 1/recovery true.
+- Second warm completion is observed at {first_failure['received_ns']//1_000_000} ms with query_completed 2/warm and reuse true, but recovery false and exact diagnostic `Economic unrequested coverage could not be preserved`.
+- Original prerequisite start {prerequisite['verification_started_ms']} and expiry {prerequisite['effective_expires_ms']} show that this first failure occurred before original two-second expiry. Subsequent cold refresh/metadata failure and three-second deadlines are later failures, not the initial append-only fault.
+
+The durable economic checkpoint stays at revision {disk['revision']}, with two original complete finite endpoint rows ending 1791550098273 and two zero-page/zero-record Unknown demand rows ending 1791550098833. It retains four raw observations for two actual HL fills and two immutable fee receipts totaling USDC 0.002. Duplicate account/accepted observations were not double-counted into receipts. Summary's last successful economic observations/coverage/report equal the disk checkpoint; raw TID, fee and source envelopes remain retained.
+
+## Source explanation and uncertainty
+
+`execution.rs:2220–2235` calls `record_unrequested_history` after successful normal owner recovery. `economics_scope.rs:391–402` overwrites matching earlier Unknown rows with a later end. `economics_scope/store.rs:474–490` requires the entire previous coverage vector to remain an exact prefix, so a changed row is rejected as source/consumer regression before persistence. `economics_scope.rs:780–783` then taints the economic runtime; the warm call invalidates recovery and returns without marking its flight successful.
+
+That lower-level regression and runtime taint are source-path inferences. The installed raw evidence exposes the higher-level invalidation diagnostic but does not print the inner store error or failed-current economic taint. The prior receipt's `tainted=false` is retained truthful prior data; it cannot prove no taint after failure. Execution `journal_tainted=false` is a different journal subsystem and does not establish economic store health. Disk checkpoint contains no runtime taint flag. A proposed direct/native callback red test must make the inner error/current state observable rather than retroactively labeling this paired evidence as such a test.
+
+## Correction contract v2
+
+Contract SHA `{data['contract_v2_sha256']}` incorporates the review's taint-before-no-op requirement. Preserve all rows/fees/raw envelopes/receipts and append only a disjoint **Unknown** tail for each exact (generation, epoch, endpoint). The frontier is the maximum previous COMPLETE end and exact matching warm zero-page/zero-record/incomplete demand end; other incomplete or stream-gap records are excluded. End remains min(actual now, checked original policy-window end). Same/earlier end is a true no-op without revision or disk rewrite, including at full capacity, but an already tainted runtime must reject before reaching that no-op. No prior taint/debt is cleared.
+
+The maximum frontier denotes an existing demand-boundary record, not proof of continuous complete history. A later COMPLETE finite window does not erase old Unknown rows or prove earlier holes covered. Subsequent warm tail starts beyond that observed frontier; other endpoint or generation/epoch rows cannot authorize it. If a requested interval overlaps or closes some prior Unknown span, preserve both historical records; any whole-range coverage inference remains a separate explicitly sourced reporting contract. No-op/repeated same-time calls never fabricate requests, pages, fees or source timestamps.
+
+Both endpoint additions must be staged in one candidate and one durable commit; one remaining slot cannot partially append one endpoint before rejecting the other. Keep row cap `history_max_pages*3`, checkpoint bytes, original TTL/deadline/quota and storage append-only predicate. A full but healthy no-op is valid; a later unrepresented boundary must fail closed with prior disk bytes intact. Capacity failures may legitimately limit repeated-query liveness; this correction must not promise unlimited warm calls or compact historical rows.
+
+Required meaningful cases include exact repeated/same/earlier boundaries with unchanged revision/bytes; advancing both endpoints atomically; one-endpoint vs two-endpoint capacity; policy clipping/overflow; other incomplete/stream-gap exclusion; exact diagnostic matching; generation/epoch separation; completed finite coverage arriving before/after/overlapping existing Unknown; original economic taint followed by no-op rejection; durable stop/drop/reopen with original full prefix, TIDs/fees/raw envelopes/receipt keys retained; count/byte/disk failures with prior checkpoint untouched; and two normal owned financial warm recoveries through the unchanged client callback. Reopening must use normal checkpoint ownership/validation and cannot grant restored execution authority. A fresh source-bound paired and unchanged seven-scenario cohort remain required after a genuine corrected artifact. These are requirements, not executed passes.
+
+## Source hashes and limits
+
+{hashes}
+
+No candidate correction source has been accepted in this report. The v1 contract omission was a no-op bypass of the commit-only taint check; v2 explicitly resolves that design gap. The append-only v2 design is suitable for implementation and adversarial verification, with the limits above. No paired PASS, seven-scenario PASS, generic cold recovery, whole history/economics, E6, kernel isolation or real-account authorization is inferred. A preliminary read-only peer inspection raised TypeError because `actions` is an integer; the final procedure uses that actual schema correctly. No product/runtime command was involved.
+'''
+out = root / (label + '.md')
+assert not out.exists()
+out.write_text(md, encoding='utf-8')
+print(json.dumps({'report': str(out), 'report_sha256': sha(out), 'inputs': len(inputs), 'tests': 0, 'actual_initial_failure_ms': first_failure['received_ns']//1_000_000, 'contract_v2_sha256': data['contract_v2_sha256']}))

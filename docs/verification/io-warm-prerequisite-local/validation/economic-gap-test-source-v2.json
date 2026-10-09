@@ -1,0 +1,67 @@
+{
+    "utc":  "2026-10-09T13:19:26.4283800Z",
+    "implementation":  "56705ce873d5fc4e568e5f9ea8f2c614d5d35230",
+    "previous_manifest_sha256":  "988985ebfb1fd42beaf223b37347081ebaf0a980cc2d69aa670e507cf320b064",
+    "correction_contract_sha256":  "62b8cdac77bec6e7952cca889b156936b42fbc59a1b78973d283842c90d675ec",
+    "report_sha256":  "a58b1c979a01b483d682ecff3bc505841b93dd9c6e67a6b479ad77854b88abc9",
+    "source_freeze":  true,
+    "declared_direct_cases":  10,
+    "declared_integration_cases":  1,
+    "executed_tests":  0,
+    "cargo":  0,
+    "format":  0,
+    "native_imports":  0,
+    "git":  0,
+    "production_unchanged":  true,
+    "red_filters":  [
+                        "warm_demand_",
+                        "consecutive_owned_entry_and_close_warm_callbacks_append_economic_unknown_tails"
+                    ],
+    "files":  [
+                  {
+                      "relative_path":  "crates/adapters/hyperliquid/src/economics_scope/tests.rs",
+                      "path":  "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\economics_scope\\tests.rs",
+                      "original_sha256":  "3b9363dbf3fd0f6c4a812bb682fc724f842922f3b9c9509319c6ea77ab570602",
+                      "v1_sha256":  "b2b569a2faafb12558974a62223a067ba70043d8d7ba83fc2ed2e849850fb7fd",
+                      "v2_sha256":  "629e531c5039e714feec799000c81bb1c4e4f183ee4286c6e834b37e9743ae12",
+                      "bytes":  36815,
+                      "unchanged_from_v1":  false
+                  },
+                  {
+                      "relative_path":  "crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs",
+                      "path":  "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs",
+                      "original_sha256":  "23566164a25e0470777180fdbd9e25491ca85f9a6e15cd83b2ca69054bbb994c",
+                      "v1_sha256":  "aadc109e4ff6ef7a0d7a40a9363377d0de24cbbaf6eee478d9582dcce433e345",
+                      "v2_sha256":  "d11c52dce48415c05ecc3827dab6e864adb1782793ecc7e5def04766ffa90536",
+                      "bytes":  87882,
+                      "unchanged_from_v1":  false
+                  },
+                  {
+                      "relative_path":  "crates/adapters/hyperliquid/src/economics_scope.rs",
+                      "path":  "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\economics_scope.rs",
+                      "original_sha256":  "2ebdf3756f39ea0cd32cfdc79d84ef7babdcabd6c2d7fea0b0f00d4c151f7f47",
+                      "v1_sha256":  "2ebdf3756f39ea0cd32cfdc79d84ef7babdcabd6c2d7fea0b0f00d4c151f7f47",
+                      "v2_sha256":  "2ebdf3756f39ea0cd32cfdc79d84ef7babdcabd6c2d7fea0b0f00d4c151f7f47",
+                      "bytes":  34956,
+                      "unchanged_from_v1":  true
+                  },
+                  {
+                      "relative_path":  "crates/adapters/hyperliquid/src/account_scope.rs",
+                      "path":  "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\account_scope.rs",
+                      "original_sha256":  "1ff6b1d2ea0050b2b31f0a053682b109b2fa0eb7ae94c9509afdb6b7ef4e5230",
+                      "v1_sha256":  "1ff6b1d2ea0050b2b31f0a053682b109b2fa0eb7ae94c9509afdb6b7ef4e5230",
+                      "v2_sha256":  "1ff6b1d2ea0050b2b31f0a053682b109b2fa0eb7ae94c9509afdb6b7ef4e5230",
+                      "bytes":  84490,
+                      "unchanged_from_v1":  true
+                  },
+                  {
+                      "relative_path":  "crates/adapters/hyperliquid/src/execution_scope.rs",
+                      "path":  "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+                      "original_sha256":  "05963a5c4d221b476cae64260cf956898105acbafbde8ce117b1e659f000be50",
+                      "v1_sha256":  "05963a5c4d221b476cae64260cf956898105acbafbde8ce117b1e659f000be50",
+                      "v2_sha256":  "05963a5c4d221b476cae64260cf956898105acbafbde8ce117b1e659f000be50",
+                      "bytes":  194007,
+                      "unchanged_from_v1":  true
+                  }
+              ]
+}

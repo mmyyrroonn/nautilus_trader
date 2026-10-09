@@ -1,0 +1,12 @@
+{
+  "created_utc": "2026-10-09T14:07:53.407028+00:00",
+  "original_sha256": "73ee7ed6858d5a0533ef7ecf7ebea9c0176a4fa607b55ef3299b236e8e175e45",
+  "corrected_sha256": "57730c246219a1c7070ccb09f39b49a36d2a08083318064a24b983893bc95336",
+  "source": "E:/persarb/_tmp/entropy117-validation/io-warm-prerequisite-contract-draft-v1.md",
+  "target": "E:/persarb/_tmp/entropy117-validation/io-warm-prerequisite-contract-draft-v2.md",
+  "review": "producer-doc-draft-review-v1.md",
+  "review_source_lines": "execution_scope.rs:906-917",
+  "reason": "Each selected missing leverage witness receives two actual requests; the app has one selected Hyperliquid instrument.",
+  "source_changes": 0,
+  "tests_executed": 0
+}

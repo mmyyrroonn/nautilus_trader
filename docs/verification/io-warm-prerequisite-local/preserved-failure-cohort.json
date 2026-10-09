@@ -1,0 +1,60 @@
+{
+  "first_implementation": "56705ce873d5fc4e568e5f9ea8f2c614d5d35230",
+  "first_wheel_sha256": "47486c076bfaa7afac05a02071b11d485280dca5718a0d806d6dd6fe1eb4a05e",
+  "paired_case": {
+    "mode": "paired",
+    "directory": "E:/persarb/_tmp/app43-native117-first-paired-20261009/paired",
+    "command_exit_code": 1,
+    "actual_assertion_result": "FAIL",
+    "controller_state": "StoppedUnknown",
+    "owned_flat_verified": "Unknown",
+    "summary_sha256": "9738ce961bfc899c6de0597e9cae8b02813c6cf5134c023f528b35a5218d823a",
+    "command_sha256": "608b8a6f4dcb93340191e2a65692aa2a04a01ff9086da1cb81aea497f72b7fca",
+    "synthetic_numeric_loopback": true
+  },
+  "outer_command": {
+    "label": "app43-native117-first-paired",
+    "command": {
+      "argv": [
+        "E:/persarb/worktrees/entropy-execution-app/.venv/Scripts/python.exe",
+        "-X",
+        "utf8",
+        "-m",
+        "pytest",
+        "-q",
+        "tests/test_entropy_execution_native.py::test_actual_installed_factory_two_leg_execution[paired]",
+        "--basetemp",
+        "E:/persarb/_tmp/app43-native117-first-paired-pytest-20261009"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-execution-app",
+      "started_utc": "2026-10-09T12:48:15.893970+00:00",
+      "cargo_target_dir": null,
+      "pyo3_python": null,
+      "uv_project_environment": null,
+      "nautilus_stub_profile": null,
+      "cargo_build_warnings": null,
+      "cargo_net_offline": null,
+      "entropy43_native_wheel": "E:/persarb/_tmp/entropy117-wheel-nextest-20261009/nautilus_trader-2.0.0rc4-cp312-cp312-win_amd64.whl",
+      "entropy43_native_sha256": "47486c076bfaa7afac05a02071b11d485280dca5718a0d806d6dd6fe1eb4a05e",
+      "entropy43_native_provenance": "E:/persarb/_tmp/entropy117-wheel-nextest-20261009/native-provenance.json",
+      "entropy43_evidence_root": "E:/persarb/_tmp/app43-native117-first-paired-20261009",
+      "exit_code": 1,
+      "finished_utc": "2026-10-09T12:48:34.684631+00:00"
+    },
+    "command_sha256": "48f72d68e48317231a5839b1ef83e2f3d75cb555542a5a3c2cd8932f40dfb7f3",
+    "log_sha256": "a4c06c3d6ca295626460219b60ecb4859a8211ba1125b1c942ccec0a76ead73b",
+    "actual_result": "FAIL"
+  },
+  "red_evidence_sha256": "d24e8a23da7cfbdb861ae8217f8620d0229c3e96153122adb61d93e46d397c61",
+  "red_counts": [
+    {
+      "passed": 4,
+      "failed": 6
+    },
+    {
+      "passed": 0,
+      "failed": 1
+    }
+  ],
+  "note": "Preserved failed predecessor and RED cohort; not additional corrected acceptance passes"
+}

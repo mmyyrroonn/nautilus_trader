@@ -1,0 +1,94 @@
+import datetime
+import difflib
+import hashlib
+import json
+import re
+from pathlib import Path
+
+root=Path('E:/persarb/_tmp/entropy117-validation')
+label='reviewer-native117-archive-helper-v3-draft-review-v1'
+sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+load=lambda p:json.loads(p.read_text(encoding='utf-8-sig'))
+now=lambda:datetime.datetime.now(datetime.timezone.utc).isoformat()
+started=now()
+helper=root/'archive_native117_v3.py'
+expected='62e5c53e4b9b46980bb296d9e3973a5c91e4b923d209910f906b8dc3daedc1af'
+assert sha(helper)==expected and helper.stat().st_size==45648
+snapshot=root/(label+'-source.py.txt');assert not snapshot.exists();snapshot.write_bytes(helper.read_bytes())
+comparison_path=root/'native117-clippy-diagnostic-comparison-v7-v2.json'
+comparison=load(comparison_path)
+inputs=[Path(__file__),helper,snapshot,root/'archive_native117_v2.py',
+        root/'archive-native117-source-binding-correction-v3.md',root/'archive-native117-source-binding-correction-v3.json',
+        comparison_path,root/'reviewer-native117-archive-helper-v2.md',root/'reviewer-native117-archive-helper-v2.json']
+for row in [comparison['baseline'],*comparison['current']]:
+    for key in ['log','receipt']:
+        p=Path(row[key]['path']);assert sha(p)==row[key]['sha256'];inputs.append(p)
+inputs=list(dict.fromkeys(inputs))
+before=[{'path':str(p),'sha256':sha(p)} for p in inputs]
+# Analyze helper text and independently read closed lint evidence only. No helper import/AST/execution.
+text=helper.read_text(encoding='utf-8')
+assert 'native117-clippy-diagnostic-comparison-v7-v2' not in text
+assert 'FAIL; retained actual inherited diagnostics, not production strict PASS' in text
+assert comparison['new_diagnostics']==[] and len(comparison['inherited_diagnostics'])==10
+base=set((x['message'],x['location']) for x in comparison['baseline']['diagnostics'])
+current=[]
+def diagnostics(raw):
+    result=[];message=None
+    for line in raw.splitlines():
+        if line.startswith('error: '):
+            message=None if line.startswith('error: could not compile ') else line[len('error: '):].strip()
+        elif message:
+            location=re.search(r'^\s*-->\s+(.+?):(\d+):(\d+)\s*$',line)
+            if location:
+                result.append((message,location.group(1).replace('\\','/')+':'+location.group(2)+':'+location.group(3)))
+                message=None
+    return result
+for row in comparison['current']:
+    actual=diagnostics(Path(row['log']['path']).read_text(encoding='utf-8'))
+    declared=[(x['message'],x['location']) for x in row['diagnostics']]
+    assert actual==declared and row['command']['exit_code']==101
+    current.append(set(actual))
+assert len(base)==10 and current[0]==base and len(current[1])==6 and current[1].issubset(base)
+old=(root/'archive_native117_v2.py').read_text(encoding='utf-8')
+diff=root/(label+'-v2-v3.diff.txt');assert not diff.exists()
+diff.write_text(''.join(difflib.unified_diff(old.splitlines(keepends=True),text.splitlines(keepends=True),fromfile='helper-v2',tofile='draft-helper-v3')),encoding='utf-8')
+after=[{'path':str(p),'sha256':sha(p)} for p in inputs];assert before==after
+data={'started_utc':started,'finished_utc':now(),'helper_sha256':expected,'before':before,'after':after,'unchanged':True,
+      'helper_executions':0,'helper_import_or_ast':0,'native_import_tests_cargo_git':0,'archive_created':False,
+      'full_v7_regression_log_read':False,
+      'verdict':'Pending one inherited-diagnostic hard gate; otherwise no new material static blocker in requested source/cohort/archive scope.',
+      'blocker':{'function':'verify_candidate_checks','detail':'exit101 is accepted and labeled inherited without comparing actual diagnostic sets to the bound baseline/current comparison.',
+                 'minimal_fix':'Require actual comparison/current/baseline command+log hashes, same10 diagnostics/new empty, targeted6 overlapping; retain both actual failures; record bound comparison ledger.'},
+      'existing_closed_comparison_readonly_checks':{'combined_current_diagnostics':10,'baseline_diagnostics':10,'new_diagnostics':0,'targeted_integration_diagnostics':6,'targeted_subset_of_combined':True,'actual_results':'both FAIL101'},
+      'limits':['No future corrective commit/build/install/cohort/full-regression acceptance.', 'No helper syntax or runtime check.', 'Exact Git logic assessed statically, no Git invocation.', 'Old actual failure identity remains historical and separate from corrected current candidate.']}
+out=root/(label+'.json');assert not out.exists();out.write_text(json.dumps(data,indent=2)+'\n',encoding='utf-8')
+md=f'''# Native117 corrected archive helper v3 draft: independent static review
+
+Helper `{helper.name}` SHA `{expected}` (45,648 bytes) remains unchanged. Read-only procedure {started} to {data['finished_utc']}. **Zero helper execution/import/AST checks, tests/native imports, Cargo/Git/build/install, or archive creation.** The running full v7 regression log was not read or hashed as completed evidence. Prior helper v1 blocked and v2 corrected/approved source reports remain preserved.
+
+## Pending blocker: inherited lint classification needs its actual hard gate
+
+`verify_candidate_checks` requires the combined test-inclusive Clippy command to finish with exit101, then returns `FAIL; retained actual inherited diagnostics, not production strict PASS`. The exit alone cannot distinguish inherited diagnostics from newly introduced failures. The comparison is only incidentally eligible for byte inventory, not required by that preflight.
+
+The existing `native117-clippy-diagnostic-comparison-v7-v2.json` should be a mandatory gate: bind its baseline/current receipts/logs to actual SHA and command identity; require the combined ten exact normalized diagnostics equal the bound baseline with new=[]; separately preserve the targeted six as a subset/overlap and actual exit101. The comparison and its input identities should be represented in the candidate-check ledger. Do not change failing exit codes or call either test-inclusive check PASS.
+
+Independent read-only parsing of the already closed comparison inputs finds the declared ten combined diagnostic message/location pairs equal the baseline and the targeted six subset, with both actual exit101. Those exact existing records provide the needed gate; no new lint execution or invented proof is necessary. This is not a claim that any future lint failure is automatically inherited.
+
+## Other requested gates: no new material static blocker
+
+The v2 tested-source binding is retained and expanded: actual v7 unfiltered full command/log/binary receipt, before/after capture hashes and time bracket, all 33 native/ten app path sets/counts/sizes/missing-input checks, actual frozen copy bytes, seven true tested file hashes vs current files/Git blobs and reviewed-manifest receipt. After capture without snapshots remains hash-only honestly; before copies are required. Expected 1435/0/18 counts are future preconditions, not asserted passes here.
+
+Commit preflight preserves fresh base→567 first implementation→distinct correction child, exact first five/correction three/union seven paths and each immutable Git blob. Corrective HEAD must be clean and receipt identities agree; first implementation cannot be amended or relabeled. Current source, tested capture and Git-object hashes are separate fields. Corrective wheel uses a new fixed directory, strict clean build provenance and actual wheel bytes; old 567/4748 provenance and first failed paired are independently checked in their original cohort. Their installed identity comes from historical records, not comparing old capture paths against the now-corrected installed module. RED actual 4P/6F and 0P/1F remain failed predecessor evidence, not acceptance passes.
+
+Future candidate checks require completed UTF-8 official stub generation, exact44 restored AST/text comparisons, production strict Clippy PASS, actual test-inclusive FAIL, two source-bound installed identities/native pyd hash/interpreters, and actual installed Python242 outcome. Missing future artifacts or unfinished receipts refuse before `ARCHIVE.mkdir`; this report has not certified their eventual schema/outcomes.
+
+Application gates require corrected first paired outer exit0 and actual matching child PASS before the separate remaining-six command starts. The remaining command explicitly deselects paired; seven exact mode directories are mandatory with no second paired directory. Each cohort has 32 source+24 installed+two artifact identities bracketing execution, matching source/candidate heads/provenance, equal before/after hash/byte/path sets, matching embedded pyd/stubs/artifacts, and all58 inputs equal across cohorts. Child outcome vs outer pytest outcome must agree, with one paired pass and six passes/one deselection for successful cohorts. Actual failed remaining children can be archived as FAIL with seven-pass flag false; they cannot be suppressed or manufacture a successful cohort. Negative scenarios retain the frozen ordinary fixture's actual result protocol; successful negative assertions need not imply controller Completed. This is seven distinct parameters over two commands, not eight or a single seven-test invocation.
+
+Inventories retain eligible whole validation and each old/corrected cohort under separate prefixes; actual old raw hashes cannot be imported as corrected-candidate identities. Each occurrence, malformed/non-JSON response and prior failure is copied byte-exact without HTTP deduplication. Source code receives txt suffixes; binaries/venv/Git/env-prefix files and active archive-command/check logs are excluded. Per-file mutation/collision/unsafe target/copy mismatch raises. Copy-stage failure may leave a partial directory, but no completed manifest/printed success follows, and re-execution refuses to overwrite it. Store taint/cleanup/controller failure is retained in raw evidence; metadata does not clear or reconstruct it. Completion requires a final independently verified manifest, not directory existence.
+
+## Disposition and limits
+
+Draft source approval is **pending the single lint comparison gate**. Other source/cohort logic is suitable in the requested static scope. No future corrective Git commit, artifact, full regression, actual scenario, completed archive, remote CI, application43/E6, funding/whole history/economics, kernel or mainnet acceptance follows. The companion JSON and saved diff/source copy retain exact before/after identities and zero-execution limits. Root should separately retain inner build success and any outer wrapper GBK failure as distinct original records; this draft does not reinterpret failures.
+'''
+out=root/(label+'.md');assert not out.exists();out.write_text(md,encoding='utf-8')
+print(json.dumps({'report':str(out),'report_sha256':sha(out),'helper_sha256':expected,'inputs':len(inputs),'tests':0,'blockers':1}))

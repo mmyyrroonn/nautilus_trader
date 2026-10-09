@@ -1,0 +1,36 @@
+"""Verify completed paired and six remaining cases shared one immutable candidate."""
+
+import hashlib
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+root = Path(__file__).resolve().parent
+output = root / "app43-native117-corrected-cohorts-unchanged-v1.json"
+assert not output.exists()
+names = (
+    "app43-native117-corrected-before-first-paired-v1",
+    "app43-native117-corrected-after-first-paired-v1",
+    "app43-native117-corrected-before-remaining-scenarios-v1",
+    "app43-native117-corrected-after-remaining-scenarios-v1",
+)
+records = []
+reference = None
+for name in names:
+    path = root / (name + ".json")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    inputs = {group: {row["path"]: (row["sha256"], row["bytes"]) for row in data[group]} for group in ("source_files", "installed_files", "artifacts")}
+    assert [len(inputs[group]) for group in inputs] == [32, 24, 2]
+    identity = {"inputs": inputs, "app_head": data["app_head"], "native_head": data["native_current_checkout_head"], "implementation": data["implementation"], "source_binding": data["source_binding"]}
+    if reference is None:
+        reference = identity
+    assert identity == reference
+    records.append({"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "captured_utc": data["captured_utc"]})
+assert reference["native_head"] == "b07a7e6e6bfc7613aa12c77cdee1110e25790ca1"
+labels = ("app43-native117-corrected-first-paired-v1", "app43-native117-corrected-remaining-scenarios-v1")
+commands = [json.loads((root / (label + ".json")).read_text(encoding="utf-8")) for label in labels]
+assert all(command["exit_code"] == 0 for command in commands)
+assert datetime.fromisoformat(commands[0]["finished_utc"]) <= datetime.fromisoformat(commands[1]["started_utc"])
+output.write_text(json.dumps({"verified_utc": datetime.now(timezone.utc).isoformat(), "captures": records, "equal": True, "inputs_per_capture": 58, "source_files": 32, "installed_files": 24, "artifacts": 2, "native_head": reference["native_head"], "commands": commands, "distinct_cases": 7, "actual_case_commands": 2, "additional_test_executions_by_comparison": 0, "note": "One successful paired followed by six different original scenarios; no repeated paired and no all-APP43/E6 claim."}, indent=2) + "\n", encoding="utf-8")
+print(json.dumps({"output": str(output), "equal": True, "inputs_per_capture": 58, "distinct_cases": 7, "additional_test_executions": 0}))

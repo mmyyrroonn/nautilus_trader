@@ -1,0 +1,310 @@
+"""Archive finite native117 evidence without replacing an existing archive."""
+
+import argparse
+import hashlib
+import json
+import re
+import shutil
+import subprocess
+from datetime import datetime, timezone
+from decimal import Decimal
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parent
+NATIVE = Path("E:/persarb/worktrees/entropy-warm-prerequisites")
+ARCHIVE = NATIVE / "docs/verification/io-warm-prerequisite-local"
+WHEEL = Path("E:/persarb/_tmp/entropy117-wheel-nextest-20261009")
+BASE = "5db2761590dd824fa159625326b6eaf3923b999a"
+IMPLEMENTATION_FILES = {
+    "crates/adapters/hyperliquid/src/account_scope.rs",
+    "crates/adapters/hyperliquid/src/execution_scope.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account/execution.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs",
+    "crates/adapters/hyperliquid/tests/entropy_account/warm_prerequisite.rs",
+}
+SCENARIOS = ("paired", "reject", "partial", "unknown", "cleanup_failure", "foreign", "loss_fee")
+EXTENSIONS = {".json", ".jsonl", ".log", ".md", ".py", ".txt", ".rs", ".toml", ".lock", ".pyi"}
+TEXT_SNAPSHOTS = {".md", ".py", ".rs", ".toml", ".lock", ".pyi"}
+EXCLUDED_PREFIXES = ("native117-archive-command", "native117-archive-check", "archive-check")
+RESULT_PREFIX = "ENTROPY43_NATIVE_RESULT "
+
+
+def require(condition, message):
+    """Raise even when Python assertion optimization is enabled."""
+    if not condition:
+        raise ValueError(message)
+
+
+def digest(path):
+    """Hash original bytes without decoding evidence."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def load_json(path):
+    """Load a required completed JSON evidence file."""
+    require(path.is_file() and not path.is_symlink(), f"Missing regular evidence: {path}")
+    return json.loads(path.read_text(encoding="utf-8-sig"))
+
+
+def git(*args):
+    """Read immutable Git objects only when root executes this helper."""
+    return subprocess.check_output(["git", *args], cwd=NATIVE).strip()
+
+
+def eligible(source, source_root):
+    """Select captured evidence, excluding credentials and live archive output."""
+    relative = source.relative_to(source_root)
+    if any(part in {"__pycache__", ".git", ".venv"} for part in relative.parts):
+        return False
+    if any(part.startswith(".env") for part in relative.parts):
+        return False
+    if source.name.startswith(EXCLUDED_PREFIXES):
+        return False
+    return source.is_file() and (source.suffix in EXTENSIONS or source.name == ".gitattributes")
+
+
+def inventory(source_root, prefix):
+    """Prepare a complete bounded-scope inventory before archive creation."""
+    require(source_root.is_dir() and not source_root.is_symlink(), f"Missing evidence root: {source_root}")
+    entries = []
+    for source in sorted(source_root.rglob("*")):
+        if not eligible(source, source_root):
+            continue
+        require(not source.is_symlink(), f"Symbolic evidence file is not accepted: {source}")
+        require(source.resolve().is_relative_to(source_root.resolve()), f"Escaping evidence: {source}")
+        target = prefix / source.relative_to(source_root)
+        if source.suffix in TEXT_SNAPSHOTS or source.name == ".gitattributes":
+            target = Path(str(target) + ".txt")
+        entries.append((source, target, digest(source), source.stat().st_size))
+    require(entries, f"No evidence in {source_root}")
+    return entries
+
+
+def verify_regression(label):
+    """Require the actual complete unfiltered Hyperliquid 1424/0/18 run."""
+    require(re.fullmatch(r"native117-[A-Za-z0-9_-]+", label), "Invalid regression capture label")
+    log = ROOT / (label + ".log")
+    command_path = ROOT / (label + ".json")
+    command = load_json(command_path)
+    require(type(command.get("exit_code")) is int and command["exit_code"] == 0,
+            "Final full regression did not pass")
+    require(command.get("started_utc") and command.get("finished_utc"), "Regression is unfinished")
+    require(Path(command["cwd"]).resolve() == NATIVE.resolve(), "Regression used another checkout")
+    argv = command["argv"]
+    prefix = ["cargo", "test", "-p", "nautilus-hyperliquid", "--profile", "nextest", "--locked", "--offline"]
+    require(argv[:8] == prefix, "Unexpected full-regression command")
+    tail = argv[8:]
+    if tail[:1] == ["--config"]:
+        require(len(tail) >= 2 and tail[1] in {"build.warnings='warn'", "build.warnings='allow'"},
+                "Unexpected regression configuration")
+        tail = tail[2:]
+    require(tail in ([], ["--", "--test-threads=1"]), "Filtered or altered regression command")
+    text = log.read_text(encoding="utf-8")
+    rows = re.findall(
+        r"test result: ok\. (\d+) passed; (\d+) failed; (\d+) ignored; "
+        r"(\d+) measured; (\d+) filtered out", text,
+    )
+    groups = [list(map(int, row)) for row in rows]
+    require(len(groups) >= 10, "A focused target cannot stand for the complete regression")
+    counts = tuple(sum(row[index] for row in groups) for index in range(5))
+    require(counts == (1424, 0, 18, 0, 0), f"Unexpected actual full regression totals: {counts}")
+    require("Doc-tests nautilus_hyperliquid" in text, "Doctest evidence is absent")
+    return {"passed": counts[0], "failed": counts[1], "ignored": counts[2],
+            "groups": groups, "log_sha256": digest(log), "command_sha256": digest(command_path),
+            "command": command, "distinct_counts_note": "Reruns overlap and are not added to these totals"}
+
+
+def verify_implementation(commit):
+    """Bind exactly the five implementation files to Git blobs and live bytes."""
+    require(re.fullmatch(r"[0-9a-f]{40}", commit), "Implementation must be an exact commit identity")
+    require(git("rev-parse", "--verify", commit + "^{commit}").decode() == commit, "Unknown implementation")
+    require(git("rev-parse", commit + "^").decode() == BASE, "Implementation has a different fresh-main parent")
+    require(git("rev-parse", "HEAD").decode() == commit, "Archive checkout is not the implementation head")
+    changed = set(git("diff-tree", "--no-commit-id", "--name-only", "-r", commit).decode().splitlines())
+    require(changed == IMPLEMENTATION_FILES, f"Implementation file scope differs: {sorted(changed)}")
+    identities = {}
+    for relative in sorted(IMPLEMENTATION_FILES):
+        blob = subprocess.check_output(["git", "show", f"{commit}:{relative}"], cwd=NATIVE)
+        current = NATIVE / relative
+        blob_hash = hashlib.sha256(blob).hexdigest()
+        require(digest(current) == blob_hash, f"Current implementation bytes changed: {relative}")
+        identities[relative] = {"git_blob_sha256": blob_hash, "tested_file_sha256": digest(current),
+                                "git_object": git("rev-parse", f"{commit}:{relative}").decode()}
+    receipt = load_json(ROOT / "native117-implementation-commit.json")
+    require(receipt["commit"] == commit and receipt["base_main"] == BASE and receipt["clean"] is True,
+            "Implementation receipt identity/clean source differs")
+    require(receipt["files"] == {path: row["git_blob_sha256"] for path, row in identities.items()},
+            "Implementation receipt does not bind exact source bytes")
+    return {"implementation_commit": commit, "implementation_tree": git("rev-parse", commit + "^{tree}").decode(),
+            "base_main": BASE, "source_files": identities, "receipt_sha256": digest(ROOT / "native117-implementation-commit.json")}
+
+
+def verify_wheel(implementation):
+    """Require actual clean build provenance and the original wheel artifact."""
+    provenance = load_json(WHEEL / "native-provenance.json")
+    build_input = load_json(WHEEL / "native-build-input.json")
+    require(provenance["source_binding"] == "verified", "Native source binding is unverified")
+    require(provenance["declared_native"]["commit"] == implementation, "Provenance implementation differs")
+    require(provenance["declared_native"]["tree"] == git("rev-parse", implementation + "^{tree}").decode(),
+            "Provenance Git tree differs from the actual implementation")
+    require(build_input["native"] == provenance["declared_native"], "Build-input identity differs")
+    for record in (provenance["declared_native"], provenance["build"]["started_source"],
+                   provenance["build"]["finished_source"]):
+        require(record["commit"] == implementation and record["dirty_count"] == 0 and record["dirty"] == [],
+                "Build did not use clean immutable implementation bytes")
+        require(record["tree"] == provenance["declared_native"]["tree"], "Build source trees differ")
+    require(provenance["build"].get("started_at") and provenance["build"].get("completed_at"), "Build is unfinished")
+    require(provenance["declared_evidence"]["sha256"] == digest(WHEEL / "native-build-input.json"),
+            "Build-input provenance hash differs")
+    wheel = Path(provenance["wheel"]["path"])
+    require(wheel.resolve().is_relative_to(WHEEL.resolve()) and wheel.suffix == ".whl" and wheel.is_file(),
+            "Original wheel artifact is absent or outside the assigned directory")
+    require(digest(wheel) == provenance["wheel"]["sha256"] and wheel.stat().st_size == provenance["wheel"]["size"],
+            "Wheel bytes differ from actual provenance")
+    return provenance
+
+
+def verify_case(directory, mode, provenance):
+    """Bind a completed numeric-loopback case, preserving honest failures."""
+    required = ("summary.json", "child-command.json", "child-stdout.log", "child-stderr.log",
+                "manifest.json", "peer-evidence.json", "plan.json", "events.jsonl", "economic-report.json")
+    for name in required:
+        require((directory / name).is_file(), f"Incomplete actual {mode} case: {directory / name}")
+    summary = load_json(directory / "summary.json")
+    command = load_json(directory / "child-command.json")
+    manifest = load_json(directory / "manifest.json")
+    require(summary.get("synthetic_numeric_loopback") is True, "Case is not synthetic numeric loopback")
+    require(type(command.get("exit_code")) is int and command["exit_code"] >= 0, "Case command is unfinished")
+    argv = command["argv"]
+    require("--entropy43-child" in argv, "Missing actual ordinary child command")
+    index = argv.index("--entropy43-child")
+    require(len(argv[index + 1:]) == 5 and argv[index + 1] == mode, "Case command scenario differs")
+    require(Path(argv[index + 2]).resolve() == directory.resolve(), "Child evidence directory differs")
+    require(Path(argv[index + 3]).resolve() == Path(provenance["wheel"]["path"]).resolve()
+            and argv[index + 4] == provenance["wheel"]["sha256"]
+            and Path(argv[index + 5]).resolve() == (WHEEL / "native-provenance.json").resolve(),
+            "Child command used another candidate")
+    identity = manifest["native_identity"]
+    require(identity["strict_source_binding_passed"] is True
+            and identity["wheel"]["sha256"] == provenance["wheel"]["sha256"], "Installed candidate binding differs")
+    require(identity["native_provenance"] == provenance, "Installed provenance object differs")
+    native_objects = [row for row in provenance["embedded_native_objects"] if row["path"].endswith(".pyd")]
+    require(len(native_objects) == 1
+            and identity["installed"]["native_module_sha256"] == native_objects[0]["sha256"],
+            "Actual installed native module differs from the candidate object")
+    controller = summary.get("controller")
+    require(isinstance(controller, dict), "Current controller summary is absent")
+    stdout = (directory / "child-stdout.log").read_text(encoding="utf-8")
+    records = [json.loads(line[len(RESULT_PREFIX):]) for line in stdout.splitlines() if line.startswith(RESULT_PREFIX)]
+    passed = command["exit_code"] == 0
+    if passed:
+        require(len(records) == 1, "Successful child lacks its exact actual result")
+        record = records[0]
+        require(record["mode"] == mode and record["summary"] == summary
+                and record["wheel_sha256"] == provenance["wheel"]["sha256"]
+                and record["active_sockets_after_teardown"] == 0, "Actual child result and summary differ")
+        require(summary["started"] is True and summary["stopped"] is True
+                and summary["shutdown_verified"] is True and summary["watchdog_fired"] is False,
+                "Successful command contradicts lifecycle summary")
+        if mode == "paired":
+            require(controller["state"] == "Completed" and controller["orders_terminal"] is True
+                    and controller["owned_flat_verified"] is True and len(controller["fills"]) == 4
+                    and controller["entry_orders"] == controller["cleanup_orders"] == 2
+                    and all(Decimal(value) == 0 for value in controller["positions"].values())
+                    and all(Decimal(value) == 0 for value in summary["native_portfolio_net_positions"].values()),
+                    "Successful paired command contradicts finite execution/flat facts")
+    else:
+        require(not records, "Failed child contradicts an emitted successful assertion result")
+    return {"mode": mode, "directory": directory.as_posix(), "command_exit_code": command["exit_code"],
+            "actual_assertion_result": "PASS" if passed else "FAIL", "controller_state": controller.get("state"),
+            "owned_flat_verified": controller.get("owned_flat_verified"), "summary_sha256": digest(directory / "summary.json"),
+            "command_sha256": digest(directory / "child-command.json"), "synthetic_numeric_loopback": True}
+
+
+def main():
+    """Preflight all actual evidence before copying immutable bytes."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--implementation", required=True)
+    parser.add_argument("--regression", required=True)
+    parser.add_argument("--paired-root", required=True, type=Path)
+    parser.add_argument("--scenarios-root", required=True, type=Path)
+    args = parser.parse_args()
+    require(not ARCHIVE.exists(), "An archive must never replace any prior capture")
+    implementation = verify_implementation(args.implementation)
+    regression = verify_regression(args.regression)
+    provenance = verify_wheel(args.implementation)
+    paired_root = args.paired_root.resolve()
+    scenarios_root = args.scenarios_root.resolve()
+    require(paired_root != scenarios_root, "First paired and all-scenarios roots must be distinct")
+    require(paired_root.name == "app43-native117-first-paired-20261009"
+            and scenarios_root.name == "app43-native117-all-scenarios-20261009", "Unexpected evidence roots")
+    require(paired_root.parent == ROOT.parent and scenarios_root.parent == ROOT.parent,
+            "Scenario roots must stay inside the assigned temporary workspace")
+    cases = [verify_case(paired_root / "paired", "paired", provenance)]
+    cases.extend(verify_case(scenarios_root / mode, mode, provenance) for mode in SCENARIOS)
+    entries = inventory(ROOT, Path("validation"))
+    entries += inventory(paired_root, Path("app43-first-paired"))
+    entries += inventory(scenarios_root, Path("app43-all-scenarios"))
+    for name in ("native-provenance.json", "native-build-input.json"):
+        source = WHEEL / name
+        entries.append((source, Path("wheel") / name, digest(source), source.stat().st_size))
+    targets = [str(row[1]) for row in entries]
+    require(len(targets) == len(set(targets)), "Archive paths collide")
+    ARCHIVE.mkdir(parents=True, exist_ok=False)
+    files, commands, connectors, non_json_responses = [], [], [], []
+    for source, relative, expected_hash, expected_size in entries:
+        target = ARCHIVE / relative
+        require(target.resolve().is_relative_to(ARCHIVE.resolve()), f"Escaping archive target: {relative}")
+        require(not target.exists(), f"Archive capture already exists: {target}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        require(digest(source) == expected_hash and source.stat().st_size == expected_size,
+                f"Evidence changed after preflight: {source}")
+        shutil.copyfile(source, target)
+        require(digest(target) == expected_hash and digest(source) == expected_hash
+                and target.stat().st_size == expected_size, f"Copied evidence changed: {source}")
+        row = {"path": relative.as_posix(), "source_path": source.as_posix(),
+               "bytes": expected_size, "sha256": expected_hash}
+        files.append(row)
+        if source.suffix == ".json":
+            try:
+                data = load_json(target)
+            except (ValueError, UnicodeError):
+                non_json_responses.append(relative.as_posix())
+                continue
+            if isinstance(data, dict) and {"argv", "exit_code"}.issubset(data):
+                commands.append({"capture": relative.as_posix(), **data})
+            if isinstance(data, dict) and {"tool", "args", "result"}.issubset(data):
+                connectors.append({"capture": relative.as_posix(), **data})
+    ledgers = {"commands.json": commands, "connector-operations.json": connectors,
+               "implementation-identities.json": implementation, "regression-summary.json": regression,
+               "application-scenarios.json": {"cases": cases,
+                   "all_seven_scenarios_passed": all(row["actual_assertion_result"] == "PASS" for row in cases[1:]),
+                   "first_paired_passed": cases[0]["actual_assertion_result"] == "PASS",
+                   "application_issue43_complete": False, "real_venue_e6_verified": False}}
+    for name, data in ledgers.items():
+        target = ARCHIVE / name
+        require(not target.exists(), f"Generated ledger already exists: {name}")
+        target.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        files.append({"path": name, "bytes": target.stat().st_size, "sha256": digest(target)})
+    manifest = {"archived_utc": datetime.now(timezone.utc).isoformat(), "native_issue": 117,
+                "implementation_commit": args.implementation, "files": files,
+                "non_json_raw_responses": non_json_responses,
+                "exclusions": ["credential/environment files", "__pycache__/.git/.venv", "executables and wheel binary",
+                               *EXCLUDED_PREFIXES],
+                "note": "Original failures, superseded reviews, fixture receipts and snapshots retain their bytes and occurrences. "
+                        "Code snapshots have .txt suffixes. Executables and wheel are identified by actual evidence hashes, not committed. "
+                        "Overlapping reruns are not additional distinct tests. Root evidence inventory preserves actual source capture gaps. "
+                        "Source review is not binary acceptance. Failed application cases stay FAIL; seven local passes do not close "
+                        "application43/E6, real venue, whole economics/history, kernel or continuous remote authority."}
+    target = ARCHIVE / "manifest.json"
+    require(not target.exists(), "Manifest already exists")
+    target.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps({"archive": ARCHIVE.as_posix(), "files": len(files), "commands": len(commands),
+                      "connectors": len(connectors), "passed": regression["passed"], "ignored": regression["ignored"],
+                      "first_paired_result": cases[0]["actual_assertion_result"],
+                      "all_seven_scenarios_passed": ledgers["application-scenarios.json"]["all_seven_scenarios_passed"]}))
+
+
+if __name__ == "__main__":
+    main()

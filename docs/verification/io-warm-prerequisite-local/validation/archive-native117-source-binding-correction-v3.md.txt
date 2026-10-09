@@ -1,0 +1,31 @@
+# Native117 archive helper v3 — corrected-candidate draft
+
+This is a new source-only draft, `archive_native117_v3.py`. Original helper v1, source-binding helper v2, and their reviews retain their bytes. The author executed neither this helper nor an archive, syntax check, Git command, native import, test, build, stub generation, installation or venv command. Actual future evidence is required before the helper can create the repository archive. Missing, unfinished, differently bound or contradictory evidence is a readiness refusal, not an inferred PASS.
+
+## Candidate and tested-source chain
+
+The helper verifies fresh main `5db2761590dd824fa159625326b6eaf3923b999a` → preserved initial implementation `56705ce873d5fc4e568e5f9ea8f2c614d5d35230` → a distinct corrective child specified by `--implementation`. The initial commit's exact five paths and Git blobs remain bound to its original receipt. The corrective commit may change exactly economics_scope.rs, economics_scope/tests.rs and io_query_recovery.rs. Its original receipt is `native117-economic-correction-implementation-commit.json`; the union is seven native implementation paths. Current head must be that corrective commit and clean. No amend or source substitution is accepted.
+
+The actual v7 full regression, source manifests before/after, unchanged comparison and immutable verified-binary receipts must agree. The expected full-run inventory is 1435 passed, zero failed and 18 ignored; these are acceptance constraints, not an authored claim that a future run passed. Counts are parsed from the actual complete unfiltered log and compared to its binary receipt. The captured precommit head is still the preserved initial commit. All **33 native + 10 app** inputs must match before/after and actual frozen snapshot bytes. The seven final implementation files must match captured tested bytes, current bytes and corrective Git blobs. `tested_file_sha256` comes from the actual frozen/tested manifest. Actual immutable executable hashes are verified and recorded; executable files are not archived.
+
+## Distinct failure and corrected acceptance cohorts
+
+The original wheel `47486c076bfaa7afac05a02071b11d485280dca5718a0d806d6dd6fe1eb4a05e` and complete original first-paired directory are required as a **failed predecessor cohort**. Its installed/source-bound provenance, actual child failure and outer command are preserved. The unchanged-production RED receipts retain the actual direct **4 PASS / 6 FAIL** and normal callback **0 PASS / 1 FAIL** outcomes. These failures do not become extra corrected passes. Original wrapper/UTF-8 build failures and all superseded reviews/contracts/fixture records remain eligible raw evidence under the validation root, without reinterpreting failed commands as successful artifacts.
+
+The corrected candidate uses only `E:/persarb/_tmp/entropy117-corrected-wheel-nextest-20261009`. Its clean build provenance and source-bound wheel, two corrected installed identities, actual 242 installed Python contract outcomes, v7 official UTF-8 stubs/44 API+text comparisons, production strict Clippy PASS and tests-inclusive Clippy's actual inherited FAIL are required. A nonzero tests-inclusive lint result remains FAIL in its own ledger; it is never promoted to the production strict result.
+
+Corrected application acceptance is one first paired command plus a separate six-parameter command, on the same corrected wheel and unchanged source/install/artifacts:
+
+- Paired root: `app43-native117-corrected-first-paired-20261009`; command `app43-native117-corrected-first-paired-v1`; matching before/after input captures.
+- Remaining root: `app43-native117-corrected-remaining-scenarios-20261009`; command `app43-native117-corrected-remaining-scenarios-v1`; matching before/after captures. It must select the original parameterized test and use `--deselect=tests/test_entropy_execution_native.py::test_actual_installed_factory_two_leg_execution[paired]`.
+- Exact modes: paired, reject, partial, unknown, cleanup_failure, foreign, loss_fee. No second paired directory is allowed in the remaining-six root. All seven complete summaries and actual child commands are mandatory. The corrected paired PASS is the prerequisite for the planned remaining command; remaining child failures, if present, remain FAIL and prevent a seven-pass claim.
+
+Both command cohorts require actual **32 source + 24 installed + 2 artifact** captures, bracketing real command times, identical candidate identity and identical before/after bytes. The two cohorts' inputs must also be identical. Successful outer pytest summaries must show one paired pass and six passes with one deselection, respectively; outer and child outcomes must agree. Seven distinct parameters over two commands are neither a single seven-test invocation nor eight independent tests. App43, real-venue E6, funding/whole-history/economic completeness and continuous/kernel authority remain unverified.
+
+## Archive operation boundary
+
+The four required CLI arguments remain `--implementation`, `--regression native117-full-hyperliquid-regression-v7`, `--paired-root` and `--scenarios-root`. All required future checks run before `mkdir`. The archive target remains `docs/verification/io-warm-prerequisite-local` and an existing archive is never replaced.
+
+Byte inventories preserve the whole eligible validation root, the original first-failure directory, corrected first-paired directory and corrected remaining-six directory, with separate prefixes. The two wheel provenance/build-input objects are retained separately; wheel and executable binaries are metadata only. Each copied occurrence has a byte hash, size and resolved destination containment check. Code/text source suffixes receive `.txt`. Commands, connector receipts, implementation identities, regression/source binding, corrected checks, preserved failures and split application cohorts get independent ledgers. Credentials, environment files, venv/Git directories, Python caches and current archive-command/check outputs are excluded. No old evidence file or helper is overwritten.
+
+This draft is frozen for independent source review. Root remains responsible for actual prerequisites, any necessary versioned correction, execution, archive verification and final documentation.

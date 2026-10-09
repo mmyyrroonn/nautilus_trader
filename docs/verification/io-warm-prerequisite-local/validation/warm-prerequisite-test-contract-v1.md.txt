@@ -1,0 +1,54 @@
+# Native117 normal-source test contract v1
+
+Frozen test source at 2026-10-09 11:29:32 UTC. Base main is `5db2761590dd824fa159625326b6eaf3923b999a`; worktree `E:/persarb/worktrees/entropy-warm-prerequisites`, branch assigned by root `feature/entropy-warm-prerequisites`. This author wrote only the new `tests/entropy_account/warm_prerequisite.rs` and the three-line sibling module hook in `execution.rs`. Existing tests, peer/common infrastructure, production, workflows, dependency/rule files and prior worktrees were not edited.
+
+The tests have **16 async functions / 37 statically expanded cases**. This is a source inventory, not collected or executed tests. No Cargo, formatter, build, native/Python test, install, Git mutation, GitHub access, native import, credential read or real endpoint was used. Root must format, compile, run, inspect actual failures and independently review the source before claiming acceptance.
+
+## Normal construction and evidence
+
+The module uses the existing normal `Harness`: actual synthetic numeric-loopback HTTP/WS, native factory/configuration, normal instrument-provider response, ordinary Engine/Cache/Portfolio, execution event channel and RustLocal owner runner. Only original user-intent orders are seeded into Cache. Actual financial events come from peer WS/native processing; no constructed OrderFilled, financial Cache injection, private invalidation helper, prefilled limiter, added retry loop or production test hook is introduced.
+
+The policies retain account/action 2 seconds, recovery 3 seconds, metadata 30 seconds and existing finite action/quantity/notional/journal limits. Helpers wait on actual observed requests, native received/applied sequence or ordinary queued owner messages. A finite poll observes completion; it does not issue another query until success.
+
+Diagnostics bind the proposed confirmed implementation schema: `warm_prerequisite_source`, `last_query_reused_prerequisite`, immutable original start/finish/expiration/policy/reader/metadata/native pair, and `sources` with actual request JSON/raw text/native receipt. `UnknownSources.reused_prerequisite_source` must preserve the old complete object; existing `original_sources` must retain actual new query responses. Source approval or a diagnostic alone does not prove successful execution.
+
+## Coverage inventory
+
+| Function family | Expanded cases | Required actual result |
+| --- | ---: | --- |
+| Qualified postbinding connect source | 1 | Exactly eight original complete responses with real peer raw/receipt correspondence; retained clear source comes from recovery after the earlier prebinding refresh, not retrospective copied trust. |
+| Identical applied frame + two ordinary repeated queries | 1 | Ordinary account trust can remain; startup financial seal is absent or sequence-ineligible. Nonfinancial original object remains immutable, each query gets new open/fills/fullclear/two leverage responses, no prerequisite endpoints or renewal. Zero-fact flat minimum82 has no CLOID status. |
+| Actual owned IOC entry then reduce-only close | 1 | Two distinct actual trades/TIDs, exact quantities/USDC commissions and normal Portfolio. Query source minima44/84 include actual active CLOID status and close's two leverage reads. Only successful current financial proof absorbs reservation; original prerequisite and metadata timestamps remain unchanged. |
+| Crossing genuine connect transaction + full warm | 1 | A real identical frame during postbinding account HTTP prevents both seals while ordinary legacy trust/recovery may remain. The subsequent query actually collects full sources and creates a new prerequisite only after owner completion. |
+| Original source wall-clock expiry + complete replacement | 1 | Actual old absolute expiry cannot renew through reuse; current financial WS is refreshed normally, then full HTTP sources create a genuinely new object. |
+| Expired original target fault | 5 | After genuine expiry and a fresh normal financial WS snapshot, actual bad role/mode/legacy/meta/spot body must be served before refusal. No early unrelated stale-WS refusal is counted as bad-endpoint coverage. |
+| Missing/malformed actual financial source | 4 | Actual open/fills/fullclear/flat leverage response is received, prerequisite endpoints omitted, current proof refused, old+new raw persists after normal stop/drop. |
+| Complete financial field/precision/age conflict | 6 | Actual current full body contradicts withdrawable/raw balance/used/cross maintenance/native precision/source age; no AccountState, Ready, trade or position projection. |
+| Actual owned trade/fee/status counterproof | 5 | Missing/conflicting/foreign trade, missing/conflicting commission or unknown status remains Unknown; native accepted fill, original reservation, ordinary Cache quantity/fee and Portfolio cannot be rewritten or adopted. |
+| New-flight source/reader/Engine crossing | 5 | Actual identical/funds/reconnect/unsupported raw/normal provider Cache change during reads refuses the captured flight; old origin stays distinct in durable debt, later query cannot replace debt or issue HTTP. |
+| Owner-channel original expiry | 1 | Real queued owner work waits until old absolute expiration; no intervening frame changes sequence. No AccountState/Ready on late dispatch; actual old+new raw survives drop. Exact private mutex-wait timing is not separately proven. |
+| Original total deadline | 1 | Actual received open body plus a delayed unavailable fills request settles within original3s, keeps unavailable request context and old raw. No new deadline/fallback is introduced. |
+| Escaped durable near/over record bound | 2 | Actual valid original role whitespace and new valid empty-open newline body precede malformed actual fills. Raw bodies each fit1MiB; one old and one new group fit their separate4MiB collection bounds. Actual escaped facts around900k must retain both origins; around1.2MiB must produce bounded persisted RetentionFailed/incomplete Unknown without automatic taint. |
+| Silent unrequested mode change | 1 | Explicitly documents prior bounded non-atomic observation: role/mode are not reread or claimed newly observed. No order/action occurs; original body and time remain intact. |
+| Actual native fill not consumed by Engine | 1 | Real WS fill already retained in native state but normal financial event still queued cannot authorize QueryAccount: synchronous refusal, zero new HTTP, reservation retained; later normal event consumption produces the one actual fill. |
+| Normal stop with queued owner | 1 | Stop releases the actual query; late ordinary owner dispatch emits no stale AccountState. Actual journal can be read after client/factory drop without noop registration or housekeeping and contains both origins. |
+| **Total** | **37** | **Not executed** |
+
+## Size and provenance assertions
+
+Near-bound fixtures use 300,000 original role spaces plus 300,000 new open-array newline characters, then actual malformed fills `[`. The new raw newline characters expand during persisted JSON escaping, giving approximately900k plus ordinary context. The over-bound variant uses400,000 of each, approximately1.2MiB escaped. The test measures the actual final line: near case must exceed850,000 bytes but remain <=1MiB; bounded refusal must stay below64KiB. It asserts actual cumulative journal remains <=16MiB. This does not exercise exhaustion of every cumulative-record bound or claim a whole-process RSS limit.
+
+Both cases establish a real original qualified source before beginning failure. Below-bound debt must reproduce the complete old object exactly and actual new request/raw/receipt identities; old receipts precede the new query and are never relabeled as current receipts. After normal disconnect and client/factory drop, the actual last journal record must equal the diagnostic debt. Above-bound RetentionFailed is explicit incomplete raw evidence; successful bounded persistence must not be confused with actual I/O failure. No I/O failure is fabricated here; existing persistence classification and full native regression remain root/reviewer obligations.
+
+## Unverified details and scope
+
+The author has not compiled these source cases, collected rstest expansions, executed their timing/quota assertions or verified the final implementation binary. Their source-derived minima are not a measured token balance or paired liveness promise. Current financial/callback/metadata/freshness source code remains separately owned by the runtime author. Root owns any necessary existing64 future-HTTP fixture adjustments; this module does not silently weaken them.
+
+Exact private mutex-wait, isolated unapplied-only actor scheduling, fsync-clock crossing and total process allocation are not independently established by these normal peer cases. Tests, full Hyperliquid regression, installed candidate, corrected application paired/all-seven and independent review remain pending. Generic cold/native Cache restoration, continuous/kernel isolation, mainnet, whole-run economics and application43/E6 are outside these finite tests.
+
+## Frozen identities
+
+- New module: 41,741 bytes, SHA-256 `eb28493cd87f9bbca327dc1f04f1b97b671e2bd89f855132dfd99370e36a20d6`.
+- Existing module-hook file: 59,056 bytes, SHA-256 `fbc4a4efc0eb867d9f52322f948e5a601d0990cece044b05deca33c557af4196`.
+
+Root's official formatting/compilation will produce a separately captured revision. These v1 bytes and failure evidence must be retained; no source edits continue after this freeze unless root explicitly hands back a correction.

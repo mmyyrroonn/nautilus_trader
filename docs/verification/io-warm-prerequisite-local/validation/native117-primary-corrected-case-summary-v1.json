@@ -1,0 +1,236 @@
+{
+  "created_utc": "2026-10-09T13:49:47.332877+00:00",
+  "actual_cases": [
+    {
+      "mode": "paired",
+      "summary_path": "E:\\persarb\\_tmp\\app43-native117-corrected-first-paired-20261009\\paired\\summary.json",
+      "summary_sha256": "6a9815c6ad17f707536fd05bca663bf463c5435b4f88ad9b93f33510d195dcd1",
+      "child_exit_code": 0,
+      "controller_state": "Completed",
+      "entry_orders": 2,
+      "cleanup_orders": 2,
+      "fills": 4,
+      "fill_ids": [
+        "io:io:SNDK:70001:60001",
+        "90000",
+        "io:io:SNDK:70002:60002",
+        "90001"
+      ],
+      "positions": {
+        "aster": "0.00",
+        "entropy": "0.0000"
+      },
+      "portfolio_positions": {
+        "aster": "0",
+        "entropy": "0"
+      },
+      "gross_reserved_usd": "0.0000",
+      "orders_terminal": true,
+      "owned_flat_verified": true,
+      "current_projection_verified": true,
+      "loss_usd": "0.00640000",
+      "reasons": [
+        "cleanup_not_currently_proven_or_budget_exhausted"
+      ],
+      "shutdown_verified": true,
+      "economics_complete": false
+    },
+    {
+      "mode": "reject",
+      "summary_path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\reject\\summary.json",
+      "summary_sha256": "6110061692e58775cd6dfcdb950b848b270c2fa7f845ef6e14605a6d308ddb11",
+      "child_exit_code": 0,
+      "controller_state": "Completed",
+      "entry_orders": 2,
+      "cleanup_orders": 1,
+      "fills": 2,
+      "fill_ids": [
+        "io:io:SNDK:70001:60001",
+        "io:io:SNDK:70002:60002"
+      ],
+      "positions": {
+        "aster": "0",
+        "entropy": "0.0000"
+      },
+      "portfolio_positions": {
+        "aster": "0",
+        "entropy": "0"
+      },
+      "gross_reserved_usd": "0.0000",
+      "orders_terminal": true,
+      "owned_flat_verified": true,
+      "current_projection_verified": true,
+      "loss_usd": "0.00320000",
+      "reasons": [
+        "partial_hedge_or_dust_residual"
+      ],
+      "shutdown_verified": true,
+      "economics_complete": false
+    },
+    {
+      "mode": "partial",
+      "summary_path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\partial\\summary.json",
+      "summary_sha256": "1d711a2ebf31b498edc921ae8ec2f05717cb4120724d5bfb47a8f5f3901cdb5d",
+      "child_exit_code": 0,
+      "controller_state": "Completed",
+      "entry_orders": 2,
+      "cleanup_orders": 2,
+      "fills": 4,
+      "fill_ids": [
+        "io:io:SNDK:70001:60001",
+        "90000",
+        "io:io:SNDK:70002:60002",
+        "90001"
+      ],
+      "positions": {
+        "aster": "0.00",
+        "entropy": "0.0000"
+      },
+      "portfolio_positions": {
+        "aster": "0",
+        "entropy": "0"
+      },
+      "gross_reserved_usd": "0.0000",
+      "orders_terminal": true,
+      "owned_flat_verified": true,
+      "current_projection_verified": true,
+      "loss_usd": "0.00580000",
+      "reasons": [
+        "partial_hedge_or_dust_residual",
+        "cleanup_not_currently_proven_or_budget_exhausted"
+      ],
+      "shutdown_verified": true,
+      "economics_complete": false
+    },
+    {
+      "mode": "unknown",
+      "summary_path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\unknown\\summary.json",
+      "summary_sha256": "d63e0a681a0c62f18c82dee42f48955afd49304396059063bc2a45b403cfebb6",
+      "child_exit_code": 0,
+      "controller_state": "StoppedUnknown",
+      "entry_orders": 1,
+      "cleanup_orders": 0,
+      "fills": 0,
+      "fill_ids": [],
+      "positions": {
+        "aster": "0",
+        "entropy": "0"
+      },
+      "portfolio_positions": {
+        "aster": "0",
+        "entropy": "0"
+      },
+      "gross_reserved_usd": "12.7260",
+      "orders_terminal": false,
+      "owned_flat_verified": "Unknown",
+      "current_projection_verified": "Unknown",
+      "loss_usd": "0",
+      "reasons": [
+        "bounded_native_terminal_timeout",
+        "cleanup_deadline_exhausted"
+      ],
+      "shutdown_verified": true,
+      "economics_complete": false
+    },
+    {
+      "mode": "cleanup_failure",
+      "summary_path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\cleanup_failure\\summary.json",
+      "summary_sha256": "ee2708171a67c8f68925721f93279f245ae7ca92d580ca4fe61fdb680dd5f79e",
+      "child_exit_code": 0,
+      "controller_state": "StoppedUnknown",
+      "entry_orders": 2,
+      "cleanup_orders": 2,
+      "fills": 3,
+      "fill_ids": [
+        "io:io:SNDK:70001:60001",
+        "90000",
+        "io:io:SNDK:70002:60002"
+      ],
+      "positions": {
+        "aster": "-0.12",
+        "entropy": "0.0000"
+      },
+      "portfolio_positions": {
+        "aster": "-0.12",
+        "entropy": "0"
+      },
+      "gross_reserved_usd": "12.6000",
+      "orders_terminal": true,
+      "owned_flat_verified": "Unknown",
+      "current_projection_verified": "Unknown",
+      "loss_usd": "0.00540000",
+      "reasons": [
+        "cleanup_not_currently_proven_or_budget_exhausted",
+        "action_or_order_budget_exhausted",
+        "cleanup_deadline_exhausted"
+      ],
+      "shutdown_verified": true,
+      "economics_complete": false
+    },
+    {
+      "mode": "foreign",
+      "summary_path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\foreign\\summary.json",
+      "summary_sha256": "622bd97f8e9009206bfbd855524cbeced2acbb868e4d91288daf8d6fdc1377d8",
+      "child_exit_code": 0,
+      "controller_state": "StoppedUnknown",
+      "entry_orders": 0,
+      "cleanup_orders": 0,
+      "fills": 0,
+      "fill_ids": [],
+      "positions": {
+        "aster": "0",
+        "entropy": "0"
+      },
+      "portfolio_positions": {
+        "aster": "0.03",
+        "entropy": "0"
+      },
+      "gross_reserved_usd": "0",
+      "orders_terminal": "Unknown",
+      "owned_flat_verified": "Unknown",
+      "current_projection_verified": "Unknown",
+      "loss_usd": "0",
+      "reasons": [
+        "foreign_account_qualified_native_order",
+        "cleanup_without_started_run"
+      ],
+      "shutdown_verified": true,
+      "economics_complete": false
+    },
+    {
+      "mode": "loss_fee",
+      "summary_path": "E:\\persarb\\_tmp\\app43-native117-corrected-remaining-scenarios-20261009\\loss_fee\\summary.json",
+      "summary_sha256": "f5a08abae0160755b9ee519eb1ce3ae016f2f7155397736af0b41cda546ab10d",
+      "child_exit_code": 0,
+      "controller_state": "Completed",
+      "entry_orders": 1,
+      "cleanup_orders": 1,
+      "fills": 2,
+      "fill_ids": [
+        "io:io:SNDK:70001:60001",
+        "io:io:SNDK:70002:60002"
+      ],
+      "positions": {
+        "aster": "0",
+        "entropy": "0.0000"
+      },
+      "portfolio_positions": {
+        "aster": "0",
+        "entropy": "0"
+      },
+      "gross_reserved_usd": "0.0000",
+      "orders_terminal": true,
+      "owned_flat_verified": "Unknown",
+      "current_projection_verified": "Unknown",
+      "loss_usd": "4.00120000",
+      "reasons": [
+        "loss_budget_exhausted",
+        "cleanup_not_currently_proven_or_budget_exhausted"
+      ],
+      "shutdown_verified": true,
+      "economics_complete": false
+    }
+  ],
+  "new_test_executions": 0,
+  "note": "Root reads closed raw summaries; negative cases need not end Completed. This does not close larger APP43 acceptance or whole economics/E6."
+}

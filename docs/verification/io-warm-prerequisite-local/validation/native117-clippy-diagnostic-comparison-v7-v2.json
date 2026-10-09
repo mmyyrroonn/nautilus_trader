@@ -1,0 +1,254 @@
+{
+  "captured_utc": "2026-10-09T13:32:34.728832+00:00",
+  "baseline": {
+    "label": "native117-tests-inclusive-clippy-v6",
+    "log": {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-tests-inclusive-clippy-v6.log",
+      "sha256": "559298b53941140d27d842374cbdf9e8e2520dbad6454197416c1a273ab46681"
+    },
+    "receipt": {
+      "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-tests-inclusive-clippy-v6.json",
+      "sha256": "ee0cd3b45ce66b98be15c78808bbedf534ac6f0ad7ae2fb9f914504e7348951e"
+    },
+    "command": {
+      "argv": [
+        "cargo",
+        "clippy",
+        "-p",
+        "nautilus-hyperliquid",
+        "--lib",
+        "--tests",
+        "--no-deps",
+        "--profile",
+        "nextest",
+        "--locked",
+        "--offline",
+        "--config",
+        "build.warnings='warn'",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "cwd": "E:\\persarb\\worktrees\\entropy-warm-prerequisites",
+      "started_utc": "2026-10-09T12:30:41.945691+00:00",
+      "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+      "pyo3_python": "E:/persarb/worktrees/entropy-warm-prerequisites/.venv/Scripts/python.exe",
+      "uv_project_environment": null,
+      "nautilus_stub_profile": null,
+      "cargo_build_warnings": null,
+      "cargo_net_offline": null,
+      "entropy43_native_wheel": null,
+      "entropy43_native_sha256": null,
+      "entropy43_native_provenance": null,
+      "entropy43_evidence_root": null,
+      "exit_code": 101,
+      "finished_utc": "2026-10-09T12:30:53.322683+00:00"
+    },
+    "diagnostics": [
+      {
+        "message": "this argument is passed by value, but not consumed in the function body",
+        "location": "crates/adapters/hyperliquid/tests/entropy_account/execution.rs:527:31"
+      },
+      {
+        "message": "this `RefCell` reference is held across an await point",
+        "location": "crates/adapters/hyperliquid/tests/entropy_account/execution.rs:876:9"
+      },
+      {
+        "message": "called `map(<f>).unwrap_or_else(<g>)` on an `Option` value",
+        "location": "crates/adapters/hyperliquid/tests/entropy_account.rs:501:5"
+      },
+      {
+        "message": "consider adding a `;` to the last statement for consistent formatting",
+        "location": "crates/adapters/hyperliquid/tests/entropy_account.rs:746:17"
+      },
+      {
+        "message": "consider adding a `;` to the last statement for consistent formatting",
+        "location": "crates/adapters/hyperliquid/tests/entropy_account.rs:749:17"
+      },
+      {
+        "message": "consider adding a `;` to the last statement for consistent formatting",
+        "location": "crates/adapters/hyperliquid/tests/entropy_account.rs:753:17"
+      },
+      {
+        "message": "this argument is passed by value, but not consumed in the function body",
+        "location": "crates/adapters/hyperliquid/src/economics_scope/tests.rs:66:32"
+      },
+      {
+        "message": "this argument is passed by value, but not consumed in the function body",
+        "location": "crates/adapters/hyperliquid/src/economics_scope/tests.rs:70:48"
+      },
+      {
+        "message": "variables can be used directly in the `format!` string",
+        "location": "crates/adapters/hyperliquid/src/economics_scope/tests.rs:470:45"
+      },
+      {
+        "message": "variables can be used directly in the `format!` string",
+        "location": "crates/adapters/hyperliquid/src/economics_scope/tests.rs:634:45"
+      }
+    ]
+  },
+  "current": [
+    {
+      "label": "native117-tests-inclusive-clippy-v7",
+      "log": {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-tests-inclusive-clippy-v7.log",
+        "sha256": "38e6a57c6420ebbaa3ca9149b68ceb0702eece37f8a1dddc6c4533e43b12b646"
+      },
+      "receipt": {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-tests-inclusive-clippy-v7.json",
+        "sha256": "054ee86142505d3f2a7690c654c632c2cc18eb95612fc3ab67f163ca73a0cb02"
+      },
+      "command": {
+        "argv": [
+          "cargo",
+          "clippy",
+          "-p",
+          "nautilus-hyperliquid",
+          "--lib",
+          "--tests",
+          "--no-deps",
+          "--profile",
+          "nextest",
+          "--locked",
+          "--offline",
+          "--config",
+          "build.warnings='warn'",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "cwd": "E:\\persarb\\worktrees\\entropy-warm-prerequisites",
+        "started_utc": "2026-10-09T13:27:47.706228+00:00",
+        "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+        "pyo3_python": "E:/persarb/worktrees/entropy-warm-prerequisites/.venv/Scripts/python.exe",
+        "uv_project_environment": null,
+        "nautilus_stub_profile": null,
+        "cargo_build_warnings": null,
+        "cargo_net_offline": null,
+        "entropy43_native_wheel": null,
+        "entropy43_native_sha256": null,
+        "entropy43_native_provenance": null,
+        "entropy43_evidence_root": null,
+        "exit_code": 101,
+        "finished_utc": "2026-10-09T13:28:02.596177+00:00"
+      },
+      "diagnostics": [
+        {
+          "message": "this argument is passed by value, but not consumed in the function body",
+          "location": "crates/adapters/hyperliquid/tests/entropy_account/execution.rs:527:31"
+        },
+        {
+          "message": "this `RefCell` reference is held across an await point",
+          "location": "crates/adapters/hyperliquid/tests/entropy_account/execution.rs:876:9"
+        },
+        {
+          "message": "called `map(<f>).unwrap_or_else(<g>)` on an `Option` value",
+          "location": "crates/adapters/hyperliquid/tests/entropy_account.rs:501:5"
+        },
+        {
+          "message": "consider adding a `;` to the last statement for consistent formatting",
+          "location": "crates/adapters/hyperliquid/tests/entropy_account.rs:746:17"
+        },
+        {
+          "message": "consider adding a `;` to the last statement for consistent formatting",
+          "location": "crates/adapters/hyperliquid/tests/entropy_account.rs:749:17"
+        },
+        {
+          "message": "consider adding a `;` to the last statement for consistent formatting",
+          "location": "crates/adapters/hyperliquid/tests/entropy_account.rs:753:17"
+        },
+        {
+          "message": "this argument is passed by value, but not consumed in the function body",
+          "location": "crates/adapters/hyperliquid/src/economics_scope/tests.rs:66:32"
+        },
+        {
+          "message": "this argument is passed by value, but not consumed in the function body",
+          "location": "crates/adapters/hyperliquid/src/economics_scope/tests.rs:70:48"
+        },
+        {
+          "message": "variables can be used directly in the `format!` string",
+          "location": "crates/adapters/hyperliquid/src/economics_scope/tests.rs:470:45"
+        },
+        {
+          "message": "variables can be used directly in the `format!` string",
+          "location": "crates/adapters/hyperliquid/src/economics_scope/tests.rs:634:45"
+        }
+      ]
+    },
+    {
+      "label": "native117-integration-tests-clippy-v7",
+      "log": {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-integration-tests-clippy-v7.log",
+        "sha256": "156f4593383397f36a2315bda394a9f6e4f61ce1845728afaf00ccb80e044ffc"
+      },
+      "receipt": {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\native117-integration-tests-clippy-v7.json",
+        "sha256": "2547ffe8fa72b2082f315b5f6f9fcf297f0ced95f562d542c6001d45b61c1603"
+      },
+      "command": {
+        "argv": [
+          "cargo",
+          "clippy",
+          "-p",
+          "nautilus-hyperliquid",
+          "--test",
+          "entropy_account",
+          "--no-deps",
+          "--profile",
+          "nextest",
+          "--locked",
+          "--offline",
+          "--config",
+          "build.warnings='warn'",
+          "--",
+          "-D",
+          "warnings"
+        ],
+        "cwd": "E:\\persarb\\worktrees\\entropy-warm-prerequisites",
+        "started_utc": "2026-10-09T13:28:34.582296+00:00",
+        "cargo_target_dir": "E:/persarb/nautilus_trader/target",
+        "pyo3_python": "E:/persarb/worktrees/entropy-warm-prerequisites/.venv/Scripts/python.exe",
+        "uv_project_environment": null,
+        "nautilus_stub_profile": null,
+        "cargo_build_warnings": null,
+        "cargo_net_offline": null,
+        "entropy43_native_wheel": null,
+        "entropy43_native_sha256": null,
+        "entropy43_native_provenance": null,
+        "entropy43_evidence_root": null,
+        "exit_code": 101,
+        "finished_utc": "2026-10-09T13:28:38.123609+00:00"
+      },
+      "diagnostics": [
+        {
+          "message": "this argument is passed by value, but not consumed in the function body",
+          "location": "crates/adapters/hyperliquid/tests/entropy_account/execution.rs:527:31"
+        },
+        {
+          "message": "this `RefCell` reference is held across an await point",
+          "location": "crates/adapters/hyperliquid/tests/entropy_account/execution.rs:876:9"
+        },
+        {
+          "message": "called `map(<f>).unwrap_or_else(<g>)` on an `Option` value",
+          "location": "crates/adapters/hyperliquid/tests/entropy_account.rs:501:5"
+        },
+        {
+          "message": "consider adding a `;` to the last statement for consistent formatting",
+          "location": "crates/adapters/hyperliquid/tests/entropy_account.rs:746:17"
+        },
+        {
+          "message": "consider adding a `;` to the last statement for consistent formatting",
+          "location": "crates/adapters/hyperliquid/tests/entropy_account.rs:749:17"
+        },
+        {
+          "message": "consider adding a `;` to the last statement for consistent formatting",
+          "location": "crates/adapters/hyperliquid/tests/entropy_account.rs:753:17"
+        }
+      ]
+    }
+  ],
+  "new_diagnostics": [],
+  "inherited_diagnostics": 10,
+  "tests_executed_by_comparison": 0,
+  "note": "The full v7 combined log contains ten inherited diagnostics: four library-test and six integration. The separately targeted integration command repeats the same six, so it is overlapping evidence and adds no distinct diagnostics. Both commands failed. The first parser wrongly inferred a four-error combined count from the output tail and raised AssertionError; it is retained. No tests-inclusive Clippy PASS is asserted."
+}

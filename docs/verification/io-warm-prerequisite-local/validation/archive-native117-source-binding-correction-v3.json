@@ -1,0 +1,48 @@
+{
+    "utc":  "2026-10-09T13:32:24.0599129Z",
+    "status":  "DRAFT_SOURCE_FROZEN_NOT_EXECUTED",
+    "base_main":  "5db2761590dd824fa159625326b6eaf3923b999a",
+    "preserved_first_implementation":  "56705ce873d5fc4e568e5f9ea8f2c614d5d35230",
+    "preserved_first_wheel_sha256":  "47486c076bfaa7afac05a02071b11d485280dca5718a0d806d6dd6fe1eb4a05e",
+    "future_implementation_receipt":  "native117-economic-correction-implementation-commit.json",
+    "expected_full_passed":  1435,
+    "expected_full_ignored":  18,
+    "actual_future_pass_claimed":  false,
+    "expected_source_inputs":  {
+                                   "app":  10,
+                                   "native":  33
+                               },
+    "expected_corrected_candidate_inputs":  {
+                                                "artifacts":  2,
+                                                "source":  32,
+                                                "installed":  24
+                                            },
+    "helper_executions":  0,
+    "archive_executions":  0,
+    "python_executions":  0,
+    "git_executions":  0,
+    "cargo_executions":  0,
+    "native_imports":  0,
+    "files":  [
+                  {
+                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\archive_native117.py",
+                      "sha256":  "37c5c76f1d0d3707b113eb7d4f2c0d4e5fcfbcee4aae2190f3d7fcee527399d6",
+                      "bytes":  19631
+                  },
+                  {
+                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\archive_native117_v2.py",
+                      "sha256":  "3c317b91fb66330d9668403358ee91d78c2759d43f06c14f6532a93822f105e9",
+                      "bytes":  27524
+                  },
+                  {
+                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\archive_native117_v3.py",
+                      "sha256":  "62e5c53e4b9b46980bb296d9e3973a5c91e4b923d209910f906b8dc3daedc1af",
+                      "bytes":  45648
+                  },
+                  {
+                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\archive-native117-source-binding-correction-v3.md",
+                      "sha256":  "9b73d997484f12f37405375b9e4993284af4f8d085a0123056427667121c930f",
+                      "bytes":  6298
+                  }
+              ]
+}

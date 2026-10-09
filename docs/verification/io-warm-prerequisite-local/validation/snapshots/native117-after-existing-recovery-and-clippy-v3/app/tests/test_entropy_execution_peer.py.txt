@@ -1,0 +1,189 @@
+"""Synthetic peer chronology through real bounded numeric-loopback HTTP/WS only."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from decimal import Decimal
+from urllib.parse import urlsplit
+
+import pytest
+from entropy_execution_peer import USER, ExecutionPeer
+from websockets.asyncio.client import connect
+
+
+async def info(peer, kind, **extra):
+    address = urlsplit(peer.http_url)
+    reader, writer = await asyncio.wait_for(
+        asyncio.open_connection(address.hostname, address.port), 1
+    )
+    try:
+        body = json.dumps({"type": kind, "user": USER, **extra}).encode()
+        writer.write(
+            f"POST /info HTTP/1.1\r\nHost: {address.netloc}\r\n"
+            f"Content-Length: {len(body)}\r\nConnection: close\r\n\r\n".encode()
+            + body
+        )
+        await writer.drain()
+        header = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), 1)
+        assert header.startswith(b"HTTP/1.1 200 OK\r\n")
+        length = int(
+            next(
+                line.split(b":", 1)[1]
+                for line in header.split(b"\r\n")
+                if line.lower().startswith(b"content-length:")
+            )
+        )
+        assert 0 <= length <= 65536
+        return json.loads(await asyncio.wait_for(reader.readexactly(length), 1))
+    finally:
+        writer.close()
+        await writer.wait_closed()
+
+
+def order(identifier, *, reduce=False):
+    return {
+        "method": "post",
+        "id": identifier,
+        "request": {
+            "type": "action",
+            "payload": {
+                "action": {
+                    "type": "order",
+                    "orders": [
+                        {
+                            "a": 110000,
+                            "b": not reduce,
+                            "p": "100",
+                            "s": "0.12",
+                            "r": reduce,
+                            "c": f"0x{identifier:032x}",
+                            "t": {"limit": {"tif": "Ioc"}},
+                        }
+                    ],
+                    "grouping": "na",
+                },
+            },
+        },
+    }
+
+
+async def receive(ws, channel):
+    async with asyncio.timeout(1):
+        while True:
+            frame = json.loads(await ws.recv())
+            if frame["channel"] == channel:
+                return frame
+
+
+def statuses(ack):
+    return ack["data"]["response"]["payload"]["response"]["data"]["statuses"]
+
+
+def signed_quantity(snapshot):
+    rows = snapshot["assetPositions"]
+    return Decimal(rows[0]["position"]["szi"]) if rows else Decimal(0)
+
+
+async def publication(ws):
+    return (await receive(ws, "user"))["data"]["fills"][0]
+
+
+def test_overlapping_entry_and_reduce_close_execute_before_ack_publish_once():
+    async def scenario():
+        async with (
+            ExecutionPeer("HYPERLIQUID") as peer,
+            connect(peer.ws_url, max_size=65536) as ws,
+        ):
+            await ws.send(json.dumps(order(1)))
+            first_ack = await receive(ws, "post")
+            first_account = await info(peer, "clearinghouseState", dex="io")
+            assert signed_quantity(first_account) == Decimal("0.12")
+            await ws.send(json.dumps(order(2, reduce=True)))
+            second_ack = await receive(ws, "post")
+            assert all(item["published_ms"] is None for item in peer.executions)
+            first_status, second_status, before, account = await asyncio.gather(
+                info(peer, "orderStatus", oid=f"0x{1:032x}"),
+                info(peer, "orderStatus", oid=f"0x{2:032x}"),
+                info(peer, "userFills"),
+                info(peer, "clearinghouseState", dex="io"),
+            )
+            assert before == []
+            assert signed_quantity(account) == 0
+            delivered = [await publication(ws), await publication(ws)]
+            persisted = await info(peer, "userFills")
+            assert delivered == persisted
+            assert len({row["oid"] for row in delivered}) == 2
+            assert len({row["tid"] for row in delivered}) == 2
+            for ack, status, fill, execution in zip(
+                (first_ack, second_ack),
+                (first_status, second_status),
+                delivered,
+                peer.executions,
+                strict=True,
+            ):
+                assert statuses(ack) == [
+                    {"filled": {"oid": fill["oid"], "totalSz": "0.12", "avgPx": "100"}}
+                ]
+                assert status["order"]["status"] == "filled"
+                assert status["order"]["statusTimestamp"] == fill["time"]
+                assert status["order"]["order"]["timestamp"] == fill["time"]
+                assert status["order"]["order"]["sz"] == "0"
+                assert execution["fill"] == fill
+                assert execution["published_ms"] >= fill["time"]
+                assert fill["fee"] == "0.001" and fill["builderFee"] == "0.0002"
+            assert delivered[0]["startPosition"] == "0"
+            assert Decimal(delivered[1]["startPosition"]) == Decimal("0.12")
+            assert delivered[1]["dir"] == "Close Long"
+            final = await info(peer, "clearinghouseState", dex="io")
+            assert signed_quantity(final) == 0
+            assert peer.actions == 2 and not peer.errors
+        assert not peer.sessions and not peer.tasks and not peer.workers
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("fault", ["reject", "cleanup_reject", "missing_response"])
+def test_unexecuted_negative_requests_leave_no_phantom_filled_state(fault):
+    async def scenario():
+        async with (
+            ExecutionPeer("HYPERLIQUID", fault=fault) as peer,
+            connect(peer.ws_url, max_size=65536) as ws,
+        ):
+            prior = []
+            expected = Decimal(0)
+            identifier = 1
+            if fault == "cleanup_reject":
+                await ws.send(json.dumps(order(1)))
+                assert "filled" in statuses(await receive(ws, "post"))[0]
+                prior = [await publication(ws)]
+                await receive(ws, "clearinghouseState")
+                expected = Decimal("0.12")
+                identifier = 2
+            command = order(identifier, reduce=fault == "cleanup_reject")
+            await ws.send(json.dumps(command))
+            if fault != "missing_response":
+                assert statuses(await receive(ws, "post")) == [
+                    {"error": "synthetic bounded rejection"}
+                ]
+            with pytest.raises(TimeoutError):
+                async with asyncio.timeout(0.2):
+                    await ws.recv()
+            cloid = command["request"]["payload"]["action"]["orders"][0]["c"]
+            state, history, fills, account = await asyncio.gather(
+                info(peer, "orderStatus", oid=cloid),
+                info(peer, "historicalOrders"),
+                info(peer, "userFills"),
+                info(peer, "clearinghouseState", dex="io"),
+            )
+            assert state == {"status": "unknownOid"}
+            assert len(history) == len(prior)
+            assert fills == prior
+            assert signed_quantity(account) == expected
+            assert len(peer.executions) == len(prior)
+            assert len(peer.orders) == len(prior)
+            assert peer.actions == identifier
+            assert not peer.errors
+        assert not peer.sessions and not peer.tasks and not peer.workers
+
+    asyncio.run(scenario())

@@ -1,0 +1,201 @@
+[
+  {
+    "relative": "crates/adapters/hyperliquid/tests/entropy_account/execution.rs",
+    "old_sha256": "fbc4a4efc0eb867d9f52322f948e5a601d0990cece044b05deca33c557af4196",
+    "new_sha256": "fbc4a4efc0eb867d9f52322f948e5a601d0990cece044b05deca33c557af4196",
+    "tokens_exact": true,
+    "token_changes": [],
+    "only_added_trailing_commas": true
+  },
+  {
+    "relative": "crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs",
+    "old_sha256": "386aad8630838493142c0ddd92b6ef2ef8c909812440528556665979725b7bf6",
+    "new_sha256": "f241151404aab9d14afe7d9711eff8fc7fac7d8c7a55db4df6c94aa26cf41b7a",
+    "tokens_exact": false,
+    "token_changes": [
+      {
+        "op": "insert",
+        "old": [],
+        "new": [
+          ","
+        ],
+        "next_old": [
+          ")",
+          ";"
+        ],
+        "next_new": [
+          ")",
+          ";"
+        ]
+      }
+    ],
+    "only_added_trailing_commas": true
+  },
+  {
+    "relative": "crates/adapters/hyperliquid/tests/entropy_account/warm_prerequisite.rs",
+    "old_sha256": "eb28493cd87f9bbca327dc1f04f1b97b671e2bd89f855132dfd99370e36a20d6",
+    "new_sha256": "1297a531c353837285638b349ed894a4d50444d048a7415f78e68fcc8fb8d803",
+    "tokens_exact": false,
+    "token_changes": [
+      {
+        "op": "delete",
+        "old": [
+          ","
+        ],
+        "new": [],
+        "next_old": [
+          ")",
+          "."
+        ],
+        "next_new": [
+          ")",
+          "."
+        ]
+      },
+      {
+        "op": "insert",
+        "old": [],
+        "new": [
+          "{"
+        ],
+        "next_old": [
+          "panic",
+          "!"
+        ],
+        "next_new": [
+          "panic",
+          "!"
+        ]
+      },
+      {
+        "op": "insert",
+        "old": [],
+        "new": [
+          "}"
+        ],
+        "next_old": [
+          ")",
+          "}"
+        ],
+        "next_new": [
+          ")",
+          "}"
+        ]
+      },
+      {
+        "op": "insert",
+        "old": [],
+        "new": [
+          "{"
+        ],
+        "next_old": [
+          "row",
+          "["
+        ],
+        "next_new": [
+          "row",
+          "["
+        ]
+      },
+      {
+        "op": "insert",
+        "old": [],
+        "new": [
+          "}"
+        ],
+        "next_old": [
+          ")",
+          "."
+        ],
+        "next_new": [
+          ")",
+          "."
+        ]
+      },
+      {
+        "op": "insert",
+        "old": [],
+        "new": [
+          ","
+        ],
+        "next_old": [
+          "]",
+          "{"
+        ],
+        "next_new": [
+          "]",
+          "{"
+        ]
+      },
+      {
+        "op": "insert",
+        "old": [],
+        "new": [
+          ","
+        ],
+        "next_old": [
+          ")",
+          ")"
+        ],
+        "next_new": [
+          ")",
+          ")"
+        ]
+      },
+      {
+        "op": "insert",
+        "old": [],
+        "new": [
+          ","
+        ],
+        "next_old": [
+          ")",
+          ";"
+        ],
+        "next_new": [
+          ")",
+          ";"
+        ]
+      },
+      {
+        "op": "insert",
+        "old": [],
+        "new": [
+          ","
+        ],
+        "next_old": [
+          ")",
+          "."
+        ],
+        "next_new": [
+          ")",
+          "."
+        ]
+      },
+      {
+        "op": "insert",
+        "old": [],
+        "new": [
+          ","
+        ],
+        "next_old": [
+          ")",
+          ";"
+        ],
+        "next_new": [
+          ")",
+          ";"
+        ]
+      }
+    ],
+    "only_added_trailing_commas": false
+  },
+  {
+    "relative": "crates/adapters/hyperliquid/tests/entropy_account.rs",
+    "old_sha256": "5976b5e8e5b9e19314679ca009365024817a2ad4e3a07ac65c7cdf1d06a79c07",
+    "new_sha256": "5976b5e8e5b9e19314679ca009365024817a2ad4e3a07ac65c7cdf1d06a79c07",
+    "tokens_exact": true,
+    "token_changes": [],
+    "only_added_trailing_commas": true
+  }
+]

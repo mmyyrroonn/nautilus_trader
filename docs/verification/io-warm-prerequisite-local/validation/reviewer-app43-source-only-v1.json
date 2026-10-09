@@ -1,0 +1,157 @@
+﻿{
+    "schema_version":  1,
+    "utc":  "2026-10-09 12:13:48 UTC",
+    "scope":  "APP43 source-only review of four modules, actual-native seven-case assertions and corrected peer/four blackbox cases",
+    "author":  "/root/entropy_app_runtime",
+    "app_assigned_head":  "5b8c144c39ebcbcfd03ca07f8e53b103741b130a",
+    "declared_capture":  "native117-formatted-v3.json",
+    "checks":  {
+                   "primary_inputs_count":  10,
+                   "unchanged_primary_inputs":  10,
+                   "tests_executed":  0,
+                   "product_edits":  0,
+                   "git_or_github_calls":  0,
+                   "native_imports":  0,
+                   "paired117":  "Not yet run or reviewed",
+                   "historical115_paired":  "FAIL; reference only"
+               },
+    "inputs":  [
+                   {
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\CLAUDE.md",
+                       "bytes":  2551,
+                       "declared_sha256":  "e88c45fda78397824437eba1ba8bf3aa8c33760940d377b3f6e3e04f0477e530",
+                       "before_sha256":  "e88c45fda78397824437eba1ba8bf3aa8c33760940d377b3f6e3e04f0477e530",
+                       "after_sha256":  "e88c45fda78397824437eba1ba8bf3aa8c33760940d377b3f6e3e04f0477e530",
+                       "snapshot_path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\app\\CLAUDE.md",
+                       "snapshot_sha256":  "e88c45fda78397824437eba1ba8bf3aa8c33760940d377b3f6e3e04f0477e530",
+                       "unchanged":  true
+                   },
+                   {
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\AGENTS.md",
+                       "bytes":  4070,
+                       "declared_sha256":  "0db83eca19a5637b536145f71915c4d1d84c7b186eaf809e266b126eb9fde7e5",
+                       "before_sha256":  "0db83eca19a5637b536145f71915c4d1d84c7b186eaf809e266b126eb9fde7e5",
+                       "after_sha256":  "0db83eca19a5637b536145f71915c4d1d84c7b186eaf809e266b126eb9fde7e5",
+                       "snapshot_path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\app\\AGENTS.md",
+                       "snapshot_sha256":  "0db83eca19a5637b536145f71915c4d1d84c7b186eaf809e266b126eb9fde7e5",
+                       "unchanged":  true
+                   },
+                   {
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution.py",
+                       "bytes":  73521,
+                       "declared_sha256":  "fbde3f919a6813a47aeb8c388ac3689a33689139d876c6e7e6551d7a364ab882",
+                       "before_sha256":  "fbde3f919a6813a47aeb8c388ac3689a33689139d876c6e7e6551d7a364ab882",
+                       "after_sha256":  "fbde3f919a6813a47aeb8c388ac3689a33689139d876c6e7e6551d7a364ab882",
+                       "snapshot_path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\app\\src\\entropy_execution.py",
+                       "snapshot_sha256":  "fbde3f919a6813a47aeb8c388ac3689a33689139d876c6e7e6551d7a364ab882",
+                       "unchanged":  true
+                   },
+                   {
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution_config.py",
+                       "bytes":  12822,
+                       "declared_sha256":  "45ed321317743d05a86b1a51058ad684dbd2e84f31bd86a9fd701845025d8c54",
+                       "before_sha256":  "45ed321317743d05a86b1a51058ad684dbd2e84f31bd86a9fd701845025d8c54",
+                       "after_sha256":  "45ed321317743d05a86b1a51058ad684dbd2e84f31bd86a9fd701845025d8c54",
+                       "snapshot_path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\app\\src\\entropy_execution_config.py",
+                       "snapshot_sha256":  "45ed321317743d05a86b1a51058ad684dbd2e84f31bd86a9fd701845025d8c54",
+                       "unchanged":  true
+                   },
+                   {
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution_core.py",
+                       "bytes":  37382,
+                       "declared_sha256":  "da5abc7ffa5d61439daaf814254aff4d99ad5a7f977790ee80f86dad910d2443",
+                       "before_sha256":  "da5abc7ffa5d61439daaf814254aff4d99ad5a7f977790ee80f86dad910d2443",
+                       "after_sha256":  "da5abc7ffa5d61439daaf814254aff4d99ad5a7f977790ee80f86dad910d2443",
+                       "snapshot_path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\app\\src\\entropy_execution_core.py",
+                       "snapshot_sha256":  "da5abc7ffa5d61439daaf814254aff4d99ad5a7f977790ee80f86dad910d2443",
+                       "unchanged":  true
+                   },
+                   {
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\src\\entropy_execution_report.py",
+                       "bytes":  21940,
+                       "declared_sha256":  "5b1a01d4762173c739a90daed4878f854ab0f78b2232a5de07c6969eab9deffa",
+                       "before_sha256":  "5b1a01d4762173c739a90daed4878f854ab0f78b2232a5de07c6969eab9deffa",
+                       "after_sha256":  "5b1a01d4762173c739a90daed4878f854ab0f78b2232a5de07c6969eab9deffa",
+                       "snapshot_path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\app\\src\\entropy_execution_report.py",
+                       "snapshot_sha256":  "5b1a01d4762173c739a90daed4878f854ab0f78b2232a5de07c6969eab9deffa",
+                       "unchanged":  true
+                   },
+                   {
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\entropy_execution_peer.py",
+                       "bytes":  30306,
+                       "declared_sha256":  "11930d360dabe0c8751b0f2451c1f8570489311a8526b419a72b25781075515d",
+                       "before_sha256":  "11930d360dabe0c8751b0f2451c1f8570489311a8526b419a72b25781075515d",
+                       "after_sha256":  "11930d360dabe0c8751b0f2451c1f8570489311a8526b419a72b25781075515d",
+                       "snapshot_path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\app\\tests\\entropy_execution_peer.py",
+                       "snapshot_sha256":  "11930d360dabe0c8751b0f2451c1f8570489311a8526b419a72b25781075515d",
+                       "unchanged":  true
+                   },
+                   {
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\test_entropy_execution_peer.py",
+                       "bytes":  7419,
+                       "declared_sha256":  "c649d24c2c68beb5758442e3eb5abfdd455b070627c179c734f66b8719eac35a",
+                       "before_sha256":  "c649d24c2c68beb5758442e3eb5abfdd455b070627c179c734f66b8719eac35a",
+                       "after_sha256":  "c649d24c2c68beb5758442e3eb5abfdd455b070627c179c734f66b8719eac35a",
+                       "snapshot_path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\app\\tests\\test_entropy_execution_peer.py",
+                       "snapshot_sha256":  "c649d24c2c68beb5758442e3eb5abfdd455b070627c179c734f66b8719eac35a",
+                       "unchanged":  true
+                   },
+                   {
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\tests\\test_entropy_execution_native.py",
+                       "bytes":  31959,
+                       "declared_sha256":  "9a975f5cca43b6b7cb778435a170b3a1223cf0db351417b7bfdd4f9788124120",
+                       "before_sha256":  "9a975f5cca43b6b7cb778435a170b3a1223cf0db351417b7bfdd4f9788124120",
+                       "after_sha256":  "9a975f5cca43b6b7cb778435a170b3a1223cf0db351417b7bfdd4f9788124120",
+                       "snapshot_path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\app\\tests\\test_entropy_execution_native.py",
+                       "snapshot_sha256":  "9a975f5cca43b6b7cb778435a170b3a1223cf0db351417b7bfdd4f9788124120",
+                       "unchanged":  true
+                   },
+                   {
+                       "path":  "E:\\persarb\\worktrees\\entropy-execution-app\\scripts\\install_native.py",
+                       "bytes":  10944,
+                       "declared_sha256":  "c2d473e5f5dea8c8931ef4350471b2dfa4e1877fcf8168fb7f816f3351d48adf",
+                       "before_sha256":  "c2d473e5f5dea8c8931ef4350471b2dfa4e1877fcf8168fb7f816f3351d48adf",
+                       "after_sha256":  "c2d473e5f5dea8c8931ef4350471b2dfa4e1877fcf8168fb7f816f3351d48adf",
+                       "snapshot_path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\app\\scripts\\install_native.py",
+                       "snapshot_sha256":  "c2d473e5f5dea8c8931ef4350471b2dfa4e1877fcf8168fb7f816f3351d48adf",
+                       "unchanged":  true
+                   }
+               ],
+    "references":  [
+                       {
+                           "path":  "E:/persarb/_tmp/entropy102-design/app43-current.json",
+                           "sha256":  "7431c8312335487881d7324d1062988d22343bc4e6fdb0601d79a303ef2ba415"
+                       },
+                       {
+                           "path":  "E:/persarb/_tmp/entropy102-validation/app43-offline-plan.md",
+                           "sha256":  "dadb294fac22fcb5deee65d5e341db9c2322eaab164e339ce40d93e9fd8ae034"
+                       },
+                       {
+                           "path":  "E:/persarb/_tmp/entropy115-validation/app43-native115-chronology-first-paired.log",
+                           "sha256":  "8d38ef82f3def455954101cea2ad9949f9a29c73556081d746b274cb1a63ee41"
+                       },
+                       {
+                           "path":  "E:/persarb/_tmp/entropy115-validation/app43-native115-chronology-first-paired.json",
+                           "sha256":  "97cee3e78bfd0c2fbded23a7ac72608bd2b9ba3c1fb9ecc8858b263cfe1d3fad"
+                       },
+                       {
+                           "path":  "E:/persarb/_tmp/entropy115-validation/native115-app43-first-paired-review-v1.md",
+                           "sha256":  "576e892d3122f2e9bb8d191aeba5bd544988abe5be77666dff7cac72f7fdcb7a"
+                       }
+                   ],
+    "assertion_gaps":  [
+                           "reject requires first-leg fill and new-risk closed but no actual Aster reject source",
+                           "partial requires second entry intent and residual reason but no actual partial quantity/expiry assertion",
+                           "cleanup_failure requires residual Aster quantity but no cleanup reject target request/event assertion",
+                           "No installed-native application restart; only pure from_snapshot",
+                           "No actual book-drift/dust/tight-budget/funding-hole peer mode in the seven cases",
+                           "No direct seven-case receipt/valuation assertion; economic completeness intentionally Unknown",
+                           "Outer subprocess TimeoutExpired bypasses child argv/stdout/stderr artifact writes"
+                       ],
+    "source_contract_assumptions":  [
+                                        "Normal terminal callback routing is trusted beyond CID; no direct exact event/cache ownership guard on terminal callback branch",
+                                        "Refresh scheduler native-pending diagnostic list predates bounded warm-query diagnostic; pending state needs ordinary actual timing review",
+                                        "Repeated cleanup may cancel just prepared owned IOC and consume finite action budget"
+                                    ],
+    "findings_are":  "Static review; no newly executed exploit, test pass or actual117 liveness conclusion"
+}

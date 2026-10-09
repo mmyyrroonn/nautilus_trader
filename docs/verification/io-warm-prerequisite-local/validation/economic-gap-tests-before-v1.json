@@ -1,0 +1,46 @@
+{
+    "utc":  "2026-10-09T13:05:23.9524197Z",
+    "implementation":  "56705ce873d5fc4e568e5f9ea8f2c614d5d35230",
+    "implementation_receipt_sha256":  "1b29309793eba1747329dcb161932df3259e8443b7dbd72f7470452aa2534a98",
+    "scope":  "two assigned test files and readonly production context before new regression authoring",
+    "cargo":  0,
+    "tests":  0,
+    "git":  0,
+    "files":  [
+                  {
+                      "relative_path":  "crates/adapters/hyperliquid/src/economics_scope/tests.rs",
+                      "source_path":  "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\economics_scope\\tests.rs",
+                      "frozen_copy":  "E:\\persarb\\_tmp\\entropy117-validation\\economic-gap-tests-before-v1\\crates\\adapters\\hyperliquid\\src\\economics_scope\\tests.rs",
+                      "sha256":  "3b9363dbf3fd0f6c4a812bb682fc724f842922f3b9c9509319c6ea77ab570602",
+                      "bytes":  26465
+                  },
+                  {
+                      "relative_path":  "crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs",
+                      "source_path":  "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs",
+                      "frozen_copy":  "E:\\persarb\\_tmp\\entropy117-validation\\economic-gap-tests-before-v1\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs",
+                      "sha256":  "23566164a25e0470777180fdbd9e25491ca85f9a6e15cd83b2ca69054bbb994c",
+                      "bytes":  80997
+                  },
+                  {
+                      "relative_path":  "crates/adapters/hyperliquid/src/economics_scope.rs",
+                      "source_path":  "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\economics_scope.rs",
+                      "frozen_copy":  "E:\\persarb\\_tmp\\entropy117-validation\\economic-gap-tests-before-v1\\crates\\adapters\\hyperliquid\\src\\economics_scope.rs",
+                      "sha256":  "2ebdf3756f39ea0cd32cfdc79d84ef7babdcabd6c2d7fea0b0f00d4c151f7f47",
+                      "bytes":  34956
+                  },
+                  {
+                      "relative_path":  "crates/adapters/hyperliquid/src/account_scope.rs",
+                      "source_path":  "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\account_scope.rs",
+                      "frozen_copy":  "E:\\persarb\\_tmp\\entropy117-validation\\economic-gap-tests-before-v1\\crates\\adapters\\hyperliquid\\src\\account_scope.rs",
+                      "sha256":  "1ff6b1d2ea0050b2b31f0a053682b109b2fa0eb7ae94c9509afdb6b7ef4e5230",
+                      "bytes":  84490
+                  },
+                  {
+                      "relative_path":  "crates/adapters/hyperliquid/src/execution_scope.rs",
+                      "source_path":  "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+                      "frozen_copy":  "E:\\persarb\\_tmp\\entropy117-validation\\economic-gap-tests-before-v1\\crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+                      "sha256":  "05963a5c4d221b476cae64260cf956898105acbafbde8ce117b1e659f000be50",
+                      "bytes":  194007
+                  }
+              ]
+}

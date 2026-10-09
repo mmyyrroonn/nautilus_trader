@@ -1,0 +1,30 @@
+"""Summarize closed actual synthetic cases without replaying tests or raw journals."""
+
+import hashlib
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+root = Path(__file__).resolve().parent
+output = root / "native117-primary-corrected-case-summary-v1.json"
+assert not output.exists()
+modes = ("paired", "reject", "partial", "unknown", "cleanup_failure", "foreign", "loss_fee")
+rows = []
+for mode in modes:
+    name = "app43-native117-corrected-first-paired-20261009" if mode == "paired" else "app43-native117-corrected-remaining-scenarios-20261009"
+    directory = root.parent / name / mode
+    path = directory / "summary.json"
+    before = hashlib.sha256(path.read_bytes()).hexdigest()
+    summary = json.loads(path.read_text(encoding="utf-8"))
+    controller = summary["controller"]
+    child = json.loads((directory / "child-command.json").read_text(encoding="utf-8"))
+    assert child["exit_code"] == 0
+    assert summary["synthetic_numeric_loopback"] and summary["started"] and summary["stopped"]
+    assert summary["shutdown_verified"] and not summary["watchdog_fired"]
+    assert not summary["economics_complete"]
+    assert not summary["native_host_egress_isolation_verified"]
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == before
+    rows.append({"mode": mode, "summary_path": str(path), "summary_sha256": before, "child_exit_code": child["exit_code"], "controller_state": controller["state"], "entry_orders": controller["entry_orders"], "cleanup_orders": controller["cleanup_orders"], "fills": len(controller["fills"]), "fill_ids": [fill["trade_id"] for fill in controller["fills"]], "positions": controller["positions"], "portfolio_positions": summary["native_portfolio_net_positions"], "gross_reserved_usd": controller["gross_reserved_usd"], "orders_terminal": controller["orders_terminal"], "owned_flat_verified": controller["owned_flat_verified"], "current_projection_verified": controller["current_projection_verified"], "loss_usd": controller["loss_usd"], "reasons": controller["reasons"], "shutdown_verified": summary["shutdown_verified"], "economics_complete": summary["economics_complete"]})
+output.write_text(json.dumps({"created_utc": datetime.now(timezone.utc).isoformat(), "actual_cases": rows, "new_test_executions": 0, "note": "Root reads closed raw summaries; negative cases need not end Completed. This does not close larger APP43 acceptance or whole economics/E6."}, indent=2) + "\n", encoding="utf-8")
+print(json.dumps([{key: row[key] for key in ("mode", "controller_state", "fills", "positions", "gross_reserved_usd", "owned_flat_verified", "shutdown_verified")} for row in rows]))

@@ -1,0 +1,58 @@
+﻿{
+    "schema_version":  1,
+    "issue":  117,
+    "utc":  "2026-10-09 11:37:41 UTC",
+    "author":  "/root/entropy_app_runtime",
+    "assigned_base":  "5db2761590dd824fa159625326b6eaf3923b999a",
+    "worktree":  "E:/persarb/worktrees/entropy-warm-prerequisites",
+    "production":  [
+                       {
+                           "path":  "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\account_scope.rs",
+                           "snapshot":  "E:\\persarb\\_tmp\\entropy117-validation\\production-source-v1-frozen\\account_scope.rs",
+                           "bytes":  82414,
+                           "sha256":  "c6f1ab351e90d094cae19582ab3ddfc8c5ecc1955ce6a0a847536689775cbac5"
+                       },
+                       {
+                           "path":  "E:\\persarb\\worktrees\\entropy-warm-prerequisites\\crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+                           "snapshot":  "E:\\persarb\\_tmp\\entropy117-validation\\production-source-v1-frozen\\execution_scope.rs",
+                           "bytes":  191949,
+                           "sha256":  "6580b1a54c89d8aaa623350462e41a54a0ad51c37d7638d305288cc4c38973f2"
+                       }
+                   ],
+    "baseline":  [
+                     {
+                         "path":  "E:\\persarb\\_tmp\\entropy117-validation\\source-v1-before\\account_scope.rs",
+                         "bytes":  71506,
+                         "sha256":  "2b176ca4b355955268fe26a218a3019b5195ee4a3e87edd6c24e604f4553d0ce",
+                         "provenance":  "Copied from frozen native115 production, identical to assigned native117 base; this is not claimed to be a pre-edit native117 snapshot."
+                     },
+                     {
+                         "path":  "E:\\persarb\\_tmp\\entropy117-validation\\source-v1-before\\execution_scope.rs",
+                         "bytes":  187538,
+                         "sha256":  "afc9ba90c3c7a2b57e6e41212704d333e964b4934b88653960cbca599a16b4d1",
+                         "provenance":  "Copied from frozen native115 production, identical to assigned native117 base; this is not claimed to be a pre-edit native117 snapshot."
+                     }
+                 ],
+    "modified_execution_rs":  false,
+    "checks":  {
+                   "cargo_runs":  0,
+                   "test_runs":  0,
+                   "formatter_runs":  0,
+                   "compilation":  "Not run by this author",
+                   "static_review":  "Internal calls, struct initializers and source ownership reviewed",
+                   "independent_review":  "Pending",
+                   "application_pair":  "Not run; no pass claimed"
+               },
+    "raw_bounds":  {
+                       "per_http_body":  1048576,
+                       "each_http_group":  4194304,
+                       "serialized_journal_facts":  1048576,
+                       "cumulative_journal":  16777216,
+                       "retained_raw_groups":  "Shared original group plus active group; not a total RSS claim"
+                   },
+    "limitations":  [
+                        "Bounded non-atomic original role/mode evidence; silent remote changes are not newly observed",
+                        "Exact mutex/fsync timing and compiler behavior await actual root checks",
+                        "Candidate failures preserve raw debt; no failed115 journal/debt is reused or cleared"
+                    ]
+}

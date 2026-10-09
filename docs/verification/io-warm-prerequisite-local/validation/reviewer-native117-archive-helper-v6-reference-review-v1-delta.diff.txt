@@ -1,0 +1,44 @@
+--- v5
++++ v6
+@@ -327,6 +327,22 @@
+     return provenance
+ 
+ 
++def verify_installed_provenance_reference(identity, provenance, wheel_root):
++    """Bind the install verifier's reference/hash and all five source fields."""
++    require(wheel_root in (WHEEL, FIRST_WHEEL), "Unassigned installed provenance directory")
++    reference = identity["native_provenance"]
++    fields = {"source_binding", "declared_native", "declared_build",
++              "source_fingerprint_sha256", "build"}
++    require(isinstance(reference, dict) and set(reference) == fields | {"path", "sha256"},
++            "Installed provenance reference schema differs")
++    path = wheel_root / "native-provenance.json"
++    require(Path(reference["path"]).resolve() == path.resolve()
++            and reference["sha256"] == digest(path) and load_json(path) == provenance,
++            "Installed provenance reference path/hash/content differs")
++    require(all(reference[field] == provenance[field] for field in fields),
++            "Installed provenance source/build fields differ")
++
++
+ def verify_case(directory, mode, provenance, wheel_root=WHEEL):
+     """Bind a completed numeric-loopback case, preserving honest failures."""
+     required = ("summary.json", "child-command.json", "child-stdout.log", "child-stderr.log",
+@@ -350,7 +366,7 @@
+     identity = manifest["native_identity"]
+     require(identity["strict_source_binding_passed"] is True
+             and identity["wheel"]["sha256"] == provenance["wheel"]["sha256"], "Installed candidate binding differs")
+-    require(identity["native_provenance"] == provenance, "Installed provenance object differs")
++    verify_installed_provenance_reference(identity, provenance, wheel_root)
+     native_objects = [row for row in provenance["embedded_native_objects"] if row["path"].endswith(".pyd")]
+     require(len(native_objects) == 1
+             and identity["installed"]["native_module_sha256"] == native_objects[0]["sha256"],
+@@ -528,7 +544,8 @@
+     for name in ("native", "app"):
+         path = ROOT / f"native117-corrected-{name}-installed-identity-v1.json"
+         identity = load_json(path)
+-        require(identity["strict_source_binding_passed"] is True and identity["native_provenance"] == provenance
++        verify_installed_provenance_reference(identity, provenance, WHEEL)
++        require(identity["strict_source_binding_passed"] is True
+                 and identity["wheel"]["sha256"] == provenance["wheel"]["sha256"]
+                 and Path(identity["wheel"]["path"]).resolve() == Path(provenance["wheel"]["path"]).resolve()
+                 and identity["installed"]["native_module_sha256"] == native_objects[0]["sha256"],

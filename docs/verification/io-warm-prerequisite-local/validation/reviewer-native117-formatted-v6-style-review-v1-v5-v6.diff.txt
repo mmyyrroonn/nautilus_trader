@@ -1,0 +1,11 @@
+--- v5/native/crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs
++++ v6/native/crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs
+@@ -1151,7 +1151,7 @@
+             "missing_positions" => assert!(body.get("assetPositions").is_none()),
+             "missing_time" => assert!(body.get("time").is_none()),
+             "foreign_position" => {
+-                assert_eq!(body["assetPositions"][0]["position"]["coin"], "io:OTHER")
++                assert_eq!(body["assetPositions"][0]["position"]["coin"], "io:OTHER");
+             }
+             "token" => assert!(
+                 actual["raw_body"]

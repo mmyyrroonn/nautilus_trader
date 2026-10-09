@@ -1,0 +1,26 @@
+# Native117 formatted v6 narrow style review
+
+Read-only review completed at 2026-10-09T12:35:59.805768+00:00. Independent executions: **0 tests**. No production/test writes, Cargo, build, install, native import, or Git operations were performed.
+
+## Verdict and identity
+
+No blocker in this narrow delta. Final source binding is `native117-formatted-v6.json` SHA256 `97dd8aa22e399c40aac2156de708157bde002694bfa68699d99a746672bc377c`. All 31 native and 10 app input bytes match the frozen v6 manifest and remained unchanged across this review. Preserved v4/v5 snapshots were independently hashed. Only two test files differ from v4; all other 39 inputs, including both production files, are byte-identical. v5 to v6 changes only one semicolon in the io test.
+
+- `native/crates/adapters/hyperliquid/tests/entropy_account/io_query_recovery.rs`: `23566164a25e0470777180fdbd9e25491ca85f9a6e15cd83b2ca69054bbb994c`
+- `native/crates/adapters/hyperliquid/tests/entropy_account/warm_prerequisite.rs`: `4df0b91c82c998df6d60950e3ead30417ec0891dc73f06811b1768b503b3bb40`
+
+## Business criteria and lifetime checks
+
+In `warm_metadata_never_substitutes_for_actual_final_account_sources`, the borrowed peer data and actual target-response checks now end in a lexical block at the original explicit-drop point. HTTP body selection, status, exact role/mode/metadata/financial fault assertions, cache/fill/write checks, and normal stop remain. There is no await inside that scope. The formatting braces around the panic closure and foreign-position match arm change no predicate; v6's sole added assert semicolon preserves that arm's unit value.
+
+In `qualified_normal_postbinding_recovery_retains_actual_original_eight_sources`, the guard and borrowed clear-source vector now drop together at the same boundary before current-source checks and normal stop. Exact eight-source correlation, original verification times, and all no-projection checks remain. No await occurs inside the scope. No TTL, quota, deadline, body/group/Facts cap, stimulus, test count, or expected result changed. The declared 37 new and 64 existing scenarios remain source criteria, not independent runtime passes.
+
+## Actual lint evidence and prior execution boundary
+
+The root's archived v4 lint run failed with 12 diagnostic errors: the two new lock warnings and ten other diagnostics. The root's v5 run also failed: it removed both new lock warnings but introduced the foreign-position semicolon diagnostic, leaving 11 diagnostic errors. Compiler terminal summaries are excluded from these counts. The ten other diagnostic locations are in unchanged inputs; their baseline lineage is parent-supplied, not independently established with Git or Cargo here. This report does **not** claim v5 inclusive Clippy passed, nor claim a v6 Clippy result.
+
+The earlier actual v4 quota evidence review remains separately bound to its original captured bytes and timestamps (2026-10-09T12:28:17.245698+00:00 through 2026-10-09T12:28:17.251711+00:00). It was a read-only review of the root's successful actual probe, not reviewer execution, and is not relabeled as a v6 run.
+
+## Limits
+
+This approval covers source semantics of the two lexical scopes and sole semicolon. Full production authority was reviewed separately. No actual lock-wait/fsync/metadata-expiry crossing, full regression, installed-wheel acceptance, paired liveness, continuous remote mode, generic cold recovery, or mainnet claim follows from this review. Exact deltas and all before/after SHA256 values are retained in the companion JSON and diff files.

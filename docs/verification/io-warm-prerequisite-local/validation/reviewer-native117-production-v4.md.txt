@@ -1,0 +1,25 @@
+# Independent production source follow-up — native117 formatted v4
+
+Verdict: **APPROVED for the finite production source contract.** The v3 approval remains valid after this narrow borrow change. No source blocker was found. This is source-only production review, with **zero tests executed**; the reviewer authored the new test module and does not independently approve it here.
+
+The complete production diff between frozen `snapshots/native117-formatted-v3/native/` and `snapshots/native117-formatted-v4/native/` was read. `account_scope.rs` is byte-identical. `execution_scope.rs` changes only five related borrow/clone expressions and signatures:
+
+- `IoWarmSourcesGuard::drop` passes `self.prerequisite_source.as_ref()` to the immediate synchronous abandonment helper.
+- That helper and the sole debt-retention function accept `Option<&Arc<WarmPrerequisiteSourceSeal>>`.
+- Durable `UnknownSources` takes its own Arc reference with `.cloned()`.
+- Bounded `RetentionFailed` maps the borrowed optional source directly to the same original-identity diagnostic.
+
+The guard still owns the captured old source for the entire synchronous retention call. The persisted Unknown debt acquires a strong Arc before the guard is dropped; its complete inline serialization, old request/raw/receipt identity and current new raw remain unchanged. The RetentionFailed path still reads the same original fields and explicitly refuses complete raw retention. No borrowed value escapes without ownership, asynchronous operation was added, raw body was recopied, old debt was cleared or successor-source attribution was changed.
+
+Original metadata expiry capture and the final publication scalar gate are unchanged from approved v3. Deadline, account/private freshness, lifetime/reader/current-flight/Cache fences, reserve restoration, original eight-source creation/nonrenewal, financial requests, quota, limits, public surface and optional old-journal decoding are unchanged. This removes a needless ownership transfer rather than weakening a lint or safety check.
+
+All **31 native and 10 application frozen inputs** match `native117-formatted-v4.json` sizes and SHA-256. Before/after identities are recorded in the companion review JSON. Test/quota fixture changes in root's combined capture are identified separately; their source correctness and actual behavior are outside this production follow-up. The prior Clippy failure is not relabeled as a pass by this review.
+
+| Production file | Formatted v3 SHA-256 | Formatted v4 SHA-256 |
+|---|---|---|
+| `account_scope.rs` | `1ff6b1d2ea0050b2b31f0a053682b109b2fa0eb7ae94c9509afdb6b7ef4e5230` | unchanged |
+| `execution_scope.rs` | `57df3fa269f02a16c900b38894bdc3fd2de4a4528c22e954afbeccb53c5da19d` | `05963a5c4d221b476cae64260cf956898105acbafbde8ce117b1e659f000be50` |
+
+Final sizes are 84,490 and 194,007 bytes. Only frozen copies and report metadata were read; only these new temporary review files were written. No Cargo, formatter, native import, loopback, test, build, installation, Git/GitHub, environment access or production/test edit occurred. Standard-library-only text comparison is not a test execution.
+
+This approval does not certify actual heavy TTL crossings, compiled/installed artifacts, the quota scenario, paired application success, CI, kernel/framework scheduling, current whole economics/history, cold restoration, continuous remote mode, general writer metadata atomicity, native Portfolio authority, mainnet or application43/E6 completion. Those limits and the preserved v1/v2 findings/v3 correction remain explicit.

@@ -1,0 +1,20 @@
+"""Keep reviewer diff bytes under the archive's supported text suffix."""
+import hashlib
+import json
+import shutil
+from datetime import datetime, timezone
+from pathlib import Path
+
+root = Path(__file__).resolve().parent
+files = []
+for source in sorted(root.glob("*.diff")):
+    target = Path(str(source) + ".txt")
+    assert not target.exists()
+    before = hashlib.sha256(source.read_bytes()).hexdigest()
+    shutil.copyfile(source, target)
+    assert hashlib.sha256(target.read_bytes()).hexdigest() == before == hashlib.sha256(source.read_bytes()).hexdigest()
+    files.append({"original": source.name, "supported_copy": target.name, "sha256": before, "bytes": source.stat().st_size})
+target = root / "native117-review-delta-byte-copies-v1.json"
+assert not target.exists()
+target.write_text(json.dumps({"created_utc": datetime.now(timezone.utc).isoformat(), "files": files, "tests_executed": 0, "source_changes": 0, "reason": "Preserve original diff occurrences and provide byte-identical .txt copies eligible for the immutable evidence archive."}, indent=2) + "\n", encoding="utf-8")
+print(target.read_text(encoding="utf-8"))

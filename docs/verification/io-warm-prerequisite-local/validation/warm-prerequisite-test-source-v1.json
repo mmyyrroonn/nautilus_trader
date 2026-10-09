@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "captured_utc": "2026-10-09T11:29:32.0745355Z",
+  "worktree": "E:/persarb/worktrees/entropy-warm-prerequisites",
+  "base_main": "5db2761590dd824fa159625326b6eaf3923b999a",
+  "branch_assigned_by_root": "feature/entropy-warm-prerequisites",
+  "issue": "https://github.com/mmyyrroonn/nautilus_trader/issues/117",
+  "test_source_status": "frozen, unformatted and uncompiled by author",
+  "async_test_functions": 16,
+  "statically_expanded_cases": 37,
+  "collected_cases": null,
+  "executed_cases": 0,
+  "files": [
+    {
+      "path": "crates/adapters/hyperliquid/tests/entropy_account/warm_prerequisite.rs",
+      "bytes": 41741,
+      "sha256": "eb28493cd87f9bbca327dc1f04f1b97b671e2bd89f855132dfd99370e36a20d6"
+    },
+    {
+      "path": "crates/adapters/hyperliquid/tests/entropy_account/execution.rs",
+      "bytes": 59056,
+      "sha256": "fbc4a4efc0eb867d9f52322f948e5a601d0990cece044b05deca33c557af4196",
+      "change": "three-line path module hook only"
+    }
+  ],
+  "proposed_contract_schema_confirmed_by_runtime_author": {
+    "prerequisite": "warm_prerequisite_source",
+    "reuse_diagnostic": "last_query_reused_prerequisite",
+    "old_debt_object": "recovery_source_debt.reused_prerequisite_source",
+    "new_debt_group": "recovery_source_debt.original_sources"
+  },
+  "caps": {
+    "account_ms": 2000,
+    "action_ms": 2000,
+    "metadata_ms": 30000,
+    "recovery_ms": 3000,
+    "facts_bytes": 1048576,
+    "each_raw_group_bytes": 4194304,
+    "journal_bytes": 16777216
+  },
+  "source_derived_query_minima": {"zero_fact_flat": 82, "one_active_owned_entry": 44, "one_active_owned_flat_close": 84},
+  "author_actions": {
+    "production_changes": false,
+    "existing_business_test_changes": false,
+    "cargo_format_build_install_or_test_run": false,
+    "git_mutations_or_github_access": false,
+    "credentials_or_real_venue_access": false,
+    "financial_event_or_cache_injection": false
+  },
+  "unverified": [
+    "compiler and rstest collection",
+    "normal timing/quota and first-qualified-hook behavior",
+    "exact private mutex-wait and unapplied-only integration",
+    "fsync-clock crossing and total process RSS",
+    "full native regression and inherited test compatibility",
+    "source-bound clean wheel and installed normal node",
+    "corrected paired and all-seven application acceptance",
+    "independent final review"
+  ]
+}

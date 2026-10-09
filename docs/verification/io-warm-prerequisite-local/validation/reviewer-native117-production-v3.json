@@ -1,0 +1,737 @@
+{
+    "review_utc":  "2026-10-09T12:09:04.9267762Z",
+    "verdict":  "approved finite production source contract",
+    "reviewer_independence":  "Reviewer authored new tests, not production; no independent test approval",
+    "executed_tests":  0,
+    "native_imports":  0,
+    "cargo_runs":  0,
+    "source_edits":  0,
+    "baseline":  "5db2761590dd824fa159625326b6eaf3923b999a",
+    "resolved_findings":  [
+                              "final-account-publication-clock",
+                              "final-selected-metadata-clock"
+                          ],
+    "remaining_source_blockers":  [
+
+                                  ],
+    "unexecuted":  [
+                       "heavy validation crossing metadata TTL",
+                       "deterministic mutex or fsync deadline crossing",
+                       "compiled native/installed wheel/paired/CI acceptance"
+                   ],
+    "native_input_count":  31,
+    "app_input_count":  10,
+    "all_copies_match":  true,
+    "before_capture":  {
+                           "path":  "E:/persarb/_tmp/entropy117-validation/native117-formatted-v2.json",
+                           "sha256":  "06359493607fb3c686d15ef139cf232c8bb55667efdc0dd7728f3f0793826d17"
+                       },
+    "after_capture":  {
+                          "path":  "E:/persarb/_tmp/entropy117-validation/native117-formatted-v3.json",
+                          "sha256":  "2f2a68e716694e39061450f9e4409878dc8aa92704222fcbb62752d4d3f221f4"
+                      },
+    "report":  {
+                   "path":  "E:/persarb/_tmp/entropy117-validation/reviewer-native117-production-v3.md",
+                   "sha256":  "e2750a868bfb15dd743afd4f63c0398e3cedbfca0f0dae87d45862668bd5ad71",
+                   "size":  6157
+               },
+    "inputs":  [
+                   {
+                       "side":  "native",
+                       "relative_path":  ".gitattributes",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\.gitattributes",
+                                      "sha256":  "7a94dfd273d7c91cbf75f8d7c48cded86061204d3150f036ff606782d339a7e7",
+                                      "size":  768,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\.gitattributes",
+                                     "sha256":  "7a94dfd273d7c91cbf75f8d7c48cded86061204d3150f036ff606782d339a7e7",
+                                     "size":  768,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "python\\pyproject.toml",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\python\\pyproject.toml",
+                                      "sha256":  "51288a9b821361cdfa6a915ca3048c2e5daf92e9793edd1b8514c0767e666018",
+                                      "size":  11420,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\python\\pyproject.toml",
+                                     "sha256":  "51288a9b821361cdfa6a915ca3048c2e5daf92e9793edd1b8514c0767e666018",
+                                     "size":  11420,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "python\\uv.lock",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\python\\uv.lock",
+                                      "sha256":  "5bf016c9fa06ee5ecad7d3d346e148793a205bb186e56bfb5d30106a57be7a55",
+                                      "size":  200194,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\python\\uv.lock",
+                                     "sha256":  "5bf016c9fa06ee5ecad7d3d346e148793a205bb186e56bfb5d30106a57be7a55",
+                                     "size":  200194,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "Cargo.toml",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\Cargo.toml",
+                                      "sha256":  "46b62a317d15d8e2d1701bf3d0e834bed4973860ebb685749800f148f42f2d5a",
+                                      "size":  24273,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\Cargo.toml",
+                                     "sha256":  "46b62a317d15d8e2d1701bf3d0e834bed4973860ebb685749800f148f42f2d5a",
+                                     "size":  24273,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "Cargo.lock",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\Cargo.lock",
+                                      "sha256":  "a802008d4363de0a4e28dd3b14990d0d79f95ef8a89431c5936fc31e1215463a",
+                                      "size":  259667,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\Cargo.lock",
+                                     "sha256":  "a802008d4363de0a4e28dd3b14990d0d79f95ef8a89431c5936fc31e1215463a",
+                                     "size":  259667,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "AGENTS.md",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\AGENTS.md",
+                                      "sha256":  "846051c913f6fca348bf09b8e0051e1f0d98915c35c73505ff2c6aafb43a0e1a",
+                                      "size":  4285,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\AGENTS.md",
+                                     "sha256":  "846051c913f6fca348bf09b8e0051e1f0d98915c35c73505ff2c6aafb43a0e1a",
+                                     "size":  4285,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "AI_POLICY.md",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\AI_POLICY.md",
+                                      "sha256":  "57c967521e37dba26dc00e88d8d8e098ab58574c2ab506b5be629862602d304d",
+                                      "size":  5058,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\AI_POLICY.md",
+                                     "sha256":  "57c967521e37dba26dc00e88d8d8e098ab58574c2ab506b5be629862602d304d",
+                                     "size":  5058,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "CONTRIBUTING.md",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\CONTRIBUTING.md",
+                                      "sha256":  "c0f05ebf611b058af9bc5f8684fc88aab8a5b7089dcc5bdc98b3d1dc345e189b",
+                                      "size":  8543,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\CONTRIBUTING.md",
+                                     "sha256":  "c0f05ebf611b058af9bc5f8684fc88aab8a5b7089dcc5bdc98b3d1dc345e189b",
+                                     "size":  8543,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "docs\\developer_guide\\coding_standards.md",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\docs\\developer_guide\\coding_standards.md",
+                                      "sha256":  "cd807899f98d98338afbbb72d75300d26b5064c1d23cfa61a29c09e40829d492",
+                                      "size":  11180,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\docs\\developer_guide\\coding_standards.md",
+                                     "sha256":  "cd807899f98d98338afbbb72d75300d26b5064c1d23cfa61a29c09e40829d492",
+                                     "size":  11180,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+                                      "sha256":  "b5b8ba952f432750c0d3d711eaa1b5818a959b922e92787ff372e7bbe4c2c18f",
+                                      "size":  192698,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\src\\execution_scope.rs",
+                                     "sha256":  "57df3fa269f02a16c900b38894bdc3fd2de4a4528c22e954afbeccb53c5da19d",
+                                     "size":  194012,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  false
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "crates\\adapters\\hyperliquid\\src\\execution.rs",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\crates\\adapters\\hyperliquid\\src\\execution.rs",
+                                      "sha256":  "2b1e30b896b60b01edd257947426c5f132b841dc7fe7771602f1e810c81c3316",
+                                      "size":  250478,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\src\\execution.rs",
+                                     "sha256":  "2b1e30b896b60b01edd257947426c5f132b841dc7fe7771602f1e810c81c3316",
+                                     "size":  250478,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "crates\\adapters\\hyperliquid\\src\\http\\client.rs",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\crates\\adapters\\hyperliquid\\src\\http\\client.rs",
+                                      "sha256":  "ba66b53fcc6a6d1fb6e8bb34ac6faf677cd9e7eb6ffe89eea9e2c11ea398eab2",
+                                      "size":  176208,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\src\\http\\client.rs",
+                                     "sha256":  "ba66b53fcc6a6d1fb6e8bb34ac6faf677cd9e7eb6ffe89eea9e2c11ea398eab2",
+                                     "size":  176208,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "crates\\adapters\\hyperliquid\\src\\account_scope.rs",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\crates\\adapters\\hyperliquid\\src\\account_scope.rs",
+                                      "sha256":  "5380d902310c477418335e941f9962061fe86f1fffacafc858f990409557fca5",
+                                      "size":  84329,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\src\\account_scope.rs",
+                                     "sha256":  "1ff6b1d2ea0050b2b31f0a053682b109b2fa0eb7ae94c9509afdb6b7ef4e5230",
+                                     "size":  84490,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  false
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "crates\\adapters\\hyperliquid\\src\\websocket\\client.rs",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\crates\\adapters\\hyperliquid\\src\\websocket\\client.rs",
+                                      "sha256":  "15a9fdde9cf9df8e491a63dde625de7029ac85868f19a8dc775d56f2ea160b9a",
+                                      "size":  131462,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\src\\websocket\\client.rs",
+                                     "sha256":  "15a9fdde9cf9df8e491a63dde625de7029ac85868f19a8dc775d56f2ea160b9a",
+                                     "size":  131462,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "crates\\adapters\\hyperliquid\\src\\economics_scope.rs",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\crates\\adapters\\hyperliquid\\src\\economics_scope.rs",
+                                      "sha256":  "2ebdf3756f39ea0cd32cfdc79d84ef7babdcabd6c2d7fea0b0f00d4c151f7f47",
+                                      "size":  34956,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\src\\economics_scope.rs",
+                                     "sha256":  "2ebdf3756f39ea0cd32cfdc79d84ef7babdcabd6c2d7fea0b0f00d4c151f7f47",
+                                     "size":  34956,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "crates\\adapters\\hyperliquid\\src\\http\\rate_limits.rs",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\crates\\adapters\\hyperliquid\\src\\http\\rate_limits.rs",
+                                      "sha256":  "47dd217c00b7a28358b2f28b7e1803c72e5817212300a2e62c2f0a419047dafc",
+                                      "size":  15968,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\src\\http\\rate_limits.rs",
+                                     "sha256":  "47dd217c00b7a28358b2f28b7e1803c72e5817212300a2e62c2f0a419047dafc",
+                                     "size":  15968,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "crates\\common\\src\\runner.rs",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\crates\\common\\src\\runner.rs",
+                                      "sha256":  "8c97f8e42092665146c4e0ff976ee9e49a766cf003229b46de8131953000a845",
+                                      "size":  37029,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\common\\src\\runner.rs",
+                                     "sha256":  "8c97f8e42092665146c4e0ff976ee9e49a766cf003229b46de8131953000a845",
+                                     "size":  37029,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "crates\\live\\src\\runner.rs",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\crates\\live\\src\\runner.rs",
+                                      "sha256":  "cc4a6b2928e4135c83220cf900244b8cdf430dc1f28cfb7803740504998520ac",
+                                      "size":  77300,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\live\\src\\runner.rs",
+                                     "sha256":  "cc4a6b2928e4135c83220cf900244b8cdf430dc1f28cfb7803740504998520ac",
+                                     "size":  77300,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "crates\\adapters\\hyperliquid\\tests\\entropy_account.rs",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account.rs",
+                                      "sha256":  "5976b5e8e5b9e19314679ca009365024817a2ad4e3a07ac65c7cdf1d06a79c07",
+                                      "size":  45087,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account.rs",
+                                     "sha256":  "5976b5e8e5b9e19314679ca009365024817a2ad4e3a07ac65c7cdf1d06a79c07",
+                                     "size":  45087,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "crates\\adapters\\hyperliquid\\tests\\entropy_account\\execution.rs",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\execution.rs",
+                                      "sha256":  "fbc4a4efc0eb867d9f52322f948e5a601d0990cece044b05deca33c557af4196",
+                                      "size":  59056,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\execution.rs",
+                                     "sha256":  "fbc4a4efc0eb867d9f52322f948e5a601d0990cece044b05deca33c557af4196",
+                                     "size":  59056,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "crates\\adapters\\hyperliquid\\tests\\entropy_account\\startup.rs",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\startup.rs",
+                                      "sha256":  "a0f708aba4572358881536b5e724259289f46343c938995cbfc11ca90e946951",
+                                      "size":  33903,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\startup.rs",
+                                     "sha256":  "a0f708aba4572358881536b5e724259289f46343c938995cbfc11ca90e946951",
+                                     "size":  33903,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "crates\\adapters\\hyperliquid\\tests\\entropy_account\\startup_source_reuse.rs",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\startup_source_reuse.rs",
+                                      "sha256":  "671ee0467460743f9f4c94f1f67e8febd14568754f8be89320e6d4ed2ca373b5",
+                                      "size":  29844,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\startup_source_reuse.rs",
+                                     "sha256":  "671ee0467460743f9f4c94f1f67e8febd14568754f8be89320e6d4ed2ca373b5",
+                                     "size":  29844,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs",
+                                      "sha256":  "f241151404aab9d14afe7d9711eff8fc7fac7d8c7a55db4df6c94aa26cf41b7a",
+                                      "size":  80624,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\io_query_recovery.rs",
+                                     "sha256":  "f241151404aab9d14afe7d9711eff8fc7fac7d8c7a55db4df6c94aa26cf41b7a",
+                                     "size":  80624,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "crates\\adapters\\hyperliquid\\tests\\entropy_account\\warm_prerequisite.rs",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\warm_prerequisite.rs",
+                                      "sha256":  "1297a531c353837285638b349ed894a4d50444d048a7415f78e68fcc8fb8d803",
+                                      "size":  44623,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\adapters\\hyperliquid\\tests\\entropy_account\\warm_prerequisite.rs",
+                                     "sha256":  "ce9d50ca7570e0eb248b8da1542b1fbe99cf6e5414497e9dbfaca0975e098bc2",
+                                     "size":  45132,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  false
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "crates\\live\\src\\node\\mod.rs",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\crates\\live\\src\\node\\mod.rs",
+                                      "sha256":  "b25b76f9efacd998d180b72172c85261292f999ebc196a160c2fc3c7f17ce044",
+                                      "size":  312511,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\live\\src\\node\\mod.rs",
+                                     "sha256":  "b25b76f9efacd998d180b72172c85261292f999ebc196a160c2fc3c7f17ce044",
+                                     "size":  312511,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "crates\\live\\src\\execution\\manager.rs",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\crates\\live\\src\\execution\\manager.rs",
+                                      "sha256":  "6f700cb823d634f64efaa04efa8ed0b949c43bf27284090074e7eb5b65e998c9",
+                                      "size":  311998,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\live\\src\\execution\\manager.rs",
+                                     "sha256":  "6f700cb823d634f64efaa04efa8ed0b949c43bf27284090074e7eb5b65e998c9",
+                                     "size":  311998,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "crates\\model\\src\\reports\\mass_status.rs",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\crates\\model\\src\\reports\\mass_status.rs",
+                                      "sha256":  "b358556a4b05afb510e797477fc2db76829679533aa3e69aa6cee8a0cec82c94",
+                                      "size":  20654,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\crates\\model\\src\\reports\\mass_status.rs",
+                                     "sha256":  "b358556a4b05afb510e797477fc2db76829679533aa3e69aa6cee8a0cec82c94",
+                                     "size":  20654,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "python\\generate_stubs.py",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\python\\generate_stubs.py",
+                                      "sha256":  "59f80e4b8b337733705f23a9ebdecd48b6eb10893a16ce9382e115dc2e2491e7",
+                                      "size":  122759,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\python\\generate_stubs.py",
+                                     "sha256":  "59f80e4b8b337733705f23a9ebdecd48b6eb10893a16ce9382e115dc2e2491e7",
+                                     "size":  122759,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "scripts\\adapter-evidence\\build_native.py",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\scripts\\adapter-evidence\\build_native.py",
+                                      "sha256":  "7f94cb247ddbc432779b03e97f87a75703df882fa39bee359413ae2e69d98b70",
+                                      "size":  6026,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\scripts\\adapter-evidence\\build_native.py",
+                                     "sha256":  "7f94cb247ddbc432779b03e97f87a75703df882fa39bee359413ae2e69d98b70",
+                                     "size":  6026,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "python\\nautilus_trader\\adapters\\hyperliquid\\__init__.py",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\python\\nautilus_trader\\adapters\\hyperliquid\\__init__.py",
+                                      "sha256":  "2188e2ef55f0927e954eb9ce78d5430eaad84e61a9645e3c0178a0dfd05b3612",
+                                      "size":  1635,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\python\\nautilus_trader\\adapters\\hyperliquid\\__init__.py",
+                                     "sha256":  "2188e2ef55f0927e954eb9ce78d5430eaad84e61a9645e3c0178a0dfd05b3612",
+                                     "size":  1635,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "native",
+                       "relative_path":  "python\\nautilus_trader\\adapters\\hyperliquid\\__init__.pyi",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\native\\python\\nautilus_trader\\adapters\\hyperliquid\\__init__.pyi",
+                                      "sha256":  "016760dd07b4e7498769088ce6a7ac85100ba3fcaf07a0abd33e8e51614d7cfd",
+                                      "size":  20210,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\native\\python\\nautilus_trader\\adapters\\hyperliquid\\__init__.pyi",
+                                     "sha256":  "016760dd07b4e7498769088ce6a7ac85100ba3fcaf07a0abd33e8e51614d7cfd",
+                                     "size":  20210,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "app",
+                       "relative_path":  "CLAUDE.md",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\app\\CLAUDE.md",
+                                      "sha256":  "e88c45fda78397824437eba1ba8bf3aa8c33760940d377b3f6e3e04f0477e530",
+                                      "size":  2551,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\app\\CLAUDE.md",
+                                     "sha256":  "e88c45fda78397824437eba1ba8bf3aa8c33760940d377b3f6e3e04f0477e530",
+                                     "size":  2551,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "app",
+                       "relative_path":  "AGENTS.md",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\app\\AGENTS.md",
+                                      "sha256":  "0db83eca19a5637b536145f71915c4d1d84c7b186eaf809e266b126eb9fde7e5",
+                                      "size":  4070,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\app\\AGENTS.md",
+                                     "sha256":  "0db83eca19a5637b536145f71915c4d1d84c7b186eaf809e266b126eb9fde7e5",
+                                     "size":  4070,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "app",
+                       "relative_path":  "src\\entropy_execution.py",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\app\\src\\entropy_execution.py",
+                                      "sha256":  "fbde3f919a6813a47aeb8c388ac3689a33689139d876c6e7e6551d7a364ab882",
+                                      "size":  73521,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\app\\src\\entropy_execution.py",
+                                     "sha256":  "fbde3f919a6813a47aeb8c388ac3689a33689139d876c6e7e6551d7a364ab882",
+                                     "size":  73521,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "app",
+                       "relative_path":  "src\\entropy_execution_config.py",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\app\\src\\entropy_execution_config.py",
+                                      "sha256":  "45ed321317743d05a86b1a51058ad684dbd2e84f31bd86a9fd701845025d8c54",
+                                      "size":  12822,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\app\\src\\entropy_execution_config.py",
+                                     "sha256":  "45ed321317743d05a86b1a51058ad684dbd2e84f31bd86a9fd701845025d8c54",
+                                     "size":  12822,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "app",
+                       "relative_path":  "src\\entropy_execution_core.py",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\app\\src\\entropy_execution_core.py",
+                                      "sha256":  "da5abc7ffa5d61439daaf814254aff4d99ad5a7f977790ee80f86dad910d2443",
+                                      "size":  37382,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\app\\src\\entropy_execution_core.py",
+                                     "sha256":  "da5abc7ffa5d61439daaf814254aff4d99ad5a7f977790ee80f86dad910d2443",
+                                     "size":  37382,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "app",
+                       "relative_path":  "src\\entropy_execution_report.py",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\app\\src\\entropy_execution_report.py",
+                                      "sha256":  "5b1a01d4762173c739a90daed4878f854ab0f78b2232a5de07c6969eab9deffa",
+                                      "size":  21940,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\app\\src\\entropy_execution_report.py",
+                                     "sha256":  "5b1a01d4762173c739a90daed4878f854ab0f78b2232a5de07c6969eab9deffa",
+                                     "size":  21940,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "app",
+                       "relative_path":  "tests\\entropy_execution_peer.py",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\app\\tests\\entropy_execution_peer.py",
+                                      "sha256":  "11930d360dabe0c8751b0f2451c1f8570489311a8526b419a72b25781075515d",
+                                      "size":  30306,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\app\\tests\\entropy_execution_peer.py",
+                                     "sha256":  "11930d360dabe0c8751b0f2451c1f8570489311a8526b419a72b25781075515d",
+                                     "size":  30306,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "app",
+                       "relative_path":  "tests\\test_entropy_execution_peer.py",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\app\\tests\\test_entropy_execution_peer.py",
+                                      "sha256":  "c649d24c2c68beb5758442e3eb5abfdd455b070627c179c734f66b8719eac35a",
+                                      "size":  7419,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\app\\tests\\test_entropy_execution_peer.py",
+                                     "sha256":  "c649d24c2c68beb5758442e3eb5abfdd455b070627c179c734f66b8719eac35a",
+                                     "size":  7419,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "app",
+                       "relative_path":  "tests\\test_entropy_execution_native.py",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\app\\tests\\test_entropy_execution_native.py",
+                                      "sha256":  "9a975f5cca43b6b7cb778435a170b3a1223cf0db351417b7bfdd4f9788124120",
+                                      "size":  31959,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\app\\tests\\test_entropy_execution_native.py",
+                                     "sha256":  "9a975f5cca43b6b7cb778435a170b3a1223cf0db351417b7bfdd4f9788124120",
+                                     "size":  31959,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   },
+                   {
+                       "side":  "app",
+                       "relative_path":  "scripts\\install_native.py",
+                       "before":  {
+                                      "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v2\\app\\scripts\\install_native.py",
+                                      "sha256":  "c2d473e5f5dea8c8931ef4350471b2dfa4e1877fcf8168fb7f816f3351d48adf",
+                                      "size":  10944,
+                                      "manifest_match":  true
+                                  },
+                       "after":  {
+                                     "path":  "E:\\persarb\\_tmp\\entropy117-validation\\snapshots\\native117-formatted-v3\\app\\scripts\\install_native.py",
+                                     "sha256":  "c2d473e5f5dea8c8931ef4350471b2dfa4e1877fcf8168fb7f816f3351d48adf",
+                                     "size":  10944,
+                                     "manifest_match":  true
+                                 },
+                       "unchanged":  true
+                   }
+               ]
+}

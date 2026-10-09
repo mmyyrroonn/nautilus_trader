@@ -1,0 +1,25 @@
+# Native117 formatted v7 economic demand producer: independent review
+
+**Narrow source correction approved; no blocker found in the assigned scope.** Source `economics_scope.rs` SHA `a7c2d11299417c3f3cd82c485d5f834401e6cb65baffb4f89e8af8e34687a03e`; manifest `native117-formatted-v7.json` SHA `6cca167d40b04a8e708a6022b3349bfb0fbe711ec51897944df90de37603a25a`. Review procedure 2026-10-09T13:31:09.385675+00:00 through 2026-10-09T13:31:09.418195+00:00. All 33 native and ten app inputs and frozen copies agree and remain unchanged. Tests executed by reviewer: **0**; no Cargo/Git/native imports/production edits. Candidate source is the staged correction after historical clean567, not a newly accepted installed wheel.
+
+## Exact scope
+
+Only the producer file differs from the historical RED-before 43-input capture. Both test files are the already reviewed frozen versions: unit `30eeca1e404c9a75e5a7a972c15c4cb28875c5cb37e5be48ee419db1676f1b02`, io `c9fa192e272c7121ba5b98a5dca692aaea5a616e35ff24c41e9974b97fb2fd12`. Exact text before and after `record_unrequested_history` is byte-equivalent after newline decoding, while the saved full diff isolates every changed line. Normal client worker/callback, account/prerequisite source qualification, metadata and source clocks, quotas/TTLs/deadlines, economic store and other production remain unchanged. The manifest captures actual whole-file hashes; no Git command was needed for this source comparison.
+
+## Authority and immutable coverage
+
+The producer still clips end with checked original policy start plus window and actual caller now. It checks economic taint before no-op. For each exact generation/epoch/endpoint, the frontier uses maximum prior COMPLETE end or an exact warm-demand diagnostic with incomplete/zero pages/zero records. Merely matching prefix, other Unknown/stream-gap records and nonzero-page/record entries cannot extend it. Different endpoint/generation/epoch cannot lend authority. These records are demand boundaries, not proofs of continuous complete history or new financial requests.
+
+All existing coverage remains untouched. A later boundary appends an Unknown tail; no iter_mut replacement or compaction remains. More recent COMPLETE rows may select a later frontier without erasing older Unknown or COMPLETE rows. Every new row remains zero-page/zero-record/incomplete and uses the original diagnostic. Existing raw observation/TID/fee/envelope/receipt fields are untouched. A same/earlier represented boundary makes no append, then returns before commit, so there is no revision advance, fsync or checkpoint rewrite; already-tainted state cannot reach that return.
+
+## Transaction and finite failure behavior
+
+Both endpoint additions are staged in one local checkpoint clone. First append cannot become durable before the second is checked. At one remaining slot, a second required append fails before the sole commit, preserving the original durable checkpoint. At full capacity a healthy true no-op bypasses no required append; a later unrepresented demand is refused. If only one endpoint genuinely needs an addition, one available slot can correctly suffice; atomicity means all required additions or none. Original row cap and normal store checkpoint-byte cap stay intact. Store still enforces previous coverage as an exact prefix and immutable financial/source/receipt facts. Any actual commit validation or I/O error retains existing store taint/error behavior; no debt/taint clearing or generic restart adoption was introduced.
+
+The source change fixes the producer/store mismatch observed in the earlier separate unchanged567 RED. Source-level approval does not imply arbitrary duration liveness: existing count/byte caps can still refuse later warm demands. Post-lock/copy/fsync timing and financial writer checks outside this method retain their existing contracts; this edit does not newly prove them.
+
+## Closed root verification evidence, not reviewer tests
+
+Read-only parsing of the now completed root records observes unit GREEN 10 passed/0 failed at 2026-10-09T13:25:58.055534+00:00–2026-10-09T13:26:06.167319+00:00, and normal callback GREEN 1 passed/0 failed at 2026-10-09T13:26:52.950896+00:00–2026-10-09T13:27:02.849183+00:00. Both recorded exit 0. Their actual argv/log hashes and counts are in the JSON. These are root executions; no copied binary was run here. The original RED 4P/6F and normal 0P/1F, plus the first installed failed paired, remain preserved and must not be replaced or counted as new distinct successes.
+
+Full unfiltered native regression, production/test lint outcomes, official stubs, a newly source-bound wheel and strict installs, and fresh actual paired/seven-scenario acceptance remain separate. This report grants narrow producer source approval, not application43/E6, installed artifact, whole economics/history, generic cold restore, kernel isolation or mainnet acceptance.

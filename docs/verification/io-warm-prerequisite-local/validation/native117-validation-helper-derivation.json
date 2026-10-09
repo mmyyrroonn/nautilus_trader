@@ -1,0 +1,40 @@
+{
+  "started_utc": "2026-10-09T12:06:55.667439+00:00",
+  "files": [
+    {
+      "source": "E:\\persarb\\_tmp\\entropy115-validation\\postprocess_stubs.py",
+      "source_sha256": "782cbdb7d1faec1a45c47ce550bc9e780f76144825671288714430f7eedeee5a",
+      "target": "E:\\persarb\\_tmp\\entropy117-validation\\postprocess_stubs.py",
+      "target_sha256": "f90c174a6b4fd26283ebf53338dc4f46744dc413a915184768ccb9ea003134b9",
+      "replacements": [
+        [
+          "E:/persarb/worktrees/entropy-startup-account-proof",
+          "E:/persarb/worktrees/entropy-warm-prerequisites"
+        ],
+        [
+          "native115",
+          "native117"
+        ]
+      ]
+    },
+    {
+      "source": "E:\\persarb\\_tmp\\entropy115-validation\\capture_stable_binaries.py",
+      "source_sha256": "28e3abe426c227a0894a9a99ae148e4b57e911bd395281ec7ba230a3d32bc8ad",
+      "target": "E:\\persarb\\_tmp\\entropy117-validation\\capture_stable_binaries.py",
+      "target_sha256": "28e3abe426c227a0894a9a99ae148e4b57e911bd395281ec7ba230a3d32bc8ad",
+      "replacements": [
+        [
+          "E:/persarb/worktrees/entropy-startup-account-proof",
+          "E:/persarb/worktrees/entropy-warm-prerequisites"
+        ],
+        [
+          "native115",
+          "native117"
+        ]
+      ]
+    }
+  ],
+  "finished_utc": "2026-10-09T12:06:55.668439+00:00",
+  "source_checks_executed": 0,
+  "test_executions": 0
+}

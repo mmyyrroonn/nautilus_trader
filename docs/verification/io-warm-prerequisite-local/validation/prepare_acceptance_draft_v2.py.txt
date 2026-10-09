@@ -1,0 +1,25 @@
+"""Retain the observed Aster fixture cancellation limitation in a new draft."""
+import hashlib
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+root = Path(__file__).resolve().parent
+source = root / "io-warm-prerequisite-acceptance-draft-v1.md"
+assert hashlib.sha256(source.read_bytes()).hexdigest() == "e36947dc852fb7ec460b53beb354ebc980d5868af5fed5a17629b3ded1ac2c61"
+content = source.read_text(encoding="utf-8")
+old = "The corrected source passed the full Hyperliquid regression and the clean installed candidate passed all seven original application scenarios. Original failed source, commands, wheel, journals and reviews remain preserved. This records finite native prerequisite delivery; application43 and its broader real-venue/economic acceptance remain open."
+new = "The corrected source passed the full Hyperliquid regression and the clean installed candidate passed all seven original application test assertions. The Aster synthetic peer still permits a delayed fill after a CANCELED acknowledgement; this unresolved application fixture limitation is recorded below. Original failed source, commands, wheel, journals and reviews remain preserved. This records finite native prerequisite delivery; application43 and its broader offline/real-venue/economic acceptance remain open."
+assert content.count(old) == 1
+content = content.replace(old, new)
+anchor = "## Review and publication boundaries\n"
+note = "The Aster fixture has a distinct unresolved cancellation chronology limitation. Its current DELETE immediately marks an order CANCELED, while the independently scheduled 150 ms `aster_fill` task later executes without checking terminal state. The paired close order80002 actually receives a CANCELED acknowledgement with executedQty0 before later fixture trade90001 and a normal native FILLED result. These are observed synthetic messages and consumed native facts, not proof of correct real-venue cancel/fill ordering. The original seven assertions did not reject this contradictory peer timeline. Native117's Hyperliquid prerequisite/economic append-only correction and direct normal owned-callback regression remain supported; App43 must fix and independently verify this peer chronology before claiming its broader cancellation acceptance. No current fixture input is changed or relabeled in this cohort.\n\n"
+assert content.count(anchor) == 1
+content = content.replace(anchor, note + anchor)
+target = root / "io-warm-prerequisite-acceptance-draft-v2.md"
+assert not target.exists()
+target.write_text(content, encoding="utf-8")
+record = root / "native117-acceptance-draft-aster-limitation-v2.json"
+assert not record.exists()
+record.write_text(json.dumps({"created_utc": datetime.now(timezone.utc).isoformat(), "original_sha256": hashlib.sha256(source.read_bytes()).hexdigest(), "corrected_sha256": hashlib.sha256(target.read_bytes()).hexdigest(), "source": source.as_posix(), "target": target.as_posix(), "source_lines": "tests/entropy_execution_peer.py:330-338,495-565", "raw_cohort": "app43-native117-corrected-first-paired-20261009/paired", "reason": "Observed synthetic cancellation followed by delayed execution is a remaining App43 fixture limitation; passing current assertions does not certify cancellation chronology.", "source_changes": 0, "tests_executed": 0}, indent=2) + "\n", encoding="utf-8")
+print(record.read_text(encoding="utf-8"))

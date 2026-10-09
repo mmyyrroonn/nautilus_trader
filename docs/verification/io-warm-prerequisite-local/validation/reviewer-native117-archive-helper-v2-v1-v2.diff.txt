@@ -1,0 +1,145 @@
+--- v1
++++ v2
+@@ -129,7 +129,7 @@
+         current = NATIVE / relative
+         blob_hash = hashlib.sha256(blob).hexdigest()
+         require(digest(current) == blob_hash, f"Current implementation bytes changed: {relative}")
+-        identities[relative] = {"git_blob_sha256": blob_hash, "tested_file_sha256": digest(current),
++        identities[relative] = {"git_blob_sha256": blob_hash, "current_file_sha256": digest(current),
+                                 "git_object": git("rev-parse", f"{commit}:{relative}").decode()}
+     receipt = load_json(ROOT / "native117-implementation-commit.json")
+     require(receipt["commit"] == commit and receipt["base_main"] == BASE and receipt["clean"] is True,
+@@ -138,6 +138,117 @@
+             "Implementation receipt does not bind exact source bytes")
+     return {"implementation_commit": commit, "implementation_tree": git("rev-parse", commit + "^{tree}").decode(),
+             "base_main": BASE, "source_files": identities, "receipt_sha256": digest(ROOT / "native117-implementation-commit.json")}
++
++
++def verify_reference(reference, expected):
++    """Verify the exact named receipt path and its actual bytes."""
++    require(Path(reference["path"]).resolve() == expected.resolve(), f"Receipt path differs: {expected}")
++    require(expected.resolve().is_relative_to(ROOT.resolve()), f"Receipt escapes validation root: {expected}")
++    require(digest(expected) == reference["sha256"], f"Receipt byte hash differs: {expected}")
++    return load_json(expected) if expected.suffix == ".json" else None
++
++
++def verify_tested_source(label, implementation):
++    """Link actual v6 regression, immutable binaries and captured source to Git."""
++    require(label == "native117-full-hyperliquid-regression-v6", "Only the finalized v6 full run is accepted")
++    binaries_path = ROOT / "native117-verified-binaries-v6.json"
++    unchanged_path = ROOT / "native117-full-inputs-unchanged-v6.json"
++    verified = load_json(binaries_path)
++    comparison = load_json(unchanged_path)
++    before_path = ROOT / "native117-formatted-v6.json"
++    after_path = ROOT / "native117-after-full-regression-v6.json"
++    before = verify_reference(verified["source_manifest"], before_path)
++    command_path, log_path = ROOT / (label + ".json"), ROOT / (label + ".log")
++    command = verify_reference(verified["actual_cargo_command"], command_path)
++    verify_reference(verified["actual_cargo_log"], log_path)
++    require(verified["actual_cargo_command"]["command"] == command, "Embedded actual Cargo command differs")
++    require(verified["source_files_unchanged"] is True and verified["regression_passed"] == 1424
++            and verified["regression_ignored"] == 18, "Verified-binary receipt does not describe this full run")
++    require(comparison["equal"] is True, "Actual post-regression input comparison failed")
++    require(verify_reference(comparison["before"], before_path) == before, "Before capture receipts differ")
++    after = verify_reference(comparison["after"], after_path)
++    require(before["native"]["head"] == after["native"]["head"] == BASE,
++            "Tested source must be captured at the fresh-main precommit head")
++    require(Path(before["native"]["root"]).resolve() == NATIVE.resolve()
++            and before["native"]["root"] == after["native"]["root"], "Tested native checkout differs")
++    require(datetime.fromisoformat(before["finished_utc"]) <= datetime.fromisoformat(command["started_utc"])
++            <= datetime.fromisoformat(command["finished_utc"]) <= datetime.fromisoformat(after["started_utc"]),
++            "Actual source captures do not bracket the actual regression")
++    require(implementation["implementation_tree"] == load_json(ROOT / "native117-implementation-commit.json")["tree"],
++            "Implementation receipt tree differs")
++    require(load_json(ROOT / "native117-implementation-commit.json")["reviewed_manifest_sha256"] == digest(before_path),
++            "Implementation receipt names a different final reviewed source")
++    checked = []
++    native_rows = {}
++    for side, expected_count in (("native", 31), ("app", 10)):
++        result = comparison["repositories"][side]
++        require(result["equal"] is True and result["inputs"] == expected_count
++                and result["missing_before"] == result["missing_after"] == result["differences"] == [],
++                f"Incomplete or changed actual {side} comparison")
++        require(result["head_before"] == before[side]["head"]
++                and result["head_after"] == after[side]["head"]
++                and before[side]["head"] == after[side]["head"], f"{side} heads differ")
++        require(Path(before[side]["root"]).resolve() == Path(after[side]["root"]).resolve(),
++                f"{side} captured checkout roots differ")
++        require(before[side]["missing_inputs"] == after[side]["missing_inputs"] == [], f"Missing {side} capture inputs")
++        maps = []
++        for capture in (before, after):
++            source_root = Path(capture[side]["root"]).resolve()
++            rows = {}
++            require(len(capture[side]["files"]) == expected_count, f"Wrong actual {side} input count")
++            for row in capture[side]["files"]:
++                actual = Path(row["path"]).resolve()
++                require(actual.is_relative_to(source_root), f"Captured path escapes {side} root")
++                relative = actual.relative_to(source_root).as_posix()
++                require(relative not in rows, f"Duplicate captured source: {relative}")
++                rows[relative] = row
++            maps.append(rows)
++        require(set(maps[0]) == set(maps[1]), f"{side} source path sets differ")
++        for relative, row in sorted(maps[0].items()):
++            later = maps[1][relative]
++            require(row["sha256"] == later["sha256"] and row["size"] == later["size"],
++                    f"Actual tested before/after bytes differ: {relative}")
++            copies = []
++            for capture in (before, after):
++                snapshot = capture.get("snapshot_directory")
++                if not snapshot:
++                    continue
++                snapshot_root = Path(snapshot).resolve()
++                require(snapshot_root.is_relative_to((ROOT / "snapshots").resolve()), "Source snapshot escapes validation root")
++                frozen = snapshot_root / side / relative
++                require(not frozen.is_symlink() and frozen.resolve().is_relative_to(snapshot_root), "Unsafe frozen source path")
++                require(digest(frozen) == row["sha256"] and frozen.stat().st_size == row["size"],
++                        f"Actual frozen source copy differs: {relative}")
++                copies.append(frozen.as_posix())
++            require(copies, f"No actual frozen source copy: {relative}")
++            checked.append({"repository": side, "relative_path": relative, "sha256": row["sha256"],
++                            "bytes": row["size"], "frozen_copies": copies})
++            if side == "native":
++                native_rows[relative] = row
++    for relative in sorted(IMPLEMENTATION_FILES):
++        row = native_rows[relative]
++        identity = implementation["source_files"][relative]
++        require(row["sha256"] == identity["git_blob_sha256"] == identity["current_file_sha256"],
++                f"Actual tested source differs from implementation/current source: {relative}")
++        require(row["size"] == (NATIVE / relative).stat().st_size, f"Implementation source size differs: {relative}")
++        identity["tested_file_sha256"] = row["sha256"]
++        identity["tested_file_bytes"] = row["size"]
++        identity["tested_source_manifest"] = before_path.as_posix()
++    require(len(verified["binaries"]) == 2, "Immutable binary receipt count differs")
++    binary_rows = []
++    for row in verified["binaries"]:
++        frozen = Path(row["immutable_copy_path"]).resolve()
++        require(frozen.is_relative_to((ROOT / "verified-bin/native117-verified-binaries-v6").resolve())
++                and frozen.suffix == ".exe" and not frozen.is_symlink(), "Unsafe immutable binary path")
++        require(digest(frozen) == row["sha256"] and frozen.stat().st_size == row["bytes"],
++                "Immutable tested binary bytes differ")
++        binary_rows.append({**row, "archived_binary": False})
++    return {"verified_binaries_receipt_sha256": digest(binaries_path),
++            "unchanged_comparison_sha256": digest(unchanged_path),
++            "before_manifest_sha256": digest(before_path), "after_manifest_sha256": digest(after_path),
++            "actual_cargo_command_sha256": digest(command_path), "actual_cargo_log_sha256": digest(log_path),
++            "note": "Before has actual frozen copies; after supplies actual post-run hashes, not fabricated duplicate snapshots",
++            "source_files": checked, "immutable_binaries": binary_rows}
+ 
+ 
+ def verify_wheel(implementation):
+@@ -233,6 +344,7 @@
+     require(not ARCHIVE.exists(), "An archive must never replace any prior capture")
+     implementation = verify_implementation(args.implementation)
+     regression = verify_regression(args.regression)
++    tested_source = verify_tested_source(args.regression, implementation)
+     provenance = verify_wheel(args.implementation)
+     paired_root = args.paired_root.resolve()
+     scenarios_root = args.scenarios_root.resolve()
+@@ -278,6 +390,7 @@
+                 connectors.append({"capture": relative.as_posix(), **data})
+     ledgers = {"commands.json": commands, "connector-operations.json": connectors,
+                "implementation-identities.json": implementation, "regression-summary.json": regression,
++               "tested-source-binding.json": tested_source,
+                "application-scenarios.json": {"cases": cases,
+                    "all_seven_scenarios_passed": all(row["actual_assertion_result"] == "PASS" for row in cases[1:]),
+                    "first_paired_passed": cases[0]["actual_assertion_result"] == "PASS",

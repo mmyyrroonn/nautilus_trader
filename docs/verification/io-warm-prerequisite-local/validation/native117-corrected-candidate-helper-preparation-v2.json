@@ -1,0 +1,27 @@
+{
+  "created_utc": "2026-10-09T13:06:44.826081+00:00",
+  "helpers": [
+    {
+      "original": {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\capture_identity.py",
+        "sha256": "4c89a666a9cb8e99090748aa05417b5dc9186dc5ff7c43518eeb3b015adbd95a"
+      },
+      "corrected": {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\capture_identity_v2.py",
+        "sha256": "3089451b2831c252e8a601d6229f00ca215146ac48ccef66077eba9b6ccc313d"
+      }
+    },
+    {
+      "original": {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\capture_app_candidate.py",
+        "sha256": "678b91a348a88a8d3787541a459973476f22ae01aa9c3cfbc655b533d9cf1f1f"
+      },
+      "corrected": {
+        "path": "E:\\persarb\\_tmp\\entropy117-validation\\capture_app_candidate_v2.py",
+        "sha256": "c449527d1e0ab33939a96ac37a224304e6322a271e15a39d59a3fe76c53c8fc3"
+      }
+    }
+  ],
+  "note": "Source inputs now include economics store and test contract; corrected app captures use a new wheel directory and include unchanged store protections. Helpers were created, not executed; no test or candidate identity is inferred.",
+  "tests_executed": 0
+}

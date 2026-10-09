@@ -1,0 +1,15 @@
+# Native117 archive helper source-binding correction v2
+
+The independent helper review found a real evidence-binding gap in the unexecuted v1 draft: full regression and implementation were validated separately, and `tested_file_sha256` was derived from current source rather than the actual tested capture. V1 is preserved byte-for-byte at `archive_native117.py` and remains unexecuted.
+
+The new `archive_native117_v2.py` adds a required finalized-v6 linkage before any archive directory is created. It reads the actual `native117-verified-binaries-v6.json` and verifies its named source manifest, Cargo command and Cargo log against their original paths and byte hashes. The embedded command must equal the actual command JSON. The named full regression remains the actual unfiltered 1424 PASS / 0 FAIL / 18 ignored result, rather than any focused rerun.
+
+It reads `native117-full-inputs-unchanged-v6.json`, verifies the before/after capture paths and byte hashes, requires actual equality, 31 native plus 10 application inputs, no missing/different files, the original precommit native head `5db2761590dd824fa159625326b6eaf3923b999a`, stable checkout roots and capture times bracketing the actual Cargo run. Every recorded before/after SHA/size must match. Every actual declared snapshot copy is independently hashed and checked against those rows.
+
+The actual before capture has a snapshot directory. The actual after capture contains post-run hashes but does not declare duplicated snapshot copies. V2 does not fabricate such copies or mislabel their absence: it requires the real before frozen copies, verifies the actual after rows against them, and also verifies after copies if a capture actually declares them. The ledger states this limitation explicitly.
+
+All five implementation files' actual tested-manifest hashes and sizes must match their current bytes and immutable implementation Git blobs. The implementation receipt must bind the same final tested manifest and actual Git tree. `tested_file_sha256` now comes from the actual tested manifest; `current_file_sha256` separately identifies current source. The added `tested-source-binding.json` ledger records this linkage and all 41 input identities.
+
+The two actual immutable v6 executable copies are checked by recorded hashes and sizes. Executables are not copied into the archive or executed. Original v1 behavior remains for honest failure capture, all seven named loopback scenarios, source-bound clean wheel/provenance, complete evidence occurrence copies, explicit exclusions and no overwrite of a prior archive. Missing future wheel/scenario evidence still fails before archive creation.
+
+Only helper source and these new temporary correction records were authored. No helper, archive, AST/compiler, native/test, Git/GitHub, build or install command was executed. The correction is a source change requiring root's review and later actual execution. It is not a claim that the candidate or seven scenarios passed. Current implementation and wheel identities supplied by root are not substituted for actual future script checks.

@@ -1,0 +1,40 @@
+# Independent production source follow-up — native117 formatted v3
+
+Verdict: **APPROVED for the finite production source contract, with no remaining source blocker found.** Both clock findings from the preserved v1/v2 reviews are corrected in these exact frozen bytes. This is not compilation, test, installed-wheel, paired-application or CI approval. **Executed tests: 0.** The reviewer authored the new test module and is independent of the production author; approval concerns production only.
+
+Only frozen copies were read. All 31 native inputs in `native117-formatted-v3.json` independently match their recorded SHA-256 and sizes. The companion review JSON records before/after input identities. The source diff was read from formatted-v2 copies to formatted-v3 copies, using a standard-library-only text comparison; no native import or test ran. The two production files change only the metadata-expiry capture, query field and sole internal publication call/gate. The new test file also changed in root's capture; its correction and actual behavior are outside this production follow-up.
+
+| Production input | Formatted v2 SHA-256 | Formatted v3 SHA-256 |
+|---|---|---|
+| `account_scope.rs` | `5380d902310c477418335e941f9962061fe86f1fffacafc858f990409557fca5` | `1ff6b1d2ea0050b2b31f0a053682b109b2fa0eb7ae94c9509afdb6b7ef4e5230` |
+| `execution_scope.rs` | `b5b8ba952f432750c0d3d711eaa1b5818a959b922e92787ff372e7bbe4c2c18f` | `57df3fa269f02a16c900b38894bdc3fd2de4a4528c22e954afbeccb53c5da19d` |
+
+Formatted-v3 sizes are 84,490 and 194,012 bytes respectively. Root's capture manifest SHA-256 is `2f2a68e716694e39061450f9e4409878dc8aa92704222fcbb62752d4d3f221f4`. The author's unformatted source manifest is separately preserved as `production-source-contract-v3.json`, SHA-256 `4f61ec4adb782b789054184c1ebb584d9edadf6481ac89e9d8f7df3f3d7127a4`; its execution source hash differs from the final formatted hash and is not substituted for it.
+
+## Original immutable expiration is captured
+
+`execution_scope.rs:650–679` retains the original exact selected/native completeness and HTTP/Engine binding check, then requires a nonempty metadata map. For every captured selected proof, both original receipt and verification start must be no later than the captured wall clock. Both additions of the unchanged policy metadata age are checked for overflow. The fold takes the minimum over all selected proofs and both clocks:
+
+`min_selected(received_ms + metadata_max_age_ms, verification_started_ms + metadata_max_age_ms)`.
+
+It does not substitute now, a new user-asset receipt, capacity, mark or a current account clock. The calculation and the metadata clone in the sole query constructor (`739–740`) occur under the same existing execution-state guard. Earlier completeness checks reject missing selected proofs; the nonempty/future/overflow checks fail closed. The query's new private scalar field is not exposed as a new public authority or test hook. Pending-flight coalescing remains bound to the exact metadata map, from which this scalar deterministically derives.
+
+## The final gate follows heavy validation
+
+The sole `commit_observation` caller passes both `query.deadline` and `query.metadata_expires_ms` (`execution_scope.rs:1140–1146`). That method retains full account/private financial and position validation (`account_scope.rs:1386`) and fallible checked source-time conversion (`1387–1391`) before its final sample. At `1393–1398`, the allocation-free gate requires:
+
+- The original monotonic query deadline has not elapsed.
+- The actual publication wall clock remains at or before the captured original metadata expiry.
+- The existing original HTTP source/receipt/effective start, private source/receipt, epoch and subscription acknowledgement freshness predicates still hold at that same publication wall clock.
+
+Only then does the method move account facts and enqueue AccountState. There is no heavy financial comparison, metadata serialization, source clone, await, filesystem operation or refreshed timeout between that gate and publication. Held lifetime/ingress/account/execution guards preserve identities while this scalar check handles elapsed time. Existing HTTP/Engine and ordinary Cache exact checks remain in the caller and were not replaced by the expiry scalar.
+
+A failed gate returns through the original facts/reservation restoration and durable persistence branch (`execution_scope.rs:1147–1151`); it cannot install a new prerequisite or set recovery complete. Actual persistence failure retains the existing taint/refusal behavior. Successful reuse cannot mint or renew an original source. Inclusive metadata expiry is consistent with the existing `age <= metadata_max_age_ms` predicate.
+
+## What this approval covers
+
+The narrow formatted-v2-to-v3 production diff does not alter startup creation, first qualified postbinding original eight-source creation, finite previous role/mode/collateral provenance, current-flight sequence/revision fencing, exact new finances/leverage/owned Cache/fees, full-read selection, immutable two-origin raw retention, optional old-journal decoding, debt barriers or existing quotas/TTLs/deadlines/caps. The production conclusions and scope limits in the preserved v1 review therefore stand, with its two clock findings now resolved by v2/v3.
+
+No Cargo, native/loopback tests, build, install, Git/GitHub, environment access or source/test edits occurred in this review. Exact heavy comparison crossing the independent metadata TTL, mutex/fsync timing, framework/kernel behavior and binary acceptance were not executed or certified. Root must bind actual later checks and any failures to this reviewed source version. The prior 36 PASS / 1 FAIL focused result belongs to formatted v2, not this review or a v3 test result.
+
+Approval remains finite and non-atomic: unrequested silent role/mode/collateral changes remain unobserved; current whole economic history, funding/run PnL, generic cold ownership/adoption, general writer metadata atomicity, native Portfolio authority, continuous remote mode, mainnet and application43/E6 completion remain outside this source contract.

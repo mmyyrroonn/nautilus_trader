@@ -1,0 +1,29 @@
+# Native117 root documentation draft review v1
+
+Scope: factual review of the two new root drafts only, supported by existing closed command receipts, the corrected source/provenance ledger and the already completed raw seven-mode audit. I am a production producer; this is not an independent source review, archive approval or new test execution. Drafts, production, tests and archived evidence were not edited.
+
+## Necessary correction
+
+In `io-warm-prerequisite-contract-draft-v1.md`, section “Current financial facts and commit boundary”, replace the claim that missing leverage rows require activeAssetData counterproofs “for both selected instruments”. The normal native scope is a configured selected instrument set, and the app pair contains only one Hyperliquid selected instrument. `execution_scope.rs:906–917` iterates each selected metadata row missing an actual current position leverage witness and makes **two repeated actual activeAssetData requests for that instrument**. The accurate criterion is “two repeated actual activeAssetData counterproofs for each selected instrument lacking current position leverage evidence.” No production change or broader test requirement is implied.
+
+## Other checked claims
+
+No additional necessary factual correction was found in the reviewed scope:
+
+- Main/first/corrective commit, corrective tree, source fingerprint, wheel and native-object hashes agree with the closed implementation ledger and wheel provenance. Corrective build, installed Python, first paired, remaining-six and direct normal-callback RED timestamps agree with actual receipts.
+- Full raw regression summaries sum to 1,435 passes/18 ignores; focused10+1 are included, not additive. Installed242 and seven app parameters are distinct command cohorts. The six integration lint errors are a subset of the combined10, and both lint runs remain FAIL.
+- The failed installed567 log's lower-level store error remains an inference, while the later unchanged-production RED directly observed the exact error and current taint. These are correctly distinguished; the normal callback clock hypothesis is rejected.
+- Actual reject/partial/cleanup rejection wire stimuli, Unknown retained12.7260, foreign PF+0.03, cleanup residual-0.12/reservation12.6000, and loss-fee no-Aster-action/owned-flat Unknown agree with the closed raw audit. Paired preserves the initial Aster transient cleanup reason and genuine cancel refusal despite final Completed/current owned-flat.
+- Fresh post-close receipt revision12 is distinguished from old failed-state receipt; revision14 stream-ended Unknown additions remain incomplete. Original two-second prerequisite expiry is not renewed. No quota, deadline, retention, financial-completeness, cold-restoration, kernel or mainnet boundary is broadened.
+- Archive/publication review remains explicitly pending in the draft. Nothing here approves its future replacement paragraph or treats seven finite passes as full App43 acceptance.
+
+## Unchanged draft identities
+
+Before and after this review, identical SHA256:
+
+| Draft | SHA256 |
+|---|---|
+| io-warm-prerequisite-contract-draft-v1.md | 73ee7ed6858d5a0533ef7ecf7ebea9c0176a4fa607b55ef3299b236e8e175e45 |
+| io-warm-prerequisite-acceptance-draft-v1.md | e36947dc852fb7ec460b53beb354ebc980d5868af5fed5a17629b3ded1ac2c61 |
+
+UTF8 reading confirms the original em-dash/arrow text is intact; a default PowerShell console decoding artifact is not a document defect. The companion JSON records exact paths, bytes and final review time. Test/native import/Cargo/Git/GitHub/product/draft/archive edits: zero. Root remains responsible for the correction and final review/publication.

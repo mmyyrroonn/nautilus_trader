@@ -1,0 +1,31 @@
+# Native117 economic demand-boundary regressions — test source v1
+
+These new tests follow the preserved first paired failure on implementation `56705ce873d5fc4e568e5f9ea8f2c614d5d35230`, wheel `47486c076bfaa7afac05a02071b11d485280dca5718a0d806d6dd6fe1eb4a05e`, and root's append-only correction contract v2. They are authored against unchanged production and are intended for root's recorded RED run before a narrow producer fix. No RED or PASS is claimed by this author.
+
+Writes are limited to `src/economics_scope/tests.rs` and `tests/entropy_account/io_query_recovery.rs`. Original tests, assertions, helpers, TTLs, quota, deadlines, policies and production are retained. Before copies/identities are in `economic-gap-tests-before-v1/` and its JSON receipt. The three relevant production source hashes are unchanged across authoring. All later root formatting/compiler corrections must receive new source identities; this unformatted source is frozen.
+
+## Direct durable contract cases
+
+Six new rstest functions expand to nine declared cases:
+
+- `warm_demand_three_boundaries_append_durable_unknown_tails_and_reopen`: actual synthetic domain observations produce funding and fee receipts, then three increasing demand boundaries preserve the complete prefix and append exactly two zero-page/zero-record incomplete tails. Each group has one revision increment. Stop/drop and reopen retain exact rows/raw/receipts/recognized amounts.
+- `warm_demand_same_or_earlier_boundary_is_a_byte_exact_revision_noop`: equal, earlier and zero times preserve the whole visible snapshot and actual checkpoint bytes, including revision and receipts.
+- `warm_demand_clips_to_policy_end_and_never_rewrites_the_final_boundary`: later demand clips to the fixed policy end, preserves the first tail, and further elapsed time is an exact no-op.
+- `warm_demand_scope_and_endpoint_do_not_borrow_other_or_stream_gap_boundaries` (three cases): funding and ledger have independent starts; different generation and epoch cannot borrow prior ends. A stream-gap diagnostic, a nonzero-page incomplete row or a nonzero-record incomplete row cannot become a represented warm-demand boundary.
+- `warm_demand_full_capacity_rejects_both_endpoints_atomically_but_accepts_noop` (two cases): zero or one spare row keeps an already represented boundary a byte/revision no-op, but rejects a later two-endpoint addition without partial state/bytes, taint, raw or receipt changes. Reopen confirms the durable prefix. Original row/byte caps are not enlarged.
+- `warm_demand_noop_cannot_bypass_a_real_tainted_checkpoint_failure`: a normal observation that exceeds the original finite observation bound produces an actual tainted persistence refusal. Equal/earlier demand still errors without clearing taint or changing prior checkpoint bytes. It does not manually set a taint flag or change production/store rules.
+
+The direct tests use the existing synthetic economic domain entry points and real temporary durable files. They do not inject financial Engine/Cache events. Existing storage corruption/byte/I/O tests remain; these additions do not claim new storage-mechanism coverage.
+
+## Normal client callback regression
+
+`consecutive_owned_entry_and_close_warm_callbacks_append_economic_unknown_tails` adds one new integration case while preserving the existing successful single-warm economic case. It uses the normal factory/HTTP/WS/Engine/Portfolio Harness, actual IOC entry and owned reduce-only close, native aggregate ACK incompleteness, actual peer fills/terminal/full-account frames, and ordinary event consumption. Each financial action is followed by ordinary QueryAccount and the existing runner owner completion. Both callbacks must settle current/trusted/recovery complete, reuse the same original prerequisite and preserve actual native fill identities/fees.
+
+The first successful warm economic prefix is carried into the second. Each callback must append an incomplete tail without rewriting prior coverage, fabricating requests, replaying immutable raw/receipts or adding native fills/commission. HTTP requests prove current financial reads and zero funding/ledger/role reads on reuse. The final native position is zero with two actual writes and fills. Scope, economic state and actual peer HTTP/WS raw are printed before the new assertion groups so the second callback failure is preserved even when temporary journals are removed. This is not a guaranteed timing/quota pass; any earlier source/lifetime/fixture failure must be reported as observed, not retried or weakened.
+
+Root should first run the unchanged production with these exact filters:
+
+1. `cargo test -p nautilus-hyperliquid --lib warm_demand_` using the established locked/offline nextest-profile command and root-owned output labels.
+2. `cargo test -p nautilus-hyperliquid --test entropy_account consecutive_owned_entry_and_close_warm_callbacks_append_economic_unknown_tails` with the same existing parameters.
+
+These are suggested filters, not executed commands. Declared inventory is **9 direct + 1 integration = 10 cases**. This author ran zero formatter, Cargo, tests, native import, build, stubs, venv, Git or GitHub operations. No first failed child, journal or wheel was rewritten. Source authoring stops at this version; root owns RED execution and subsequent source/compile acceptance.
