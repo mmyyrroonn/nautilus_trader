@@ -51,8 +51,6 @@ pub enum HyperliquidWsChannel {
     OrderUpdates,
     #[serde(rename = "userEvents")]
     UserEvents,
-    #[serde(rename = "clearinghouseState")]
-    ClearinghouseState,
     #[serde(rename = "userFills")]
     UserFills,
     #[serde(rename = "userFundings")]
@@ -96,7 +94,6 @@ impl HyperliquidWsChannel {
             Self::Notification => "notification",
             Self::OrderUpdates => "orderUpdates",
             Self::UserEvents => "userEvents",
-            Self::ClearinghouseState => "clearinghouseState",
             Self::UserFills => "userFills",
             Self::UserFundings => "userFundings",
             Self::UserNonFundingLedgerUpdates => "userNonFundingLedgerUpdates",
@@ -232,7 +229,7 @@ mod tests {
     #[rstest]
     fn test_enum_iter() {
         let channels: Vec<HyperliquidWsChannel> = HyperliquidWsChannel::iter().collect();
-        assert_eq!(channels.len(), 24);
+        assert_eq!(channels.len(), 23);
         assert!(channels.contains(&HyperliquidWsChannel::Trades));
         assert!(channels.contains(&HyperliquidWsChannel::L2Book));
         assert!(channels.contains(&HyperliquidWsChannel::UserFills));

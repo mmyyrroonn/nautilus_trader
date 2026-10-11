@@ -68,7 +68,6 @@ pub mod config;
 pub mod execution;
 pub mod factories;
 pub mod http;
-mod scope;
 pub mod signing;
 pub mod websocket;
 

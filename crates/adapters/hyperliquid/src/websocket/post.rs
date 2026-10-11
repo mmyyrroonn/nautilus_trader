@@ -45,7 +45,6 @@ use crate::{
 #[derive(Debug)]
 struct Waiter {
     tx: oneshot::Sender<PostResponse>,
-    epoch: Option<u64>,
     // When this is dropped, the permit is released, shrinking inflight
     _permit: OwnedSemaphorePermit,
 }
@@ -72,14 +71,6 @@ impl PostRouter {
 
     /// Registers interest in a post id, enforcing inflight cap.
     pub async fn register(&self, id: u64) -> Result<oneshot::Receiver<PostResponse>> {
-        self.register_for_epoch(id, None).await
-    }
-
-    pub(crate) async fn register_for_epoch(
-        &self,
-        id: u64,
-        epoch: Option<u64>,
-    ) -> Result<oneshot::Receiver<PostResponse>> {
         // Acquire and retain a permit per inflight call
         let permit = self
             .inflight
@@ -97,7 +88,6 @@ impl PostRouter {
             id,
             Waiter {
                 tx,
-                epoch,
                 _permit: permit,
             },
         );
@@ -106,19 +96,9 @@ impl PostRouter {
 
     /// Completes a waiting caller when a response arrives (releases inflight via Waiter drop).
     pub async fn complete(&self, resp: PostResponse) {
-        self.complete_for_epoch(resp, None).await;
-    }
-
-    pub(crate) async fn complete_for_epoch(&self, resp: PostResponse, epoch: Option<u64>) {
         let id = resp.id;
         let waiter = {
             let mut map = self.inner.lock().await;
-            if map
-                .get(&id)
-                .is_some_and(|waiter| waiter.epoch.is_some() && waiter.epoch != epoch)
-            {
-                return;
-            }
             map.remove(&id)
         };
 

@@ -15,7 +15,7 @@
 
 //! Factory functions for creating Hyperliquid clients and components.
 
-use std::{any::Any, cell::RefCell, rc::Rc, sync::Arc};
+use std::{any::Any, cell::RefCell, rc::Rc};
 
 use nautilus_common::{
     cache::CacheView,
@@ -28,10 +28,8 @@ use nautilus_model::{
     enums::{AccountType, OmsType},
     identifiers::{ClientId, TraderId},
 };
-use parking_lot::Mutex;
 
 use crate::{
-    account_scope::{AccountScopeDiagnostics, HyperliquidAccountScopeSnapshot},
     common::consts::{HYPERLIQUID, HYPERLIQUID_VENUE},
     config::{HyperliquidDataClientConfig, HyperliquidExecutionClientConfig},
     data::HyperliquidDataClient,
@@ -118,78 +116,13 @@ impl DataClientFactory for HyperliquidDataClientFactory {
     feature = "python",
     pyo3_stub_gen::derive::gen_stub_pyclass(module = "nautilus_trader.adapters.hyperliquid")
 )]
-pub struct HyperliquidExecutionClientFactory {
-    account_scope_diagnostics: Arc<Mutex<Option<AccountScopeDiagnostics>>>,
-    io_execution_diagnostics: Arc<Mutex<Option<crate::execution_scope::IoExecutionDiagnostics>>>,
-    io_economics_diagnostics: Arc<Mutex<Option<crate::economics_scope::IoEconomicsDiagnostics>>>,
-}
+pub struct HyperliquidExecutionClientFactory;
 
 impl HyperliquidExecutionClientFactory {
     /// Creates a new [`HyperliquidExecutionClientFactory`] instance.
     #[must_use]
-    pub fn new() -> Self {
-        Self {
-            account_scope_diagnostics: Arc::new(Mutex::new(None)),
-            io_execution_diagnostics: Arc::new(Mutex::new(None)),
-            io_economics_diagnostics: Arc::new(Mutex::new(None)),
-        }
-    }
-
-    /// Returns the factory-bound exact economic report and source diagnostics.
-    pub fn economics_scope_snapshot_json(&self) -> anyhow::Result<Option<String>> {
-        self.io_economics_diagnostics
-            .lock()
-            .as_ref()
-            .map(crate::economics_scope::IoEconomicsDiagnostics::snapshot_json)
-            .transpose()
-            .map(Option::flatten)
-    }
-
-    /// Returns detached source observations awaiting the native report consumer.
-    pub fn pending_economics_json(&self) -> anyhow::Result<Option<String>> {
-        self.io_economics_diagnostics
-            .lock()
-            .as_ref()
-            .map(crate::economics_scope::IoEconomicsDiagnostics::pending_json)
-            .transpose()
-            .map(Option::flatten)
-    }
-
-    /// Atomically persists the native report and immutable consumption receipts.
-    pub fn persist_economics(&self) -> anyhow::Result<Option<String>> {
-        self.io_economics_diagnostics
-            .lock()
-            .as_ref()
-            .map(crate::economics_scope::IoEconomicsDiagnostics::persist_economics)
-            .transpose()
-            .map(Option::flatten)
-    }
-
-    /// Returns the bounded execution policy/ownership diagnostic, when enabled.
-    pub fn execution_scope_snapshot_json(&self) -> anyhow::Result<Option<String>> {
-        self.io_execution_diagnostics
-            .lock()
-            .as_ref()
-            .map(crate::execution_scope::IoExecutionDiagnostics::snapshot_json)
-            .transpose()
-            .map(Option::flatten)
-    }
-
-    /// Returns the newest factory-bound client's detached account proof, when available.
-    #[must_use]
-    pub fn account_scope_snapshot(&self) -> Option<HyperliquidAccountScopeSnapshot> {
-        self.account_scope_diagnostics
-            .lock()
-            .as_ref()
-            .and_then(AccountScopeDiagnostics::snapshot)
-    }
-
-    /// Returns exact-decimal JSON for the factory-bound io proof, or `None` when unbound.
-    pub fn account_scope_snapshot_json(&self) -> anyhow::Result<Option<String>> {
-        self.account_scope_snapshot()
-            .map(|snapshot| serde_json::to_string(&snapshot))
-            .transpose()
-            .map_err(Into::into)
+    pub const fn new() -> Self {
+        Self
     }
 }
 
@@ -234,20 +167,7 @@ impl ExecutionClientFactory for HyperliquidExecutionClientFactory {
             cache,
         );
 
-        let mut economics_binding = self.io_economics_diagnostics.lock();
-        anyhow::ensure!(
-            economics_binding
-                .as_ref()
-                .map(crate::economics_scope::IoEconomicsDiagnostics::snapshot_json)
-                .transpose()?
-                .flatten()
-                .is_none(),
-            "Factory already owns an active io economics consumer"
-        );
         let client = HyperliquidExecutionClient::new(core, hyperliquid_config)?;
-        *economics_binding = client.io_economics_runtime();
-        *self.account_scope_diagnostics.lock() = client.account_scope_diagnostics();
-        *self.io_execution_diagnostics.lock() = client.io_execution_runtime();
         Ok(Box::new(client))
     }
 
@@ -297,7 +217,7 @@ mod tests {
 
     #[rstest]
     fn test_hyperliquid_execution_client_factory_default() {
-        let factory = HyperliquidExecutionClientFactory::default();
+        let factory = HyperliquidExecutionClientFactory;
         assert_eq!(factory.name(), HYPERLIQUID);
     }
 

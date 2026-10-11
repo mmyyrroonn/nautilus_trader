@@ -34,19 +34,15 @@ use nautilus_model::{
 };
 use nautilus_network::{
     RECONNECTED,
-    dst::time::Instant,
     retry::{RetryManager, create_websocket_retry_manager},
-    websocket::{
-        PreparedWriteAdmission, PreparedWriteControl, PreparedWriteOutcome, SubscriptionState,
-        WebSocketClient,
-    },
+    websocket::{SubscriptionState, WebSocketClient},
 };
 use rust_decimal::Decimal;
 use tokio_tungstenite::tungstenite::Message;
 use ustr::Ustr;
 
 use super::{
-    client::{AssetContextDataType, CloidCache, PrivateIngressToken, RawWebSocketFrame},
+    client::{AssetContextDataType, CloidCache},
     enums::HyperliquidWsChannel,
     error::HyperliquidWsError,
     messages::{
@@ -63,105 +59,10 @@ use super::{
     post::PostRouter,
     trades::TradeStreamUses,
 };
-use crate::{
-    common::consts::INFLIGHT_MAX,
-    data_types::{
-        HyperliquidAllDexsAssetCtxs, HyperliquidAllMids, HyperliquidDexAssetCtx,
-        HyperliquidImpactPrices,
-    },
+use crate::data_types::{
+    HyperliquidAllDexsAssetCtxs, HyperliquidAllMids, HyperliquidDexAssetCtx,
+    HyperliquidImpactPrices,
 };
-
-pub(crate) struct PreparedPostCommand {
-    pub id: u64,
-    pub payload: String,
-    pub epoch: u64,
-    pub deadline: Instant,
-    pub control: PreparedWriteControl,
-    pub admission: PreparedWriteAdmission,
-    pub result: tokio::sync::oneshot::Sender<PreparedWriteOutcome>,
-}
-impl std::fmt::Debug for PreparedPostCommand {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("PreparedPostCommand")
-            .field("id", &self.id)
-            .field("epoch", &self.epoch)
-            .finish_non_exhaustive()
-    }
-}
-
-struct PreparedTaskCancellation(PreparedWriteControl);
-impl Drop for PreparedTaskCancellation {
-    fn drop(&mut self) {
-        let _ = self.0.cancel();
-    }
-}
-
-fn ingress_marker(token: Option<PrivateIngressToken>) -> Option<NautilusWsMessage> {
-    token.map(|token| NautilusWsMessage::PrivateIngressApplied {
-        generation: token.generation,
-        epoch: token.epoch,
-        sequence: token.sequence,
-    })
-}
-
-// Keep legacy reports, but require the scoped actor to explicitly consume each
-// known private ledger channel before the following ingress marker is applied.
-fn private_ledger_channel(channel: &str) -> Option<&str> {
-    match channel {
-        "userEvents" => Some("user"),
-        "user"
-        | "orderUpdates"
-        | "userFills"
-        | "userFundings"
-        | "userNonFundingLedgerUpdates"
-        | "activeAssetData"
-        | "userTwapSliceFills"
-        | "userTwapHistory"
-        | "webData2" => Some(channel),
-        _ => None,
-    }
-}
-
-fn scoped_execution_frame(
-    text: &str,
-    epoch: u64,
-    received: UnixNanos,
-    ingress: Option<PrivateIngressToken>,
-) -> Result<Option<NautilusWsMessage>, &'static str> {
-    #[derive(serde::Deserialize)]
-    struct RawEnvelope<'a> {
-        channel: String,
-        #[serde(borrow)]
-        data: &'a serde_json::value::RawValue,
-    }
-    let Some(token) = ingress else {
-        return Ok(None);
-    };
-    if token
-        .economic_raw_limit
-        .is_some_and(|limit| text.len() > limit)
-    {
-        return Err("Economic raw WebSocket frame exceeds policy bound; source not preserved");
-    }
-    let Ok(raw) = serde_json::from_str::<RawEnvelope<'_>>(text) else {
-        return Ok(None);
-    };
-    let Some(channel) = private_ledger_channel(&raw.channel) else {
-        return Ok(None);
-    };
-    // The immutable original is copied before legacy Value/typed materialization.
-    let raw_text = text.to_string();
-    Ok(Some(NautilusWsMessage::IoExecutionFrame {
-        channel: channel.into(),
-        data: serde_json::from_str(raw.data.get()).unwrap_or(serde_json::Value::Null),
-        raw_text,
-        legacy_parse_succeeded: false,
-        generation: token.generation,
-        sequence: token.sequence,
-        epoch,
-        received,
-    }))
-}
 
 /// Commands sent from the outer client to the inner message handler.
 #[derive(Debug)]
@@ -173,8 +74,6 @@ fn scoped_execution_frame(
 pub enum HandlerCommand {
     /// Set the WebSocketClient for the handler to use.
     SetClient(WebSocketClient),
-    /// Single-use action admitted at the actual backend start_send boundary.
-    PreparedPost(Box<PreparedPostCommand>),
     /// Disconnect the WebSocket connection.
     Disconnect,
     /// Subscribe to the given subscriptions.
@@ -314,10 +213,9 @@ impl AllMidsDataTypeCache {
 pub(super) struct FeedHandler {
     clock: &'static AtomicTime,
     signal: Arc<AtomicBool>,
-    client: Option<Arc<WebSocketClient>>,
-    prepared_sends: tokio::task::JoinSet<()>,
+    client: Option<WebSocketClient>,
     cmd_rx: tokio::sync::mpsc::UnboundedReceiver<HandlerCommand>,
-    raw_rx: tokio::sync::mpsc::UnboundedReceiver<RawWebSocketFrame>,
+    raw_rx: tokio::sync::mpsc::UnboundedReceiver<Message>,
     out_tx: tokio::sync::mpsc::UnboundedSender<NautilusWsMessage>,
     account_id: Option<AccountId>,
     subscriptions: SubscriptionState,
@@ -347,7 +245,7 @@ impl FeedHandler {
     pub(super) fn new(
         signal: Arc<AtomicBool>,
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<HandlerCommand>,
-        raw_rx: tokio::sync::mpsc::UnboundedReceiver<RawWebSocketFrame>,
+        raw_rx: tokio::sync::mpsc::UnboundedReceiver<Message>,
         out_tx: tokio::sync::mpsc::UnboundedSender<NautilusWsMessage>,
         account_id: Option<AccountId>,
         subscriptions: SubscriptionState,
@@ -358,7 +256,6 @@ impl FeedHandler {
             clock: get_atomic_clock_realtime(),
             signal,
             client: None,
-            prepared_sends: tokio::task::JoinSet::new(),
             cmd_rx,
             raw_rx,
             out_tx,
@@ -428,13 +325,11 @@ impl FeedHandler {
                     match cmd {
                         HandlerCommand::SetClient(client) => {
                             log::debug!("Setting WebSocket client in handler");
-                            self.client = Some(Arc::new(client));
+                            self.client = Some(client);
                         }
                         HandlerCommand::Disconnect => {
                             log::debug!("Handler received disconnect command");
 
-                            self.prepared_sends.abort_all();
-                            while self.prepared_sends.join_next().await.is_some() {}
                             if let Some(ref client) = self.client {
                                 client.disconnect().await;
                             }
@@ -454,7 +349,6 @@ impl FeedHandler {
                                         if let Err(e) = self.send_with_retry(payload).await {
                                             log::error!("Error subscribing to {key}: {e}");
                                             self.subscriptions.mark_failure(&key);
-                                            return Some(NautilusWsMessage::Error(format!("Private subscription send failed: {e}")));
                                         }
                                     }
                                     Err(e) => {
@@ -483,31 +377,6 @@ impl FeedHandler {
                                     }
                                 }
                             }
-                        }
-                        HandlerCommand::PreparedPost(command) => {
-                            // Reap completions before checking the explicit task bound. The
-                            // router also caps requests, but abandoned callers may release
-                            // their router permit while this task is still unwinding.
-                            while self.prepared_sends.try_join_next().is_some() {}
-                            let PreparedPostCommand { payload, epoch, deadline, control, admission, result, .. } = *command;
-                            if self.prepared_sends.len() >= INFLIGHT_MAX {
-                                let _ = result.send(control.cancel());
-                                continue;
-                            }
-                            let Some(client) = self.client.clone() else {
-                                let _ = result.send(control.cancel());
-                                continue;
-                            };
-                            // Construct before spawn: even abort before the first poll must
-                            // retire a queued prepared intent instead of creating a ghost write.
-                            let cancellation = PreparedTaskCancellation(control.clone());
-                            self.prepared_sends.spawn(async move {
-                                let _cancellation = cancellation;
-                                let outcome = client.send_prepared_text_on_connection(
-                                    payload, None, epoch, deadline, control, admission,
-                                ).await;
-                                let _ = result.send(outcome);
-                            });
                         }
                         HandlerCommand::Post { id, request } => {
                             let request = HyperliquidWsRequest::Post { id, request };
@@ -579,48 +448,24 @@ impl FeedHandler {
                     }
                 }
 
-                Some(_) = self.prepared_sends.join_next(), if !self.prepared_sends.is_empty() => {}
-
-                Some((epoch, received, ingress, raw_msg)) = self.raw_rx.recv() => {
-                    if self.client.as_ref().is_some_and(|client| client.connection_epoch_atomic().load(Ordering::Acquire) != epoch) { continue; }
+                Some(raw_msg) = self.raw_rx.recv() => {
                     match raw_msg {
                         Message::Text(text) => {
                             if text == RECONNECTED {
                                 log::info!("Received RECONNECTED sentinel");
-                                if let Some(marker) = ingress_marker(ingress) { self.message_buffer.push_back(marker); }
-                                return Some(NautilusWsMessage::AccountScopeStreamEpoch { epoch });
+                                return Some(NautilusWsMessage::Reconnected);
                             }
-
-                            // RawValue retains numeric lexemes and avoids decoding unknown cash
-                            // before economic ingestion. Even legacy typed parsing errors retain
-                            // the original scoped raw fact ahead of Error and the applied marker.
-                            let scoped_raw = match scoped_execution_frame(&text, epoch, received, ingress) {
-                                Ok(raw) => raw,
-                                Err(error) => {
-                                    if let Some(marker) = ingress_marker(ingress) { self.message_buffer.push_back(marker); }
-                                    return Some(NautilusWsMessage::Error(error.into()));
-                                }
-                            };
 
                             match serde_json::from_str::<HyperliquidWsMessage>(&text) {
                                 Ok(msg) => {
-                                    if let HyperliquidWsMessage::SubscriptionResponse { ref data } = msg {
-                                        let key = subscription_to_key(&data.subscription);
-                                        if data.method == "subscribe" {
-                                            self.subscriptions.confirm_subscribe(&key);
-                                        } else if data.method == "unsubscribe" {
-                                            self.subscriptions.confirm_unsubscribe(&key);
-                                        }
-                                    }
                                     if let HyperliquidWsMessage::Post { data } = msg {
-                                        self.post_router.complete_for_epoch(data,Some(epoch)).await;
-                                        if let Some(marker) = ingress_marker(ingress) { return Some(marker); }
+                                        self.post_router.complete(data).await;
                                         continue;
                                     }
 
                                     let ts_init = self.clock.get_time_ns();
 
-                                    let mut nautilus_msgs = Self::parse_to_nautilus_messages(
+                                    let nautilus_msgs = Self::parse_to_nautilus_messages(
                                         msg,
                                         &self.instruments,
                                         &self.cloid_cache,
@@ -638,21 +483,6 @@ impl FeedHandler {
                                         self.all_mids_data_types.as_slice(),
                                     );
 
-                                    if let Some(mut raw) = scoped_raw {
-                                        if let NautilusWsMessage::IoExecutionFrame { legacy_parse_succeeded, .. } = &mut raw { *legacy_parse_succeeded = true; }
-                                        nautilus_msgs.insert(0, raw);
-                                    }
-                                    for message in &mut nautilus_msgs {
-                                        match message {
-                                            NautilusWsMessage::AccountScopeSubscriptionResponse { epoch: origin, .. } => *origin = epoch,
-                                            NautilusWsMessage::AccountScopeClearinghouseState { epoch: origin, ts_init, .. } => { *origin = epoch; *ts_init = received; }
-                                            _ => {}
-                                        }
-                                    }
-                                    if ingress.is_some() && self.account_id.is_some() && nautilus_msgs.is_empty() {
-                                        nautilus_msgs.push(NautilusWsMessage::Error("Unhandled private WebSocket frame".to_owned()));
-                                    }
-                                    if let Some(marker) = ingress_marker(ingress) { nautilus_msgs.push(marker); }
                                     if !nautilus_msgs.is_empty() {
                                         let mut iter = nautilus_msgs.into_iter();
                                         let first = iter.next().unwrap();
@@ -661,14 +491,7 @@ impl FeedHandler {
                                     }
                                 }
                                 Err(e) => {
-                                    log::error!("Error parsing WebSocket message: {e}");
-                                    if let Some(raw) = scoped_raw {
-                                        self.message_buffer.push_back(NautilusWsMessage::Error(format!("WebSocket message parse failed: {e}")));
-                                        if let Some(marker) = ingress_marker(ingress) { self.message_buffer.push_back(marker); }
-                                        return Some(raw);
-                                    }
-                                    if let Some(marker) = ingress_marker(ingress) { self.message_buffer.push_back(marker); }
-                                    return Some(NautilusWsMessage::Error(format!("WebSocket message parse failed: {e}")));
+                                    log::error!("Error parsing WebSocket message: {e}, text: {text}");
                                 }
                             }
                         }
@@ -679,14 +502,8 @@ impl FeedHandler {
                             }
                         }
                         Message::Close(_) => {
-                            // Retain the outstanding fence until the connection epoch is
-                            // invalidated; a close frame cannot certify account state.
                             log::debug!("Received WebSocket close frame");
                             return None;
-                        }
-                        Message::Binary(_) => {
-                            if let Some(marker) = ingress_marker(ingress) { self.message_buffer.push_back(marker); }
-                            return Some(NautilusWsMessage::Error("Unsupported private binary WebSocket frame".to_owned()));
                         }
                         _ => {}
                     }
@@ -897,17 +714,6 @@ impl FeedHandler {
             }
             HyperliquidWsMessage::Error { data } => {
                 log::warn!("Received error from Hyperliquid WebSocket: {data}");
-                result.push(NautilusWsMessage::Error(data));
-            }
-            HyperliquidWsMessage::SubscriptionResponse { data } if account_id.is_some() => {
-                result.push(NautilusWsMessage::AccountScopeSubscriptionResponse { data, epoch: 0 });
-            }
-            HyperliquidWsMessage::ClearinghouseState { data } if account_id.is_some() => {
-                result.push(NautilusWsMessage::AccountScopeClearinghouseState {
-                    data,
-                    ts_init,
-                    epoch: 0,
-                });
             }
             // Ignore other message types (subscription confirmations, etc)
             _ => {}
@@ -1526,12 +1332,6 @@ pub(crate) fn subscription_to_key(sub: &SubscriptionRequest) -> String {
         SubscriptionRequest::UserEvents { user } => {
             format!("{}:{user}", HyperliquidWsChannel::UserEvents.as_str())
         }
-        SubscriptionRequest::ClearinghouseState { user, dex } => {
-            format!(
-                "{}:{user}:{dex}",
-                HyperliquidWsChannel::ClearinghouseState.as_str()
-            )
-        }
         SubscriptionRequest::UserFills { user, .. } => {
             format!("{}:{user}", HyperliquidWsChannel::UserFills.as_str())
         }
@@ -1596,61 +1396,6 @@ pub(crate) fn create_hyperliquid_timeout_error(msg: String) -> HyperliquidWsErro
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn economics_raw_bridge_retains_numeric_lexeme_and_reader_identity_on_legacy_parse_failure() {
-        let raw = r#"{"channel":"userFundings","data":{"user":"0xabc","fundings":[{"time":1,"coin":"io:SNDK","usdc":0.1234567890123456789012345678,"szi":"1","fundingRate":"0"}]}}"#;
-        assert!(serde_json::from_str::<super::HyperliquidWsMessage>(raw).is_err());
-        let token = super::PrivateIngressToken {
-            generation: 8,
-            epoch: 3,
-            sequence: 19,
-            economic_raw_limit: Some(65536),
-        };
-        let frame =
-            super::scoped_execution_frame(raw, 3, nautilus_core::UnixNanos::from(777), Some(token))
-                .unwrap()
-                .unwrap();
-        let super::NautilusWsMessage::IoExecutionFrame {
-            raw_text,
-            generation,
-            sequence,
-            epoch,
-            received,
-            ..
-        } = frame
-        else {
-            panic!("Expected scoped raw frame");
-        };
-        assert_eq!(raw_text, raw);
-        assert_eq!(
-            (generation, epoch, sequence, received.as_u64()),
-            (8, 3, 19, 777)
-        );
-        assert!(
-            super::scoped_execution_frame(raw, 3, received, None)
-                .unwrap()
-                .is_none()
-        );
-        let limited = super::PrivateIngressToken {
-            economic_raw_limit: Some(8),
-            ..token
-        };
-        assert!(super::scoped_execution_frame(raw, 3, received, Some(limited)).is_err());
-    }
-
-    #[test]
-    fn economics_raw_bridge_preserves_escaped_private_channel() {
-        let raw = r#"{"channel":"user\u0046undings","data":{"user":"0xabc","fundings":[]}}"#;
-        let token = super::PrivateIngressToken {
-            generation: 1,
-            epoch: 0,
-            sequence: 1,
-            economic_raw_limit: Some(65536),
-        };
-        assert!(
-            matches!(super::scoped_execution_frame(raw, 0, nautilus_core::UnixNanos::from(1), Some(token)).unwrap(), Some(super::NautilusWsMessage::IoExecutionFrame { channel, raw_text, .. }) if channel == "userFundings" && raw_text == raw)
-        );
-    }
     use std::{
         sync::{Arc, atomic::AtomicBool},
         time::Duration,
@@ -1875,180 +1620,6 @@ mod tests {
         }
     }
 
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn prepared_send_wait_does_not_block_private_raw_frame_processing() {
-        use std::sync::Condvar;
-
-        use futures_util::{SinkExt, StreamExt};
-        use nautilus_network::{
-            dst::time::Instant,
-            websocket::{
-                EpochMessageHandler, PreparedWriteControl, PreparedWriteOutcome, WebSocketClient,
-                WebSocketConfig,
-            },
-        };
-
-        use super::{super::client::PrivateIngressToken, PreparedPostCommand};
-
-        // Receive a real TCP frame before pausing the synchronous writer callback,
-        // then deliver that already-received frame to the handler while its send is pending.
-        // SplitSink holds the transport BiLock during a synchronous callback, so this
-        // deliberately tests the received queue rather than concurrent socket polling.
-        // The token is synthetic; shared receipt/admission locking is tested separately.
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let address = listener.local_addr().unwrap();
-        let (send_frame, start_frame) = tokio::sync::oneshot::channel();
-        let server = tokio::spawn(async move {
-            let (socket, _) = listener.accept().await.unwrap();
-            let mut socket = tokio_tungstenite::accept_async(socket).await.unwrap();
-            start_frame.await.unwrap();
-            socket.send(tokio_tungstenite::tungstenite::Message::text(
-                r#"{"channel":"clearinghouseState","data":{"user":"0x0000000000000000000000000000000000000001","dex":"io","clearinghouseState":{}}}"#
-            )).await.unwrap();
-            let mut action_frames = 0;
-            while let Some(frame) = socket.next().await {
-                match frame.unwrap() {
-                    tokio_tungstenite::tungstenite::Message::Text(_) => action_frames += 1,
-                    tokio_tungstenite::tungstenite::Message::Close(_) => break,
-                    _ => {}
-                }
-            }
-            action_frames
-        });
-        let (raw_tx, raw_rx) = tokio::sync::mpsc::unbounded_channel();
-        let (captured_tx, mut captured_rx) = tokio::sync::mpsc::unbounded_channel();
-        let reader: EpochMessageHandler = Arc::new(move |epoch, frame| {
-            let frame = tokio_tungstenite::tungstenite::Message::try_from(frame).unwrap();
-            captured_tx
-                .send((
-                    epoch,
-                    UnixNanos::from(1),
-                    Some(PrivateIngressToken {
-                        generation: 7,
-                        epoch,
-                        sequence: 1,
-                        economic_raw_limit: None,
-                    }),
-                    frame,
-                ))
-                .unwrap();
-        });
-        let client = WebSocketClient::epoch_builder()
-            .config(
-                WebSocketConfig::builder()
-                    .url(format!("ws://{address}"))
-                    .connect_timeout_ms(1_000)
-                    .build()
-                    .unwrap(),
-            )
-            .epoch_handler(reader)
-            .connect()
-            .await
-            .unwrap();
-        send_frame.send(()).unwrap();
-        let received_frame = tokio::time::timeout(Duration::from_secs(1), captured_rx.recv())
-            .await
-            .unwrap()
-            .unwrap();
-        let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel();
-        let (out_tx, mut out_rx) = tokio::sync::mpsc::unbounded_channel();
-        let cache = Arc::new(Mutex::new(FifoCacheMap::<
-            Ustr,
-            ClientOrderId,
-            CLOID_CACHE_CAPACITY,
-        >::new()));
-        let mut handler = FeedHandler::new(
-            Arc::new(AtomicBool::new(false)),
-            cmd_rx,
-            raw_rx,
-            out_tx,
-            Some(nautilus_model::identifiers::AccountId::from(
-                "HYPERLIQUID-TEST",
-            )),
-            SubscriptionState::new(':'),
-            cache,
-            PostRouter::new(),
-        );
-        let handler_task = tokio::spawn(async move {
-            while let Some(message) = handler.next().await {
-                handler.send(message).unwrap();
-            }
-        });
-        cmd_tx.send(HandlerCommand::SetClient(client)).unwrap();
-        let gate = Arc::new((std::sync::Mutex::new(false), Condvar::new()));
-        let sender_gate = Arc::clone(&gate);
-        let (entered, admission_entered) = tokio::sync::oneshot::channel();
-        let (result, outcome) = tokio::sync::oneshot::channel();
-        let deadline = Instant::now() + Duration::from_secs(3);
-        cmd_tx
-            .send(HandlerCommand::PreparedPost(Box::new(
-                PreparedPostCommand {
-                    id: 1,
-                    payload: "must-not-write".to_owned(),
-                    epoch: 0,
-                    deadline,
-                    control: PreparedWriteControl::new(deadline),
-                    admission: Box::new(move |_| {
-                        entered.send(()).unwrap();
-                        let (lock, wake) = &*sender_gate;
-                        let mut released = lock.lock().unwrap();
-                        while !*released {
-                            released = wake.wait(released).unwrap();
-                        }
-                        Err("synthetic final proof rejects".to_owned())
-                    }),
-                    result,
-                },
-            )))
-            .unwrap();
-        tokio::time::timeout(Duration::from_secs(1), admission_entered)
-            .await
-            .unwrap()
-            .unwrap();
-        raw_tx.send(received_frame).unwrap();
-        let frame_result = tokio::time::timeout(Duration::from_secs(1), out_rx.recv()).await;
-        // Always release the synchronous test gate before any assertion can panic.
-        let (lock, wake) = &*gate;
-        *lock.lock().unwrap() = true;
-        wake.notify_all();
-        assert!(
-            matches!(
-                frame_result.unwrap(),
-                Some(NautilusWsMessage::AccountScopeClearinghouseState { epoch: 0, .. })
-            ),
-            "private frame must be handled while prepared send is pending"
-        );
-        assert!(matches!(
-            tokio::time::timeout(Duration::from_secs(1), out_rx.recv())
-                .await
-                .unwrap(),
-            Some(NautilusWsMessage::PrivateIngressApplied {
-                generation: 7,
-                epoch: 0,
-                sequence: 1
-            })
-        ));
-        assert!(matches!(
-            tokio::time::timeout(Duration::from_secs(1), outcome)
-                .await
-                .unwrap()
-                .unwrap(),
-            PreparedWriteOutcome::NotWritten { .. }
-        ));
-        cmd_tx.send(HandlerCommand::Disconnect).unwrap();
-        tokio::time::timeout(Duration::from_secs(3), handler_task)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(
-            tokio::time::timeout(Duration::from_secs(3), server)
-                .await
-                .unwrap()
-                .unwrap(),
-            0
-        );
-    }
-
     #[tokio::test]
     async fn post_send_failure_cancels_router_waiter() {
         let signal = Arc::new(AtomicBool::new(false));
@@ -2153,10 +1724,6 @@ mod tests {
         drop(cmd_tx);
         drop(raw_tx);
 
-        assert!(matches!(
-            handler.next().await,
-            Some(NautilusWsMessage::Error(message)) if message.contains("Private subscription send failed")
-        ));
         assert!(handler.next().await.is_none());
 
         let messages = OUTBOUND_LOG_CAPTURE.messages();

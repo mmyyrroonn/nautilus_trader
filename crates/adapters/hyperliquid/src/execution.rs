@@ -16,8 +16,6 @@
 //! Live execution client implementation for the Hyperliquid adapter.
 
 use std::{
-    collections::BTreeSet,
-    rc::Rc,
     sync::Arc,
     time::{Duration, Instant},
 };
@@ -34,11 +32,9 @@ use nautilus_common::{
         GenerateOrderStatusReport, GenerateOrderStatusReports, GeneratePositionStatusReports,
         ModifyOrder, QueryAccount, QueryOrder, SubmitOrder, SubmitOrderList,
     },
-    runner::{TimeEventMessage, try_get_time_event_sender},
-    timer::{TimeEvent, TimeEventCallback},
 };
 use nautilus_core::{
-    Params, UUID4, UnixNanos,
+    Params, UnixNanos,
     time::{AtomicTime, get_atomic_clock_realtime},
 };
 use nautilus_live::{
@@ -52,7 +48,6 @@ use nautilus_model::{
     identifiers::{
         AccountId, ClientId, ClientOrderId, InstrumentId, StrategyId, Venue, VenueOrderId,
     },
-    instruments::Instrument,
     orders::{Order, any::OrderAny},
     reports::{ExecutionMassStatus, FillReport, OrderStatusReport, PositionStatusReport},
     types::{AccountBalance, MarginBalance, Quantity},
@@ -162,16 +157,12 @@ use ustr::Ustr;
 
 use crate::{
     account::resolve_execution_account_address,
-    account_scope::{
-        AccountScopeDiagnostics, AccountScopeState, HyperliquidAccountScopeSnapshot,
-        refresh_account_scope,
-    },
     common::{
         consts::{
             HYPERLIQUID_BUILDER_APPROVAL_DOCS_URL, HYPERLIQUID_BUILDER_FEE_NOT_APPROVED,
             HYPERLIQUID_POST_ONLY_WOULD_MATCH, HYPERLIQUID_VENUE,
         },
-        credential::{Secrets, normalize_address},
+        credential::Secrets,
         enums::HyperliquidProductType,
         parse::{
             clamp_price_to_precision, derive_limit_from_trigger, derive_market_order_price,
@@ -181,10 +172,6 @@ use crate::{
         },
     },
     config::HyperliquidExecutionClientConfig,
-    economics_scope::{
-        IoEconomicsPolicy, IoEconomicsRuntime, IoEconomicsScopeProof, IoHistoryCoverage,
-    },
-    execution_scope::{IoExecutionPolicy, IoExecutionRuntime},
     http::{
         client::HyperliquidHttpClient,
         models::{
@@ -195,7 +182,6 @@ use crate::{
             HyperliquidExchangePlaceOrderRequest, HyperliquidExchangeTpSl, SpotClearinghouseState,
         },
         parse::derive_outcome_settlements,
-        query::InfoRequest,
     },
     outcome_settlement::{OutcomeSettlementTracker, build_settlement_fills},
     websocket::{
@@ -209,31 +195,6 @@ use crate::{
 };
 
 const TASK_SHUTDOWN_DENIAL_REASON: &str = "Hyperliquid execution client is shutting down";
-
-struct IoWarmFlight {
-    runtime: IoExecutionRuntime,
-    token: u64,
-    active: Arc<Mutex<bool>>,
-    staged: Arc<Mutex<Option<crate::execution_scope::IoWarmObservation>>>,
-    succeeded: bool,
-}
-
-impl IoWarmFlight {
-    fn set_succeeded(&mut self, succeeded: bool) {
-        self.succeeded = succeeded;
-    }
-}
-
-impl Drop for IoWarmFlight {
-    fn drop(&mut self) {
-        *self.active.lock() = false;
-        let abandoned = self.staged.lock().take();
-        if let Some(observation) = abandoned {
-            self.runtime.abandon_warm_observation(observation);
-        }
-        self.runtime.finish_warm_query(self.token, self.succeeded);
-    }
-}
 
 #[derive(Debug)]
 pub struct HyperliquidExecutionClient {
@@ -249,55 +210,9 @@ pub struct HyperliquidExecutionClient {
     ws_dispatch_state: Arc<WsDispatchState>,
     staged_brackets: Arc<Mutex<StagedBracketState>>,
     outcome_settlement_tracker: Arc<Mutex<OutcomeSettlementTracker>>,
-    account_scope: Option<AccountScopeDiagnostics>,
-    io_execution: Option<IoExecutionRuntime>,
-    io_economics: Option<IoEconomicsRuntime>,
-    economics_instruments: Arc<Mutex<BTreeSet<String>>>,
-    io_query_lifetime: Arc<()>,
 }
 
 impl HyperliquidExecutionClient {
-    /// Returns a detached io proof with current freshness and stream diagnostics.
-    #[must_use]
-    pub fn account_scope_snapshot(&self) -> Option<HyperliquidAccountScopeSnapshot> {
-        self.account_scope
-            .as_ref()
-            .and_then(AccountScopeDiagnostics::snapshot)
-    }
-
-    /// Returns exact-decimal JSON for the current io proof, or no proof for the default scope.
-    pub fn account_scope_snapshot_json(&self) -> anyhow::Result<Option<String>> {
-        self.account_scope_snapshot()
-            .map(|snapshot| serde_json::to_string(&snapshot))
-            .transpose()
-            .map_err(Into::into)
-    }
-
-    pub(crate) fn account_scope_diagnostics(&self) -> Option<AccountScopeDiagnostics> {
-        self.account_scope.clone()
-    }
-    pub fn execution_scope_snapshot_json(&self) -> anyhow::Result<Option<String>> {
-        self.io_execution
-            .as_ref()
-            .map(IoExecutionRuntime::snapshot_json)
-            .transpose()
-    }
-    pub(crate) fn io_execution_runtime(
-        &self,
-    ) -> Option<crate::execution_scope::IoExecutionDiagnostics> {
-        self.io_execution
-            .as_ref()
-            .map(IoExecutionRuntime::diagnostics)
-    }
-
-    pub(crate) fn io_economics_runtime(
-        &self,
-    ) -> Option<crate::economics_scope::IoEconomicsDiagnostics> {
-        self.io_economics
-            .as_ref()
-            .map(IoEconomicsRuntime::diagnostics)
-    }
-
     /// Returns a reference to the configuration.
     pub fn config(&self) -> &HyperliquidExecutionClientConfig {
         &self.config
@@ -333,14 +248,6 @@ impl HyperliquidExecutionClient {
     }
 
     fn validate_order_submission(&self, order: &OrderAny) -> anyhow::Result<()> {
-        if let Some(runtime) = &self.io_execution {
-            runtime.validate_order(order)?;
-            return validate_order_for_hyperliquid(order);
-        }
-        anyhow::ensure!(
-            self.account_scope.is_none() && !is_io_instrument(order.instrument_id()),
-            "io execution is read-only; bounded submission and recovery require issue #101"
-        );
         validate_order_for_hyperliquid(order)
     }
 
@@ -349,7 +256,7 @@ impl HyperliquidExecutionClient {
         order: &OrderAny,
         slippage_bps: u32,
     ) -> anyhow::Result<HyperliquidExchangePlaceOrderRequest> {
-        self.validate_order_submission(order)?;
+        validate_order_for_hyperliquid(order)?;
 
         let symbol = order.instrument_id().symbol.inner();
         let asset = self
@@ -390,171 +297,7 @@ impl HyperliquidExecutionClient {
         Ok(request)
     }
 
-    fn submit_io_order(&self, order: OrderAny) -> anyhow::Result<()> {
-        let runtime = self
-            .io_execution
-            .clone()
-            .context("io execution remains read-only without explicit policy")?;
-        let admission = if order.is_reduce_only() {
-            Ok(())
-        } else {
-            (|| {
-                if runtime.current_warm_metadata() && runtime.metadata_needs_native_cache() {
-                    runtime.bind_metadata_native_cache(&self.http_client, &self.core)?;
-                }
-                runtime.validate_current_native_metadata(&self.http_client, &self.core)
-            })()
-        };
-        let prepared = match admission.and_then(|()| runtime.prepare_order(&order)) {
-            Ok(prepared) => prepared,
-            Err(error) => {
-                self.emitter
-                    .emit_order_denied(&order, &format!("io bounded admission denied: {error}"));
-                return Err(error);
-            }
-        };
-        let emitter = self.emitter.clone();
-        let http = self.http_client.clone();
-        let ws = self.ws_client.clone();
-        let denied = order.clone();
-        let undo = prepared.clone();
-        let result = self.pending_tasks.spawn(async move {
-            let cloid = Cloid::from_client_order_id(order.client_order_id());
-            http.cache_client_order_id_cloid(order.client_order_id(), cloid);
-            ws.cache_cloid_mapping(Ustr::from(&cloid.to_hex()), order.client_order_id());
-            emitter.emit_order_submitted(&order);
-            let result = ws.post_prepared_action(
-                &http, &prepared.action, prepared.epoch, prepared.deadline(),
-                prepared.preparation(), prepared.admission(),
-            ).await;
-            match result.outcome {
-                nautilus_network::websocket::PreparedWriteOutcome::NotWritten { reason } => {
-                    if let Err(error) = runtime.finish_not_written(&prepared.client_order_id, false, &reason) {
-                        runtime.invalidate(&error.to_string());
-                    }
-                    emitter.emit_order_rejected(
-                        &order, &format!("Local io writer NotWritten: {reason}"),
-                        (crate::account_scope::now_ms() * 1_000_000).into(), false,
-                    );
-                }
-                nautilus_network::websocket::PreparedWriteOutcome::MayHaveWritten { .. } => {
-                    match result.response {
-                        Some(Ok(response)) => {
-                            if let Err(error) = runtime.observe_ack(&prepared, &response) {
-                                let _ = runtime.mark_unknown(&prepared.client_order_id, &error.to_string());
-                            } else if let crate::http::models::HyperliquidExchangeResponse::Status { response, .. } = &response {
-                                let oid = response.pointer("/data/statuses/0/resting/oid")
-                                    .or_else(|| response.pointer("/data/statuses/0/filled/oid"))
-                                    .and_then(serde_json::Value::as_u64);
-                                if let Some(oid) = oid {
-                                    emitter.emit_order_accepted(
-                                        &order, VenueOrderId::new(oid.to_string()),
-                                        (crate::account_scope::now_ms() * 1_000_000).into(),
-                                    );
-                                } else if let Some(error) = response.pointer("/data/statuses/0/error").and_then(serde_json::Value::as_str) {
-                                    emitter.emit_order_rejected(
-                                        &order, error, (crate::account_scope::now_ms() * 1_000_000).into(), false,
-                                    );
-                                }
-                            }
-                        }
-                        other => {
-                            let reason = other.and_then(Result::err).map_or_else(
-                                || "io action confirmation is missing".into(), |error| error.to_string(),
-                            );
-                            let _ = runtime.mark_unknown(&prepared.client_order_id, &reason);
-                        }
-                    }
-                    if let Err(error) = runtime.recover(&http, &emitter).await {
-                        log::warn!("io bounded post-action recovery incomplete: {error}");
-                    }
-                }
-            }
-        });
-        if let Err(error) = result {
-            runtime_finish_not_written(&undo, &error.to_string());
-            self.emitter
-                .emit_order_denied(&denied, TASK_SHUTDOWN_DENIAL_REASON);
-            return Err(anyhow::anyhow!(error.to_string()));
-        }
-        Ok(())
-    }
-
-    fn cancel_io_order(&self, cmd: &CancelOrder) -> anyhow::Result<()> {
-        let runtime = self
-            .io_execution
-            .clone()
-            .context("io cancel remains read-only without explicit policy")?;
-        let oid = cmd
-            .venue_order_id
-            .map(|value| value.as_str().parse::<u64>())
-            .transpose()?;
-        let prepared =
-            runtime.prepare_cancel(cmd.instrument_id, cmd.client_order_id, cmd.strategy_id, oid)?;
-        let strategy_id = cmd.strategy_id;
-        let instrument_id = cmd.instrument_id;
-        let client_order_id = cmd.client_order_id;
-        let venue_order_id = cmd.venue_order_id;
-        let emitter = self.emitter.clone();
-        let http = self.http_client.clone();
-        let ws = self.ws_client.clone();
-        let undo = prepared.clone();
-        let result = self.pending_tasks.spawn(async move {
-            let deadline = prepared.deadline();
-            let result = ws
-                .post_prepared_action(
-                    &http,
-                    &prepared.action,
-                    prepared.epoch,
-                    deadline,
-                    prepared.preparation(),
-                    prepared.admission(),
-                )
-                .await;
-            match result.outcome {
-                nautilus_network::websocket::PreparedWriteOutcome::NotWritten { reason } => {
-                    let _ = runtime.finish_not_written(&prepared.client_order_id, true, &reason);
-                    emitter.emit_order_cancel_rejected_event(
-                        strategy_id,
-                        instrument_id,
-                        client_order_id,
-                        venue_order_id,
-                        &format!("Local io cancel NotWritten: {reason}"),
-                        (crate::account_scope::now_ms() * 1_000_000).into(),
-                    );
-                }
-                nautilus_network::websocket::PreparedWriteOutcome::MayHaveWritten { .. } => {
-                    match result.response {
-                        Some(Ok(response)) => {
-                            if let Err(error) = runtime.observe_ack(&prepared, &response) {
-                                let _ = runtime
-                                    .mark_unknown(&prepared.client_order_id, &error.to_string());
-                            }
-                        }
-                        _ => {
-                            let _ = runtime.mark_unknown(
-                                &prepared.client_order_id,
-                                "io cancellation confirmation is unknown",
-                            );
-                        }
-                    }
-                    if let Err(error) = runtime.recover(&http, &emitter).await {
-                        log::warn!("io bounded cancel recovery incomplete: {error}");
-                    }
-                }
-            }
-        });
-        if let Err(error) = result {
-            runtime_finish_not_written(&undo, &error.to_string());
-            return Err(anyhow::anyhow!(error.to_string()));
-        }
-        Ok(())
-    }
-
     fn restore_staged_brackets(&self) -> Vec<ClientOrderId> {
-        if self.account_scope.is_some() {
-            return Vec::new();
-        }
         let order_lists = self
             .core
             .cache()
@@ -672,45 +415,6 @@ impl HyperliquidExecutionClient {
         core: ExecutionClientCore,
         config: HyperliquidExecutionClientConfig,
     ) -> anyhow::Result<Self> {
-        anyhow::ensure!(
-            config.account_dex.as_deref().is_none_or(|dex| dex == "io"),
-            "Only explicit io account_dex is supported"
-        );
-        anyhow::ensure!(
-            (1..=30_000).contains(&config.account_snapshot_max_age_ms),
-            "account_snapshot_max_age_ms must be in 1..=30000"
-        );
-        anyhow::ensure!(
-            config.account_dex.is_none() || config.outcome_settlement_poll_secs == 0,
-            "Outcome settlement polling is outside io account scope"
-        );
-        if config.account_dex.is_some() {
-            anyhow::ensure!(
-                config.account_id == core.account_id
-                    && config.account_id.to_string() != "HYPERLIQUID-001",
-                "io scope requires an explicit dedicated account_id matching the execution core"
-            );
-        }
-        anyhow::ensure!(
-            config.io_execution_policy_json.is_none()
-                || config.account_dex.as_deref() == Some("io"),
-            "Explicit io execution policy requires account_dex=io"
-        );
-        let io_policy = config
-            .io_execution_policy_json
-            .as_deref()
-            .map(IoExecutionPolicy::parse)
-            .transpose()?;
-        anyhow::ensure!(
-            config.io_economics_policy_json.is_none()
-                || config.account_dex.as_deref() == Some("io"),
-            "Explicit economic policy requires account_dex=io"
-        );
-        let economics_policy = config
-            .io_economics_policy_json
-            .as_deref()
-            .map(IoEconomicsPolicy::parse)
-            .transpose()?;
         let secrets = Secrets::resolve(
             config.private_key.as_deref(),
             config.vault_address.as_deref(),
@@ -734,19 +438,6 @@ impl HyperliquidExecutionClient {
 
         http_client.set_account_id(core.account_id);
         http_client.set_account_address(account_address);
-        if config.account_dex.is_some() {
-            anyhow::ensure!(
-                !http_client.has_vault_address(),
-                "Vault execution is unsupported for io account scope"
-            );
-            let query_address = normalize_address(&http_client.get_account_address()?)?;
-            let signer_address = normalize_address(&http_client.get_user_address()?)?;
-            anyhow::ensure!(
-                query_address == signer_address,
-                "io account query and signer identities must match; agent execution is unsupported"
-            );
-            http_client.set_account_address(Some(query_address));
-        }
         http_client.set_normalize_prices(config.normalize_prices);
         http_client.set_market_order_slippage_bps(config.market_order_slippage_bps);
         http_client.set_include_builder_attribution(config.include_builder_attribution);
@@ -786,43 +477,7 @@ impl HyperliquidExecutionClient {
 
         let session_tasks = TaskGroup::new();
         let pending_tasks = TaskGroup::new();
-        let account_scope = if config.account_dex.is_some() {
-            Some(AccountScopeDiagnostics {
-                state: Arc::new(Mutex::new(AccountScopeState::new(
-                    http_client.get_account_address()?,
-                    config.account_snapshot_max_age_ms,
-                ))),
-                ws: ws_client.clone(),
-            })
-        } else {
-            None
-        };
 
-        let io_execution = io_policy
-            .map(|policy| {
-                IoExecutionRuntime::new(
-                    policy,
-                    account_scope
-                        .clone()
-                        .context("io execution requires scoped account proof")?,
-                    &http_client.get_account_address()?,
-                    core.account_id,
-                )
-            })
-            .transpose()?;
-        let io_economics = economics_policy
-            .map(|policy| {
-                let raw_limit = policy.max_raw_frame_bytes;
-                let runtime = IoEconomicsRuntime::new(
-                    &policy,
-                    core.account_id,
-                    http_client.get_account_address()?,
-                    config.environment.to_string(),
-                )?;
-                ws_client.install_io_economic_ingress(raw_limit)?;
-                Ok::<_, anyhow::Error>(runtime)
-            })
-            .transpose()?;
         Ok(Self {
             core,
             clock,
@@ -836,11 +491,6 @@ impl HyperliquidExecutionClient {
             ws_dispatch_state: Arc::new(WsDispatchState::new()),
             staged_brackets: Arc::new(Mutex::new(StagedBracketState::default())),
             outcome_settlement_tracker: Arc::new(Mutex::new(OutcomeSettlementTracker::new())),
-            account_scope,
-            io_execution,
-            io_economics,
-            economics_instruments: Arc::new(Mutex::new(BTreeSet::new())),
-            io_query_lifetime: Arc::new(()),
         })
     }
 
@@ -871,33 +521,7 @@ impl HyperliquidExecutionClient {
         Ok(())
     }
 
-    /// Finite inclusive economic recovery, independent of order/cache readiness.
-    async fn refresh_economics_history(&self) -> anyhow::Result<()> {
-        let Some(runtime) = &self.io_economics else {
-            return Ok(());
-        };
-        recover_economic_history(
-            runtime,
-            self.account_scope
-                .as_ref()
-                .context("Missing economic account scope")?,
-            &self.http_client,
-            &self.economics_instruments,
-            self.io_execution.as_ref(),
-        )
-        .await
-    }
-
     async fn refresh_account_state(&self) -> anyhow::Result<()> {
-        if let Some(scope) = &self.account_scope {
-            return refresh_account_scope(
-                &scope.state,
-                &self.http_client,
-                &scope.ws,
-                &self.emitter,
-            )
-            .await;
-        }
         let account_address = self.get_account_address()?;
 
         let (perp_state, spot_state) = self
@@ -923,23 +547,6 @@ impl HyperliquidExecutionClient {
 
         log::debug!("Account state updated successfully");
         Ok(())
-    }
-
-    async fn await_scoped_private_ready(&self) -> anyhow::Result<()> {
-        let Some(scope) = &self.account_scope else {
-            return Ok(());
-        };
-        let deadline = Instant::now() + Duration::from_secs(self.config.ws_post_timeout_secs);
-        loop {
-            if scope.snapshot().is_some_and(|snapshot| snapshot.trusted) {
-                return Ok(());
-            }
-            anyhow::ensure!(
-                Instant::now() < deadline,
-                "io private account proof is incomplete or untrusted"
-            );
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
     }
 
     async fn fetch_combined_clearinghouse_state(
@@ -1092,12 +699,6 @@ impl HyperliquidExecutionClient {
     }
 
     fn begin_session_shutdown(&self) {
-        if let Some(scope) = &self.account_scope {
-            scope
-                .state
-                .lock()
-                .invalidate("io execution session is shutting down", true);
-        }
         self.session_tasks.begin_shutdown();
         self.ws_client.begin_shutdown();
     }
@@ -1181,10 +782,6 @@ impl ExecutionClient for HyperliquidExecutionClient {
         ts_event: UnixNanos,
         info: Option<Params>,
     ) -> anyhow::Result<()> {
-        anyhow::ensure!(
-            self.account_scope.is_none(),
-            "Explicit io account facts must come from a complete scoped HTTP proof"
-        );
         self.emitter
             .emit_account_state(balances, margins, reported, ts_event, info);
         Ok(())
@@ -1217,12 +814,6 @@ impl ExecutionClient for HyperliquidExecutionClient {
         }
 
         log::info!("Stopping Hyperliquid execution client");
-        if let Some(scope) = &self.account_scope {
-            scope
-                .state
-                .lock()
-                .invalidate("io execution client stopped", true);
-        }
 
         self.session_tasks.abort();
         self.abort_pending_tasks();
@@ -1237,13 +828,6 @@ impl ExecutionClient for HyperliquidExecutionClient {
 
     fn submit_order(&self, cmd: SubmitOrder) -> anyhow::Result<()> {
         let order = self.core.cache().try_order_owned(&cmd.client_order_id)?;
-        if self.io_execution.is_some() {
-            anyhow::ensure!(
-                cmd.instrument_id == order.instrument_id(),
-                "io SubmitOrder/cache native instrument mismatch"
-            );
-            return self.submit_io_order(order);
-        }
 
         if order.is_closed() {
             log::warn!("Cannot submit closed order {}", order.client_order_id());
@@ -1343,6 +927,7 @@ impl ExecutionClient for HyperliquidExecutionClient {
         let nested_spawner = task_spawner.clone();
         let builder = self.http_client.builder_attribution();
         let denied_order = order.clone();
+
         if let Err(e) = task_spawner.spawn(async move {
             http_client.cache_client_order_id_cloid(order.client_order_id(), cloid);
             ws_client.cache_cloid_mapping(cloid_hex, order.client_order_id());
@@ -1397,20 +982,6 @@ impl ExecutionClient for HyperliquidExecutionClient {
     }
 
     fn submit_order_list(&self, cmd: SubmitOrderList) -> anyhow::Result<()> {
-        let scoped_orders = self.core.get_orders_for_list(&cmd.order_list)?;
-        if self.account_scope.is_some()
-            || scoped_orders
-                .iter()
-                .any(|order| is_io_instrument(order.instrument_id()))
-        {
-            for order in &scoped_orders {
-                self.emitter.emit_order_denied(
-                    order,
-                    "io order lists and bracket submissions are unsupported",
-                );
-            }
-            anyhow::bail!("io order lists and bracket submissions are unsupported");
-        }
         log::debug!(
             "Submitting order list with {} orders",
             cmd.order_list.client_order_ids.len()
@@ -1557,17 +1128,6 @@ impl ExecutionClient for HyperliquidExecutionClient {
     }
 
     fn modify_order(&self, cmd: ModifyOrder) -> anyhow::Result<()> {
-        if self.account_scope.is_some() || is_io_instrument(cmd.instrument_id) {
-            self.emitter.emit_order_modify_rejected_event(
-                cmd.strategy_id,
-                cmd.instrument_id,
-                cmd.client_order_id,
-                cmd.venue_order_id,
-                "io order modification is unsupported",
-                self.clock.get_time_ns(),
-            );
-            anyhow::bail!("io order modification is unsupported");
-        }
         log::debug!("Modifying order: {cmd:?}");
 
         let client_order_id = cmd.client_order_id;
@@ -1593,10 +1153,6 @@ impl ExecutionClient for HyperliquidExecutionClient {
             }
         };
 
-        anyhow::ensure!(
-            !is_io_instrument(order.instrument_id()),
-            "Default account scope cannot modify an io order"
-        );
         let http_client = self.http_client.clone();
         let symbol = cmd.instrument_id.symbol.inner();
         let should_normalize = self.config.normalize_prices;
@@ -1837,13 +1393,6 @@ impl ExecutionClient for HyperliquidExecutionClient {
     }
 
     fn cancel_order(&self, cmd: CancelOrder) -> anyhow::Result<()> {
-        if self.io_execution.is_some() {
-            return self.cancel_io_order(&cmd);
-        }
-        anyhow::ensure!(
-            self.account_scope.is_none() && !is_io_instrument(cmd.instrument_id),
-            "io execution is read-only; cancellation and recovery require issue #101"
-        );
         log::debug!("Cancelling order: {cmd:?}");
 
         if let Some(order) = self
@@ -1955,10 +1504,6 @@ impl ExecutionClient for HyperliquidExecutionClient {
     }
 
     fn cancel_all_orders(&self, cmd: CancelAllOrders) -> anyhow::Result<()> {
-        anyhow::ensure!(
-            self.account_scope.is_none() && !is_io_instrument(cmd.instrument_id),
-            "io execution is read-only; cancellation and recovery require issue #101"
-        );
         log::debug!("Cancelling all orders: {cmd:?}");
 
         let cache = self.core.cache();
@@ -2033,14 +1578,6 @@ impl ExecutionClient for HyperliquidExecutionClient {
     }
 
     fn batch_cancel_orders(&self, cmd: BatchCancelOrders) -> anyhow::Result<()> {
-        anyhow::ensure!(
-            self.account_scope.is_none()
-                && cmd
-                    .cancels
-                    .iter()
-                    .all(|cancel| !is_io_instrument(cancel.instrument_id)),
-            "io execution is read-only; batch cancellation requires issue #101"
-        );
         log::debug!("Batch cancelling orders: {cmd:?}");
 
         if cmd.cancels.is_empty() {
@@ -2112,204 +1649,7 @@ impl ExecutionClient for HyperliquidExecutionClient {
         Ok(())
     }
 
-    fn query_account(&self, cmd: QueryAccount) -> anyhow::Result<()> {
-        if let Some(scope) = self.account_scope.clone() {
-            anyhow::ensure!(
-                cmd.account_id == self.core.account_id,
-                "QueryAccount identity does not match the explicit io account scope"
-            );
-            if let Some(runtime) = &self.io_execution {
-                anyhow::ensure!(
-                    !runtime.has_recovery_source_debt(),
-                    "io unknown recovery source debt cannot fall back or borrow an old proof"
-                );
-                let current_warm_metadata = runtime.current_warm_metadata();
-                if current_warm_metadata
-                    && runtime.metadata_needs_native_cache()
-                    && let Err(e) =
-                        runtime.bind_metadata_native_cache(&self.http_client, &self.core)
-                {
-                    scope
-                        .state
-                        .lock()
-                        .invalidate_financial("io current native Cache metadata is ineligible");
-                    runtime.invalidate_financial("io current native Cache metadata is ineligible");
-                    return Err(e);
-                }
-                // Register a local completion on the caller's owner thread. The
-                // HTTP task moves only its send-safe message and detached facts.
-                match runtime.begin_warm_query(&self.http_client, &self.core) {
-                    Ok(None) => return Ok(()),
-                    Ok(Some(query)) => {
-                        let active = Arc::new(Mutex::new(true));
-                        let staged = Arc::new(Mutex::new(None));
-                        let mut flight = IoWarmFlight {
-                            runtime: runtime.clone(),
-                            token: query.token(),
-                            active: active.clone(),
-                            staged: staged.clone(),
-                            succeeded: false,
-                        };
-                        let sender = try_get_time_event_sender()
-                            .context("io warm query requires the normal owner-thread runner")?;
-                        let deadline = query.deadline();
-                        let core = self.core.clone();
-                        let lifetime = Arc::downgrade(&self.io_query_lifetime);
-                        let completion_runtime = runtime.diagnostics();
-                        let completion_http = self.http_client.clone();
-                        let completion_emitter = self.emitter.clone();
-                        let (result_sender, result_receiver) = tokio::sync::oneshot::channel();
-                        let result_sender = Mutex::new(Some(result_sender));
-                        let event = TimeEvent::new(
-                            Ustr::from("io_query_account_completion"),
-                            UUID4::new(),
-                            self.clock.get_time_ns(),
-                            self.clock.get_time_ns(),
-                        );
-                        let message = TimeEventMessage::new(
-                            event,
-                            TimeEventCallback::RustLocal(Rc::new(move |_| {
-                                let still_active = *active.lock();
-                                let result = if still_active
-                                    && lifetime.strong_count() > 0
-                                    && tokio::time::Instant::now() < deadline
-                                {
-                                    let observation = staged.lock().take();
-                                    observation
-                                        .context("Missing staged io warm source")
-                                        .and_then(|observation| {
-                                            completion_runtime.commit_warm_query(
-                                                observation,
-                                                &completion_http,
-                                                &core,
-                                                &completion_emitter,
-                                                &active,
-                                            )
-                                        })
-                                } else {
-                                    Err(anyhow::anyhow!(
-                                        "io warm owner completion was canceled or expired"
-                                    ))
-                                };
-                                if let Some(sender) = result_sender.lock().take() {
-                                    let _ = sender.send(result);
-                                }
-                            })),
-                        );
-                        let http = self.http_client.clone();
-                        let runtime = runtime.clone();
-                        let economics = self.io_economics.clone();
-                        let warm_source = self.ws_client.clone();
-                        self.spawn_task("query_io_warm_account", async move {
-                            let result = tokio::time::timeout_at(deadline, async {
-                                let observation = runtime.observe_warm_query(query, &http).await?;
-                                *flight.staged.lock() = Some(observation);
-                                sender.send(message);
-                                result_receiver
-                                    .await
-                                    .context("io warm owner completion was dropped")?
-                            })
-                            .await
-                            .map_err(|_| {
-                                anyhow::anyhow!("io warm recovery total deadline exhausted")
-                            })
-                            .and_then(|result| result);
-                            if let Err(e) = &result {
-                                runtime.warm_query_failed(flight.token, &format!("{e:#}"));
-                            }
-                            if result.is_ok()
-                                && let Some(economics) = economics
-                            {
-                                let (generation, epoch) = warm_source.private_source_identity();
-                                if let Err(e) = economics.record_unrequested_history(
-                                    generation,
-                                    epoch,
-                                    crate::account_scope::now_ms(),
-                                ) {
-                                    runtime.invalidate(
-                                        "Economic unrequested coverage could not be preserved",
-                                    );
-                                    return Err(e);
-                                }
-                            }
-                            flight.set_succeeded(result.is_ok());
-                            result
-                        });
-                        return Ok(());
-                    }
-                    Err(e) => {
-                        if current_warm_metadata
-                            || runtime.warm_query_pending()
-                            || runtime.has_recovery_source_debt()
-                        {
-                            scope.state.lock().invalidate_financial(
-                                "io warm current native/owned facts are ineligible",
-                            );
-                            runtime.invalidate_financial(
-                                "io query cannot borrow a superseded flight or source debt",
-                            );
-                            return Err(e);
-                        }
-                        log::debug!("io warm recovery is ineligible: {e:#}");
-                    }
-                }
-            }
-            scope
-                .state
-                .lock()
-                .invalidate("io account proof refresh is pending", false);
-            let http = self.http_client.clone();
-            let emitter = self.emitter.clone();
-            let runtime = self.io_execution.clone();
-            let economics = self.io_economics.clone();
-            let economics_instruments = Arc::clone(&self.economics_instruments);
-            if let Some(runtime) = &runtime {
-                runtime.invalidate("io explicit query/recovery pending");
-            }
-            self.spawn_task("query_io_account", async move {
-                let result = if let Some(runtime) = &runtime {
-                    let result = tokio::time::timeout(
-                        Duration::from_millis(runtime.policy.recovery_timeout_ms),
-                        async {
-                            refresh_account_scope(&scope.state, &http, &scope.ws, &emitter).await?;
-                            runtime
-                                .refresh_metadata(&http)
-                                .await
-                                .context("io metadata verification failed")?;
-                            runtime.recover(&http, &emitter).await
-                        },
-                    )
-                    .await;
-                    let result = match result {
-                        Ok(result) => result,
-                        Err(_) => Err(anyhow::anyhow!(
-                            "io verification/recovery total deadline exhausted"
-                        )),
-                    };
-                    if let Err(error) = &result {
-                        let reason = format!("io verification/recovery failed: {error:#}");
-                        scope.state.lock().invalidate(&reason, false);
-                        runtime.invalidate(&reason);
-                    }
-                    result
-                } else {
-                    refresh_account_scope(&scope.state, &http, &scope.ws, &emitter).await
-                };
-                result?;
-                if let Some(economics) = &economics {
-                    recover_economic_history(
-                        economics,
-                        &scope,
-                        &http,
-                        &economics_instruments,
-                        runtime.as_ref(),
-                    )
-                    .await?;
-                }
-                Ok(())
-            });
-            return Ok(());
-        }
+    fn query_account(&self, _cmd: QueryAccount) -> anyhow::Result<()> {
         let http_client = self.http_client.clone();
         let account_address = self.get_account_address()?;
         let emitter = self.emitter.clone();
@@ -2344,23 +1684,6 @@ impl ExecutionClient for HyperliquidExecutionClient {
     }
 
     fn query_order(&self, cmd: QueryOrder) -> anyhow::Result<()> {
-        if let Some(runtime) = self.io_execution.clone() {
-            runtime.validate_owned_command(
-                cmd.client_order_id,
-                cmd.instrument_id,
-                cmd.strategy_id,
-            )?;
-            let http = self.http_client.clone();
-            let emitter = self.emitter.clone();
-            self.spawn_task("query_owned_io", async move {
-                runtime.recover(&http, &emitter).await
-            });
-            return Ok(());
-        }
-        anyhow::ensure!(
-            self.account_scope.is_none(),
-            "io order reconciliation requires issue #101"
-        );
         log::debug!("Querying order: {cmd:?}");
 
         let client_order_id = cmd.client_order_id;
@@ -2490,51 +1813,6 @@ impl ExecutionClient for HyperliquidExecutionClient {
         let post_ws = async {
             self.refresh_account_state().await?;
             self.await_account_registered(30.0).await?;
-            self.await_scoped_private_ready().await?;
-            if let Some(runtime) = &self.io_execution {
-                let result = tokio::time::timeout(
-                    Duration::from_millis(runtime.policy.recovery_timeout_ms),
-                    async {
-                        runtime.refresh_metadata(&self.http_client).await?;
-                        if let Err(error) =
-                            runtime.bind_metadata_native_cache(&self.http_client, &self.core)
-                        {
-                            // A restart can connect read-only with durable projection debt
-                            // and an intentionally empty Engine Cache. Missing binding
-                            // remains ineligible for new risk; it is never manufactured.
-                            log::warn!("io metadata Cache binding remains read-only: {error:#}");
-                        }
-                        if let Err(error) = runtime.recover(&self.http_client, &self.emitter).await
-                        {
-                            if let Some(scope) = &self.account_scope {
-                                scope.state.lock().invalidate(
-                                    &format!("io startup recovery incomplete: {error}"),
-                                    false,
-                                );
-                            }
-                            log::warn!("io startup recovery remains incomplete: {error}");
-                        }
-                        Ok::<(), anyhow::Error>(())
-                    },
-                )
-                .await;
-                let result = match result {
-                    Ok(result) => result,
-                    Err(_) => Err(anyhow::anyhow!(
-                        "io startup verification/recovery total deadline exhausted"
-                    )),
-                };
-                if let Err(error) = &result {
-                    let reason = format!("io startup verification/recovery failed: {error}");
-                    if let Some(scope) = &self.account_scope {
-                        scope.state.lock().invalidate(&reason, false);
-                    }
-                    runtime.invalidate(&reason);
-                }
-                result?;
-            }
-
-            self.refresh_economics_history().await?;
 
             Ok::<(), anyhow::Error>(())
         };
@@ -2594,10 +1872,6 @@ impl ExecutionClient for HyperliquidExecutionClient {
         &self,
         cmd: &GenerateOrderStatusReport,
     ) -> anyhow::Result<Option<OrderStatusReport>> {
-        anyhow::ensure!(
-            self.account_scope.is_none(),
-            "io order/fill reconciliation requires issue #101"
-        );
         let account_address = self.get_account_address()?;
 
         if cmd.venue_order_id.is_none() && cmd.client_order_id.is_none() {
@@ -2695,10 +1969,6 @@ impl ExecutionClient for HyperliquidExecutionClient {
         &self,
         cmd: &GenerateOrderStatusReports,
     ) -> anyhow::Result<Vec<OrderStatusReport>> {
-        anyhow::ensure!(
-            self.account_scope.is_none(),
-            "io order/fill reconciliation requires issue #101"
-        );
         let account_address = self.get_account_address()?;
 
         let reports = self
@@ -2717,10 +1987,6 @@ impl ExecutionClient for HyperliquidExecutionClient {
         &self,
         cmd: GenerateFillReports,
     ) -> anyhow::Result<Vec<FillReport>> {
-        anyhow::ensure!(
-            self.account_scope.is_none(),
-            "io order/fill reconciliation requires issue #101"
-        );
         let account_address = self.get_account_address()?;
 
         let reports = self
@@ -2754,10 +2020,6 @@ impl ExecutionClient for HyperliquidExecutionClient {
         &self,
         cmd: &GeneratePositionStatusReports,
     ) -> anyhow::Result<Vec<PositionStatusReport>> {
-        anyhow::ensure!(
-            self.account_scope.is_none(),
-            "io position reconciliation is unsupported until scoped recovery is implemented; inspect account scope snapshot"
-        );
         let account_address = self.get_account_address()?;
 
         // request_position_status_reports already merges spot holdings
@@ -2775,16 +2037,6 @@ impl ExecutionClient for HyperliquidExecutionClient {
         &self,
         lookback_mins: Option<u64>,
     ) -> anyhow::Result<Option<ExecutionMassStatus>> {
-        if self.account_scope.is_some() {
-            let runtime = self
-                .io_execution
-                .as_ref()
-                .context("io startup reconciliation requires an explicit execution policy")?;
-            return runtime
-                .startup_mass_status(&self.http_client, &self.emitter, &self.core)
-                .await
-                .map(Some);
-        }
         let ts_init = self.clock.get_time_ns();
         let account_address = self.get_account_address()?;
 
@@ -2872,167 +2124,6 @@ impl ExecutionClient for HyperliquidExecutionClient {
     }
 }
 
-/// Economic history has its own finite coverage and never constitutes current funds proof.
-async fn recover_economic_history(
-    runtime: &IoEconomicsRuntime,
-    scope: &AccountScopeDiagnostics,
-    http: &HyperliquidHttpClient,
-    verified: &Arc<Mutex<BTreeSet<String>>>,
-    execution: Option<&IoExecutionRuntime>,
-) -> anyhow::Result<()> {
-    let policy = runtime.policy();
-    let start = policy.history_start_ms;
-    let now = get_atomic_clock_realtime().get_time_ns().as_u64() / 1_000_000;
-    let end = start
-        .checked_add(policy.history_max_window_ms)
-        .context("Economic window overflow")?
-        .min(now);
-    let (generation, epoch) = scope.ws.private_source_identity();
-    let mut coverage =
-        ["userFunding", "userNonFundingLedgerUpdates"].map(|endpoint| IoHistoryCoverage {
-            generation,
-            epoch,
-            endpoint: endpoint.into(),
-            start_ms: start,
-            end_ms: end,
-            pages: 0,
-            records: 0,
-            complete: false,
-            diagnostic: "History not yet requested; retention Unknown".into(),
-        });
-    let result = tokio::time::timeout(Duration::from_millis(policy.history_timeout_ms), async {
-        anyhow::ensure!(start <= end, "Economic history begins in the future");
-        // Current official native metadata, not policy symbols, supplies exact membership.
-        let meta = http.account_scope_info(&InfoRequest::meta_for_dex("io")).await?;
-        let spot = http.account_scope_info(&InfoRequest::spot_meta()).await?;
-        let coins = crate::account_scope::validate_collateral(&meta, &spot)?;
-        let instruments = coins.into_iter().filter_map(|coin| {
-            let instrument = http.io_cached_instrument(&coin)?;
-            let id = instrument.id().to_string();
-            (id == format!("{coin}-USD-PERP.HYPERLIQUID")).then_some(id)
-        }).collect::<BTreeSet<_>>();
-        anyhow::ensure!(!instruments.is_empty(), "Economic metadata has no exact native instrument");
-        anyhow::ensure!(scope.ws.private_source_identity() == (generation, epoch), "Economic metadata completed on a replacement stream");
-        *verified.lock() = instruments;
-        let user = http.get_account_address()?;
-        let mut total_records = 0usize;
-        let mut total_pages = 0usize;
-        for progress in &mut coverage {
-            let mut cursor = start;
-            loop {
-                anyhow::ensure!(total_pages < policy.history_max_pages, "Economic history page bound exhausted");
-                let response = if progress.endpoint == "userFunding" {
-                    http.info_user_funding_body(&user, cursor, end, policy.max_history_body_bytes).await?
-                } else {
-                    http.info_user_non_funding_ledger_body(&user, cursor, end, policy.max_history_body_bytes).await?
-                };
-                let raw = response.raw_text;
-                total_pages += 1;
-                progress.pages += 1;
-                let rows: Vec<Box<serde_json::value::RawValue>> = serde_json::from_str(&raw)?;
-                total_records = total_records.checked_add(rows.len()).context("Economic history record count overflow")?;
-                anyhow::ensure!(total_records <= policy.history_max_records, "Economic history record bound exhausted");
-                progress.records += rows.len();
-                let candidates = verified.lock().clone();
-                let proof = scope.economic_attribution(&candidates, (generation, epoch)).map(|(account, attribution_verified, verified_instruments)| IoEconomicsScopeProof { account, attribution_verified, verified_instruments });
-                let current = scope.ws.private_source_identity() == (generation, epoch);
-                // Only an exact strong fact already durably observed in phase A can
-                // avoid invalidating a newly re-established current account proof.
-                // Consumer receipts/report totals never authorize this decision.
-                let needs_invalidation = runtime.history_requires_invalidation(&progress.endpoint, &raw, cursor, end, generation, epoch, response.received_ms, if current { proof.as_ref() } else { None });
-                if current && needs_invalidation {
-                    scope.state.lock().invalidate_financial("Actual economic history received; current scoped recovery required independently of report persistence");
-                    if let Some(execution) = execution { execution.invalidate("Actual economic history does not prove current funds or native projection"); }
-                }
-                let observed = runtime.observe_history(&progress.endpoint, &raw, cursor, end, generation, epoch,
-                    response.received_ms,
-                    if current { proof.as_ref() } else { None })?;
-                let current = current && scope.ws.private_source_identity() == (generation, epoch);
-                log::debug!("Economic history source preserved: observed={}, unknown={}", observed.observed, observed.unknown);
-                if current && !rows.is_empty() && !observed.attribution_complete {
-                    scope.state.lock().invalidate("Economic history has incomplete account or instrument attribution", false);
-                }
-                anyhow::ensure!(current, "Historical response preserved but current stream was replaced");
-                let mut last = cursor;
-                for row in &rows {
-                    #[derive(serde::Deserialize)]
-                    struct ItemTime { time: u64 }
-                    let time = serde_json::from_str::<ItemTime>(row.get())?.time;
-                    anyhow::ensure!(time >= last && time <= end, "History timestamps unordered or outside inclusive window");
-                    last = time;
-                }
-                if rows.len() < 500 {
-                    progress.complete = true;
-                    progress.diagnostic = "Requested finite pagination window terminated; venue retention remains Unknown".into();
-                    break;
-                }
-                anyhow::ensure!(last > cursor, "Saturated inclusive timestamp boundary has no progress; coverage Unknown");
-                // Preserve overlap; +1 would lose distinct facts at the boundary millisecond.
-                cursor = last;
-            }
-        }
-        Ok::<(), anyhow::Error>(())
-    }).await;
-    let failure = match result {
-        Ok(Ok(())) => None,
-        Ok(Err(error)) => Some(format!("Economic bounded history incomplete: {error:#}")),
-        Err(_) => Some(
-            "Economic history total deadline exhausted (quota/retries/metadata included)".into(),
-        ),
-    };
-    if let Some(reason) = &failure {
-        if scope.ws.private_source_identity() == (generation, epoch) {
-            scope.state.lock().invalidate(reason, false);
-            if let Some(execution) = execution {
-                execution.invalidate(reason);
-            }
-        }
-        for progress in &mut coverage {
-            if !progress.complete {
-                progress.diagnostic = reason.clone();
-            }
-        }
-        log::warn!("{reason}");
-    }
-    for mut progress in coverage {
-        if scope.ws.private_source_identity() != (generation, epoch) {
-            progress.complete = false;
-            progress.diagnostic =
-                "Historical source belongs to a replaced stream; current coverage Unknown".into();
-        }
-        runtime.record_history_coverage(progress)?;
-    }
-    Ok(())
-}
-
-fn mark_economic_stream_gap(
-    runtime: &IoEconomicsRuntime,
-    ws: &HyperliquidWebSocketClient,
-    reason: &str,
-) -> anyhow::Result<()> {
-    let (generation, epoch) = ws.private_source_identity();
-    let policy = runtime.policy();
-    let start_ms = policy.history_start_ms;
-    let end_ms = start_ms
-        .checked_add(policy.history_max_window_ms)
-        .context("Economic gap window overflow")?
-        .min(get_atomic_clock_realtime().get_time_ns().as_u64() / 1_000_000);
-    for endpoint in ["userFunding", "userNonFundingLedgerUpdates"] {
-        runtime.record_history_coverage(IoHistoryCoverage {
-            generation,
-            epoch,
-            endpoint: endpoint.into(),
-            start_ms,
-            end_ms,
-            pages: 0,
-            records: 0,
-            complete: false,
-            diagnostic: reason.into(),
-        })?;
-    }
-    Ok(())
-}
-
 impl HyperliquidExecutionClient {
     async fn start_ws_stream(&self) -> anyhow::Result<()> {
         // Must match REST queries; mismatch silently drops fills on agent wallets
@@ -3052,9 +2143,6 @@ impl HyperliquidExecutionClient {
 
         // Connect and subscribe before spawning the event loop
         ws_client.connect().await?;
-        if let Some(scope) = &self.account_scope {
-            scope.state.lock().bind_stream(ws_client.connection_epoch());
-        }
         if let Err(e) = ws_client
             .subscribe_order_updates(&subscription_address)
             .await
@@ -3067,28 +2155,6 @@ impl HyperliquidExecutionClient {
             let _ = ws_client.disconnect().await;
             return Err(e);
         }
-        if self.account_scope.is_some()
-            && let Err(e) = ws_client
-                .subscribe_clearinghouse_state(&subscription_address, "io")
-                .await
-        {
-            let _ = ws_client.disconnect().await;
-            return Err(e);
-        }
-        if self.io_economics.is_some()
-            && let Err(error) = async {
-                ws_client
-                    .subscribe_user_fundings(&subscription_address)
-                    .await?;
-                ws_client
-                    .subscribe_user_non_funding_ledger_updates(&subscription_address)
-                    .await
-            }
-            .await
-        {
-            let _ = ws_client.disconnect().await;
-            return Err(error);
-        }
         log::debug!("Subscribed to Hyperliquid execution updates for {subscription_address}");
 
         let emitter = self.emitter.clone();
@@ -3097,10 +2163,6 @@ impl HyperliquidExecutionClient {
         let http_client = self.http_client.clone();
         let builder = self.http_client.builder_attribution();
         let clock = self.clock;
-        let account_scope = self.account_scope.clone();
-        let io_execution = self.io_execution.clone();
-        let io_economics = self.io_economics.clone();
-        let economics_instruments = Arc::clone(&self.economics_instruments);
         let session_spawner = self
             .session_tasks
             .spawner()
@@ -3124,167 +2186,7 @@ impl HyperliquidExecutionClient {
 
                 match event {
                     Some(msg) => match msg {
-                        NautilusWsMessage::PrivateIngressApplied {
-                            generation,
-                            epoch,
-                            sequence,
-                        } => {
-                            if !ws_client.mark_private_ingress_applied(generation, epoch, sequence)
-                            {
-                                if let Some(runtime) = &io_execution {
-                                    runtime.invalidate(
-                                        "io raw private frame processing sequence is incomplete",
-                                    );
-                                }
-                                if let Some(scope) = &account_scope {
-                                    scope
-                                        .state
-                                        .lock()
-                                        .invalidate("io private ingress processing gap", true);
-                                }
-                            }
-                        }
-                        NautilusWsMessage::IoExecutionFrame {
-                            channel,
-                            data,
-                            raw_text,
-                            legacy_parse_succeeded,
-                            generation,
-                            sequence,
-                            epoch,
-                            received,
-                        } => {
-                            let candidates = economics_instruments.lock().clone();
-                            let proof = account_scope.as_ref().and_then(|scope| scope.economic_attribution(&candidates, (generation, epoch))).map(|(account, attribution_verified, verified_instruments)| IoEconomicsScopeProof { account, attribution_verified, verified_instruments });
-                            let current = ws_client.private_source_identity() == (generation, epoch);
-                            let financial = matches!(channel.as_str(), "user" | "userFills" | "userFundings" | "userNonFundingLedgerUpdates" | "userTwapSliceFills");
-                            // Close current financial proof before phase-A disk work. A durable
-                            // observation/report cannot restore it or the native projection barrier.
-                            if io_economics.is_some() && financial && current {
-                                if let Some(scope) = &account_scope { scope.state.lock().invalidate_financial("Economic private financial observation requires current scoped recovery"); }
-                                if let Some(runtime) = &io_execution { runtime.invalidate_financial("Economic financial frame pending durable preservation and scoped recovery"); }
-                            }
-                            let mut economic_source_clean = false;
-                            if let Some(economics) = &io_economics {
-                                let observed = economics.observe_ws(&raw_text, generation, epoch, sequence, received.as_u64() / 1_000_000, if current { proof.as_ref() } else { None });
-                                let current = current && ws_client.private_source_identity() == (generation, epoch);
-                                economic_source_clean = observed.as_ref().is_ok_and(|result| result.handled && result.unknown == 0);
-                                if let Ok(result) = &observed {
-                                    log::debug!("Economic WebSocket source preserved: observed={}, unknown={}", result.observed, result.unknown);
-                                    // Empty supported snapshots can retain existing metadata;
-                                    // they never establish context or assert financial identity.
-                                    let empty_supported = result.handled && result.observed == 0 && result.unknown == 0;
-                                    if current && matches!(channel.as_str(), "userFundings" | "userNonFundingLedgerUpdates")
-                                        && !empty_supported && let Some(runtime) = &io_execution {
-                                        runtime.invalidate("New economic funding/ledger source requires bounded source recovery");
-                                    }
-                                    if financial && current && !result.attribution_complete && !empty_supported
-                                        && let Some(scope) = &account_scope {
-                                        scope.state.lock().invalidate("Economic private source has incomplete account or instrument attribution", false);
-                                    }
-                                }
-                                if let Err(error) = observed {
-                                    if current {
-                                        if let Some(scope) = &account_scope { scope.state.lock().invalidate(&format!("Economic source preservation failed: {error:#}"), false); }
-                                        if let Some(runtime) = &io_execution { runtime.invalidate(&format!("Economic source preservation failed: {error:#}")); }
-                                    }
-                                    log::warn!("Economic source preservation failed: {error:#}");
-                                }
-                            }
-                            // Phase-A persistence can span a reader replacement;
-                            // never project the old frame using a replacement context.
-                            if !current || ws_client.private_source_identity() != (generation, epoch) {
-                                continue;
-                            }
-                            // Dedicated economic channels remain financial proof invalidators;
-                            // preserving them replaces only the old unsupported parsing path.
-                            if legacy_parse_succeeded && (!matches!(channel.as_str(), "userFundings" | "userNonFundingLedgerUpdates") || io_economics.is_none())
-                                && let Some(runtime) = &io_execution
-                                && let Err(error) = runtime.observe_frame(
-                                    &channel,
-                                    &data,
-                                    epoch,
-                                    &http_client,
-                                    &emitter,
-                                )
-                            {
-                                    runtime.invalidate(&format!(
-                                        "io owned private ledger conflict/unknown: {error}"
-                                    ));
-                                    if let Some(scope) = &account_scope {
-                                        scope.state.lock().invalidate(&format!("io private financial/ownership facts are unknown: {error}"), false);
-                                    }
-                            }
-                            if legacy_parse_succeeded && economic_source_clean && let (Some(runtime), Some(economics)) = (&io_execution, &io_economics) {
-                                for fill in runtime.accepted_frame_fills(&data) {
-                                    if let Err(error) = economics.observe_owned_fill(&fill, generation, epoch, received.as_u64() / 1_000_000, proof.as_ref()) {
-                                        runtime.invalidate(&format!("Economic owned raw fee preservation failed: {error:#}"));
-                                        if let Some(scope) = &account_scope { scope.state.lock().invalidate(&format!("Economic owned fee preservation failed: {error:#}"), false); }
-                                    }
-                                }
-                            }
-                        }
-                        NautilusWsMessage::AccountScopeStreamEpoch { epoch } => {
-                            if let Some(economics) = &io_economics {
-                                economics_instruments.lock().clear();
-                                if let Err(error) = mark_economic_stream_gap(economics, &ws_client, "Private stream replaced; economic recovery coverage Unknown until explicit bounded recovery") {
-                                    log::warn!("Economic stream gap could not be preserved: {error:#}");
-                                }
-                            }
-                            if let Some(runtime) = &io_execution {
-                                runtime.invalidate(
-                                    "io private epoch changed; scoped owned recovery required",
-                                );
-                            }
-                            if let Some(scope) = &account_scope
-                                && epoch == ws_client.connection_epoch()
-                            {
-                                scope.state.lock().bind_stream(epoch);
-                            }
-                        }
-                        NautilusWsMessage::AccountScopeSubscriptionResponse { data, epoch } => {
-                            if epoch != ws_client.connection_epoch() {
-                                continue;
-                            }
-                            if let Some(scope) = &account_scope
-                                && let Err(e) = scope.state.lock().acknowledge(&data)
-                            {
-                                log::warn!("io private subscription proof rejected: {e}");
-                            }
-                        }
-                        NautilusWsMessage::AccountScopeClearinghouseState {
-                            data,
-                            ts_init,
-                            epoch,
-                        } => {
-                            if epoch != ws_client.connection_epoch() {
-                                continue;
-                            }
-                            if let Some(scope) = &account_scope
-                                && let Err(e) = scope
-                                    .state
-                                    .lock()
-                                    .observe_ws(&data, ts_init.as_u64() / 1_000_000)
-                            {
-                                log::warn!("io private account proof rejected: {e}");
-                            }
-                            if let Some(runtime) = &io_execution
-                                && let Err(error) = runtime.validate_private_account_leverage(&data)
-                            {
-                                runtime.invalidate(&error.to_string());
-                                if let Some(scope) = &account_scope {
-                                    scope.state.lock().invalidate(
-                                        &format!("io private leverage proof changed: {error}"),
-                                        false,
-                                    );
-                                }
-                            }
-                        }
                         NautilusWsMessage::ExecutionReports(reports) => {
-                            // Global user streams cover other accounts; io ledger recovery is not enabled.
-                            if account_scope.is_some() {
-                                continue;
-                            }
                             for report in reports {
                                 let staged_parent_fill = match &report {
                                     ExecutionReport::Fill(report) => report.client_order_id,
@@ -3451,17 +2353,6 @@ impl HyperliquidExecutionClient {
                             log::info!("WebSocket reconnected");
                         }
                         NautilusWsMessage::Error(e) => {
-                            if let Some(runtime) = &io_execution {
-                                runtime.invalidate(
-                                    "io private stream error; scoped recovery required",
-                                );
-                            }
-                            if let Some(scope) = &account_scope {
-                                scope.state.lock().invalidate(
-                                    "io private WebSocket error; a fresh HTTP proof is required",
-                                    true,
-                                );
-                            }
                             log::warn!("WebSocket error: {e}");
                         }
                         // Handled by data client
@@ -3476,16 +2367,6 @@ impl HyperliquidExecutionClient {
                         | NautilusWsMessage::CustomData(_) => {}
                     },
                     None => {
-                        if let Some(economics) = &io_economics
-                            && let Err(error) = mark_economic_stream_gap(economics, &ws_client, "Private stream ended; economic recovery gap Unknown") {
-                                log::warn!("Economic stream-end gap could not be preserved: {error:#}");
-                        }
-                        if let Some(scope) = &account_scope {
-                            scope
-                                .state
-                                .lock()
-                                .invalidate("io private WebSocket stream ended", true);
-                        }
                         log::debug!("WebSocket next_event returned None, stream closed");
                         break;
                     }
@@ -3496,17 +2377,6 @@ impl HyperliquidExecutionClient {
         log::debug!("Hyperliquid WebSocket execution stream started");
         Ok(())
     }
-}
-
-fn runtime_finish_not_written(prepared: &crate::execution_scope::IoPreparedAction, reason: &str) {
-    let _ =
-        prepared
-            .runtime
-            .finish_not_written(&prepared.client_order_id, prepared.is_cancel, reason);
-}
-
-fn is_io_instrument(instrument: InstrumentId) -> bool {
-    instrument.symbol.as_str().starts_with("io:")
 }
 
 fn filter_order_status_reports_for_command(
