@@ -50,14 +50,11 @@
 #![allow(clippy::clone_on_copy)]
 
 pub mod account;
-pub mod account_scope;
 pub mod common;
 pub mod config;
 pub mod data;
 pub mod data_types;
-mod economics_scope;
 pub mod execution;
-mod execution_scope;
 pub mod factories;
 pub mod http;
 pub mod outcome_settlement;

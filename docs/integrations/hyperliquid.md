@@ -326,6 +326,26 @@ connect: the adapter fetches every perp dex (standard and builder-deployed) from
 so no additional client configuration is required. The data client exposes no per-dex filter;
 strategies select the markets they trade by `instrument_id`.
 
+Entropy (`io:`) and Trade[XYZ] (`xyz:`) use this same HIP-3 integration. Instrument
+discovery, asset ID mapping, submit, modify, cancel, and scoped order/position queries
+already use the common Hyperliquid implementation. A newly listed standard HIP-3
+instrument therefore needs a strategy instrument selection, not a deployer-specific adapter.
+For example, select `io:SNDK-USD-PERP.HYPERLIQUID` or
+`xyz:SNDK-USD-PERP.HYPERLIQUID` through the normal Hyperliquid client.
+
+The Entropy-specific account proof, execution policy, economic journal, and startup/recovery
+APIs were additional project controls and acceptance tooling. They were retired on
+2026-10-11; they are not required by the HIP-3 trading protocol. Use the ordinary
+`HyperliquidExecutionClientConfig` without those retired settings. See the
+[retirement record](../verification/entropy-retirement-20261011.md).
+
+Protocol support does not attest to a particular wallet's collateral, permissions, or
+completed live trade. Each DEX retains its own margin and collateral requirements.
+The official [HIP-3 specification](https://hyperliquid.gitbook.io/hyperliquid-docs/hyperliquid-improvement-proposals-hips/hip-3-builder-deployed-perpetuals)
+defines the unified trading API, and the
+[asset ID specification](https://hyperliquid.gitbook.io/hyperliquid-docs/for-developers/api/asset-ids)
+defines the common builder-perpetual asset mapping.
+
 For direct `HyperliquidHttpClient` usage, the HIP-3 perp dexes are excluded unless you opt in
 through `load_instrument_definitions`:
 
@@ -1240,12 +1260,16 @@ share the same book and the same venue-side precision options.
 
 ## Account and position management
 
-With the default `account_dex=None`, `AccountState` merges primary perp margin and spot balances.
-Perp margin and cross-margin usage come from `clearinghouseState`; non-zero spot tokens (USDC, USDH, HYPE,
+The ordinary client's `AccountState` merges primary/default perp margin and spot balances.
+Primary perp margin and cross-margin usage come from `clearinghouseState`; non-zero spot tokens (USDC, USDH, HYPE,
 vault tokens, HIP-4 outcome side tokens, etc.) come from `spotClearinghouseState`.
 USDC comes from the perp summary when it reflects non-zero collateral, margin, or
 withdrawable balance; when the perp summary is absent or zeroed, spot USDC is used
 instead.
+
+HIP-3 order and position routing does not make this account view an independent
+per-DEX balance or margin proof. The retired Entropy specialization provided additional
+io account evidence; its removal restores the existing ordinary client account view.
 
 Standard perps default to cross margin; HIP-3 perps default to isolated. On
 connect, the execution client reconciles orders, fills, and positions against
@@ -1258,122 +1282,6 @@ per-dex open-order and position fan-out.
 Leverage is managed directly through the Hyperliquid web UI or API, not through the adapter.
 Set your desired leverage per instrument on Hyperliquid before trading.
 :::
-
-### Explicit io account view
-
-Set `account_dex="io"` and an explicit, dedicated `account_id` distinct from
-`HYPERLIQUID-001` to observe Entropy's account independently. Use a unique AccountId for
-each execution account in a node. The actual account address must match the direct signer;
-this revision supports verified `user` roles, canonical USDC collateral, and the exact
-`disabled` account abstraction with legacy DEX abstraction `false`. The correspondence of
-`disabled` to standard accounting is an explicit inference from the official mode/SDK
-contract. Agent wallets, vaults, subaccounts, shared/unified/portfolio modes, other collateral,
-and cross-margin io positions are unsupported.
-
-The io view queries `clearinghouseState` with the actual user and `dex="io"`; it does not
-add spot or primary perpetual balances. It uses `marginSummary`, which includes isolated
-positions, rather than using the cross-only summary as the total:
-
-| Fact              | Native representation                                                    |
-| ----------------- | ------------------------------------------------------------------------ |
-| Raw collateral    | Scope snapshot `balance` (`totalRawUsd`).                                |
-| Equity            | Scope snapshot `equity`; `AccountState.total`.                           |
-| Used margin       | Scope snapshot `used`; `AccountState.locked`.                            |
-| Free equity       | Equity less used margin; negative values are preserved.                  |
-| Withdrawable      | Separate exact venue fact; does not replace free equity.                 |
-| Total maintenance | Unknown for isolated positions; `None`, with no invented margin balance. |
-
-`account_snapshot_max_age_ms` bounds the proof to 1–30,000 ms, defaulting to 30,000.
-Trust requires complete REST facts, role/mode/collateral verification, all private subscription
-acknowledgements, a full matching io WS snapshot, and the current underlying connection epoch.
-Age is checked at observation time. WS receive time is captured by the reader; missing venue
-source time remains `None`. A fresh REST source anchors the bounded position observation;
-the API does not guarantee an atomic mode/identity/state snapshot or gap-free private replay.
-
-Partial responses, unsupported identity/mode/collateral, mismatched position sizes, silence,
-staleness, and transport replacement revoke trust. Previous facts may remain visible, but
-`flat` becomes `None`. Restoring trust after reconnect requires new stream evidence and an
-explicit fresh `QueryAccount`; reconnecting a socket alone cannot restore it. Observed flat
-positions do not prove there are no pending orders, available funds, or trading permission.
-
-The io account view defaults to **read-only**. An explicit `io_execution_policy_json` enables
-the finite execution scope described below. Without that policy, all io execution actions
-are refused. Global order/fill stream reports and legacy unscoped reconciliation cannot
-populate the dedicated io account. The default account view also refuses io submission
-without explicit scope. Economic receipts are tracked in native issue 102.
-
-`HyperliquidExecutionClientFactory.account_scope_snapshot_json()` returns a detached snapshot
-with decimal strings, `trusted`, `flat`, timestamps, epoch, and provenance, or `None` before a
-complete proof exists. A factory tracks its most recently created client; retain one factory
-per observed client and check address/dex in the result. The native Rust execution client also
-exposes the same snapshot. See the [frozen contract and observation limits](../verification/entropy-account-contract-20261008.md).
-
-For Rust callers, construct the stateful execution factory with `::new()` or `::default()`;
-the former unit-struct literal and const construction no longer apply. Python construction is unchanged.
-
-### Bounded io execution
-
-`io_execution_policy_json` requires `account_dex="io"` and the verified direct account above.
-The normal execution factory parses this JSON before connecting. Monetary values are exact
-decimal strings. Unknown keys and invalid bounds fail construction. The policy fixes one
-strategy, an explicit io instrument set, an absolute ownership journal path, order/gross
-notional estimates, quantity/price bounds, action and open-order counts, leverage, fee/margin
-buffers, metadata age, and finite action/recovery deadlines. See the
-[contract research](../verification/entropy-execution-contract-20261008.md) for protocol limits.
-
-The supported commands are single `Limit` orders with `Gtc` or `Ioc`, single cancellation
-of a durably owned CLOID, and owned reduce-only `Ioc` close. An IOC uses the caller's exact
-limit cap/floor. Invalid wire precision is rejected before writing; prices are never rounded
-to widen that bound. Lists, brackets, modification, batch/cancel-all, naked market orders,
-external order adoption, and automatic resend remain unsupported in this scope.
-
-New risk requires complete scoped recovery, fresh verified account and metadata facts,
-current isolated user leverage, and conservative funds/reservation checks. The available
-budget uses the minimum of REST and latest complete private-stream `free` and `withdrawable`,
-then subtracts unresolved reservations and the policy margin buffer. Each source retains its
-own exact values and timestamps; non-atomic financial observations need not match. Both exact
-`activeAssetData` capacity arrays are retained; zero capacity blocks new risk without guessing
-their side or currency units. Metadata `maxLeverage` is not the user's current leverage.
-Reduce-only additionally requires actual owned exposure in the correct direction and cannot
-exceed that exposure after other pending closes. A sell floor and the local full-notional
-reserve do not guarantee a maximum fill notional after a favorable market gap.
-
-Ownership and the immutable signed nonce, expiration and payload/frame digests are persisted
-before enqueueing. The shared network writer checks admission after backend readiness,
-immediately around `start_send`, against the connection epoch, receive/applied private-frame
-fence, current proofs, cancellation and absolute deadline. Before this boundary the result
-is `NotWritten`; afterward a flush, ACK or transport failure can only establish a possible
-write. Signed expiration bounds venue validity, while delivery and execution still require
-reconciliation. Queued actions are never replayed on a replacement connection.
-
-Only actual individual fills update native fill events and positions. Filled statuses and
-aggregate ACK quantities cannot invent fills or fees. Raw venue trade identities are compared
-before dispatch, including after terminal order states; conflicts revoke recovery. Exact
-representable negative fee rebates are preserved and `builderFee` is not added a second time.
-Financial values that cannot be represented exactly in native quantity, price or Money remain
-unsupported and block recovery rather than being rounded.
-
-`QueryOrder` resolves the original owned CLOID and `QueryAccount` refreshes the explicit io
-account, metadata and finite recovery. Missing ACKs, `unknownOid`, capped or ambiguous history,
-foreign io activity and insufficient ownership evidence preserve Unknown and its reservations.
-They do not establish rejection or flatness. Recovery queries enabled io even when recent
-activity is empty. Independent REST and WS observations do not form an atomic venue snapshot
-or a guaranteed gap-free historical cursor.
-
-The journal uses a single-writer file lease and synchronized appends, with finite byte/fill
-bounds and strict restart validation. Torn records, conflicting history and a lost journal
-cannot confer ownership. Process restart durability is covered; persistence of a newly created
-directory entry across power loss is not guaranteed. A fresh factory with durable fills or
-active prior intents requires independent native cache/position restoration. This version has
-no verifiable restoration acknowledgement, so such a restart remains incomplete and refuses
-new risk and automatic close. Queries and existing ownership facts remain available.
-
-`HyperliquidExecutionClientFactory.execution_scope_snapshot_json()` returns detached diagnostics
-for the latest created client: exact policy/intent/reservation/fill facts, metadata, account
-and separate latest private funds
-proofs, recovery state, and the native projection recovery barrier. It returns `None` when the
-finite execution scope is disabled. Retain one factory per client. These diagnostics establish
-local observations; offline peers and an installed wheel do not establish live venue acceptance.
 
 ## Liquidation and ADL handling
 
@@ -1532,23 +1440,6 @@ still goes into the signed exchange payload.
 
 Hyperliquid perpetual futures use a fixed 1-hour funding interval. The adapter sets
 `interval` to `60` (minutes) on all `FundingRateUpdate` objects.
-
-### Bounded io economic observations
-
-This fork additionally supports opt-in actual user funding and non-funding ledger reporting through
-`HyperliquidExecutionClientConfig.io_economics_policy_json`. It requires the explicit `account_dex="io"`
-account scope and a finite policy with exact native instrument IDs and an owned checkpoint path.
-It can run with the read-only io account configuration. Order execution still requires the separate
-bounded execution policy.
-
-The normal native factory exposes `economics_scope_snapshot_json()`, `pending_economics_json()` and
-`persist_economics()`. Supported signed funding and individual fill fees acquire local immutable
-receipts; weak WS funding identity and unresolved account-wide ledger facts retain explicit Unknown
-diagnostics. The native report never adds a second commission, changes balances or restores trading
-proof. Public rates and estimated funding remain separate from actual cash observations.
-
-See the [bounded reporting API and recovery limits](../verification/entropy-economics-api-20261008.md)
-for the policy, original-byte references, consumption semantics and finite history coverage.
 
 ## Rate limiting
 

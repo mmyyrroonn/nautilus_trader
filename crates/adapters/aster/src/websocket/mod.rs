@@ -81,7 +81,6 @@ pub struct AsterUserStreamClient {
     ws_client: Option<BinanceFuturesWebSocketClient>,
     socket_factory: Option<SocketControlFactory>,
     socket_state_callback: Option<Arc<dyn Fn(SocketState) + Send + Sync>>,
-    raw_ingress_observer: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
 impl Debug for AsterUserStreamClient {
@@ -120,7 +119,6 @@ impl AsterUserStreamClient {
             ws_client: None,
             socket_factory: None,
             socket_state_callback: None,
-            raw_ingress_observer: None,
         }
     }
 
@@ -136,14 +134,6 @@ impl AsterUserStreamClient {
     ) -> Self {
         self.socket_factory = Some(factory);
         self.socket_state_callback = Some(Arc::new(callback));
-        self
-    }
-
-    pub(crate) fn with_raw_ingress_observer<F>(mut self, observer: F) -> Self
-    where
-        F: Fn() + Send + Sync + 'static,
-    {
-        self.raw_ingress_observer = Some(Arc::new(observer));
         self
     }
 
@@ -230,9 +220,6 @@ impl AsterUserStreamClient {
             ws_client = ws_client.with_socket_state_callback(move |state| callback(state));
         }
 
-        if let Some(observer) = self.raw_ingress_observer.clone() {
-            ws_client = ws_client.with_raw_ingress_observer(move || observer());
-        }
         ws_client.connect().await.map_err(|e| {
             crate::http::AsterHttpError::NetworkError(format!(
                 "Failed to connect Aster user stream: {e}"

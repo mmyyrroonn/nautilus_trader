@@ -17,20 +17,19 @@ use std::{
     str::FromStr,
     sync::{
         Arc,
-        atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU8, Ordering},
     },
     time::Duration,
 };
 
 use ahash::{AHashMap, AHashSet};
-use alloy_primitives::{B256, keccak256};
 use anyhow::Context;
 use arc_swap::ArcSwap;
 use dashmap::DashMap;
 use nautilus_common::cache::{InstrumentLookupError, fifo::FifoCacheMap};
 #[cfg(test)]
 use nautilus_common::live::get_runtime;
-use nautilus_core::{AtomicMap, time::get_atomic_clock_realtime};
+use nautilus_core::AtomicMap;
 use nautilus_live::{
     SocketControl,
     task::{SharedTaskSlot, TaskJoinOutcome},
@@ -48,9 +47,8 @@ use nautilus_network::{
     SocketStateSink,
     mode::ConnectionMode,
     websocket::{
-        AuthTracker, EpochMessageHandler, PreparedWriteAdmission, PreparedWriteContinuation,
-        PreparedWriteControl, PreparedWriteOutcome, SubscriptionState, TransportBackend,
-        WebSocketClient, WebSocketConfig,
+        AuthTracker, SubscriptionState, TransportBackend, WebSocketClient, WebSocketConfig,
+        channel_message_handler,
     },
 };
 use parking_lot::Mutex;
@@ -77,185 +75,23 @@ use crate::{
             HyperliquidExchangeCancelOrderRequest, HyperliquidExchangeGrouping,
             HyperliquidExchangeLimitParams, HyperliquidExchangeModifyOrderRequest,
             HyperliquidExchangeModifyTarget, HyperliquidExchangeOrderKind,
-            HyperliquidExchangePlaceOrderRequest, HyperliquidExchangeRequest,
-            HyperliquidExchangeResponse, HyperliquidExchangeTif, HyperliquidExchangeTpSl,
-            HyperliquidExchangeTriggerParams, RESPONSE_STATUS_OK,
+            HyperliquidExchangePlaceOrderRequest, HyperliquidExchangeResponse,
+            HyperliquidExchangeTif, HyperliquidExchangeTpSl, HyperliquidExchangeTriggerParams,
+            RESPONSE_STATUS_OK,
         },
         rate_limits::{WeightedLimiter, exec_action_weight},
     },
     websocket::{
         book::{BookStreamOptions, BookStreamRegistry, BookStreamRelease, BookStreamUse},
         enums::HyperliquidWsChannel,
-        handler::{FeedHandler, HandlerCommand, PreparedPostCommand},
+        handler::{FeedHandler, HandlerCommand},
         messages::{
-            HyperliquidWsRequest, NautilusWsMessage, PostRequest, PostResponse,
-            PostResponsePayload, SubscriptionRequest,
+            NautilusWsMessage, PostRequest, PostResponse, PostResponsePayload, SubscriptionRequest,
         },
         post::{PostIds, PostRouter},
         trades::{TradeStreamRegistry, TradeStreamUse},
     },
 };
-
-/// Actual immutable signed artifact passed to both durable preparation and final admission.
-#[derive(Clone, Debug)]
-pub(crate) struct PreparedSignedActionBinding {
-    pub post_id: u64,
-    pub connection_generation: u64,
-    pub connection_epoch: u64,
-    pub nonce: u64,
-    pub expires_after: u64,
-    pub signed_at_ms: u64,
-    pub deadline: nautilus_network::dst::time::Instant,
-    pub action_digest: B256,
-    pub signed_payload_digest: B256,
-    pub frame_digest: B256,
-    pub signed_payload: HyperliquidExchangeRequest<HyperliquidExchangeAction>,
-}
-
-pub(crate) type PreparedActionPreparation =
-    Box<dyn FnOnce(&PreparedSignedActionBinding) -> Result<(), String> + Send>;
-pub(crate) type PreparedActionAdmission = Box<
-    dyn for<'a> FnOnce(
-            PreparedSignedActionBinding,
-            PreparedWriteContinuation<'a>,
-        ) -> Result<(), String>
-        + Send,
->;
-
-#[derive(Clone, Copy, Debug)]
-pub(super) struct PrivateIngressToken {
-    pub generation: u64,
-    pub epoch: u64,
-    pub sequence: u64,
-    pub economic_raw_limit: Option<usize>,
-}
-pub(super) type RawWebSocketFrame = (
-    u64,
-    nautilus_core::nanos::UnixNanos,
-    Option<PrivateIngressToken>,
-    tokio_tungstenite::tungstenite::Message,
-);
-
-/// Receipt and write admission use the same short lock; queued private input cannot be skipped.
-#[derive(Debug, Default)]
-pub(crate) struct PrivateIngressState {
-    enabled: bool,
-    economic_raw_limit: Option<usize>,
-    generation: u64,
-    epoch: u64,
-    received: u64,
-    applied: u64,
-    failed: bool,
-}
-impl PrivateIngressState {
-    pub(crate) fn generation(&self) -> u64 {
-        self.generation
-    }
-    pub(crate) fn received_sequence(&self) -> u64 {
-        self.received
-    }
-    pub(crate) fn is_applied(&self, epoch: u64) -> bool {
-        self.enabled && !self.failed && self.epoch == epoch && self.received == self.applied
-    }
-    fn reset_connection(&mut self) -> u64 {
-        let Some(generation) = self.generation.checked_add(1) else {
-            self.failed = true;
-            return self.generation;
-        };
-        *self = Self {
-            enabled: self.enabled,
-            economic_raw_limit: self.economic_raw_limit,
-            generation,
-            ..Self::default()
-        };
-        generation
-    }
-    fn receive(&mut self, generation: u64, epoch: u64) -> Option<PrivateIngressToken> {
-        if !self.enabled || generation != self.generation || epoch < self.epoch {
-            return None;
-        }
-        if epoch > self.epoch {
-            *self = Self {
-                enabled: self.enabled,
-                economic_raw_limit: self.economic_raw_limit,
-                generation,
-                epoch,
-                ..Self::default()
-            };
-        }
-        let Some(sequence) = self.received.checked_add(1) else {
-            self.failed = true;
-            return None;
-        };
-        self.received = sequence;
-        Some(PrivateIngressToken {
-            generation,
-            epoch,
-            sequence,
-            economic_raw_limit: self.economic_raw_limit,
-        })
-    }
-    fn mark_applied(&mut self, generation: u64, epoch: u64, sequence: u64) -> bool {
-        if !self.enabled {
-            return false;
-        }
-        if generation != self.generation || epoch != self.epoch {
-            return true;
-        }
-        if sequence <= self.applied {
-            return true;
-        }
-        if self.failed || sequence != self.applied.saturating_add(1) || sequence > self.received {
-            self.failed = true;
-            return false;
-        }
-        self.applied = sequence;
-        true
-    }
-}
-
-fn affects_private_admission(message: &tokio_tungstenite::tungstenite::Message) -> bool {
-    use tokio_tungstenite::tungstenite::Message;
-    match message {
-        Message::Text(text) if text.as_str() == nautilus_network::RECONNECTED => true,
-        Message::Text(text) => {
-            #[derive(serde::Deserialize)]
-            struct Channel {
-                channel: String,
-            }
-            let Ok(value) = serde_json::from_str::<Channel>(text) else {
-                return true;
-            };
-            // Only explicitly public channels bypass the fence. Unknown/error/private frames
-            // remain closed until their actor outputs are handled (and errors invalidate proof).
-            !matches!(
-                value.channel.as_str(),
-                "allMids"
-                    | "candle"
-                    | "l2Book"
-                    | "trades"
-                    | "bbo"
-                    | "activeAssetCtx"
-                    | "activeSpotAssetCtx"
-                    | "allDexsAssetCtxs"
-                    | "pong"
-            )
-        }
-        Message::Binary(_) | Message::Close(_) => true,
-        _ => false,
-    }
-}
-
-pub(crate) struct PreparedActionResult {
-    pub outcome: PreparedWriteOutcome,
-    pub response: Option<HyperliquidResult<HyperliquidExchangeResponse>>,
-}
-struct PreparedCancellation(PreparedWriteControl);
-impl Drop for PreparedCancellation {
-    fn drop(&mut self) {
-        let _ = self.0.cancel();
-    }
-}
 
 const HYPERLIQUID_HEARTBEAT_MSG: &str = r#"{"method":"ping"}"#;
 
@@ -283,8 +119,6 @@ pub(super) enum AssetContextDataType {
 pub struct HyperliquidWebSocketClient {
     url: String,
     connection_mode: Arc<ArcSwap<AtomicU8>>,
-    connection_epoch: Arc<ArcSwap<AtomicU64>>,
-    private_ingress: Arc<Mutex<PrivateIngressState>>,
     signal: Arc<AtomicBool>,
     cmd_tx: Arc<tokio::sync::RwLock<tokio::sync::mpsc::UnboundedSender<HandlerCommand>>>,
     out_rx: Option<tokio::sync::mpsc::UnboundedReceiver<NautilusWsMessage>>,
@@ -317,8 +151,6 @@ impl Clone for HyperliquidWebSocketClient {
         Self {
             url: self.url.clone(),
             connection_mode: Arc::clone(&self.connection_mode),
-            connection_epoch: Arc::clone(&self.connection_epoch),
-            private_ingress: Arc::clone(&self.private_ingress),
             signal: Arc::clone(&self.signal),
             cmd_tx: Arc::clone(&self.cmd_tx),
             out_rx: None,
@@ -370,8 +202,6 @@ impl HyperliquidWebSocketClient {
         Self {
             url,
             connection_mode,
-            connection_epoch: Arc::new(ArcSwap::new(Arc::new(AtomicU64::new(0)))),
-            private_ingress: Arc::new(Mutex::new(PrivateIngressState::default())),
             signal: Arc::new(AtomicBool::new(false)),
             auth_tracker: AuthTracker::new(),
             subscriptions: SubscriptionState::new(':'),
@@ -439,40 +269,7 @@ impl HyperliquidWebSocketClient {
         // entries must not gate the venue subscribe for re-subscriptions
         self.book_streams.clear();
 
-        let (raw_tx, raw_rx) = tokio::sync::mpsc::unbounded_channel::<RawWebSocketFrame>();
-        let ingress = Arc::clone(&self.private_ingress);
-        let generation = ingress.lock().reset_connection();
-        let message_handler: EpochMessageHandler = Arc::new(move |epoch, message| {
-            let received = get_atomic_clock_realtime().get_time_ns();
-            // Acquire before JSON classification: admission cannot overtake a
-            // private frame while its callback is classifying the payload.
-            // This gate performs only local classification and channel enqueue;
-            // it never takes scope/execution/network locks or performs I/O.
-            let mut ingress = ingress.lock();
-            if generation != ingress.generation || epoch < ingress.epoch {
-                return;
-            }
-            match tokio_tungstenite::tungstenite::Message::try_from(message) {
-                Ok(message)
-                    if ingress.enabled
-                        && (matches!(&message, tokio_tungstenite::tungstenite::Message::Text(text) if ingress.economic_raw_limit.is_some_and(|limit| text.len() > limit))
-                            || affects_private_admission(&message)) =>
-                {
-                    let token = ingress.receive(generation, epoch);
-                    if raw_tx.send((epoch, received, token, message)).is_err() {
-                        ingress.failed = true;
-                    }
-                }
-                Ok(message) => {
-                    let _ = raw_tx.send((epoch, received, None, message));
-                }
-                Err(error) => {
-                    ingress.failed = true;
-                    drop(ingress);
-                    log::error!("WebSocket frame conversion failed: {error}");
-                }
-            }
-        });
+        let (message_handler, raw_rx) = channel_message_handler();
         let cfg = WebSocketConfig {
             url: self.url.clone(),
             headers: vec![],
@@ -489,9 +286,9 @@ impl HyperliquidWebSocketClient {
             backend: self.transport_backend,
             proxy_url: self.proxy_url.clone(),
         };
-        let client = WebSocketClient::epoch_builder()
+        let client = WebSocketClient::builder()
             .config(cfg)
-            .epoch_handler(message_handler)
+            .message_handler(message_handler)
             .maybe_state_sink(
                 self.socket_control
                     .as_ref()
@@ -515,8 +312,6 @@ impl HyperliquidWebSocketClient {
         *self.cmd_tx.write().await = cmd_tx.clone();
         self.out_rx = Some(out_rx);
 
-        self.connection_epoch
-            .store(client.connection_epoch_atomic());
         self.connection_mode.store(client.connection_mode_atomic());
         log::debug!("Hyperliquid WebSocket connected: {}", self.url);
 
@@ -622,17 +417,12 @@ impl HyperliquidWebSocketClient {
 
             loop {
                 match handler.next().await {
-                    Some(NautilusWsMessage::AccountScopeStreamEpoch { epoch }) => {
+                    Some(NautilusWsMessage::Reconnected) => {
                         log::info!("WebSocket reconnected");
                         subscriptions.reset_after_reconnect();
                         resubscribe_all();
 
-                        if handler.send(NautilusWsMessage::Reconnected).is_err()
-                            || (account_id.is_some()
-                                && handler
-                                    .send(NautilusWsMessage::AccountScopeStreamEpoch { epoch })
-                                    .is_err())
-                        {
+                        if handler.send(NautilusWsMessage::Reconnected).is_err() {
                             if handler.is_stopped() {
                                 log::debug!("Failed to send reconnect event (receiver dropped)");
                             } else {
@@ -772,172 +562,6 @@ impl HyperliquidWebSocketClient {
     ) -> HyperliquidResult<HyperliquidExchangeResponse> {
         self.post_action_exec_with_timeout(signer, action, self.post_timeout, None)
             .await
-    }
-
-    /// Installs the internal execution fence only for an explicit io execution runtime.
-    /// Must precede the first connection; account-only and ordinary streams retain their output.
-    pub(crate) fn install_io_private_ingress(&self) -> anyhow::Result<()> {
-        let mut ingress = self.private_ingress.lock();
-        anyhow::ensure!(
-            ingress.enabled || ingress.generation == 0,
-            "io execution ingress must be installed before connecting"
-        );
-        ingress.enabled = true;
-        Ok(())
-    }
-
-    pub(crate) fn private_ingress_guard(&self) -> parking_lot::MutexGuard<'_, PrivateIngressState> {
-        self.private_ingress.lock()
-    }
-
-    /// Adds the economic raw parsing bound before the first connection.
-    pub(crate) fn install_io_economic_ingress(&self, max_bytes: usize) -> anyhow::Result<()> {
-        let mut ingress = self.private_ingress.lock();
-        anyhow::ensure!(
-            ingress.generation == 0 && max_bytes > 0,
-            "Economic ingress must be installed before connecting"
-        );
-        ingress.enabled = true;
-        ingress.economic_raw_limit = Some(max_bytes);
-        Ok(())
-    }
-
-    /// Reader connection identity for bounded HTTP recovery; never reconstruct a WS fact from this.
-    pub(crate) fn private_source_identity(&self) -> (u64, u64) {
-        let ingress = self.private_ingress.lock();
-        (ingress.generation, self.connection_epoch())
-    }
-
-    pub(crate) fn mark_private_ingress_applied(
-        &self,
-        generation: u64,
-        epoch: u64,
-        sequence: u64,
-    ) -> bool {
-        self.private_ingress
-            .lock()
-            .mark_applied(generation, epoch, sequence)
-    }
-
-    pub(crate) async fn post_prepared_action(
-        &self,
-        signer: &HyperliquidHttpClient,
-        action: &HyperliquidExchangeAction,
-        epoch: u64,
-        deadline: nautilus_network::dst::time::Instant,
-        preparation: PreparedActionPreparation,
-        admission: PreparedActionAdmission,
-    ) -> PreparedActionResult {
-        let control = PreparedWriteControl::new(deadline);
-        let _guard = PreparedCancellation(control.clone());
-        let id = self.post_ids.next();
-        let operation = async {
-            self.post_limiter.acquire(exec_action_weight(action)).await;
-            let signed_at_ms = get_atomic_clock_realtime().get_time_ns().as_u64() / 1_000_000;
-            let remaining =
-                deadline.saturating_duration_since(nautilus_network::dst::time::Instant::now());
-            let remaining_ms = u64::try_from(remaining.as_millis())
-                .map_err(|_| HyperliquidError::bad_request("prepared deadline overflow"))?;
-            if remaining_ms == 0 {
-                return Err(HyperliquidError::Timeout);
-            }
-            let expires_after = signed_at_ms
-                .checked_add(remaining_ms)
-                .ok_or_else(|| HyperliquidError::bad_request("prepared signed expiry overflow"))?;
-            let signed_payload = signer.sign_action_exec_request(action, Some(expires_after))?;
-            let action_bytes =
-                serde_json::to_vec(&signed_payload.action).map_err(HyperliquidError::Serde)?;
-            let signed_bytes =
-                serde_json::to_vec(&signed_payload).map_err(HyperliquidError::Serde)?;
-            let payload = serde_json::to_string(&HyperliquidWsRequest::Post {
-                id,
-                request: PostRequest::Action {
-                    payload: signed_payload.clone(),
-                },
-            })
-            .map_err(HyperliquidError::Serde)?;
-            let binding = PreparedSignedActionBinding {
-                post_id: id,
-                connection_generation: self.private_ingress.lock().generation(),
-                connection_epoch: epoch,
-                nonce: signed_payload.nonce,
-                expires_after,
-                signed_at_ms,
-                deadline,
-                action_digest: keccak256(action_bytes),
-                signed_payload_digest: keccak256(signed_bytes),
-                frame_digest: keccak256(payload.as_bytes()),
-                signed_payload,
-            };
-            preparation(&binding).map_err(HyperliquidError::bad_request)?;
-            let admission: PreparedWriteAdmission =
-                Box::new(move |continuation| admission(binding, continuation));
-            let receiver = self.post_router.register_for_epoch(id, Some(epoch)).await?;
-            let (result_tx, result_rx) = tokio::sync::oneshot::channel();
-            self.cmd_tx
-                .read()
-                .await
-                .send(HandlerCommand::PreparedPost(Box::new(
-                    PreparedPostCommand {
-                        id,
-                        payload,
-                        epoch,
-                        deadline,
-                        control: control.clone(),
-                        admission,
-                        result: result_tx,
-                    },
-                )))
-                .map_err(|e| HyperliquidError::transport(e.to_string()))?;
-            let outcome = result_rx
-                .await
-                .map_err(|e| HyperliquidError::transport(e.to_string()))?;
-            if matches!(outcome, PreparedWriteOutcome::NotWritten { .. }) {
-                self.post_router.cancel(id).await;
-                return Ok(PreparedActionResult {
-                    outcome,
-                    response: None,
-                });
-            }
-            let remaining =
-                deadline.saturating_duration_since(nautilus_network::dst::time::Instant::now());
-            let response = self
-                .post_router
-                .await_with_timeout(id, receiver, remaining)
-                .await
-                .and_then(|response| match response.response {
-                    PostResponsePayload::Action { payload } => {
-                        serde_json::from_value(payload).map_err(HyperliquidError::Serde)
-                    }
-                    PostResponsePayload::Error { payload } => {
-                        Err(HyperliquidError::bad_request(payload))
-                    }
-                    PostResponsePayload::Info { .. } => Err(HyperliquidError::decode(
-                        "Unexpected info response for prepared io action",
-                    )),
-                });
-            Ok::<_, crate::http::error::Error>(PreparedActionResult {
-                outcome,
-                response: Some(response),
-            })
-        };
-        match tokio::time::timeout_at(deadline, operation).await {
-            Ok(Ok(result)) => result,
-            Ok(Err(error)) => {
-                self.post_router.cancel(id).await;
-                PreparedActionResult {
-                    outcome: control.cancel(),
-                    response: Some(Err(error)),
-                }
-            }
-            Err(_) => {
-                self.post_router.cancel(id).await;
-                PreparedActionResult {
-                    outcome: control.cancel(),
-                    response: Some(Err(HyperliquidError::Timeout)),
-                }
-            }
-        }
     }
 
     /// Send a typed exchange action with a caller-specified timeout and optional expiry.
@@ -1468,10 +1092,6 @@ impl HyperliquidWebSocketClient {
         }
     }
 
-    pub(crate) fn connection_epoch(&self) -> u64 {
-        self.connection_epoch.load().load(Ordering::Acquire)
-    }
-
     /// Returns true if the WebSocket is actively connected.
     pub fn is_active(&self) -> bool {
         let mode = self.connection_mode.load();
@@ -1950,54 +1570,6 @@ impl HyperliquidWebSocketClient {
                 subscriptions: vec![subscription],
             })
             .map_err(|e| anyhow::anyhow!("Failed to send subscribe command: {e}"))?;
-        Ok(())
-    }
-
-    /// Subscribes to actual account funding observations; these have no DEX selector.
-    pub async fn subscribe_user_fundings(&self, user: &str) -> anyhow::Result<()> {
-        self.cmd_tx
-            .read()
-            .await
-            .send(HandlerCommand::Subscribe {
-                subscriptions: vec![SubscriptionRequest::UserFundings { user: user.into() }],
-            })
-            .map_err(|e| anyhow::anyhow!("Failed to subscribe user fundings: {e}"))?;
-        Ok(())
-    }
-
-    /// Subscribes to account-wide ledger observations without inventing an io attribution.
-    pub async fn subscribe_user_non_funding_ledger_updates(
-        &self,
-        user: &str,
-    ) -> anyhow::Result<()> {
-        self.cmd_tx
-            .read()
-            .await
-            .send(HandlerCommand::Subscribe {
-                subscriptions: vec![SubscriptionRequest::UserNonFundingLedgerUpdates {
-                    user: user.into(),
-                }],
-            })
-            .map_err(|e| anyhow::anyhow!("Failed to subscribe account ledger: {e}"))?;
-        Ok(())
-    }
-
-    /// Subscribes to complete clearinghouse updates for an explicit user and DEX.
-    pub(crate) async fn subscribe_clearinghouse_state(
-        &self,
-        user: &str,
-        dex: &str,
-    ) -> anyhow::Result<()> {
-        self.cmd_tx
-            .read()
-            .await
-            .send(HandlerCommand::Subscribe {
-                subscriptions: vec![SubscriptionRequest::ClearinghouseState {
-                    user: user.to_string(),
-                    dex: dex.to_string(),
-                }],
-            })
-            .map_err(|e| anyhow::anyhow!("Failed to send scoped account subscription: {e}"))?;
         Ok(())
     }
 
@@ -2742,16 +2314,6 @@ fn subscription_from_topic(topic: &str) -> anyhow::Result<SubscriptionRequest> {
         HyperliquidWsChannel::UserEvents => Ok(SubscriptionRequest::UserEvents {
             user: rest.context("Missing user")?.to_string(),
         }),
-        HyperliquidWsChannel::ClearinghouseState => {
-            let (user, dex) = rest
-                .context("Missing account scope")?
-                .split_once(':')
-                .context("Missing account DEX")?;
-            Ok(SubscriptionRequest::ClearinghouseState {
-                user: user.to_string(),
-                dex: dex.to_string(),
-            })
-        }
         HyperliquidWsChannel::UserFills => Ok(SubscriptionRequest::UserFills {
             user: rest.context("Missing user")?.to_string(),
             aggregate_by_time: None,
@@ -2813,300 +2375,6 @@ mod tests {
         common::{consts::INFLIGHT_MAX, enums::HyperliquidBarInterval},
         websocket::handler::subscription_to_key,
     };
-
-    #[test]
-    fn prepared_private_ingress_only_explicit_execution_installs_shared_fence() {
-        let client = HyperliquidWebSocketClient::new(
-            Some("ws://127.0.0.1:1".to_owned()),
-            HyperliquidEnvironment::Testnet,
-            Some(AccountId::from("HYPERLIQUID-TEST")),
-            TransportBackend::Tungstenite,
-            None,
-        );
-        // An account ID alone must not install the scoped execution fence.
-        {
-            let mut ordinary = client.private_ingress_guard();
-            assert!(
-                !ordinary.is_applied(0),
-                "uninstalled execution cannot admit a prepared action"
-            );
-            assert!(
-                ordinary.receive(0, 0).is_none(),
-                "ordinary private frames have no internal marker"
-            );
-        }
-        let clone = client.clone();
-        client.install_io_private_ingress().unwrap();
-        let mut scoped = clone.private_ingress_guard();
-        let generation = scoped.reset_connection();
-        let token = scoped.receive(generation, 0).unwrap();
-        assert!(!scoped.is_applied(0));
-        assert!(scoped.mark_applied(token.generation, token.epoch, token.sequence));
-        assert!(scoped.is_applied(0));
-        let next = scoped.receive(generation, 1).unwrap();
-        assert!(!scoped.is_applied(1));
-        assert!(scoped.mark_applied(next.generation, next.epoch, next.sequence));
-        assert!(
-            scoped.is_applied(1),
-            "automatic epoch reset preserves installation"
-        );
-        let fresh_generation = scoped.reset_connection();
-        assert!(
-            scoped.receive(fresh_generation, 0).is_some(),
-            "fresh connection preserves installation"
-        );
-        drop(scoped);
-        clone.install_io_private_ingress().unwrap();
-        let ordinary = HyperliquidWebSocketClient::new(
-            None,
-            HyperliquidEnvironment::Testnet,
-            None,
-            TransportBackend::Tungstenite,
-            None,
-        );
-        ordinary.private_ingress_guard().reset_connection();
-        assert!(
-            ordinary.install_io_private_ingress().is_err(),
-            "late installation cannot skip prior receipts"
-        );
-    }
-
-    #[test]
-    fn prepared_private_ingress_requires_contiguous_actor_application() {
-        let mut state = PrivateIngressState {
-            enabled: true,
-            ..PrivateIngressState::default()
-        };
-        let generation = state.reset_connection();
-        let first = state.receive(generation, 0).unwrap();
-        let second = state.receive(generation, 0).unwrap();
-        assert!(!state.is_applied(0));
-        assert!(state.mark_applied(generation, 0, first.sequence));
-        assert!(
-            !state.is_applied(0),
-            "second raw frame is still unprocessed"
-        );
-        assert!(state.mark_applied(generation, 0, second.sequence));
-        assert!(state.is_applied(0));
-        assert!(
-            state.mark_applied(generation, 0, first.sequence),
-            "duplicate application is harmless"
-        );
-        let third = state.receive(generation, 0).unwrap();
-        assert!(!state.mark_applied(generation, 0, third.sequence + 1));
-        assert!(!state.is_applied(0));
-        assert!(
-            !state.mark_applied(generation, 0, third.sequence),
-            "gap stays fail closed"
-        );
-    }
-
-    #[test]
-    fn prepared_private_ingress_rejects_old_epoch_and_fresh_connection_markers() {
-        let mut state = PrivateIngressState {
-            enabled: true,
-            ..PrivateIngressState::default()
-        };
-        let old_generation = state.reset_connection();
-        let old = state.receive(old_generation, 0).unwrap();
-        let current = state.receive(old_generation, 1).unwrap();
-        assert!(state.mark_applied(old.generation, old.epoch, old.sequence));
-        assert!(!state.is_applied(1));
-        assert!(state.receive(old_generation, 0).is_none());
-        assert!(state.mark_applied(current.generation, current.epoch, current.sequence));
-        let new_generation = state.reset_connection();
-        assert_ne!(old_generation, new_generation);
-        let fresh = state.receive(new_generation, 0).unwrap();
-        assert!(state.mark_applied(old.generation, old.epoch, old.sequence));
-        assert!(state.mark_applied(current.generation, current.epoch, current.sequence));
-        assert!(state.receive(old_generation, 5).is_none());
-        assert!(
-            !state.is_applied(0),
-            "old epoch-zero marker cannot apply new epoch-zero receipt"
-        );
-        assert!(state.mark_applied(fresh.generation, fresh.epoch, fresh.sequence));
-        assert!(state.is_applied(0));
-    }
-
-    #[test]
-    fn economics_private_ingress_retains_bound_across_connection_and_epoch_changes() {
-        let mut state = PrivateIngressState {
-            enabled: true,
-            economic_raw_limit: Some(65536),
-            ..PrivateIngressState::default()
-        };
-        let generation = state.reset_connection();
-        let first = state.receive(generation, 0).unwrap();
-        let replacement = state.receive(generation, 1).unwrap();
-        assert_eq!(first.economic_raw_limit, Some(65536));
-        assert_eq!(replacement.economic_raw_limit, Some(65536));
-        let fresh_generation = state.reset_connection();
-        assert_eq!(
-            state
-                .receive(fresh_generation, 0)
-                .unwrap()
-                .economic_raw_limit,
-            Some(65536)
-        );
-        assert!(affects_private_admission(
-            &tokio_tungstenite::tungstenite::Message::text(
-                r#"{"channel":"userFundings","channel":"l2Book","data":{}}"#
-            )
-        ));
-    }
-
-    #[test]
-    fn prepared_private_ingress_lock_serializes_receipt_and_write_boundary() {
-        let state = Arc::new(Mutex::new(PrivateIngressState {
-            enabled: true,
-            ..PrivateIngressState::default()
-        }));
-        let generation = state.lock().reset_connection();
-        // Register receipt first: admission under the same lock must observe pending input.
-        let token = state.lock().receive(generation, 0).unwrap();
-        assert!(!state.lock().is_applied(0));
-        assert!(state.lock().mark_applied(generation, 0, token.sequence));
-        let admission = state.lock();
-        assert!(admission.is_applied(0));
-        let reader_state = Arc::clone(&state);
-        let (started, ready) = std::sync::mpsc::channel();
-        let (registered, receipt) = std::sync::mpsc::channel();
-        let reader = std::thread::spawn(move || {
-            started.send(()).unwrap();
-            let mut guard = reader_state.lock();
-            registered
-                .send(guard.receive(generation, 0).unwrap())
-                .unwrap();
-        });
-        ready.recv_timeout(Duration::from_secs(1)).unwrap();
-        assert!(
-            receipt.try_recv().is_err(),
-            "receipt cannot cross held write admission"
-        );
-        // The adapter holds this guard until its synchronous continuation calls start_send.
-        drop(admission);
-        let next = receipt.recv_timeout(Duration::from_secs(1)).unwrap();
-        reader.join().unwrap();
-        assert!(!state.lock().is_applied(0));
-        assert!(
-            state
-                .lock()
-                .mark_applied(next.generation, next.epoch, next.sequence)
-        );
-    }
-
-    #[test]
-    fn prepared_private_ingress_unknown_and_private_channels_are_fenced() {
-        use tokio_tungstenite::tungstenite::Message;
-        for channel in [
-            "clearinghouseState",
-            "user",
-            "orderUpdates",
-            "post",
-            "error",
-            "activeAssetData",
-            "userFundings",
-            "futurePrivateChannel",
-        ] {
-            let message =
-                Message::text(serde_json::json!({"channel":channel,"data":{}}).to_string());
-            assert!(affects_private_admission(&message), "{channel}");
-        }
-        for channel in [
-            "l2Book",
-            "bbo",
-            "trades",
-            "candle",
-            "allMids",
-            "activeAssetCtx",
-            "allDexsAssetCtxs",
-            "pong",
-        ] {
-            let message =
-                Message::text(serde_json::json!({"channel":channel,"data":{}}).to_string());
-            assert!(!affects_private_admission(&message), "{channel}");
-        }
-        assert!(affects_private_admission(&Message::text(
-            nautilus_network::RECONNECTED
-        )));
-        assert!(affects_private_admission(&Message::text("malformed")));
-        assert!(affects_private_admission(&Message::Close(None)));
-    }
-
-    #[tokio::test]
-    async fn prepared_signed_binding_is_verified_before_queue_and_rejection_never_writes() {
-        // Explicit synthetic test key; constructors and signing perform no HTTP request.
-        let signer = HyperliquidHttpClient::from_credentials(
-            "0000000000000000000000000000000000000000000000000000000000000001",
-            None,
-            HyperliquidEnvironment::Testnet,
-            1,
-            None,
-        )
-        .unwrap();
-        let client = HyperliquidWebSocketClient::new(
-            Some("ws://127.0.0.1:1".to_owned()),
-            HyperliquidEnvironment::Testnet,
-            None,
-            TransportBackend::Tungstenite,
-            None,
-        );
-        let observed = Arc::new(Mutex::new(None));
-        let captured = Arc::clone(&observed);
-        let deadline = nautilus_network::dst::time::Instant::now() + Duration::from_secs(2);
-        let action = HyperliquidExchangeAction::CancelByCloid {
-            cancels: vec![],
-            fast: None,
-        };
-        let result = client
-            .post_prepared_action(
-                &signer,
-                &action,
-                0,
-                deadline,
-                Box::new(move |binding| {
-                    assert_eq!(
-                        binding.signed_payload.expires_after,
-                        Some(binding.expires_after)
-                    );
-                    assert_eq!(binding.signed_payload.nonce, binding.nonce);
-                    assert!(binding.signed_payload.vault_address.is_none());
-                    assert!(binding.expires_after > binding.signed_at_ms);
-                    assert!(binding.expires_after - binding.signed_at_ms <= 2_000);
-                    assert_eq!(
-                        binding.action_digest,
-                        keccak256(serde_json::to_vec(&binding.signed_payload.action).unwrap())
-                    );
-                    assert_eq!(
-                        binding.signed_payload_digest,
-                        keccak256(serde_json::to_vec(&binding.signed_payload).unwrap())
-                    );
-                    let frame = HyperliquidWsRequest::Post {
-                        id: binding.post_id,
-                        request: PostRequest::Action {
-                            payload: binding.signed_payload.clone(),
-                        },
-                    };
-                    assert_eq!(
-                        binding.frame_digest,
-                        keccak256(serde_json::to_vec(&frame).unwrap())
-                    );
-                    *captured.lock() = Some(binding.clone());
-                    Err("synthetic durable preparation rejects before queue".to_owned())
-                }),
-                Box::new(|_, _| panic!("rejected preparation must not reach network admission")),
-            )
-            .await;
-        assert!(observed.lock().is_some());
-        assert!(matches!(
-            result.outcome,
-            PreparedWriteOutcome::NotWritten { .. }
-        ));
-        assert!(matches!(
-            result.response,
-            Some(Err(HyperliquidError::BadRequest(_)))
-        ));
-    }
 
     #[tokio::test]
     async fn test_drop_clone_does_not_stop_handler() {

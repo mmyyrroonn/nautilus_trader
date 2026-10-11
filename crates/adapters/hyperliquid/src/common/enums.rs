@@ -886,8 +886,6 @@ pub enum HyperliquidInfoRequestType {
     UserFills,
     /// Get user fills by time range.
     UserFillsByTime,
-    /// Get actual user leverage and available size for one asset.
-    ActiveAssetData,
     /// Get order status for a user.
     OrderStatus,
     /// Get all open orders for a user.
@@ -912,8 +910,6 @@ pub enum HyperliquidInfoRequestType {
     UserFunding,
     /// Get non-user funding updates.
     NonUserFundingUpdates,
-    /// Get actual account non-funding ledger history.
-    UserNonFundingLedgerUpdates,
     /// Get TWAP history.
     TwapHistory,
     /// Get user TWAP slice fills.
@@ -924,10 +920,6 @@ pub enum HyperliquidInfoRequestType {
     UserRateLimit,
     /// Get user role.
     UserRole,
-    /// Gets the account abstraction mode.
-    UserAbstraction,
-    /// Gets the legacy DEX abstraction flag.
-    UserDexAbstraction,
     /// Get delegator history.
     DelegatorHistory,
     /// Get delegator rewards.
@@ -955,7 +947,6 @@ impl HyperliquidInfoRequestType {
             Self::RecentTrades => "recentTrades",
             Self::UserFills => "userFills",
             Self::UserFillsByTime => "userFillsByTime",
-            Self::ActiveAssetData => "activeAssetData",
             Self::OrderStatus => "orderStatus",
             Self::OpenOrders => "openOrders",
             Self::FrontendOpenOrders => "frontendOpenOrders",
@@ -968,14 +959,11 @@ impl HyperliquidInfoRequestType {
             Self::FundingHistory => "fundingHistory",
             Self::UserFunding => "userFunding",
             Self::NonUserFundingUpdates => "nonUserFundingUpdates",
-            Self::UserNonFundingLedgerUpdates => "userNonFundingLedgerUpdates",
             Self::TwapHistory => "twapHistory",
             Self::UserTwapSliceFills => "userTwapSliceFills",
             Self::UserTwapSliceFillsByTime => "userTwapSliceFillsByTime",
             Self::UserRateLimit => "userRateLimit",
             Self::UserRole => "userRole",
-            Self::UserAbstraction => "userAbstraction",
-            Self::UserDexAbstraction => "userDexAbstraction",
             Self::DelegatorHistory => "delegatorHistory",
             Self::DelegatorRewards => "delegatorRewards",
             Self::ValidatorStats => "validatorStats",

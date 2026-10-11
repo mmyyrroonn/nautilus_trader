@@ -40,46 +40,11 @@ impl HyperliquidExecutionClientFactory {
     /// Factory for creating Hyperliquid execution clients.
     #[new]
     fn py_new() -> Self {
-        Self::new()
+        Self
     }
 
     #[pyo3(name = "name")]
     fn py_name(&self) -> &'static str {
         "HYPERLIQUID"
-    }
-
-    /// Returns the bounded execution policy/ownership diagnostic, when enabled.
-    #[pyo3(name = "execution_scope_snapshot_json")]
-    fn py_execution_scope_snapshot_json(&self) -> PyResult<Option<String>> {
-        self.execution_scope_snapshot_json()
-            .map_err(nautilus_core::python::to_pyruntime_err)
-    }
-
-    /// Returns the factory-bound exact economic report and source diagnostics.
-    #[pyo3(name = "economics_scope_snapshot_json")]
-    fn py_economics_scope_snapshot_json(&self) -> PyResult<Option<String>> {
-        self.economics_scope_snapshot_json()
-            .map_err(nautilus_core::python::to_pyruntime_err)
-    }
-
-    /// Returns detached source observations awaiting the native report consumer.
-    #[pyo3(name = "pending_economics_json")]
-    fn py_pending_economics_json(&self) -> PyResult<Option<String>> {
-        self.pending_economics_json()
-            .map_err(nautilus_core::python::to_pyruntime_err)
-    }
-
-    /// Atomically persists the native report and immutable consumption receipts.
-    #[pyo3(name = "persist_economics")]
-    fn py_persist_economics(&self) -> PyResult<Option<String>> {
-        self.persist_economics()
-            .map_err(nautilus_core::python::to_pyruntime_err)
-    }
-
-    /// Returns exact-decimal JSON for the factory-bound io proof, or `None` when unbound.
-    #[pyo3(name = "account_scope_snapshot_json")]
-    fn py_account_scope_snapshot_json(&self) -> PyResult<Option<String>> {
-        self.account_scope_snapshot_json()
-            .map_err(nautilus_core::python::to_pyruntime_err)
     }
 }

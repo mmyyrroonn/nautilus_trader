@@ -112,7 +112,6 @@ pub struct BinanceFuturesWebSocketClient {
     socket_factory: Option<SocketControlFactory>,
     socket_endpoint: Option<String>,
     socket_state_callback: Option<Arc<dyn Fn(SocketState) + Send + Sync>>,
-    raw_ingress_observer: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
 /// Default per-attempt WebSocket connect timeout for the stream pool, in milliseconds.
@@ -181,7 +180,6 @@ impl BinanceFuturesWebSocketClient {
             socket_factory: None,
             socket_endpoint: None,
             socket_state_callback: None,
-            raw_ingress_observer: None,
         })
     }
 
@@ -232,19 +230,6 @@ impl BinanceFuturesWebSocketClient {
         F: Fn(SocketState) + Send + Sync + 'static,
     {
         self.socket_state_callback = Some(Arc::new(callback));
-        self
-    }
-
-    /// Adds an observer before any received text or binary payload is queued or decoded.
-    ///
-    /// The observer does not receive payload contents and must complete synchronously without
-    /// initiating socket operations. Protocol decoding and default behavior remain unchanged.
-    #[must_use]
-    pub fn with_raw_ingress_observer<F>(mut self, observer: F) -> Self
-    where
-        F: Fn() + Send + Sync + 'static,
-    {
-        self.raw_ingress_observer = Some(Arc::new(observer));
         self
     }
 
@@ -634,19 +619,6 @@ impl BinanceFuturesWebSocketClient {
         })?;
 
         let (raw_handler, raw_rx) = channel_message_handler();
-        let raw_handler = if let Some(observer) = self.raw_ingress_observer.clone() {
-            Arc::new(move |message: nautilus_network::Message| {
-                if matches!(
-                    &message,
-                    nautilus_network::Message::Text(_) | nautilus_network::Message::Binary(_)
-                ) {
-                    observer();
-                }
-                raw_handler(message);
-            }) as nautilus_network::websocket::MessageHandler
-        } else {
-            raw_handler
-        };
         let ping_handler: PingHandler = Arc::new(move |_| {});
 
         let headers = if let Some(ref cred) = self.credential {

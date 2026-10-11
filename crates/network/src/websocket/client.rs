@@ -63,7 +63,7 @@ use futures_util::{SinkExt, StreamExt};
 use http::HeaderName;
 use nautilus_core::string::secret::REDACTED;
 use nautilus_cryptography::providers::install_cryptographic_provider;
-use parking_lot::{Mutex, RwLock};
+use parking_lot::RwLock;
 #[cfg(any(feature = "turmoil", feature = "transport-sockudo"))]
 use rustls::ClientConfig;
 #[cfg(feature = "transport-sockudo")]
@@ -95,10 +95,6 @@ use super::{
     consts::{
         CONNECTION_STATE_CHECK_INTERVAL_MS, GRACEFUL_SHUTDOWN_DELAY_MS,
         GRACEFUL_SHUTDOWN_TIMEOUT_SECS,
-    },
-    prepared::{
-        PreparedCommand, PreparedSendGuard, PreparedWriteAdmission, PreparedWriteControl,
-        PreparedWriteOutcome, split_transport,
     },
     types::{
         EpochMessageHandler, EpochPingHandler, MessageHandler, MessageReader, MessageWriter,
@@ -173,7 +169,6 @@ pub struct WebSocketClientInner {
     heartbeat_task: Option<tokio::task::JoinHandle<()>>,
     connection_mode: Arc<AtomicU8>,
     connection_epoch: Arc<AtomicU64>,
-    write_admission: Arc<Mutex<()>>,
     state_notify: Arc<tokio::sync::Notify>,
     controller_notify: Arc<tokio::sync::Notify>,
     reconnect_published: Arc<AtomicBool>,
@@ -238,12 +233,11 @@ impl WebSocketClientInner {
 
         let connection_mode = Arc::new(AtomicU8::new(ConnectionMode::Reconnect.as_u8()));
         let connection_epoch = Arc::new(AtomicU64::new(0));
-        let write_admission = Arc::new(Mutex::new(()));
         let state_notify = Arc::new(tokio::sync::Notify::new());
         let controller_notify = Arc::new(tokio::sync::Notify::new());
         let reconnect_published = Arc::new(AtomicBool::new(true));
         let outcome =
-            complete_reconnect_admitted(&connection_mode, &write_admission, state_sink.as_ref());
+            ConnectionMode::complete_reconnect_with_sink(&connection_mode, state_sink.as_ref());
         debug_assert_eq!(outcome, ReconnectOutcome::Reconnected);
 
         // Note: We don't spawn a read task here since the reader is handled externally
@@ -276,7 +270,6 @@ impl WebSocketClientInner {
             Arc::clone(&auth_tracker),
             Arc::clone(&reconnect_buffer_waits_for_auth),
             state_sink.clone(),
-            Arc::clone(&write_admission),
         );
 
         let heartbeat_task = config.heartbeat_interval_secs.map(|heartbeat_interval| {
@@ -301,7 +294,6 @@ impl WebSocketClientInner {
             writer_tx,
             connection_mode,
             connection_epoch,
-            write_admission,
             state_notify,
             controller_notify,
             reconnect_published,
@@ -464,12 +456,11 @@ impl WebSocketClientInner {
 
         let connection_mode = Arc::new(AtomicU8::new(ConnectionMode::Reconnect.as_u8()));
         let connection_epoch = Arc::new(AtomicU64::new(0));
-        let write_admission = Arc::new(Mutex::new(()));
         let state_notify = Arc::new(tokio::sync::Notify::new());
         let controller_notify = Arc::new(tokio::sync::Notify::new());
         let reconnect_published = Arc::new(AtomicBool::new(true));
         let outcome =
-            complete_reconnect_admitted(&connection_mode, &write_admission, state_sink.as_ref());
+            ConnectionMode::complete_reconnect_with_sink(&connection_mode, state_sink.as_ref());
         debug_assert_eq!(outcome, ReconnectOutcome::Reconnected);
 
         let (read_task, read_fence) = if is_stream_mode {
@@ -504,7 +495,6 @@ impl WebSocketClientInner {
             Arc::clone(&auth_tracker),
             Arc::clone(&reconnect_buffer_waits_for_auth),
             state_sink.clone(),
-            Arc::clone(&write_admission),
         );
 
         // Optionally spawn a heartbeat task to periodically ping server
@@ -529,7 +519,6 @@ impl WebSocketClientInner {
             heartbeat_task,
             connection_mode,
             connection_epoch,
-            write_admission,
             state_notify,
             controller_notify,
             reconnect_published,
@@ -618,7 +607,7 @@ impl WebSocketClientInner {
         crate::net::apply_socket_options(stream.get_ref().get_ref());
 
         let transport: BoxedWsTransport = Box::pin(TungsteniteTransport::new(stream));
-        Ok(split_transport(transport))
+        Ok(transport.split())
     }
 
     /// Connects via an HTTP `CONNECT` proxy and performs the WebSocket
@@ -656,7 +645,7 @@ impl WebSocketClientInner {
         // `client_async` produces a large state machine.
         let transport: BoxedWsTransport = Box::pin(proxied_ws_handshake(request, stream)).await?;
 
-        Ok(split_transport(transport))
+        Ok(transport.split())
     }
 
     /// Turmoil simulator variant: HTTP `CONNECT` tunneling is not supported
@@ -735,7 +724,7 @@ impl WebSocketClientInner {
             .await
             .map_err(TransportError::from)?;
         let transport: BoxedWsTransport = Box::pin(TungsteniteTransport::new(stream));
-        Ok(split_transport(transport))
+        Ok(transport.split())
     }
 
     /// Connects with the server using the sockudo-ws backend.
@@ -872,7 +861,7 @@ impl WebSocketClientInner {
         };
         let ws = SockudoWebSocketStream::from_raw(stream, Role::Client, SockudoConfig::default());
         let transport: BoxedWsTransport = Box::pin(SockudoTransport::new(ws));
-        Ok(split_transport(transport))
+        Ok(transport.split())
     }
 }
 
@@ -1294,11 +1283,8 @@ impl WebSocketClientInner {
                 stream users must manually reconnect by creating a new connection"
             );
             // Transition to CLOSED state to stop reconnection attempts
-            {
-                let _admission = self.write_admission.lock();
-                self.connection_mode
-                    .store(ConnectionMode::Closed.as_u8(), Ordering::SeqCst);
-            }
+            self.connection_mode
+                .store(ConnectionMode::Closed.as_u8(), Ordering::SeqCst);
             fail_registered_auth(
                 self.auth_tracker.as_ref(),
                 "WebSocket stream mode cannot reconnect",
@@ -1405,9 +1391,8 @@ impl WebSocketClientInner {
 
         // Atomically transition from Reconnect to Active
         // This prevents race condition where disconnect could be requested between check and store
-        if complete_reconnect_admitted(
+        if ConnectionMode::complete_reconnect_with_sink(
             &self.connection_mode,
-            &self.write_admission,
             self.state_sink.as_ref(),
         ) == ReconnectOutcome::Aborted
         {
@@ -1754,7 +1739,6 @@ impl WebSocketClientInner {
         auth_tracker: Arc<OnceLock<AuthTracker>>,
         reconnect_buffer_waits_for_auth: Arc<AtomicBool>,
         state_sink: Option<SocketStateSink>,
-        write_admission: Arc<Mutex<()>>,
     ) -> tokio::task::JoinHandle<()> {
         log_task_started("write");
 
@@ -1834,7 +1818,6 @@ impl WebSocketClientInner {
                             if send_error {
                                 _ = request_websocket_reconnect(
                                     &connection_state,
-                                    &write_admission,
                                     &reconnect_published,
                                     state_sink.as_ref(),
                                     &auth_tracker,
@@ -1862,15 +1845,6 @@ impl WebSocketClientInner {
                         // Re-check connection mode after receiving a message
                         let mode = ConnectionMode::from_atomic(&connection_state);
                         if matches!(mode, ConnectionMode::Disconnect | ConnectionMode::Closed) {
-                            if let WriterCommand::SendPreparedOnConnection {
-                                control,
-                                response_tx,
-                                ..
-                            } = msg
-                            {
-                                _ = response_tx
-                                    .send(control.reject("connection closed in writer queue"));
-                            }
                             break;
                         }
 
@@ -1890,10 +1864,7 @@ impl WebSocketClientInner {
                                 .await;
 
                                 active_writer = new_writer;
-                                let epoch = {
-                                    let _admission = write_admission.lock();
-                                    connection_epoch.fetch_add(1, Ordering::AcqRel) + 1
-                                };
+                                let epoch = connection_epoch.fetch_add(1, Ordering::AcqRel) + 1;
                                 log::debug!("Updated writer: epoch={epoch}");
 
                                 if let Err(e) = tx.send(epoch) {
@@ -1912,87 +1883,6 @@ impl WebSocketClientInner {
                                 if mode.is_reconnect() =>
                             {
                                 _ = response_tx.send(Err(SendError::ConnectionChanged));
-                            }
-                            WriterCommand::SendPreparedOnConnection {
-                                message,
-                                connection_epoch: expected_epoch,
-                                control,
-                                admission,
-                                response_tx,
-                            } => {
-                                if !mode.is_active()
-                                    || connection_epoch.load(Ordering::Acquire) != expected_epoch
-                                {
-                                    _ = response_tx.send(
-                                        control
-                                            .reject("connection changed before writer admission"),
-                                    );
-                                    continue;
-                                }
-                                if control.outcome().is_some()
-                                    || dst::time::Instant::now() >= control.deadline()
-                                {
-                                    _ = response_tx.send(
-                                        control.reject("cancelled or expired in writer queue"),
-                                    );
-                                    continue;
-                                }
-                                let command = PreparedCommand {
-                                    control: control.clone(),
-                                    admission,
-                                    expected_epoch,
-                                    message: message.clone(),
-                                    epoch: Arc::clone(&connection_epoch),
-                                    mode: Arc::clone(&connection_state),
-                                    lifecycle: Arc::clone(&write_admission),
-                                };
-                                if let Err(reason) = active_writer.prepare(command) {
-                                    _ = response_tx.send(control.reject(reason));
-                                    continue;
-                                }
-                                let remaining = control
-                                    .deadline()
-                                    .saturating_duration_since(dst::time::Instant::now())
-                                    .min(Duration::from_secs(WRITE_TIMEOUT_SECS));
-                                let result = tokio::select! {
-                                    biased;
-                                    () = control.cancelled() => Err("prepared write cancelled".to_string()),
-                                    result = dst::time::timeout(remaining, active_writer.send(message)) => {
-                                        match result {
-                                            Ok(Ok(())) => Ok(()),
-                                            Ok(Err(error)) => Err(error.to_string()),
-                                            Err(_) => Err("prepared transport write deadline expired".into()),
-                                        }
-                                    }
-                                };
-                                let failed = result.is_err();
-                                let outcome = match result {
-                                    Ok(()) => control.finish(None),
-                                    Err(reason) => {
-                                        control.reject(reason.clone());
-                                        control.finish(Some(reason))
-                                    }
-                                };
-                                // A timed-out SplitSink may retain its local message slot. Retire
-                                // that transport before accepting another command, never replay it.
-                                let retire = failed
-                                    && (active_writer.has_pending()
-                                        || matches!(
-                                            outcome,
-                                            PreparedWriteOutcome::MayHaveWritten { .. }
-                                        ));
-                                _ = response_tx.send(outcome);
-                                if retire {
-                                    _ = request_websocket_reconnect(
-                                        &connection_state,
-                                        &write_admission,
-                                        &reconnect_published,
-                                        state_sink.as_ref(),
-                                        &auth_tracker,
-                                        &controller_notify,
-                                        || {},
-                                    );
-                                }
                             }
                             WriterCommand::SendPongOnConnection {
                                 data,
@@ -2029,7 +1919,6 @@ impl WebSocketClientInner {
                                 if send_failed
                                     && request_websocket_reconnect(
                                         &connection_state,
-                                        &write_admission,
                                         &reconnect_published,
                                         state_sink.as_ref(),
                                         &auth_tracker,
@@ -2085,7 +1974,6 @@ impl WebSocketClientInner {
                                 if send_failed
                                     && request_websocket_reconnect(
                                         &connection_state,
-                                        &write_admission,
                                         &reconnect_published,
                                         state_sink.as_ref(),
                                         &auth_tracker,
@@ -2106,7 +1994,6 @@ impl WebSocketClientInner {
                                     // CAS: a disconnect landing mid-send must not be overwritten
                                     if request_websocket_reconnect(
                                         &connection_state,
-                                        &write_admission,
                                         &reconnect_published,
                                         state_sink.as_ref(),
                                         &auth_tracker,
@@ -2125,7 +2012,6 @@ impl WebSocketClientInner {
                                 if send_failed
                                     && request_websocket_reconnect(
                                         &connection_state,
-                                        &write_admission,
                                         &reconnect_published,
                                         state_sink.as_ref(),
                                         &auth_tracker,
@@ -2350,7 +2236,6 @@ pub struct WebSocketClient {
     pub(crate) controller_task: tokio::task::JoinHandle<()>,
     pub(crate) connection_mode: Arc<AtomicU8>,
     pub(crate) connection_epoch: Arc<AtomicU64>,
-    write_admission: Arc<Mutex<()>>,
     pub(crate) state_notify: Arc<tokio::sync::Notify>,
     pub(crate) connect_timeout: Duration,
     pub(crate) rate_limiter: Arc<RateLimiter<Ustr, MonotonicClock>>,
@@ -2422,7 +2307,6 @@ impl Debug for ReconnectHeaders {
 #[derive(Clone)]
 pub struct WebSocketReconnectHandle {
     connection_mode: Arc<AtomicU8>,
-    write_admission: Arc<Mutex<()>>,
     auth_tracker: Arc<OnceLock<AuthTracker>>,
     state_sink: Option<SocketStateSink>,
     controller_lifecycle: Arc<ControllerLifecycle>,
@@ -2464,7 +2348,6 @@ impl WebSocketReconnectHandle {
 
         request_websocket_reconnect(
             &self.connection_mode,
-            &self.write_admission,
             &self.reconnect_published,
             self.state_sink.as_ref(),
             &self.auth_tracker,
@@ -2472,47 +2355,6 @@ impl WebSocketReconnectHandle {
             || drop(request.take()),
         )
     }
-}
-
-fn complete_reconnect_admitted(
-    mode: &AtomicU8,
-    admission: &Mutex<()>,
-    sink: Option<&SocketStateSink>,
-) -> ReconnectOutcome {
-    let changed = sink.map_or_else(
-        || {
-            let _admission = admission.lock();
-            ConnectionMode::complete_reconnect(mode) == ReconnectOutcome::Reconnected
-        },
-        |sink| {
-            sink.transition_with_admission(
-                mode,
-                ConnectionMode::Reconnect,
-                ConnectionMode::Active,
-                SocketState::Connected,
-                admission,
-            )
-        },
-    );
-    if changed {
-        ReconnectOutcome::Reconnected
-    } else {
-        ReconnectOutcome::Aborted
-    }
-}
-
-fn close_websocket_admitted(
-    mode: &AtomicU8,
-    admission: &Mutex<()>,
-    sink: Option<&SocketStateSink>,
-) -> bool {
-    sink.map_or_else(
-        || {
-            let _admission = admission.lock();
-            ConnectionMode::close_websocket_on_loss(mode, None)
-        },
-        |sink| sink.close_with_admission(mode, admission),
-    )
 }
 
 struct ReconnectPublication<'a> {
@@ -2529,7 +2371,6 @@ impl Drop for ReconnectPublication<'_> {
 
 fn request_websocket_reconnect<F>(
     connection_mode: &AtomicU8,
-    write_admission: &Mutex<()>,
     reconnect_published: &AtomicBool,
     state_sink: Option<&SocketStateSink>,
     auth_tracker: &OnceLock<AuthTracker>,
@@ -2552,10 +2393,7 @@ where
         };
     }
 
-    let outcome = {
-        let _admission = write_admission.lock();
-        ConnectionMode::request_reconnect_outcome(connection_mode)
-    };
+    let outcome = ConnectionMode::request_reconnect_outcome(connection_mode);
     if outcome != ReconnectRequestOutcome::Accepted {
         reconnect_published.store(true, Ordering::SeqCst);
         return outcome;
@@ -2605,7 +2443,6 @@ mod reconnect_request_tests {
         let notify = Arc::new(tokio::sync::Notify::new());
         let handle = WebSocketReconnectHandle {
             connection_mode: Arc::new(AtomicU8::new(mode.as_u8())),
-            write_admission: Arc::new(Mutex::new(())),
             auth_tracker,
             state_sink: None,
             controller_lifecycle: Arc::new(ControllerLifecycle::new()),
@@ -2707,7 +2544,6 @@ mod reconnect_request_tests {
         });
         let handle = WebSocketReconnectHandle {
             connection_mode,
-            write_admission: Arc::new(Mutex::new(())),
             auth_tracker: Arc::new(OnceLock::new()),
             state_sink: Some(sink),
             controller_lifecycle: Arc::new(ControllerLifecycle::new()),
@@ -2816,7 +2652,6 @@ impl WebSocketClient {
 
         let connection_mode = inner.connection_mode.clone();
         let connection_epoch = Arc::clone(&inner.connection_epoch);
-        let write_admission = Arc::clone(&inner.write_admission);
         let state_notify = inner.state_notify.clone();
         let controller_notify = Arc::clone(&inner.controller_notify);
         let reconnect_published = Arc::clone(&inner.reconnect_published);
@@ -2846,7 +2681,6 @@ impl WebSocketClient {
                 controller_task,
                 connection_mode,
                 connection_epoch,
-                write_admission,
                 state_notify,
                 connect_timeout,
                 rate_limiter,
@@ -3073,7 +2907,6 @@ impl WebSocketClient {
         .await?;
         let connection_mode = inner.connection_mode.clone();
         let connection_epoch = Arc::clone(&inner.connection_epoch);
-        let write_admission = Arc::clone(&inner.write_admission);
         let state_notify = inner.state_notify.clone();
         let controller_notify = Arc::clone(&inner.controller_notify);
         let reconnect_published = Arc::clone(&inner.reconnect_published);
@@ -3100,7 +2933,6 @@ impl WebSocketClient {
             controller_task,
             connection_mode,
             connection_epoch,
-            write_admission,
             state_notify,
             connect_timeout,
             rate_limiter,
@@ -3127,7 +2959,6 @@ impl WebSocketClient {
     pub fn reconnect_handle(&self) -> WebSocketReconnectHandle {
         WebSocketReconnectHandle {
             connection_mode: Arc::clone(&self.connection_mode),
-            write_admission: Arc::clone(&self.write_admission),
             auth_tracker: Arc::clone(&self.auth_tracker),
             state_sink: self.state_sink.clone(),
             controller_lifecycle: Arc::clone(&self.controller_lifecycle),
@@ -3164,8 +2995,7 @@ impl WebSocketClient {
     /// Returns a clone of the connection mode atomic for external state tracking.
     ///
     /// This allows adapter clients to track connection state across reconnections
-    /// without message-passing delays. Callers must treat this atomic as read-only;
-    /// direct stores bypass lifecycle admission and invalidate prepared-write guarantees.
+    /// without message-passing delays.
     #[must_use]
     pub fn connection_mode_atomic(&self) -> Arc<AtomicU8> {
         Arc::clone(&self.connection_mode)
@@ -3347,11 +3177,8 @@ impl WebSocketClient {
 
         log::debug!("Stream reader signalled EOF, transitioning to CLOSED");
 
-        if close_websocket_admitted(
-            &self.connection_mode,
-            &self.write_admission,
-            self.state_sink.as_ref(),
-        ) {
+        if ConnectionMode::close_websocket_on_loss(&self.connection_mode, self.state_sink.as_ref())
+        {
             fail_registered_auth(self.auth_tracker.as_ref(), "WebSocket client closed");
             self.state_notify.notify_waiters();
         }
@@ -3364,10 +3191,8 @@ impl WebSocketClient {
         log::debug!("Disconnecting");
 
         // A CLOSED client keeps its terminal state; its tracker is already failed
-        if {
-            let _admission = self.write_admission.lock();
-            ConnectionMode::request_disconnect(&self.connection_mode)
-        } && let Some(tracker) = self.auth_tracker.get()
+        if ConnectionMode::request_disconnect(&self.connection_mode)
+            && let Some(tracker) = self.auth_tracker.get()
         {
             tracker.fail("WebSocket client disconnected");
         }
@@ -3394,11 +3219,8 @@ impl WebSocketClient {
                 self.controller_task.abort();
                 log_task_aborted("controller");
             }
-            {
-                let _admission = self.write_admission.lock();
-                self.connection_mode
-                    .store(ConnectionMode::Closed.as_u8(), Ordering::SeqCst);
-            }
+            self.connection_mode
+                .store(ConnectionMode::Closed.as_u8(), Ordering::SeqCst);
         }
     }
 
@@ -3467,73 +3289,6 @@ impl WebSocketClient {
         response_rx
             .await
             .map_err(|e| SendError::BrokenPipe(e.to_string()))?
-    }
-
-    /// Sends one prepared text frame with synchronous admission at actual backend handoff.
-    ///
-    /// Quota and writer queues, backend readiness, cancellation, deadline, and connection
-    /// ownership are checked before invoking `admission`. The callback runs under the network
-    /// lifecycle gate and must acquire its adapter proof lock before consuming the continuation.
-    /// It must not await, re-enter lifecycle methods, or invoke callbacks that acquire those locks.
-    /// The message is never buffered or replayed. Keep a control clone to inspect cancellation
-    /// after aborting this future. A flushed write is still only `MayHaveWritten`.
-    pub async fn send_prepared_text_on_connection(
-        &self,
-        data: String,
-        keys: Option<&[Ustr]>,
-        connection_epoch: u64,
-        deadline: dst::time::Instant,
-        control: PreparedWriteControl,
-        admission: PreparedWriteAdmission,
-    ) -> PreparedWriteOutcome {
-        if !control.claim() {
-            return control.reject("prepared control already used");
-        }
-        let _guard = PreparedSendGuard(control.clone());
-        if deadline != control.deadline() {
-            return control.reject("prepared control deadline mismatch");
-        }
-        let remaining = deadline.saturating_duration_since(dst::time::Instant::now());
-        if remaining.is_zero() {
-            return control.reject("prepared deadline expired before quota");
-        }
-        let quota = tokio::select! {
-            biased;
-            () = control.cancelled() => return control.cancel(),
-            result = dst::time::timeout(remaining, self.await_rate_limit_or_closed(keys)) => result,
-        };
-        match quota {
-            Ok(Ok(())) => {}
-            Ok(Err(error)) => return control.reject(error.to_string()),
-            Err(_) => return control.reject("prepared deadline expired waiting for quota"),
-        }
-        if !self.is_active() || self.connection_epoch() != connection_epoch {
-            return control.reject("connection changed before writer queue");
-        }
-        let (response_tx, response_rx) = tokio::sync::oneshot::channel();
-        if self
-            .writer_tx
-            .send(WriterCommand::SendPreparedOnConnection {
-                message: Message::Text(data.into()),
-                connection_epoch,
-                control: control.clone(),
-                admission,
-                response_tx,
-            })
-            .is_err()
-        {
-            return control.reject("prepared writer channel closed");
-        }
-        let remaining = deadline.saturating_duration_since(dst::time::Instant::now());
-        tokio::select! {
-            biased;
-            () = control.cancelled() => control.cancel(),
-            result = dst::time::timeout(remaining, response_rx) => match result {
-                Ok(Ok(outcome)) => outcome,
-                Ok(Err(_)) => control.reject("prepared writer result channel closed"),
-                Err(_) => control.reject("prepared deadline expired waiting for writer"),
-            }
-        }
     }
 
     /// Sends a pong frame back to the server when the connection is active.
@@ -3655,7 +3410,6 @@ impl WebSocketClient {
         controller_notify: Arc<tokio::sync::Notify>,
         reconnect_published: Arc<AtomicBool>,
     ) -> tokio::task::JoinHandle<()> {
-        let write_admission = Arc::clone(&inner.write_admission);
         tokio::task::spawn(async move {
             let _activity = controller_lifecycle.activity();
             log_task_started("controller");
@@ -3722,15 +3476,13 @@ impl WebSocketClient {
                     };
 
                     let transitioned = if target.is_closed() {
-                        close_websocket_admitted(
+                        ConnectionMode::close_websocket_on_loss(
                             &connection_mode,
-                            &write_admission,
                             inner.state_sink.as_ref(),
                         )
                     } else {
                         request_websocket_reconnect(
                             &connection_mode,
-                            &write_admission,
                             &reconnect_published,
                             inner.state_sink.as_ref(),
                             &auth_tracker,
@@ -3774,10 +3526,7 @@ impl WebSocketClient {
                         log::error!(
                             "Max reconnection attempts ({max_attempts}) exceeded, transitioning to CLOSED"
                         );
-                        {
-                            let _admission = write_admission.lock();
-                            connection_mode.store(ConnectionMode::Closed.as_u8(), Ordering::SeqCst);
-                        }
+                        connection_mode.store(ConnectionMode::Closed.as_u8(), Ordering::SeqCst);
                         fail_registered_auth(
                             auth_tracker.as_ref(),
                             "WebSocket reconnect attempts exhausted",
@@ -3900,12 +3649,9 @@ impl WebSocketClient {
                     }
                 }
             }
-            {
-                let _admission = inner.write_admission.lock();
-                inner
-                    .connection_mode
-                    .store(ConnectionMode::Closed.as_u8(), Ordering::SeqCst);
-            }
+            inner
+                .connection_mode
+                .store(ConnectionMode::Closed.as_u8(), Ordering::SeqCst);
 
             log_task_stopped("controller");
         })
@@ -3930,11 +3676,8 @@ fn validate_pong_payload(data: &[u8]) -> Result<(), SendError> {
 
 impl Drop for WebSocketClient {
     fn drop(&mut self) {
-        {
-            let _admission = self.write_admission.lock();
-            self.connection_mode
-                .store(ConnectionMode::Closed.as_u8(), Ordering::SeqCst);
-        }
+        self.connection_mode
+            .store(ConnectionMode::Closed.as_u8(), Ordering::SeqCst);
         fail_registered_auth(self.auth_tracker.as_ref(), "WebSocket client closed");
         self.state_notify.notify_waiters();
         self.controller_notify.notify_waiters();
@@ -7951,7 +7694,7 @@ mod rust_tests {
         let initial_transport: BoxedWsTransport = Box::pin(RecordingTransport {
             state: initial_state,
         });
-        let (writer, _reader) = split_transport(initial_transport);
+        let (writer, _reader) = initial_transport.split();
         let connection_state = Arc::new(AtomicU8::new(ConnectionMode::Active.as_u8()));
         let state_notify = Arc::new(tokio::sync::Notify::new());
         let auth_tracker = Arc::new(OnceLock::new());
@@ -7967,7 +7710,6 @@ mod rust_tests {
             auth_tracker,
             reconnect_buffer_waits_for_auth,
             None,
-            Arc::new(Mutex::new(())),
         );
 
         let recorded = Arc::new(Mutex::new(Vec::new()));
@@ -7978,7 +7720,7 @@ mod rust_tests {
         let replacement_transport: BoxedWsTransport = Box::pin(RecordingTransport {
             state: replacement_state,
         });
-        let (replacement_writer, _reader) = split_transport(replacement_transport);
+        let (replacement_writer, _reader) = replacement_transport.split();
         let (update_tx, update_rx) = tokio::sync::oneshot::channel();
         writer_tx
             .send(WriterCommand::Update(replacement_writer, update_tx))
@@ -8050,7 +7792,7 @@ mod rust_tests {
         let transport: BoxedWsTransport = Box::pin(BlockingMessageTransport {
             state: Arc::clone(&state),
         });
-        let (_writer, reader) = split_transport(transport);
+        let (_writer, reader) = transport.split();
         let connection_state = Arc::new(AtomicU8::new(ConnectionMode::Active.as_u8()));
         let state_notify = Arc::new(tokio::sync::Notify::new());
         let read_fence = ReadSessionFence::new();
@@ -8096,7 +7838,7 @@ mod rust_tests {
         let transport: BoxedWsTransport = Box::pin(BlockingFailTransport {
             state: Arc::clone(&state),
         });
-        let (mut writer, _reader) = split_transport(transport);
+        let (mut writer, _reader) = transport.split();
         let connection_state = Arc::new(AtomicU8::new(ConnectionMode::Active.as_u8()));
         let task_connection_state = Arc::clone(&connection_state);
 
@@ -8140,7 +7882,7 @@ mod rust_tests {
         let transport: BoxedWsTransport = Box::pin(BlockingFailTransport {
             state: Arc::clone(&state),
         });
-        let (writer, _reader) = split_transport(transport);
+        let (writer, _reader) = transport.split();
         let connection_state = Arc::new(AtomicU8::new(ConnectionMode::Active.as_u8()));
         let state_notify = Arc::new(tokio::sync::Notify::new());
         let auth_tracker = Arc::new(OnceLock::new());
@@ -8161,7 +7903,6 @@ mod rust_tests {
             Arc::clone(&auth_tracker),
             reconnect_buffer_waits_for_auth,
             Some(sink),
-            Arc::new(Mutex::new(())),
         );
 
         writer_tx
@@ -8177,7 +7918,7 @@ mod rust_tests {
         let transport: BoxedWsTransport = Box::pin(RecordingTransport {
             state: Arc::clone(&recording_state),
         });
-        let (new_writer, _reader) = split_transport(transport);
+        let (new_writer, _reader) = transport.split();
         let (update_tx, update_rx) = tokio::sync::oneshot::channel();
         writer_tx
             .send(WriterCommand::Update(new_writer, update_tx))
@@ -8226,7 +7967,7 @@ mod rust_tests {
         let transport: BoxedWsTransport = Box::pin(BlockingFailTransport {
             state: Arc::clone(&state),
         });
-        let (writer, _reader) = split_transport(transport);
+        let (writer, _reader) = transport.split();
         let connection_state = Arc::new(AtomicU8::new(ConnectionMode::Active.as_u8()));
         let state_notify = Arc::new(tokio::sync::Notify::new());
         let (writer_tx, writer_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -8240,7 +7981,6 @@ mod rust_tests {
             Arc::new(OnceLock::new()),
             Arc::new(AtomicBool::new(false)),
             None,
-            Arc::new(Mutex::new(())),
         );
 
         writer_tx.send(WriterCommand::Send(control)).unwrap();
@@ -8254,7 +7994,7 @@ mod rust_tests {
         let transport: BoxedWsTransport = Box::pin(RecordingTransport {
             state: recording_state,
         });
-        let (new_writer, _reader) = split_transport(transport);
+        let (new_writer, _reader) = transport.split();
         let (update_tx, update_rx) = tokio::sync::oneshot::channel();
         writer_tx
             .send(WriterCommand::Update(new_writer, update_tx))
@@ -8313,7 +8053,7 @@ mod rust_tests {
         let transport: BoxedWsTransport = Box::pin(RecordingTransport {
             state: recording_state,
         });
-        let (writer, _reader) = split_transport(transport);
+        let (writer, _reader) = transport.split();
         let connection_state = Arc::new(AtomicU8::new(ConnectionMode::Reconnect.as_u8()));
         let state_notify = Arc::new(tokio::sync::Notify::new());
         let (writer_tx, writer_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -8327,7 +8067,6 @@ mod rust_tests {
             Arc::new(OnceLock::new()),
             Arc::new(AtomicBool::new(false)),
             None,
-            Arc::new(Mutex::new(())),
         );
 
         writer_tx.send(WriterCommand::Send(control)).unwrap();
@@ -8360,7 +8099,7 @@ mod rust_tests {
         let transport: BoxedWsTransport = Box::pin(BlockingFailTransport {
             state: Arc::clone(&state),
         });
-        let (writer, _reader) = split_transport(transport);
+        let (writer, _reader) = transport.split();
         let connection_state = Arc::new(AtomicU8::new(ConnectionMode::Active.as_u8()));
         let state_notify = Arc::new(tokio::sync::Notify::new());
         let (writer_tx, writer_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -8374,7 +8113,6 @@ mod rust_tests {
             Arc::new(OnceLock::new()),
             Arc::new(AtomicBool::new(false)),
             None,
-            Arc::new(Mutex::new(())),
         );
 
         writer_tx
@@ -8392,7 +8130,7 @@ mod rust_tests {
         let transport: BoxedWsTransport = Box::pin(RecordingTransport {
             state: recording_state,
         });
-        let (new_writer, _reader) = split_transport(transport);
+        let (new_writer, _reader) = transport.split();
         let (update_tx, update_rx) = tokio::sync::oneshot::channel();
         writer_tx
             .send(WriterCommand::Update(new_writer, update_tx))
@@ -8443,7 +8181,7 @@ mod rust_tests {
         let transport: BoxedWsTransport = Box::pin(RecordingTransport {
             state: recording_state,
         });
-        let (writer, _reader) = split_transport(transport);
+        let (writer, _reader) = transport.split();
         let connection_state = Arc::new(AtomicU8::new(ConnectionMode::Reconnect.as_u8()));
         let state_notify = Arc::new(tokio::sync::Notify::new());
         let (writer_tx, writer_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -8457,7 +8195,6 @@ mod rust_tests {
             Arc::new(OnceLock::new()),
             Arc::new(AtomicBool::new(false)),
             None,
-            Arc::new(Mutex::new(())),
         );
 
         writer_tx
@@ -8529,7 +8266,7 @@ mod rust_tests {
         let transport: BoxedWsTransport = Box::pin(BlockingFailTransport {
             state: Arc::clone(&state),
         });
-        let (writer, _reader) = split_transport(transport);
+        let (writer, _reader) = transport.split();
         let connection_state = Arc::new(AtomicU8::new(ConnectionMode::Active.as_u8()));
         let state_notify = Arc::new(tokio::sync::Notify::new());
         let auth_tracker = Arc::new(OnceLock::new());
@@ -8545,7 +8282,6 @@ mod rust_tests {
             Arc::clone(&auth_tracker),
             reconnect_buffer_waits_for_auth,
             None,
-            Arc::new(Mutex::new(())),
         );
 
         let (response_tx, response_rx) = tokio::sync::oneshot::channel();
@@ -8582,7 +8318,7 @@ mod rust_tests {
         let transport: BoxedWsTransport = Box::pin(RecordingTransport {
             state: Arc::clone(&recording_state),
         });
-        let (new_writer, _reader) = split_transport(transport);
+        let (new_writer, _reader) = transport.split();
         let (update_tx, update_rx) = tokio::sync::oneshot::channel();
         writer_tx
             .send(WriterCommand::Update(new_writer, update_tx))
@@ -8645,7 +8381,7 @@ mod rust_tests {
         let transport: BoxedWsTransport = Box::pin(RecordingTransport {
             state: initial_recording_state,
         });
-        let (writer, _reader) = split_transport(transport);
+        let (writer, _reader) = transport.split();
         let connection_state = Arc::new(AtomicU8::new(ConnectionMode::Reconnect.as_u8()));
         let state_notify = Arc::new(tokio::sync::Notify::new());
         let auth_tracker = Arc::new(OnceLock::new());
@@ -8661,7 +8397,6 @@ mod rust_tests {
             Arc::clone(&auth_tracker),
             reconnect_buffer_waits_for_auth,
             None,
-            Arc::new(Mutex::new(())),
         );
 
         writer_tx
@@ -8672,7 +8407,7 @@ mod rust_tests {
         let transport: BoxedWsTransport = Box::pin(BlockingFailTransport {
             state: Arc::clone(&blocking_state),
         });
-        let (blocking_writer, _reader) = split_transport(transport);
+        let (blocking_writer, _reader) = transport.split();
         let (blocking_tx, blocking_rx) = tokio::sync::oneshot::channel();
         writer_tx
             .send(WriterCommand::Update(blocking_writer, blocking_tx))
@@ -8692,7 +8427,7 @@ mod rust_tests {
         let transport: BoxedWsTransport = Box::pin(RecordingTransport {
             state: Arc::clone(&recording_state),
         });
-        let (new_writer, _reader) = split_transport(transport);
+        let (new_writer, _reader) = transport.split();
         let (update_tx, update_rx) = tokio::sync::oneshot::channel();
         writer_tx
             .send(WriterCommand::Update(new_writer, update_tx))
@@ -8735,7 +8470,7 @@ mod rust_tests {
         let transport: BoxedWsTransport = Box::pin(BlockingFailTransport {
             state: Arc::new(BlockingFailState::default()),
         });
-        let (writer, _reader) = split_transport(transport);
+        let (writer, _reader) = transport.split();
 
         let config = WebSocketConfig {
             url: "ws://127.0.0.1:1".to_string(),
@@ -8986,7 +8721,7 @@ mod rust_tests {
         let transport: BoxedWsTransport = Box::pin(BlockingFailTransport {
             state: Arc::clone(&state),
         });
-        let (writer, _reader) = split_transport(transport);
+        let (writer, _reader) = transport.split();
 
         let connection_state = Arc::new(AtomicU8::new(ConnectionMode::Active.as_u8()));
         let state_notify = Arc::new(tokio::sync::Notify::new());
@@ -9005,7 +8740,6 @@ mod rust_tests {
             Arc::clone(&auth_tracker),
             Arc::clone(&reconnect_buffer_waits_for_auth),
             None,
-            Arc::new(Mutex::new(())),
         );
 
         writer_tx
@@ -9045,7 +8779,7 @@ mod rust_tests {
         let transport: BoxedWsTransport = Box::pin(BlockingFailTransport {
             state: Arc::clone(&state),
         });
-        let (writer, _reader) = split_transport(transport);
+        let (writer, _reader) = transport.split();
         let connection_state = Arc::new(AtomicU8::new(ConnectionMode::Active.as_u8()));
         let state_notify = Arc::new(tokio::sync::Notify::new());
         let connection_epoch = Arc::new(AtomicU64::new(0));
@@ -9060,7 +8794,6 @@ mod rust_tests {
             Arc::new(OnceLock::new()),
             Arc::new(AtomicBool::new(false)),
             None,
-            Arc::new(Mutex::new(())),
         );
 
         let (response_tx, response_rx) = tokio::sync::oneshot::channel();
@@ -9132,7 +8865,6 @@ mod rust_tests {
             auth_tracker,
             Arc::new(AtomicBool::new(false)),
             None,
-            Arc::new(Mutex::new(())),
         );
 
         let (response_tx, response_rx) = tokio::sync::oneshot::channel();
@@ -9323,7 +9055,6 @@ mod rust_tests {
             Arc::clone(&auth_tracker),
             Arc::clone(&reconnect_buffer_waits_for_auth),
             None,
-            Arc::new(Mutex::new(())),
         );
 
         writer_tx
@@ -9403,7 +9134,6 @@ mod rust_tests {
             Arc::clone(&auth_tracker),
             Arc::clone(&reconnect_buffer_waits_for_auth),
             None,
-            Arc::new(Mutex::new(())),
         );
 
         writer_tx
@@ -10633,7 +10363,3 @@ mod turmoil_tests {
         Ok(())
     }
 }
-
-#[cfg(all(test, not(all(feature = "simulation", madsim))))]
-#[path = "prepared_client_tests.rs"]
-mod prepared_send_tests;
