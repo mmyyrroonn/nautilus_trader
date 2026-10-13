@@ -210,6 +210,8 @@ impl Venue {
     }
 }
 fn apply_fill(state: &mut State, id: &str, quantity: &str) -> Value {
+    let market = state.orders[id]["market"].as_str().unwrap();
+    let before = state.positions.get(market).copied().unwrap_or_default();
     let order = state.orders.get_mut(id).unwrap();
     let size = Decimal::from_str_exact(quantity).unwrap();
     let filled = Decimal::from_str_exact(order["filledSize"].as_str().unwrap()).unwrap() + size;
@@ -218,8 +220,11 @@ fn apply_fill(state: &mut State, id: &str, quantity: &str) -> Value {
         order["status"] = json!("fullyfilled");
     }
     let fill = json!({"id":format!("fill-{id}-{}",state.fills.len()),"orderId":order["orderId"],
-        "clientOrderId":id,"market":order["market"],"price":order["price"],"size":quantity,
-        "side":order["side"],"direction":if order["side"]=="buy" {"openLong"} else {"closeLong"},
+        "clientOrderId":id,"market":order["market"],
+        "price":order["price"].as_str().unwrap_or("227.50"),"size":quantity,
+        "side":order["side"],"direction":if order["side"]=="buy" {
+            if before < Decimal::ZERO { "closeShort" } else { "openLong" }
+        } else if before > Decimal::ZERO { "closeLong" } else { "openShort" },
         "fee":"0.001","time":"2025-03-05T14:30:01.000000000Z","isMaker":false});
     *state
         .positions
@@ -230,7 +235,7 @@ fn apply_fill(state: &mut State, id: &str, quantity: &str) -> Value {
 }
 fn position(market: &str, quantity: Decimal) -> Value {
     json!({"market":market,"direction":if quantity>=Decimal::ZERO {"long"} else {"short"},
-        "netQuantity":quantity.to_string(),"averageEntryPrice":"227.50","usedMargin":"5.00",
+        "netQuantity":quantity.abs().to_string(),"averageEntryPrice":"227.50","usedMargin":"5.00",
         "unrealizedPnl":"0.00","markPrice":"227.50","liquidationPrice":"180.00",
         "bankruptcyPrice":"170.00","maintenanceMargin":"1.00","notionalValue":"20.00",
         "leverage":"2.0","netFundingSinceNeutral":"0.00","returnOnEquity":"0.00"})
@@ -330,9 +335,14 @@ fn response(
             state.orders.insert(id.into(),json!({"orderId":format!("venue-{id}"),"clientOrderId":id,
                 "side":body["side"],"price":body["price"],"size":body["size"],"market":body["market"],
                 "filledSize":"0.00","lastFillSize":"0.00","filledCost":"0.00","fee":"0.00",
-                "status":"open","createdAt":"2025-03-05T14:30:00Z","type":"limit",
+                "status":"open","createdAt":"2025-03-05T14:30:00Z","type":body["type"],
                 "timeInForce":body["timeInForce"],"reduceOnly":body["reduceOnly"]}));
-            if body["timeInForce"] == "IOC" {
+            if body["type"] == "market" {
+                let order = state.orders.get_mut(id).unwrap().as_object_mut().unwrap();
+                order.remove("price");
+                order.remove("timeInForce");
+            }
+            if body["timeInForce"] == "IOC" || body["type"] == "market" {
                 apply_fill(state, id, body["size"].as_str().unwrap());
             }
             lose = lost.swap(false, Ordering::SeqCst);
@@ -542,6 +552,19 @@ fn submit(harness: &Harness, order: &OrderAny) {
         ))
         .unwrap();
 }
+
+fn market_order(id: &str, side: OrderSide, reduce_only: bool) -> OrderAny {
+    OrderTestBuilder::new(OrderType::Market)
+        .trader_id(TraderId::from("TESTER-001"))
+        .strategy_id(StrategyId::from("S-001"))
+        .instrument_id(InstrumentId::from(NVDA))
+        .client_order_id(ClientOrderId::from(id))
+        .side(side)
+        .quantity(Quantity::from("0.05"))
+        .time_in_force(TimeInForce::Ioc)
+        .reduce_only(reduce_only)
+        .build()
+}
 fn cancel(harness: &Harness, order: &OrderAny) {
     harness
         .client
@@ -577,6 +600,46 @@ async fn ready(harness: &mut Harness) {
             })
     })
     .await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn continuous_native_market_long_and_short_round_trips_omit_price_and_time_in_force() {
+    let journal = Journal::new();
+    let venue = Venue::start().await;
+    let mut harness = harness(&venue, configuration(&journal));
+    connect(&mut harness).await;
+    for (cycle, open, close) in [
+        ("long", OrderSide::Buy, OrderSide::Sell),
+        ("short", OrderSide::Sell, OrderSide::Buy),
+    ] {
+        let entry_id = format!("market-{cycle}-entry");
+        submit(&harness, &market_order(&entry_id, open, false));
+        settled(&mut harness, &entry_id, "0.05").await;
+        ready(&mut harness).await;
+        let exit_id = format!("market-{cycle}-exit");
+        submit(&harness, &market_order(&exit_id, close, true));
+        settled(&mut harness, &exit_id, "0.05").await;
+        ready(&mut harness).await;
+    }
+    let writes = venue.writes();
+    assert_eq!(writes.len(), 4);
+    for write in writes {
+        assert_eq!(write.body["type"], "market");
+        assert!(write.body.get("price").is_none());
+        assert!(write.body.get("timeInForce").is_none());
+        assert_eq!(write.body["postOnly"], false);
+    }
+    assert_eq!(harness.client.applied_fill_count(), 4);
+    assert!(
+        venue
+            .state
+            .lock()
+            .unwrap()
+            .positions
+            .values()
+            .all(|q| *q == Decimal::ZERO)
+    );
+    harness.client.disconnect().await.unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread")]

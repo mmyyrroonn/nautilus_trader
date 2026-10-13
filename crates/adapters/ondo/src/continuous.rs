@@ -14,6 +14,8 @@
 // -------------------------------------------------------------------------------------------------
 
 //! Continuous admission retains the same native transport authority and genuine DMS proof.
+//! Market notional limits use current native quotes as admission estimates, without an execution
+//! price bound.
 
 use std::collections::VecDeque;
 
@@ -108,9 +110,24 @@ struct ContinuousIntent {
     instrument_id: InstrumentId,
     side: String,
     quantity: Decimal,
-    price: Decimal,
+    price: Option<Decimal>,
     reduce_only: bool,
     body: Vec<u8>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ContinuousWireOrder {
+    market: String,
+    side: String,
+    #[serde(rename = "type")]
+    order_type: String,
+    size: String,
+    price: Option<String>,
+    time_in_force: Option<String>,
+    post_only: bool,
+    reduce_only: bool,
+    client_order_id: String,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -209,10 +226,11 @@ impl ProductionAuthority {
                         ContinuousJournalRecord::Intent { intent } => {
                             if Self::continuous_intent(&intent.body)?.1 != intent
                                 || !config.instrument_ids.contains(&intent.instrument_id)
-                                || intent
-                                    .quantity
-                                    .checked_mul(intent.price)
-                                    .is_none_or(|value| value > config.max_notional_per_order_usd)
+                                || intent.price.is_some_and(|price| {
+                                    intent.quantity.checked_mul(price).is_none_or(|value| {
+                                        value > config.max_notional_per_order_usd
+                                    })
+                                })
                             {
                                 return Err(
                                     "continuous recovery intent differs from its original body"
@@ -378,24 +396,42 @@ impl ProductionAuthority {
         })
     }
 
-    fn continuous_intent(body: &[u8]) -> Result<(WireOrder, ContinuousIntent), String> {
-        let order: WireOrder =
+    fn continuous_intent(body: &[u8]) -> Result<(ContinuousWireOrder, ContinuousIntent), String> {
+        let order: ContinuousWireOrder =
             serde_json::from_slice(body).map_err(|_| "invalid continuous create body")?;
         let quantity = Decimal::from_str_exact(&order.size)
             .map_err(|_| "invalid exact continuous quantity")?;
-        let price =
-            Decimal::from_str_exact(&order.price).map_err(|_| "invalid exact continuous price")?;
+        let price = order
+            .price
+            .as_deref()
+            .map(Decimal::from_str_exact)
+            .transpose()
+            .map_err(|_| "invalid exact continuous price")?;
+        let valid_type = match order.order_type.as_str() {
+            "limit" => {
+                price.is_some_and(|price| price > Decimal::ZERO)
+                    && matches!(order.time_in_force.as_deref(), Some("IOC" | "GTC"))
+                    && (!order.post_only || order.time_in_force.as_deref() == Some("GTC"))
+            }
+            "market" => {
+                let fields: serde_json::Value =
+                    serde_json::from_slice(body).map_err(|_| "invalid continuous create body")?;
+                !order.post_only
+                    && fields.get("price").is_none()
+                    && fields.get("timeInForce").is_none()
+            }
+            _ => false,
+        };
         let instrument_id = crate::common::parse::market_to_instrument_id(&order.market)
             .map_err(|_| "invalid continuous market")?;
         if order.client_order_id.is_empty()
-            || order.order_type != "limit"
+            || !valid_type
             || !matches!(order.side.as_str(), "buy" | "sell")
-            || !matches!(order.time_in_force.as_str(), "IOC" | "GTC")
-            || (order.post_only && order.time_in_force != "GTC")
             || quantity <= Decimal::ZERO
-            || price <= Decimal::ZERO
         {
-            return Err("continuous execution requires a protected limit IOC or GTC order".into());
+            return Err(
+                "continuous execution requires a valid limit IOC/GTC or market order".into(),
+            );
         }
         let intent = ContinuousIntent {
             client_order_id: order.client_order_id.clone(),
@@ -417,7 +453,7 @@ impl ProductionAuthority {
         minimum: Option<Decimal>,
     ) -> Result<(), String> {
         let (_, intent) = Self::continuous_intent(&body)?;
-        let quote = quote.ok_or("native continuous quote is unavailable")?;
+        let mut quote = quote.ok_or("native continuous quote is unavailable")?;
         let config = self.continuous_config();
         if id != intent.client_order_id
             || !config.instrument_ids.contains(&intent.instrument_id)
@@ -427,6 +463,12 @@ impl ProductionAuthority {
             return Err("continuous command, instrument or published minimum is invalid".into());
         }
         let evidence = self.evidence(false)?;
+        if intent.price.is_none() {
+            quote = *evidence
+                .quotes
+                .get(&intent.instrument_id)
+                .ok_or("native continuous market quote is unavailable")?;
+        }
         let mut state = self.state.lock();
         if state.frozen
             || state.stopped
@@ -438,6 +480,12 @@ impl ProductionAuthority {
             return Err("duplicate, stopped or excessive continuous command".into());
         }
         self.check_continuous_exposure(&state, &evidence, &intent)?;
+        self.check_continuous_minimum(
+            &intent,
+            evidence.quotes.get(&intent.instrument_id).unwrap_or(&quote),
+            minimum,
+            get_atomic_clock_realtime().get_time_ns().as_u64(),
+        )?;
         state.contexts.insert(id, (body, quote, minimum));
         note_activity(&mut state);
         Ok(())
@@ -535,7 +583,7 @@ impl ProductionAuthority {
         let now = get_atomic_clock_realtime().get_time_ns().as_u64();
         let candidate_mark = self
             .continuous_quote_mark(state, evidence, candidate.instrument_id, now)?
-            .max(candidate.price);
+            .max(candidate.price.unwrap_or_default());
         let notional = candidate
             .quantity
             .checked_mul(candidate_mark)
@@ -557,7 +605,7 @@ impl ProductionAuthority {
         let mut pending = Vec::new();
         for (id, intent) in &state.continuous.intents {
             let mark = marks.entry(intent.instrument_id).or_default();
-            *mark = (*mark).max(intent.price);
+            *mark = (*mark).max(intent.price.unwrap_or_default());
             if state.known_zero.contains(id) || intent.reduce_only {
                 continue;
             }
@@ -577,13 +625,13 @@ impl ProductionAuthority {
         }
         for intent in &prepared {
             let mark = marks.entry(intent.instrument_id).or_default();
-            *mark = (*mark).max(intent.price);
+            *mark = (*mark).max(intent.price.unwrap_or_default());
             if !intent.reduce_only {
                 pending.push((intent, intent.quantity));
             }
         }
         let mark = marks.entry(candidate.instrument_id).or_default();
-        *mark = (*mark).max(candidate.price);
+        *mark = (*mark).max(candidate.price.unwrap_or_default());
         let mut gross = notional;
         for (instrument, quantity) in net {
             let mark = marks
@@ -601,7 +649,7 @@ impl ProductionAuthority {
         for (intent, quantity) in pending {
             let price = self
                 .continuous_quote_mark(state, evidence, intent.instrument_id, now)?
-                .max(intent.price);
+                .max(intent.price.unwrap_or_default());
             gross = gross
                 .checked_add(
                     quantity
@@ -646,6 +694,43 @@ impl ProductionAuthority {
             return Err("continuous position quote is stale or invalid".into());
         }
         Ok(quote.ask_price.as_decimal())
+    }
+
+    fn check_continuous_minimum(
+        &self,
+        intent: &ContinuousIntent,
+        quote: &QuoteTick,
+        minimum: Option<Decimal>,
+        now: u64,
+    ) -> Result<(), String> {
+        if quote.instrument_id != intent.instrument_id
+            || quote.ts_init.as_u64() < self.created_at
+            || quote.ts_init.as_u64() > now
+            || now.saturating_sub(quote.ts_init.as_u64()) > 2_000_000_000
+            || quote.bid_price.as_decimal() <= Decimal::ZERO
+            || quote.ask_price < quote.bid_price
+            || quote.bid_size.as_decimal() <= Decimal::ZERO
+            || quote.ask_size.as_decimal() <= Decimal::ZERO
+        {
+            return Err("continuous native quote is stale or invalid".into());
+        }
+        let price = intent.price.unwrap_or_else(|| {
+            if intent.side == "buy" {
+                quote.ask_price.as_decimal()
+            } else {
+                quote.bid_price.as_decimal()
+            }
+        });
+        if minimum.is_some_and(|minimum| {
+            minimum <= Decimal::ZERO
+                || intent
+                    .quantity
+                    .checked_mul(price)
+                    .is_none_or(|value| value < minimum)
+        }) {
+            return Err("continuous native minimum is invalid or unmet".into());
+        }
+        Ok(())
     }
 
     fn continuous_market_ready(
@@ -835,21 +920,15 @@ impl ProductionAuthority {
         let minimum = *minimum;
         let evidence = self.evidence(false)?;
         let now = get_atomic_clock_realtime().get_time_ns().as_u64();
-        let quote = evidence
-            .quotes
-            .get(&intent.instrument_id)
-            .copied()
-            .unwrap_or(prepared_quote);
-        let quote_is_valid = |quote: &QuoteTick, at: u64| {
-            quote.instrument_id == intent.instrument_id
-                && quote.ts_init.as_u64() >= self.created_at
-                && quote.ts_init.as_u64() <= at
-                && at.saturating_sub(quote.ts_init.as_u64()) <= 2_000_000_000
-                && quote.bid_price.as_decimal() > Decimal::ZERO
-                && quote.ask_price >= quote.bid_price
-                && quote.bid_size.as_decimal() > Decimal::ZERO
-                && quote.ask_size.as_decimal() > Decimal::ZERO
+        let current_quote = |evidence: &ProductionEvidence| {
+            evidence
+                .quotes
+                .get(&intent.instrument_id)
+                .copied()
+                .or_else(|| intent.price.map(|_| prepared_quote))
         };
+        let quote =
+            current_quote(&evidence).ok_or("native continuous market quote is unavailable")?;
         let (tick, step) = self.continuous_market_ready(&state, intent.instrument_id, now)?;
         if expected.as_slice() != body
             || state.frozen
@@ -861,14 +940,12 @@ impl ProductionAuthority {
                 .instrument_ids
                 .contains(&intent.instrument_id)
             || intent.quantity % step != Decimal::ZERO
-            || intent.price % tick != Decimal::ZERO
-            || !quote_is_valid(&quote, now)
-            || minimum.is_some_and(|v| {
-                intent
-                    .quantity
-                    .checked_mul(intent.price)
-                    .is_none_or(|n| n < v)
-            })
+            || intent
+                .price
+                .is_some_and(|price| price % tick != Decimal::ZERO)
+            || self
+                .check_continuous_minimum(&intent, &quote, minimum, now)
+                .is_err()
         {
             return Err("continuous native body, quote, increments or minimum is invalid".into());
         }
@@ -915,12 +992,10 @@ impl ProductionAuthority {
                 .continuous_market_ready(&state, intent.instrument_id, send_now)
                 .is_ok()
             && latest.is_ok_and(|latest| {
-                let latest_quote = latest
-                    .quotes
-                    .get(&intent.instrument_id)
-                    .unwrap_or(&prepared_quote);
-                quote_is_valid(latest_quote, send_now)
-                    && latest.unknown <= self.continuous_config().max_unresolved_orders as usize
+                current_quote(&latest).is_some_and(|quote| {
+                    self.check_continuous_minimum(&intent, &quote, minimum, send_now)
+                        .is_ok()
+                }) && latest.unknown <= self.continuous_config().max_unresolved_orders as usize
                     && self
                         .check_continuous_account(&state, &latest, send_now, !intent.reduce_only)
                         .is_ok_and(|own| {
@@ -1336,6 +1411,228 @@ mod tests {
             Some(quote(intent.instrument_id, "230.00")),
             None,
         )
+    }
+
+    fn market_body(id: &str, side: &str, quantity: &str, reduce: bool) -> Vec<u8> {
+        serde_json::to_vec(&serde_json::json!({
+            "market": "NVDA-USD.P", "side": side, "type": "market", "size": quantity,
+            "postOnly": false, "reduceOnly": reduce, "clientOrderId": id,
+        }))
+        .unwrap()
+    }
+
+    #[rstest]
+    #[case("buy", "sell")]
+    #[case("sell", "buy")]
+    fn test_continuous_market_opens_and_reduces_only_owned_net(
+        #[case] open: &str,
+        #[case] close: &str,
+    ) {
+        let (guard, evidence, path) = authority(config());
+        fill(
+            &guard,
+            &evidence,
+            &market_body("market-entry", open, "0.10", false),
+        );
+        let wrong = market_body("wrong-direction", open, "0.10", true);
+        prepare(&guard, &wrong).unwrap();
+        assert!(
+            guard
+                .authorize_post("/v1/perps/orders", &wrong)
+                .unwrap_err()
+                .contains("opposite net risk")
+        );
+        assert!(guard.claim_cancelled_prepared("wrong-direction"));
+        fill(
+            &guard,
+            &evidence,
+            &market_body("market-exit", close, "0.10", true),
+        );
+        assert!(
+            ProductionAuthority::continuous_own_net(&guard.state.lock(), &evidence.lock())
+                .unwrap()
+                .is_empty()
+        );
+        remove_journal(guard, path);
+    }
+
+    #[rstest]
+    #[case("price", serde_json::json!("230.00"))]
+    #[case("price", serde_json::Value::Null)]
+    #[case("timeInForce", serde_json::json!("IOC"))]
+    #[case("timeInForce", serde_json::Value::Null)]
+    #[case("postOnly", serde_json::json!(true))]
+    #[case("type", serde_json::json!("stop"))]
+    fn test_continuous_market_refuses_malformed_fields(
+        #[case] field: &str,
+        #[case] value: serde_json::Value,
+    ) {
+        let mut body: serde_json::Value =
+            serde_json::from_slice(&market_body("malformed", "buy", "0.10", false)).unwrap();
+        body[field] = value;
+        assert!(
+            ProductionAuthority::continuous_intent(&serde_json::to_vec(&body).unwrap()).is_err()
+        );
+    }
+
+    #[rstest]
+    fn test_continuous_market_caps_and_minimum_recheck_current_native_quote() {
+        let (guard, evidence, path) = authority(config());
+        let instrument = "NVDA-USD-PERP.ONDO".parse().unwrap();
+        let bytes = market_body("market-cap", "buy", "0.40", false);
+        prepare(&guard, &bytes).unwrap();
+        evidence
+            .lock()
+            .quotes
+            .insert(instrument, quote(instrument, "251.00"));
+        assert!(
+            guard
+                .authorize_post("/v1/perps/orders", &bytes)
+                .unwrap_err()
+                .contains("ceiling")
+        );
+        assert!(!guard.owns("market-cap"));
+        let under_minimum = market_body("market-minimum", "sell", "0.10", false);
+        guard
+            .prepare(
+                "market-minimum".into(),
+                under_minimum.clone(),
+                Some(quote(instrument, "251.00")),
+                Some(Decimal::from(25)),
+            )
+            .unwrap();
+        evidence
+            .lock()
+            .quotes
+            .insert(instrument, quote(instrument, "249.00"));
+        assert!(
+            guard
+                .authorize_post("/v1/perps/orders", &under_minimum)
+                .unwrap_err()
+                .contains("minimum")
+        );
+        assert!(!guard.owns("market-minimum"));
+        assert!(
+            guard
+                .prepare(
+                    "prepare-minimum".into(),
+                    market_body("prepare-minimum", "buy", "0.01", false),
+                    Some(quote(instrument, "249.00")),
+                    Some(Decimal::from(25))
+                )
+                .unwrap_err()
+                .contains("minimum")
+        );
+        remove_journal(guard, path);
+    }
+
+    #[rstest]
+    fn test_continuous_market_requires_fresh_current_native_quote_even_when_prepared_is_fresh() {
+        let (guard, evidence, path) = authority(config());
+        let instrument = "NVDA-USD-PERP.ONDO".parse().unwrap();
+        let bytes = market_body("market-freshness", "buy", "0.10", false);
+        prepare(&guard, &bytes).unwrap();
+        evidence.lock().quotes.remove(&instrument);
+        assert!(
+            guard
+                .authorize_post("/v1/perps/orders", &bytes)
+                .unwrap_err()
+                .contains("quote")
+        );
+        assert!(prepare(&guard, &market_body("missing-native", "buy", "0.10", false)).is_err());
+        let mut stale = quote(instrument, "230.00");
+        stale.ts_init = (stale.ts_init.as_u64() - 3_000_000_000).into();
+        evidence.lock().quotes.insert(instrument, stale);
+        assert!(
+            guard
+                .authorize_post("/v1/perps/orders", &bytes)
+                .unwrap_err()
+                .contains("quote")
+        );
+        assert!(!guard.owns("market-freshness"));
+        remove_journal(guard, path);
+    }
+
+    #[rstest]
+    #[case("251.00", None)]
+    #[case("100.00", Some(Decimal::from(50)))]
+    fn test_continuous_market_durable_recheck_refuses_quote_cap_or_minimum_drift(
+        #[case] latest_price: &'static str,
+        #[case] minimum: Option<Decimal>,
+    ) {
+        let (mut guard, evidence, path) = authority(config());
+        let instrument = "NVDA-USD-PERP.ONDO".parse().unwrap();
+        let bytes = market_body("market-durable", "buy", "0.40", false);
+        guard
+            .prepare(
+                "market-durable".into(),
+                bytes.clone(),
+                Some(quote(instrument, "230.00")),
+                minimum,
+            )
+            .unwrap();
+        Arc::get_mut(&mut guard).unwrap().evidence.take();
+        let reader = Arc::clone(&evidence);
+        guard
+            .bind(Arc::new(move |checkpoint| {
+                let mut proof = reader.lock();
+                if checkpoint {
+                    proof
+                        .quotes
+                        .insert(instrument, quote(instrument, latest_price));
+                }
+                Ok(proof.clone())
+            }))
+            .unwrap();
+        assert!(
+            guard
+                .authorize_post("/v1/perps/orders", &bytes)
+                .unwrap_err()
+                .contains("durable")
+        );
+        assert!(guard.owns("market-durable"));
+        assert!(guard.state.lock().known_zero.contains("market-durable"));
+        remove_journal(guard, path);
+    }
+
+    #[rstest]
+    fn test_continuous_market_recovery_retains_unknown_identity_and_exclusive_ownership() {
+        let limits = config();
+        let (guard, _, path) = authority(limits.clone());
+        let bytes = market_body("market-lost", "sell", "0.10", false);
+        prepare(&guard, &bytes).unwrap();
+        guard.authorize_post("/v1/perps/orders", &bytes).unwrap();
+        assert!(
+            ProductionAuthority::new_continuous(
+                limits.clone(),
+                "run".into(),
+                "account",
+                path.to_str().unwrap(),
+                120
+            )
+            .is_err()
+        );
+        drop(guard);
+        let restored = ProductionAuthority::new_continuous(
+            limits,
+            "run".into(),
+            "account",
+            path.to_str().unwrap(),
+            120,
+        )
+        .unwrap();
+        assert!(restored.owns("market-lost"));
+        assert!(!restored.claim_cancelled_prepared("market-lost"));
+        assert_eq!(
+            restored.state.lock().continuous.intents["market-lost"].body,
+            bytes
+        );
+        assert!(
+            restored
+                .verify_continuous_dms_reading(&Default::default())
+                .is_err()
+        );
+        remove_journal(restored, path);
     }
 
     fn fill(guard: &ProductionAuthority, evidence: &Mutex<ProductionEvidence>, bytes: &[u8]) {
@@ -2060,7 +2357,7 @@ mod tests {
             let state = guard.state.lock();
             let intent = state.continuous.intents.get("queued-original").unwrap();
             assert_eq!(intent.body, bytes);
-            assert_eq!(intent.price, Decimal::from(230));
+            assert_eq!(intent.price, Some(Decimal::from(230)));
         } else {
             assert!(result.unwrap_err().contains("quote"));
             assert!(!guard.owns("queued-original"));
