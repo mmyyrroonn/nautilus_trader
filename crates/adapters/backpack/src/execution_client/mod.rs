@@ -22,6 +22,8 @@ mod economics;
 mod identity;
 pub mod loopback_config;
 pub mod private;
+pub mod production_config;
+pub mod production_control;
 pub mod restricted;
 pub mod telemetry;
 pub use client::{

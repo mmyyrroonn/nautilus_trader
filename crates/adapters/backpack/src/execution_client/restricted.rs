@@ -27,7 +27,7 @@ use tokio::sync::Semaphore;
 use crate::{
     account::{
         models::{BackpackFill, BackpackOrder},
-        reconciliation::BackpackFillKey,
+        reconciliation::{BackpackFillKey, BackpackFillTimeEvidence, BackpackFillTimeSource},
     },
     execution::{
         guard::{BackpackLoopbackAccountFacts, BackpackLoopbackMarketFacts},
@@ -59,7 +59,12 @@ pub(crate) struct LoopbackExecution {
     pub commands: Arc<Semaphore>,
     released: Mutex<BTreeSet<ClientOrderId>>,
     pub native_orders: Mutex<BTreeMap<ClientOrderId, nautilus_model::orders::OrderAny>>,
+    pub pending_submissions: Mutex<BTreeSet<ClientOrderId>>,
     pub pending: Mutex<BTreeMap<BackpackFillKey, BackpackFill>>,
+    // Preserve the first fine wire timestamp alongside the original raw report.
+    // A coarse baseline must never permit two different fine event instants.
+    fine_fill_times: Mutex<BTreeMap<BackpackFillKey, (nautilus_core::UnixNanos, String)>>,
+    source_fill_times: Mutex<BTreeMap<BackpackFillKey, Vec<BackpackFillTimeEvidence>>>,
     pub orders: Mutex<BTreeMap<(InstrumentId, VenueOrderId), BackpackOrder>>,
     pub terminal_published: Mutex<BTreeSet<ClientOrderId>>,
     session: Mutex<(u64, Option<BackpackLoopbackSession>)>,
@@ -77,7 +82,10 @@ impl LoopbackExecution {
             commands: Arc::new(Semaphore::new(commands)),
             released: Mutex::new(BTreeSet::new()),
             native_orders: Mutex::new(BTreeMap::new()),
+            pending_submissions: Mutex::new(BTreeSet::new()),
             pending: Mutex::new(BTreeMap::new()),
+            fine_fill_times: Mutex::new(BTreeMap::new()),
+            source_fill_times: Mutex::new(BTreeMap::new()),
             orders: Mutex::new(BTreeMap::new()),
             terminal_published: Mutex::new(BTreeSet::new()),
             session: Mutex::new((generation, None)),
@@ -188,13 +196,49 @@ impl LoopbackExecution {
         state.1 = None;
         Ok(self.owner.stop()?)
     }
-    pub(crate) fn retain_fill(
+    pub(crate) fn retain_fill_from(
         &self,
         key: BackpackFillKey,
         raw: BackpackFill,
+        source: BackpackFillTimeSource,
+    ) -> anyhow::Result<()> {
+        self.retain_fill(key, raw, Some(source))
+    }
+
+    fn retain_fill(
+        &self,
+        key: BackpackFillKey,
+        raw: BackpackFill,
+        source: Option<BackpackFillTimeSource>,
     ) -> anyhow::Result<()> {
         let mut pending = self.pending.lock();
+        let timestamp = crate::account::reports::fill_time(&raw.timestamp)?;
+        let mut fine_times = self.fine_fill_times.lock();
+        let mut source_times = self.source_fill_times.lock();
+        anyhow::ensure!(
+            if let Some(source) = source {
+                source_times
+                    .get(&key)
+                    .and_then(|times| times.iter().find(|time| time.source == source))
+                    .is_none_or(|time| time.compatible(timestamp))
+            } else {
+                fine_times.get(&key).is_none_or(|(previous, _)| {
+                    crate::account::reconciliation::fill_time_precision_compatible(
+                        *previous, timestamp,
+                    )
+                })
+            },
+            "conflicting pending fill economics or attribution"
+        );
         if let Some(previous) = pending.get_mut(&key) {
+            // WS civil datetime rendering can omit trailing fractional zeroes while
+            // REST can additionally truncate to the containing millisecond.
+            // Preserve the original wire string and require exact economics.
+            let same_instant = source.is_some()
+                || crate::account::reconciliation::fill_time_precision_compatible(
+                    crate::account::reports::fill_time(&previous.timestamp)?,
+                    timestamp,
+                );
             anyhow::ensure!(
                 previous.order_id == raw.order_id
                     && previous.symbol == raw.symbol
@@ -205,7 +249,7 @@ impl LoopbackExecution {
                     && previous.fee_symbol == raw.fee_symbol
                     && previous.is_maker == raw.is_maker
                     && previous.side == raw.side
-                    && previous.timestamp == raw.timestamp
+                    && same_instant
                     && previous.system_order_type == raw.system_order_type
                     && (previous.client_id.is_none()
                         || raw.client_id.is_none()
@@ -220,7 +264,17 @@ impl LoopbackExecution {
                 pending.len() < self.capacity,
                 "pending attribution bound exhausted"
             );
-            pending.insert(key, raw);
+            pending.insert(key, raw.clone());
+        }
+        if let Some(source) = source {
+            let times = source_times.entry(key).or_default();
+            if let Some(previous) = times.iter_mut().find(|time| time.source == source) {
+                previous.observe(timestamp);
+            } else {
+                times.push(BackpackFillTimeEvidence::new(source, timestamp));
+            }
+        } else if timestamp.as_u64() % 1_000_000 != 0 {
+            fine_times.entry(key).or_insert((timestamp, raw.timestamp));
         }
         Ok(())
     }
@@ -404,13 +458,13 @@ mod tests {
         let (_directory, control) = control();
         let raw = fixture("fill");
         control
-            .retain_fill(key(), serde_json::from_value(raw.clone()).unwrap())
+            .retain_fill(key(), serde_json::from_value(raw.clone()).unwrap(), None)
             .unwrap();
         let mut conflicting = raw;
         conflicting[field] = value;
         assert!(
             control
-                .retain_fill(key(), serde_json::from_value(conflicting).unwrap())
+                .retain_fill(key(), serde_json::from_value(conflicting).unwrap(), None)
                 .is_err()
         );
         assert_eq!(
@@ -423,16 +477,111 @@ mod tests {
         let (_directory, control) = control();
         let mut raw: BackpackFill = serde_json::from_value(fixture("fill")).unwrap();
         raw.client_id = None;
-        control.retain_fill(key(), raw.clone()).unwrap();
+        control.retain_fill(key(), raw.clone(), None).unwrap();
         raw.client_id = Some("1".into());
-        control.retain_fill(key(), raw.clone()).unwrap();
+        control.retain_fill(key(), raw.clone(), None).unwrap();
         raw.client_id = None;
-        control.retain_fill(key(), raw).unwrap();
+        control.retain_fill(key(), raw, None).unwrap();
         assert_eq!(
             control.pending.lock()[&key()].client_id.as_deref(),
             Some("1")
         );
     }
+    #[rstest]
+    #[case(true)]
+    #[case(false)]
+    fn millisecond_retained_fill_preserves_original_raw_and_rejects_distinct_fine(
+        #[case] fine_first: bool,
+    ) {
+        let (_directory, control) = control();
+        let mut fine: BackpackFill = serde_json::from_value(fixture("fill")).unwrap();
+        fine.timestamp = "2026-10-02T00:00:00.123456".into();
+        let mut coarse = fine.clone();
+        coarse.timestamp = "2026-10-02T00:00:00.123".into();
+        let (original, duplicate) = if fine_first {
+            (fine.clone(), coarse)
+        } else {
+            (coarse, fine.clone())
+        };
+        control.retain_fill(key(), original.clone(), None).unwrap();
+        control.retain_fill(key(), duplicate, None).unwrap();
+        assert_eq!(control.pending.lock()[&key()].timestamp, original.timestamp);
+        fine.timestamp = "2026-10-02T00:00:00.123457".into();
+        assert!(control.retain_fill(key(), fine, None).is_err());
+    }
+    #[rstest]
+    #[case(true)]
+    #[case(false)]
+    fn cross_source_retained_fill_preserves_wire_time_and_rejects_same_source_changes(
+        #[case] private_first: bool,
+    ) {
+        let (_directory, control) = control();
+        let mut private: BackpackFill = serde_json::from_value(fixture("fill")).unwrap();
+        private.timestamp = "2026-10-13T09:57:32.846264".into();
+        let mut history = private.clone();
+        history.timestamp = "2026-10-13T09:57:32.845".into();
+        let (first, first_source, next, next_source) = if private_first {
+            (
+                private.clone(),
+                BackpackFillTimeSource::PrivateEngine,
+                history.clone(),
+                BackpackFillTimeSource::RestHistory,
+            )
+        } else {
+            (
+                history.clone(),
+                BackpackFillTimeSource::RestHistory,
+                private.clone(),
+                BackpackFillTimeSource::PrivateEngine,
+            )
+        };
+        control
+            .retain_fill_from(key(), first.clone(), first_source)
+            .unwrap();
+        control.retain_fill_from(key(), next, next_source).unwrap();
+        assert_eq!(control.pending.lock()[&key()].timestamp, first.timestamp);
+        assert_eq!(control.source_fill_times.lock()[&key()].len(), 2);
+        private.timestamp = "2026-10-13T09:57:32.846265".into();
+        assert!(
+            control
+                .retain_fill_from(key(), private, BackpackFillTimeSource::PrivateEngine)
+                .is_err()
+        );
+        history.timestamp = "2026-10-13T09:57:32.846".into();
+        assert!(
+            control
+                .retain_fill_from(key(), history, BackpackFillTimeSource::RestHistory)
+                .is_err()
+        );
+        let mut fee = first;
+        fee.fee.0 += Decimal::ONE;
+        assert!(control.retain_fill_from(key(), fee, first_source).is_err());
+    }
+
+    #[rstest]
+    fn cross_source_retained_fill_cannot_bridge_distinct_fine_times() {
+        let (_directory, control) = control();
+        let mut raw: BackpackFill = serde_json::from_value(fixture("fill")).unwrap();
+        raw.timestamp = "2026-10-13T09:57:32.846".into();
+        control
+            .retain_fill_from(key(), raw.clone(), BackpackFillTimeSource::PrivateEngine)
+            .unwrap();
+        raw.timestamp = "2026-10-13T09:57:32.846264".into();
+        control
+            .retain_fill_from(key(), raw.clone(), BackpackFillTimeSource::PrivateEngine)
+            .unwrap();
+        raw.timestamp = "2026-10-13T09:57:32.845".into();
+        control
+            .retain_fill_from(key(), raw.clone(), BackpackFillTimeSource::RestHistory)
+            .unwrap();
+        raw.timestamp = "2026-10-13T09:57:32.846265".into();
+        assert!(
+            control
+                .retain_fill_from(key(), raw, BackpackFillTimeSource::PrivateEngine)
+                .is_err()
+        );
+    }
+
     #[rstest]
     fn retained_order_preserves_high_cumulative_terminal_and_known_candidate() {
         let (_directory, control) = control();

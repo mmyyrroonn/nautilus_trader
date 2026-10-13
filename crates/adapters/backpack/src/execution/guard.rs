@@ -404,9 +404,22 @@ impl OwnerState {
             return Err(BackpackExecutionErrorKind::Readiness.into());
         }
         if let Some(public) = &self.public {
-            public.validate(market)?;
+            public.validate(market, self.production)?;
         }
         spec.validate(&market.metadata, &self.config)?;
+        // A Market order has no execution-price guarantee. This is an admission
+        // estimate from a fresh two-sided quote, not a venue fill-price limit.
+        let estimated_cost = multiply(
+            spec.quantity,
+            if spec.order_type == OrderType::Market {
+                market.quote.ask_price.as_decimal()
+            } else {
+                spec.price.ok_or(BackpackExecutionErrorKind::Validation)?
+            },
+        )?;
+        if self.production && estimated_cost > self.authority.max_order_notional {
+            return Err(BackpackExecutionErrorKind::Capacity.into());
+        }
         let records = self.records.values().filter(|record| {
             record.holds_capacity()
                 && exclude.is_none_or(|excluded| {
@@ -451,15 +464,50 @@ impl OwnerState {
             return Ok((Decimal::ZERO, Decimal::ZERO));
         }
         if !self.authority.allow_new_risk
-            || spec.order_type != OrderType::Limit
-            || spec.side != OrderSide::Buy
+            || (!self.production
+                && (spec.order_type != OrderType::Limit || spec.side != OrderSide::Buy))
         {
             return Err(BackpackExecutionErrorKind::UnsupportedCommand.into());
         }
-        let cost = multiply(
-            spec.quantity,
-            spec.price.ok_or(BackpackExecutionErrorKind::Validation)?,
-        )?;
+        let cost = if self.production && spec.order_type == OrderType::Market {
+            let reserved = if let Some(record) = exclude {
+                // Preserve the durable predispatch reservation across quote updates.
+                record.notional
+            } else {
+                let budget = self
+                    .authority
+                    .max_order_notional
+                    .min(self.authority.max_reserved_notional)
+                    .min(self.authority.max_reserved_margin)
+                    .min(account.available_margin);
+                // Full notional plus fees fits even when all three authority caps
+                // are identical. Subtracting budget * fee is conservative and
+                // exact; division could silently round a non-terminating decimal.
+                add(budget, -multiply(budget, account.fee_buffer_per_notional)?)?
+            };
+            if estimated_cost > reserved || reserved <= Decimal::ZERO {
+                return Err(BackpackExecutionErrorKind::Capacity.into());
+            }
+            reserved
+        } else {
+            estimated_cost
+        };
+        // Production account net positions consume aggregate risk capacity even after the
+        // corresponding order reservation has been reconciled and released.
+        if self.production {
+            for (instrument, quantity) in &account.net_positions {
+                let observed = self
+                    .markets
+                    .get(instrument)
+                    .ok_or(BackpackExecutionErrorKind::Readiness)?;
+                let mark = observed
+                    .quote
+                    .ask_price
+                    .as_decimal()
+                    .max(observed.quote.bid_price.as_decimal());
+                notional = add(notional, multiply(quantity.abs(), mark)?)?;
+            }
+        }
         let required_margin = multiply(
             cost,
             add(account.margin_per_notional, account.fee_buffer_per_notional)?,
@@ -506,7 +554,7 @@ pub(crate) fn add(left: Decimal, right: Decimal) -> Result<Decimal, BackpackExec
     )
     .map_err(|_| BackpackExecutionErrorKind::Capacity.into())
 }
-fn multiply(left: Decimal, right: Decimal) -> Result<Decimal, BackpackExecutionError> {
+pub(crate) fn multiply(left: Decimal, right: Decimal) -> Result<Decimal, BackpackExecutionError> {
     let left = left.normalize();
     let right = right.normalize();
     Decimal::try_from_i128_with_scale(
@@ -524,7 +572,11 @@ pub(crate) struct PublicAdmission {
     token: crate::telemetry::BackpackPublicAdmissionToken,
 }
 impl PublicAdmission {
-    fn validate(&self, market: &BackpackLoopbackMarketFacts) -> Result<(), BackpackExecutionError> {
+    fn validate(
+        &self,
+        market: &BackpackLoopbackMarketFacts,
+        production: bool,
+    ) -> Result<(), BackpackExecutionError> {
         let (current, token) = self.telemetry.admission_snapshot();
         let symbol = market.metadata.raw_symbol.as_str();
         if token != self.token
@@ -532,16 +584,28 @@ impl PublicAdmission {
             || !current.metadata_ready
             || current.stale_reason.is_some()
             || current.quotes_fresh.get(symbol) != Some(&true)
-            || current
+            || !current
                 .quote_event_ns
                 .get(symbol)
                 .and_then(|value| value.parse::<u64>().ok())
-                != Some(market.quote.ts_event.as_u64())
-            || current
+                .is_some_and(|stamp| {
+                    if production {
+                        stamp >= market.quote.ts_event.as_u64()
+                    } else {
+                        stamp == market.quote.ts_event.as_u64()
+                    }
+                })
+            || !current
                 .quote_received_ns
                 .get(symbol)
                 .and_then(|value| value.parse::<u64>().ok())
-                != Some(market.quote.ts_init.as_u64())
+                .is_some_and(|stamp| {
+                    if production {
+                        stamp >= market.quote.ts_init.as_u64()
+                    } else {
+                        stamp == market.quote.ts_init.as_u64()
+                    }
+                })
         {
             return Err(BackpackExecutionErrorKind::Readiness.into());
         }
@@ -551,8 +615,9 @@ impl PublicAdmission {
 
 #[cfg(test)]
 mod fence_tests {
-    use super::*;
     use rstest::rstest;
+
+    use super::*;
 
     #[rstest]
     fn test_overlapping_control_changes_never_admit_between_updates() {

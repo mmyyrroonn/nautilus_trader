@@ -13,7 +13,7 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-//! Native public and read-only account factory projections and registry extraction.
+//! Native public, read-only and finite execution factory projections and registry extraction.
 #![expect(
     clippy::missing_errors_doc,
     reason = "errors documented by checked native constructors"
@@ -24,6 +24,7 @@ pub mod config;
 pub mod execution;
 pub mod loopback;
 pub mod loopback_runtime;
+pub mod production;
 pub mod replay;
 
 use account::{PyBackpackCredential, PyBackpackExecutionClientConfig, PyBackpackQuota};
@@ -98,7 +99,7 @@ fn extract_data_config(py: Python<'_>, value: Py<PyAny>) -> PyResult<Box<dyn Cli
     Ok(Box::new(wrapper.inner))
 }
 
-/// Exposes public and read-only account capabilities through the normal adapter registry.
+/// Exposes typed public, read-only and finite execution plans through the normal adapter registry.
 #[pymodule]
 pub fn backpack(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("BACKPACK", BACKPACK)?;
@@ -117,6 +118,10 @@ pub fn backpack(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<loopback_runtime::PyBackpackLoopbackControl>()?;
     m.add_class::<loopback_runtime::PyBackpackLoopbackExecutionClientConfig>()?;
     m.add_class::<loopback_runtime::PyBackpackLoopbackExecutionClientFactory>()?;
+    m.add_class::<production::PyBackpackProductionExecutionAuthority>()?;
+    m.add_class::<production::PyBackpackProductionControl>()?;
+    m.add_class::<production::PyBackpackProductionExecutionClientConfig>()?;
+    m.add_class::<production::PyBackpackProductionExecutionClientFactory>()?;
     register_execution()?;
     m.add_class::<replay::PyBackpackPublicReplay>()?;
     let registry = get_global_pyo3_registry();

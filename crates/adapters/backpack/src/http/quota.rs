@@ -20,9 +20,10 @@ use std::{
     time::Duration,
 };
 
-use nautilus_network::dst::time::Instant;
-
-use nautilus_network::ratelimiter::{RateLimiter, clock::MonotonicClock, quota::Quota};
+use nautilus_network::{
+    dst::time::Instant,
+    ratelimiter::{RateLimiter, clock::MonotonicClock, quota::Quota},
+};
 use ustr::Ustr;
 
 use super::error::{BackpackHttpError, BackpackHttpErrorKind};

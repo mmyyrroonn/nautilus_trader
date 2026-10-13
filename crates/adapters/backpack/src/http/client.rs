@@ -158,6 +158,23 @@ impl fmt::Debug for BackpackHttpClient {
     }
 }
 impl BackpackHttpClient {
+    pub(crate) fn timestamp_ms(&self) -> Result<u64, BackpackHttpError> {
+        self.clock.timestamp_ms()
+    }
+
+    pub(crate) fn credential_namespace(
+        &self,
+    ) -> Option<crate::identity::BackpackClientIdNamespace> {
+        self.credential.as_ref().and_then(|credential| {
+            crate::identity::BackpackClientIdNamespace::credential_scope(
+                credential,
+                &self.endpoints,
+                None,
+            )
+            .ok()
+        })
+    }
+
     /// Creates a restricted client sharing the caller's quota scope.
     ///
     /// # Errors

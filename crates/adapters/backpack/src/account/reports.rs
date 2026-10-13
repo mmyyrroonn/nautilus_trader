@@ -71,6 +71,7 @@ impl BackpackOrderOwnership {
 #[derive(Debug, Default)]
 pub struct BackpackOrderBindings {
     orders: BTreeMap<VenueOrderId, (InstrumentId, ClientOrderId)>,
+    pub(crate) original_specs: BTreeMap<VenueOrderId, crate::execution::command::BackpackOrderSpec>,
 }
 impl BackpackOrderBindings {
     /// Records the owner's authoritative venue order acknowledgement or independently
@@ -325,6 +326,19 @@ pub fn order_report(
     raw: BackpackOrder,
     context: &BackpackReportContext<'_>,
 ) -> Result<BackpackOrderObservation, BackpackAccountError> {
+    let original_raw = raw.clone();
+    let checked_venue = VenueOrderId::new_checked(&raw.id)
+        .map_err(|_| BackpackAccountError::InvalidField("order id"))?;
+    let raw = if let Some(spec) = context
+        .confirmed_orders
+        .and_then(|bindings| bindings.original_specs.get(&checked_venue))
+    {
+        spec.observation_view(&raw).map_err(|_| {
+            BackpackAccountError::InvalidField("acknowledged order history economics")
+        })?
+    } else {
+        raw
+    };
     let ownership = if raw.system_order_type.is_some() {
         BackpackOrderOwnership::External
     } else {
@@ -334,7 +348,10 @@ pub fn order_report(
         BackpackEvidenceGap::AccountIdentityUnverified,
         BackpackEvidenceGap::OrderTimeUnknown,
     ]);
-    if !raw.extra.is_empty() {
+    if raw.extra.iter().any(|(key, value)| {
+        !super::models::disabled_spot_order_flag(key, value)
+            && !super::models::absent_order_option(key, value)
+    }) {
         gaps.insert(BackpackEvidenceGap::UnknownFields);
     }
     if raw
@@ -431,7 +448,7 @@ pub fn order_report(
         }
     };
     Ok(BackpackOrderObservation {
-        raw,
+        raw: original_raw,
         ownership,
         report,
         gaps,

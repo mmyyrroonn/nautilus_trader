@@ -102,6 +102,7 @@ pub struct BackpackExecutionClientConfig {
     pub(crate) quota: BackpackQuota,
     pub(crate) telemetry: BackpackAccountTelemetry,
     pub(crate) restricted: Option<BackpackLoopbackExecutionMode>,
+    pub(crate) recovery_start_ms: Option<u64>,
 }
 impl BackpackExecutionClientConfig {
     /// Creates explicit audience-bound configuration without opening files/sockets.
@@ -142,6 +143,7 @@ impl BackpackExecutionClientConfig {
             http_policy: BackpackHttpPolicy::default(),
             telemetry: BackpackAccountTelemetry::default(),
             restricted: None,
+            recovery_start_ms: None,
         })
     }
     /// Opts into guarded mutations for one exact synthetic loopback peer.
@@ -182,6 +184,7 @@ impl BackpackExecutionClientConfig {
             authority,
             mutation_policy,
             public_telemetry,
+            production: false,
         });
         Ok(self)
     }
@@ -201,6 +204,20 @@ impl BackpackExecutionClientConfig {
     #[must_use]
     pub const fn policy(&self) -> BackpackExecutionPolicy {
         self.policy
+    }
+    /// Sets an explicit session recovery floor, pinned by the production identity journal.
+    /// This is caller scope, never evidence that the account is flat or safe to trade.
+    pub fn with_recovery_start_ms(mut self, start: Option<u64>) -> anyhow::Result<Self> {
+        anyhow::ensure!(
+            start.is_none_or(|value| value > 0 && value <= u64::MAX / 1_000_000),
+            "invalid recovery start"
+        );
+        self.recovery_start_ms = start;
+        Ok(self)
+    }
+    #[must_use]
+    pub const fn recovery_start_ms(&self) -> Option<u64> {
+        self.recovery_start_ms
     }
     #[must_use]
     pub fn telemetry(&self) -> BackpackAccountTelemetry {
@@ -248,4 +265,5 @@ pub(crate) struct BackpackLoopbackExecutionMode {
     pub authority: BackpackExecutionAuthority,
     pub mutation_policy: BackpackMutationPolicy,
     pub public_telemetry: crate::telemetry::BackpackPublicTelemetry,
+    pub production: bool,
 }

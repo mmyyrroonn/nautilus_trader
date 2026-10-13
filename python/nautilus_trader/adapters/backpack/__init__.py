@@ -12,7 +12,9 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 # -------------------------------------------------------------------------------------------------
-"""Native Backpack public, read-only account and guarded synthetic peer integration."""
+"""
+Native Backpack market data, read-only accounts and finite guarded execution.
+"""
 
 from nautilus_trader._fixup import fixup_module_names
 from nautilus_trader._libnautilus.backpack import *  # noqa: F403
@@ -34,6 +36,10 @@ __all__ = [
     "BackpackLoopbackExecutionClientConfig",
     "BackpackLoopbackExecutionClientFactory",
     "BackpackLoopbackSession",
+    "BackpackProductionControl",
+    "BackpackProductionExecutionAuthority",
+    "BackpackProductionExecutionClientConfig",
+    "BackpackProductionExecutionClientFactory",
     "BackpackPublicReplay",
     "BackpackQuota",
 ]

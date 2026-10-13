@@ -49,6 +49,10 @@ impl fmt::Debug for BackpackCredential {
     }
 }
 impl BackpackCredential {
+    pub(crate) fn verifying_key(&self) -> &str {
+        &self.verifying_key
+    }
+
     /// Decodes caller-provided production credentials without environment lookup.
     ///
     /// # Errors

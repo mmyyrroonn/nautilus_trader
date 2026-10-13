@@ -781,3 +781,59 @@ invalidates the old attachment permanently. Stop diagnostics retain only copied 
 independent config can reopen the same persistent namespace after the old node is dropped, while
 old controls cannot redirect to the replacement. Control calls follow the same owner-thread
 requirement as native LiveNode and PyCache, including hosted `run_async`.
+
+## Production execution
+
+`BackpackProductionExecutionClientConfig` and
+`BackpackProductionExecutionClientFactory` add an explicit writer through the native
+ExecutionEngine. The existing account factory stays read-only, and the loopback
+factory retains its synthetic-only contract. Production controls observe native
+state and cannot inject synthetic account facts or send financial requests.
+
+The writer supports configured USDC perpetual symbols, limit IOC/GTC, base-quantity
+market IOC/FOK, post-only, reduce-only, owned single-order cancellation, and
+open/history queries. Native
+amend remains unsupported: wait for confirmed cancellation and durable fills,
+then submit a replacement with a new original client order ID. HTTP 202 is pending.
+Unacknowledged submissions remain unknown and are never automatically resubmitted
+or adopted from a coincident numeric client ID.
+
+Use the same `BackpackQuota` for the public and account configurations. Construct a
+production configuration from those two configurations, explicit finite
+`BackpackProductionExecutionAuthority`, mutation budget, receive window and an
+economic state directory. Register data before execution in `LiveNodeBuilder`.
+All submit/cancel/query commands originate in a normal native `Strategy`.
+`control.admission_status_json()` reports current readiness and the refusal reason;
+it does not submit an order. `persist_economics()` checkpoints actual native state,
+and `reconcile_terminal_evidence()` reconciles terminal observations with receipts.
+
+Identity storage binds the credential authority and origins, retains original IDs,
+and rejects credential rotation into an old journal. New exposure requires a fresh
+authenticated snapshot that agrees with native positions, a current native quote,
+USDC collateral without borrowing or unsettled equity, liabilities fully explained
+by negative unrealized PnL, and conservative full-notional plus fee reserves.
+Default automatic futures settlement/PnL settings are observations,
+not permission to borrow; the adapter never changes account settings. Native
+production configuration caps orders at USD 100 and aggregate exposure at USD 500.
+Application limits may be lower. Unknown and residual shutdown state stays dirty.
+
+Market orders use the actual `Market` wire type and omit price, quote quantity and
+post-only. Their notional cap is a fresh-quote admission estimate, not an absolute
+execution-price guarantee. New market exposure holds an immutable conservative
+notional budget plus fees within all configured caps; each dispatch check requires
+the fresh estimate to fit that original budget. Returned optional intent fields
+may be interpreted from the independently acknowledged original request, while
+raw venue observations remain retained. Actual fill prices, quantities, maker
+flags and fees exclusively determine economics. No undocumented slippage units
+are assumed, and an execution above its estimate is never replaced or hidden.
+
+On 2026-10-13, the operator verified two BTC round trips through the native writer:
+post-only maker BUY / market reduce-only SELL, and market BUY / market reduce-only
+SELL. Each leg was 0.00005 BTC, approximately USDC 4.16. All four orders filled and
+had reconciled terminal evidence; the maker entry and taker market legs were
+verified, and the final REST observations showed a flat position and no open orders.
+The wrapper's final account reconciliation remained false because a preceding
+external cleanup fill fell inside the new session's five-second history backpad.
+This harness limitation remains unresolved. Continuous multi-symbol execution and
+the full acceptance scope of issue 123 remain unverified. See the
+[protocol scope](../../../docs/plans/backpack-production-protocol.md).

@@ -37,7 +37,9 @@ use nautilus_model::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    account::reconciliation::{BackpackAppliedFill, BackpackFillKey, BackpackFillReconciler},
+    account::reconciliation::{
+        BackpackAppliedFill, BackpackFillKey, BackpackFillReconciler, BackpackFillTimeEvidence,
+    },
     identity::BackpackClientIdNamespace,
 };
 
@@ -51,6 +53,9 @@ const MAX_BYTES: u64 = 64 * 1024 * 1024;
 struct EconomicFill {
     report: FillReport,
     receipt: BackpackAppliedFill,
+    // Empty legacy evidence is omitted so old checksums remain byte-for-byte compatible.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    time_evidence: Vec<BackpackFillTimeEvidence>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -102,6 +107,12 @@ impl EconomicSnapshot {
     }
     pub(super) fn reports(&self) -> Vec<FillReport> {
         self.fills.iter().map(|f| f.report.clone()).collect()
+    }
+    pub(super) fn time_evidence(&self) -> BTreeMap<BackpackFillKey, Vec<BackpackFillTimeEvidence>> {
+        self.fills
+            .iter()
+            .map(|fill| (fill.receipt.key, fill.time_evidence.clone()))
+            .collect()
     }
     pub(super) fn reference(&self) -> anyhow::Result<String> {
         checksum(self)
@@ -188,6 +199,7 @@ impl EconomicSnapshot {
                 "durable native consumption missing"
             );
             reconciler.acknowledge_committed(&fill.receipt)?;
+            reconciler.restore_time_evidence(fill.receipt.key, fill.time_evidence.clone())?;
         }
         if let Some(account) = &self.account {
             anyhow::ensure!(account.id() == self.account_id, "economic account mismatch");
@@ -499,6 +511,7 @@ impl EconomicStore {
         &self,
         cache: &Cache,
         pending: Vec<(FillReport, BackpackAppliedFill)>,
+        time_evidence: BTreeMap<BackpackFillKey, Vec<BackpackFillTimeEvidence>>,
         capacity: usize,
         seed: Option<ClientOrderId>,
     ) -> anyhow::Result<(EconomicSnapshot, Vec<BackpackFillKey>)> {
@@ -607,8 +620,30 @@ impl EconomicStore {
                 if let Some(previous) = records.get(&receipt.key) {
                     anyhow::ensure!(previous.receipt == receipt, "economic retry conflict");
                 } else {
-                    records.insert(receipt.key, EconomicFill { report, receipt });
+                    records.insert(
+                        receipt.key,
+                        EconomicFill {
+                            report,
+                            receipt,
+                            time_evidence: Vec::new(),
+                        },
+                    );
                 }
+            }
+        }
+        for (key, times) in time_evidence {
+            if let Some(fill) = records.get_mut(&key) {
+                // Metadata may grow after an applied cross-source duplicate. Economics
+                // and the original event instant remain unchanged.
+                for previous in &fill.time_evidence {
+                    anyhow::ensure!(
+                        times.iter().any(|next| next.source == previous.source
+                            && next.first == previous.first
+                            && (previous.fine.is_none() || next.fine == previous.fine)),
+                        "economic source time evidence regressed"
+                    );
+                }
+                fill.time_evidence = times;
             }
         }
         state.fills = records.into_values().collect();
@@ -698,8 +733,118 @@ fn sync_directory(_: &Path) -> anyhow::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use nautilus_core::UnixNanos;
+    use nautilus_model::{
+        enums::{LiquiditySide, OrderSide},
+        identifiers::{TradeId, VenueOrderId},
+        types::{Currency, Money, Price, Quantity},
+    };
     use rstest::rstest;
+    use rust_decimal::Decimal;
+
+    use super::*;
+
+    #[rstest]
+    fn cross_source_legacy_economic_fill_keeps_original_checksum_and_receipt() {
+        let root = tempfile::tempdir().unwrap();
+        let identity = root.path().join("identity");
+        fs::create_dir(&identity).unwrap();
+        let (account, trader, client, namespace) = scope();
+        let store = EconomicStore::open(
+            &root.path().join("consumer"),
+            &identity,
+            &namespace,
+            account,
+            trader,
+            2,
+            &["BTC_USDC_PERP".into()],
+            client,
+        )
+        .unwrap();
+        let report = FillReport::new(
+            account,
+            InstrumentId::from("BTC_USDC_PERP.BACKPACK"),
+            VenueOrderId::from("synthetic-owned-order"),
+            TradeId::from("99741644"),
+            OrderSide::Buy,
+            Quantity::from_decimal_dp(Decimal::from_str_exact("0.00005").unwrap(), 5).unwrap(),
+            Price::from_decimal_dp(Decimal::from_str_exact("83520.7").unwrap(), 1).unwrap(),
+            Money::from_decimal(
+                Decimal::from_str_exact("0.000418").unwrap(),
+                Currency::USDC(),
+            )
+            .unwrap(),
+            LiquiditySide::Maker,
+            Some(ClientOrderId::from("O-SYNTHETIC-1")),
+            None,
+            UnixNanos::from(1_791_885_452_846_264_000),
+            UnixNanos::from(1_791_885_452_846_264_000),
+            None,
+        );
+        let mut reconciler = BackpackFillReconciler::from_applied(2, []).unwrap();
+        reconciler.stage(report.clone()).unwrap();
+        let key = BackpackFillKey {
+            instrument_id: report.instrument_id,
+            trade_id: report.trade_id,
+        };
+        let receipt = reconciler.pending_acknowledgement(key).unwrap();
+        let mut state = store.state().clone();
+        state.fills.push(EconomicFill {
+            report: report.clone(),
+            receipt: receipt.clone(),
+            time_evidence: Vec::new(),
+        });
+        let legacy = serde_json::to_value(&state).unwrap();
+        assert!(legacy["fills"][0].get("time_evidence").is_none());
+        let original_checksum = blake3::hash(&serde_json::to_vec(&legacy).unwrap())
+            .to_hex()
+            .to_string();
+        let bytes = serde_json::to_vec(
+            &serde_json::json!({"schema_version":1,"checksum":original_checksum,"state":legacy}),
+        )
+        .unwrap();
+        let envelope: Envelope = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(checksum(&envelope.state).unwrap(), envelope.checksum);
+        let fill = &envelope.state.fills[0];
+        assert!(fill.time_evidence.is_empty());
+        let mut restored = BackpackFillReconciler::from_applied(2, [fill.receipt.clone()]).unwrap();
+        restored
+            .restore_applied_report(fill.report.clone())
+            .unwrap();
+        let mut rest = report;
+        rest.ts_event = UnixNanos::from(1_791_885_452_845_000_000);
+        assert!(matches!(
+            restored
+                .stage_from(
+                    rest,
+                    crate::account::reconciliation::BackpackFillTimeSource::RestHistory
+                )
+                .unwrap(),
+            crate::account::reconciliation::BackpackFillStage::AlreadyApplied
+        ));
+        let mut upgraded = envelope.state;
+        upgraded.fills[0].time_evidence = restored.time_evidence().remove(&key).unwrap();
+        let upgraded: EconomicSnapshot =
+            serde_json::from_slice(&serde_json::to_vec(&upgraded).unwrap()).unwrap();
+        assert_eq!(upgraded.fills[0].receipt, receipt);
+        assert_eq!(
+            upgraded.fills[0].report.ts_event,
+            UnixNanos::from(1_791_885_452_846_264_000)
+        );
+        assert_eq!(
+            upgraded.fills[0].time_evidence[0].first,
+            UnixNanos::from(1_791_885_452_845_000_000)
+        );
+    }
+    #[rstest]
+    fn economic_checkpoint_position_return_preserves_float_bits() {
+        // A market roundtrip from 101 to 100 produces this native position return.
+        // Its serialized fingerprint must survive JSON decoding without a one-ULP drift.
+        let original = -0.009_900_990_099_009_901_f64;
+        let bytes = serde_json::to_vec(&original).unwrap();
+        let restored: f64 = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(original.to_bits(), restored.to_bits());
+    }
     fn scope() -> (AccountId, TraderId, ClientId, BackpackClientIdNamespace) {
         (
             AccountId::from("BACKPACK-SYNTHETIC"),
