@@ -47,6 +47,64 @@ pub struct BackpackOrderSpec {
 }
 
 impl BackpackOrderSpec {
+    /// Interprets a DTO only after independent acknowledgement of this original order.
+    /// Missing immutable flags use that acknowledged command; no executions or
+    /// ownership are inferred from a numeric candidate or derived quote notional.
+    pub(crate) fn observation_view(
+        &self,
+        raw: &crate::account::models::BackpackOrder,
+    ) -> Result<crate::account::models::BackpackOrder, BackpackExecutionError> {
+        let mut view = raw.clone();
+        if view.order_type == "Market" && self.order_type == OrderType::Market {
+            // This view is used only with an independently acknowledged original
+            // base-quantity request. Missing venue fields remain missing in `raw`.
+            if view.price.is_some()
+                || view
+                    .quantity
+                    .is_some_and(|quantity| quantity.0 != self.quantity)
+                || (view.quantity.is_none() && view.quote_quantity.is_some())
+                || view
+                    .quote_quantity
+                    .is_some_and(|quote| quote.0 < Decimal::ZERO)
+            {
+                return Err(BackpackExecutionErrorKind::Ownership.into());
+            }
+            view.quantity = view
+                .quantity
+                .or(Some(crate::account::models::BackpackDecimal(self.quantity)));
+            view.post_only = view.post_only.or(Some(self.post_only));
+            view.reduce_only = view.reduce_only.or(Some(self.reduce_only));
+            // An optional returned quote quantity is not a reverse-market request
+            // or a fill. The original signed request contained base quantity only.
+            view.quote_quantity = None;
+        }
+        if view.order_type == "Limit" && self.order_type == OrderType::Limit {
+            if let Some(quote) = view.quote_quantity.filter(|_| {
+                matches!(
+                    view.created_at,
+                    crate::account::models::BackpackOrderCreatedAt::History(_)
+                )
+            }) {
+                let quantity = view
+                    .quantity
+                    .ok_or(BackpackExecutionErrorKind::Validation)?
+                    .0;
+                let price = view.price.ok_or(BackpackExecutionErrorKind::Validation)?.0;
+                if quantity != self.quantity
+                    || Some(price) != self.price
+                    || super::guard::multiply(quantity, price)? != quote.0
+                {
+                    return Err(BackpackExecutionErrorKind::Ownership.into());
+                }
+                view.quote_quantity = None;
+            }
+            view.post_only = view.post_only.or(Some(self.post_only));
+            view.reduce_only = view.reduce_only.or(Some(self.reduce_only));
+        }
+        view.extra
+            .retain(|key, value| !crate::account::models::absent_order_option(key, value));
+        Ok(view)
+    }
     pub(crate) fn validate(
         &self,
         metadata: &BackpackInstrumentMetadata,
@@ -84,9 +142,7 @@ impl BackpackOrderSpec {
             || (self.post_only
                 && (self.order_type != OrderType::Limit || self.time_in_force != TimeInForce::Gtc))
             || (self.order_type == OrderType::Market
-                && (!self.reduce_only
-                    || self.price.is_some()
-                    || self.time_in_force == TimeInForce::Gtc))
+                && (self.price.is_some() || self.time_in_force == TimeInForce::Gtc))
         {
             return Err(UnsupportedCommand.into());
         }
@@ -164,7 +220,11 @@ impl BackpackOrderSpec {
                 "clientId",
                 client_id.map(|id| BackpackScalar::Unsigned(u64::from(id))),
             ),
-            ("postOnly", Some(BackpackScalar::Boolean(self.post_only))),
+            (
+                "postOnly",
+                (self.order_type == OrderType::Limit)
+                    .then_some(BackpackScalar::Boolean(self.post_only)),
+            ),
             (
                 "reduceOnly",
                 Some(BackpackScalar::Boolean(self.reduce_only)),

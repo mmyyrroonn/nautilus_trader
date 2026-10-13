@@ -189,6 +189,36 @@ pub struct BackpackOrder {
     pub extra: BTreeMap<String, Value>,
 }
 
+/// Documented spot automation flags echoed by an order with the capability disabled.
+pub(crate) fn disabled_spot_order_flag(key: &str, value: &Value) -> bool {
+    matches!(
+        key,
+        "autoBorrow" | "autoBorrowRepay" | "autoLend" | "autoLendRedeem"
+    ) && value.as_bool() == Some(false)
+}
+
+/// Official optional order fields whose null value declares an absent capability.
+pub(crate) fn absent_order_option(key: &str, value: &Value) -> bool {
+    value.is_null()
+        && matches!(
+            key,
+            "triggerPrice"
+                | "triggerBy"
+                | "triggerQuantity"
+                | "triggeredAt"
+                | "stopLossTriggerPrice"
+                | "stopLossLimitPrice"
+                | "stopLossTriggerBy"
+                | "takeProfitTriggerPrice"
+                | "takeProfitLimitPrice"
+                | "takeProfitTriggerBy"
+                | "strategyId"
+                | "relatedOrderId"
+                | "slippageTolerance"
+                | "slippageToleranceType"
+        )
+}
+
 /// GET /wapi/v1/history/fills. Only true venue tradeId can identify a native fill.
 /// Official clientId is a STRING, unlike integer clientId on order responses.
 #[derive(Clone, Debug, Deserialize, Serialize)]

@@ -15,7 +15,7 @@
 
 //! Official private events with exact decimals and checked microsecond timestamps.
 //!
-//! Source: https://docs.backpack.exchange/ (Private Streams, observed 2026-10-02).
+//! Source: <https://docs.backpack.exchange/> (Private Streams, observed 2026-10-02).
 //! Subscription success ACK is not specified by the evidence used here. Generic
 //! result/id controls remain unconfirmed. Initial position rows do not prove coverage.
 use std::collections::{BTreeMap, BTreeSet};
@@ -132,6 +132,7 @@ struct Position {
     s: String,
     q: BackpackDecimal,
     B: BackpackDecimal,
+    #[serde(deserialize_with = "position_identifier")]
     i: String,
     // Remaining documented economics are required and preserved by decoding exact decimals.
     b: BackpackDecimal,
@@ -145,6 +146,20 @@ struct Position {
     l: Option<BackpackDecimal>,
     #[serde(flatten)]
     extra: BTreeMap<String, Value>,
+}
+
+// Production position streams use an integer ID as well as the documented string
+fn position_identifier<'de, D: Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    match Value::deserialize(deserializer)? {
+        Value::String(value) => Ok(value),
+        Value::Number(value) => value
+            .as_u64()
+            .map(|value| value.to_string())
+            .ok_or_else(|| D::Error::custom("position ID requires an unsigned integer")),
+        _ => Err(D::Error::custom(
+            "position ID requires a string or unsigned integer",
+        )),
+    }
 }
 /// Decodes one current-session frame. Connection/epoch ownership is enforced by the owner.
 ///
@@ -469,5 +484,43 @@ impl<'de> Visitor<'de> for StrictVisitor {
     }
     fn visit_none<E: Error>(self) -> Result<StrictJson, E> {
         Ok(StrictJson)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rstest::rstest;
+
+    use super::*;
+
+    fn position_json(id: &str) -> String {
+        format!(
+            r#"{{"E":1791885452847000,"T":1791885452846264,"s":"BTC_USDC_PERP",
+            "i":{id},"b":"83530.12","B":"83520.7","f":"0.01333333","M":"83520.5",
+            "m":"0.00666667","q":"0.00005","Q":"0.00005","n":"4.176025",
+            "l":"0","p":"-0.000495","P":"0.000485"}}"#,
+        )
+    }
+
+    #[rstest]
+    #[case("9007199254740993", "9007199254740993")]
+    #[case("\"9007199254740993\"", "9007199254740993")]
+    #[case("18446744073709551615", "18446744073709551615")]
+    fn position_id_preserves_numeric_and_documented_string(#[case] wire: &str, #[case] id: &str) {
+        let position: Position = serde_json::from_str(&position_json(wire)).unwrap();
+        assert_eq!(position.i, id);
+        assert_eq!(position.q.0, Decimal::new(5, 5));
+        assert!(position.e.is_none());
+    }
+
+    #[rstest]
+    #[case("-1")]
+    #[case("1.5")]
+    #[case("1e3")]
+    #[case("18446744073709551616")]
+    #[case("null")]
+    #[case("true")]
+    fn position_id_rejects_ambiguous_numeric_shapes(#[case] wire: &str) {
+        assert!(serde_json::from_str::<Position>(&position_json(wire)).is_err());
     }
 }

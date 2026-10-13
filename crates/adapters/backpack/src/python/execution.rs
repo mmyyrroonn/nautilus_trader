@@ -13,7 +13,7 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-//! Standard native execution registry projection. Every command remains read-only.
+//! Standard registry projections with separately typed read-only, synthetic and production plans.
 use nautilus_common::factories::{ClientConfig, ExecutionClientFactory};
 use nautilus_core::python::to_pyvalue_err;
 use nautilus_system::get_global_pyo3_registry;
@@ -24,9 +24,13 @@ use super::{
     loopback_runtime::{
         PyBackpackLoopbackExecutionClientConfig, PyBackpackLoopbackExecutionClientFactory,
     },
+    production::{
+        PyBackpackProductionExecutionClientConfig, PyBackpackProductionExecutionClientFactory,
+    },
 };
 use crate::execution_client::{
     BackpackExecutionClientFactory, loopback_config::BackpackLoopbackExecutionClientFactory,
+    production_config::BackpackProductionExecutionClientFactory,
 };
 
 /// Native read-only execution factory; construction performs no I/O.
@@ -64,6 +68,12 @@ impl PyBackpackExecutionClientFactory {
 fn extract_factory(py: Python<'_>, value: Py<PyAny>) -> PyResult<Box<dyn ExecutionClientFactory>> {
     if value
         .bind(py)
+        .is_instance_of::<PyBackpackProductionExecutionClientFactory>()
+    {
+        return Ok(Box::new(BackpackProductionExecutionClientFactory));
+    }
+    if value
+        .bind(py)
         .is_instance_of::<PyBackpackLoopbackExecutionClientFactory>()
     {
         return Ok(Box::new(BackpackLoopbackExecutionClientFactory));
@@ -87,6 +97,13 @@ fn extract_loopback_config(py: Python<'_>, value: Py<PyAny>) -> PyResult<Box<dyn
         .map_err(|_| to_pyvalue_err("invalid BackpackLoopbackExecutionClientConfig"))?;
     Ok(Box::new(wrapper.inner))
 }
+#[expect(clippy::needless_pass_by_value, reason = "registry callback signature")]
+fn extract_production_config(py: Python<'_>, value: Py<PyAny>) -> PyResult<Box<dyn ClientConfig>> {
+    let wrapper = value
+        .extract::<PyBackpackProductionExecutionClientConfig>(py)
+        .map_err(|_| to_pyvalue_err("invalid BackpackProductionExecutionClientConfig"))?;
+    Ok(Box::new(wrapper.inner))
+}
 pub(super) fn register_execution() -> PyResult<()> {
     let registry = get_global_pyo3_registry();
     registry
@@ -101,5 +118,11 @@ pub(super) fn register_execution() -> PyResult<()> {
             extract_loopback_config,
         )
         .map_err(|_| to_pyvalue_err("Backpack loopback configuration registration failed"))?;
+    registry
+        .register_config_extractor(
+            "BackpackProductionExecutionClientConfig".into(),
+            extract_production_config,
+        )
+        .map_err(|_| to_pyvalue_err("Backpack production configuration registration failed"))?;
     Ok(())
 }

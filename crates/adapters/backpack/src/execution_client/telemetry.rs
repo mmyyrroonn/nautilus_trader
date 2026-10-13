@@ -46,6 +46,19 @@ pub struct BackpackAccountHealth {
     pub evidence_gaps: BTreeSet<String>,
     pub pending_fills: usize,
     pub recovery_count: u64,
+    /// Fully completed, revision-fenced REST snapshot/order/fill recovery traversals.
+    #[serde(default)]
+    pub completed_recovery_count: u64,
+    /// Static failure location/category, without raw private errors or identifiers.
+    #[serde(default)]
+    pub last_recovery_error_stage: Option<String>,
+    #[serde(default)]
+    pub last_recovery_error_category: Option<String>,
+    #[serde(default)]
+    pub last_private_error_category: Option<String>,
+    /// Static names of conflicting fingerprint fields; excludes values and IDs.
+    #[serde(default)]
+    pub last_fill_conflict_fields: BTreeSet<String>,
     pub parse_failures: u64,
     pub last_observed_ns: Option<u64>,
 }
@@ -68,6 +81,11 @@ impl Default for BackpackAccountHealth {
             ]),
             pending_fills: 0,
             recovery_count: 0,
+            completed_recovery_count: 0,
+            last_recovery_error_stage: None,
+            last_recovery_error_category: None,
+            last_private_error_category: None,
+            last_fill_conflict_fields: BTreeSet::new(),
             parse_failures: 0,
             last_observed_ns: None,
         }

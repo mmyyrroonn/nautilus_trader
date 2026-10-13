@@ -27,11 +27,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use base64::{Engine, engine::general_purpose::STANDARD};
 use nautilus_model::identifiers::ClientOrderId;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::common::endpoints::BackpackEndpoints;
+use crate::common::{credential::BackpackCredential, endpoints::BackpackEndpoints};
 
 const SCHEMA_VERSION: u32 = 1;
 const MARKER_CONTENT: &[u8] = b"backpack-client-identity-v1\n";
@@ -40,10 +41,11 @@ const LOCK_NAME: &str = "identity.lock";
 const MARKER_NAME: &str = "identity.initialized";
 const EXHAUSTED_SEQUENCE: u64 = 1_u64 << u32::BITS;
 
-/// Exact environment, authenticated account and optional subaccount storage scope.
+/// Exact environment, account authority and optional subaccount storage scope.
 ///
-/// Values are never normalized or inferred from a filename. The caller supplies the
-/// authenticated venue identity, not a transient API key or a display nickname.
+/// Values are never inferred from a filename. The legacy constructor stores caller
+/// assertions only; credential constructors bind an origin and verifying-key fingerprint.
+/// A credential fingerprint proves continuity of that key, not a numeric venue user ID.
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BackpackClientIdNamespace {
@@ -53,6 +55,84 @@ pub struct BackpackClientIdNamespace {
 }
 
 impl BackpackClientIdNamespace {
+    /// Binds a credential authority to its exact validated production or loopback origins.
+    ///
+    /// # Errors
+    /// Returns an error for an audience mismatch or invalid numeric subaccount assertion.
+    pub fn credential_scope(
+        credential: &BackpackCredential,
+        endpoints: &BackpackEndpoints,
+        subaccount: Option<&str>,
+    ) -> Result<Self, BackpackIdentityError> {
+        credential
+            .check_audience(endpoints)
+            .map_err(|_| BackpackIdentityError::InvalidNamespace)?;
+        let mut namespace = Self::production_credential(credential.verifying_key(), subaccount)?;
+        if endpoints.is_loopback() {
+            namespace.environment = loopback_environment(endpoints);
+        }
+        Ok(namespace)
+    }
+
+    pub(crate) fn matches_credential_peer(
+        &self,
+        credential: &BackpackCredential,
+        endpoints: &BackpackEndpoints,
+    ) -> bool {
+        Self::credential_scope(credential, endpoints, self.subaccount.as_deref())
+            .is_ok_and(|expected| expected == *self)
+    }
+
+    /// Binds storage to the official origins and an exact API credential authority.
+    ///
+    /// This proves credential continuity, not a numeric venue user identity. Rotation
+    /// creates a different namespace and cannot adopt the previous journal.
+    /// An optional subaccount is a numeric assertion checked against observed positions.
+    ///
+    /// # Errors
+    /// Returns an error for a noncanonical Ed25519 public key or subaccount identifier.
+    pub fn production_credential(
+        api_public_key: &str,
+        subaccount: Option<&str>,
+    ) -> Result<Self, BackpackIdentityError> {
+        let bytes = STANDARD
+            .decode(api_public_key)
+            .map_err(|_| BackpackIdentityError::InvalidNamespace)?;
+        if bytes.len() != 32 || STANDARD.encode(&bytes) != api_public_key {
+            return Err(BackpackIdentityError::InvalidNamespace);
+        }
+        if subaccount.is_some_and(|value| {
+            value
+                .parse::<u16>()
+                .ok()
+                .is_none_or(|id| id.to_string() != value)
+        }) {
+            return Err(BackpackIdentityError::InvalidNamespace);
+        }
+        let fingerprint = blake3::hash(&bytes).to_hex().to_string();
+        Self::new_checked(
+            "production|rest=https://api.backpack.exchange|websocket=wss://ws.backpack.exchange",
+            &format!("credential:{fingerprint}"),
+            subaccount,
+        )
+    }
+
+    pub(crate) fn matches_credential(&self, credential: &BackpackCredential) -> bool {
+        self.matches_credential_peer(credential, &BackpackEndpoints::production())
+    }
+
+    pub(crate) fn credential_authority_matches(&self, other: &Self) -> bool {
+        self.environment == other.environment
+            && self.account == other.account
+            && self.account.starts_with("credential:")
+    }
+
+    pub(crate) fn asserted_subaccount(&self) -> Option<u16> {
+        self.subaccount
+            .as_deref()
+            .and_then(|value| value.parse().ok())
+    }
+
     /// Constructs an exact namespace without reading credentials or environment variables.
     ///
     /// # Errors
@@ -206,6 +286,7 @@ pub struct BackpackClientIdStore {
     by_order: BTreeMap<ClientOrderId, usize>,
     by_venue: BTreeMap<u32, ClientOrderId>,
     poisoned: bool,
+    initialized_this_open: bool,
 }
 
 impl BackpackClientIdStore {
@@ -294,6 +375,7 @@ impl BackpackClientIdStore {
             by_order,
             by_venue,
             poisoned: false,
+            initialized_this_open: !marker_exists && !journal_exists,
         })
     }
 
@@ -384,6 +466,9 @@ impl BackpackClientIdStore {
     }
     pub(crate) fn execution_directory(&self) -> &Path {
         &self.directory
+    }
+    pub(crate) const fn initialized_this_open(&self) -> bool {
+        self.initialized_this_open
     }
 
     pub(crate) fn namespace_matches(&self, namespace: &BackpackClientIdNamespace) -> bool {
@@ -624,6 +709,39 @@ fn io_error(operation: &'static str, source: std::io::Error) -> BackpackIdentity
 #[cfg(test)]
 mod tests {
     use rstest::rstest;
+
+    #[rstest]
+    fn production_namespace_binds_credential_and_rotation_refuses_journal_adoption() {
+        let credential = BackpackCredential::production(&STANDARD.encode([19; 32])).unwrap();
+        let rotated = BackpackCredential::production(&STANDARD.encode([20; 32])).unwrap();
+        let namespace =
+            BackpackClientIdNamespace::production_credential(credential.verifying_key(), None)
+                .unwrap();
+        assert!(namespace.matches_credential(&credential));
+        assert!(!namespace.matches_credential(&rotated));
+        let rotated_namespace =
+            BackpackClientIdNamespace::production_credential(rotated.verifying_key(), None)
+                .unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        drop(BackpackClientIdStore::open(directory.path(), &namespace).unwrap());
+        assert!(matches!(
+            BackpackClientIdStore::open(directory.path(), &rotated_namespace),
+            Err(BackpackIdentityError::NamespaceMismatch)
+        ));
+        assert!(BackpackClientIdNamespace::production_credential("invalid", None).is_err());
+        assert!(
+            BackpackClientIdNamespace::production_credential(
+                credential.verifying_key(),
+                Some("02"),
+            )
+            .is_err()
+        );
+        assert!(
+            !serde_json::to_string(&namespace)
+                .unwrap()
+                .contains(credential.verifying_key())
+        );
+    }
 
     use super::*;
 

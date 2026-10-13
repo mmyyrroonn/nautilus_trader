@@ -110,17 +110,33 @@ impl BackpackOrderOwner {
     /// Returns an explicit unsupported error for production, audience/namespace mismatch,
     /// invalid finite limits, changed/corrupt durable state, or transport configuration failure.
     pub fn new_checked(input: BackpackOrderOwnerConfig) -> Result<Self, BackpackExecutionError> {
+        if !input.endpoints.is_loopback() {
+            return Err(BackpackExecutionErrorKind::UnsupportedProduction.into());
+        }
         Self::open_with_checkpoint(input, Arc::new(FileCheckpoint))
+    }
+    /// Opens the native production-protocol owner with explicit, bounded authority.
+    /// Transport audience and credential-bound identity are checked before opening the owner.
+    pub(crate) fn new_production(
+        input: BackpackOrderOwnerConfig,
+    ) -> Result<Self, BackpackExecutionError> {
+        if !input
+            .namespace
+            .matches_credential_peer(&input.credential, &input.endpoints)
+        {
+            return Err(BackpackExecutionErrorKind::Identity.into());
+        }
+        let owner = Self::open_with_checkpoint(input, Arc::new(FileCheckpoint))?;
+        owner.guard.lock()?.production = true;
+        Ok(owner)
     }
     fn open_with_checkpoint(
         input: BackpackOrderOwnerConfig,
         checkpoint_store: Arc<dyn ExecutionCheckpoint>,
     ) -> Result<Self, BackpackExecutionError> {
-        if !input.endpoints.is_loopback() {
-            return Err(BackpackExecutionErrorKind::UnsupportedProduction.into());
-        }
         if input.config.endpoints() != &input.endpoints
-            || !input.namespace.matches_loopback_peer(&input.endpoints)
+            || (input.endpoints.is_loopback()
+                && !input.namespace.matches_loopback_peer(&input.endpoints))
         {
             return Err(BackpackExecutionErrorKind::Identity.into());
         }
@@ -139,6 +155,9 @@ impl BackpackOrderOwner {
             .build()
             .map_err(BackpackHttpError::from)?;
         let checkpoint = input.identities.execution_directory().join(CHECKPOINT_NAME);
+        let anchor_initialization_allowed = input.identities.initialized_this_open()
+            && !checkpoint.exists()
+            && input.identities.reserved_ids().next().is_none();
         let mut state = OwnerState {
             identities: input.identities,
             namespace: input.namespace,
@@ -156,6 +175,9 @@ impl BackpackOrderOwner {
             checkpoint,
             checkpoint_bytes: None,
             checkpoint_store,
+            production: false,
+            recovery_start_ms: None,
+            anchor_initialization_allowed,
         };
         state.restore()?;
         state.persist()?;
@@ -172,10 +194,123 @@ impl BackpackOrderOwner {
             quota: input.quota,
         })
     }
+    /// Pins an optional session boundary before any account recovery or dispatch.
+    /// Legacy/default journals cannot acquire a later boundary; an existing boundary
+    /// cannot be changed or removed, including by switching back to the default.
+    pub(crate) fn bind_recovery_start_ms(
+        &self,
+        start: Option<u64>,
+    ) -> Result<(), BackpackExecutionError> {
+        let now = self.clock.timestamp_ms()?;
+        let mut state = self.guard.lock()?;
+        if !state.production
+            || start.is_some_and(|value| value == 0 || value > u64::MAX / 1_000_000 || value > now)
+            || (state.recovery_start_ms != start
+                && !(state.anchor_initialization_allowed
+                    && state.records.is_empty()
+                    && state.generation == 0
+                    && !state.session_active))
+        {
+            return Err(BackpackExecutionErrorKind::Identity.into());
+        }
+        state.recovery_start_ms = start;
+        state.anchor_initialization_allowed = false;
+        state.persist()
+    }
     /// Returns the admission control handle for the native lifecycle owner.
     #[must_use]
     pub fn guard(&self) -> BackpackExecutionGuard {
         self.guard.clone()
+    }
+    pub(crate) fn owns_observation(&self, raw: &crate::account::models::BackpackOrder) -> bool {
+        self.guard.lock().is_ok_and(|state| {
+            state.records.values().any(|record| {
+                record.venue_order_id.as_deref() == Some(raw.id.as_str())
+                    && record.symbol == raw.symbol
+                    && raw
+                        .client_id
+                        .is_none_or(|numeric| numeric == record.client_id)
+            })
+        })
+    }
+    /// Recovers an uncertain production creation only from a complete authenticated order
+    /// observation matching every durable original command field, never from clientId alone.
+    pub(crate) fn recover_production_binding(
+        &self,
+        raw: &crate::account::models::BackpackOrder,
+    ) -> Result<Option<ClientOrderId>, BackpackExecutionError> {
+        let mut state = self.guard.lock()?;
+        if !state.production {
+            return Ok(None);
+        }
+        let Some(id) = state.records.iter().find_map(|(id, record)| {
+            (record.venue_order_id.as_deref() == Some(raw.id.as_str())).then_some(*id)
+        }) else {
+            // A numeric clientId, even with an identical specification, cannot
+            // create a binding when the original POST acknowledgement is absent.
+            return Ok(None);
+        };
+        let record = state
+            .records
+            .get_mut(&id)
+            .ok_or(BackpackExecutionErrorKind::Ownership)?;
+        // Market responses can omit this optional intent field. A supplied value
+        // must still match the independently established durable venue binding.
+        if raw
+            .client_id
+            .is_some_and(|numeric| numeric != record.client_id)
+        {
+            return Err(BackpackExecutionErrorKind::Ownership.into());
+        }
+        let view = record.spec.observation_view(raw)?;
+        let raw = &view;
+        let expected = record
+            .spec
+            .parameters(&record.symbol, Some(record.client_id))?
+            .json_body();
+        let matches = raw.symbol == record.symbol
+            && raw.side == expected["side"]
+            && raw.order_type == expected["orderType"]
+            && raw.time_in_force == expected["timeInForce"]
+            && raw.quantity.map(|value| value.0) == Some(record.spec.quantity)
+            && raw.price.map(|value| value.0) == record.spec.price
+            && raw.post_only == Some(record.spec.post_only)
+            && raw.reduce_only == Some(record.spec.reduce_only)
+            && raw.quote_quantity.is_none()
+            && raw
+                .system_order_type
+                .as_deref()
+                .is_none_or(|value| value == "User")
+            && raw
+                .executed_quantity
+                .is_some_and(|value| value.0 >= Decimal::ZERO && value.0 <= record.spec.quantity)
+            && raw.extra.iter().all(|(key, value)| {
+                value.is_null() || crate::account::models::disabled_spot_order_flag(key, value)
+            });
+        if !matches {
+            return Err(BackpackExecutionErrorKind::Ownership.into());
+        }
+        VenueOrderId::new_checked(&raw.id).map_err(|_| BackpackExecutionErrorKind::Validation)?;
+        Ok(Some(id))
+    }
+    pub(crate) fn reserved_reductions(
+        &self,
+        instrument: InstrumentId,
+        side: nautilus_model::enums::OrderSide,
+    ) -> Result<Vec<(ClientOrderId, Decimal)>, BackpackExecutionError> {
+        Ok(self
+            .guard
+            .lock()?
+            .records
+            .values()
+            .filter(|record| {
+                record.holds_capacity()
+                    && record.spec.reduce_only
+                    && record.spec.instrument_id == instrument
+                    && record.spec.side == side
+            })
+            .map(|record| (record.spec.client_order_id, record.spec.quantity))
+            .collect())
     }
 
     // Internal report conversion reads one immutable view while retaining the identity lock.
@@ -197,6 +332,11 @@ impl BackpackOrderOwner {
                     record.spec.instrument_id,
                     &state.identities,
                 )?;
+                if state.production {
+                    bindings
+                        .original_specs
+                        .insert(VenueOrderId::new_checked(venue)?, record.spec.clone());
+                }
             }
         }
         parse(&state.identities, &bindings)
@@ -277,6 +417,7 @@ impl BackpackOrderOwner {
             state.records.insert(
                 id,
                 OrderRecord {
+                    local_refusal_confirmed: false,
                     spec: intent.spec,
                     symbol: intent.symbol,
                     notional,
@@ -294,6 +435,16 @@ impl BackpackOrderOwner {
                 || deadline <= Instant::now()
                 || !self.guard.fence.matches(revision)
             {
+                if state.production {
+                    // No dispatch call has occurred: retain the burned identity,
+                    // but durably release capacity for this definite local refusal.
+                    state
+                        .records
+                        .get_mut(&id)
+                        .ok_or(BackpackExecutionErrorKind::Ownership)?
+                        .local_refusal_confirmed = true;
+                    state.persist()?;
+                }
                 return Err(BackpackHttpError::local(BackpackHttpErrorKind::Admission).into());
             }
         }
@@ -349,11 +500,20 @@ impl BackpackOrderOwner {
         raw: &crate::account::models::BackpackOrder,
     ) -> Result<(), BackpackExecutionError> {
         let mut state = self.guard.lock()?;
-        state.account = None;
+        if !state.production {
+            state.account = None;
+        }
+        let production = state.production;
         let record = state
             .records
             .get_mut(&id)
             .ok_or(BackpackExecutionErrorKind::Ownership)?;
+        let view = if production {
+            Some(record.spec.observation_view(raw)?)
+        } else {
+            None
+        };
+        let raw = view.as_ref().unwrap_or(raw);
         let expected = record
             .spec
             .parameters(&record.symbol, Some(record.client_id))?
@@ -372,13 +532,16 @@ impl BackpackOrderOwner {
             && cumulative
                 .is_some_and(|value| value >= Decimal::ZERO && value <= record.spec.quantity);
         if !matched {
+            let _change = self.guard.fence.change();
             record.status = CreateStatus::Unknown;
+            state.account = None;
             state.dirty_sticky = true;
             state.persist()?;
             return Err(BackpackExecutionErrorKind::Ownership.into());
         }
         let cumulative = cumulative.ok_or(BackpackExecutionErrorKind::Validation)?;
         if cumulative > record.observed_cumulative {
+            let _change = self.guard.fence.change();
             let reopened = record.status == CreateStatus::Reconciled;
             if reopened {
                 record.status = CreateStatus::Unknown;
@@ -387,6 +550,7 @@ impl BackpackOrderOwner {
             if reopened {
                 state.dirty_sticky = true;
             }
+            state.account = None;
             state.persist()?;
         }
         Ok(())
@@ -533,6 +697,7 @@ impl BackpackOrderOwner {
                         return Err(BackpackHttpError::local(BackpackHttpErrorKind::Admission));
                     }
                 }
+                let production = state.production;
                 let record = state
                     .records
                     .get_mut(&id)
@@ -551,10 +716,20 @@ impl BackpackOrderOwner {
                     record.cancel = CancelStatus::Unknown;
                     values
                 } else {
-                    let values = record
+                    let mut values = record
                         .spec
                         .parameters(&record.symbol, Some(record.client_id))
                         .map_err(|_| BackpackHttpError::local(BackpackHttpErrorKind::Validation))?;
+                    if production {
+                        for flag in [
+                            "autoBorrow",
+                            "autoBorrowRepay",
+                            "autoLend",
+                            "autoLendRedeem",
+                        ] {
+                            values.insert(flag, Some(BackpackScalar::Boolean(false)))?;
+                        }
+                    }
                     record.status = CreateStatus::Unknown;
                     values
                 };
@@ -649,12 +824,14 @@ impl BackpackOrderOwner {
         response: Result<HttpResponse, BackpackHttpError>,
     ) -> Result<BackpackMutationReceipt, BackpackExecutionError> {
         let mut state = self.guard.lock()?;
+        let production = state.production;
         let record = state
             .records
             .get_mut(&id)
             .ok_or(BackpackExecutionErrorKind::Ownership)?;
         let already_reconciled = record.status == CreateStatus::Reconciled;
-        let mut result = response.and_then(|response| decode_response(record, deleting, &response));
+        let mut result =
+            response.and_then(|response| decode_response(record, deleting, production, &response));
         let observed_binding = state
             .records
             .get(&id)
@@ -695,6 +872,8 @@ impl BackpackOrderOwner {
                 }
             }
             Err(error) => {
+                record.local_refusal_confirmed =
+                    production && error.outcome() == BackpackRequestOutcome::NotSent;
                 record.status = match error.outcome() {
                     BackpackRequestOutcome::NotSent => CreateStatus::Unsent,
                     BackpackRequestOutcome::VenueRejected => CreateStatus::Rejected,
@@ -751,6 +930,8 @@ struct StoredIntent {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct OrderRecord {
+    #[serde(default, skip_serializing_if = "refusal_unconfirmed")]
+    local_refusal_confirmed: bool,
     pub(crate) spec: BackpackOrderSpec,
     symbol: String,
     pub(crate) notional: Decimal,
@@ -762,12 +943,16 @@ pub(crate) struct OrderRecord {
     observed_cumulative: Decimal,
     economic_ack_reference: Option<String>,
 }
+fn refusal_unconfirmed(confirmed: &bool) -> bool {
+    !*confirmed
+}
 impl OrderRecord {
     pub(crate) fn holds_capacity(&self) -> bool {
-        !matches!(
-            self.status,
-            CreateStatus::Rejected | CreateStatus::Reconciled
-        )
+        !self.local_refusal_confirmed
+            && !matches!(
+                self.status,
+                CreateStatus::Rejected | CreateStatus::Reconciled
+            )
     }
     pub(crate) fn is_unknown(&self) -> bool {
         self.status == CreateStatus::Unknown
@@ -794,6 +979,9 @@ enum CancelStatus {
 
 #[derive(Debug)]
 pub(crate) struct OwnerState {
+    pub(crate) production: bool,
+    recovery_start_ms: Option<u64>,
+    anchor_initialization_allowed: bool,
     identities: BackpackClientIdStore,
     pub(crate) namespace: BackpackClientIdNamespace,
     pub(crate) config: BackpackConfig,
@@ -840,6 +1028,7 @@ impl OwnerState {
             .records
             .values()
             .filter(|r| r.status == CreateStatus::Unsent)
+            .filter(|r| !r.local_refusal_confirmed)
             .count();
         let unknown = self
             .records
@@ -897,6 +1086,7 @@ impl OwnerState {
             self.records = stored.payload.records;
             self.generation = stored.payload.generation;
             self.dirty_sticky = stored.payload.dirty_sticky;
+            self.recovery_start_ms = stored.payload.recovery_start_ms;
             self.checkpoint_bytes = Some(bytes);
         }
         for (id, client_id) in self.identities.reserved_ids() {
@@ -933,6 +1123,7 @@ impl OwnerState {
                 self.records.insert(
                     id,
                     OrderRecord {
+                        local_refusal_confirmed: false,
                         spec: intent.spec,
                         symbol: intent.symbol,
                         notional: intent.notional,
@@ -956,10 +1147,20 @@ impl OwnerState {
         }
         // Process termination gives no proof about in-flight or observed-but-unapplied economics.
         for record in self.records.values_mut() {
+            if record.local_refusal_confirmed
+                && (record.status != CreateStatus::Unsent
+                    || record.venue_order_id.is_some()
+                    || record.observed_cumulative != Decimal::ZERO
+                    || record.economic_ack_reference.is_some()
+                    || record.cancel != CancelStatus::NeverAttempted)
+            {
+                return Err(BackpackExecutionErrorKind::Storage.into());
+            }
             if matches!(
                 record.status,
                 CreateStatus::Unsent | CreateStatus::ResponseObserved
-            ) {
+            ) && !record.local_refusal_confirmed
+            {
                 record.status = CreateStatus::Unknown;
             }
             if record.cancel == CancelStatus::Unsent {
@@ -992,6 +1193,7 @@ impl OwnerState {
             records: self.records.clone(),
             generation: self.generation,
             dirty_sticky: self.dirty_sticky,
+            recovery_start_ms: self.recovery_start_ms,
         };
         let canonical =
             serde_json::to_vec(&payload).map_err(|_| BackpackExecutionErrorKind::Storage)?;
@@ -1047,6 +1249,8 @@ struct CheckpointPayload {
     records: BTreeMap<ClientOrderId, OrderRecord>,
     generation: u64,
     dirty_sticky: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    recovery_start_ms: Option<u64>,
 }
 fn reject_symlink(path: &Path) -> Result<(), BackpackExecutionError> {
     match fs::symlink_metadata(path) {
@@ -1067,6 +1271,7 @@ impl From<HttpClientError> for BackpackExecutionError {
 fn decode_response(
     record: &mut OrderRecord,
     deleting: bool,
+    production: bool,
     response: &HttpResponse,
 ) -> Result<BackpackMutationReceipt, BackpackHttpError> {
     let status = response.status.as_u16();
@@ -1114,6 +1319,22 @@ fn decode_response(
     }
     let wire: OrderAcknowledgement = serde_json::from_slice(&response.body)
         .map_err(|_| BackpackHttpError::unknown(BackpackHttpErrorKind::Decode))?;
+    let market = production && record.spec.order_type == nautilus_model::enums::OrderType::Market;
+    let returned_quote = wire
+        .quote_quantity
+        .as_ref()
+        .filter(|value| !value.is_null());
+    let unsupported_quote = if market {
+        returned_quote.is_some_and(|value| {
+            wire.quantity.is_none()
+                || !value
+                    .as_str()
+                    .and_then(parse_decimal)
+                    .is_some_and(|value| value >= Decimal::ZERO)
+        })
+    } else {
+        returned_quote.is_some()
+    };
     let expected = record
         .spec
         .parameters(&record.symbol, Some(record.client_id))
@@ -1121,7 +1342,6 @@ fn decode_response(
         .json_body();
     let unsupported_semantics = [
         &wire.system_order_type,
-        &wire.quote_quantity,
         &wire.trigger_price,
         &wire.trigger_quantity,
         &wire.trigger_by,
@@ -1136,6 +1356,7 @@ fn decode_response(
     ]
     .iter()
     .any(|value| value.as_ref().is_some_and(|value| !value.is_null()))
+        || unsupported_quote
         || [
             &wire.auto_borrow,
             &wire.auto_lend,
@@ -1149,15 +1370,27 @@ fn decode_response(
                 .is_some_and(|value| !value.is_null() && value.as_bool() != Some(false))
         });
     let valid = !unsupported_semantics
-        && wire.client_id == record.client_id
+        && wire
+            .client_id
+            .map_or(market, |client| client == record.client_id)
         && wire.symbol == record.symbol
         && wire.side == expected["side"]
         && wire.order_type == expected["orderType"]
         && wire.time_in_force == expected["timeInForce"]
-        && wire.post_only == record.spec.post_only
-        && wire.reduce_only == record.spec.reduce_only
-        && parse_decimal(&wire.quantity) == Some(record.spec.quantity)
-        && wire.price.as_deref().and_then(parse_decimal) == record.spec.price
+        && wire
+            .post_only
+            .map_or(market, |flag| flag == record.spec.post_only)
+        && wire
+            .reduce_only
+            .map_or(market, |flag| flag == record.spec.reduce_only)
+        && wire.quantity.as_deref().map_or(market, |quantity| {
+            parse_decimal(quantity) == Some(record.spec.quantity)
+        })
+        && if market {
+            wire.price.is_none()
+        } else {
+            wire.price.as_deref().and_then(parse_decimal) == record.spec.price
+        }
         && parse_decimal(&wire.executed_quantity)
             .is_some_and(|qty| qty >= record.observed_cumulative && qty <= record.spec.quantity)
         && !wire.status.is_empty();
@@ -1187,15 +1420,15 @@ fn decode_response(
 #[serde(rename_all = "camelCase")]
 struct OrderAcknowledgement {
     id: String,
-    client_id: u32,
+    client_id: Option<u32>,
     symbol: String,
     side: String,
     order_type: String,
     time_in_force: String,
-    quantity: String,
+    quantity: Option<String>,
     price: Option<String>,
-    post_only: bool,
-    reduce_only: bool,
+    post_only: Option<bool>,
+    reduce_only: Option<bool>,
     executed_quantity: String,
     status: String,
     system_order_type: Option<Value>,
@@ -1227,8 +1460,11 @@ fn parse_decimal(value: &str) -> Option<Decimal> {
 
 #[cfg(test)]
 mod checkpoint_tests {
-    use super::*;
-    use crate::{models::BackpackMarket, parsing::parse_market};
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        mpsc,
+    };
+
     use axum::{
         Router,
         body::{Body, to_bytes},
@@ -1245,11 +1481,10 @@ mod checkpoint_tests {
     };
     use rstest::rstest;
     use serde_json::json;
-    use std::sync::{
-        atomic::{AtomicUsize, Ordering},
-        mpsc,
-    };
     use tokio::net::TcpListener;
+
+    use super::*;
+    use crate::{models::BackpackMarket, parsing::parse_market};
 
     #[derive(Debug)]
     struct Clock(std::sync::atomic::AtomicU64);
@@ -1292,6 +1527,58 @@ mod checkpoint_tests {
             allow_reduction: true,
             allow_owned_cancel: true,
         }
+    }
+    fn recovery_anchor_owner(directory: &Path) -> BackpackOrderOwner {
+        let endpoints =
+            BackpackEndpoints::loopback_override("http://127.0.0.1:8123", "ws://127.0.0.1:8123")
+                .unwrap();
+        let credential =
+            BackpackCredential::loopback_peer(&STANDARD.encode([7; 32]), &endpoints).unwrap();
+        let namespace =
+            BackpackClientIdNamespace::credential_scope(&credential, &endpoints, None).unwrap();
+        BackpackOrderOwner::new_production(BackpackOrderOwnerConfig {
+            config: BackpackConfig::with_endpoints_checked(
+                vec!["BTC_USDC_PERP".into()],
+                endpoints.clone(),
+            )
+            .unwrap(),
+            endpoints,
+            credential,
+            quota: BackpackQuota::default(),
+            clock: Arc::new(Clock(std::sync::atomic::AtomicU64::new(1000))),
+            policy: BackpackMutationPolicy {
+                window: Default::default(),
+                budget: Duration::from_secs(1),
+            },
+            identities: BackpackClientIdStore::open(directory, &namespace).unwrap(),
+            namespace,
+            authority: authority(),
+        })
+        .unwrap()
+    }
+    #[rstest]
+    fn recovery_anchor_is_pinned_across_restart_and_cannot_change_or_disappear() {
+        let directory = tempfile::tempdir().unwrap();
+        let owner = recovery_anchor_owner(directory.path());
+        owner.bind_recovery_start_ms(Some(500)).unwrap();
+        assert!(owner.bind_recovery_start_ms(Some(501)).is_err());
+        assert!(owner.bind_recovery_start_ms(None).is_err());
+        drop(owner);
+        let owner = recovery_anchor_owner(directory.path());
+        owner.bind_recovery_start_ms(Some(500)).unwrap();
+        assert!(owner.bind_recovery_start_ms(Some(499)).is_err());
+        assert!(owner.bind_recovery_start_ms(None).is_err());
+    }
+    #[rstest]
+    fn recovery_anchor_cannot_be_introduced_into_existing_default_namespace() {
+        let directory = tempfile::tempdir().unwrap();
+        let owner = recovery_anchor_owner(directory.path());
+        owner.bind_recovery_start_ms(None).unwrap();
+        assert!(owner.bind_recovery_start_ms(Some(500)).is_err());
+        drop(owner);
+        let owner = recovery_anchor_owner(directory.path());
+        owner.bind_recovery_start_ms(None).unwrap();
+        assert!(owner.bind_recovery_start_ms(Some(500)).is_err());
     }
     fn instrument() -> InstrumentId {
         InstrumentId::from("BTC_USDC_PERP.BACKPACK")

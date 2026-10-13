@@ -140,7 +140,7 @@ impl PyBackpackExecutionClientConfig {
         quota, subaccount=None, base_url_http=None, base_url_ws=None, connect_timeout_ms=20000,
         shutdown_timeout_ms=3000, recovery_interval_ms=30000, recovery_lookback_ms=3600000,
         input_capacity=256, fill_capacity=100000, page_size=1000, max_pages=10,
-        max_items=10000, read_timeout_ms=30000))]
+        max_items=10000, read_timeout_ms=30000, recovery_start_ms=None))]
     #[expect(
         clippy::too_many_arguments,
         reason = "explicit native account policy and read limits"
@@ -165,6 +165,7 @@ impl PyBackpackExecutionClientConfig {
         max_pages: u64,
         max_items: u64,
         read_timeout_ms: u64,
+        recovery_start_ms: Option<u64>,
     ) -> PyResult<Self> {
         let audience = endpoints(base_url_http, base_url_ws)?;
         let namespace = if audience.is_loopback() {
@@ -202,6 +203,7 @@ impl PyBackpackExecutionClientConfig {
             budget,
             quota.inner,
         )
+        .and_then(|config| config.with_recovery_start_ms(recovery_start_ms))
         .map_err(|_| to_pyvalue_err("invalid Backpack read-only account configuration"))?;
         Ok(Self {
             inner,
@@ -285,6 +287,10 @@ impl PyBackpackExecutionClientConfig {
     #[getter]
     fn input_capacity(&self) -> usize {
         self.inner.policy.input_capacity
+    }
+    #[getter]
+    fn recovery_start_ms(&self) -> Option<u64> {
+        self.inner.recovery_start_ms()
     }
     #[getter]
     fn fill_capacity(&self) -> usize {
