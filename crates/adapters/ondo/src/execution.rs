@@ -122,7 +122,7 @@ use std::{
     collections::BTreeMap,
     sync::{
         Arc,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::Duration,
 };
@@ -137,6 +137,7 @@ use nautilus_common::{
         GenerateOrderStatusReports, GeneratePositionStatusReports, ModifyOrder, QueryOrder,
         SubmitOrder, SubmitOrderList,
     },
+    msgbus::{self, TypedHandler, switchboard},
 };
 use nautilus_core::{
     Params, UnixNanos,
@@ -148,6 +149,7 @@ use nautilus_live::{
 };
 use nautilus_model::{
     accounts::AccountAny,
+    data::QuoteTick,
     enums::{LiquiditySide, OmsType, OrderSide, OrderStatus, OrderType, PositionSide, TimeInForce},
     identifiers::{AccountId, ClientId, ClientOrderId, InstrumentId, TradeId, Venue, VenueOrderId},
     instruments::Instrument,
@@ -690,28 +692,53 @@ struct OndoPrivateState {
 impl OndoPrivateState {
     /// Resolves the order an `ApiOrder` payload is about.
     fn resolve_order(&self, payload: &OndoApiOrder) -> Option<ClientOrderId> {
-        if let Some(client_order_id) = payload.client_order_id() {
-            let id = ClientOrderId::from(client_order_id);
-
-            if self.orders.contains_key(&id) {
-                return Some(id);
-            }
+        let id = self.resolve_identity(
+            payload.client_order_id(),
+            payload.order_id(),
+            payload.market(),
+        )?;
+        let order = self.orders.get(&id)?;
+        if payload.side().to_order_side() != order.side
+            || payload
+                .quantity()
+                .ok()
+                .is_none_or(|quantity| quantity != order.quantity)
+            || nautilus_order_type(payload.order_type()).ok() != Some(order.order_type)
+            || payload
+                .reduce_only()
+                .is_some_and(|reduce_only| reduce_only != order.reduce_only)
+        {
+            return None;
         }
-
-        self.by_venue_order_id.get(payload.order_id()).copied()
+        Some(id)
     }
 
     /// Resolves the order a fill is about.
     fn resolve_fill(&self, fill: &OndoApiFill) -> Option<ClientOrderId> {
-        if let Some(client_order_id) = fill.client_order_id() {
-            let id = ClientOrderId::from(client_order_id);
+        let id = self.resolve_identity(fill.client_order_id(), fill.order_id(), fill.market())?;
+        let order = self.orders.get(&id)?;
+        (fill_order_side(fill).ok() == Some(order.side)).then_some(id)
+    }
 
-            if self.orders.contains_key(&id) {
-                return Some(id);
-            }
+    fn resolve_identity(
+        &self,
+        client: Option<&str>,
+        venue: &str,
+        market: &str,
+    ) -> Option<ClientOrderId> {
+        let id = match client {
+            Some(client) => ClientOrderId::from(client),
+            None => *self.by_venue_order_id.get(venue)?,
+        };
+        let order = self.orders.get(&id)?;
+        if order
+            .venue_order_id
+            .is_some_and(|known| known.as_str() != venue)
+            || market_to_instrument_id(market).ok() != Some(order.instrument_id)
+        {
+            return None;
         }
-
-        self.by_venue_order_id.get(fill.order_id()).copied()
+        Some(id)
     }
 
     /// Returns the venue order id this session has seen for a client order id.
@@ -1611,6 +1638,7 @@ pub struct OndoExecutionClient {
     /// the synchronous fallback records that the ordered cleanup is still owed so a later
     /// `disconnect` runs it instead of early-returning on the absent transport.
     last_shutdown: Option<ShutdownRecord>,
+    quote_handlers: Vec<(InstrumentId, TypedHandler<QuoteTick>)>,
 }
 
 /// A single bounded budget shared by every phase of one shutdown.
@@ -1718,6 +1746,12 @@ impl Drop for RequestDrainGuard<'_> {
         if !self.completed {
             self.tasks.abort();
         }
+    }
+}
+
+impl Drop for OndoExecutionClient {
+    fn drop(&mut self) {
+        self.stop_observing_quotes();
     }
 }
 
@@ -1833,12 +1867,10 @@ impl OndoExecutionClient {
             reconciliation.write().mark_account_read_only();
         }
 
-        let production = config
-            .execution_envelope
-            .clone()
-            .map(|envelope| {
-                crate::production::ProductionAuthority::new(
-                    envelope,
+        let production = if let Some(limits) = config.continuous_execution.clone() {
+            Some(
+                crate::production::ProductionAuthority::new_continuous(
+                    limits,
                     config.diagnostics_run_id.clone().unwrap_or_default(),
                     config
                         .expected_venue_account_id
@@ -1847,9 +1879,27 @@ impl OndoExecutionClient {
                     config.journal_path.as_deref().unwrap_or_default(),
                     config.dms_timeout_secs,
                 )
-                .map_err(anyhow::Error::msg)
-            })
-            .transpose()?;
+                .map_err(anyhow::Error::msg)?,
+            )
+        } else {
+            config
+                .execution_envelope
+                .clone()
+                .map(|envelope| {
+                    crate::production::ProductionAuthority::new(
+                        envelope,
+                        config.diagnostics_run_id.clone().unwrap_or_default(),
+                        config
+                            .expected_venue_account_id
+                            .as_deref()
+                            .unwrap_or_default(),
+                        config.journal_path.as_deref().unwrap_or_default(),
+                        config.dms_timeout_secs,
+                    )
+                    .map_err(anyhow::Error::msg)
+                })
+                .transpose()?
+        };
         let http_client = OndoHttpClient::builder()
             .base_url(base_url)
             .timeout_secs(config.http_timeout_secs)
@@ -1897,6 +1947,7 @@ impl OndoExecutionClient {
             account_state_published: Arc::new(AtomicU64::new(0)),
             account_identity: Arc::new(RwLock::new(OndoAccountIdentity::Unknown)),
             production: production.clone(),
+            production_quotes: Arc::new(RwLock::new(BTreeMap::new())),
         };
 
         // The journal is restored here - before the client exists, and therefore before anything
@@ -1909,6 +1960,7 @@ impl OndoExecutionClient {
             let machine = Arc::clone(&reconciliation);
             let journal = account.journal.clone();
             let identity = Arc::clone(&account.account_identity);
+            let quotes = Arc::clone(&account.production_quotes);
             guard
                 .bind(Arc::new(move |checkpoint| {
                     let state = reporter.state.read();
@@ -1921,14 +1973,23 @@ impl OndoExecutionClient {
                     Ok(crate::production::ProductionEvidence {
                         ready: matches!(machine.admission(now), Admission::Granted { .. })
                             && machine.reading_is_fresh(now),
+                        reduction_ready: machine.reading_is_fresh(now)
+                            && machine
+                                .last_judgment()
+                                .is_some_and(|j| j.permits_owned_reduction()),
                         identity_matched: *identity.read() == OndoAccountIdentity::Matched,
-                        journal_healthy: journal.write_failures() == 0
+                        journal_healthy: journal.is_active()
+                            && journal.write_failures() == 0
                             && journal.last_written_at().is_some()
                             && !matches!(machine.journal(), JournalStatus::Failed { .. }),
                         dms_verified: matches!(
                             machine.dead_mans_switch().state_at(now),
                             DeadMansSwitchState::Armed
                         ),
+                        funding_accounted_usdc: match machine.funding().reconciliation() {
+                            FundingReconciliation::Reconciled { accounted } => Some(accounted),
+                            _ => None,
+                        },
                         available_margin_usdc: machine
                             .verified_balance()
                             .and_then(|b| b.reading().available_margin),
@@ -1947,6 +2008,7 @@ impl OndoExecutionClient {
                             })
                             .collect(),
                         unknown: machine.unknown_submissions().len(),
+                        quotes: quotes.read().clone(),
                     })
                 }))
                 .map_err(anyhow::Error::msg)?;
@@ -1969,7 +2031,43 @@ impl OndoExecutionClient {
             private_stream: None,
             tasks: TaskGroup::new(),
             last_shutdown: None,
+            quote_handlers: Vec::new(),
         })
+    }
+
+    fn observe_native_quotes(&mut self) {
+        if !self.quote_handlers.is_empty() {
+            return;
+        }
+        let Some(limits) = &self.config.continuous_execution else {
+            return;
+        };
+        for instrument in &limits.instrument_ids {
+            let quotes = Arc::clone(&self.account.production_quotes);
+            let handler = TypedHandler::from(move |quote: &QuoteTick| {
+                let mut quotes = quotes.write();
+                if quotes
+                    .get(&quote.instrument_id)
+                    .is_none_or(|previous| previous.ts_init <= quote.ts_init)
+                {
+                    quotes.insert(quote.instrument_id, *quote);
+                }
+            });
+            // DataEngine publishes this topic after storing the real native quote in Cache.
+            // The shared copy lets send-time admission read current marks after a budget wait.
+            msgbus::subscribe_quotes(
+                switchboard::get_quotes_topic(*instrument).into(),
+                handler.clone(),
+                Some(10),
+            );
+            self.quote_handlers.push((*instrument, handler));
+        }
+    }
+
+    fn stop_observing_quotes(&mut self) {
+        for (instrument, handler) in self.quote_handlers.drain(..) {
+            msgbus::unsubscribe_quotes(switchboard::get_quotes_topic(instrument).into(), &handler);
+        }
     }
 
     /// Returns a reference to the configuration.
@@ -2149,7 +2247,13 @@ impl OndoExecutionClient {
     pub fn can_submit_new_orders(&self) -> bool {
         let now = self.account.now();
 
-        self.reconciliation.read().can_submit_new_orders(now)
+        let ready = self.reconciliation.read().can_submit_new_orders(now);
+        ready
+            && self
+                .account
+                .production
+                .as_ref()
+                .is_none_or(|guard| !guard.is_continuous() || guard.continuous_new_risk_ready())
     }
 
     /// Returns whether this client must refuse a new order right now.
@@ -2158,9 +2262,7 @@ impl OndoExecutionClient {
     /// there is no account state a new order could be placed against.
     #[must_use]
     pub fn refuses_new_risk(&self) -> bool {
-        let now = self.account.now();
-
-        self.reconciliation.read().refuses_new_risk(now)
+        !self.can_submit_new_orders()
     }
 
     /// Returns why a new order would be refused, or [`None`] when one may be submitted.
@@ -2373,6 +2475,40 @@ impl OndoExecutionClient {
         self.stop_and_wait_within(now, &budget).await
     }
 
+    /// Obtains current production proof after any earlier pass leaves the account.
+    async fn reconcile_production_shutdown(&self, budget: &ShutdownBudget) -> anyhow::Result<()> {
+        let guard = self
+            .account
+            .production
+            .as_ref()
+            .expect("production shutdown");
+        loop {
+            if budget.remaining().is_zero() {
+                anyhow::bail!("production shutdown reconciliation budget exhausted");
+            }
+            match tokio::time::timeout(
+                budget.remaining(),
+                self.account.reconcile_account(self.account.now()),
+            )
+            .await
+            {
+                Ok(Ok(_)) => {
+                    if guard.snapshot().is_some_and(|proof| {
+                        proof["phase"] == "reconciled" && proof["complete"] == true
+                    }) {
+                        return Ok(());
+                    }
+                }
+                Ok(Err(error))
+                    if error.downcast_ref::<RecoveryPassRefusal>()
+                        == Some(&RecoveryPassRefusal::AlreadyRunning) => {}
+                Ok(Err(error)) => return Err(error),
+                Err(_) => anyhow::bail!("production shutdown reconciliation timed out"),
+            }
+            tokio::time::sleep(budget.remaining().min(Duration::from_millis(10))).await;
+        }
+    }
+
     /// Executes the ordered stop against one shared shutdown budget.
     ///
     /// The budget covers the cancel requests, the confirmations, the switch release and the
@@ -2490,21 +2626,25 @@ impl OndoExecutionClient {
         // and submission is confirmed, and the wait did not time out. A successful query is not a
         // confirmed cancel, and a terminal order with missing fills is not a settled one.
         let release_owed = report.steps.contains(&StopStep::ReleaseDeadMansSwitch);
-        let release_allowed = release_owed
+        let mut release_allowed = release_owed
             && !read_only
             && report.outcome == StopOutcome::Complete
             && report.unconfirmed_cancels.is_empty()
             && report.unknown_submissions.is_empty()
             && report.unresolved_orders.is_empty();
 
-        if release_allowed {
-            if self.account.production.is_some() {
-                let _ = tokio::time::timeout(
-                    budget.remaining(),
-                    self.account.reconcile_account(self.account.now()),
-                )
-                .await;
+        if release_allowed
+            && self.account.production.is_some()
+            && let Err(error) = self.reconcile_production_shutdown(budget).await
+        {
+            log::warn!("Ondo shutdown could not obtain current reconciliation proof: {error}");
+            if budget.remaining().is_zero() {
+                report.outcome = StopOutcome::TimedOut;
             }
+            release_allowed = false;
+        }
+
+        if release_allowed {
             // Composing is not releasing: the frame is built without moving the switch, and the
             // switch is released locally only once the write succeeded.
             let frame = self
@@ -2950,6 +3090,7 @@ pub struct OndoAccountRuntime {
     /// The authenticated account identity, once it has been compared.
     account_identity: Arc<RwLock<OndoAccountIdentity>>,
     production: Option<Arc<crate::production::ProductionAuthority>>,
+    production_quotes: Arc<RwLock<BTreeMap<InstrumentId, QuoteTick>>>,
 }
 
 /// An exclusively owned, read account pass awaiting publication and checkpoint.
@@ -2981,6 +3122,13 @@ impl OndoReconciliationPass<'_> {
             .take()
             .ok_or_else(|| anyhow::anyhow!("account pass already consumed"))?;
         let account = self.account;
+        anyhow::ensure!(
+            account
+                .journal
+                .as_ref()
+                .is_none_or(JournalHandle::is_active),
+            "continuous journal ownership has ended"
+        );
         let judgment = {
             let mut machine = account.reconciliation.write();
             if machine.recovery_generation() != self.generation {
@@ -3011,7 +3159,7 @@ impl OndoReconciliationPass<'_> {
         if let Some(guard) = &account.production {
             guard.reconcile(
                 &reading,
-                judgment.is_clean(),
+                judgment.is_production_reconciled(),
                 self.activity.unwrap_or_default(),
             );
         }
@@ -3043,6 +3191,7 @@ struct JournalHandle {
     path: Arc<std::path::Path>,
     write_failures: Arc<AtomicU64>,
     write_lock: Arc<Mutex<()>>,
+    active: Arc<AtomicBool>,
     /// The instant of the last write that succeeded, in nanoseconds; zero is "never".
     last_written_at: Arc<AtomicU64>,
     /// The newest applied fill that write covered, in nanoseconds; zero is "none".
@@ -3055,6 +3204,7 @@ impl JournalHandle {
             path: Arc::from(path),
             write_failures: Arc::new(AtomicU64::new(0)),
             write_lock: Arc::new(Mutex::new(())),
+            active: Arc::new(AtomicBool::new(true)),
             last_written_at: Arc::new(AtomicU64::new(0)),
             watermark: Arc::new(AtomicU64::new(0)),
         }
@@ -3062,6 +3212,15 @@ impl JournalHandle {
 
     fn path(&self) -> &std::path::Path {
         &self.path
+    }
+
+    fn is_active(&self) -> bool {
+        self.active.load(Ordering::Acquire)
+    }
+
+    fn revoke(&self) {
+        let _write = self.write_lock.lock();
+        self.active.store(false, Ordering::Release);
     }
 
     fn write_failures(&self) -> u64 {
@@ -3102,6 +3261,9 @@ impl JournalHandle {
         machine: &ReconciliationMachine,
     ) {
         let _write = self.write_lock.lock();
+        if !self.is_active() {
+            return;
+        }
         let journal = LedgerJournal::from_snapshot(JournalSnapshot {
             account_id,
             watermark: state.watermark,
@@ -3171,8 +3333,13 @@ impl OndoAccountRuntime {
         let reading = machine
             .last_reading()
             .ok_or_else(|| anyhow::anyhow!("production DMS account unread"))?;
-        if machine.last_judgment().is_none_or(|j| !j.is_clean())
-            || !machine.unknown_submissions().is_empty()
+        if machine.last_judgment().is_none_or(|j| {
+            if guard.is_continuous() {
+                !j.permits_owned_reduction()
+            } else {
+                !j.is_production_reconciled()
+            }
+        }) || !machine.unknown_submissions().is_empty()
         {
             anyhow::bail!("production DMS requires reconciled owned exposure only");
         }
@@ -3190,36 +3357,51 @@ impl OndoAccountRuntime {
         let Some(guard) = &self.production else {
             return Ok(());
         };
-        guard.metadata(None, None, self.now().as_u64());
+        let instrument_ids = guard.instrument_ids();
+        for id in &instrument_ids {
+            guard.metadata_for(*id, None, None, self.now().as_u64());
+        }
         let fetched_at = self.now();
         let infos = response.market_infos(fetched_at)?;
-        let info = infos
-            .into_iter()
-            .find(|i| i.instrument_id() == guard.envelope().instrument_id)
-            .ok_or_else(|| anyhow::anyhow!("approved production market is absent"))?;
         let contracts = self.http_client.get_contracts().await?;
-        let mut closed = None;
-        let mut matches = 0;
-        for raw in contracts {
-            let value: serde_json::Value = serde_json::from_str(raw.get())?;
-            if value.get("market").and_then(serde_json::Value::as_str) == Some(info.market()) {
-                matches += 1;
-                if value.get("disabled").and_then(serde_json::Value::as_bool) != Some(false) {
-                    anyhow::bail!(
-                        "approved production contract is disabled or has unknown disabled state"
-                    );
+        let contracts = contracts
+            .iter()
+            .map(|raw| serde_json::from_str::<serde_json::Value>(raw.get()))
+            .collect::<Result<Vec<_>, _>>()?;
+        for instrument_id in instrument_ids {
+            let info = infos
+                .iter()
+                .find(|info| info.instrument_id() == instrument_id)
+                .ok_or_else(|| anyhow::anyhow!("configured execution market is absent"))?;
+            let mut closed = None;
+            let mut matches = 0;
+            for value in &contracts {
+                if value.get("market").and_then(serde_json::Value::as_str) == Some(info.market()) {
+                    matches += 1;
+                    if value.get("disabled").and_then(serde_json::Value::as_bool) != Some(false) {
+                        anyhow::bail!(
+                            "approved production contract is disabled or has unknown disabled state"
+                        );
+                    }
+                    closed = value.get("isClosed").and_then(serde_json::Value::as_bool);
                 }
-                closed = value.get("isClosed").and_then(serde_json::Value::as_bool);
             }
+            if matches != 1 {
+                anyhow::bail!("approved production contract must have exactly one metadata record");
+            }
+            info.try_increments()?;
+            if !info.is_tradable() || closed != Some(false) {
+                anyhow::bail!(
+                    "production market status or underlying-hours policy is not satisfied"
+                );
+            }
+            guard.metadata_for(
+                instrument_id,
+                Some(info.clone()),
+                closed,
+                fetched_at.as_u64(),
+            );
         }
-        if matches != 1 {
-            anyhow::bail!("approved production contract must have exactly one metadata record");
-        }
-        info.try_increments()?;
-        if !info.is_tradable() || closed != Some(false) {
-            anyhow::bail!("production market status or underlying-hours policy is not satisfied");
-        }
-        guard.metadata(Some(info), closed, fetched_at.as_u64());
         Ok(())
     }
 
@@ -3515,6 +3697,11 @@ impl OndoAccountRuntime {
     #[must_use]
     pub fn is_account_read_only(&self) -> bool {
         self.reconciliation.read().is_account_read_only()
+    }
+
+    /// Returns the last whole-account judgment for fixed diagnostic projection.
+    pub(crate) fn last_judgment(&self) -> Option<AccountJudgment> {
+        self.reconciliation.read().last_judgment().cloned()
     }
 
     /// Returns how many verified account states this runtime has published.
@@ -4079,6 +4266,10 @@ impl OndoAccountRuntime {
         let Some(claim) = self.pass.claim() else {
             return Err(RecoveryPassRefusal::AlreadyRunning.into());
         };
+        anyhow::ensure!(
+            self.journal.as_ref().is_none_or(JournalHandle::is_active),
+            "continuous journal ownership has ended"
+        );
         let activity = self.production.as_ref().map(|g| g.activity_generation());
         let reading = if let Some(guard) = &self.production {
             match tokio::time::timeout(guard.remaining(), self.read_account(now)).await {
@@ -4654,7 +4845,35 @@ impl OndoAccountRuntime {
     /// reported twice. A payload that acknowledges the order flushes the fills that arrived before
     /// it, oldest first, so a fill that preceded the ACK is still reported after it.
     pub fn apply_order(&self, payload: &OndoApiOrder) -> OndoOrderApplication {
+        if self
+            .journal
+            .as_ref()
+            .is_some_and(|journal| !journal.is_active())
+        {
+            return OndoOrderApplication::Untracked {
+                raw: payload.raw().to_string(),
+            };
+        }
         let result = self.reporter.apply_order(payload, Acceptance::Report, None);
+        if matches!(result, OndoOrderApplication::Untracked { .. })
+            && self
+                .production
+                .as_ref()
+                .is_some_and(|guard| guard.is_continuous())
+        {
+            let state = self.reporter.state.read();
+            let collision = payload
+                .client_order_id()
+                .is_some_and(|id| state.orders.contains_key(&ClientOrderId::from(id)))
+                || state.by_venue_order_id.contains_key(payload.order_id());
+            drop(state);
+            if collision {
+                self.note_lost_reports(
+                    1,
+                    "order evidence conflicts with durable owned identity".into(),
+                );
+            }
+        }
         if matches!(result, OndoOrderApplication::Applied) {
             if let Some(guard) = &self.production {
                 guard.activity();
@@ -4669,7 +4888,30 @@ impl OndoAccountRuntime {
     ///
     /// See [`OndoReporter::apply_fill`].
     pub fn apply_fill(&self, fill: &OndoApiFill) -> anyhow::Result<OndoFillApplication> {
+        anyhow::ensure!(
+            self.journal.as_ref().is_none_or(JournalHandle::is_active),
+            "continuous journal ownership has ended"
+        );
         let result = self.reporter.apply_fill(fill);
+        if matches!(result, Ok(OndoFillApplication::Untracked))
+            && self
+                .production
+                .as_ref()
+                .is_some_and(|guard| guard.is_continuous())
+        {
+            let state = self.reporter.state.read();
+            let collision = fill
+                .client_order_id()
+                .is_some_and(|id| state.orders.contains_key(&ClientOrderId::from(id)))
+                || state.by_venue_order_id.contains_key(fill.order_id());
+            drop(state);
+            if collision {
+                self.note_lost_reports(
+                    1,
+                    "fill evidence conflicts with durable owned identity".into(),
+                );
+            }
+        }
         if matches!(result, Ok(OndoFillApplication::Applied)) || result.is_err() {
             if let Some(guard) = &self.production {
                 guard.activity();
@@ -4769,6 +5011,7 @@ impl ExecutionClient for OndoExecutionClient {
         }
 
         self.reporter.emitter.set_sender(get_exec_event_sender());
+        self.observe_native_quotes();
         self.core.set_started();
 
         log::info!(
@@ -4784,6 +5027,7 @@ impl ExecutionClient for OndoExecutionClient {
     }
 
     fn stop(&mut self) -> anyhow::Result<()> {
+        self.stop_observing_quotes();
         if self.core.is_stopped() {
             return Ok(());
         }
@@ -4899,6 +5143,13 @@ impl ExecutionClient for OndoExecutionClient {
     /// read its account, so the failure is reported rather than swallowed - it is refused before
     /// the connection state moves, so a failed start does not leave a client that looks connected.
     async fn connect(&mut self) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.account
+                .production
+                .as_ref()
+                .is_none_or(|guard| !guard.continuous_ownership_released()),
+            "continuous journal ownership ended; construct a new execution client for recovery"
+        );
         let readiness_account_events = self.account.account_state_published();
         self.verify_account_identity().await?;
         if let Some(guard) = &self.account.production {
@@ -4912,18 +5163,33 @@ impl ExecutionClient for OndoExecutionClient {
             let reading = machine
                 .last_reading()
                 .ok_or_else(|| anyhow::anyhow!("production start account unread"))?;
-            if reading
-                .balance
-                .as_ref()
-                .and_then(|b| b.available_margin)
-                .is_none_or(|v| v < guard.envelope().min_available_margin_usdc)
-                || reading.positions.iter().any(|p| p.signed != Decimal::ZERO)
-                || reading.orders.iter().any(|o| !o.status.is_terminal())
-                || !self.reporter.state.read().orders.is_empty()
-                || machine.last_judgment().is_none_or(|j| !j.is_clean())
+            if (!guard.is_continuous()
+                && reading
+                    .balance
+                    .as_ref()
+                    .and_then(|b| b.available_margin)
+                    .is_none_or(|v| v < guard.minimum_available_margin_usdc()))
+                || (!guard.is_continuous()
+                    && (reading.positions.iter().any(|p| p.signed != Decimal::ZERO)
+                        || reading.orders.iter().any(|o| !o.status.is_terminal())
+                        || !self.reporter.state.read().orders.is_empty()))
+                || machine.last_judgment().is_none_or(|j| {
+                    if guard.is_continuous() {
+                        !j.permits_owned_reduction()
+                    } else {
+                        !j.is_production_reconciled()
+                    }
+                })
                 || !guard.permits_dms()
             {
-                anyhow::bail!("production requires a fresh, flat, unoccupied whole account");
+                anyhow::bail!("production requires a complete admissible account reading");
+            }
+            if guard.is_continuous() {
+                let reading = reading.clone();
+                drop(machine);
+                guard
+                    .verify_dms_reading(&reading)
+                    .map_err(anyhow::Error::msg)?;
             }
         }
 
@@ -4953,7 +5219,11 @@ impl ExecutionClient for OndoExecutionClient {
 
         if let Some(guard) = &self.account.production {
             tokio::time::timeout(guard.entry_remaining(), async {
-                while guard.snapshot().is_none() {
+                while !guard.snapshot().is_some_and(|snapshot| {
+                    !guard.is_continuous()
+                        || snapshot["native_ready"] == true
+                        || snapshot["reduction_ready"] == true
+                }) {
                     tokio::time::sleep(Duration::from_millis(25)).await;
                 }
             })
@@ -5025,6 +5295,7 @@ impl ExecutionClient for OndoExecutionClient {
     /// the checkpoint have run. A repeated call preserves the original dirty outcome rather than
     /// relabelling it as success because the socket is gone.
     async fn disconnect(&mut self) -> anyhow::Result<()> {
+        self.stop_observing_quotes();
         // A completed shutdown is idempotent: nothing is left to do and the record is preserved.
         if self
             .last_shutdown
@@ -5122,6 +5393,16 @@ impl ExecutionClient for OndoExecutionClient {
         };
         if let Some(guard) = &self.account.production {
             record.production_finalized = guard.finish(record.is_complete());
+            if guard.is_continuous()
+                && tasks_drained
+                && self.private_stream.is_none()
+                && let Some(_claim) = self.account.pass.claim()
+            {
+                if let Some(journal) = &self.account.journal {
+                    journal.revoke();
+                }
+                guard.release_continuous_ownership();
+            }
         }
         let complete = record.is_complete();
         let error = (!complete).then(|| record.error());
@@ -5187,12 +5468,22 @@ impl ExecutionClient for OndoExecutionClient {
         // Plan §6.4: new risk waits for a recovered account. A command refused here leaves no trace
         // at the venue, which is the point - the alternative is an order placed against an account
         // whose state is unknown.
-        let permit = match self.admission() {
-            Admission::Granted { generation } => generation,
-            Admission::Refused { reason } => {
-                self.deny_submission(&order, &reason);
+        let owned_reduction = order.is_reduce_only()
+            && self
+                .account
+                .production
+                .as_ref()
+                .is_some_and(|guard| guard.is_continuous());
+        let permit = if owned_reduction {
+            NewRiskPermit::owned_reduction(self.reconciliation.read().recovery_generation())
+        } else {
+            match self.admission() {
+                Admission::Granted { generation } => NewRiskPermit::new(generation),
+                Admission::Refused { reason } => {
+                    self.deny_submission(&order, &reason);
 
-                return Ok(());
+                    return Ok(());
+                }
             }
         };
 
@@ -5208,6 +5499,24 @@ impl ExecutionClient for OndoExecutionClient {
         };
 
         if let Some(guard) = &self.account.production {
+            if guard.is_continuous() && self.core.cache().instrument(&cmd.instrument_id).is_none() {
+                self.reporter.emitter.emit_order_denied(
+                    &order,
+                    "configured instrument metadata must be loaded into the native cache",
+                );
+                return Ok(());
+            }
+            *self.account.production_quotes.write() = guard
+                .instrument_ids()
+                .iter()
+                .filter_map(|id| {
+                    self.core
+                        .cache()
+                        .quote(id)
+                        .copied()
+                        .map(|quote| (*id, quote))
+                })
+                .collect();
             let minimum = self
                 .core
                 .cache()
@@ -5279,16 +5588,9 @@ impl ExecutionClient for OndoExecutionClient {
 
             // The instant this gate decides at is the instant it runs at, not the one the command
             // was admitted at: the wait between the two is the wait this gate exists to cover.
-            let now = get_atomic_clock_realtime().get_time_ns();
-
-            if let Admission::Refused { reason } = revalidate(
-                &reconciliation,
-                &Admission::Granted { generation: permit },
-                now,
-            ) {
+            if let Err(reason) = RunAdmission::new(Arc::clone(&reconciliation)).revalidate(permit) {
                 log::error!(
-                    "Ondo refused to submit {client_order_id} at the request boundary: {}",
-                    reason.reason(),
+                    "Ondo refused to submit {client_order_id} at the request boundary: {reason}",
                 );
                 // The gate refused before any signed byte existed: definitively not sent.
                 settle_never_sent(
@@ -5297,7 +5599,7 @@ impl ExecutionClient for OndoExecutionClient {
                     account.production.as_ref(),
                     &order,
                     &client_order_id,
-                    &new_risk_refusal_reason(&reason),
+                    &reason,
                     false,
                 );
 
@@ -5310,8 +5612,12 @@ impl ExecutionClient for OndoExecutionClient {
             match http_client
                 .create_order(
                     &command,
-                    OndoRequestPriority::Normal,
-                    NewRiskPermit::new(permit),
+                    if command.reduce_only {
+                        OndoRequestPriority::High
+                    } else {
+                        OndoRequestPriority::Normal
+                    },
+                    permit,
                 )
                 .await
             {
@@ -6500,6 +6806,22 @@ impl RunAdmission {
 
 impl OndoNewRiskGuard for RunAdmission {
     fn revalidate(&self, permit: NewRiskPermit) -> Result<(), String> {
+        if permit.is_owned_reduction() {
+            let machine = self.reconciliation.read();
+            let now = get_atomic_clock_realtime().get_time_ns();
+            if machine.is_account_read_only()
+                || machine.state() == ReconciliationState::Disconnected
+                || machine.recovery_generation() != permit.generation()
+                || !machine.reading_is_fresh(now)
+                || machine
+                    .last_judgment()
+                    .is_none_or(|j| !j.permits_owned_reduction())
+            {
+                return Err("owned reduction account evidence is unavailable or superseded".into());
+            }
+            // The continuous authority separately proves the exact body reduces owned net risk
+            return Ok(());
+        }
         let permit = Admission::Granted {
             generation: permit.generation(),
         };

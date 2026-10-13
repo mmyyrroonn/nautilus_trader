@@ -265,19 +265,36 @@ fn header_value<'a>(headers: &'a HashMap<String, String>, name: &str) -> Option<
 /// reads the state again would admit a permit the account has since superseded, whenever the account
 /// happens to admit new risk again.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct NewRiskPermit(u64);
+pub struct NewRiskPermit {
+    generation: u64,
+    owned_reduction: bool,
+}
 
 impl NewRiskPermit {
     /// Wraps the run generation an admission decision was granted under.
     #[must_use]
     pub const fn new(generation: u64) -> Self {
-        Self(generation)
+        Self {
+            generation,
+            owned_reduction: false,
+        }
     }
 
     /// Returns the run generation this permit was granted under.
     #[must_use]
     pub const fn generation(self) -> u64 {
-        self.0
+        self.generation
+    }
+
+    pub(crate) const fn owned_reduction(generation: u64) -> Self {
+        Self {
+            generation,
+            owned_reduction: true,
+        }
+    }
+
+    pub(crate) const fn is_owned_reduction(self) -> bool {
+        self.owned_reduction
     }
 }
 
@@ -887,6 +904,24 @@ impl OndoHttpClient {
 
         self.budget.acquire(priority).await;
 
+        if permit.is_owned_reduction() {
+            let reduction = serde_json::from_slice::<serde_json::Value>(&body)
+                .ok()
+                .is_some_and(|order| order["reduceOnly"] == true);
+            if target.as_str() != "/v1/perps/orders"
+                || !reduction
+                || !self
+                    .production_guard
+                    .as_ref()
+                    .is_some_and(|guard| guard.is_continuous())
+            {
+                return Err(OndoNewRiskSendError::Refused {
+                    reason:
+                        "owned reduction admission requires a native continuous reduce-only command"
+                            .into(),
+                });
+            }
+        }
         self.admit_new_risk(permit)?;
         let headers = signed_request_headers(auth, "POST", target, &body)?;
         if let Some(guard) = &self.production_guard {

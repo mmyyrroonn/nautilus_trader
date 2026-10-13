@@ -80,6 +80,9 @@ fn scratch_module(py: Python<'_>) -> Bound<'_, PyModule> {
         .add_class::<nautilus_ondo::production::OndoExecutionEnvelopeConfig>()
         .unwrap();
     module
+        .add_class::<nautilus_ondo::production::OndoContinuousExecutionConfig>()
+        .unwrap();
+    module
         .add_class::<OndoHttpClient>()
         .expect("the HTTP client should register");
 
@@ -782,6 +785,7 @@ fn test_the_execution_factory_snapshot_is_a_sanitized_dict() {
         assert_eq!(
             keys,
             vec![
+                "account_reconciliation",
                 "account_state_events",
                 "identity_match",
                 "logged_in",
@@ -792,6 +796,12 @@ fn test_the_execution_factory_snapshot_is_a_sanitized_dict() {
                 "shutdown_status",
                 "subscriptions_acked",
             ],
+        );
+        assert!(
+            dict.get_item("account_reconciliation")
+                .unwrap()
+                .unwrap()
+                .is_none()
         );
 
         // The rendered snapshot carries neither half of the credential nor any account id.

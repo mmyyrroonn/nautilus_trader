@@ -37,20 +37,23 @@
 //! §4.4 also requires cancels, unknown-order queries and reconciliation to take precedence over
 //! ordinary metadata and history reads *within the same budget*, by reserving a request slot rather
 //! than bypassing the limit. [`OndoRequestPriority`] is that hook: [`OndoRateBudget::acquire`]
-//! takes it, so every caller already names the class of traffic it is. Both classes await the same
-//! single bucket today, which is what makes "a priority request can never exceed the budget" true
-//! now. A FIFO turnstile prevents a later periodic read from starving an older waiter; it is not
-//! the reserved-slot mechanism. That later mechanism still attaches inside `acquire`, where a
-//! `High` request can take the next reserved slot without bypassing the shared limit.
+//! takes it, so every caller already names the class of traffic it is. Both classes consume the same
+//! single bucket. Safety traffic reserves the next unconsumed slot ahead of ordinary reads,
+//! including a read already waiting for replenishment. Ordinary waits use FIFO ordering when no
+//! safety reservation intervenes.
+//! Cancelling a safety waiter releases its reservation; priority never bypasses the rate limit.
 
 use std::{
     num::NonZeroU32,
-    sync::{Arc, LazyLock, Mutex, PoisonError},
+    sync::{
+        Arc, LazyLock, Mutex, PoisonError,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
 use ahash::AHashMap;
 use nautilus_network::ratelimiter::{RateLimiter, clock::MonotonicClock, quota::Quota};
-use tokio::sync::Mutex as AsyncMutex;
+use tokio::sync::{Mutex as AsyncMutex, Notify};
 use ustr::Ustr;
 
 use crate::common::enums::OndoEnvironment;
@@ -100,10 +103,10 @@ pub fn shared_rest_budget(environment: OndoEnvironment) -> OndoRateBudget {
 pub enum OndoRequestPriority {
     /// Ordinary market metadata and history reads.
     Normal,
-    /// Cancel, unknown-order query and reconciliation traffic (§4.4).
+    /// Reduce-only close, cancel, unknown-order query and reconciliation traffic (§4.4).
     ///
-    /// It draws on the same budget as [`Self::Normal`]; the reserved-slot mechanism that lets it
-    /// take the next slot ahead of ordinary reads attaches in [`OndoRateBudget::acquire`].
+    /// It reserves the next unconsumed slot ahead of ordinary reads while drawing on the same
+    /// budget as [`Self::Normal`].
     High,
 }
 
@@ -121,6 +124,8 @@ pub struct OndoRateBudget {
     /// slot. Without one queue, a periodic reconciliation pass can repeatedly overtake an order
     /// that was already waiting and starve it indefinitely.
     waiters: Arc<AsyncMutex<()>>,
+    priority_waiters: Arc<AtomicUsize>,
+    priority_changed: Arc<Notify>,
 }
 
 impl Default for OndoRateBudget {
@@ -149,6 +154,8 @@ impl OndoRateBudget {
                 vec![(Ustr::from(ONDO_REST_BUCKET), quota)],
             )),
             waiters: Arc::new(AsyncMutex::new(())),
+            priority_waiters: Arc::new(AtomicUsize::new(0)),
+            priority_changed: Arc::new(Notify::new()),
         }
     }
 
@@ -169,13 +176,57 @@ impl OndoRateBudget {
     /// its own task and does not sleep mid-loop.
     pub async fn acquire(&self, priority: OndoRequestPriority) {
         log::trace!("Awaiting the shared Ondo REST budget for {priority:?} traffic");
-        // Tokio's async mutex grants locks in call order. Hold only the wait for a rate-limit
-        // slot, never the network request, so an older waiter cannot be overtaken while the
-        // request itself still releases the turn immediately after admission.
-        let _turn = self.waiters.lock().await;
-        self.limiter
-            .await_keys_ready(Some(&[Ustr::from(ONDO_REST_BUCKET)]))
-            .await;
+        // Cancellation drops the registration, so a cancelled safety request cannot leave
+        // ordinary reads permanently parked. Every winner still consumes the same bucket.
+        let _registration = (priority == OndoRequestPriority::High).then(|| {
+            self.priority_waiters.fetch_add(1, Ordering::AcqRel);
+            self.priority_changed.notify_waiters();
+            PriorityRegistration {
+                count: Arc::clone(&self.priority_waiters),
+                changed: Arc::clone(&self.priority_changed),
+            }
+        });
+        loop {
+            let changed = self.priority_changed.notified();
+            tokio::pin!(changed);
+            changed.as_mut().enable();
+            if priority == OndoRequestPriority::Normal
+                && self.priority_waiters.load(Ordering::Acquire) != 0
+            {
+                changed.await;
+                continue;
+            }
+            let turn = self.waiters.lock().await;
+            if priority == OndoRequestPriority::High {
+                self.limiter
+                    .await_keys_ready(Some(&[Ustr::from(ONDO_REST_BUCKET)]))
+                    .await;
+                return;
+            }
+            if self.priority_waiters.load(Ordering::Acquire) != 0 {
+                drop(turn);
+                continue;
+            }
+            // Yield an unconsumed future slot to newly arrived safety traffic. Without this,
+            // a history read holding the turnstile would defeat the priority reservation.
+            let keys = [Ustr::from(ONDO_REST_BUCKET)];
+            tokio::select! {
+                biased;
+                () = &mut changed => { drop(turn); }
+                () = self.limiter.await_keys_ready(Some(&keys)) => { return; }
+            }
+        }
+    }
+}
+
+struct PriorityRegistration {
+    count: Arc<AtomicUsize>,
+    changed: Arc<Notify>,
+}
+impl Drop for PriorityRegistration {
+    fn drop(&mut self) {
+        self.count.fetch_sub(1, Ordering::AcqRel);
+        self.changed.notify_waiters();
     }
 }
 
@@ -267,6 +318,75 @@ mod tests {
         tokio::time::advance(Duration::from_secs(1)).await;
         tokio::task::yield_now().await;
         assert_eq!(rx.try_recv(), Ok("later-reconciliation"));
+    }
+
+    /// A safety close reserves the next shared slot even when a history read is already waiting.
+    #[tokio::test(start_paused = true)]
+    async fn test_safety_priority_preempts_waiting_history_without_bypassing_quota() {
+        let budget = OndoRateBudget::new();
+        budget.acquire(OndoRequestPriority::Normal).await;
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        for (label, priority) in [
+            ("history", OndoRequestPriority::Normal),
+            ("close", OndoRequestPriority::High),
+        ] {
+            let budget = budget.clone();
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                budget.acquire(priority).await;
+                tx.send(label).unwrap();
+            });
+            for _ in 0..16 {
+                tokio::task::yield_now().await;
+            }
+        }
+        assert!(rx.try_recv().is_err());
+        tokio::time::advance(Duration::from_secs(1)).await;
+        for _ in 0..16 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(rx.try_recv(), Ok("close"));
+        assert!(
+            rx.try_recv().is_err(),
+            "priority does not create a second slot"
+        );
+        tokio::time::advance(Duration::from_secs(1)).await;
+        for _ in 0..16 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(rx.try_recv(), Ok("history"));
+    }
+
+    /// A cancelled priority request must not consume capacity or strand ordinary traffic.
+    #[tokio::test(start_paused = true)]
+    async fn test_cancelled_safety_wait_releases_reservation_without_consuming_slot() {
+        let budget = OndoRateBudget::new();
+        budget.acquire(OndoRequestPriority::Normal).await;
+        let high_budget = budget.clone();
+        let high = tokio::spawn(async move {
+            high_budget.acquire(OndoRequestPriority::High).await;
+        });
+        for _ in 0..16 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(budget.priority_waiters.load(Ordering::Acquire), 1);
+        high.abort();
+        assert!(high.await.unwrap_err().is_cancelled());
+        assert_eq!(budget.priority_waiters.load(Ordering::Acquire), 0);
+        let normal_budget = budget.clone();
+        let normal = tokio::spawn(async move {
+            normal_budget.acquire(OndoRequestPriority::Normal).await;
+        });
+        for _ in 0..16 {
+            tokio::task::yield_now().await;
+        }
+        assert!(!normal.is_finished());
+        tokio::time::advance(Duration::from_secs(1)).await;
+        for _ in 0..16 {
+            tokio::task::yield_now().await;
+        }
+        assert!(normal.is_finished());
+        normal.await.unwrap();
     }
 
     /// An explicit quota is the quota the limiter actually enforces, not a decoration on the

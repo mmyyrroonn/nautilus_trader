@@ -1107,6 +1107,13 @@ impl PrivateTransportState {
     /// running starts a task that is refused at the claim and reads nothing, which is the single
     /// place the "never two passes" rule lives (plan §R3.1).
     fn spawn_reconciliation(&self, passes: &mut JoinSet<()>) {
+        if self
+            .account
+            .production_authority()
+            .is_some_and(|guard| guard.shutdown_started())
+        {
+            return;
+        }
         let account = self.account.clone();
         let diagnostics = Arc::clone(&self.diagnostics);
         let wake = self.wake.clone();
@@ -1163,6 +1170,13 @@ impl PrivateTransportState {
     /// It is not on its own a licence to trade either: a converged account and a confirmed switch
     /// are still required (plan §R3.1).
     fn spawn_metadata_refresh(&self, passes: &mut JoinSet<()>) {
+        if self
+            .account
+            .production_authority()
+            .is_some_and(|guard| guard.shutdown_started())
+        {
+            return;
+        }
         let account = self.account.clone();
         let diagnostics = Arc::clone(&self.diagnostics);
         let wake = self.wake.clone();

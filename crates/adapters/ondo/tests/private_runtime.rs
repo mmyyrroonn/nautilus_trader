@@ -3568,7 +3568,7 @@ async fn test_the_release_step_has_a_frame_to_send() {
 
     assert_eq!(
         json,
-        r#"{"op":"unsubscribe","channel":"cancelAllOrdersAfterPerps","timeout_seconds":30}"#,
+        r#"{"op":"unsubscribe","channel":"cancelAllOrdersAfterPerps"}"#,
     );
 
     // Released: the sequence no longer names the step, and nothing is required of the account any
@@ -4933,6 +4933,80 @@ async fn test_production_occupied_account_never_connects_or_arms_dms(#[case] pos
     assert_eq!(rest.writes(), 0);
 }
 
+/// Known closed history remains visible without occupying an otherwise verified flat account.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_historical_foreign_order_preserved_through_clean_shutdown() {
+    let journal = JournalPath::new("production-historical-foreign");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    rest.state.orders.lock().unwrap().push(api_order_filled(
+        "SYNTHETIC_PRIVATE_ORDER",
+        "SYNTHETIC_PRIVATE_CLIENT",
+        "fullyfilled",
+        "1.00",
+    ));
+    let mut harness = build_harness(&rest, &private, production_config(&journal));
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    assert_eq!(
+        harness.client.production_trade_snapshot().unwrap()["phase"],
+        "start"
+    );
+    let snapshot = harness.client.read_only_diagnostics().snapshot();
+    let summary = snapshot.account_reconciliation.unwrap();
+    assert!(!summary.clean);
+    assert!(summary.production_reconciled);
+    assert_eq!(summary.foreign_terminal_orders, 1);
+    assert_eq!(summary.foreign_nonterminal_orders, 0);
+    assert_eq!(summary.uncertain_findings, 0);
+    assert!(!format!("{summary:?}").contains("SYNTHETIC_PRIVATE"));
+    harness.client.disconnect().await.unwrap();
+    assert_eq!(
+        harness.client.production_trade_snapshot().unwrap()["shutdown_status"],
+        "clean"
+    );
+    assert_eq!(
+        rest.writes(),
+        0,
+        "history must never be adopted or cancelled"
+    );
+    let saved: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&journal.path).unwrap()).unwrap();
+    assert_eq!(saved["orders"].as_array().unwrap().len(), 0);
+}
+
+#[rstest]
+#[case("open")]
+#[case("untriggered")]
+#[case("venue_unknown")]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_closed_history_never_masks_foreign_working_or_unknown(
+    #[case] status: &str,
+) {
+    let journal = JournalPath::new("production-history-blocked");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    rest.state.orders.lock().unwrap().extend([
+        api_order_filled("historical", "historical", "fullyfilled", "1.00"),
+        api_order("foreign", "foreign", status),
+    ]);
+    let mut harness = build_harness(&rest, &private, production_config(&journal));
+    harness.client.start().unwrap();
+    assert!(harness.client.connect().await.is_err());
+    let summary = harness
+        .client
+        .read_only_diagnostics()
+        .snapshot()
+        .account_reconciliation
+        .unwrap();
+    assert!(!summary.production_reconciled);
+    assert_eq!(summary.foreign_terminal_orders, 1);
+    assert_eq!(summary.foreign_nonterminal_orders, 1);
+    assert_eq!(private.connection_count(), 0);
+    assert!(switch_frames(&private).is_empty());
+    assert_eq!(rest.writes(), 0);
+}
+
 fn production_order(id: &str, close: bool, quantity: &str, price: &str) -> OrderAny {
     OrderTestBuilder::new(OrderType::Limit)
         .trader_id(TraderId::from("TESTER-001"))
@@ -5179,6 +5253,74 @@ async fn production_entry(harness: &mut Harness) {
             .is_some_and(|o| o.is_settled() && o.filled == Quantity::from("0.05"))
     })
     .await;
+}
+
+/// A fresh reduce-only command must take a shared safety slot ahead of queued history reads.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_reduce_only_close_keeps_fresh_quote_under_history_backlog() {
+    let journal = JournalPath::new("close-history-backlog");
+    let rest = MockRest::start().await;
+    rest.set_create_answer("<production-ioc>");
+    let private = MockPrivate::start(Venue::Ack).await;
+    let budget = OndoRateBudget::with_quota(
+        Quota::with_period(Duration::from_millis(500))
+            .unwrap()
+            .allow_burst(NonZeroU32::new(64).unwrap()),
+    );
+    let mut harness =
+        build_harness_on_budget(&rest, &private, production_config(&journal), budget.clone());
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+    production_entry(&mut harness).await;
+    while budget
+        .limiter()
+        .check_key(&ustr::Ustr::from(
+            nautilus_ondo::http::rate_limit::ONDO_REST_BUCKET,
+        ))
+        .is_ok()
+    {}
+    let mut queued = Vec::new();
+    for _ in 0..5 {
+        let budget = budget.clone();
+        queued.push(tokio::spawn(async move {
+            budget
+                .acquire(nautilus_ondo::http::rate_limit::OndoRequestPriority::Normal)
+                .await;
+        }));
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    production_quote(&harness, now());
+    let close = production_order("close-ahead-of-history", true, "0.05", "225.00");
+    seed_order(&harness, &close);
+    harness.client.submit_order(submit_command(&close)).unwrap();
+    wait_until(
+        &mut harness,
+        "fresh safety close sent and filled",
+        |client, _| {
+            client
+                .order_state(&ClientOrderId::from("close-ahead-of-history"))
+                .is_some_and(|o| o.is_settled() && o.filled == Quantity::from("0.05"))
+        },
+    )
+    .await;
+    // The production send gate checked the quote age before POST; subsequent fill
+    // confirmation may itself wait for the shared REST budget.
+    assert_eq!(rest.writes(), 2, "one entry and one close only");
+    for task in queued {
+        task.abort();
+        let _ = task.await;
+    }
+    budget.limiter().add_quota_for_key(
+        ustr::Ustr::from(nautilus_ondo::http::rate_limit::ONDO_REST_BUCKET),
+        Quota::per_second(NonZeroU32::new(1_000_000).unwrap())
+            .unwrap()
+            .allow_burst(NonZeroU32::new(u32::MAX).unwrap()),
+    );
+    harness.client.disconnect().await.unwrap();
+    assert_eq!(
+        harness.client.production_trade_snapshot().unwrap()["shutdown_status"],
+        "clean"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -6555,4 +6697,32 @@ async fn test_production_usdc_send_margin_below_equal_above_threshold(
         assert_eq!(rest.writes(), 0);
     }
     let _ = harness.client.disconnect().await;
+}
+
+/// A periodic pass may still own the account when shutdown needs its final proof.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_production_shutdown_waits_for_busy_account_pass_before_release() {
+    let journal = JournalPath::new("busy-final-reconciliation");
+    let rest = MockRest::start().await;
+    let private = MockPrivate::start(Venue::Ack).await;
+    let mut harness = build_harness(&rest, &private, production_config(&journal));
+    harness.client.start().unwrap();
+    harness.client.connect().await.unwrap();
+
+    rest.hold_orders();
+    let account = harness.client.account().clone();
+    let periodic = tokio::spawn(async move { account.reconcile_account(account.now()).await });
+    rest.state.await_a_held_read().await;
+    let resume = async {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        rest.release_orders();
+    };
+    let (result, ()) = tokio::join!(harness.client.disconnect(), resume);
+    let _ = periodic.await.unwrap();
+    result.expect("shutdown waits for the owner and obtains its own current proof");
+    let proof = harness.client.production_trade_snapshot().unwrap();
+    assert_eq!(proof["phase"], "final");
+    assert_eq!(proof["shutdown_status"], "clean");
+    assert_eq!(proof["dms_release"]["acknowledged"], true);
+    assert_eq!(rest.writes(), 0);
 }

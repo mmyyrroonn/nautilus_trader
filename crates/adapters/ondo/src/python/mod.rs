@@ -114,6 +114,7 @@ pub fn ondo(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<OndoDataClientFactory>()?;
     m.add_class::<OndoExecutionClientConfig>()?;
     m.add_class::<crate::production::OndoExecutionEnvelopeConfig>()?;
+    m.add_class::<crate::production::OndoContinuousExecutionConfig>()?;
     m.add_class::<OndoExecutionClientFactory>()?;
     m.add_class::<OndoHttpClient>()?;
 
