@@ -48,6 +48,7 @@ use parking_lot::{Mutex, RwLock};
 
 use crate::{
     execution::OndoAccountRuntime,
+    reconciliation::{AccountJudgment, Finding},
     websocket::private::{
         PrivateChannel, PrivateRunSnapshot, PrivateRunState, SharedPrivateDiagnostics,
     },
@@ -98,6 +99,52 @@ struct StreamDiagnostics {
     diagnostics: SharedPrivateDiagnostics,
 }
 
+/// Fixed counters for the last whole-account judgment, without finding payloads.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AccountReconciliationSummary {
+    /// Whether the native judgment contains no findings.
+    pub clean: bool,
+    /// Whether the judgment can support production proof while retaining closed history.
+    pub production_reconciled: bool,
+    /// Total findings, including known historical foreign orders.
+    pub findings: usize,
+    /// Findings whose state is not fully known.
+    pub uncertain_findings: usize,
+    /// Foreign orders with a recognized terminal status.
+    pub foreign_terminal_orders: usize,
+    /// Foreign orders without a recognized terminal status.
+    pub foreign_nonterminal_orders: usize,
+    /// Unreadable or unreconciled funding facts.
+    pub funding_findings: usize,
+}
+
+impl AccountReconciliationSummary {
+    fn from_judgment(judgment: &AccountJudgment) -> Self {
+        let mut summary = Self {
+            clean: judgment.is_clean(),
+            production_reconciled: judgment.is_production_reconciled(),
+            findings: judgment.findings.len(),
+            uncertain_findings: judgment.uncertain().count(),
+            foreign_terminal_orders: 0,
+            foreign_nonterminal_orders: 0,
+            funding_findings: 0,
+        };
+        for finding in &judgment.findings {
+            match finding {
+                Finding::ForeignOrder { status, .. } if status.is_terminal() => {
+                    summary.foreign_terminal_orders += 1;
+                }
+                Finding::ForeignOrder { .. } => summary.foreign_nonterminal_orders += 1,
+                Finding::FundingUnreadable { .. } | Finding::FundingUnreconciled { .. } => {
+                    summary.funding_findings += 1;
+                }
+                _ => {}
+            }
+        }
+        summary
+    }
+}
+
 /// A sanitized, bounded snapshot of a read-only run.
 ///
 /// Every member is a counter, a fixed label or an enum name: there is no frame, credential, account
@@ -123,6 +170,8 @@ pub struct OndoReadOnlySnapshot {
     pub identity_match: &'static str,
     /// The owned shutdown's status.
     pub shutdown_status: &'static str,
+    /// Fixed counters from the last whole-account judgment, absent before a completed read.
+    pub account_reconciliation: Option<AccountReconciliationSummary>,
 }
 
 /// A per-client, read-only diagnostics store.
@@ -202,6 +251,11 @@ impl OndoReadOnlyDiagnostics {
             account_state_events: self.account.account_state_published(),
             identity_match: self.account.account_identity().as_str(),
             shutdown_status: self.shutdown_status().as_str(),
+            account_reconciliation: self
+                .account
+                .last_judgment()
+                .as_ref()
+                .map(AccountReconciliationSummary::from_judgment),
         }
     }
 
@@ -244,6 +298,43 @@ mod tests {
         #[case] expected: &str,
     ) {
         assert_eq!(status.as_str(), expected);
+    }
+
+    #[test]
+    fn test_production_summary_keeps_history_and_refuses_every_other_finding() {
+        use crate::http::orders::OndoOrderStatus;
+        let history = Finding::ForeignOrder {
+            venue_order_id: "SYNTHETIC_PRIVATE_ORDER".into(),
+            client_order_id: Some("SYNTHETIC_PRIVATE_CLIENT".into()),
+            market: "NVDA-USD.P".into(),
+            status: OndoOrderStatus::FullyFilled,
+        };
+        let judgment = AccountJudgment::single(history.clone());
+        let summary = AccountReconciliationSummary::from_judgment(&judgment);
+        assert!(!summary.clean);
+        assert!(summary.production_reconciled);
+        assert_eq!(summary.foreign_terminal_orders, 1);
+        assert!(!format!("{summary:?}").contains("SYNTHETIC_PRIVATE"));
+        for blocked in [
+            Finding::BalanceUnreadable {
+                reason: "SYNTHETIC_PRIVATE_REASON".into(),
+            },
+            Finding::FundingUnreadable {
+                reason: "SYNTHETIC_PRIVATE_REASON".into(),
+            },
+            Finding::ForeignOrder {
+                status: OndoOrderStatus::Unknown("SYNTHETIC_PRIVATE_STATUS".into()),
+                venue_order_id: "SYNTHETIC_PRIVATE_ORDER".into(),
+                client_order_id: None,
+                market: "NVDA-USD.P".into(),
+            },
+        ] {
+            let judgment = AccountJudgment::new(vec![history.clone(), blocked]);
+            let summary = AccountReconciliationSummary::from_judgment(&judgment);
+            assert!(!summary.production_reconciled);
+            assert_eq!(summary.findings, 2);
+            assert!(!format!("{summary:?}").contains("SYNTHETIC_PRIVATE"));
+        }
     }
 
     #[rstest]

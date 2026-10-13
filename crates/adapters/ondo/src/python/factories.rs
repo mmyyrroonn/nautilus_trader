@@ -48,6 +48,22 @@ impl OndoDataClientFactory {
 #[pymethods]
 #[pyo3_stub_gen::derive::gen_stub_pymethods]
 impl OndoExecutionClientFactory {
+    /// Reports native continuous execution support; this does not attest to a venue run.
+    #[getter]
+    #[pyo3(name = "supports_continuous_execution")]
+    #[must_use]
+    pub const fn py_supports_continuous_execution(&self) -> bool {
+        true
+    }
+
+    /// Native amend is unavailable; price changes require confirmed cancel then a new order ID.
+    #[getter]
+    #[pyo3(name = "supports_native_amend")]
+    #[must_use]
+    pub const fn py_supports_native_amend(&self) -> bool {
+        false
+    }
+
     /// Factory for creating Ondo Perps execution clients.
     ///
     /// One factory is created per adapter environment, and every client it creates draws on that
@@ -132,6 +148,22 @@ impl OndoExecutionClientFactory {
         dict.set_item("account_state_events", snapshot.account_state_events)?;
         dict.set_item("identity_match", snapshot.identity_match)?;
         dict.set_item("shutdown_status", snapshot.shutdown_status)?;
+        if let Some(summary) = snapshot.account_reconciliation {
+            let account = PyDict::new(py);
+            account.set_item("clean", summary.clean)?;
+            account.set_item("production_reconciled", summary.production_reconciled)?;
+            account.set_item("findings", summary.findings)?;
+            account.set_item("uncertain_findings", summary.uncertain_findings)?;
+            account.set_item("foreign_terminal_orders", summary.foreign_terminal_orders)?;
+            account.set_item(
+                "foreign_nonterminal_orders",
+                summary.foreign_nonterminal_orders,
+            )?;
+            account.set_item("funding_findings", summary.funding_findings)?;
+            dict.set_item("account_reconciliation", account)?;
+        } else {
+            dict.set_item("account_reconciliation", py.None())?;
+        }
 
         Ok(Some(dict))
     }

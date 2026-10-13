@@ -26,6 +26,7 @@ __all__ = [
     "ONDO",
     "ONDO_CLIENT_ID",
     "ONDO_VENUE",
+    "OndoContinuousExecutionConfig",
     "OndoDataClientConfig",
     "OndoDataClientFactory",
     "OndoEnvironment",

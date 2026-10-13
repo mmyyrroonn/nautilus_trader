@@ -36,7 +36,7 @@ use crate::{
         },
         enums::{OndoAuthenticationScope, OndoEnvironment},
     },
-    production::OndoExecutionEnvelopeConfig,
+    production::{OndoContinuousExecutionConfig, OndoExecutionEnvelopeConfig},
 };
 
 /// Default dead man's switch timeout, in seconds (plan §6.4).
@@ -169,18 +169,16 @@ impl OndoDataClientConfig {
 /// configuration has no object to send from.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum OndoExecutionConfigError {
-    /// Production order entry is not a capability this phase implements, whatever the flag says.
+    /// Production opt-in is incompatible with the environment or lacks explicit execution limits.
     #[error(
-        "`allow_production_orders` is not a supported capability: this phase refuses production \
-         order entry unconditionally (plan §4.1), and there is no configuration value that opens \
-         a production write branch"
+        "`allow_production_orders` requires production, writable account mode and explicit \
+         probe or continuous execution limits"
     )]
     ProductionOrdersUnsupported,
-    /// Production without `account_read_only` is not a supported combination.
+    /// Production writes require explicit authorization and execution limits.
     #[error(
-        "the production environment is read-only in this phase: set `account_read_only = true`, \
-         or use the sandbox environment for order entry (plan §4.1); there is no production write \
-         branch"
+        "production writes require `allow_production_orders` and explicit probe or continuous \
+         execution limits; use `account_read_only = true` for a read-only session"
     )]
     ProductionWritesUnsupported,
     /// No account was named.
@@ -196,7 +194,7 @@ pub enum OndoExecutionConfigError {
 /// # Production authorization
 ///
 /// Production writes are disabled by default. An explicit opt-in requires the complete immutable
-/// execution envelope and its identity, journal and run-token bindings. Read-only mode cannot be
+/// probe envelope or continuous limits and identity, journal and run-token bindings. Read-only mode cannot be
 /// combined with that opt-in. Endpoint and credential environments must agree.
 ///
 /// # Credentials
@@ -327,6 +325,9 @@ pub struct OndoExecutionClientConfig {
     pub allow_production_orders: bool,
     /// The separately approved immutable production execution limits.
     pub execution_envelope: Option<OndoExecutionEnvelopeConfig>,
+    /// Explicit continuous multi-instrument execution limits, mutually exclusive with the probe.
+    /// Production additionally requires `allow_production_orders`; defaults remain unchanged.
+    pub continuous_execution: Option<OndoContinuousExecutionConfig>,
 }
 
 impl Default for OndoExecutionClientConfig {
@@ -354,6 +355,7 @@ nautilus_core::impl_pyo3_config_getters!(OndoExecutionClientConfig {
     journal_path: Option<String>,
     allow_production_orders: bool,
     execution_envelope: Option<OndoExecutionEnvelopeConfig>,
+    continuous_execution: Option<OndoContinuousExecutionConfig>,
 });
 
 impl std::fmt::Debug for OndoExecutionClientConfig {
@@ -374,6 +376,7 @@ impl std::fmt::Debug for OndoExecutionClientConfig {
             .field("reconcile_interval_secs", &self.reconcile_interval_secs)
             .field("journal_path", &self.journal_path)
             .field("allow_production_orders", &self.allow_production_orders)
+            .field("continuous_execution", &self.continuous_execution)
             .finish()
     }
 }
@@ -446,14 +449,12 @@ impl OndoExecutionClientConfig {
 
     /// Returns the authorization scope this configuration asks for.
     ///
-    /// The scope pairs [`Self::environment`] with [`Self::account_read_only`]. Production with
-    /// `account_read_only = false` has no scope: it is refused with
-    /// [`OndoExecutionConfigError::ProductionWritesUnsupported`].
+    /// Production writes require explicit opt-in and a valid probe envelope or continuous limits.
     ///
     /// # Errors
     ///
     /// Returns [`OndoExecutionConfigError::ProductionWritesUnsupported`] for a production
-    /// configuration that does not set `account_read_only`.
+    /// configuration without complete write authorization.
     pub fn authentication_scope(
         &self,
     ) -> Result<OndoAuthenticationScope, OndoExecutionConfigError> {
@@ -462,14 +463,57 @@ impl OndoExecutionClientConfig {
             (OndoEnvironment::Sandbox, true) => Ok(OndoAuthenticationScope::SandboxReadOnly),
             (OndoEnvironment::Production, true) => Ok(OndoAuthenticationScope::ProductionReadOnly),
             (OndoEnvironment::Production, false) => {
-                if self.allow_production_orders && self.execution_envelope.is_some() {
-                    self.validate_production_envelope()?;
+                if self.allow_production_orders
+                    && (self.execution_envelope.is_some() || self.continuous_execution.is_some())
+                {
+                    if self.continuous_execution.is_some() {
+                        self.validate_continuous_execution()?;
+                    } else {
+                        self.validate_production_envelope()?;
+                    }
                     Ok(OndoAuthenticationScope::ProductionTrading)
                 } else {
                     Err(OndoExecutionConfigError::ProductionWritesUnsupported)
                 }
             }
         }
+    }
+
+    fn validate_continuous_execution(&self) -> Result<(), OndoExecutionConfigError> {
+        let fail =
+            |reason: &str| OndoExecutionConfigError::InvalidProductionEnvelope(reason.to_string());
+        if self.account_read_only
+            || self.execution_envelope.is_some()
+            || (self.environment == OndoEnvironment::Production && !self.allow_production_orders)
+        {
+            return Err(fail(
+                "continuous execution requires exclusive write configuration and explicit production opt-in",
+            ));
+        }
+        if self
+            .expected_venue_account_id
+            .as_ref()
+            .is_none_or(|v| v.trim().is_empty())
+            || self
+                .diagnostics_run_id
+                .as_ref()
+                .is_none_or(|v| v.is_empty() || v.len() > 128)
+            || self
+                .journal_path
+                .as_ref()
+                .is_none_or(|v| v.trim().is_empty())
+            || !(1..=30).contains(&self.dms_timeout_secs)
+            || self.reconcile_interval_secs != 1
+        {
+            return Err(fail(
+                "continuous execution requires identity, run token, durable journal, 1-30-second DMS and one-second reconciliation",
+            ));
+        }
+        self.continuous_execution
+            .as_ref()
+            .ok_or_else(|| fail("missing continuous execution limits"))?
+            .validate()
+            .map_err(OndoExecutionConfigError::InvalidProductionEnvelope)
     }
 
     fn validate_production_envelope(&self) -> Result<(), OndoExecutionConfigError> {
@@ -517,22 +561,22 @@ impl OndoExecutionClientConfig {
     ///
     /// # Errors
     ///
-    /// Returns [`OndoExecutionConfigError::ProductionOrdersUnsupported`] when
-    /// [`Self::allow_production_orders`] is set - there is no production write branch to open -
-    /// [`OndoExecutionConfigError::MissingAccountId`] when no account was named, and
-    /// [`OndoExecutionConfigError::ProductionWritesUnsupported`] when production is configured
-    /// without `account_read_only`. The environment and base URL are judged separately, by
+    /// Returns an error for incompatible permissions, invalid execution limits or a missing
+    /// account. The environment and base URL are judged separately, by
     /// [`crate::common::credential::validate_authenticated_environment`].
     pub fn validate(&self) -> Result<(), OndoExecutionConfigError> {
         if self.allow_production_orders
             && (self.environment != OndoEnvironment::Production
                 || self.account_read_only
-                || self.execution_envelope.is_none())
+                || (self.execution_envelope.is_none() && self.continuous_execution.is_none()))
         {
             return Err(OndoExecutionConfigError::ProductionOrdersUnsupported);
         }
         if self.execution_envelope.is_some() {
             self.validate_production_envelope()?;
+        }
+        if self.continuous_execution.is_some() {
+            self.validate_continuous_execution()?;
         }
 
         if self.account_id.is_none() {
@@ -551,6 +595,42 @@ mod tests {
 
     use super::*;
     use crate::common::{credential::validate_authenticated_environment, endpoint::OndoEndpoint};
+
+    #[rstest]
+    fn test_continuous_is_explicit_and_mutually_exclusive_with_read_only() {
+        let limits: OndoContinuousExecutionConfig = serde_json::from_value(serde_json::json!({
+            "instrument_ids": ["BTC-USD-PERP.ONDO", "TSLA-USD-PERP.ONDO"],
+            "max_notional_per_order_usd": "100", "max_gross_exposure_usd": "500",
+            "min_available_margin_usdc": "25", "max_live_orders": 4,
+            "max_requests_per_second": 1, "max_unresolved_orders": 1,
+        }))
+        .unwrap();
+        let mut config = OndoExecutionClientConfig {
+            environment: OndoEnvironment::Production,
+            account_id: Some(AccountId::from("ONDO-TEST")),
+            expected_venue_account_id: Some("synthetic".into()),
+            diagnostics_run_id: Some("continuous-test".into()),
+            journal_path: Some("never-opened-by-validation.json".into()),
+            reconcile_interval_secs: 1,
+            continuous_execution: Some(limits),
+            ..Default::default()
+        };
+        assert!(config.validate().is_err());
+        config.allow_production_orders = true;
+        assert!(config.validate().is_ok());
+        config.account_read_only = true;
+        assert!(config.validate().is_err());
+        config.account_read_only = false;
+        config.environment = OndoEnvironment::Sandbox;
+        assert!(config.validate().is_err());
+        config.allow_production_orders = false;
+        assert!(config.validate().is_ok());
+        assert!(
+            OndoExecutionClientConfig::default()
+                .continuous_execution
+                .is_none()
+        );
+    }
 
     #[rstest]
     fn test_defaults() {

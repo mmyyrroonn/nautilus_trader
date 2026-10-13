@@ -11,6 +11,7 @@ __all__ = [
     "ONDO",
     "ONDO_CLIENT_ID",
     "ONDO_VENUE",
+    "OndoContinuousExecutionConfig",
     "OndoDataClientConfig",
     "OndoDataClientFactory",
     "OndoEnvironment",
@@ -22,6 +23,33 @@ __all__ = [
 ONDO: str
 ONDO_CLIENT_ID: model.ClientId
 ONDO_VENUE: model.Venue
+
+@typing.final
+class OndoContinuousExecutionConfig:
+    @property
+    def instrument_ids(self) -> list[model.InstrumentId]: ...
+    @property
+    def max_notional_per_order_usd(self) -> decimal.Decimal: ...
+    @property
+    def max_gross_exposure_usd(self) -> decimal.Decimal: ...
+    @property
+    def min_available_margin_usdc(self) -> decimal.Decimal: ...
+    @property
+    def max_live_orders(self) -> int: ...
+    @property
+    def max_requests_per_second(self) -> int: ...
+    @property
+    def max_unresolved_orders(self) -> int: ...
+    def __init__(
+        self,
+        instrument_ids: typing.Sequence[model.InstrumentId],
+        max_notional_per_order_usd: str,
+        max_gross_exposure_usd: str,
+        min_available_margin_usdc: str,
+        max_live_orders: int,
+        max_requests_per_second: int,
+        max_unresolved_orders: int,
+    ) -> None: ...
 
 @typing.final
 class OndoDataClientConfig:
@@ -91,6 +119,8 @@ class OndoExecutionClientConfig:
     def allow_production_orders(self) -> bool: ...
     @property
     def execution_envelope(self) -> OndoExecutionEnvelopeConfig | None: ...
+    @property
+    def continuous_execution(self) -> OndoContinuousExecutionConfig | None: ...
     def __init__(
         self,
         environment: OndoEnvironment | None = None,
@@ -109,10 +139,15 @@ class OndoExecutionClientConfig:
         journal_path: str | None = None,
         allow_production_orders: bool | None = None,
         execution_envelope: OndoExecutionEnvelopeConfig | None = None,
+        continuous_execution: OndoContinuousExecutionConfig | None = None,
     ) -> None: ...
 
 @typing.final
 class OndoExecutionClientFactory:
+    @property
+    def supports_continuous_execution(self) -> bool: ...
+    @property
+    def supports_native_amend(self) -> bool: ...
     def __init__(self) -> None: ...
     def name(self) -> str: ...
     @property

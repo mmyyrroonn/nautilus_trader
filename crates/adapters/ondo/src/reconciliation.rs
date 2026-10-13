@@ -60,7 +60,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use nautilus_core::UnixNanos;
 use nautilus_model::identifiers::{AccountId, ClientOrderId, InstrumentId, VenueOrderId};
 use rust_decimal::Decimal;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer, ser::SerializeStruct};
 
 use crate::{
     common::parse::{market_to_instrument_id, parse_decimal},
@@ -414,9 +414,10 @@ impl MetadataValidity {
 
 /// One message on the dead man's switch channel.
 ///
-/// The frozen schema is `{op, channel, timeout_seconds}` with `op` one of `subscribe` /
-/// `unsubscribe`; the same shape arms, renews and releases the switch here.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// Subscribe and renewal carry `timeout_seconds`. The venue rejects that member on
+/// unsubscribe, which is encoded as `{op, channel}`. The approved duration remains in the
+/// logical frame for production-authority validation; it is omitted only from release wire bytes.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 pub struct DeadMansSwitchMessage {
     /// The operation.
     pub op: WsOp,
@@ -424,6 +425,20 @@ pub struct DeadMansSwitchMessage {
     pub channel: String,
     /// The timeout the venue is asked for, in seconds.
     pub timeout_seconds: u64,
+}
+
+impl Serialize for DeadMansSwitchMessage {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let release = self.op == WsOp::Unsubscribe;
+        let mut state =
+            serializer.serialize_struct("DeadMansSwitchMessage", if release { 2 } else { 3 })?;
+        state.serialize_field("op", &self.op)?;
+        state.serialize_field("channel", &self.channel)?;
+        if !release {
+            state.serialize_field("timeout_seconds", &self.timeout_seconds)?;
+        }
+        state.end()
+    }
 }
 
 impl DeadMansSwitchMessage {
@@ -1557,6 +1572,28 @@ impl AccountJudgment {
     #[must_use]
     pub fn is_clean(&self) -> bool {
         self.findings.is_empty()
+    }
+
+    /// Returns whether this pass can support bounded production account proof.
+    ///
+    /// Recognized terminal foreign orders are retained as historical findings, not
+    /// adopted exposure. Every other finding still refuses proof, including working
+    /// or unknown foreign orders and missing funding facts. The caller also verifies
+    /// whole-account positions, owned exposure, metadata, margin and DMS independently.
+    pub(crate) fn is_production_reconciled(&self) -> bool {
+        self.findings.iter().all(|finding| {
+            matches!(finding, Finding::ForeignOrder { status, .. } if status.is_terminal())
+        })
+    }
+
+    /// Requires readable economic evidence while permitting reduction of verified owned risk.
+    pub(crate) fn permits_owned_reduction(&self) -> bool {
+        self.findings.iter().all(|finding| {
+            matches!(
+                finding,
+                Finding::ForeignOrder { .. } | Finding::NegativeEquity { .. }
+            )
+        })
     }
 
     /// Returns whether the account's state is not fully known, which stops new risk.
@@ -4141,4 +4178,30 @@ fn past_window(outcome: &UncertainOutcome, now: UnixNanos) -> bool {
 /// Returns an error for a member the venue sent that is not a decimal string.
 pub fn balance_member(value: &str, member: &str) -> anyhow::Result<Decimal> {
     parse_decimal(value, member)
+}
+
+#[cfg(test)]
+mod dms_release_wire_regression {
+    use rstest::rstest;
+
+    use super::*;
+    #[rstest]
+    fn test_dms_release_wire_has_no_timeout() {
+        let mut switch = DeadMansSwitch::new(30);
+        let arm = switch.arm(UnixNanos::from(1));
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&arm.to_json_text().unwrap()).unwrap()["timeout_seconds"],
+            30
+        );
+        let release = switch.release_frame();
+        assert_eq!(release.timeout_seconds, 30);
+        let wire =
+            serde_json::from_str::<serde_json::Value>(&release.to_json_text().unwrap()).unwrap();
+        assert_eq!(wire["op"], "unsubscribe");
+        assert_eq!(wire["channel"], "cancelAllOrdersAfterPerps");
+        assert!(
+            wire.get("timeout_seconds").is_none(),
+            "venue rejects timeout_seconds on unsubscribe"
+        );
+    }
 }

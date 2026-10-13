@@ -21,7 +21,7 @@ use pyo3::{prelude::*, pymethods};
 use crate::{
     common::enums::OndoEnvironment,
     config::{OndoDataClientConfig, OndoExecutionClientConfig},
-    production::OndoExecutionEnvelopeConfig,
+    production::{OndoContinuousExecutionConfig, OndoExecutionEnvelopeConfig},
 };
 
 #[pymethods]
@@ -96,9 +96,9 @@ impl OndoDataClientConfig {
 impl OndoExecutionClientConfig {
     /// Configuration for the Ondo Perps live execution client.
     ///
-    /// `environment` defaults to `SANDBOX`. Production is read-only: a production configuration
-    /// must also set `account_read_only=True`, and production order entry is not implemented
-    /// whatever `allow_production_orders` says.
+    /// `environment` defaults to `SANDBOX`. Production writes require explicit opt-in and either
+    /// `execution_envelope` for a bounded probe or `continuous_execution` for repeated trading.
+    /// Both modes use the native execution engine, durable identity and verified account evidence.
     ///
     /// `account_id` is required. `api_key` and `api_secret` are optional explicit overrides - the
     /// same pair the Aster execution configuration takes - and when either is absent the client
@@ -107,8 +107,8 @@ impl OndoExecutionClientConfig {
     /// nor the secret is readable from Python: there is no property for either and `__repr__`
     /// renders neither.
     ///
-    /// `allow_production_orders` exists so that asking for production order entry can be refused
-    /// by name. Setting it does not enable anything: this phase returns an unsupported error.
+    /// `allow_production_orders` alone never enables production writes. The selected execution
+    /// limits, account identity, journal, DMS and reconciliation settings must also be valid.
     ///
     /// `base_url_ws` is the **private** WebSocket endpoint, and it is held to the same allowlist as
     /// `base_url_http`: the official host of the selected environment, or an explicit local test
@@ -168,6 +168,7 @@ impl OndoExecutionClientConfig {
         journal_path = None,
         allow_production_orders = None,
         execution_envelope = None,
+        continuous_execution = None,
     ))]
     #[expect(clippy::too_many_arguments)]
     fn py_new(
@@ -187,6 +188,7 @@ impl OndoExecutionClientConfig {
         journal_path: Option<String>,
         allow_production_orders: Option<bool>,
         execution_envelope: Option<OndoExecutionEnvelopeConfig>,
+        continuous_execution: Option<OndoContinuousExecutionConfig>,
     ) -> Self {
         let defaults = Self::default();
 
@@ -211,10 +213,51 @@ impl OndoExecutionClientConfig {
             allow_production_orders: allow_production_orders
                 .unwrap_or(defaults.allow_production_orders),
             execution_envelope,
+            continuous_execution,
         }
     }
 
     /// Never renders a credential: the key and the secret are both redacted by the Rust `Debug`.
+    fn __repr__(&self) -> String {
+        format!("{self:?}")
+    }
+}
+
+#[pymethods]
+#[pyo3_stub_gen::derive::gen_stub_pymethods]
+impl OndoContinuousExecutionConfig {
+    /// Explicit limits for repeated native execution on the configured perpetual instruments.
+    /// Monetary values are exact decimal strings. Strategy allocation stays in the application.
+    #[new]
+    #[expect(clippy::too_many_arguments)]
+    fn py_new(
+        instrument_ids: Vec<InstrumentId>,
+        max_notional_per_order_usd: String,
+        max_gross_exposure_usd: String,
+        min_available_margin_usdc: String,
+        max_live_orders: u32,
+        max_requests_per_second: u32,
+        max_unresolved_orders: u32,
+    ) -> PyResult<Self> {
+        let decimal = |value: &str| {
+            rust_decimal::Decimal::from_str_exact(value)
+                .map_err(nautilus_core::python::to_pyvalue_err)
+        };
+        let config = Self {
+            instrument_ids,
+            max_notional_per_order_usd: decimal(&max_notional_per_order_usd)?,
+            max_gross_exposure_usd: decimal(&max_gross_exposure_usd)?,
+            min_available_margin_usdc: decimal(&min_available_margin_usdc)?,
+            max_live_orders,
+            max_requests_per_second,
+            max_unresolved_orders,
+        };
+        config
+            .validate()
+            .map_err(nautilus_core::python::to_pyvalue_err)?;
+        Ok(config)
+    }
+
     fn __repr__(&self) -> String {
         format!("{self:?}")
     }

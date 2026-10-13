@@ -19,10 +19,10 @@ private login-required session the account lives on, the execution client with i
 surface, the reconciliation machine with its durable ledger journal and its dead man's switch,
 recording, signing, the factories and the Python projection.
 
-No part of that surface has been exercised against a live venue. The public side runs on the
-captured and official fixtures in `test_data/`; the private side - the login digest, the private
-payload shapes, the switch's renewal and release semantics - is verified offline only, and no
-authenticated request has ever reached Ondo Perps.
+The fixtures in `test_data/` record the original protocol baseline. Acceptance evidence must name
+its exact source and wheel: a historical bounded-probe run does not establish continuous execution
+acceptance. The continuous implementation below is exercised against local synthetic services;
+this change does not claim a live venue run.
 
 ## Module map
 
@@ -36,34 +36,33 @@ identity logic stays in `common` and `http::models`, and is not duplicated elsew
 | `src/common/consts.rs` | Venue identity (`ONDO`, `ONDO_VENUE`, `ONDO_CLIENT_ID`), per-environment REST/WS endpoints, product/settlement/multiplier constants, tuning constants. | Implemented |
 | `src/common/enums.rs` | `OndoEnvironment`, classified `MarketStatus` with its raw evidence, and `FeeRate`/`FeeSource`/`MarketFees` fee provenance. | Implemented |
 | `src/common/parse.rs` | Exact RFC 3339 nanosecond parsing, market string → `InstrumentId`, and exact decimal/price/quantity increment parsing. | Implemented |
-| `src/common/endpoint.rs` | The authority an authenticated request may be signed for: an allowlist of the session's own official sandbox authority and an explicitly configured loopback test service, with production authenticated writes refused outright. | Implemented |
-| `src/common/credential.rs` | One home for secrets (API key id and secret). It is never printable, exposes no secret accessor, and is admitted only for the sandbox environment; the public data client holds no credentials. | Implemented |
+| `src/common/endpoint.rs` | Authenticated endpoint allowlist for the configured environment and explicit loopback test services. Production writes additionally require native execution authority. | Implemented |
+| `src/common/credential.rs` | Environment-bound API key credentials with redacted secrets. The public data client holds no credentials. | Implemented |
 | `src/http/models.rs` | `GET /v1/markets` DTOs, `MarketInfo`, and the **single** parsing boundary (`parse_markets`, `parse_instruments`). Shared by REST and WS; precision is never derived twice. | Implemented |
 | `src/http/query.rs` | REST endpoint path constants, the request target the signature covers, and cursor pagination. | Implemented |
 | `src/http/error.rs` | HTTP error taxonomy and the retryability predicate. | Implemented |
 | `src/http/client.rs`, `src/http/rate_limit.rs` | REST transport: request building, signing, retries, pagination, and the one shared request budget per environment that both clients draw on. | Implemented |
 | `src/http/orders.rs` | The order write surface: the locally validated create command, the exact JSON body the signature covers, and the named local refusals (`FOK`, conditional orders, `quoteSize`, `postOnly` on a market order). | Implemented |
-| `src/http/private.rs` | The authenticated read surface: request shapes and response schemas for the account, positions, balance, orders and funding fees. Documented, never verified - no host has answered any of it. | Implemented |
+| `src/http/private.rs` | The authenticated read surface: request shapes and response schemas for the account, positions, balance, orders and funding fees. | Implemented |
 | `src/websocket/*` | Public feed: wire schema, wire-to-domain parsing, the book state machine (a snapshot becomes one `CLEAR` + `ADD` batch carrying `F_SNAPSHOT`/`F_LAST`), and the session/transport lifecycle (one connection, heartbeat, idle bound, reconnect). | Implemented |
 | `src/websocket/private/*` | The account's own connection: the login handshake, the private channel schema, the private session state machine, its own diagnostics record, and the transport that owns the socket. | Implemented - offline-verified only |
 | `src/data.rs` | `InstrumentProvider` and the `DataClient` (subscriptions, Nautilus event publication). | Implemented |
 | `src/recording.rs` | Bounded public raw-frame recording with rotation and gap markers. | Implemented |
 | `src/signing.rs` | REST/WS API-key HMAC. No wallet signing. | Implemented |
 | `src/execution.rs`, `src/reconciliation.rs` | Order commands, fill dedupe, account state, reconnect recovery, the durable ledger journal and the DMS. | Implemented - the DMS is **not accepted** (see below) |
+| `src/production.rs`, `src/continuous.rs` | Separate native authorities for bounded probes and explicitly configured continuous execution, including exact exposure limits and durable original order ownership. | Implemented - continuous venue execution requires separate acceptance |
 | `src/factories.rs` | `DataClientFactory` / `ExecutionClientFactory` wiring. | Implemented |
 | `src/python/*` | PyO3 export of config, enums, factories and the public HTTP client, behind the `python` feature. | Implemented |
 | `tests/http_contract.rs` | Offline contract tests for identity, precision, timestamps, metadata and fail-closed boundaries. | Implemented |
+| `tests/continuous_execution.rs` | Native execution against loopback HTTP and private WebSocket services: repeated multi-instrument cycles, cancel/replace, fills, ownership conflicts, restart and shutdown. | Offline acceptance scenarios |
 | `test_data/` | P0 protocol fixtures, manifest, conflict table and protocol table. | Frozen at P0 |
 
-### The dead man's switch is not accepted
+### Live dead man's switch acceptance is separate
 
-Task 8's last checklist item is a **sandbox** test of the switch: its real renewal message, its
-30-second trigger, and what a disconnect does to resting orders and to a position. That test has
-not been run. The crate does now hold the credential and own the account-level WebSocket channel
-the switch lives on, so this is no longer a "cannot be reached from here" - but no sandbox key
-exists in this environment, and no request of any kind has been sent to an Ondo venue. Plan §6.4 is
-explicit about the consequence: *"该真实测试缺失时 DMS 标未验收"* - when the real test is missing,
-the DMS is marked not accepted. It is marked here.
+Venue acceptance requires a separately recorded sandbox or authorized live run of renewal,
+expiration and disconnect behavior, including resting orders and residual positions. The local
+continuous tests do not provide that evidence. Plan §6.4 requires the real test before marking
+the DMS accepted for a particular candidate.
 
 What that does and does not cover. The local state machine *is* tested offline
 (`tests/reconciliation.rs`): the frames this adapter would send, the deadline arithmetic, and what
@@ -71,6 +70,42 @@ it refuses to conclude when the switch fires. So this is a verified claim about 
 logic and an **unverified** claim about the venue: nothing here shows that the venue accepts the
 renewal message this adapter builds or that it cancels resting orders when the switch fires. Treat
 the switch as untested against Ondo Perps until the sandbox run happens.
+
+## Continuous execution
+
+`OndoExecutionClientConfig.continuous_execution` accepts an explicit
+`OndoContinuousExecutionConfig`. It is mutually exclusive with `execution_envelope`, which retains
+the bounded probe workflow. Production continuous execution also requires
+`allow_production_orders = true`, the expected venue account identity, a run token, a durable
+journal, one-second reconciliation and a configured dead man's switch. Read-only clients cannot
+enable either write authority.
+
+The continuous authority supports repeated order cycles across the configured perpetual instrument
+IDs. It permits limit IOC and GTC orders; post-only orders require GTC. Quantities remain base units,
+prices and limits use exact decimals, and all symbols share the venue's one-way net account position.
+Reduce-only orders must fit the confirmed residual and outstanding close reservations. Virtual
+strategy legs do not create separate venue positions.
+
+The explicit limits include per-order notional, aggregate position and outstanding entry exposure,
+available USDC margin, live orders, application request rate and unresolved orders. The per-order
+ceiling cannot exceed USD 100 and the aggregate ceiling cannot exceed USD 500. Admission requires
+native metadata, fresh native quotes, verified identity, complete account reconciliation, a healthy
+journal and genuine DMS acknowledgements. An unresolved submission retains its original ID and
+suspends new risk; recovery queries that identity without resubmitting it. External open orders or
+unexplained positions prevent new risk and clean shutdown.
+
+`native_amend` is unsupported: `ModifyOrder` is rejected because Ondo has no atomic amend endpoint.
+An explicit cancel/replace sequence cancels the owned original order, confirms its terminal status
+and actual fills, then submits a replacement under a new client order ID. A cancel acknowledgement
+alone does not prove that the original order filled nothing. Shutdown cancels owned orders
+individually and retains unresolved outcomes or residual positions as incomplete cleanup.
+
+The continuous acceptance scenarios use local HTTP and WebSocket services through the native
+client and transport. They exercise repeated multi-symbol cycles, post-only cancel/replace, partial
+and duplicate fills, cancel races, lost responses, journal recovery, external identity collisions
+and stopping with residual risk. These offline scenarios establish adapter behavior against a
+simulated venue; they do not establish mainnet acceptance or verify the venue's private protocol,
+execution or DMS behavior.
 
 ## Instrument domain type
 
@@ -93,9 +128,10 @@ denominated in the base token.
 
 ## Support matrix
 
-The capability stance for this adapter (supported / explicitly unsupported / out of scope) is
-frozen at P0 in **[`test_data/README.md`](test_data/README.md#support-matrix-per-plan-1-frozen-at-p0)**;
-that table is authoritative and is not duplicated here.
+The protocol capability stance (supported / explicitly unsupported / out of scope) was frozen at P0
+in **[`test_data/README.md`](test_data/README.md#support-matrix-per-plan-1-frozen-at-p0)**.
+The continuous execution section above describes the additional native execution authority;
+the protocol fixture table remains the P0 reference.
 
 Two rules from it apply directly to this crate:
 
@@ -128,7 +164,7 @@ host, and its `GET /v1/markets` body was promoted into the tree as
 
 ## Build and test
 
-All commands run from the fork root (`E:\nautilus_trader`), which pins the toolchain with
+All commands run from the fork root (`E:\persarb\nautilus_trader`), which pins the toolchain with
 `rust-toolchain.toml`.
 
 ```bash
@@ -137,6 +173,9 @@ cargo test -p nautilus-ondo
 
 # The offline contract tests only.
 cargo test -p nautilus-ondo --test http_contract
+
+# The native continuous execution acceptance scenarios against loopback services.
+cargo test -p nautilus-ondo --test continuous_execution -- --test-threads=1
 
 # Formatting check (no write).
 cargo fmt -p nautilus-ondo -- --check

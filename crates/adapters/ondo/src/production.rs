@@ -13,7 +13,7 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-//! Exact, immutable limits for a separately authorized production probe.
+//! Separate native authorities for bounded probes and explicitly configured continuous execution.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -33,6 +33,11 @@ use crate::{
     http::{models::MarketInfo, orders::client_order_lookup_target},
     websocket::private::parse::DmsUpdateSummary,
 };
+
+#[path = "continuous.rs"]
+mod continuous;
+
+pub use continuous::OndoContinuousExecutionConfig;
 
 /// The complete approved entry and cleanup envelope for one production run.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -209,7 +214,10 @@ pub(crate) struct ProductionEvidence {
     pub identity_matched: bool,
     pub journal_healthy: bool,
     pub dms_verified: bool,
+    pub reduction_ready: bool,
     pub available_margin_usdc: Option<Decimal>,
+    pub funding_accounted_usdc: Option<Decimal>,
+    pub quotes: BTreeMap<InstrumentId, QuoteTick>,
     pub orders: BTreeMap<String, (Decimal, bool, Option<String>)>,
     pub unknown: usize,
 }
@@ -268,12 +276,14 @@ fn note_activity(state: &mut ProductionState) {
 ///
 /// Public HTTP constructors can receive this type, but cannot manufacture an authority.
 pub struct ProductionAuthority {
-    envelope: OndoExecutionEnvelopeConfig,
+    envelope: Option<OndoExecutionEnvelopeConfig>,
+    continuous: Option<OndoContinuousExecutionConfig>,
     run_id: String,
     created_at: u64,
     evidence: OnceLock<Arc<EvidenceReader>>,
     state: Mutex<ProductionState>,
     journal_binding: PathBuf,
+    continuous_journal_lock: Mutex<Option<std::fs::File>>,
     expected_identity: String,
     dms_timeout_nanos: u64,
 }
@@ -341,6 +351,62 @@ impl Drop for PreparedCommand {
     }
 }
 
+/// Two bounded native account readings; no raw payload or account identifier is retained.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct CashflowBaseline {
+    read_at: u64,
+    wallet: Option<Decimal>,
+    margin: Option<Decimal>,
+    funding_total: Option<Decimal>,
+    funding_accounted: Option<Decimal>,
+}
+
+impl CashflowBaseline {
+    fn from_reading(
+        reading: &crate::reconciliation::AccountReading,
+        funding_accounted: Option<Decimal>,
+    ) -> Option<Self> {
+        let balance = reading.balance.as_ref()?;
+        let read_at = reading.read_at.as_u64();
+        (read_at != 0).then_some(Self {
+            read_at,
+            wallet: balance.wallet_balance,
+            margin: balance.margin_balance,
+            funding_total: balance.total_funding_payments,
+            funding_accounted,
+        })
+    }
+
+    fn project(
+        &self,
+        reading: &crate::reconciliation::AccountReading,
+        funding_accounted: Option<Decimal>,
+    ) -> Option<serde_json::Value> {
+        let latest = Self::from_reading(reading, funding_accounted)?;
+        if latest.read_at <= self.read_at {
+            return None;
+        }
+        let difference = |before: Option<Decimal>, after: Option<Decimal>| {
+            after.and_then(|after| before.and_then(|before| after.checked_sub(before)))
+        };
+        let funding_level = difference(self.funding_total, latest.funding_total);
+        let funding_records = difference(self.funding_accounted, latest.funding_accounted);
+        let funding_reconciled = funding_level.is_some() && funding_level == funding_records;
+        Some(serde_json::json!({
+            "source": "native-account-reconciliation",
+            "settlement_currency": "USDC",
+            "account_wide": true,
+            "baseline_read_unix_nanos": self.read_at,
+            "latest_read_unix_nanos": latest.read_at,
+            "wallet_balance_change_usdc": difference(self.wallet, latest.wallet).map(|v|v.to_string()),
+            "margin_balance_change_usdc": difference(self.margin, latest.margin).map(|v|v.to_string()),
+            "funding_history_reconciled": funding_reconciled,
+            "funding_payments_usdc": funding_records.filter(|_|funding_reconciled).map(|v|v.to_string()),
+            "strategy_pnl_claimed": false,
+        }))
+    }
+}
+
 #[derive(Debug, Default)]
 struct ProductionState {
     creates: BTreeMap<String, (Decimal, bool)>,
@@ -357,6 +423,7 @@ struct ProductionState {
     underlying_closed: Option<bool>,
     stopped: bool,
     snapshot: Option<serde_json::Value>,
+    cashflow_baseline: Option<CashflowBaseline>,
     dms_confirmed_deadline: Option<u64>,
     dms_pending_sent: Option<u64>,
     release_started: bool,
@@ -367,6 +434,7 @@ struct ProductionState {
     shutdown_trace: ShutdownTrace,
     known_zero: BTreeSet<String>,
     identity_verified: bool,
+    continuous: continuous::ContinuousState,
 }
 
 /// Bounded diagnostics with fixed labels, never raw private frame fields.
@@ -463,12 +531,14 @@ impl ProductionAuthority {
             .and_then(|()| file.sync_all())
             .map_err(|_| "production journal binding could not be persisted")?;
         Ok(Arc::new(Self {
-            envelope,
+            envelope: Some(envelope),
+            continuous: None,
             run_id,
             created_at: now,
             evidence: OnceLock::new(),
             state: Mutex::new(ProductionState::default()),
             journal_binding,
+            continuous_journal_lock: Mutex::new(None),
             expected_identity: identity.to_string(),
             dms_timeout_nanos: dms_timeout_secs * 1_000_000_000,
         }))
@@ -488,10 +558,20 @@ impl ProductionAuthority {
     }
 
     pub(crate) fn envelope(&self) -> &OndoExecutionEnvelopeConfig {
-        &self.envelope
+        self.envelope
+            .as_ref()
+            .expect("probe envelope requested for continuous authority")
     }
 
     pub(crate) fn metadata(&self, info: Option<MarketInfo>, closed: Option<bool>, now: u64) {
+        if self.is_continuous() {
+            if let Some(info) = info {
+                self.metadata_for(info.instrument_id(), Some(info), closed, now);
+            } else {
+                self.state.lock().continuous.metadata.clear();
+            }
+            return;
+        }
         let mut state = self.state.lock();
         state.metadata = info.map(|i| (i, now));
         state.underlying_closed = closed;
@@ -504,16 +584,19 @@ impl ProductionAuthority {
         quote: Option<QuoteTick>,
         minimum: Option<Decimal>,
     ) -> Result<(), String> {
+        if self.is_continuous() {
+            return self.prepare_continuous(id, body, quote, minimum);
+        }
         if minimum.is_some_and(|v| v <= Decimal::ZERO) {
             return Err("published minimum notional is invalid".into());
         }
         let quote = quote.ok_or("native quote is unavailable")?;
-        if quote.instrument_id != self.envelope.instrument_id {
+        if quote.instrument_id != self.envelope().instrument_id {
             return Err("quote instrument does not match approval".into());
         }
         let mut state = self.state.lock();
         if state.contexts.contains_key(&id)
-            || state.contexts.len() >= self.envelope.max_orders as usize
+            || state.contexts.len() >= self.envelope().max_orders as usize
         {
             return Err("duplicate or excessive production command".into());
         }
@@ -536,7 +619,8 @@ impl ProductionAuthority {
 
     pub(crate) fn begin_dms_send(&self, sent_at: u64, renewal: bool) -> bool {
         let mut state = self.state.lock();
-        if state.release_started
+        if state.continuous.released
+            || state.release_started
             || state.dms_pending_sent.is_some()
             || (renewal
                 && state
@@ -551,6 +635,9 @@ impl ProductionAuthority {
 
     pub(crate) fn confirm_dms(&self, now: u64) -> bool {
         let mut state = self.state.lock();
+        if state.continuous.released {
+            return false;
+        }
         let Some(sent) = state.dms_pending_sent.take() else {
             return false;
         };
@@ -587,7 +674,19 @@ impl ProductionAuthority {
     }
 
     pub(crate) fn definite_zero(&self, id: &str) {
-        self.state.lock().known_zero.insert(id.to_string());
+        let mut state = self.state.lock();
+        if state.continuous.released {
+            return;
+        }
+        if self.is_continuous() && self.persist_continuous_zero(id).is_err() {
+            state.frozen = true;
+            state.snapshot = None;
+            return;
+        }
+        state.known_zero.insert(id.to_string());
+        if self.is_continuous() {
+            state.contexts.remove(id);
+        }
     }
 
     /// Claims the settlement of a prepared command whose submission task was cancelled or
@@ -600,10 +699,20 @@ impl ProductionAuthority {
     /// cancellation after it is not, because the signed request may already be on its way.
     pub(crate) fn claim_cancelled_prepared(&self, id: &str) -> bool {
         let mut state = self.state.lock();
-        if state.creates.contains_key(id) || state.known_zero.contains(id) {
+        if state.continuous.released
+            || state.creates.contains_key(id)
+            || state.known_zero.contains(id)
+        {
+            return false;
+        }
+        if self.is_continuous() && self.persist_continuous_zero(id).is_err() {
+            state.frozen = true;
             return false;
         }
         state.known_zero.insert(id.to_string());
+        if self.is_continuous() {
+            state.contexts.remove(id);
+        }
         true
     }
     pub(crate) fn owns(&self, id: &str) -> bool {
@@ -633,16 +742,16 @@ impl ProductionAuthority {
         let tick = tick.as_decimal();
         let step = step.as_decimal();
         for quantity in [
-            self.envelope.entry_max_quantity,
-            self.envelope.close_max_quantity,
+            self.envelope().entry_max_quantity,
+            self.envelope().close_max_quantity,
         ] {
             if quantity % step != Decimal::ZERO {
                 return Err("approved quantity is not on the venue step".into());
             }
         }
         for price in [
-            self.envelope.entry_worst_price,
-            self.envelope.close_worst_price,
+            self.envelope().entry_worst_price,
+            self.envelope().close_worst_price,
         ] {
             if price % tick != Decimal::ZERO {
                 return Err("approved price is not on the venue tick".into());
@@ -663,7 +772,7 @@ impl ProductionAuthority {
         let Some(minimum) = minimum else {
             return Ok(());
         };
-        let e = &self.envelope;
+        let e = self.envelope();
         let overflow = || "production cleanup notional overflow".to_string();
         let notional = if e.close_side == "buy" {
             e.close_max_quantity
@@ -688,6 +797,9 @@ impl ProductionAuthority {
     }
 
     pub(crate) fn authorize_post(&self, target: &str, body: &[u8]) -> Result<(), String> {
+        if self.is_continuous() {
+            return self.authorize_continuous_post(target, body);
+        }
         if target != "/v1/perps/orders" {
             return Err("production supports one limit IOC create only".into());
         }
@@ -706,19 +818,28 @@ impl ProductionAuthority {
             .contexts
             .get(&order.client_order_id)
             .ok_or("no native command context for this body")?;
-        if expected.as_slice() != body
-            || quote.ts_init.as_u64() < self.created_at
-            || quote.ts_init.as_u64() > now
-            || now.saturating_sub(quote.ts_init.as_u64()) > 2_000_000_000
-            || quote.bid_price.as_decimal() <= Decimal::ZERO
-            || quote.ask_price < quote.bid_price
-            || quote.bid_size.as_decimal() <= Decimal::ZERO
+        if expected.as_slice() != body {
+            return Err("serialized command differs from native prepared context".into());
+        }
+        if quote.ts_init.as_u64() < self.created_at {
+            return Err("production native quote predates this run".into());
+        }
+        if quote.ts_init.as_u64() > now {
+            return Err("production native quote timestamp is in the future".into());
+        }
+        if now.saturating_sub(quote.ts_init.as_u64()) > 2_000_000_000 {
+            return Err("production native quote exceeds the two-second age limit".into());
+        }
+        if quote.bid_price.as_decimal() <= Decimal::ZERO || quote.ask_price < quote.bid_price {
+            return Err("production native quote prices are invalid".into());
+        }
+        if quote.bid_size.as_decimal() <= Decimal::ZERO
             || quote.ask_size.as_decimal() <= Decimal::ZERO
         {
-            return Err("serialized command differs or native quote is stale/invalid".into());
+            return Err("production native quote sizes are empty".into());
         }
         let minimum = *minimum;
-        let e = &self.envelope;
+        let e = self.envelope();
         if state.frozen
             || state.stopped
             || !state.started
@@ -850,10 +971,13 @@ impl ProductionAuthority {
     }
 
     pub(crate) fn authorize_delete(&self, target: &str) -> Result<(), String> {
+        if self.is_continuous() {
+            return self.authorize_continuous_delete(target);
+        }
         let mut state = self.state.lock();
         let now = get_atomic_clock_realtime().get_time_ns().as_u64();
-        if now >= self.envelope.cleanup_deadline_unix_nanos
-            || state.requests >= self.envelope.max_app_requests
+        if now >= self.envelope().cleanup_deadline_unix_nanos
+            || state.requests >= self.envelope().max_app_requests
         {
             return Err("production cancellation budget or deadline exhausted".into());
         }
@@ -884,6 +1008,10 @@ impl ProductionAuthority {
         clean: bool,
         generation: u64,
     ) {
+        if self.is_continuous() {
+            self.reconcile_continuous(reading, clean, generation);
+            return;
+        }
         let mut state = self.state.lock();
         let now = get_atomic_clock_realtime().get_time_ns().as_u64();
         let Ok(evidence) = self.evidence(false) else {
@@ -915,7 +1043,7 @@ impl ProductionAuthority {
         let position = reading
             .positions
             .iter()
-            .filter(|p| p.instrument_id == Some(self.envelope.instrument_id))
+            .filter(|p| p.instrument_id == Some(self.envelope().instrument_id))
             .map(|p| p.signed)
             .sum::<Decimal>();
         let metadata_fresh = self.market_ready(&state, now).is_ok();
@@ -934,12 +1062,14 @@ impl ProductionAuthority {
                 || !evidence.journal_healthy
                 || evidence
                     .available_margin_usdc
-                    .is_none_or(|v| v < self.envelope.min_available_margin_usdc)
+                    .is_none_or(|v| v < self.envelope().min_available_margin_usdc)
                 || !evidence.dms_verified
                 || !metadata_fresh
             {
                 return;
             }
+            state.cashflow_baseline =
+                CashflowBaseline::from_reading(reading, evidence.funding_accounted_usdc);
             state.started = true;
             state.generation += 1;
             state.snapshot = Some(
@@ -965,8 +1095,15 @@ impl ProductionAuthority {
             state.frozen = true;
             state.generation += 1;
             state.snapshot = Some(
-                serde_json::json!({"run_id":self.run_id,"phase":"reconciled","generation":state.generation,"snapshot_unix_nanos":now,"latest_activity_generation":state.activity,"latest_activity_unix_nanos":state.activity_at,"reconciled_activity_generation":state.activity,"reconciliation_unix_nanos":now,"complete":true,"snapshot_fresh":true,"instrument_id":self.envelope.instrument_id.to_string(),"position_qty":position.to_string(),"reconciled_flat":true,"own_open_orders":0,"foreign_open_orders":0,"unknown_submissions":0,"late_fills":0,"execution_cost":null}),
+                serde_json::json!({"run_id":self.run_id,"phase":"reconciled","generation":state.generation,"snapshot_unix_nanos":now,"latest_activity_generation":state.activity,"latest_activity_unix_nanos":state.activity_at,"reconciled_activity_generation":state.activity,"reconciliation_unix_nanos":now,"complete":true,"snapshot_fresh":true,"instrument_id":self.envelope().instrument_id.to_string(),"position_qty":position.to_string(),"reconciled_flat":true,"own_open_orders":0,"foreign_open_orders":0,"unknown_submissions":0,"late_fills":0,"execution_cost":null}),
             );
+            let cashflows = state
+                .cashflow_baseline
+                .as_ref()
+                .and_then(|baseline| baseline.project(reading, evidence.funding_accounted_usdc));
+            if let Some(snapshot) = state.snapshot.as_mut() {
+                snapshot["account_cashflows"] = cashflows.unwrap_or(serde_json::Value::Null);
+            }
         }
     }
 
@@ -974,6 +1111,9 @@ impl ProductionAuthority {
         &self,
         reading: &crate::reconciliation::AccountReading,
     ) -> Result<(), String> {
+        if self.is_continuous() {
+            return self.verify_continuous_dms_reading(reading);
+        }
         let state = self.state.lock();
         if reading.orders.iter().any(|o| {
             !o.status.is_terminal()
@@ -993,7 +1133,7 @@ impl ProductionAuthority {
             }
         } else {
             if reading.positions.iter().any(|p| {
-                p.signed != Decimal::ZERO && p.instrument_id != Some(self.envelope.instrument_id)
+                p.signed != Decimal::ZERO && p.instrument_id != Some(self.envelope().instrument_id)
             }) {
                 return Err("production DMS found a foreign position".into());
             }
@@ -1006,7 +1146,7 @@ impl ProductionAuthority {
                     .ok_or("production own order quantity is unknown")?;
                 own += if *closing { -*filled } else { *filled };
             }
-            if self.envelope.entry_side == "sell" {
+            if self.envelope().entry_side == "sell" {
                 own = -own;
             }
             let venue = reading.positions.iter().map(|p| p.signed).sum::<Decimal>();
@@ -1048,6 +1188,15 @@ impl ProductionAuthority {
         })
     }
 
+    /// Returns whether the owned asynchronous shutdown has begun.
+    pub(crate) fn shutdown_started(&self) -> bool {
+        self.state
+            .lock()
+            .shutdown_trace
+            .shutdown_started_unix_nanos
+            .is_some()
+    }
+
     pub(crate) fn stop_creates(&self) {
         let mut state = self.state.lock();
         if !state.stopped && !state.frozen {
@@ -1079,8 +1228,15 @@ impl ProductionAuthority {
         }
     }
     pub(crate) fn entry_remaining(&self) -> std::time::Duration {
+        if self.is_continuous() {
+            return std::time::Duration::from_nanos(
+                self.created_at
+                    .saturating_add(60_000_000_000)
+                    .saturating_sub(get_atomic_clock_realtime().get_time_ns().as_u64()),
+            );
+        }
         std::time::Duration::from_nanos(
-            self.envelope
+            self.envelope()
                 .entry_deadline_unix_nanos
                 .saturating_sub(get_atomic_clock_realtime().get_time_ns().as_u64()),
         )
@@ -1157,8 +1313,11 @@ impl ProductionAuthority {
     }
 
     pub(crate) fn remaining(&self) -> std::time::Duration {
+        if self.is_continuous() {
+            return std::time::Duration::MAX;
+        }
         std::time::Duration::from_nanos(
-            self.envelope
+            self.envelope()
                 .cleanup_deadline_unix_nanos
                 .saturating_sub(get_atomic_clock_realtime().get_time_ns().as_u64()),
         )
@@ -1317,12 +1476,29 @@ impl ProductionAuthority {
         frame: &crate::reconciliation::DeadMansSwitchMessage,
     ) -> Result<(), String> {
         let state = self.state.lock();
+        if state.continuous.released {
+            return Err("continuous journal ownership has been released".into());
+        }
         let now = get_atomic_clock_realtime().get_time_ns().as_u64();
         let evidence = self.evidence(false)?;
         let proof = state
             .snapshot
             .as_ref()
             .ok_or("production release has no authoritative reconciliation proof")?;
+        if self.is_continuous()
+            && (!evidence.journal_healthy
+                || proof["reconciliation_unix_nanos"]
+                    .as_u64()
+                    .is_none_or(|at| {
+                        at > now
+                            || now.saturating_sub(at)
+                                > crate::reconciliation::ONDO_PRODUCTION_READING_FRESHNESS_NANOS
+                    }))
+        {
+            return Err(
+                "continuous DMS release requires fresh account proof and a healthy journal".into(),
+            );
+        }
         if !state.stopped
             || !state.frozen
             || !state.identity_verified
@@ -1362,7 +1538,7 @@ impl ProductionAuthority {
     }
 
     pub(crate) fn permits_dms(&self) -> bool {
-        self.remaining() > std::time::Duration::ZERO
+        !self.state.lock().continuous.released && self.remaining() > std::time::Duration::ZERO
     }
     pub(crate) fn finish(&self, clean: bool) -> bool {
         let journal_healthy = self.evidence(false).is_ok_and(|e| e.journal_healthy);
@@ -1431,7 +1607,10 @@ mod tests {
                     identity_matched: true,
                     journal_healthy: true,
                     dms_verified: true,
+                    reduction_ready: true,
                     available_margin_usdc: Some(Decimal::from(25)),
+                    funding_accounted_usdc: Some(Decimal::ZERO),
+                    quotes: BTreeMap::new(),
                     orders: BTreeMap::new(),
                     unknown: 0,
                 })
@@ -1446,7 +1625,7 @@ mod tests {
         .market_infos(now)
         .unwrap()
         .into_iter()
-        .find(|i| i.instrument_id() == guard.envelope.instrument_id)
+        .find(|i| i.instrument_id() == guard.envelope().instrument_id)
         .unwrap();
         guard.metadata(Some(info), Some(false), now.as_u64());
         let sent = get_atomic_clock_realtime().get_time_ns().as_u64();
@@ -1462,7 +1641,7 @@ mod tests {
 
         let now = get_atomic_clock_realtime().get_time_ns();
         QuoteTick::new(
-            guard.envelope.instrument_id,
+            guard.envelope().instrument_id,
             Price::from("229.99"),
             Price::from("230.00"),
             Quantity::from("1.00"),
@@ -1574,7 +1753,7 @@ mod tests {
         #[case] admitted: bool,
     ) {
         let (mut guard, path) = started_authority(30);
-        let e = &mut Arc::get_mut(&mut guard).unwrap().envelope;
+        let e = Arc::get_mut(&mut guard).unwrap().envelope.as_mut().unwrap();
         e.entry_side = "sell".into();
         e.entry_max_quantity = Decimal::from_str_exact("0.1").unwrap();
         e.entry_worst_price = Decimal::from(150);
@@ -1771,7 +1950,10 @@ mod tests {
                     identity_matched: true,
                     journal_healthy: true,
                     dms_verified: true,
+                    reduction_ready: true,
                     available_margin_usdc: Some(Decimal::from(25)),
+                    funding_accounted_usdc: Some(Decimal::ZERO),
+                    quotes: BTreeMap::new(),
                     orders: BTreeMap::new(),
                     unknown: 0,
                 })
@@ -1784,7 +1966,7 @@ mod tests {
             .market_infos(now)
             .unwrap()
             .into_iter()
-            .find(|i| i.instrument_id() == guard.envelope.instrument_id)
+            .find(|i| i.instrument_id() == guard.envelope().instrument_id)
             .unwrap();
         guard.metadata(Some(info), Some(false), now.as_u64());
         let body = serde_json::to_vec(&serde_json::json!({
@@ -1800,7 +1982,7 @@ mod tests {
         }))
         .unwrap();
         let quote = QuoteTick::new(
-            guard.envelope.instrument_id,
+            guard.envelope().instrument_id,
             Price::from("229.99"),
             Price::from("230.00"),
             Quantity::from("1.00"),
@@ -2044,7 +2226,10 @@ mod tests {
                     identity_matched: true,
                     journal_healthy: true,
                     dms_verified: true,
+                    reduction_ready: true,
                     available_margin_usdc: Some(Decimal::from(25)),
+                    funding_accounted_usdc: Some(Decimal::ZERO),
+                    quotes: BTreeMap::new(),
                     orders: BTreeMap::new(),
                     unknown: 0,
                 })
@@ -2059,12 +2244,12 @@ mod tests {
         .market_infos(now)
         .unwrap()
         .into_iter()
-        .find(|i| i.instrument_id() == guard.envelope.instrument_id)
+        .find(|i| i.instrument_id() == guard.envelope().instrument_id)
         .unwrap();
         guard.metadata(Some(info), Some(false), now.as_u64());
         let body=serde_json::to_vec(&serde_json::json!({"market":"NVDA-USD.P","side":"buy","type":"limit","size":"0.05","price":"230.00","timeInForce":"IOC","postOnly":false,"reduceOnly":false,"clientOrderId":"slow-checkpoint"})).unwrap();
         let quote = QuoteTick::new(
-            guard.envelope.instrument_id,
+            guard.envelope().instrument_id,
             Price::from("229.99"),
             Price::from("230.00"),
             Quantity::from("1.00"),
@@ -2124,5 +2309,59 @@ mod tests {
         );
         assert!(guard.state.lock().creates.is_empty());
         std::fs::remove_file(path).unwrap();
+    }
+    #[rstest]
+    #[case(Some(Decimal::from(-2)), true, Some("-2"))]
+    #[case(Some(Decimal::ZERO), false, None)]
+    #[case(None, false, None)]
+    fn test_cashflow_projection_requires_funding_records_to_match_account_change(
+        #[case] accounted: Option<Decimal>,
+        #[case] reconciled: bool,
+        #[case] payment: Option<&str>,
+    ) {
+        let balance = crate::reconciliation::BalanceReading {
+            wallet_balance: Some(Decimal::from(100)),
+            margin_balance: Some(Decimal::from(100)),
+            used_margin: Some(Decimal::ZERO),
+            available_margin: Some(Decimal::from(100)),
+            withdrawable_margin: Some(Decimal::from(100)),
+            maintenance_margin_requirement: None,
+            under_liquidation: Some(false),
+            total_funding_payments: Some(Decimal::ZERO),
+            unmapped: vec![],
+            raw: "PRIVATE_NOT_FOR_PROJECTION".into(),
+        };
+        let mut reading = crate::reconciliation::AccountReading {
+            balance: Some(balance),
+            read_at: 1.into(),
+            ..Default::default()
+        };
+        let baseline = CashflowBaseline::from_reading(&reading, Some(Decimal::ZERO)).unwrap();
+        reading.read_at = 2.into();
+        let balance = reading.balance.as_mut().unwrap();
+        balance.wallet_balance = Some(Decimal::from(98));
+        balance.margin_balance = Some(Decimal::from(98));
+        balance.total_funding_payments = Some(Decimal::from(-2));
+        let projection = baseline.project(&reading, accounted).unwrap();
+        assert_eq!(projection["wallet_balance_change_usdc"], "-2");
+        assert_eq!(projection["margin_balance_change_usdc"], "-2");
+        assert_eq!(projection["funding_history_reconciled"], reconciled);
+        assert_eq!(
+            projection["funding_payments_usdc"],
+            serde_json::json!(payment)
+        );
+        assert!(
+            !projection
+                .to_string()
+                .contains("PRIVATE_NOT_FOR_PROJECTION")
+        );
+        reading.balance.as_mut().unwrap().wallet_balance = None;
+        assert!(
+            baseline.project(&reading, accounted).unwrap()["wallet_balance_change_usdc"].is_null()
+        );
+        reading.read_at = 1.into();
+        assert!(baseline.project(&reading, accounted).is_none());
+        reading.balance = None;
+        assert!(CashflowBaseline::from_reading(&reading, accounted).is_none());
     }
 }
