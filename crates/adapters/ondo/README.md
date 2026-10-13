@@ -81,8 +81,12 @@ journal, one-second reconciliation and a configured dead man's switch. Read-only
 enable either write authority.
 
 The continuous authority supports repeated order cycles across the configured perpetual instrument
-IDs. It permits limit IOC and GTC orders; post-only orders require GTC. Quantities remain base units,
-prices and limits use exact decimals, and all symbols share the venue's one-way net account position.
+IDs. It permits limit IOC, limit GTC and genuine market orders; post-only orders require limit GTC.
+Market bodies omit both price and time in force. Their per-order and gross notional limits use
+the current native ask as a conservative admission estimate, and their published minimum uses the
+current ask for buys or bid for sells. These estimates are rechecked before submission, including
+after durable reservation; market orders have no execution price bound. Quantities remain base
+units, prices and limits use exact decimals, and all symbols share the venue's one-way net position.
 Reduce-only orders must fit the confirmed residual and outstanding close reservations. Virtual
 strategy legs do not create separate venue positions.
 

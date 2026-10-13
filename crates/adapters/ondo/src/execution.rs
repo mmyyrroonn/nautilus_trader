@@ -891,11 +891,24 @@ impl OndoReporter {
         }
 
         match (advance.newly_accepted, acceptance, order) {
-            (true, Acceptance::Event, Some(order)) => self.emitter.emit_order_accepted(
-                order,
-                VenueOrderId::from(payload.order_id()),
-                event_time(payload, self.now()),
-            ),
+            (true, Acceptance::Event, Some(order)) => {
+                self.emitter.emit_order_accepted(
+                    order,
+                    VenueOrderId::from(payload.order_id()),
+                    event_time(payload, self.now()),
+                );
+
+                // An immediate-order create can already be canceled when it is acknowledged,
+                // repeated identical reads are unchanged, so its cancellation must reach the
+                // cache now using only the applied fill total.
+                if status == OndoOrderStatus::Canceled {
+                    self.emit_status_report(
+                        &advance.snapshot,
+                        payload,
+                        event_time(payload, self.now()),
+                    );
+                }
+            }
             _ => {
                 self.emit_status_report(&advance.snapshot, payload, event_time(payload, self.now()))
             }

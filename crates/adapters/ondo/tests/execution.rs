@@ -1148,6 +1148,92 @@ async fn test_a_limit_gtc_post_only_reduce_only_order_is_serialized_and_signed_a
 }
 
 #[rstest]
+#[case::market(OrderType::Market)]
+#[case::limit_ioc(OrderType::Limit)]
+#[tokio::test]
+async fn test_an_already_canceled_create_reports_acceptance_then_zero_fill_cancellation(
+    #[case] order_type: OrderType,
+) {
+    let mut response: serde_json::Value = serde_json::from_str(&order_json(
+        VENUE_ORDER_ID,
+        CLIENT_ORDER_ID,
+        "canceled",
+        "0.50",
+        "0.00",
+        "0.00",
+        "0.00",
+    ))
+    .unwrap();
+    response["side"] = serde_json::json!("sell");
+    if order_type == OrderType::Market {
+        response["type"] = serde_json::json!("market");
+        response.as_object_mut().unwrap().remove("price");
+        response.as_object_mut().unwrap().remove("timeInForce");
+    } else {
+        response["timeInForce"] = serde_json::json!("IOC");
+    }
+    let response = response.to_string();
+    let mock = MockServer::start_admitted(vec![Reply::ok(envelope(&response))]).await;
+    let mut harness = recovered_harness(&mock).await;
+    let mut builder = OrderTestBuilder::new(order_type);
+    builder
+        .trader_id(TraderId::from("TESTER-001"))
+        .strategy_id(StrategyId::from("S-001"))
+        .instrument_id(InstrumentId::from(NVDA))
+        .client_order_id(ClientOrderId::from(CLIENT_ORDER_ID))
+        .side(OrderSide::Sell)
+        .quantity(Quantity::from("0.50"))
+        .time_in_force(TimeInForce::Ioc);
+    if order_type == OrderType::Limit {
+        builder.price(Price::from("227.50"));
+    }
+    let order = builder.build();
+    seed_order(&harness, &order);
+    harness.client.submit_order(submit_command(&order)).unwrap();
+    let mut events = Vec::new();
+    collect_until(&mut harness, &mut events, |events| {
+        order_reports(events)
+            .iter()
+            .any(|report| report.order_status == OrderStatus::Canceled)
+    })
+    .await;
+    let accepted = events
+        .iter()
+        .position(|event| matches!(event, ExecutionEvent::Order(OrderEventAny::Accepted(_))))
+        .unwrap();
+    let canceled = events
+        .iter()
+        .position(|event| {
+            matches!(event,
+        ExecutionEvent::Report(ExecutionReport::Order(report))
+            if report.order_status == OrderStatus::Canceled)
+        })
+        .unwrap();
+    assert!(accepted < canceled);
+    let reports = order_reports(&events);
+    assert_eq!(reports.len(), 1);
+    assert_eq!(reports[0].filled_qty, Quantity::from("0"));
+    assert_eq!(reports[0].order_type, order_type);
+    assert!(fill_reports(&events).is_empty());
+    assert_eq!(harness.client.applied_fill_count(), 0);
+    assert!(
+        harness
+            .client
+            .order_state(&order.client_order_id())
+            .unwrap()
+            .is_settled()
+    );
+    assert_eq!(
+        harness
+            .client
+            .apply_order(&OndoApiOrder::from_text(&response).unwrap()),
+        OndoOrderApplication::Unchanged
+    );
+    assert!(harness.exec_rx.try_recv().is_err());
+    assert_eq!(writes(&mock).len(), 1);
+}
+
+#[rstest]
 #[tokio::test]
 async fn test_a_market_order_sends_the_base_size_and_neither_price_nor_time_in_force() {
     let mock = MockServer::start_admitted(vec![Reply::ok(envelope(&order_json(
