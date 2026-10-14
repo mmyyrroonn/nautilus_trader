@@ -82,6 +82,14 @@ impl BackpackProductionControl {
     pub fn admission_status_json(&self) -> anyhow::Result<serde_json::Value> {
         self.runtime()?.production_admission_status()
     }
+    /// Extends expiry without accepting new permissions, account facts or risk limits.
+    pub fn renew_authority(&self, expires_at_ms: u64) -> anyhow::Result<()> {
+        self.runtime()?.renew_production_authority(expires_at_ms)
+    }
+    /// Returns the full authenticated REST reading only while its private revision is current.
+    pub fn account_snapshot_json(&self) -> anyhow::Result<serde_json::Value> {
+        self.runtime()?.production_account_snapshot()
+    }
     #[must_use]
     pub fn shutdown(&self) -> Option<BackpackShutdownReport> {
         if let Ok(runtime) = self.runtime() {

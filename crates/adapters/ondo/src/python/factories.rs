@@ -48,6 +48,13 @@ impl OndoDataClientFactory {
 #[pymethods]
 #[pyo3_stub_gen::derive::gen_stub_pymethods]
 impl OndoExecutionClientFactory {
+    /// Reports the complete account snapshot schema with request-start fences and owned IDs.
+    #[getter]
+    #[pyo3(name = "supports_complete_account_snapshots")]
+    #[must_use]
+    pub const fn py_supports_complete_account_snapshots(&self) -> bool {
+        true
+    }
     /// Reports native continuous execution support; this does not attest to a venue run.
     #[getter]
     #[pyo3(name = "supports_continuous_execution")]

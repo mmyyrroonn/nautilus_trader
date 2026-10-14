@@ -147,6 +147,21 @@ pub struct PyBackpackProductionControl {
 #[pyo3_stub_gen::derive::gen_stub_pymethods]
 #[pymethods]
 impl PyBackpackProductionControl {
+    /// Extends the current finite expiry by at most five minutes from now, keeping all limits.
+    fn renew_authority(&self, expires_at_ms: u64) -> PyResult<()> {
+        self.inner
+            .renew_authority(expires_at_ms)
+            .map_err(|_| to_pyvalue_err("production authority renewal refused"))
+    }
+    /// Returns the complete revision-fenced authenticated account reading, without any I/O.
+    fn account_snapshot_json(&self) -> PyResult<String> {
+        let value = self
+            .inner
+            .account_snapshot_json()
+            .map_err(|_| to_pyruntime_err("current production account snapshot unavailable"))?;
+        serde_json::to_string(&value)
+            .map_err(|_| to_pyruntime_err("account snapshot serialization failed"))
+    }
     /// Checks current native admission facts without dispatching financial requests.
     fn admission_status_json(&self) -> PyResult<String> {
         let value = self
