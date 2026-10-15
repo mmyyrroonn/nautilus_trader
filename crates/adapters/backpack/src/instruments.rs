@@ -96,7 +96,7 @@ pub struct BackpackInstrumentMetadata {
     pub instrument_id: InstrumentId,
     /// Native symbol, preserved without renaming.
     pub raw_symbol: Symbol,
-    /// Known Nautilus base currency; unknown currencies require explicit registration.
+    /// Venue-validated base currency, registered using the native crypto convention.
     pub base_currency: Currency,
     /// Venue quote currency, always USDC for this scope.
     pub quote_currency: Currency,

@@ -842,7 +842,14 @@ impl OndoReporter {
         }
 
         let Some(client_order_id) = self.state.read().resolve_order(payload) else {
-            log::warn!(
+            // Foreign terminal history is expected during every account refresh.
+            // Keep active foreign orders visible without warning on old history.
+            log::log!(
+                if payload.status().is_terminal() {
+                    log::Level::Debug
+                } else {
+                    log::Level::Warn
+                },
                 "Ondo order {} is not one this client submitted or tracks; it is kept raw",
                 payload.order_id(),
             );
@@ -965,7 +972,9 @@ impl OndoReporter {
 
             state.resolve_fill(fill)
         }) else {
-            log::warn!(
+            // Untracked history is not an owned execution failure. Reconciliation
+            // still retains account-wide evidence and detects foreign open orders.
+            log::debug!(
                 "Ondo fill {} names order {} which this client does not track; it is neither \
                  recorded nor reported",
                 fill.id(),

@@ -282,9 +282,8 @@ fn test_synthetic_numeric_decimal_field_is_refused() {
 #[rstest]
 #[case("0", None)]
 #[case("-1", None)]
-#[case("0.000015", None)]
+#[case("0.000015", Some("0.000019"))]
 #[case("0.00002", Some("0.00001"))]
-#[case("0.00001", Some("0.000015"))]
 #[case("0.00001", Some("0"))]
 fn test_synthetic_invalid_quantity_bounds(#[case] minimum: &str, #[case] maximum: Option<&str>) {
     let mut market = fixture(BTC);
@@ -399,7 +398,7 @@ fn test_all_economic_provenance_classes_remain_not_execution_ready(
 }
 
 #[rstest]
-fn test_invalid_economic_inputs_and_unknown_currency() {
+fn test_invalid_economic_inputs() {
     assert!(
         BackpackInstrumentEconomics::new_checked(
             decimal("0.01"),
@@ -422,17 +421,90 @@ fn test_invalid_economic_inputs_and_unknown_currency() {
         )
         .is_err()
     );
+}
+
+#[rstest]
+fn test_validated_new_base_currency_is_registered_after_metadata_checks() {
     let mut market = fixture(BTC);
     market.symbol = "UNREGISTEREDB1_USDC_PERP".to_string();
     market.base_symbol = "UNREGISTEREDB1".to_string();
-    assert!(matches!(
-        parse_market(
-            &market,
-            &config(&["UNREGISTEREDB1_USDC_PERP"]),
-            UnixNanos::from(0)
-        ),
-        Err(BackpackInstrumentError::UnknownCurrency(_))
-    ));
+    let selected = config(&[&market.symbol]);
+    market.filters.price.tick_size = "0".to_string();
+    assert!(parse_market(&market, &selected, UnixNanos::from(0)).is_err());
+    assert!(Currency::from_str("UNREGISTEREDB1").is_err());
+
+    market.filters.price.tick_size = "0.1".to_string();
+    let metadata = parse_market(&market, &selected, UnixNanos::from(1)).unwrap();
+    assert_eq!(
+        metadata.base_currency,
+        Currency::from_str("UNREGISTEREDB1").unwrap()
+    );
+    assert_eq!(metadata.base_currency.precision, 8);
+    assert_eq!(metadata.raw_symbol.as_str(), "UNREGISTEREDB1_USDC_PERP");
+}
+
+#[rstest]
+#[case("0.000001", None, "0.0001", None)]
+#[case("0.00001", Some("0.00029"), "0.0001", Some("0.0002"))]
+#[case("0.00011", Some("0.00021"), "0.0002", Some("0.0002"))]
+fn test_price_bounds_are_rounded_inward_without_changing_tick_or_raw_metadata(
+    #[case] minimum: &str,
+    #[case] maximum: Option<&str>,
+    #[case] expected_minimum: &str,
+    #[case] expected_maximum: Option<&str>,
+) {
+    let mut market = fixture(BTC);
+    market.filters.price.tick_size = "0.0001".to_string();
+    market.filters.price.min_price = minimum.to_string();
+    market.filters.price.max_price = maximum.map(str::to_string);
+    let metadata = parse_market(&market, &config(&["BTC_USDC_PERP"]), UnixNanos::from(1)).unwrap();
+    assert_eq!(metadata.price_increment.as_decimal(), decimal("0.0001"));
+    assert_eq!(metadata.min_price.as_decimal(), decimal(expected_minimum));
+    assert_eq!(
+        metadata.max_price.map(|p| p.as_decimal()),
+        expected_maximum.map(decimal)
+    );
+    assert_eq!(
+        metadata.raw_metadata["filters"]["price"]["minPrice"],
+        minimum
+    );
+    assert_eq!(
+        metadata.raw_metadata["filters"]["price"]["maxPrice"],
+        json!(maximum)
+    );
+}
+
+#[rstest]
+#[case("0.000015", None, "0.00002", None)]
+#[case("0.00001", Some("0.000015"), "0.00001", Some("0.00001"))]
+fn test_quantity_bounds_preserve_the_set_of_admissible_lots(
+    #[case] minimum: &str,
+    #[case] maximum: Option<&str>,
+    #[case] expected_minimum: &str,
+    #[case] expected_maximum: Option<&str>,
+) {
+    let mut market = fixture(BTC);
+    market.filters.quantity.min_quantity = minimum.to_string();
+    market.filters.quantity.max_quantity = maximum.map(str::to_string);
+    let metadata = parse_market(&market, &config(&["BTC_USDC_PERP"]), UnixNanos::from(1)).unwrap();
+    assert_eq!(metadata.size_increment.as_decimal(), decimal("0.00001"));
+    assert_eq!(
+        metadata.min_quantity.as_decimal(),
+        decimal(expected_minimum)
+    );
+    assert_eq!(
+        metadata.max_quantity.map(|q| q.as_decimal()),
+        expected_maximum.map(decimal)
+    );
+}
+
+#[rstest]
+fn test_price_interval_without_a_grid_point_is_refused() {
+    let mut market = fixture(BTC);
+    market.filters.price.tick_size = "0.0001".to_string();
+    market.filters.price.min_price = "0.00011".to_string();
+    market.filters.price.max_price = Some("0.00019".to_string());
+    assert!(parse_market(&market, &config(&["BTC_USDC_PERP"]), UnixNanos::from(1)).is_err());
 }
 
 #[rstest]
