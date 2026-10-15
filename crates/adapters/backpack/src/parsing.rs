@@ -36,7 +36,7 @@ use crate::{
 /// # Errors
 ///
 /// Returns an error for unlisted or unsupported products, inactive/hidden markets,
-/// inconsistent identity, unknown currency, missing/invalid filters, off-grid bounds,
+/// inconsistent identity, missing/invalid filters, bounds with no valid grid point,
 /// representational precision loss, malformed funding metadata, or domain failures.
 pub fn parse_market(
     market: &BackpackMarket,
@@ -56,8 +56,6 @@ pub fn parse_market(
         return Err(BackpackInstrumentError::InconsistentIdentity);
     }
 
-    let base_currency = Currency::from_str(&market.base_symbol)
-        .map_err(|_| BackpackInstrumentError::UnknownCurrency(market.base_symbol.clone()))?;
     let quote_currency = Currency::from_str(&market.quote_symbol)
         .map_err(|_| BackpackInstrumentError::UnknownCurrency(market.quote_symbol.clone()))?;
     let tick = positive_decimal(&market.filters.price.tick_size, "tickSize")?;
@@ -78,8 +76,8 @@ pub fn parse_market(
         .as_deref()
         .map(|s| positive_decimal(s, "maxQuantity"))
         .transpose()?;
-    validate_bounds(min_price, max_price, tick, "price")?;
-    validate_bounds(min_quantity, max_quantity, step, "quantity")?;
+    let (min_price, max_price) = align_bounds(min_price, max_price, tick, "price")?;
+    let (min_quantity, max_quantity) = align_bounds(min_quantity, max_quantity, step, "quantity")?;
     let price_precision = tick.normalize().scale() as u8;
     let size_precision = step.normalize().scale() as u8;
     let price_increment = exact_price(tick, price_precision)?;
@@ -118,6 +116,10 @@ pub fn parse_market(
         .map_err(|e| BackpackInstrumentError::Domain(e.to_string()))?;
     let raw_symbol = Symbol::new_checked(&market.symbol)
         .map_err(|e| BackpackInstrumentError::Domain(e.to_string()))?;
+
+    // Register only after validating the explicit perpetual allowlist and metadata.
+    // As in other native crypto adapters, currency precision is independent of lot size.
+    let base_currency = Currency::get_or_create_crypto(&market.base_symbol);
     Ok(BackpackInstrumentMetadata {
         instrument_id,
         raw_symbol,
@@ -245,27 +247,44 @@ fn positive_decimal(value: &str, field: &'static str) -> Result<Decimal, Backpac
     Ok(value)
 }
 
-fn validate_bounds(
+fn align_bounds(
     min: Decimal,
     max: Option<Decimal>,
     increment: Decimal,
     field: &'static str,
-) -> Result<(), BackpackInstrumentError> {
+) -> Result<(Decimal, Option<Decimal>), BackpackInstrumentError> {
+    if max.is_some_and(|value| value < min) {
+        return Err(BackpackInstrumentError::InvalidField(field));
+    }
+
+    // Venue bounds need not be grid points. Round inward so the effective bounds
+    // admit exactly the same grid-aligned orders; raw venue bounds remain in info.
     let min_remainder = min
         .checked_rem(increment)
         .ok_or(BackpackInstrumentError::InvalidField(field))?;
 
-    if min_remainder != Decimal::ZERO {
+    let min = if min_remainder == Decimal::ZERO {
+        min
+    } else {
+        increment
+            .checked_sub(min_remainder)
+            .and_then(|offset| min.checked_add(offset))
+            .ok_or(BackpackInstrumentError::InvalidField(field))?
+    };
+    let max = max
+        .map(|value| {
+            value
+                .checked_rem(increment)
+                .and_then(|remainder| value.checked_sub(remainder))
+                .ok_or(BackpackInstrumentError::InvalidField(field))
+        })
+        .transpose()?;
+
+    if max.is_some_and(|value| value < min) {
         return Err(BackpackInstrumentError::InvalidField(field));
     }
 
-    if let Some(max) = max
-        && (max < min || max.checked_rem(increment) != Some(Decimal::ZERO))
-    {
-        return Err(BackpackInstrumentError::InvalidField(field));
-    }
-
-    Ok(())
+    Ok((min, max))
 }
 
 pub(crate) fn exact_price(value: Decimal, precision: u8) -> Result<Price, BackpackInstrumentError> {
