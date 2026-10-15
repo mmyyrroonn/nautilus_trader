@@ -340,6 +340,27 @@ impl BackpackExecutionGuard {
         Ok(())
     }
 
+    /// Extends only the current expiry, retaining every original permission and risk limit.
+    pub(crate) fn renew_authority(
+        &self,
+        expires_at_ms: u64,
+        now_ms: u64,
+    ) -> Result<(), BackpackExecutionError> {
+        let _change = self.fence.change();
+        let mut state = self.lock()?;
+        if state.stopped || state.poisoned {
+            return Err(BackpackExecutionErrorKind::Stopped.into());
+        }
+        if expires_at_ms <= state.authority.expires_at_ms
+            || expires_at_ms <= now_ms
+            || expires_at_ms.saturating_sub(now_ms) > 300_000
+        {
+            return Err(BackpackExecutionErrorKind::Validation.into());
+        }
+        state.authority.expires_at_ms = expires_at_ms;
+        Ok(())
+    }
+
     /// Freezes session trust before reconnect/reconciliation. Queued final checks then refuse.
     pub fn invalidate(&self) {
         let _change = self.fence.change();

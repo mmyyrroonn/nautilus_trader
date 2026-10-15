@@ -51,6 +51,9 @@ pub struct BackpackAccountSnapshot {
     read_started_at_ms: u64,
 }
 impl BackpackAccountSnapshot {
+    pub(crate) fn read_started_at_ms(&self) -> u64 {
+        self.read_started_at_ms
+    }
     /// Derives conservative facts only from this reader's authenticated credential-scoped response.
     ///
     /// The caller must fence private updates around this non-atomic REST traversal.

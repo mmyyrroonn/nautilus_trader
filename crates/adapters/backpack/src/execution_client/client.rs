@@ -1326,6 +1326,94 @@ impl BackpackLoopbackControlRuntime {
             Err(error) => serde_json::json!({"ready":false,"reason":error.to_string()}),
         })
     }
+    pub(super) fn renew_production_authority(&self, expires_at_ms: u64) -> anyhow::Result<()> {
+        let shared = self.shared()?;
+        anyhow::ensure!(shared.production(), "client has no production authority");
+        shared
+            .restricted
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("production owner absent"))?
+            .owner
+            .guard()
+            .renew_authority(expires_at_ms, now().as_u64() / 1_000_000)?;
+        Ok(())
+    }
+    pub(super) fn production_account_snapshot(&self) -> anyhow::Result<serde_json::Value> {
+        let shared = self.shared()?;
+        anyhow::ensure!(shared.production(), "client has no production authority");
+        let gate = shared.gate.lock();
+        let epoch = gate
+            .health
+            .connection_epoch
+            .ok_or_else(|| anyhow::anyhow!("private epoch absent"))?;
+        let (snapshot, revision, completed_ms) = shared
+            .production_snapshot
+            .lock()
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("authenticated account snapshot absent"))?;
+        anyhow::ensure!(
+            gate.current(shared.run, gate.health.generation, epoch)
+                && gate.revision == revision
+                && gate.pending_frames == 0,
+            "account snapshot invalidated by private revision or disconnect"
+        );
+        let owner = &shared
+            .restricted
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("production owner absent"))?
+            .owner;
+        let guard = owner.guard();
+        let unknown = guard
+            .lock()?
+            .records
+            .values()
+            .filter(|record| record.is_unknown())
+            .count();
+        let mut positions: std::collections::BTreeMap<String, String> = shared
+            .config
+            .scope
+            .symbols()
+            .iter()
+            .map(|symbol| (format!("{symbol}.BACKPACK"), "0".into()))
+            .collect();
+        for position in &snapshot.positions {
+            positions.insert(
+                format!("{}.BACKPACK", position.symbol),
+                position.net_quantity.0.to_string(),
+            );
+        }
+        let open_orders: Vec<_> = snapshot
+            .open_orders
+            .iter()
+            .map(|order| {
+                serde_json::json!({
+                    "instrument_id": format!("{}.BACKPACK", order.symbol),
+                    "venue_order_id": order.id,
+                    "client_order_id": owner.owned_observation_id(order).map(|id| id.to_string()),
+                    "wire_client_id": order.client_id,
+                })
+            })
+            .collect();
+        let own = open_orders
+            .iter()
+            .filter(|order| !order["client_order_id"].is_null())
+            .count();
+        let complete = !snapshot
+            .gaps
+            .contains(&crate::account::BackpackEvidenceGap::UnknownFields);
+        Ok(serde_json::json!({
+            "schema_version": 1, "venue": "BACKPACK",
+            "account_id": shared.config.account_id.to_string(),
+            "snapshot_started_ns": snapshot.read_started_at_ms().saturating_mul(1_000_000),
+            "snapshot_completed_ns": completed_ms.saturating_mul(1_000_000),
+            "complete": complete, "connected": true, "epoch": epoch,
+            "positions": positions.into_iter().map(|(instrument_id, quantity)| {
+                serde_json::json!({"instrument_id": instrument_id, "quantity": quantity})
+            }).collect::<Vec<_>>(),
+            "own_open_orders": own, "foreign_open_orders": open_orders.len() - own,
+            "open_orders": open_orders, "unknown_submissions": unknown,
+        }))
+    }
     fn shared(&self) -> anyhow::Result<Arc<Shared>> {
         self.shared
             .upgrade()

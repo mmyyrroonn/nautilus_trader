@@ -223,13 +223,20 @@ impl BackpackOrderOwner {
         self.guard.clone()
     }
     pub(crate) fn owns_observation(&self, raw: &crate::account::models::BackpackOrder) -> bool {
-        self.guard.lock().is_ok_and(|state| {
-            state.records.values().any(|record| {
-                record.venue_order_id.as_deref() == Some(raw.id.as_str())
+        self.owned_observation_id(raw).is_some()
+    }
+    pub(crate) fn owned_observation_id(
+        &self,
+        raw: &crate::account::models::BackpackOrder,
+    ) -> Option<ClientOrderId> {
+        self.guard.lock().ok().and_then(|state| {
+            state.records.iter().find_map(|(id, record)| {
+                (record.venue_order_id.as_deref() == Some(raw.id.as_str())
                     && record.symbol == raw.symbol
                     && raw
                         .client_id
-                        .is_none_or(|numeric| numeric == record.client_id)
+                        .is_none_or(|numeric| numeric == record.client_id))
+                .then_some(*id)
             })
         })
     }
@@ -1555,6 +1562,29 @@ mod checkpoint_tests {
             authority: authority(),
         })
         .unwrap()
+    }
+    #[rstest]
+    fn authority_renewal_preserves_scope_limits_and_permissions() {
+        let directory = tempfile::tempdir().unwrap();
+        let owner = recovery_anchor_owner(directory.path());
+        let guard = owner.guard();
+        let before = guard.lock().unwrap().authority.clone();
+        guard.renew_authority(301_000, 1000).unwrap();
+        let after = guard.lock().unwrap().authority.clone();
+        assert_eq!(after.expires_at_ms, 301_000);
+        assert_eq!(after.max_order_notional, before.max_order_notional);
+        assert_eq!(after.max_reserved_notional, before.max_reserved_notional);
+        assert_eq!(after.max_reserved_margin, before.max_reserved_margin);
+        assert_eq!(after.max_account_age_ms, before.max_account_age_ms);
+        assert_eq!(after.max_market_age_ms, before.max_market_age_ms);
+        assert_eq!(after.max_unsettled_orders, before.max_unsettled_orders);
+        assert_eq!(after.allow_new_risk, before.allow_new_risk);
+        assert_eq!(after.allow_reduction, before.allow_reduction);
+        assert_eq!(after.allow_owned_cancel, before.allow_owned_cancel);
+        assert!(guard.renew_authority(301_000, 1000).is_err());
+        assert!(guard.renew_authority(301_001, 1000).is_err());
+        owner.stop().unwrap();
+        assert!(guard.renew_authority(302_000, 2000).is_err());
     }
     #[rstest]
     fn recovery_anchor_is_pinned_across_restart_and_cannot_change_or_disappear() {

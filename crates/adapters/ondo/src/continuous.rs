@@ -1230,9 +1230,17 @@ impl ProductionAuthority {
             .map(|(id, value)| (id.to_string(), value.to_string()))
             .collect();
         state.snapshot = Some(serde_json::json!({
-            "run_id": self.run_id, "mode": "continuous",
+            "schema_version": 1, "venue": "ONDO", "run_id": self.run_id, "mode": "continuous",
             "phase": if complete { "reconciled" } else { "continuous" },
             "generation": state.generation, "snapshot_unix_nanos": now,
+            "snapshot_started_ns": reading.read_at.as_u64(), "snapshot_completed_ns": now,
+            "open_orders": reading.orders.iter().filter(|order| !order.status.is_terminal()).map(|order| {
+                serde_json::json!({
+                    "instrument_id": crate::common::parse::market_to_instrument_id(&order.market).ok().map(|id| id.to_string()),
+                    "venue_order_id": order.venue_order_id,
+                    "client_order_id": if Self::continuous_order_owned(&state, &evidence, order) { order.client_order_id.clone() } else { None },
+                })
+            }).collect::<Vec<_>>(),
             "latest_activity_generation": state.activity,
             "latest_activity_unix_nanos": state.activity_at,
             "reconciled_activity_generation": generation,
@@ -2051,6 +2059,12 @@ mod tests {
         );
         assert_eq!(snapshot["reconciled_flat"], false);
         assert_eq!(snapshot["complete"], false);
+        assert!(snapshot["snapshot_started_ns"].as_u64().unwrap() > 0);
+        assert!(
+            snapshot["snapshot_started_ns"].as_u64().unwrap()
+                <= snapshot["snapshot_completed_ns"].as_u64().unwrap()
+        );
+        assert!(snapshot["open_orders"].as_array().unwrap().is_empty());
         assert!(!guard.finish(true));
         remove_journal(guard, path);
     }
