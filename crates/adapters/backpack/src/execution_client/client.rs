@@ -1245,6 +1245,24 @@ impl BackpackLoopbackControlRuntime {
             observed_at,
             shared.config.scope.symbols(),
         )?;
+        self.verify_native_positions(&shared, &facts)?;
+        control.account(token, facts, now().as_u64() / 1_000_000)?;
+        // Read-only snapshots deliberately carry conservative account gaps. This
+        // production admission has now verified the exact credential authority and
+        // supported policy using authenticated observations; those two gaps no
+        // longer describe this current snapshot. Numeric venue identity, stream
+        // acknowledgement and non-atomic coverage are not inferred here.
+        gate.health
+            .evidence_gaps
+            .remove("AccountIdentityUnverified");
+        gate.health.evidence_gaps.remove("UnsupportedAccountPolicy");
+        Ok(token)
+    }
+    fn verify_native_positions(
+        &self,
+        shared: &Shared,
+        facts: &crate::execution::guard::BackpackLoopbackAccountFacts,
+    ) -> anyhow::Result<()> {
         let cache = self.core.cache();
         for (instrument, expected) in &facts.net_positions {
             let positions = cache.positions_open(
@@ -1274,17 +1292,65 @@ impl BackpackLoopbackControlRuntime {
                 "authoritative position disagrees with native cache; external or unconsumed exposure blocks admission"
             );
         }
-        control.account(token, facts, now().as_u64() / 1_000_000)?;
-        // Read-only snapshots deliberately carry conservative account gaps. This
-        // production admission has now verified the exact credential authority and
-        // supported policy using authenticated observations; those two gaps no
-        // longer describe this current snapshot. Numeric venue identity, stream
-        // acknowledgement and non-atomic coverage are not inferred here.
-        gate.health
-            .evidence_gaps
-            .remove("AccountIdentityUnverified");
-        gate.health.evidence_gaps.remove("UnsupportedAccountPolicy");
-        Ok(token)
+        Ok(())
+    }
+    fn stop_production(&self) -> anyhow::Result<crate::execution::owner::BackpackShutdownReport> {
+        let shared = self.shared()?;
+        let control = shared
+            .restricted
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("production owner absent"))?;
+        let reconciled = self.reconcile_production_terminal_evidence().is_ok();
+        // Hold the private gate until dispatch is stopped. A private event may not
+        // invalidate the snapshot between verification and the durable stop report.
+        let mut gate = shared.gate.lock();
+        let proof =
+            (|| -> anyhow::Result<crate::execution::owner::BackpackShutdownAccountProof> {
+                anyhow::ensure!(reconciled, "terminal evidence remains unresolved");
+                let epoch = gate
+                    .health
+                    .connection_epoch
+                    .ok_or_else(|| anyhow::anyhow!("private epoch absent"))?;
+                anyhow::ensure!(
+                    gate.current(shared.run, gate.health.generation, epoch),
+                    "private owner is not current"
+                );
+                let (snapshot, revision, observed_at) =
+                    shared.production_snapshot.lock().clone().ok_or_else(|| {
+                        anyhow::anyhow!("current authenticated shutdown snapshot required")
+                    })?;
+                anyhow::ensure!(
+                    gate.revision == revision && gate.pending_frames == 0,
+                    "shutdown snapshot invalidated by private events"
+                );
+                anyhow::ensure!(
+                    snapshot.open_orders.is_empty()
+                        && shared.fills.lock().pending_in_event_order().is_empty(),
+                    "shutdown has open orders or unconsumed fills"
+                );
+                let facts = snapshot.production_facts(
+                    &shared.config.namespace,
+                    gate.health.generation,
+                    observed_at,
+                    shared.config.scope.symbols(),
+                )?;
+                self.verify_native_positions(&shared, &facts)?;
+                Ok(crate::execution::owner::BackpackShutdownAccountProof {
+                    observed_at_ms: facts.observed_at_ms,
+                    positions_flat: facts
+                        .net_positions
+                        .values()
+                        .all(|q| *q == rust_decimal::Decimal::ZERO),
+                })
+            })();
+        if proof.is_err() {
+            gate.health
+                .evidence_gaps
+                .insert("ShutdownAccountUnverified".into());
+        }
+        let report = control.stop_with_account(proof.ok())?;
+        gate.running = false;
+        Ok(report)
     }
     pub(super) fn reconcile_production_terminal_evidence(
         &self,
@@ -2544,8 +2610,16 @@ impl ExecutionClient for BackpackExecutionClient {
         Ok(())
     }
     fn stop(&mut self) -> anyhow::Result<()> {
-        if let Some(control) = &self.shared.restricted {
-            *self.shared.shutdown.lock() = Some(control.stop()?);
+        let already_stopped = self.shared.shutdown.lock().is_some();
+        if let Some(control) = &self.shared.restricted
+            && !already_stopped
+        {
+            let report = if self.shared.production() {
+                self.control_runtime.stop_production()?
+            } else {
+                control.stop()?
+            };
+            *self.shared.shutdown.lock() = Some(report);
         }
         {
             let mut g = self.shared.gate.lock();
