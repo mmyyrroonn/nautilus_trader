@@ -112,6 +112,11 @@ const ORDINARY_REQUESTS_PER_MINUTE: NonZeroU32 =
 const ORDINARY_ORDERS_PER_MINUTE: NonZeroU32 =
     NonZeroU32::new(ASTER_ORDERS_PER_MINUTE * 4 / 5).expect("non-zero quota");
 const ORDINARY_ORDER_RATE_KEY: &str = "aster:ordinary-orders";
+// A full-universe startup must not spend a minute's entire budget in one burst.
+// Commission reads cost 20 weight each; 750 ms spacing leaves room for account
+// queries, market snapshots and order cleanup in the venue's fixed window.
+const COMMISSION_RATE_KEY: &str = "aster:commission-rate";
+const COMMISSION_QUERY_INTERVAL: Duration = Duration::from_millis(750);
 
 type SharedLimiter = Arc<RateLimiter<Ustr, MonotonicClock>>;
 
@@ -194,6 +199,10 @@ impl AsterHttpClient {
                     quotas.push((
                         Ustr::from(ORDINARY_RATE_KEY),
                         Quota::per_minute(ORDINARY_REQUESTS_PER_MINUTE),
+                    ));
+                    quotas.push((
+                        Ustr::from(COMMISSION_RATE_KEY),
+                        Quota::with_period(COMMISSION_QUERY_INTERVAL).expect("non-zero interval"),
                     ));
                     GlobalScope {
                         limiter: Arc::new(RateLimiter::new_with_quota(None, quotas)),
@@ -326,6 +335,9 @@ impl AsterHttpClient {
             ASTER_GLOBAL_RATE_KEY.to_string(),
             weight,
         ));
+        if path == ASTER_COMMISSION_RATE_PATH {
+            keys.push(COMMISSION_RATE_KEY.to_string());
+        }
 
         if counts_against_order_quota {
             keys.push(ASTER_ORDER_RATE_KEY.to_string());
@@ -1668,8 +1680,14 @@ mod tests {
         let params = AsterParams::new().with("symbol", "BTCUSDT");
         let heavy = AsterHttpClient::rate_limit_keys(ASTER_COMMISSION_RATE_PATH, &params, false);
 
-        assert_eq!(heavy.len(), ASTER_WEIGHT_COMMISSION_RATE as usize);
-        assert!(heavy.iter().all(|key| key == ASTER_GLOBAL_RATE_KEY));
+        assert_eq!(
+            heavy
+                .iter()
+                .filter(|key| *key == ASTER_GLOBAL_RATE_KEY)
+                .count(),
+            ASTER_WEIGHT_COMMISSION_RATE as usize
+        );
+        assert_eq!(heavy.last().unwrap(), COMMISSION_RATE_KEY);
 
         let order = AsterHttpClient::rate_limit_keys(ASTER_ORDER_PATH, &params, true);
 
@@ -1680,6 +1698,35 @@ mod tests {
                 ASTER_ORDER_RATE_KEY.to_string()
             ]
         );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_commission_startup_is_paced_across_clients_without_delaying_order_queries() {
+        let url = "http://127.0.0.1:19017";
+        let _first = AsterHttpClient::new(url, Some(credential()), Some(5), None).unwrap();
+        let limiter = TRANSPORT_SCOPES.lock().globals[url].limiter.clone();
+        let params = AsterParams::new().with("symbol", "BTCUSDT");
+        let fees = interned_keys(ASTER_COMMISSION_RATE_PATH, &params, false);
+        let order = interned_keys(ASTER_ORDER_PATH, &params, false);
+        let mut previous = None;
+        for _ in 0..160 {
+            limiter.await_keys_ready(Some(&fees)).await;
+            let now = Instant::now();
+            if let Some(previous) = previous {
+                assert!(now.duration_since(previous) >= COMMISSION_QUERY_INTERVAL);
+            }
+            previous = Some(now);
+            limiter.await_keys_ready(Some(&order)).await;
+            assert_eq!(
+                Instant::now(),
+                now,
+                "commission pacing must not stall order queries"
+            );
+        }
+        let _second = AsterHttpClient::new(url, Some(credential()), Some(5), None).unwrap();
+        let shared = TRANSPORT_SCOPES.lock().globals[url].limiter.clone();
+        shared.await_keys_ready(Some(&fees)).await;
+        assert!(previous.unwrap().elapsed() >= COMMISSION_QUERY_INTERVAL);
     }
 
     #[tokio::test(start_paused = true)]
