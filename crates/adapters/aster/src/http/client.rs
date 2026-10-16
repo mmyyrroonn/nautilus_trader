@@ -117,6 +117,8 @@ const ORDINARY_ORDER_RATE_KEY: &str = "aster:ordinary-orders";
 // queries, market snapshots and order cleanup in the venue's fixed window.
 const COMMISSION_RATE_KEY: &str = "aster:commission-rate";
 const COMMISSION_QUERY_INTERVAL: Duration = Duration::from_millis(750);
+const COMMISSION_QUERY_QUOTA: Quota =
+    Quota::with_period(COMMISSION_QUERY_INTERVAL).expect("non-zero interval");
 
 type SharedLimiter = Arc<RateLimiter<Ustr, MonotonicClock>>;
 
@@ -200,10 +202,7 @@ impl AsterHttpClient {
                         Ustr::from(ORDINARY_RATE_KEY),
                         Quota::per_minute(ORDINARY_REQUESTS_PER_MINUTE),
                     ));
-                    quotas.push((
-                        Ustr::from(COMMISSION_RATE_KEY),
-                        Quota::with_period(COMMISSION_QUERY_INTERVAL).expect("non-zero interval"),
-                    ));
+                    quotas.push((Ustr::from(COMMISSION_RATE_KEY), COMMISSION_QUERY_QUOTA));
                     GlobalScope {
                         limiter: Arc::new(RateLimiter::new_with_quota(None, quotas)),
                         cooldown: Arc::new(Mutex::new(None)),
