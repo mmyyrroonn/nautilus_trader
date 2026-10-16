@@ -169,6 +169,7 @@ impl BackpackOrderOwner {
             poisoned: false,
             dirty_sticky: false,
             account: None,
+            shutdown_account: None,
             markets: BTreeMap::new(),
             public: None,
             records: BTreeMap::new(),
@@ -644,12 +645,24 @@ impl BackpackOrderOwner {
         let _change = self.guard.fence.change();
         let now = self.clock.timestamp_ms().ok();
         let mut state = self.guard.lock()?;
-        state.stopped = true;
-        state.session_active = false;
-        let report = state.shutdown_report(now);
-        state.dirty_sticky |= report.dirty;
-        state.persist()?;
-        Ok(state.shutdown_report(now))
+        state.stop(now)
+    }
+
+    /// Stops with a final account observation fenced by the native private owner.
+    /// This observation never grants financial admission or requires public market readiness.
+    pub(crate) fn stop_with_account(
+        &self,
+        proof: Option<BackpackShutdownAccountProof>,
+    ) -> Result<BackpackShutdownReport, BackpackExecutionError> {
+        let _change = self.guard.fence.change();
+        let now = self.clock.timestamp_ms().ok();
+        let mut state = self.guard.lock()?;
+        if !state.stopped {
+            // A failed final observation must not fall back to an invalidated admission snapshot.
+            state.account = None;
+            state.shutdown_account = proof;
+        }
+        state.stop(now)
     }
 
     async fn dispatch(
@@ -985,6 +998,12 @@ enum CancelStatus {
 }
 
 #[derive(Debug)]
+pub(crate) struct BackpackShutdownAccountProof {
+    pub(crate) observed_at_ms: u64,
+    pub(crate) positions_flat: bool,
+}
+
+#[derive(Debug)]
 pub(crate) struct OwnerState {
     pub(crate) production: bool,
     recovery_start_ms: Option<u64>,
@@ -999,6 +1018,7 @@ pub(crate) struct OwnerState {
     pub(crate) poisoned: bool,
     dirty_sticky: bool,
     pub(crate) account: Option<BackpackLoopbackAccountFacts>,
+    shutdown_account: Option<BackpackShutdownAccountProof>,
     pub(crate) markets: BTreeMap<InstrumentId, BackpackLoopbackMarketFacts>,
     pub(crate) public: Option<super::guard::PublicAdmission>,
     pub(crate) records: BTreeMap<ClientOrderId, OrderRecord>,
@@ -1007,6 +1027,13 @@ pub(crate) struct OwnerState {
     checkpoint_store: Arc<dyn ExecutionCheckpoint>,
 }
 impl OwnerState {
+    fn stop(&mut self, now: Option<u64>) -> Result<BackpackShutdownReport, BackpackExecutionError> {
+        self.stopped = true;
+        self.session_active = false;
+        self.dirty_sticky |= self.shutdown_report(now).dirty;
+        self.persist()?;
+        Ok(self.shutdown_report(now))
+    }
     fn check_cancel(&self, id: ClientOrderId, now: u64) -> Result<(), BackpackExecutionError> {
         self.check_session(now)?;
         let record = self
@@ -1023,14 +1050,22 @@ impl OwnerState {
         Ok(())
     }
     fn shutdown_report(&self, now_ms: Option<u64>) -> BackpackShutdownReport {
-        let positions_unknown_or_nonzero = self.account.as_ref().is_none_or(|account| {
-            account.generation != self.generation
+        let positions_unknown_or_nonzero = if let Some(proof) = &self.shutdown_account {
+            !proof.positions_flat
                 || now_ms.is_none_or(|now| {
-                    now.checked_sub(account.observed_at_ms)
+                    now.checked_sub(proof.observed_at_ms)
                         .is_none_or(|age| age > self.authority.max_account_age_ms)
                 })
-                || account.net_positions.values().any(|q| *q != Decimal::ZERO)
-        });
+        } else {
+            self.account.as_ref().is_none_or(|account| {
+                account.generation != self.generation
+                    || now_ms.is_none_or(|now| {
+                        now.checked_sub(account.observed_at_ms)
+                            .is_none_or(|age| age > self.authority.max_account_age_ms)
+                    })
+                    || account.net_positions.values().any(|q| *q != Decimal::ZERO)
+            })
+        };
         let unsent = self
             .records
             .values()
@@ -1563,6 +1598,44 @@ mod checkpoint_tests {
         })
         .unwrap()
     }
+    #[rstest]
+    #[case(Some(1000), true, false)]
+    #[case(Some(899), true, true)]
+    #[case(Some(1001), true, true)]
+    #[case(Some(1000), false, true)]
+    #[case(None, true, true)]
+    fn shutdown_account_is_independent_of_admission_but_requires_fresh_flat_proof(
+        #[case] stamp: Option<u64>,
+        #[case] flat: bool,
+        #[case] dirty: bool,
+    ) {
+        let directory = tempfile::tempdir().unwrap();
+        let owner = recovery_anchor_owner(directory.path());
+        let guard = owner.guard();
+        {
+            let mut state = guard.lock().unwrap();
+            state.authority.max_account_age_ms = 100;
+            state.authority.expires_at_ms = 999;
+            assert!(!state.session_active && state.public.is_none());
+        }
+        let proof = stamp.map(|observed_at_ms| BackpackShutdownAccountProof {
+            observed_at_ms,
+            positions_flat: flat,
+        });
+        let report = owner.stop_with_account(proof).unwrap();
+        assert_eq!(report.dirty, dirty);
+        assert_eq!(report.positions_unknown_or_nonzero, dirty);
+        assert!(guard.lock().unwrap().check_session(1000).is_err());
+        let repeated = owner
+            .stop_with_account(Some(BackpackShutdownAccountProof {
+                observed_at_ms: 1000,
+                positions_flat: true,
+            }))
+            .unwrap();
+        assert_eq!(repeated.dirty, dirty);
+        assert_eq!(repeated.positions_unknown_or_nonzero, dirty);
+    }
+
     #[rstest]
     fn authority_renewal_preserves_scope_limits_and_permissions() {
         let directory = tempfile::tempdir().unwrap();

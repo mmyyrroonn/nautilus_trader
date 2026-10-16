@@ -87,6 +87,7 @@ fn id() -> InstrumentId {
 #[derive(Clone, Debug)]
 enum Command {
     Frame(Value),
+    Pause(Duration),
     Close,
 }
 #[derive(Clone)]
@@ -291,6 +292,7 @@ async fn serve_ws(socket: WebSocket, state: Arc<ServerState>) {
                     if write.send(Message::Text(value.to_string().into())).await.is_err(){break;}
                 },
                 Ok(Command::Close)=>{let _=write.send(Message::Close(None)).await;break;},
+                Ok(Command::Pause(duration))=>tokio::time::sleep(duration).await,
                 Err(_)=>break,
             },
             message=read.next()=>match message {
@@ -370,6 +372,108 @@ async fn no_event(rx: &mut mpsc::UnboundedReceiver<DataEvent>) {
             .await
             .is_err()
     );
+}
+
+#[tokio::test]
+async fn business_idle_arms_after_subscribe_and_disarms_after_last_unsubscribe() {
+    let server = Server::start().await;
+    let config = server.config();
+    let mut policy = config.lifecycle().clone();
+    policy.ws_idle_timeout_secs = 2;
+    let config = config.with_lifecycle_checked(policy).unwrap();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    replace_data_event_sender(tx);
+    let factory = BackpackDataClientFactory::new();
+    let cache = CacheView::new(Rc::new(RefCell::new(Cache::default())));
+    let clock = Rc::new(RefCell::new(TestClock::new()));
+    let mut client = factory.create("BP", &config, cache, clock).unwrap();
+    client.connect().await.unwrap();
+    assert!(matches!(event(&mut rx).await, DataEvent::Instrument(_)));
+    tokio::time::sleep(Duration::from_millis(2300)).await;
+    assert!(config.telemetry().snapshot().connected);
+    assert_eq!(server.state.connections.load(Ordering::Acquire), 1);
+    assert!(server.state.commands.lock().is_empty());
+
+    let command = SubscribeQuotes::new(
+        id(),
+        Some(ClientId::from("BP")),
+        None,
+        UUID4::new(),
+        instant(),
+        None,
+        None,
+    );
+    client.subscribe_quotes(command.clone()).unwrap();
+    server
+        .wait_topic(0, "SUBSCRIBE", &format!("bookTicker.{SYMBOL}"))
+        .await;
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    server.send(quote(1));
+    assert!(matches!(
+        event(&mut rx).await,
+        DataEvent::Data(Data::Quote(_))
+    ));
+    tokio::time::sleep(Duration::from_millis(1100)).await;
+    assert_eq!(server.state.connections.load(Ordering::Acquire), 1);
+
+    client
+        .unsubscribe_quotes(&UnsubscribeQuotes::new(
+            id(),
+            Some(ClientId::from("BP")),
+            None,
+            UUID4::new(),
+            instant(),
+            None,
+            None,
+        ))
+        .unwrap();
+    server
+        .wait_topic(0, "UNSUBSCRIBE", &format!("bookTicker.{SYMBOL}"))
+        .await;
+    tokio::time::sleep(Duration::from_millis(2300)).await;
+    assert!(config.telemetry().snapshot().connected);
+    assert_eq!(server.state.connections.load(Ordering::Acquire), 1);
+
+    client.subscribe_quotes(command).unwrap();
+    // Pong traffic continues, but a subscribed stream with no business data must recover.
+    server
+        .wait_topic(1, "SUBSCRIBE", &format!("bookTicker.{SYMBOL}"))
+        .await;
+    assert_eq!(server.state.connections.load(Ordering::Acquire), 2);
+    client.disconnect().await.unwrap();
+}
+
+#[tokio::test]
+async fn unsubscribed_connection_still_recovers_when_heartbeats_stop() {
+    let server = Server::start().await;
+    let config = server.config();
+    let mut policy = config.lifecycle().clone();
+    policy.ws_idle_timeout_secs = 2;
+    let config = config.with_lifecycle_checked(policy).unwrap();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    replace_data_event_sender(tx);
+    let factory = BackpackDataClientFactory::new();
+    let cache = CacheView::new(Rc::new(RefCell::new(Cache::default())));
+    let clock = Rc::new(RefCell::new(TestClock::new()));
+    let mut client = factory.create("BP", &config, cache, clock).unwrap();
+    client.connect().await.unwrap();
+    assert!(matches!(event(&mut rx).await, DataEvent::Instrument(_)));
+    server
+        .state
+        .control
+        .send(Command::Pause(Duration::from_secs(4)))
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(8), async {
+        while server.state.connections.load(Ordering::Acquire) < 2
+            || !config.telemetry().snapshot().connected
+        {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(server.state.commands.lock().is_empty());
+    client.disconnect().await.unwrap();
 }
 
 #[tokio::test]

@@ -196,6 +196,14 @@ impl LoopbackExecution {
         state.1 = None;
         Ok(self.owner.stop()?)
     }
+    pub(crate) fn stop_with_account(
+        &self,
+        proof: Option<crate::execution::owner::BackpackShutdownAccountProof>,
+    ) -> anyhow::Result<BackpackShutdownReport> {
+        let mut state = self.session.lock();
+        state.1 = None;
+        Ok(self.owner.stop_with_account(proof)?)
+    }
     pub(crate) fn retain_fill_from(
         &self,
         key: BackpackFillKey,

@@ -285,6 +285,7 @@ pub(crate) struct Frame {
     topic: String,
     bytes: Bytes,
     received: UnixNanos,
+    received_at: nautilus_network::dst::time::Instant,
 }
 pub(crate) struct Snapshot {
     epoch: u64,
@@ -328,6 +329,7 @@ struct ActorState {
     generation: u64,
     markets: BTreeMap<String, MarketState>,
     sent: BTreeMap<String, u64>,
+    last_data: Option<nautilus_network::dst::time::Instant>,
 }
 
 impl PublicSession {
@@ -385,6 +387,7 @@ impl PublicSession {
                                 topic,
                                 bytes,
                                 received,
+                                received_at: nautilus_network::dst::time::Instant::now(),
                             }))
                         }
                         _ => {
@@ -425,7 +428,6 @@ impl PublicSession {
             .url(self.config.scope().endpoints().websocket_url().to_owned())
             .heartbeat_interval_secs(policy.ws_heartbeat_secs)
             .heartbeat_timeout_secs(policy.ws_idle_timeout_secs)
-            .idle_timeout_ms(policy.ws_idle_timeout_secs * 1000)
             .connect_timeout_ms(policy.ws_connect_timeout_secs * 1000)
             .reconnect_delay_initial_ms(100)
             .reconnect_delay_max_ms(2000)
@@ -458,6 +460,7 @@ impl PublicSession {
             generation: 0,
             markets: BTreeMap::new(),
             sent: BTreeMap::new(),
+            last_data: None,
         };
 
         for (symbol, metadata) in initial {
@@ -512,6 +515,7 @@ impl PublicSession {
                         &ws,
                         &mut actor.markets,
                         &mut actor.sent,
+                        &mut actor.last_data,
                         &mut actor.generation,
                         &spawner,
                         &tx,
@@ -544,6 +548,16 @@ impl PublicSession {
                 }
                 Some(Input::Snapshot(snapshot)) => self.install(owner, &ws, &mut actor, snapshot),
                 None => {}
+            }
+            // Heartbeats cover an unsubscribed connection. Business-data silence
+            // becomes a fault only after a subscription was sent on this epoch.
+            if self.gate.lock().admits(owner, actor.epoch)
+                && actor.last_data.is_some_and(|last| {
+                    last.elapsed()
+                        >= Duration::from_secs(self.config.lifecycle().ws_idle_timeout_secs)
+                })
+            {
+                self.fault(owner, actor.epoch, "subscribed data idle timeout", &ws);
             }
         }
         {
@@ -590,6 +604,7 @@ impl PublicSession {
         actor.epoch = epoch;
         actor.markets.clear();
         actor.sent.clear();
+        actor.last_data = None;
         self.subscriptions.reset_after_reconnect();
 
         if !bootstrap {
@@ -689,6 +704,13 @@ impl PublicSession {
                 .decode(market.stream_token, &frame.bytes, frame.received)
         };
 
+        if decoded.is_ok() && actor.sent.get(&frame.topic) == Some(&frame.revision) {
+            actor.last_data = Some(
+                actor
+                    .last_data
+                    .map_or(frame.received_at, |last| last.max(frame.received_at)),
+            );
+        }
         match decoded {
             Ok(BackpackPublicEvent::Quote(quote)) => {
                 let mut state = self.gate.lock();
@@ -954,6 +976,7 @@ impl PublicSession {
         ws: &WebSocketClient,
         markets: &mut BTreeMap<String, MarketState>,
         sent: &mut BTreeMap<String, u64>,
+        last_data: &mut Option<nautilus_network::dst::time::Instant>,
         generation: &mut u64,
         spawner: &TaskSpawner,
         tx: &mpsc::Sender<Input>,
@@ -984,6 +1007,9 @@ impl PublicSession {
             .await
             .map_err(|_| BackpackDataError::Transport)?;
             sent.remove(&topic);
+            if sent.is_empty() {
+                *last_data = None;
+            }
             if let Some(symbol) = topic.strip_prefix("depth.") {
                 if let Some(m) = markets.get_mut(symbol) {
                     m.book = None;
@@ -1013,6 +1039,7 @@ impl PublicSession {
             .await
             .map_err(|_| BackpackDataError::Transport)?;
             sent.insert(topic.clone(), revision);
+            last_data.get_or_insert_with(nautilus_network::dst::time::Instant::now);
             if let Some(symbol) = topic.strip_prefix("depth.") {
                 let market = markets.get_mut(symbol).ok_or(BackpackDataError::Metadata)?;
                 self.snapshot(owner, epoch, symbol, revision, market, spawner, tx)?;

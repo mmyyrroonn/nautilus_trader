@@ -173,6 +173,11 @@ async fn handler(State(state): State<Arc<ServerState>>, request: Request) -> Res
         response["id"] = json!(format!("venue-{}", response["clientId"]));
         response["executedQuantity"] = json!("0");
         response["status"] = json!("New");
+        if response["orderType"] == "Market" {
+            // Market requests omit postOnly. This strict synthetic owner still
+            // requires an explicit acknowledgement of the non-post-only intent.
+            response["postOnly"] = json!(false);
+        }
         *state.last_order.lock().unwrap() = Some(response.clone());
     } else if method == "DELETE" {
         response = state.last_order.lock().unwrap().clone().unwrap();
