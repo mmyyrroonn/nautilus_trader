@@ -212,6 +212,7 @@ pub struct LighterExecutionClient {
     dispatch: WsDispatchState,
     nonce_recovery_inflight: Arc<AtomicBool>,
     auth_refresh_notify: Arc<tokio::sync::Notify>,
+    account_refresh_gate: Arc<tokio::sync::Mutex<()>>,
 }
 
 impl LighterExecutionClient {
@@ -328,6 +329,7 @@ impl LighterExecutionClient {
             dispatch: WsDispatchState::new(),
             nonce_recovery_inflight: Arc::new(AtomicBool::new(false)),
             auth_refresh_notify: Arc::new(tokio::sync::Notify::new()),
+            account_refresh_gate: Arc::new(tokio::sync::Mutex::new(())),
         })
     }
 
@@ -4522,24 +4524,52 @@ impl ExecutionClient for LighterExecutionClient {
     }
 
     fn query_account(&self, _cmd: QueryAccount) -> anyhow::Result<()> {
-        // Lighter has no public REST endpoint that returns a snapshot of
-        // account balances and margins; the only authoritative source is the
-        // `account_all_assets` WebSocket stream. Replay the most recent
-        // cached state so the engine sees something synchronously. The
-        // cache is populated by the consumption loop on every venue push.
-        let cached = self.dispatch.snapshot_account_state();
-        match cached {
-            Some(state) => {
-                log::debug!("Lighter query_account replaying cached AccountState");
-                self.emitter.send_account_state(state);
-            }
-            None => {
-                log::warn!(
-                    "Lighter query_account: no AccountState cached yet \
-                     (account_all_assets stream has not pushed since connect)",
-                );
-            }
-        }
+        let credential = self
+            .credential
+            .clone()
+            .context("Lighter account refresh requires credentials")?;
+        anyhow::ensure!(
+            self.ws_client.is_active(),
+            "Lighter account socket is inactive"
+        );
+        let Ok(guard) = Arc::clone(&self.account_refresh_gate).try_lock_owned() else {
+            return Ok(());
+        };
+        let ws_client = self.ws_client.clone();
+        let timeout = Duration::from_secs(self.config.ws_timeout_secs);
+        log::debug!(
+            "Refreshing Lighter account balances: cached_ts_init={:?}",
+            self.dispatch
+                .snapshot_account_state()
+                .map(|state| state.ts_init),
+        );
+        self.spawn_task("account balance refresh", async move {
+            let _guard = guard;
+            let token = build_auth_token_for(&credential)
+                .context("failed to mint Lighter balance refresh token")?;
+            let account_index = credential.account_index();
+            // Refresh both inputs to the merged state. Never replay a cached
+            // event or assign it the query time to satisfy a freshness fence.
+            tokio::time::timeout(timeout, async {
+                for channel in [
+                    LighterWsChannel::AccountAllAssets(account_index),
+                    LighterWsChannel::UserStats(account_index),
+                ] {
+                    ws_client
+                        .unsubscribe_account(channel.clone())
+                        .await
+                        .map_err(|_| anyhow::anyhow!("Lighter balance unsubscribe failed"))?;
+                    ws_client
+                        .subscribe_account(channel, token.clone())
+                        .await
+                        .map_err(|_| anyhow::anyhow!("Lighter balance subscription failed"))?;
+                }
+                Ok::<(), anyhow::Error>(())
+            })
+            .await
+            .context("Lighter balance refresh timed out")??;
+            Ok(())
+        });
         Ok(())
     }
 

@@ -1251,6 +1251,20 @@ impl FeedHandler {
                 }
                 self.handle_account_positions(positions, ts_init, PositionFrameType::Update)
             }
+            LighterWsFrame::AccountAllAssetsSnapshot {
+                ref assets,
+                timestamp,
+                ..
+            } => {
+                if self.exec_account.is_none() {
+                    return raw_message(&frame);
+                }
+                let mut msgs = self.handle_account_assets(assets, timestamp, ts_init, true);
+                msgs.push(NautilusWsMessage::AccountStreamFirstFrame(
+                    AccountStream::Assets,
+                ));
+                msgs
+            }
             LighterWsFrame::AccountAllAssets {
                 ref assets,
                 timestamp,
@@ -1259,7 +1273,7 @@ impl FeedHandler {
                 if self.exec_account.is_none() {
                     return raw_message(&frame);
                 }
-                let mut msgs = self.handle_account_assets(assets, timestamp, ts_init);
+                let mut msgs = self.handle_account_assets(assets, timestamp, ts_init, false);
                 msgs.push(NautilusWsMessage::AccountStreamFirstFrame(
                     AccountStream::Assets,
                 ));
@@ -1868,6 +1882,7 @@ impl FeedHandler {
         assets: &AHashMap<Ustr, LighterAsset>,
         timestamp_ms: u64,
         ts_init: UnixNanos,
+        is_snapshot: bool,
     ) -> Vec<NautilusWsMessage> {
         let Some((account_id, _)) = self.exec_account else {
             log::debug!("Lighter account_assets frame skipped: no execution context set");
@@ -1882,7 +1897,8 @@ impl FeedHandler {
             }
         };
 
-        self.account_state_reconciler.update_assets(assets);
+        self.account_state_reconciler
+            .update_assets(assets, ts_init, is_snapshot);
         self.emit_unified_account_state(account_id, ts_event, ts_init)
     }
 
@@ -1905,7 +1921,8 @@ impl FeedHandler {
             }
         };
 
-        self.account_state_reconciler.update_user_stats(stats);
+        self.account_state_reconciler
+            .update_user_stats(stats, ts_init);
         self.emit_unified_account_state(account_id, ts_event, ts_init)
     }
 
@@ -2893,6 +2910,7 @@ mod tests {
                 assert_eq!(state.margins[0].maintenance, Money::from("0 USDC"));
                 assert!(state.margins[0].instrument_id.is_none());
                 assert!(state.is_reported);
+                assert_eq!(state.ts_init, UnixNanos::from(11));
             }
             other => panic!("expected account state, was {other:?}"),
         }
