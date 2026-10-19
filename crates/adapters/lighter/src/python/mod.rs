@@ -58,6 +58,22 @@ use crate::{
 
 const TX_EXPIRY_MS: i64 = 5 * 60 * 1_000;
 
+#[pymethods]
+#[pyo3_stub_gen::derive::gen_stub_pymethods]
+impl crate::control::LighterExecutionControl {
+    #[new]
+    fn py_new() -> Self {
+        Self::default()
+    }
+
+    /// Returns explicit venue terminal cumulative fills, including identity and conflict state.
+    #[pyo3(name = "terminal_fill_evidence_json")]
+    fn py_terminal_fill_evidence_json(&self, client_order_id: &str) -> PyResult<Option<String>> {
+        self.terminal_fill_evidence_json(client_order_id)
+            .map_err(|e| to_pyruntime_err(e.to_string()))
+    }
+}
+
 #[expect(clippy::needless_pass_by_value)]
 fn extract_lighter_data_factory(
     py: Python<'_>,
@@ -184,6 +200,7 @@ fn py_revoke_lighter_integrator(
 /// Exposed through `nautilus_trader.adapters.lighter`.
 #[pymodule]
 pub fn lighter(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<crate::control::LighterExecutionControl>()?;
     m.add(stringify!(LIGHTER), LIGHTER)?;
     m.add(stringify!(LIGHTER_CLIENT_ID), *LIGHTER_CLIENT_ID)?;
     m.add(stringify!(LIGHTER_VENUE), *LIGHTER_VENUE)?;

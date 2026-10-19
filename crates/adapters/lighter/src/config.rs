@@ -238,6 +238,9 @@ fn ensure_readonly_ws_url(url: String) -> String {
     pyo3_stub_gen::derive::gen_stub_pyclass(module = "nautilus_trader.adapters.lighter")
 )]
 pub struct LighterExecutionClientConfig {
+    /// Optional readonly terminal-fill evidence handle, attached to one client only.
+    #[serde(skip)]
+    pub control: Option<crate::control::LighterExecutionControl>,
     /// Target environment within the selected deployment.
     #[builder(default)]
     pub environment: LighterEnvironment,
@@ -580,6 +583,7 @@ mod tests {
     #[rstest]
     fn exec_config_debug_redacts_private_key() {
         let config = LighterExecutionClientConfig {
+            control: None,
             account_id: AccountId::from("LIGHTER-001"),
             api_key_index: Some(5),
             account_index: Some(12_345),

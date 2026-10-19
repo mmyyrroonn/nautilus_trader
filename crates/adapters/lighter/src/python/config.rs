@@ -114,6 +114,7 @@ impl LighterExecutionClientConfig {
         transport_backend = None,
         deployment = None,
         venue = None,
+        control = None,
     ))]
     #[expect(clippy::too_many_arguments)]
     fn py_new(
@@ -133,9 +134,11 @@ impl LighterExecutionClientConfig {
         transport_backend: Option<TransportBackend>,
         deployment: Option<LighterDeployment>,
         venue: Option<Venue>,
+        control: Option<crate::control::LighterExecutionControl>,
     ) -> Self {
         let defaults = Self::default();
         Self {
+            control,
             environment: environment.unwrap_or(defaults.environment),
             deployment: deployment.unwrap_or(defaults.deployment),
             venue,

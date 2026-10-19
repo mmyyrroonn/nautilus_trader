@@ -20,6 +20,7 @@ __all__ = [
     "LighterEnvironment",
     "LighterExecutionClientConfig",
     "LighterExecutionClientFactory",
+    "LighterExecutionControl",
     "revoke_lighter_integrator",
 ]
 
@@ -129,6 +130,7 @@ class LighterExecutionClientConfig:
         transport_backend: network.TransportBackend | None = None,
         deployment: LighterDeployment | None = None,
         venue: model.Venue | None = None,
+        control: LighterExecutionControl | None = None,
     ) -> None: ...
     @property
     def has_proxy_url(self) -> bool: ...
@@ -137,6 +139,11 @@ class LighterExecutionClientConfig:
 class LighterExecutionClientFactory:
     def __init__(self) -> None: ...
     def name(self) -> str: ...
+
+@typing.final
+class LighterExecutionControl:
+    def __init__(self) -> None: ...
+    def terminal_fill_evidence_json(self, client_order_id: str) -> str | None: ...
 
 @typing.final
 class LighterDeployment(enum.Enum):

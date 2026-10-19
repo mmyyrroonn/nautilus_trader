@@ -60,6 +60,7 @@ use nautilus_model::{
     enums::{OrderStatus, PositionSide},
     identifiers::{AccountId, ClientOrderId, InstrumentId, StrategyId, TraderId, VenueOrderId},
 };
+use rstest::rstest;
 use rust_decimal::Decimal;
 use serde_json::{Value, json};
 use tempfile::TempDir;
@@ -121,6 +122,7 @@ struct PeerState {
     bad_history: AtomicBool,
     public_senders: Mutex<Vec<mpsc::UnboundedSender<PeerCommand>>>,
     guarded: AtomicBool,
+    production_flat: AtomicBool,
     post_hold: AtomicBool,
     post_notify: tokio::sync::Notify,
     post_bodies: Mutex<Vec<Value>>,
@@ -303,9 +305,34 @@ async fn rest(State(state): State<Arc<PeerState>>, request: Request) -> Response
                 state.capital_requests.fetch_add(1, Ordering::Relaxed);
                 let delay = state.capital_delay_ms.load(Ordering::Relaxed);
                 tokio::time::sleep(Duration::from_millis(delay)).await;
-                fixture("balances")
+                if state.production_flat.load(Ordering::Relaxed) {
+                    json!({"USDC":{"available":"100","locked":"0","staked":"0"}})
+                } else {
+                    fixture("balances")
+                }
             }
-            "/api/v1/capital/collateral" => fixture("collateral"),
+            "/api/v1/capital/collateral" => {
+                let mut collateral = fixture("collateral");
+                if state.production_flat.load(Ordering::Relaxed) {
+                    for key in ["assetsValue", "netEquity", "netEquityAvailable"] {
+                        collateral[key] = json!("100");
+                    }
+                    for key in ["netEquityLocked", "pnlUnrealized", "netExposureFutures"] {
+                        collateral[key] = json!("0");
+                    }
+                    let asset = &mut collateral["collateral"][0];
+                    for key in [
+                        "totalQuantity",
+                        "balanceNotional",
+                        "collateralValue",
+                        "availableQuantity",
+                    ] {
+                        asset[key] = json!("100");
+                    }
+                    asset["openOrderQuantity"] = json!("0");
+                }
+                collateral
+            }
             "/api/v1/position" => json!(state.positions.lock().unwrap().clone()),
             "/api/v1/orders" => {
                 if state.guarded.load(Ordering::Relaxed) {
@@ -439,6 +466,123 @@ async fn test_native_factory_configuration_claims_and_no_constructor_network() {
     serde_json::to_value(telemetry.snapshot()).unwrap();
     drop(second);
 }
+#[rstest]
+#[case(false)]
+#[case(true)]
+#[tokio::test]
+async fn production_shutdown_refreshes_before_stopping_and_keeps_timeout_dirty(
+    #[case] timeout: bool,
+) {
+    use std::collections::BTreeMap;
+
+    use nautilus_backpack::{
+        config::BackpackDataClientConfig,
+        data::BackpackDataClient,
+        execution::{guard::BackpackExecutionAuthority, owner::BackpackMutationPolicy},
+        execution_client::production_config::{
+            BackpackProductionExecutionClientConfig, BackpackProductionExecutionClientFactory,
+        },
+        instruments::{BackpackEconomicsSource, BackpackInstrumentEconomics},
+    };
+    use nautilus_model::identifiers::ClientId;
+    let peer = Peer::start().await;
+    peer.state.guarded.store(true, Ordering::Relaxed);
+    peer.state.production_flat.store(true, Ordering::Relaxed);
+    let directory = TempDir::new().unwrap();
+    let scope = BackpackConfig::with_endpoints_checked(
+        vec!["BTC_USDC_PERP".into()],
+        peer.endpoints.clone(),
+    )
+    .unwrap();
+    let quota = BackpackQuota::default();
+    let economics = BackpackInstrumentEconomics::new_checked(
+        Decimal::from_str_exact("0.1").unwrap(),
+        Decimal::from_str_exact("0.05").unwrap(),
+        Decimal::ZERO,
+        Decimal::ZERO,
+        BackpackEconomicsSource::Synthetic,
+        "signed local peer".into(),
+    )
+    .unwrap();
+    let public_config = BackpackDataClientConfig::new_checked(
+        scope.clone(),
+        BTreeMap::from([("BTC_USDC_PERP".into(), economics)]),
+    )
+    .unwrap();
+    let (data_sender, _data_receiver) = mpsc::unbounded_channel();
+    nautilus_common::live::runner::replace_data_event_sender(data_sender);
+    let _public =
+        BackpackDataClient::with_quota(ClientId::from("BP"), public_config.clone(), quota.clone())
+            .unwrap();
+    let account = BackpackExecutionClientConfig::new_read_only(
+        scope,
+        BackpackCredential::loopback_peer(&STANDARD.encode([7; 32]), &peer.endpoints).unwrap(),
+        AccountId::from("BACKPACK-SYNTHETIC"),
+        BackpackClientIdNamespace::credential_scope(
+            &BackpackCredential::loopback_peer(&STANDARD.encode([7; 32]), &peer.endpoints).unwrap(),
+            &peer.endpoints,
+            None,
+        )
+        .unwrap(),
+        directory.path().join("identity"),
+        BackpackExecutionPolicy {
+            shutdown_timeout: Duration::from_millis(300),
+            recovery_interval: Duration::from_secs(30),
+            ..Default::default()
+        },
+        BackpackReadBudget::new(10, 10, 100, Duration::from_secs(3)).unwrap(),
+        quota,
+    )
+    .unwrap();
+    let authority = BackpackExecutionAuthority {
+        expires_at_ms: get_atomic_clock_realtime().get_time_ns().as_u64() / 1_000_000 + 60_000,
+        max_account_age_ms: 500,
+        max_market_age_ms: 5000,
+        max_order_notional: Decimal::ONE,
+        max_reserved_notional: Decimal::from(2),
+        max_reserved_margin: Decimal::ONE,
+        max_unsettled_orders: 1,
+        allow_new_risk: false,
+        allow_reduction: true,
+        allow_owned_cancel: true,
+    };
+    let plan = BackpackProductionExecutionClientConfig::new_checked(
+        account,
+        public_config,
+        authority,
+        BackpackMutationPolicy {
+            budget: Duration::from_secs(3),
+            window: Default::default(),
+        },
+        directory.path().join("economics"),
+    )
+    .unwrap();
+    let control = plan.control();
+    let (sender, _receiver) = mpsc::unbounded_channel();
+    nautilus_common::live::runner::replace_exec_event_sender(sender);
+    let mut client = BackpackProductionExecutionClientFactory
+        .create(trader(), "BACKPACK", &plan, cache())
+        .unwrap();
+    client.connect().await.unwrap();
+    until(|| control.account_snapshot_json().is_ok()).await;
+    let before = peer.state.capital_requests.load(Ordering::Relaxed);
+    tokio::time::sleep(Duration::from_millis(550)).await;
+    if timeout {
+        peer.state.capital_delay_ms.store(1000, Ordering::Relaxed);
+    }
+    client.disconnect().await.unwrap();
+    let report = control.shutdown().unwrap();
+    assert_eq!(
+        report.dirty,
+        timeout,
+        "report={report:?}, health={:?}",
+        control.health()
+    );
+    assert_eq!(report.positions_unknown_or_nonzero, timeout);
+    assert!(peer.state.capital_requests.load(Ordering::Relaxed) > before);
+    assert!(control.account_snapshot_json().is_err());
+}
+
 #[tokio::test]
 async fn test_production_read_only_configuration_is_explicit_and_performs_no_io() {
     let directory = TempDir::new().unwrap();
@@ -1071,7 +1215,7 @@ impl ParserScope {
         }
     }
 }
-#[rstest::rstest]
+#[rstest]
 #[case("l")]
 #[case("n")]
 #[case("z")]
@@ -1112,7 +1256,7 @@ fn test_private_duplicate_unknown_nested_keys_cannot_hide_conditional_fields() {
         .is_err()
     );
 }
-#[rstest::rstest]
+#[rstest]
 #[case("l",json!("0"))]
 #[case("l",json!("-0.00001"))]
 #[case("l",json!("0.00002"))]

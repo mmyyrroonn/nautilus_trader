@@ -36,13 +36,13 @@ use anyhow::Context;
 use dashmap::{DashMap, DashSet};
 use nautilus_core::{AtomicTime, UnixNanos};
 use nautilus_model::{
-    enums::{OrderSide, OrderStatus, OrderType, TimeInForce},
-    events::AccountState,
+    enums::{LiquiditySide, OrderSide, OrderStatus, OrderType, TimeInForce},
+    events::{AccountState, OrderEventAny, OrderFilled},
     identifiers::{AccountId, ClientOrderId, InstrumentId, StrategyId, TradeId, VenueOrderId},
     instruments::{Instrument, InstrumentAny},
     orders::{Order, OrderAny},
     reports::{FillReport, OrderStatusReport, PositionStatusReport},
-    types::{Price, Quantity},
+    types::{Money, Price, Quantity},
 };
 use parking_lot::Mutex;
 use rust_decimal::{Decimal, prelude::ToPrimitive};
@@ -96,6 +96,57 @@ pub(crate) struct OrderIdentity {
     pub(crate) client_order_index: i64,
     binding: Arc<Mutex<OrderIdentityBinding>>,
     accepted_emitted: Arc<AtomicBool>,
+    fills: Arc<Mutex<OrderFillProgress>>,
+}
+
+#[derive(Debug, Default)]
+struct OrderFillProgress {
+    routed_quantity: Decimal,
+    routed_trades: AHashMap<TradeId, FillEconomics>,
+    terminal: Option<LighterOrder>,
+    conflicting_terminal: bool,
+    terminal_dispatched: bool,
+}
+
+/// Economic identity shared by typed WS fills and true HTTP fill reports.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct FillEconomics {
+    quantity: Quantity,
+    price: Price,
+    commission: Option<Money>,
+    side: OrderSide,
+    liquidity: LiquiditySide,
+    ts_event: UnixNanos,
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("Lighter queried trade changes an already routed real execution")]
+pub(crate) struct RoutedFillConflict;
+
+impl From<&OrderFilled> for FillEconomics {
+    fn from(fill: &OrderFilled) -> Self {
+        Self {
+            quantity: fill.last_qty,
+            price: fill.last_px,
+            commission: fill.commission,
+            side: fill.order_side,
+            liquidity: fill.liquidity_side,
+            ts_event: fill.ts_event,
+        }
+    }
+}
+
+impl From<&FillReport> for FillEconomics {
+    fn from(fill: &FillReport) -> Self {
+        Self {
+            quantity: fill.last_qty,
+            price: fill.last_px,
+            commission: Some(fill.commission),
+            side: fill.order_side,
+            liquidity: fill.liquidity_side,
+            ts_event: fill.ts_event,
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -130,6 +181,7 @@ impl OrderIdentity {
             client_order_index,
             binding: Arc::new(Mutex::new(OrderIdentityBinding::default())),
             accepted_emitted: Arc::new(AtomicBool::new(false)),
+            fills: Arc::new(Mutex::new(OrderFillProgress::default())),
         }
     }
 
@@ -146,7 +198,101 @@ impl OrderIdentity {
         binding.create_resolution = CreateResolution::Confirmed;
         drop(binding);
         identity.accepted_emitted.store(true, Ordering::Release);
+        let mut fills = identity.fills.lock();
+        fills.routed_quantity = order.filled_qty().as_decimal();
+        for event in order.events() {
+            if let OrderEventAny::Filled(fill) = event {
+                fills
+                    .routed_trades
+                    .insert(fill.trade_id, FillEconomics::from(fill));
+            }
+        }
+        drop(fills);
         identity
+    }
+
+    /// Retains the venue's explicit final cumulative quantity until every trade is routed.
+    pub(crate) fn terminal_fills_complete(&self, order: &LighterOrder) -> bool {
+        let mut fills = self.fills.lock();
+        if let Some(prior) = &fills.terminal
+            && prior.filled_base_amount != order.filled_base_amount
+        {
+            fills.conflicting_terminal = true;
+        }
+        fills.terminal = Some(order.clone());
+        let valid = order.initial_base_amount > Decimal::ZERO
+            && order.filled_base_amount >= Decimal::ZERO
+            && order.filled_base_amount <= order.initial_base_amount
+            && (order.status != crate::common::enums::LighterOrderStatus::Filled
+                || order.filled_base_amount == order.initial_base_amount);
+        valid
+            && !fills.conflicting_terminal
+            && !fills.terminal_dispatched
+            && fills.routed_quantity == order.filled_base_amount
+    }
+
+    pub(crate) fn mark_terminal_dispatched(&self) {
+        self.fills.lock().terminal_dispatched = true;
+    }
+
+    /// Accounts for a successfully routed, deduplicated trade and returns any waiting terminal.
+    pub(crate) fn record_routed_fill(
+        &self,
+        trade_id: TradeId,
+        economics: FillEconomics,
+        emit: impl FnOnce(),
+        conflict: impl FnOnce(),
+    ) -> Option<LighterOrder> {
+        let mut fills = self.fills.lock();
+        if let Some(prior) = fills.routed_trades.get(&trade_id) {
+            if prior != &economics {
+                fills.conflicting_terminal = true;
+                conflict();
+            }
+            return None;
+        }
+        emit();
+        fills.routed_quantity += economics.quantity.as_decimal();
+        fills.routed_trades.insert(trade_id, economics);
+        fills.terminal.clone()
+    }
+
+    /// Queues a complete real-trade batch before making its volume visible to terminal dispatch.
+    pub(crate) fn route_reconciled_fills(
+        &self,
+        quantity: Quantity,
+        trades: AHashMap<TradeId, FillEconomics>,
+        terminal: bool,
+        emit: impl FnOnce(),
+    ) -> anyhow::Result<()> {
+        let mut fills = self.fills.lock();
+        for (id, prior) in &fills.routed_trades {
+            if trades.get(id).is_some_and(|queried| queried != prior) {
+                return Err(RoutedFillConflict.into());
+            }
+        }
+        anyhow::ensure!(
+            fills.routed_trades.keys().all(|id| trades.contains_key(id)),
+            "Lighter queried trade snapshot omits an already routed real execution"
+        );
+        anyhow::ensure!(
+            quantity.as_decimal() >= fills.routed_quantity,
+            "Lighter queried cumulative quantity is below already routed real executions"
+        );
+        let new_quantity: Decimal = trades
+            .iter()
+            .filter(|(id, _)| !fills.routed_trades.contains_key(id))
+            .map(|(_, fill)| fill.quantity.as_decimal())
+            .sum();
+        anyhow::ensure!(
+            quantity.as_decimal() == fills.routed_quantity + new_quantity,
+            "Lighter queried real executions leave a residual cumulative quantity"
+        );
+        emit();
+        fills.routed_quantity = quantity.as_decimal();
+        fills.routed_trades.extend(trades);
+        fills.terminal_dispatched |= terminal;
+        Ok(())
     }
 
     fn mark_submission(&self, nonce: i64) {
@@ -521,6 +667,7 @@ struct PositionSnapshot {
 /// freely thanks to interior `Arc` sharing on each field.
 #[derive(Debug, Clone)]
 pub(crate) struct WsDispatchState {
+    pub(crate) control: crate::control::LighterExecutionControl,
     /// Maps the venue-side `client_order_index` (i64) we derive at submit
     /// time back to the originating Nautilus [`ClientOrderId`]. The venue
     /// echoes the index on `account_*` order frames; the consumption loop
@@ -786,6 +933,7 @@ impl WsDispatchState {
     /// default-window nonce manager.
     pub(crate) fn new() -> Self {
         Self {
+            control: crate::control::LighterExecutionControl::default(),
             cloid_map: Arc::new(DashMap::new()),
             retired_orders: Arc::new(RetiredOrderCache::new(REPLAY_CACHE_CAPACITY)),
             venue_id_map: Arc::new(DashMap::new()),
@@ -1465,6 +1613,7 @@ impl WsDispatchState {
         };
 
         if report.order_status.is_closed() {
+            self.invalidate_http_terminal_conflict(&report);
             self.clear_pending_order_action(&cloid);
             return report;
         }
@@ -1482,6 +1631,42 @@ impl WsDispatchState {
             None => return report,
         };
         report
+    }
+
+    /// Checks HTTP contradictions only for an exact locally owned order binding.
+    pub(crate) fn invalidate_http_terminal_conflict(&self, report: &OrderStatusReport) {
+        if let Some(cloid) = report.client_order_id
+            && let Some(identity) = self.order_identity(&cloid)
+            && identity.instrument_id == report.instrument_id
+            && identity.matches_venue_order_id(report.venue_order_id)
+        {
+            self.control.invalidate_http_terminal_conflict(report);
+        }
+    }
+
+    /// Records terminal evidence only for an exact locally owned order binding.
+    pub(crate) fn observe_terminal_report(&self, report: &OrderStatusReport, source: &str) {
+        if let Some(cloid) = report.client_order_id
+            && let Some(identity) = self.order_identity(&cloid)
+            && identity.instrument_id == report.instrument_id
+            && identity.matches_venue_order_id(report.venue_order_id)
+        {
+            self.control.observe(report, source);
+        }
+    }
+
+    pub(crate) fn invalidate_terminal_order(&self, order: &LighterOrder) {
+        if !matches!(
+            order.status,
+            crate::common::enums::LighterOrderStatus::InProgress
+                | crate::common::enums::LighterOrderStatus::Pending
+                | crate::common::enums::LighterOrderStatus::Open
+        ) && let Some(cloid) = self.resolve_live_order_cloid(
+            &order.client_order_id,
+            VenueOrderId::from(order.order_id.as_str()),
+        ) {
+            self.control.invalidate(cloid, "http_order_status");
+        }
     }
 
     /// Substitute a numeric venue cloid only when its venue order is bound.
@@ -1694,6 +1879,7 @@ pub(crate) fn cache_instruments_for_reports(instruments: &[InstrumentAny]) {
 /// reconciliation paths don't surface our own orders as external.
 pub(crate) fn parse_http_order_to_report(
     order: &LighterOrder,
+    dispatch: &WsDispatchState,
     registry: &Arc<MarketRegistry>,
     account_id: AccountId,
     ts_init: UnixNanos,
@@ -1708,8 +1894,20 @@ pub(crate) fn parse_http_order_to_report(
     };
 
     match parse_ws_order_status_report(order, &instrument, account_id, ts_init) {
-        Ok(report) => Some(report),
+        Ok(report) => {
+            if report.order_status.is_closed()
+                && (report.quantity.is_zero()
+                    || report.filled_qty > report.quantity
+                    || (report.order_status == OrderStatus::Filled
+                        && report.filled_qty != report.quantity))
+            {
+                dispatch.invalidate_terminal_order(order);
+                return None;
+            }
+            Some(report)
+        }
         Err(e) => {
+            dispatch.invalidate_terminal_order(order);
             log::warn!(
                 "parse_http_order_to_report: parse failed for order_index={}: {e}",
                 order.order_index,
@@ -1762,13 +1960,14 @@ pub(crate) async fn lookup_create_order_status_report(
         "ambiguous Lighter active-order lookup for client_order_index {client_order_index} and nonce {nonce}",
     );
 
-    let report = parse_http_order_to_report(order, registry, account_id, clock.get_time_ns())
-        .ok_or_else(|| {
-            anyhow::anyhow!(
-                "failed to parse Lighter active order {} for acknowledged create",
-                order.order_index,
-            )
-        })?;
+    let report =
+        parse_http_order_to_report(order, dispatch, registry, account_id, clock.get_time_ns())
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "failed to parse Lighter active order {} for acknowledged create",
+                    order.order_index,
+                )
+            })?;
     let report = dispatch
         .translate_order_cloid(report)
         .with_client_order_id(client_order_id);
@@ -1843,8 +2042,8 @@ pub(crate) async fn lookup_order_status_report(
     let supplied_cloid = client_order_id.copied();
 
     let finalize = |order: &LighterOrder| -> anyhow::Result<OrderStatusReport> {
-        let report =
-            parse_http_order_to_report(order, registry, account_id, ts_init).ok_or_else(|| {
+        let report = parse_http_order_to_report(order, dispatch, registry, account_id, ts_init)
+            .ok_or_else(|| {
                 anyhow::anyhow!(
                     "failed to parse matching Lighter order {} for market_index={market_index}",
                     order.order_id,
@@ -2190,6 +2389,113 @@ mod tests {
 
     fn voi(s: &str) -> VenueOrderId {
         VenueOrderId::new(s)
+    }
+
+    fn test_fill_economics(quantity: &str) -> FillEconomics {
+        FillEconomics {
+            quantity: Quantity::from(quantity),
+            price: Price::from("100.00"),
+            commission: Some(Money::from("0.01 USDC")),
+            side: OrderSide::Buy,
+            liquidity: LiquiditySide::Taker,
+            ts_event: UnixNanos::from(1),
+        }
+    }
+
+    #[rstest]
+    #[case("quantity")]
+    #[case("lower_quantity")]
+    #[case("price")]
+    #[case("fee")]
+    fn reconciled_trade_cannot_change_routed_economics(#[case] field: &str) {
+        let identity = OrderIdentity::new(
+            InstrumentId::from("ETH-PERP.LIGHTER"),
+            StrategyId::from("TEST-001"),
+            OrderSide::Buy,
+            OrderType::Limit,
+            1,
+        );
+        let id = TradeId::new("A");
+        identity.record_routed_fill(
+            id,
+            test_fill_economics("0.3"),
+            || {},
+            || panic!("unexpected conflict"),
+        );
+        let mut changed = test_fill_economics("0.3");
+        match field {
+            "quantity" => changed.quantity = Quantity::from("0.5"),
+            "lower_quantity" => changed.quantity = Quantity::from("0.2"),
+            "price" => changed.price = Price::from("101.00"),
+            _ => changed.commission = Some(Money::from("0.02 USDC")),
+        }
+        let result = identity.route_reconciled_fills(
+            changed.quantity,
+            AHashMap::from_iter([(id, changed)]),
+            true,
+            || panic!("conflicting real trade must not reach core reconciliation"),
+        );
+        assert!(result.unwrap_err().is::<RoutedFillConflict>());
+        assert_eq!(
+            identity.fills.lock().routed_quantity,
+            Decimal::from_str("0.3").unwrap()
+        );
+    }
+
+    #[rstest]
+    fn reconciled_snapshot_cannot_erase_newer_routed_trade() {
+        let identity = OrderIdentity::new(
+            InstrumentId::from("ETH-PERP.LIGHTER"),
+            StrategyId::from("TEST-001"),
+            OrderSide::Buy,
+            OrderType::Limit,
+            1,
+        );
+        let a = TradeId::new("A");
+        let b = TradeId::new("B");
+        let c = TradeId::new("C");
+        identity.record_routed_fill(
+            a,
+            test_fill_economics("0.3"),
+            || {},
+            || panic!("unexpected conflict"),
+        );
+        identity.record_routed_fill(
+            c,
+            test_fill_economics("0.1"),
+            || {},
+            || panic!("unexpected conflict"),
+        );
+        let stale = identity.route_reconciled_fills(
+            Quantity::from("0.5"),
+            AHashMap::from_iter([
+                (a, test_fill_economics("0.3")),
+                (b, test_fill_economics("0.2")),
+            ]),
+            true,
+            || panic!("a snapshot missing the later real trade cannot publish its status"),
+        );
+        assert!(stale.is_err());
+        assert_eq!(
+            identity.fills.lock().routed_quantity,
+            Decimal::from_str("0.4").unwrap()
+        );
+        identity
+            .route_reconciled_fills(
+                Quantity::from("0.6"),
+                AHashMap::from_iter([
+                    (a, test_fill_economics("0.3")),
+                    (b, test_fill_economics("0.2")),
+                    (c, test_fill_economics("0.1")),
+                ]),
+                true,
+                || {},
+            )
+            .unwrap();
+        assert_eq!(
+            identity.fills.lock().routed_quantity,
+            Decimal::from_str("0.6").unwrap()
+        );
     }
 
     fn stub_open_order_status_report(client_order_id_str: &str) -> OrderStatusReport {
