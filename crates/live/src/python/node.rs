@@ -195,6 +195,37 @@ impl PyLiveNodeHandle {
         self.inner.state()
     }
 
+    /// Returns a read-only snapshot of runner queue depths and dispatch counters.
+    ///
+    /// Queue depths count events, not individual price-level updates. They are sampled on the
+    /// runner maintenance tick; `queue_sampled_at_ns` records that tick relative to runner start.
+    /// Counters reset on runner startup. Fields are atomic reads, not a transactional snapshot.
+    #[pyo3(name = "metrics_snapshot")]
+    fn py_metrics_snapshot<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyDict>> {
+        let metrics = self.inner.metrics_snapshot();
+        let result = PyDict::new(py);
+        result.set_item("elapsed_ns", metrics.elapsed_ns)?;
+        result.set_item("queue_sampled_at_ns", metrics.queue_sampled_at_ns)?;
+        result.set_item("dispatch_busy_ns", metrics.dispatch_busy_ns)?;
+        result.set_item("maintenance_busy_ns", metrics.maintenance_busy_ns)?;
+        result.set_item("external_msgbus_busy_ns", metrics.external_msgbus_busy_ns)?;
+        for (name, channel) in [
+            ("time_events", metrics.time_events),
+            ("exec_events", metrics.exec_events),
+            ("exec_commands", metrics.exec_commands),
+            ("data_events", metrics.data_events),
+            ("data_commands", metrics.data_commands),
+        ] {
+            let values = PyDict::new(py);
+            values.set_item("queue_depth", channel.queue_depth)?;
+            values.set_item("dispatched", channel.dispatched)?;
+            values.set_item("dispatch_busy_ns", channel.dispatch_busy_ns)?;
+            values.set_item("last_dispatch_at_ns", channel.last_dispatch_at_ns)?;
+            result.set_item(name, values)?;
+        }
+        Ok(result)
+    }
+
     fn __repr__(&self) -> String {
         format!("LiveNodeHandle(state={:?})", self.inner.state())
     }
@@ -3671,6 +3702,35 @@ class ClaimsStrategy(Strategy):
         assert_eq!(metrics.exec_commands.dispatched, 1);
         assert_eq!(metrics.exec_commands.queue_depth, 0);
         assert!(!handle.is_running());
+
+        Python::attach(|py| {
+            let exported = node.py_handle().py_metrics_snapshot(py).unwrap();
+            let commands = exported.get_item("exec_commands").unwrap();
+            assert_eq!(
+                commands
+                    .get_item("dispatched")
+                    .unwrap()
+                    .extract::<u64>()
+                    .unwrap(),
+                1
+            );
+            assert_eq!(
+                commands
+                    .get_item("queue_depth")
+                    .unwrap()
+                    .extract::<usize>()
+                    .unwrap(),
+                0
+            );
+            assert_eq!(
+                exported
+                    .get_item("queue_sampled_at_ns")
+                    .unwrap()
+                    .extract::<u64>()
+                    .unwrap(),
+                metrics.queue_sampled_at_ns,
+            );
+        });
     }
 
     #[rstest]
