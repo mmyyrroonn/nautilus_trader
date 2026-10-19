@@ -64,6 +64,8 @@ pub struct RunnerMetricsSnapshot {
     pub external_msgbus_busy_ns: u64,
     /// Monotonic nanoseconds since the steady-state runner loop started.
     pub elapsed_ns: u64,
+    /// Runner-loop elapsed nanoseconds when receiver queue depths were last sampled.
+    pub queue_sampled_at_ns: u64,
 }
 
 /// Derived deltas between two `LiveNode::run` runner metrics snapshots.
@@ -242,6 +244,7 @@ pub(crate) struct RunnerMetrics {
     maintenance_busy_ns: AtomicU64,
     external_msgbus_busy_ns: AtomicU64,
     elapsed_ns: AtomicU64,
+    queue_sampled_at_ns: AtomicU64,
 }
 
 impl RunnerMetrics {
@@ -254,6 +257,7 @@ impl RunnerMetrics {
         self.maintenance_busy_ns.store(0, Ordering::Relaxed);
         self.external_msgbus_busy_ns.store(0, Ordering::Relaxed);
         self.elapsed_ns.store(0, Ordering::Relaxed);
+        self.queue_sampled_at_ns.store(0, Ordering::Relaxed);
     }
 
     pub(crate) fn snapshot(&self) -> RunnerMetricsSnapshot {
@@ -278,6 +282,7 @@ impl RunnerMetrics {
             maintenance_busy_ns: self.maintenance_busy_ns.load(Ordering::Relaxed),
             external_msgbus_busy_ns: self.external_msgbus_busy_ns.load(Ordering::Relaxed),
             elapsed_ns: self.elapsed_ns.load(Ordering::Relaxed),
+            queue_sampled_at_ns: self.queue_sampled_at_ns.load(Ordering::Relaxed),
         }
     }
 
@@ -319,6 +324,8 @@ impl RunnerMetrics {
         self.exec_commands.set_queue_depth(depths.exec_commands);
         self.data_events.set_queue_depth(depths.data_events);
         self.data_commands.set_queue_depth(depths.data_commands);
+        self.queue_sampled_at_ns
+            .store(duration_ns(elapsed_since_start), Ordering::Relaxed);
         self.elapsed_ns
             .store(duration_ns(elapsed_since_start), Ordering::Relaxed);
     }
@@ -884,6 +891,16 @@ mod tests {
         assert_eq!(snapshot.data_events.queue_depth, 4);
         assert_eq!(snapshot.data_commands.queue_depth, 5);
         assert_eq!(snapshot.elapsed_ns, 25);
+        assert_eq!(snapshot.queue_sampled_at_ns, 25);
+
+        metrics.record_dispatch(
+            SystemChannel::DataEvents,
+            Duration::from_nanos(3),
+            Duration::from_nanos(40),
+        );
+        let after_dispatch = metrics.snapshot();
+        assert_eq!(after_dispatch.elapsed_ns, 40);
+        assert_eq!(after_dispatch.queue_sampled_at_ns, 25);
     }
 
     fn runner_snapshot(
@@ -919,6 +936,7 @@ mod tests {
             maintenance_busy_ns,
             external_msgbus_busy_ns,
             elapsed_ns,
+            queue_sampled_at_ns: elapsed_ns,
         }
     }
 
