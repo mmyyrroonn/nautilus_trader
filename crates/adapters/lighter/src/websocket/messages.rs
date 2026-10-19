@@ -553,10 +553,13 @@ pub enum LighterWsFrame {
         last_funding_round: Option<AHashMap<Ustr, Decimal>>,
         last_funding_discount: Option<AHashMap<Ustr, Decimal>>,
     },
-    #[serde(
-        rename = "update/account_all_assets",
-        alias = "subscribed/account_all_assets"
-    )]
+    #[serde(rename = "subscribed/account_all_assets")]
+    AccountAllAssetsSnapshot {
+        assets: AHashMap<Ustr, LighterAsset>,
+        channel: Ustr,
+        timestamp: u64,
+    },
+    #[serde(rename = "update/account_all_assets")]
     AccountAllAssets {
         assets: AHashMap<Ustr, LighterAsset>,
         channel: Ustr,
@@ -1334,7 +1337,9 @@ mod tests {
         // Fixture is the captured production no-position payload: USDC
         // sits at asset_id=3, balance=10 on spot, margin_balance=40 on
         // perp, margin_mode="disabled", no spot-order reservation.
-        let frame: LighterWsFrame = serde_json::from_str(WS_ACCOUNT_ALL_ASSETS_UPDATE).unwrap();
+        let payload = WS_ACCOUNT_ALL_ASSETS_UPDATE
+            .replace("subscribed/account_all_assets", "update/account_all_assets");
+        let frame: LighterWsFrame = serde_json::from_str(&payload).unwrap();
 
         match frame {
             LighterWsFrame::AccountAllAssets {
@@ -1380,7 +1385,7 @@ mod tests {
         let frame: LighterWsFrame = serde_json::from_value(payload).unwrap();
 
         match frame {
-            LighterWsFrame::AccountAllAssets { assets, .. } => {
+            LighterWsFrame::AccountAllAssetsSnapshot { assets, .. } => {
                 assert_eq!(
                     assets.get(&Ustr::from("3")).unwrap().symbol,
                     Ustr::from("USDC")

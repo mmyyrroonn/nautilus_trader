@@ -82,6 +82,8 @@ struct ReconcilerInner {
     user_stats: Option<LighterUserStats>,
     assets_seen: bool,
     user_stats_seen: bool,
+    assets_ts_init: UnixNanos,
+    user_stats_ts_init: UnixNanos,
 }
 
 impl LighterAccountStateReconciler {
@@ -104,14 +106,31 @@ impl LighterAccountStateReconciler {
         inner.user_stats = None;
         inner.assets_seen = false;
         inner.user_stats_seen = false;
+        inner.assets_ts_init = UnixNanos::default();
+        inner.user_stats_ts_init = UnixNanos::default();
     }
 
     /// Update the asset snapshot from an `account_all_assets` frame.
     ///
-    /// Upsert per-key: each entry in `assets` overwrites any prior entry
-    /// with the same key; keys absent from this frame are retained.
-    pub(crate) fn update_assets(&self, assets: &AHashMap<Ustr, LighterAsset>) {
+    /// Subscription snapshots replace all assets. Incremental updates retain
+    /// omitted keys and cannot advance their observation time.
+    pub(crate) fn update_assets(
+        &self,
+        assets: &AHashMap<Ustr, LighterAsset>,
+        ts_init: UnixNanos,
+        is_snapshot: bool,
+    ) {
         let mut inner = self.inner.lock();
+        if is_snapshot {
+            inner.assets.clear();
+        }
+        // An incremental update cannot refresh the age of omitted balances.
+        // A subscription snapshot replaces the complete asset set.
+        if inner.assets.keys().all(|key| assets.contains_key(key)) {
+            inner.assets_ts_init = ts_init;
+        } else {
+            inner.assets_ts_init = inner.assets_ts_init.min(ts_init);
+        }
         for (key, asset) in assets {
             inner.assets.insert(*key, asset.clone());
         }
@@ -119,10 +138,11 @@ impl LighterAccountStateReconciler {
     }
 
     /// Update the perp-rollup snapshot from a `user_stats` frame.
-    pub(crate) fn update_user_stats(&self, stats: &LighterUserStats) {
+    pub(crate) fn update_user_stats(&self, stats: &LighterUserStats, ts_init: UnixNanos) {
         let mut inner = self.inner.lock();
         inner.user_stats = Some(stats.clone());
         inner.user_stats_seen = true;
+        inner.user_stats_ts_init = ts_init;
     }
 
     /// Build the unified [`AccountState`] from the current snapshots.
@@ -158,7 +178,13 @@ impl LighterAccountStateReconciler {
         };
 
         Some(Ok(build_unified_account_state(
-            balances, margin, account_id, ts_event, ts_init,
+            balances,
+            margin,
+            account_id,
+            ts_event,
+            ts_init
+                .min(inner.assets_ts_init)
+                .min(inner.user_stats_ts_init),
         )))
     }
 }
@@ -228,14 +254,18 @@ mod tests {
         );
 
         // Only assets so far: still no emit.
-        r.update_assets(&asset_map(usdc_asset("10.0", "0.0", "40.0")));
+        r.update_assets(
+            &asset_map(usdc_asset("10.0", "0.0", "40.0")),
+            UnixNanos::default(),
+            false,
+        );
         assert!(
             r.build_state(account_id(), UnixNanos::default(), UnixNanos::default())
                 .is_none()
         );
 
         // user_stats lands: emit unblocked.
-        r.update_user_stats(&user_stats("40.0", "40.0", "0.0"));
+        r.update_user_stats(&user_stats("40.0", "40.0", "0.0"), UnixNanos::default());
         let state = r
             .build_state(account_id(), UnixNanos::default(), UnixNanos::default())
             .expect("ready")
@@ -248,16 +278,24 @@ mod tests {
         // Assets-first-then-stats and stats-first-then-assets must both
         // produce the same merged state.
         let r1 = LighterAccountStateReconciler::new();
-        r1.update_assets(&asset_map(usdc_asset("10.0", "0.0", "40.0")));
-        r1.update_user_stats(&user_stats("40.0", "40.0", "0.0"));
+        r1.update_assets(
+            &asset_map(usdc_asset("10.0", "0.0", "40.0")),
+            UnixNanos::default(),
+            false,
+        );
+        r1.update_user_stats(&user_stats("40.0", "40.0", "0.0"), UnixNanos::default());
         let s1 = r1
             .build_state(account_id(), UnixNanos::default(), UnixNanos::default())
             .expect("ready")
             .expect("ok");
 
         let r2 = LighterAccountStateReconciler::new();
-        r2.update_user_stats(&user_stats("40.0", "40.0", "0.0"));
-        r2.update_assets(&asset_map(usdc_asset("10.0", "0.0", "40.0")));
+        r2.update_user_stats(&user_stats("40.0", "40.0", "0.0"), UnixNanos::default());
+        r2.update_assets(
+            &asset_map(usdc_asset("10.0", "0.0", "40.0")),
+            UnixNanos::default(),
+            false,
+        );
         let s2 = r2
             .build_state(account_id(), UnixNanos::default(), UnixNanos::default())
             .expect("ready")
@@ -276,8 +314,12 @@ mod tests {
         // total=50, locked=0, free=50. MarginBalance carries the
         // (zero) margin-in-use breakdown.
         let r = LighterAccountStateReconciler::new();
-        r.update_assets(&asset_map(usdc_asset("10.0", "0.0", "40.0")));
-        r.update_user_stats(&user_stats("40.0", "40.0", "0.0"));
+        r.update_assets(
+            &asset_map(usdc_asset("10.0", "0.0", "40.0")),
+            UnixNanos::default(),
+            false,
+        );
+        r.update_user_stats(&user_stats("40.0", "40.0", "0.0"), UnixNanos::default());
 
         let state = r
             .build_state(account_id(), UnixNanos::default(), UnixNanos::default())
@@ -308,8 +350,12 @@ mod tests {
         // MarginBalance, not in `locked`. Maintenance stays 0 because
         // Lighter doesn't publish maintenance on `user_stats`.
         let r = LighterAccountStateReconciler::new();
-        r.update_assets(&asset_map(usdc_asset("10.0", "0.0", "40.0")));
-        r.update_user_stats(&user_stats("40.0", "35.0", "12.50"));
+        r.update_assets(
+            &asset_map(usdc_asset("10.0", "0.0", "40.0")),
+            UnixNanos::default(),
+            false,
+        );
+        r.update_user_stats(&user_stats("40.0", "35.0", "12.50"), UnixNanos::default());
 
         let state = r
             .build_state(account_id(), UnixNanos::default(), UnixNanos::default())
@@ -329,8 +375,8 @@ mod tests {
     #[rstest]
     fn reconciler_uses_configured_settlement_currency_for_margin() {
         let r = LighterAccountStateReconciler::new_with_settlement_currency(Currency::USDG());
-        r.update_assets(&AHashMap::new());
-        r.update_user_stats(&user_stats("40.0", "35.0", "12.50"));
+        r.update_assets(&AHashMap::new(), UnixNanos::default(), false);
+        r.update_user_stats(&user_stats("40.0", "35.0", "12.50"), UnixNanos::default());
 
         let state = r
             .build_state(account_id(), UnixNanos::default(), UnixNanos::default())
@@ -359,12 +405,12 @@ mod tests {
             },
         );
         let r = LighterAccountStateReconciler::new();
-        r.update_assets(&first_frame);
-        r.update_user_stats(&user_stats("40.0", "40.0", "0.0"));
+        r.update_assets(&first_frame, UnixNanos::default(), false);
+        r.update_user_stats(&user_stats("40.0", "40.0", "0.0"), UnixNanos::default());
 
         let mut second_frame = AHashMap::new();
         second_frame.insert(Ustr::from("3"), usdc_asset("12.0", "0.0", "40.0"));
-        r.update_assets(&second_frame);
+        r.update_assets(&second_frame, UnixNanos::default(), false);
 
         let state = r
             .build_state(account_id(), UnixNanos::default(), UnixNanos::default())
@@ -381,8 +427,12 @@ mod tests {
     #[rstest]
     fn reconciler_reset_clears_snapshots() {
         let r = LighterAccountStateReconciler::new();
-        r.update_assets(&asset_map(usdc_asset("10.0", "0.0", "40.0")));
-        r.update_user_stats(&user_stats("40.0", "40.0", "0.0"));
+        r.update_assets(
+            &asset_map(usdc_asset("10.0", "0.0", "40.0")),
+            UnixNanos::default(),
+            false,
+        );
+        r.update_user_stats(&user_stats("40.0", "40.0", "0.0"), UnixNanos::default());
         assert!(
             r.build_state(account_id(), UnixNanos::default(), UnixNanos::default())
                 .is_some()
@@ -393,5 +443,60 @@ mod tests {
             r.build_state(account_id(), UnixNanos::default(), UnixNanos::default())
                 .is_none()
         );
+    }
+
+    #[rstest]
+    fn reconciler_freshness_requires_both_components() {
+        let r = LighterAccountStateReconciler::new();
+        let assets = asset_map(usdc_asset("10", "0", "40"));
+        r.update_assets(&assets, UnixNanos::from(10), true);
+        r.update_user_stats(&user_stats("40", "40", "0"), UnixNanos::from(20));
+        let state = r
+            .build_state(account_id(), UnixNanos::from(20), UnixNanos::from(20))
+            .unwrap()
+            .unwrap();
+        assert_eq!(state.ts_init, UnixNanos::from(10));
+
+        r.update_user_stats(&user_stats("40", "40", "0"), UnixNanos::from(100));
+        let state = r
+            .build_state(account_id(), UnixNanos::from(100), UnixNanos::from(100))
+            .unwrap()
+            .unwrap();
+        assert_eq!(state.ts_init, UnixNanos::from(10));
+        r.update_assets(&assets, UnixNanos::from(110), true);
+        let state = r
+            .build_state(account_id(), UnixNanos::from(110), UnixNanos::from(110))
+            .unwrap()
+            .unwrap();
+        assert_eq!(state.ts_init, UnixNanos::from(100));
+    }
+
+    #[rstest]
+    fn reconciler_partial_update_keeps_old_age_and_snapshot_removes_omitted_assets() {
+        let r = LighterAccountStateReconciler::new();
+        let mut assets = asset_map(usdc_asset("10", "0", "40"));
+        let mut other = usdc_asset("1", "0", "0");
+        other.symbol = Ustr::from("ETH");
+        other.asset_id = 1;
+        assets.insert(Ustr::from("1"), other);
+        r.update_assets(&assets, UnixNanos::from(10), true);
+        r.update_user_stats(&user_stats("40", "40", "0"), UnixNanos::from(100));
+        let partial = asset_map(usdc_asset("12", "0", "40"));
+        r.update_assets(&partial, UnixNanos::from(110), false);
+        let state = r
+            .build_state(account_id(), UnixNanos::from(110), UnixNanos::from(110))
+            .unwrap()
+            .unwrap();
+        assert_eq!(state.ts_init, UnixNanos::from(10));
+        assert_eq!(state.balances.len(), 2);
+
+        r.update_assets(&partial, UnixNanos::from(120), true);
+        let state = r
+            .build_state(account_id(), UnixNanos::from(120), UnixNanos::from(120))
+            .unwrap()
+            .unwrap();
+        assert_eq!(state.ts_init, UnixNanos::from(100));
+        assert_eq!(state.balances.len(), 1);
+        assert_eq!(state.balances[0].total, Money::from("52 USDC"));
     }
 }

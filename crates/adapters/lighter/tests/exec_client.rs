@@ -68,7 +68,7 @@ use nautilus_common::{
         execution::{
             BatchCancelOrders, CancelAllOrders, CancelOrder, GenerateFillReports,
             GenerateOrderStatusReport, GenerateOrderStatusReports, GeneratePositionStatusReports,
-            ModifyOrder, SubmitOrder, SubmitOrderList,
+            ModifyOrder, QueryAccount, SubmitOrder, SubmitOrderList,
         },
         system::SocketState,
     },
@@ -1367,6 +1367,58 @@ fn send_tx_type(send_tx: &Value) -> u8 {
         .and_then(|d| d.get("tx_type"))
         .and_then(Value::as_u64)
         .expect("missing tx_type") as u8
+}
+
+#[rstest]
+#[tokio::test(flavor = "multi_thread")]
+async fn query_account_refreshes_both_balance_streams_without_order_messages() {
+    let (addr, state) = start_server().await;
+    let (mut client, mut rx, _cache) = build_client(addr);
+    client.connect().await.expect("connect");
+    while rx.try_recv().is_ok() {}
+    let boundary = UnixNanos::from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos() as u64,
+    );
+    state.subscribe_ack_delay_ms.store(50, Ordering::Relaxed);
+    for _ in 0..10 {
+        client
+            .query_account(QueryAccount::new(
+                trader_id(),
+                Some(client_id()),
+                account_id(),
+                UUID4::new(),
+                boundary,
+                None,
+                None,
+            ))
+            .expect("query account");
+    }
+    let event = next_event_matching(
+        &mut rx,
+        Duration::from_secs(3),
+        |event| matches!(event, ExecutionEvent::Account(account) if account.ts_init >= boundary),
+    )
+    .await
+    .expect("fresh merged account state");
+    assert!(matches!(event, ExecutionEvent::Account(_)));
+    let subscriptions = state.subscribes().await;
+    assert_eq!(
+        subscriptions.len(),
+        7,
+        "concurrent queries must share one refresh"
+    );
+    let channels: Vec<_> = subscriptions[5..]
+        .iter()
+        .map(|row| row["channel"].as_str().unwrap())
+        .collect();
+    assert_eq!(channels, ["account_all_assets/12345", "user_stats/12345"]);
+    assert_eq!(state.unsubscribes.lock().await.len(), 2);
+    assert!(state.send_txs().await.is_empty());
+    assert!(state.rest_send_txs().await.is_empty());
+    client.disconnect().await.expect("disconnect");
 }
 
 #[rstest]
