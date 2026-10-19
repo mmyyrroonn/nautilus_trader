@@ -1613,6 +1613,7 @@ impl WsDispatchState {
         };
 
         if report.order_status.is_closed() {
+            self.invalidate_http_terminal_conflict(&report);
             self.clear_pending_order_action(&cloid);
             return report;
         }
@@ -1630,6 +1631,17 @@ impl WsDispatchState {
             None => return report,
         };
         report
+    }
+
+    /// Checks HTTP contradictions only for an exact locally owned order binding.
+    pub(crate) fn invalidate_http_terminal_conflict(&self, report: &OrderStatusReport) {
+        if let Some(cloid) = report.client_order_id
+            && let Some(identity) = self.order_identity(&cloid)
+            && identity.instrument_id == report.instrument_id
+            && identity.matches_venue_order_id(report.venue_order_id)
+        {
+            self.control.invalidate_http_terminal_conflict(report);
+        }
     }
 
     /// Records terminal evidence only for an exact locally owned order binding.

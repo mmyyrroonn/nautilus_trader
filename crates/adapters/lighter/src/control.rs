@@ -67,6 +67,26 @@ pub struct LighterExecutionControl {
 }
 
 impl LighterExecutionControl {
+    /// Checks a new HTTP statement without creating or upgrading valid evidence.
+    pub(crate) fn invalidate_http_terminal_conflict(&self, report: &OrderStatusReport) {
+        if !report.order_status.is_closed() {
+            return;
+        }
+        let Some(cloid) = report.client_order_id else {
+            return;
+        };
+        if let Some(prior) = self.inner.lock().evidence.get_mut(&cloid)
+            && prior.source == "http_order_status"
+            && (prior.final_filled_quantity
+                != report.filled_qty.as_decimal().normalize().to_string()
+                || prior.instrument_id != report.instrument_id
+                || prior.venue_order_id != report.venue_order_id)
+        {
+            prior.conflicting = true;
+            prior.http_conflicting = true;
+        }
+    }
+
     pub(crate) fn invalidate(&self, cloid: ClientOrderId, source: &str) {
         if let Some(proof) = self.inner.lock().evidence.get_mut(&cloid) {
             proof.conflicting = true;

@@ -5280,6 +5280,7 @@ fn publish_queried_order(
     };
     if let Some(identity) = identity {
         if let Err(error) = identity.route_reconciled_fills(quantity, trades, terminal, emit) {
+            dispatch.invalidate_http_terminal_conflict(&evidence);
             if error.is::<RoutedFillConflict>()
                 && let Some(cloid) = cloid
             {
@@ -10629,7 +10630,10 @@ mod tests {
     }
 
     #[rstest]
-    fn http_proof_waits_for_bundle_and_conflicting_ws_replay_invalidates_it() {
+    #[case("ws_changed_trade")]
+    #[case("http_zero_without_trades")]
+    #[case("http_zero_checked_before_other_query")]
+    fn http_proof_waits_for_bundle_and_later_conflict_invalidates_it(#[case] conflict: &str) {
         let mut rig = dispatcher_rig("HTTP-PROOF-PUBLICATION");
         register_identity(&rig);
         let order = dispatcher_test_order(&rig, LighterOrderStatus::Canceled);
@@ -10676,20 +10680,42 @@ mod tests {
             "lookup alone cannot publish an HTTP certificate"
         );
         assert!(rig.dispatch.mark_trade_seen(fill.trade_id));
-        publish_queried_order(report, vec![fill], &rig.dispatch, &rig.emitter).unwrap();
+        let mut checked_zero = report.clone();
+        checked_zero.filled_qty = Quantity::from("0.0000");
+        let checked_zero = rig.dispatch.preserve_pending_order_status(checked_zero);
+        publish_queried_order(report.clone(), vec![fill], &rig.dispatch, &rig.emitter).unwrap();
         assert_eq!(drain_events(&mut rig.rx).len(), 1);
         assert_eq!(proof().unwrap()["source"], "http_order_status");
-        trade.size += Decimal::from_str("0.1").unwrap();
-        dispatch_lighter_trade(
-            &trade,
-            &rig.dispatch,
-            &rig.emitter,
-            &rig.registry,
-            account_id(),
-            trader_id(),
-            Some(TEST_ACCOUNT_INDEX_I64),
-            UnixNanos::from(2),
-        );
+        if conflict == "http_zero_checked_before_other_query" {
+            assert!(
+                publish_queried_order(checked_zero, Vec::new(), &rig.dispatch, &rig.emitter)
+                    .is_err()
+            );
+        } else if conflict == "http_zero_without_trades" {
+            report.filled_qty = Quantity::from("0.0000");
+            let contradictory = rig.dispatch.preserve_pending_order_status(report);
+            assert_eq!(
+                proof().unwrap()["conflicting"],
+                true,
+                "an explicit HTTP cumulative contradiction must invalidate before trade validation"
+            );
+            assert!(
+                publish_queried_order(contradictory, Vec::new(), &rig.dispatch, &rig.emitter)
+                    .is_err()
+            );
+        } else {
+            trade.size += Decimal::from_str("0.1").unwrap();
+            dispatch_lighter_trade(
+                &trade,
+                &rig.dispatch,
+                &rig.emitter,
+                &rig.registry,
+                account_id(),
+                trader_id(),
+                Some(TEST_ACCOUNT_INDEX_I64),
+                UnixNanos::from(2),
+            );
+        }
         assert!(drain_events(&mut rig.rx).is_empty());
         assert_eq!(proof().unwrap()["conflicting"], true);
     }

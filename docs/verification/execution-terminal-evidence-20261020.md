@@ -51,6 +51,8 @@ fee, side, liquidity and event time. A waiting WebSocket worker cannot count a q
 trade twice. A query snapshot that omits a newer routed trade remains pending; changed
 economics for the same trade ID invalidate existing evidence. HTTP evidence is published
 only after the complete validated batch is queued, never by the status lookup alone.
+The lookup can only invalidate an existing HTTP proof when the original order returns
+a contradictory terminal cumulative amount, even if subsequent trade validation fails.
 
 The Lighter commission hook rejects inferred venue-order economics in the live
 reconciliation manager. That hook is not a guarantee for arbitrary engine configurations:
@@ -80,7 +82,7 @@ Backpack dirty exit and do not erase that evidence.
 
 ## Local validation and limits
 
-- Lighter Rust library: 1,197 passed and three existing isolated cases ignored.
+- Lighter Rust library: 1,199 passed and three existing isolated cases ignored.
 - Lighter execution integration: 110 passed and two existing isolated cases ignored.
 - Lighter data/HTTP/WebSocket integration: 37 / 50 / 34 passed.
 - Lighter Python binding integration: three passed, including the readonly control.
