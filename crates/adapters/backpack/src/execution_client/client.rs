@@ -2695,6 +2695,27 @@ impl ExecutionClient for BackpackExecutionClient {
         Ok(())
     }
     async fn disconnect(&mut self) -> anyhow::Result<()> {
+        if self.shared.production() && self.shared.shutdown.lock().is_none() {
+            let budget = self.shared.config.policy.shutdown_timeout;
+            let refreshed = if let Ok((generation, epoch)) = self.shared.token() {
+                tokio::time::timeout(
+                    budget,
+                    self.shared
+                        .recover(generation, epoch, &self.tasks.cancellation_token()),
+                )
+                .await
+                .is_ok_and(|result| result.is_ok())
+            } else {
+                false
+            };
+            if !refreshed {
+                // Invalidate the prior revision rather than certifying shutdown with an old read
+                self.shared
+                    .gate
+                    .lock()
+                    .fault("ShutdownAccountRefreshFailed");
+            }
+        }
         self.stop()?;
         let budget = self.shared.config.policy.shutdown_timeout;
         if let Some(ws) = &self.websocket {

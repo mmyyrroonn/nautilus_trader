@@ -33,6 +33,7 @@ __all__ = [
     "LighterEnvironment",
     "LighterExecutionClientConfig",
     "LighterExecutionClientFactory",
+    "LighterExecutionControl",
     "revoke_lighter_integrator",
 ]
 

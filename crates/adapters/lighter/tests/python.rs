@@ -59,6 +59,43 @@ fn setup_exec_event_sender() {
 }
 
 #[rstest]
+fn test_lighter_readonly_execution_control_has_no_cached_terminal_proof() {
+    Python::initialize();
+    Python::attach(|py| {
+        let module = PyModule::new(py, "lighter").unwrap();
+        module
+            .add_class::<nautilus_lighter::control::LighterExecutionControl>()
+            .unwrap();
+        module.add_class::<LighterExecutionClientConfig>().unwrap();
+        let control = module
+            .getattr("LighterExecutionControl")
+            .unwrap()
+            .call0()
+            .unwrap();
+        let proof = control
+            .call_method1("terminal_fill_evidence_json", ("ORDER-ABSENT",))
+            .unwrap();
+        assert!(proof.is_none());
+        assert!(
+            control
+                .call_method1("terminal_fill_evidence_json", ("",))
+                .is_err()
+        );
+        let kwargs = pyo3::types::PyDict::new(py);
+        pyo3::types::PyDictMethods::set_item(&kwargs, "control", &control).unwrap();
+        let account_id = Py::new(py, AccountId::from("LIGHTER-001")).unwrap();
+        let config = module
+            .getattr("LighterExecutionClientConfig")
+            .unwrap()
+            .call((account_id,), Some(&kwargs))
+            .unwrap()
+            .extract::<LighterExecutionClientConfig>()
+            .unwrap();
+        assert!(config.control.is_some());
+    });
+}
+
+#[rstest]
 fn test_lighter_python_configs_default_to_lighter_mainnet() {
     Python::initialize();
 

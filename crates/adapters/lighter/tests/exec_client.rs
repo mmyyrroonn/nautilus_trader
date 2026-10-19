@@ -68,7 +68,7 @@ use nautilus_common::{
         execution::{
             BatchCancelOrders, CancelAllOrders, CancelOrder, GenerateFillReports,
             GenerateOrderStatusReport, GenerateOrderStatusReports, GeneratePositionStatusReports,
-            ModifyOrder, QueryAccount, SubmitOrder, SubmitOrderList,
+            ModifyOrder, QueryAccount, QueryOrder, SubmitOrder, SubmitOrderList,
         },
         system::SocketState,
     },
@@ -822,6 +822,7 @@ fn build_config(addr: SocketAddr) -> LighterExecutionClientConfig {
     // Pin every credential field explicitly so a stray `LIGHTER_*` env var
     // cannot leak into a test.
     LighterExecutionClientConfig {
+        control: None,
         account_id: account_id(),
         account_index: Some(TEST_ACCOUNT_INDEX),
         api_key_index: Some(TEST_API_KEY_INDEX),
@@ -2847,12 +2848,16 @@ async fn test_acknowledged_create_allows_delayed_active_order() {
     }));
 
     let report = next_event_matching(&mut rx, Duration::from_secs(7), |event| {
-        matches!(event, ExecutionEvent::Report(ExecutionReport::Order(_)))
+        matches!(
+            event,
+            ExecutionEvent::Report(ExecutionReport::OrderWithFills(..))
+        )
     })
     .await
     .expect("delayed order status report");
     match report {
-        ExecutionEvent::Report(ExecutionReport::Order(report)) => {
+        ExecutionEvent::Report(ExecutionReport::OrderWithFills(report, fills)) => {
+            assert!(fills.is_empty());
             assert_eq!(report.client_order_id, Some(order.client_order_id()));
             assert_eq!(report.venue_order_id, VenueOrderId::from("281476929510500"));
             assert_eq!(report.order_status, OrderStatus::Accepted);
@@ -5469,6 +5474,7 @@ async fn test_generate_order_status_reports_excludes_order_before_identity_resto
     let start_ms = second_ms + 500;
     let excluded_ms = start_ms - 1;
     let mut excluded_order = http_order_fixture(venue_order_id.as_str(), "42", "filled", "0.1336");
+    excluded_order["initial_base_amount"] = json!("0.1336");
     excluded_order["timestamp"] = json!(excluded_ms);
     excluded_order["created_at"] = json!(excluded_ms);
     excluded_order["updated_at"] = json!(excluded_ms);
@@ -5520,6 +5526,141 @@ async fn test_generate_order_status_reports_excludes_order_before_identity_resto
     }
 
     client.disconnect().await.expect("disconnect");
+}
+
+#[rstest]
+#[case("complete")]
+#[case("repeated_cursor")]
+#[case("malformed_fee")]
+#[case("zero_fee_omitted")]
+#[case("missing_trade")]
+#[tokio::test(flavor = "multi_thread")]
+async fn query_terminal_requires_complete_original_trade_details(#[case] mode: &str) {
+    let (addr, state) = start_server().await;
+    let control = nautilus_lighter::control::LighterExecutionControl::default();
+    let mut config = build_config(addr);
+    config.control = Some(control.clone());
+    let (mut client, mut rx, cache) = build_client_with(config);
+    client.connect().await.unwrap();
+    let order = make_limit_order(
+        "O-QUERY-DETAILS",
+        OrderSide::Buy,
+        Quantity::from("0.2672"),
+        Price::from("2361.31"),
+        TimeInForce::Gtc,
+        false,
+        false,
+    );
+    cache_order(&cache, order.clone());
+    client.submit_order(submit_command(&order)).unwrap();
+    await_send_tx_count(&state, 1).await;
+    let info = send_tx_info(&state.send_txs().await[0]);
+    let index = info["ClientOrderIndex"].as_i64().unwrap();
+    let nonce = info["Nonce"].as_i64().unwrap();
+    let venue_id = "562947905631053";
+    let mut open = account_all_orders_open_entry(index, venue_id, &index.to_string(), nonce);
+    open["initial_base_amount"] = json!("0.2672");
+    open["remaining_base_amount"] = json!("0.2672");
+    state.push_frame(&json!({"type":"update/account_all_orders",
+        "channel":format!("account_all_orders:{TEST_ACCOUNT_INDEX}"),"orders":{"0":[open]}}));
+    next_event_matching(&mut rx, Duration::from_secs(2), |event| {
+        matches!(event, ExecutionEvent::Order(OrderEventAny::Accepted(_)))
+    })
+    .await
+    .unwrap();
+    let mut terminal = http_order_fixture(venue_id, &index.to_string(), "canceled", "0.2672");
+    terminal["initial_base_amount"] = json!("0.3000");
+    terminal["nonce"] = json!(nonce);
+    *state.inactive_orders_response.lock().await = Some(http_orders_payload(&[terminal], None));
+    let first = http_trade_fixture(19_209_006_902, index);
+    let mut second = http_trade_fixture(19_209_006_903, index);
+    if matches!(mode, "malformed_fee" | "zero_fee_omitted") {
+        second.as_object_mut().unwrap().remove("taker_fee");
+        second.as_object_mut().unwrap().remove("maker_fee");
+        if mode == "malformed_fee" {
+            second["taker_fee"] = json!("invalid");
+        }
+    }
+    state.trades_responses.lock().await.push_back(
+        json!({"code":200,"trades":[first.clone(),first.clone()],"next_cursor":"page-two"}),
+    );
+    state.trades_responses.lock().await.push_back(json!({"code":200,
+        "trades":if matches!(mode,"repeated_cursor"|"missing_trade") {vec![]}else{vec![second.clone()]},
+        "next_cursor":if mode=="repeated_cursor" {Some("page-two")}else{None}}));
+    *state.trades_response.lock().await = Some(json!({"code":200,"trades":[first,second]}));
+    let query = || {
+        QueryOrder::new(
+            trader_id(),
+            Some(client_id()),
+            strategy_id(),
+            eth_perp_id(),
+            order.client_order_id(),
+            Some(VenueOrderId::from(venue_id)),
+            UUID4::new(),
+            UnixNanos::default(),
+            None,
+            None,
+        )
+    };
+    client.query_order(query()).unwrap();
+    let bundle = next_event_matching(&mut rx, Duration::from_secs(2), |event| {
+        matches!(
+            event,
+            ExecutionEvent::Report(ExecutionReport::OrderWithFills(..))
+        )
+    })
+    .await;
+    if matches!(mode, "complete" | "zero_fee_omitted") {
+        let ExecutionEvent::Report(ExecutionReport::OrderWithFills(report, fills)) =
+            bundle.unwrap()
+        else {
+            unreachable!()
+        };
+        assert_eq!(report.filled_qty, Quantity::from("0.2672"));
+        assert_eq!(fills.len(), 2);
+        assert_eq!(fills[0].trade_id, TradeId::from("19209006902"));
+        assert_eq!(fills[1].trade_id, TradeId::from("19209006903"));
+        assert_eq!(fills[0].commission, Money::from("0.000196 USDC"));
+        if mode == "zero_fee_omitted" {
+            assert_eq!(fills[1].commission, Money::from("0 USDC"));
+        }
+        client.query_order(query()).unwrap();
+        let repeated = next_event_matching(&mut rx, Duration::from_secs(2), |event| {
+            matches!(
+                event,
+                ExecutionEvent::Report(ExecutionReport::OrderWithFills(..))
+            )
+        })
+        .await
+        .unwrap();
+        let ExecutionEvent::Report(ExecutionReport::OrderWithFills(_, repeated_fills)) = repeated
+        else {
+            unreachable!()
+        };
+        assert_eq!(repeated_fills.len(), 2);
+    } else {
+        assert!(
+            bundle.is_none(),
+            "incomplete true fills must not emit a cumulative terminal report"
+        );
+    }
+    for query in state.trades_queries.lock().await.iter() {
+        assert_eq!(query.get("order_index").map(String::as_str), Some(venue_id));
+    }
+    let proof = control
+        .terminal_fill_evidence_json(order.client_order_id().as_str())
+        .unwrap();
+    if matches!(mode, "complete" | "zero_fee_omitted") {
+        let proof: Value = serde_json::from_str(&proof.unwrap()).unwrap();
+        assert_eq!(proof["source"], "http_order_status");
+        assert_eq!(proof["final_filled_quantity"], "0.2672");
+    } else {
+        assert!(
+            proof.is_none(),
+            "incomplete trade details cannot publish HTTP proof"
+        );
+    }
+    client.disconnect().await.unwrap();
 }
 
 #[rstest]

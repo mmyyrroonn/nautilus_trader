@@ -497,6 +497,11 @@ pub fn parse_ws_order_status_report(
 
     let quantity = quantity_from_decimal(order.initial_base_amount, instrument.size_precision())?;
     let filled_qty = quantity_from_decimal(order.filled_base_amount, instrument.size_precision())?;
+    anyhow::ensure!(
+        quantity.as_decimal() == order.initial_base_amount
+            && filled_qty.as_decimal() == order.filled_base_amount,
+        "Lighter cumulative order quantity exceeds instrument precision",
+    );
     let order_status = nautilus_order_status(order.status, &filled_qty);
     let cancel_reason = order.status.as_cancel_reason();
 
