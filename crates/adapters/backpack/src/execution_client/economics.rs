@@ -48,6 +48,22 @@ const MARKER: &str = "economics.initialized";
 const MARKER_BYTES: &[u8] = b"backpack-loopback-economics-v1\n";
 const MAX_BYTES: u64 = 64 * 1024 * 1024;
 
+/// Preserve current accounting fields and the original latest observation, without
+/// copying the live cache's ever-growing account event history on every poll.
+fn account_checkpoint(account: &AccountAny) -> AccountAny {
+    let mut snapshot = account.clone_without_events();
+    if let Some(event) = account.last_event() {
+        let base = match &mut snapshot {
+            AccountAny::Margin(value) => &mut value.base,
+            AccountAny::Cash(value) => &mut value.base,
+            AccountAny::Betting(value) => &mut value.base,
+            AccountAny::Wallet(value) => &mut value.base,
+        };
+        base.events.push(event);
+    }
+    snapshot
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct EconomicFill {
@@ -520,7 +536,7 @@ impl EconomicStore {
         let account = cache
             .account(&state.account_id)
             .ok_or_else(|| anyhow::anyhow!("native consumer account missing"))?;
-        state.account = Some((*account).clone());
+        state.account = Some(account_checkpoint(&account));
         state.orders = cache
             .orders(Some(&Venue::from("BACKPACK")), None, None, None, None)
             .into_iter()
@@ -852,6 +868,102 @@ mod tests {
             ClientId::from("BACKPACK"),
             BackpackClientIdNamespace::new_checked("loopback", "peer-account", None).unwrap(),
         )
+    }
+    #[rstest]
+    #[case(1)]
+    #[case(5000)]
+    fn checkpoint_account_history_is_bounded_and_current_state_roundtrips(#[case] updates: u64) {
+        use nautilus_core::UUID4;
+        use nautilus_model::{
+            accounts::MarginAccount,
+            enums::AccountType,
+            events::AccountState,
+            types::{AccountBalance, MarginBalance},
+        };
+
+        let root = tempfile::tempdir().unwrap();
+        let identity = root.path().join("identity");
+        fs::create_dir(&identity).unwrap();
+        let directory = root.path().join("consumer");
+        let (account_id, trader, client, namespace) = scope();
+        let symbols = vec!["BTC_USDC_PERP".to_string()];
+        let mut store = EconomicStore::open(
+            &directory, &identity, &namespace, account_id, trader, 100, &symbols, client,
+        )
+        .unwrap();
+        let event = |stamp| {
+            AccountState::new(
+                account_id,
+                AccountType::Margin,
+                vec![AccountBalance::new(
+                    Money::from("110 USDC"),
+                    Money::from("10 USDC"),
+                    Money::from("100 USDC"),
+                )],
+                vec![MarginBalance::new(
+                    Money::from("8 USDC"),
+                    Money::from("4 USDC"),
+                    None,
+                )],
+                true,
+                UUID4::new(),
+                UnixNanos::from(stamp),
+                UnixNanos::from(stamp),
+                None,
+            )
+        };
+        let mut account = MarginAccount::new(event(0), false);
+        account.default_leverage = Decimal::from(3);
+        account
+            .base
+            .commissions
+            .insert(Currency::USDC(), Money::from("0.12 USDC"));
+        let mut account = AccountAny::Margin(account);
+        for stamp in 1..=updates {
+            account.apply(event(stamp)).unwrap();
+        }
+        let mut cache = Cache::default();
+        cache.add_account(account.clone()).unwrap();
+        let (snapshot, keys) = store
+            .prepare(&cache, vec![], BTreeMap::new(), 100, None)
+            .unwrap();
+        assert!(keys.is_empty());
+        let saved = snapshot.account.as_ref().unwrap();
+        assert_eq!(saved.events().len(), 1);
+        assert_eq!(saved.last_event(), account.last_event());
+        assert_eq!(
+            serde_json::to_value(saved.clone_without_events()).unwrap(),
+            serde_json::to_value(account.clone_without_events()).unwrap(),
+        );
+        assert_eq!(
+            cache.account(&account_id).unwrap().events().len(),
+            (updates + 1) as usize
+        );
+        assert!(serde_json::to_vec(&snapshot).unwrap().len() < 10_000);
+        store.commit(snapshot).unwrap();
+        drop(store);
+        let restored = EconomicStore::open(
+            &directory, &identity, &namespace, account_id, trader, 100, &symbols, client,
+        )
+        .unwrap();
+        let recovery = restored.state().recovery().unwrap();
+        let mut recovered_cache = Cache::default();
+        recovered_cache.add_account(recovery.account).unwrap();
+        restored.state().verify_cache(&recovered_cache).unwrap();
+        assert_eq!(
+            recovered_cache.account(&account_id).unwrap().last_event(),
+            account.last_event()
+        );
+        // A new observed account event must still change the durable checkpoint.
+        let mut changed = account;
+        changed.apply(event(updates + 1)).unwrap();
+        let mut changed_cache = Cache::default();
+        changed_cache.add_account(changed).unwrap();
+        let (next, _) = restored
+            .prepare(&changed_cache, vec![], BTreeMap::new(), 100, None)
+            .unwrap();
+        assert!(next.revision > restored.state().revision);
+        assert!(restored.state().verify_cache(&changed_cache).is_err());
     }
     #[rstest]
     fn economic_checkpoint_binds_complete_allowlist_and_client() {

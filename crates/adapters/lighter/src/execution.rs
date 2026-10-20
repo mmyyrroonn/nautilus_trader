@@ -5329,7 +5329,9 @@ async fn query_order_trades(
                 account_index: Some(credential.account_index()),
                 order_index: Some(order_index),
                 sort_by: LighterTradeSortBy::Timestamp,
-                sort_dir: Some(LighterSortDirection::Asc),
+                // /trades only accepts descending pages. Replay is sorted into
+                // event order after complete, exact cumulative coverage is proven.
+                sort_dir: Some(LighterSortDirection::Desc),
                 cursor: cursor.clone(),
                 limit: LIGHTER_REST_PAGE_SIZE,
                 ..Default::default()

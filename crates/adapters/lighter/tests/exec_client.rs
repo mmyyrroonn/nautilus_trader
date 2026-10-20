@@ -474,6 +474,17 @@ async fn trades(
     Query(query): Query<std::collections::HashMap<String, String>>,
 ) -> Response {
     state.trades_calls.fetch_add(1, Ordering::Relaxed);
+    // The venue's trades endpoint only accepts descending pagination.
+    if query
+        .get("sort_dir")
+        .is_some_and(|direction| direction != "desc")
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            json!({"code":20001,"message":"invalid param"}).to_string(),
+        )
+            .into_response();
+    }
     state.trades_queries.lock().await.push(query);
     if let Some(body) = state.trades_responses.lock().await.pop_front() {
         return (StatusCode::OK, body.to_string()).into_response();
@@ -5646,6 +5657,7 @@ async fn query_terminal_requires_complete_original_trade_details(#[case] mode: &
     }
     for query in state.trades_queries.lock().await.iter() {
         assert_eq!(query.get("order_index").map(String::as_str), Some(venue_id));
+        assert_eq!(query.get("sort_dir").map(String::as_str), Some("desc"));
     }
     let proof = control
         .terminal_fill_evidence_json(order.client_order_id().as_str())
