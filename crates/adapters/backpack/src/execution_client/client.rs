@@ -1213,7 +1213,10 @@ impl BackpackLoopbackControlRuntime {
                 .clone(),
         )
     }
-    fn prepare_production(&self) -> anyhow::Result<BackpackLoopbackSession> {
+    fn prepare_production(
+        &self,
+        reduction_market: Option<InstrumentId>,
+    ) -> anyhow::Result<BackpackLoopbackSession> {
         let shared = self.shared()?;
         let token = self.production_session()?;
         let control = self.loopback(token)?;
@@ -1247,6 +1250,12 @@ impl BackpackLoopbackControlRuntime {
         )?;
         self.verify_native_positions(&shared, &facts)?;
         control.account(token, facts, now().as_u64() / 1_000_000)?;
+        // A public reconnect can replace its token without changing the private epoch.
+        // Revalidate the full scope, or the reduction target, retaining in-flight state.
+        control
+            .owner
+            .guard()
+            .refresh_production_public(now().as_u64() / 1_000_000, reduction_market)?;
         // Read-only snapshots deliberately carry conservative account gaps. This
         // production admission has now verified the exact credential authority and
         // supported policy using authenticated observations; those two gaps no
@@ -1387,7 +1396,7 @@ impl BackpackLoopbackControlRuntime {
     pub(super) fn production_admission_status(&self) -> anyhow::Result<serde_json::Value> {
         let shared = self.shared()?;
         anyhow::ensure!(shared.production(), "client has no production authority");
-        Ok(match self.prepare_production() {
+        Ok(match self.prepare_production(None) {
             Ok(_) => serde_json::json!({"ready":true,"reason":null}),
             Err(error) => serde_json::json!({"ready":false,"reason":error.to_string()}),
         })
@@ -2741,7 +2750,10 @@ impl ExecutionClient for BackpackExecutionClient {
             .map(|order| (*order).clone())
             .ok_or_else(|| anyhow::anyhow!("native cached order is absent"))?;
         let token = if self.shared.production() {
-            match self.control_runtime.prepare_production() {
+            match self
+                .control_runtime
+                .prepare_production(order.is_reduce_only().then_some(order.instrument_id()))
+            {
                 Ok(token) => token,
                 Err(error) => {
                     let reason = format!("BackpackProductionAdmission: {error}");

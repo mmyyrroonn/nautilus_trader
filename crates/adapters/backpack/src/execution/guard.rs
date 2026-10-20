@@ -220,6 +220,60 @@ impl BackpackExecutionGuard {
         Ok(())
     }
 
+    /// Rebinds public trust after the full scope, or an explicit reduction target, is current.
+    /// Retains the execution generation, reservations and economic acknowledgements.
+    pub(crate) fn refresh_production_public(
+        &self,
+        now_ms: u64,
+        reduction_market: Option<InstrumentId>,
+    ) -> Result<(), BackpackExecutionError> {
+        let _change = self.fence.change();
+        let mut state = self.lock()?;
+        state.check_session(now_ms)?;
+        if !state.production
+            || state.account.as_ref().is_none_or(|account| {
+                account.generation != state.generation
+                    || !fresh(
+                        account.observed_at_ms,
+                        now_ms,
+                        state.authority.max_account_age_ms,
+                    )
+            })
+        {
+            return Err(BackpackExecutionErrorKind::Readiness.into());
+        }
+        let telemetry = state
+            .public
+            .as_ref()
+            .ok_or(BackpackExecutionErrorKind::Readiness)?
+            .telemetry
+            .clone();
+        let (_, token) = telemetry.admission_snapshot();
+        let public = PublicAdmission { telemetry, token };
+        if let Some(target) = reduction_market
+            && !state
+                .config
+                .symbols()
+                .iter()
+                .any(|symbol| InstrumentId::from(format!("{symbol}.BACKPACK")) == target)
+        {
+            return Err(BackpackExecutionErrorKind::Readiness.into());
+        }
+        for symbol in state.config.symbols() {
+            let id = InstrumentId::from(format!("{symbol}.BACKPACK"));
+            if reduction_market.is_some_and(|target| target != id) {
+                continue;
+            }
+            let market = state
+                .markets
+                .get(&id)
+                .ok_or(BackpackExecutionErrorKind::Readiness)?;
+            public.validate(market, true)?;
+        }
+        state.public = Some(public);
+        Ok(())
+    }
+
     /// Accepts explicitly complete local peer account facts. This never verifies a real account.
     ///
     /// # Errors
