@@ -1598,6 +1598,202 @@ mod checkpoint_tests {
         })
         .unwrap()
     }
+
+    #[rstest]
+    #[case(true)]
+    #[case(false)]
+    fn production_public_recovery_requires_full_scope_and_preserves_execution_state(
+        #[case] new_epoch: bool,
+    ) {
+        let directory = tempfile::tempdir().unwrap();
+        let owner = recovery_anchor_owner(directory.path());
+        let guard = owner.guard();
+        let now = crate::runtime::now();
+        let now_ms = now.as_u64() / 1_000_000;
+        let config = BackpackConfig::with_endpoints_checked(
+            vec!["BTC_USDC_PERP".into(), "SOL_USDC_PERP".into()],
+            owner.endpoints.clone(),
+        )
+        .unwrap();
+        let namespace = {
+            let mut state = guard.lock().unwrap();
+            state.config = config.clone();
+            state.authority.expires_at_ms = now_ms + 100_000;
+            state.namespace.clone()
+        };
+        guard.begin_session(&namespace, 1).unwrap();
+        let mut facts = account(&namespace);
+        facts.observed_at_ms = now_ms;
+        facts
+            .net_positions
+            .insert(InstrumentId::from("SOL_USDC_PERP.BACKPACK"), Decimal::ZERO);
+        guard.update_account(facts, now_ms).unwrap();
+        for symbol in ["BTC_USDC_PERP", "SOL_USDC_PERP"] {
+            let raw: BackpackMarket = serde_json::from_str(if symbol == "BTC_USDC_PERP" {
+                include_str!("../../test_data/btc_usdc_perp.json")
+            } else {
+                include_str!("../../test_data/sol_usdc_perp.json")
+            })
+            .unwrap();
+            let metadata = parse_market(&raw, &config, now).unwrap();
+            let mut quote = market(&config).quote;
+            quote.instrument_id = metadata.instrument_id;
+            quote.ts_event = now;
+            quote.ts_init = now;
+            guard
+                .update_market(
+                    BackpackLoopbackMarketFacts {
+                        generation: 1,
+                        metadata,
+                        quote,
+                    },
+                    now_ms,
+                )
+                .unwrap();
+        }
+        let telemetry = crate::telemetry::BackpackPublicTelemetry::default();
+        let public_gate = telemetry
+            .claim(&owner.endpoints, &BackpackQuota::default(), 30, 3000)
+            .unwrap();
+        {
+            let mut gate = public_gate.lock();
+            gate.running = true;
+            gate.connected = true;
+            gate.metadata_ready = true;
+            gate.owner = 1;
+            gate.epoch = 1;
+            for symbol in ["BTC_USDC_PERP", "SOL_USDC_PERP"] {
+                gate.quote_receipts.insert(symbol.into(), (now, now));
+            }
+        }
+        guard.bind_public(telemetry.clone()).unwrap();
+        let retained = {
+            let mut state = guard.lock().unwrap();
+            let mut retained_spec = spec();
+            retained_spec.client_order_id = ClientOrderId::from("already-in-flight");
+            state.records.insert(
+                retained_spec.client_order_id,
+                OrderRecord {
+                    local_refusal_confirmed: false,
+                    spec: retained_spec,
+                    symbol: "BTC_USDC_PERP".into(),
+                    notional: Decimal::from(10),
+                    margin: Decimal::ONE,
+                    client_id: 123,
+                    status: CreateStatus::ResponseObserved,
+                    venue_order_id: Some("venue-existing".into()),
+                    cancel: CancelStatus::NeverAttempted,
+                    observed_cumulative: Decimal::new(1, 2),
+                    economic_ack_reference: Some("durable-existing-receipt".into()),
+                },
+            );
+            serde_json::to_value(&state.records).unwrap()
+        };
+        guard.refresh_production_public(now_ms, None).unwrap();
+        {
+            let mut gate = public_gate.lock();
+            gate.invalidate("synthetic public reconnect");
+            if new_epoch {
+                gate.epoch += 1;
+            }
+            gate.connected = true;
+            gate.metadata_ready = true;
+            gate.stale = None;
+            gate.quote_receipts
+                .insert("BTC_USDC_PERP".into(), (now, now));
+        }
+        assert!(
+            guard
+                .lock()
+                .unwrap()
+                .reservation(&spec(), now_ms, None)
+                .is_err()
+        );
+        assert!(guard.refresh_production_public(now_ms, None).is_err());
+        let target = instrument();
+        let unrelated = InstrumentId::from("SOL_USDC_PERP.BACKPACK");
+        assert!(
+            guard
+                .refresh_production_public(now_ms, Some(unrelated))
+                .is_err()
+        );
+        assert!(
+            guard
+                .refresh_production_public(
+                    now_ms,
+                    Some(InstrumentId::from("ETH_USDC_PERP.BACKPACK"))
+                )
+                .is_err()
+        );
+        guard
+            .refresh_production_public(now_ms, Some(target))
+            .unwrap();
+        let mut reduction = spec();
+        reduction.side = OrderSide::Sell;
+        reduction.reduce_only = true;
+        assert!(
+            guard
+                .lock()
+                .unwrap()
+                .reservation(&reduction, now_ms, None)
+                .is_ok()
+        );
+        assert!(guard.refresh_production_public(now_ms, None).is_err());
+        public_gate.lock().quote_receipts.remove("BTC_USDC_PERP");
+        assert!(
+            guard
+                .refresh_production_public(now_ms, Some(target))
+                .is_err()
+        );
+        assert!(
+            guard
+                .lock()
+                .unwrap()
+                .reservation(&reduction, now_ms, None)
+                .is_err()
+        );
+        public_gate
+            .lock()
+            .quote_receipts
+            .insert("BTC_USDC_PERP".into(), (now, now));
+        let target_facts = guard.lock().unwrap().markets.remove(&target).unwrap();
+        assert!(
+            guard
+                .refresh_production_public(now_ms, Some(target))
+                .is_err()
+        );
+        guard.lock().unwrap().markets.insert(target, target_facts);
+        public_gate
+            .lock()
+            .quote_receipts
+            .insert("SOL_USDC_PERP".into(), (now, now));
+        guard.refresh_production_public(now_ms, None).unwrap();
+        {
+            let state = guard.lock().unwrap();
+            assert_eq!(state.generation, 1);
+            assert!(state.session_active && state.account.is_some());
+            assert_eq!(serde_json::to_value(&state.records).unwrap(), retained);
+            assert_eq!(state.markets.len(), 2);
+            assert!(state.reservation(&spec(), now_ms, None).is_ok());
+        }
+        let mut account = guard.lock().unwrap().account.take().unwrap();
+        assert!(guard.refresh_production_public(now_ms, None).is_err());
+        account.observed_at_ms = now_ms - 10_001;
+        guard.lock().unwrap().account = Some(account.clone());
+        assert!(guard.refresh_production_public(now_ms, None).is_err());
+        account.observed_at_ms = now_ms;
+        guard.lock().unwrap().account = Some(account);
+        guard.refresh_production_public(now_ms, None).unwrap();
+        public_gate.lock().invalidate("synthetic late public fault");
+        assert!(
+            guard
+                .lock()
+                .unwrap()
+                .reservation(&spec(), now_ms, None)
+                .is_err()
+        );
+    }
+
     #[rstest]
     #[case(Some(1000), true, false)]
     #[case(Some(899), true, true)]

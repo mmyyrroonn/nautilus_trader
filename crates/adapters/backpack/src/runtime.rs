@@ -131,6 +131,16 @@ impl Gate {
     pub(crate) fn admits(&self, owner: u64, epoch: u64) -> bool {
         self.current(owner, epoch) && self.connected && self.metadata_ready
     }
+    fn needs_reconnect(&self, owner: u64, actor_epoch: u64) -> bool {
+        self.running
+            && self.owner == owner
+            && !self.admits(owner, actor_epoch)
+            // The network controller already owns recovery of transport loss
+            && self.stale != Some("transport disconnected")
+            // A queued replacement bootstrap owns recovery of this new epoch.
+            // Other faults still require recovery if that control message was lost.
+            && !(self.epoch > actor_epoch && self.stale == Some("replacement bootstrap"))
+    }
     pub(crate) fn health(&self, _idle_secs: u64) -> BackpackPublicHealth {
         let receipt_now = now().as_u64();
         BackpackPublicHealth {
@@ -529,7 +539,8 @@ impl PublicSession {
                 biased;
                 ()=cancel.cancelled()=>break,
                 ()=self.notify.notified()=> {
-                    if !self.gate.lock().admits(owner,actor.epoch) {
+                    let needs_reconnect = self.gate.lock().needs_reconnect(owner,actor.epoch);
+                    if needs_reconnect {
                         let _=ws.reconnect_handle().request_reconnect();
                     }
                     None
@@ -1174,4 +1185,135 @@ fn serialize_books<S: serde::Serializer>(
     use serde::Serialize;
     let view=books.iter().map(|(symbol,coverage)|(symbol,coverage.as_ref().map(|c|serde_json::json!({"snapshot_limit":c.snapshot_limit,"initial_bid_floor":c.initial_bid_floor.map(|p|p.to_string()),"initial_ask_ceiling":c.initial_ask_ceiling.map(|p|p.to_string())})))).collect::<BTreeMap<_,_>>();
     view.serialize(serializer)
+}
+
+#[cfg(test)]
+mod reconnect_tests {
+    use rstest::rstest;
+
+    use super::*;
+
+    #[rstest]
+    #[case(1)]
+    #[case(2)]
+    #[tokio::test]
+    async fn transport_recovery_notification_does_not_replace_an_already_active_socket(
+        #[case] gate_epoch: u64,
+    ) {
+        let notify = Notify::new();
+        let mut gate = Gate {
+            owner: 1,
+            epoch: gate_epoch,
+            running: true,
+            ..Gate::default()
+        };
+        gate.invalidate("transport disconnected");
+        notify.notify_one();
+
+        // The controller can activate its replacement before delivering RECONNECTED,
+        // so the adapter gate may still name either the old or the replacement epoch.
+        let transport_mode = nautilus_network::mode::ConnectionMode::Active;
+        notify.notified().await;
+
+        assert!(transport_mode.is_active());
+        assert!(!gate.admits(1, 1));
+        assert!(!gate.needs_reconnect(1, 1));
+
+        gate.invalidate("malformed public frame");
+        assert!(gate.needs_reconnect(1, 1));
+    }
+
+    #[tokio::test]
+    async fn retained_disconnect_notification_does_not_replace_queued_reconnected_epoch() {
+        let notify = Notify::new();
+        let (tx, mut rx) = mpsc::channel(1);
+        let mut gate = Gate {
+            owner: 1,
+            epoch: 1,
+            running: true,
+            connected: true,
+            metadata_ready: true,
+            ..Gate::default()
+        };
+        gate.invalidate("transport disconnected");
+        notify.notify_one();
+        gate.epoch = 2;
+        gate.invalidate("replacement bootstrap");
+        assert!(tx.try_send(Input::Reconnected(2)).is_ok());
+
+        let input = tokio::select! {
+            biased;
+            () = notify.notified() => None,
+            input = rx.recv() => input,
+        };
+
+        assert!(input.is_none());
+        assert!(!gate.admits(1, 1));
+        assert!(!gate.needs_reconnect(1, 1));
+        assert!(matches!(rx.try_recv(), Ok(Input::Reconnected(2))));
+
+        // A real fault during the pending bootstrap must still request recovery
+        gate.invalidate("malformed public frame");
+        assert!(gate.needs_reconnect(1, 1));
+    }
+
+    #[tokio::test]
+    async fn lost_reconnected_control_message_still_requests_recovery() {
+        let notify = Notify::new();
+        let (tx, mut rx) = mpsc::channel(1);
+        let mut gate = Gate {
+            owner: 1,
+            epoch: 2,
+            running: true,
+            ..Gate::default()
+        };
+        assert!(tx.try_send(Input::Reconnected(1)).is_ok());
+        gate.invalidate("replacement bootstrap");
+        assert!(tx.try_send(Input::Reconnected(2)).is_err());
+        gate.invalidate("public frame queue overflow");
+        notify.notify_one();
+
+        let input = tokio::select! {
+            biased;
+            () = notify.notified() => None,
+            input = rx.recv() => input,
+        };
+
+        assert!(input.is_none());
+        assert!(!gate.current(1, 1));
+        assert!(gate.needs_reconnect(1, 1));
+        assert!(matches!(rx.try_recv(), Ok(Input::Reconnected(1))));
+        assert!(rx.try_recv().is_err());
+    }
+
+    #[rstest]
+    #[case(1, 1, true, true, true, None, false)]
+    #[case(1, 1, true, false, true, Some("transport disconnected"), false)]
+    #[case(1, 1, true, true, false, Some("metadata refresh failed"), true)]
+    #[case(1, 2, true, false, false, Some("replacement bootstrap"), false)]
+    #[case(1, 2, true, false, false, Some("transport disconnected"), false)]
+    #[case(1, 2, true, false, false, Some("malformed public frame"), true)]
+    #[case(1, 2, true, false, false, Some("public frame queue overflow"), true)]
+    #[case(1, 2, false, false, false, Some("transport disconnected"), false)]
+    #[case(2, 2, true, false, false, Some("transport disconnected"), false)]
+    fn reconnect_notification_respects_owner_epoch_and_actual_fault(
+        #[case] owner: u64,
+        #[case] epoch: u64,
+        #[case] running: bool,
+        #[case] connected: bool,
+        #[case] metadata_ready: bool,
+        #[case] stale: Option<&'static str>,
+        #[case] expected: bool,
+    ) {
+        let gate = Gate {
+            owner,
+            epoch,
+            running,
+            connected,
+            metadata_ready,
+            stale,
+            ..Gate::default()
+        };
+        assert_eq!(gate.needs_reconnect(1, 1), expected);
+    }
 }
