@@ -66,6 +66,7 @@ use nautilus_hyperliquid::{
     },
     config::HyperliquidExecutionClientConfig,
     execution::HyperliquidExecutionClient,
+    execution_timing::{ExecutionTiming, TimingRecord, TimingStage},
     http::models::Cloid,
 };
 use nautilus_live::{ExecutionClientCore, SocketReconnectRegistry, SocketReconnectRequestOutcome};
@@ -7379,4 +7380,281 @@ async fn test_connect_times_out_when_account_never_registers() {
 
     assert!(!client.is_connected());
     assert!(client.pending_tasks_all_finished());
+}
+
+#[rstest]
+#[case::success(false, false, false)]
+#[case::rejection(true, false, false)]
+#[case::post_error(false, true, false)]
+#[case::timeout(false, false, true)]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_execution_timing_loopback_response_delay(
+    #[case] reject: bool,
+    #[case] fail: bool,
+    #[case] timeout: bool,
+) {
+    let state = TestServerState::default();
+    state
+        .inner_order_error_next
+        .store(reject, Ordering::Relaxed);
+    state.pause_next_exchange.store(!fail, Ordering::Relaxed);
+    state.fail_next_exchange.store(fail, Ordering::Relaxed);
+    let addr = start_mock_server(state.clone()).await;
+    let (mut client, mut events, cache) = create_test_execution_client(addr);
+    let (timing, records) = ExecutionTiming::bounded(256);
+    client.set_execution_timing(timing.clone());
+    client.start().unwrap();
+    add_test_account_to_cache(&cache, AccountId::from("HYPERLIQUID-001"));
+    client.connect().await.unwrap();
+    let order = make_limit_order("O-TIMING-LOOPBACK");
+    cache
+        .borrow_mut()
+        .add_order(order.clone(), None, None, false)
+        .unwrap();
+    client.submit_order(make_submit_cmd(&order)).unwrap();
+    wait_until_async(
+        || async { *state.exchange_request_count.lock().await > 0 },
+        Duration::from_secs(5),
+    )
+    .await;
+
+    // Only the mock exchange is delayed; production signing and parsing run unchanged
+    if !fail && !timeout {
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        state.pause_release.notify_one();
+    }
+    wait_until_async(
+        || async { client.pending_tasks_all_finished() },
+        Duration::from_secs(5),
+    )
+    .await;
+    let records: Vec<_> = records.try_iter().collect();
+    let stages: Vec<_> = records.iter().map(|r| r.stage).collect();
+    for stage in [
+        TimingStage::NativeReceived,
+        TimingStage::TaskQueued,
+        TimingStage::TaskStarted,
+        TimingStage::SubmittedEventStart,
+        TimingStage::SubmittedEventEnd,
+        TimingStage::LimiterStart,
+        TimingStage::LimiterEnd,
+        TimingStage::SignStart,
+        TimingStage::SignEnd,
+        TimingStage::InflightStart,
+        TimingStage::InflightEnd,
+        TimingStage::CommandEnqueue,
+        TimingStage::HandlerReceived,
+        TimingStage::SerializeStart,
+        TimingStage::SerializeEnd,
+        TimingStage::TransportAttempt,
+        TimingStage::WriterEnqueued,
+        TimingStage::SubmissionFinished,
+    ] {
+        assert!(stages.contains(&stage), "missing {stage:?}: {stages:?}");
+    }
+    assert!(
+        records
+            .iter()
+            .all(|r| r.session_id == records[0].session_id)
+    );
+    assert!(
+        records
+            .iter()
+            .all(|r| r.client_order_id == Some(order.client_order_id()))
+    );
+    assert_eq!(timing.dropped(), 0);
+    let post = records.iter().find_map(|r| r.post_id).unwrap();
+    assert!(
+        records
+            .iter()
+            .filter_map(|r| r.post_id)
+            .all(|id| id == post)
+    );
+    let stamp = |stage| timing_stamp(&records, stage);
+    if timeout {
+        assert!(stages.contains(&TimingStage::Timeout));
+        assert!(!stages.contains(&TimingStage::ResponseDequeued));
+        assert!(!stages.contains(&TimingStage::RejectionEventStart));
+        state.pause_release.notify_one();
+    } else {
+        assert!(stages.contains(&TimingStage::EnvelopeParsed));
+        assert!(stages.contains(&TimingStage::ResponseParseEnd));
+        if !fail {
+            let wait = stamp(TimingStage::ResponseDequeued) - stamp(TimingStage::WriterEnqueued);
+            assert!(wait >= 80_000_000, "mock wait missing: {wait}ns");
+            assert!(stamp(TimingStage::SignEnd) <= stamp(TimingStage::WriterEnqueued));
+            assert!(stamp(TimingStage::ResponseParseStart) >= stamp(TimingStage::ResponseDequeued));
+        }
+        assert!(stages.contains(&if reject {
+            TimingStage::PostRejected
+        } else if fail {
+            TimingStage::PostError
+        } else {
+            TimingStage::PostSuccess
+        }));
+        assert_eq!(stages.contains(&TimingStage::RejectionEventStart), reject);
+        if reject {
+            assert!(
+                stamp(TimingStage::RejectionEventStart) >= stamp(TimingStage::ResponseParseEnd)
+            );
+            assert!(
+                stamp(TimingStage::RejectionEventEnd) >= stamp(TimingStage::RejectionEventStart)
+            );
+        }
+    }
+    let rejected = std::iter::from_fn(|| events.try_recv().ok())
+        .any(|event| matches!(event, ExecutionEvent::Order(OrderEventAny::Rejected(_))));
+    assert_eq!(rejected, reject);
+    let serialized = serde_json::to_string(&records).unwrap();
+
+    for forbidden in [
+        "signature",
+        "nonce",
+        "vault",
+        "insufficient margin",
+        "503 Service Unavailable",
+        "action",
+    ] {
+        assert!(
+            !serialized.contains(forbidden),
+            "unexpected private field or text: {forbidden}"
+        );
+    }
+    client.disconnect().await.unwrap();
+}
+
+fn timing_stamp(records: &[TimingRecord], stage: TimingStage) -> u64 {
+    records
+        .iter()
+        .find(|r| r.stage == stage)
+        .unwrap()
+        .elapsed_ns
+}
+
+#[rstest]
+#[case::reconnect(true)]
+#[case::malformed_response(false)]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_execution_timing_reconnect_and_decode_failure(#[case] reconnect: bool) {
+    let state = TestServerState::default();
+    state
+        .pause_next_exchange
+        .store(reconnect, Ordering::Relaxed);
+    if !reconnect {
+        *state.order_response_override.lock().await =
+            Some(json!({"unexpected": "private-response"}));
+    }
+    let addr = start_mock_server(state.clone()).await;
+    let signer = create_test_trade_signer(addr).await;
+    let mut client = HyperliquidWebSocketClient::new(
+        Some(format!("ws://{addr}/ws")),
+        HyperliquidEnvironment::Mainnet,
+        None,
+        TransportBackend::default(),
+        None,
+    );
+    let (timing, records) = ExecutionTiming::bounded(128);
+    client.set_execution_timing(timing);
+    client.set_post_timeout(Duration::from_secs(2));
+    client.connect().await.unwrap();
+    let task_client = client.clone();
+    let task = tokio::spawn(async move {
+        task_client
+            .submit_order(
+                &signer,
+                InstrumentId::from(HYPERLIQUID_TEST_INSTRUMENT),
+                ClientOrderId::from("TIMING-RECONNECT"),
+                OrderSide::Buy,
+                OrderType::Limit,
+                Quantity::from("0.001"),
+                TimeInForce::Ioc,
+                Some(Price::from("50000")),
+                None,
+                false,
+                false,
+            )
+            .await
+    });
+    wait_until_async(
+        || async { *state.exchange_request_count.lock().await > 0 },
+        Duration::from_secs(5),
+    )
+    .await;
+
+    if reconnect {
+        assert!(client.request_reconnect());
+    }
+    assert!(task.await.unwrap().is_err());
+    let records: Vec<_> = records.try_iter().collect();
+    let trace_id = records[0].trace_id;
+    assert!(records.iter().all(|r| r.trace_id == trace_id));
+    assert!(records.iter().any(|r| r.stage
+        == if reconnect {
+            TimingStage::Reconnected
+        } else {
+            TimingStage::ResponseParseError
+        }));
+
+    if reconnect {
+        assert!(records.iter().any(|r| r.stage == TimingStage::Timeout));
+        assert!(
+            !records
+                .iter()
+                .any(|r| r.stage == TimingStage::ResponseDequeued)
+        );
+        state.pause_release.notify_one();
+    }
+    client.disconnect().await.unwrap();
+}
+
+#[rstest]
+#[case::disabled(false)]
+#[case::enabled(true)]
+#[ignore = "manual loopback latency measurement"]
+#[tokio::test(flavor = "multi_thread")]
+async fn test_execution_timing_profile(#[case] enabled: bool) {
+    let addr = start_mock_server(TestServerState::default()).await;
+    let signer = create_test_trade_signer(addr).await;
+    let mut client = HyperliquidWebSocketClient::new(
+        Some(format!("ws://{addr}/ws")),
+        HyperliquidEnvironment::Mainnet,
+        None,
+        TransportBackend::default(),
+        None,
+    );
+    let (timing, records) = ExecutionTiming::bounded(4096);
+    if enabled {
+        client.set_execution_timing(timing.clone());
+    }
+    client.connect().await.unwrap();
+    let action = nautilus_hyperliquid::http::models::HyperliquidExchangeAction::Cancel {
+        cancels: vec![],
+        fast: None,
+    };
+    let mut samples = Vec::with_capacity(500);
+
+    for index in 0..550 {
+        let start = std::time::Instant::now();
+        client.post_action_exec(&signer, &action).await.unwrap();
+        let elapsed = start.elapsed().as_nanos() as u64;
+        if index >= 50 {
+            samples.push(elapsed);
+        }
+
+        for _ in records.try_iter() {}
+    }
+    assert_eq!(timing.dropped(), 0);
+    samples.sort_unstable();
+    let sum: u64 = samples.iter().sum();
+    println!(
+        "timing_profile enabled={enabled} count={} p50_ns={} p95_ns={} p99_ns={} mean_ns={} throughput_per_sec={:.1} record_bytes={}",
+        samples.len(),
+        samples[250],
+        samples[475],
+        samples[495],
+        sum / 500,
+        500_000_000_000.0 / sum as f64,
+        std::mem::size_of::<TimingRecord>()
+    );
+    client.disconnect().await.unwrap();
 }

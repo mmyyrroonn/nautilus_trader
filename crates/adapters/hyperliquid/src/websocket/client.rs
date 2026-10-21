@@ -67,6 +67,7 @@ use crate::{
             time_in_force_to_hyperliquid_tif,
         },
     },
+    execution_timing::{ExecutionTiming, TimingStage, TimingTrace},
     http::{
         client::HyperliquidHttpClient,
         error::{Error as HyperliquidError, Result as HyperliquidResult},
@@ -137,6 +138,7 @@ pub struct HyperliquidWebSocketClient {
     post_ids: Arc<PostIds>,
     post_limiter: Arc<WeightedLimiter>,
     post_timeout: Duration,
+    timing: ExecutionTiming,
     task_handle: Arc<SharedTaskSlot<()>>,
     connect_lock: Arc<tokio::sync::Mutex<()>>,
     account_id: Option<AccountId>,
@@ -169,6 +171,7 @@ impl Clone for HyperliquidWebSocketClient {
             post_ids: Arc::clone(&self.post_ids),
             post_limiter: Arc::clone(&self.post_limiter),
             post_timeout: self.post_timeout,
+            timing: self.timing.clone(),
             task_handle: Arc::clone(&self.task_handle),
             connect_lock: Arc::clone(&self.connect_lock),
             account_id: self.account_id,
@@ -218,6 +221,7 @@ impl HyperliquidWebSocketClient {
             post_ids: Arc::new(PostIds::new(1)),
             post_limiter: Arc::new(WeightedLimiter::per_minute(1200)),
             post_timeout: HTTP_TIMEOUT,
+            timing: ExecutionTiming::from_env(),
             cmd_tx: {
                 // Placeholder channel until connect() creates the real handler and replays queued instruments
                 let (tx, _) = tokio::sync::mpsc::unbounded_channel();
@@ -232,6 +236,23 @@ impl HyperliquidWebSocketClient {
             socket_sink: None,
             socket_control: None,
         }
+    }
+
+    /// Sets an optional bounded execution timing collector before connecting.
+    pub fn set_execution_timing(&mut self, timing: ExecutionTiming) {
+        self.timing = timing;
+    }
+
+    pub(crate) fn timing_trace(&self, client_order_id: Option<ClientOrderId>) -> TimingTrace {
+        self.timing.trace(client_order_id)
+    }
+
+    pub(crate) fn record_order_timing(
+        &self,
+        client_order_id: Option<ClientOrderId>,
+        stage: TimingStage,
+    ) {
+        self.timing.order_event(client_order_id, stage);
     }
 
     /// Configures socket state reporting for the underlying transport.
@@ -572,15 +593,51 @@ impl HyperliquidWebSocketClient {
         timeout: Duration,
         expires_after: Option<u64>,
     ) -> HyperliquidResult<HyperliquidExchangeResponse> {
-        let weight = exec_action_weight(action);
-        self.post_limiter.acquire(weight).await;
+        let trace = self.timing_trace(None);
+        self.post_action_exec_timed(signer, action, timeout, expires_after, &trace)
+            .await
+    }
 
-        let payload = signer.sign_action_exec_request(action, expires_after)?;
+    pub(crate) async fn post_action_exec_traced(
+        &self,
+        signer: &HyperliquidHttpClient,
+        action: &HyperliquidExchangeAction,
+        trace: &TimingTrace,
+    ) -> HyperliquidResult<HyperliquidExchangeResponse> {
+        self.post_action_exec_timed(signer, action, self.post_timeout, None, trace)
+            .await
+    }
+
+    async fn post_action_exec_timed(
+        &self,
+        signer: &HyperliquidHttpClient,
+        action: &HyperliquidExchangeAction,
+        timeout: Duration,
+        expires_after: Option<u64>,
+        trace: &TimingTrace,
+    ) -> HyperliquidResult<HyperliquidExchangeResponse> {
+        trace.mark(TimingStage::PostStarted);
+        let weight = exec_action_weight(action);
+        trace.mark(TimingStage::LimiterStart);
+        self.post_limiter.acquire(weight).await;
+        trace.mark(TimingStage::LimiterEnd);
+        trace.mark(TimingStage::SignStart);
+        let payload = match signer.sign_action_exec_request(action, expires_after) {
+            Ok(payload) => {
+                trace.mark(TimingStage::SignEnd);
+                payload
+            }
+            Err(e) => {
+                trace.mark(TimingStage::SignError);
+                return Err(e);
+            }
+        };
         let response = self
-            .send_post_request(PostRequest::Action { payload }, timeout)
+            .send_post_request_timed(PostRequest::Action { payload }, timeout, trace)
             .await?;
 
-        match response.response {
+        trace.mark(TimingStage::ResponseParseStart);
+        let result = (|| match response.response {
             PostResponsePayload::Action { payload } => {
                 let parsed: HyperliquidExchangeResponse =
                     serde_json::from_value(payload).map_err(HyperliquidError::Serde)?;
@@ -607,7 +664,31 @@ impl HyperliquidWebSocketClient {
             PostResponsePayload::Info { payload } => Err(HyperliquidError::decode(format!(
                 "expected action post response, received info payload: {payload}"
             ))),
+        })();
+        trace.mark(TimingStage::ResponseParseEnd);
+        if trace.is_enabled() {
+            trace.mark(match &result {
+                Ok(response) if !response.is_ok() => TimingStage::PostRejected,
+                Ok(HyperliquidExchangeResponse::Status { response, .. })
+                    if response
+                        .get("data")
+                        .and_then(|v| v.get("statuses"))
+                        .and_then(serde_json::Value::as_array)
+                        .is_some_and(|statuses| {
+                            statuses.iter().any(|s| s.get("error").is_some())
+                        }) =>
+                {
+                    TimingStage::PostRejected
+                }
+                Ok(_) => TimingStage::PostSuccess,
+                Err(HyperliquidError::Serde(_) | HyperliquidError::Decode(_)) => {
+                    TimingStage::ResponseParseError
+                }
+                Err(HyperliquidError::BadRequest(_)) => TimingStage::PostRejected,
+                Err(_) => TimingStage::PostError,
+            });
         }
+        result
     }
 
     /// Submit an order through the Hyperliquid WebSocket post API.
@@ -1062,16 +1143,32 @@ impl HyperliquidWebSocketClient {
         request: PostRequest,
         timeout: Duration,
     ) -> HyperliquidResult<PostResponse> {
+        let trace = self.timing_trace(None);
+        self.send_post_request_timed(request, timeout, &trace).await
+    }
+
+    async fn send_post_request_timed(
+        &self,
+        request: PostRequest,
+        timeout: Duration,
+        trace: &TimingTrace,
+    ) -> HyperliquidResult<PostResponse> {
         let id = self.post_ids.next();
+        let trace = trace.clone().with_post_id(id);
+        trace.mark(TimingStage::InflightStart);
 
-        match tokio::time::timeout(timeout, async {
-            let rx = self.post_router.register(id).await?;
-
-            let send_result = self
-                .cmd_tx
-                .read()
-                .await
-                .send(HandlerCommand::Post { id, request });
+        let result = match tokio::time::timeout(timeout, async {
+            let rx = self.post_router.register_timed(id, trace.clone()).await?;
+            trace.mark(TimingStage::InflightEnd);
+            trace.mark(TimingStage::CommandLockStart);
+            let sender = self.cmd_tx.read().await;
+            trace.mark(TimingStage::CommandEnqueue);
+            let send_result = sender.send(HandlerCommand::Post {
+                id,
+                request,
+                trace: trace.clone(),
+            });
+            drop(sender);
 
             if let Err(e) = send_result {
                 self.post_router.cancel(id).await;
@@ -1089,7 +1186,13 @@ impl HyperliquidWebSocketClient {
                 self.post_router.cancel(id).await;
                 Err(HyperliquidError::Timeout)
             }
-        }
+        };
+        trace.mark(match &result {
+            Ok(_) => TimingStage::CallerResumed,
+            Err(HyperliquidError::Timeout) => TimingStage::Timeout,
+            Err(_) => TimingStage::TransportError,
+        });
+        result
     }
 
     /// Returns true if the WebSocket is actively connected.
@@ -2540,13 +2643,15 @@ mod tests {
     #[rstest]
     #[tokio::test(flavor = "multi_thread")]
     async fn send_post_request_times_out_while_waiting_for_inflight_slot() {
-        let client = HyperliquidWebSocketClient::new(
+        let mut client = HyperliquidWebSocketClient::new(
             None,
             HyperliquidEnvironment::Testnet,
             None,
             TransportBackend::default(),
             None,
         );
+        let (timing, records) = ExecutionTiming::bounded(32);
+        client.set_execution_timing(timing);
         let mut receivers = Vec::with_capacity(INFLIGHT_MAX);
         for offset in 0..INFLIGHT_MAX {
             receivers.push(
@@ -2570,6 +2675,50 @@ mod tests {
 
         assert!(matches!(err, HyperliquidError::Timeout));
         assert_eq!(receivers.len(), INFLIGHT_MAX);
+        let records: Vec<_> = records.try_iter().collect();
+        assert_eq!(records[0].stage, TimingStage::InflightStart);
+        assert_eq!(records[1].stage, TimingStage::Timeout);
+        assert!(records[1].elapsed_ns - records[0].elapsed_ns >= 25_000_000);
+        assert_eq!(records[0].trace_id, records[1].trace_id);
+        assert_eq!(records[0].post_id, records[1].post_id);
+    }
+
+    #[tokio::test]
+    async fn timing_attributes_limiter_wait_before_signing_failure() {
+        let mut client = HyperliquidWebSocketClient::new(
+            None,
+            HyperliquidEnvironment::Testnet,
+            None,
+            TransportBackend::default(),
+            None,
+        );
+        let (timing, records) = ExecutionTiming::bounded(32);
+        client.set_execution_timing(timing);
+        let signer = HyperliquidHttpClient::new(HyperliquidEnvironment::Testnet, 1, None).unwrap();
+
+        // Exhaust the real limiter: the next weight-one action waits about 50ms
+        client.post_limiter.acquire(1200).await;
+        let action = HyperliquidExchangeAction::Cancel {
+            cancels: vec![],
+            fast: None,
+        };
+        assert!(client.post_action_exec(&signer, &action).await.is_err());
+        let records: Vec<_> = records.try_iter().collect();
+        let stamp = |stage| {
+            records
+                .iter()
+                .find(|r| r.stage == stage)
+                .unwrap()
+                .elapsed_ns
+        };
+        assert!(stamp(TimingStage::LimiterEnd) - stamp(TimingStage::LimiterStart) >= 30_000_000);
+        assert!(stamp(TimingStage::SignStart) >= stamp(TimingStage::LimiterEnd));
+        assert!(records.iter().any(|r| r.stage == TimingStage::SignError));
+        assert!(
+            !records
+                .iter()
+                .any(|r| r.stage == TimingStage::CommandEnqueue)
+        );
     }
 
     #[rstest]

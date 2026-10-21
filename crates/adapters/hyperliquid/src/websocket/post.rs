@@ -16,9 +16,9 @@
 use std::{
     sync::{
         Arc,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use ahash::AHashMap;
@@ -32,6 +32,7 @@ use tokio::{
 
 use crate::{
     common::{consts::INFLIGHT_MAX, enums::HyperliquidInfoRequestType},
+    execution_timing::{TimingStage, TimingTrace},
     http::{
         error::{Error, Result},
         models::{HyperliquidFills, HyperliquidL2Book, HyperliquidOrderStatus},
@@ -45,6 +46,7 @@ use crate::{
 #[derive(Debug)]
 struct Waiter {
     tx: oneshot::Sender<PostResponse>,
+    trace: TimingTrace,
     // When this is dropped, the permit is released, shrinking inflight
     _permit: OwnedSemaphorePermit,
 }
@@ -52,6 +54,7 @@ struct Waiter {
 #[derive(Debug)]
 pub struct PostRouter {
     inner: Mutex<AHashMap<u64, Waiter>>,
+    timing_enabled: AtomicBool,
     inflight: Arc<Semaphore>, // hard cap per HL docs (e.g., 100)
 }
 
@@ -59,6 +62,7 @@ impl Default for PostRouter {
     fn default() -> Self {
         Self {
             inner: Mutex::new(AHashMap::new()),
+            timing_enabled: AtomicBool::new(false),
             inflight: Arc::new(Semaphore::new(INFLIGHT_MAX)),
         }
     }
@@ -71,6 +75,17 @@ impl PostRouter {
 
     /// Registers interest in a post id, enforcing inflight cap.
     pub async fn register(&self, id: u64) -> Result<oneshot::Receiver<PostResponse>> {
+        self.register_timed(id, TimingTrace::default()).await
+    }
+
+    pub(crate) async fn register_timed(
+        &self,
+        id: u64,
+        trace: TimingTrace,
+    ) -> Result<oneshot::Receiver<PostResponse>> {
+        if trace.is_enabled() {
+            self.timing_enabled.store(true, Ordering::Relaxed);
+        }
         // Acquire and retain a permit per inflight call
         let permit = self
             .inflight
@@ -88,6 +103,7 @@ impl PostRouter {
             id,
             Waiter {
                 tx,
+                trace,
                 _permit: permit,
             },
         );
@@ -96,6 +112,15 @@ impl PostRouter {
 
     /// Completes a waiting caller when a response arrives (releases inflight via Waiter drop).
     pub async fn complete(&self, resp: PostResponse) {
+        self.complete_timed(resp, None, None).await;
+    }
+
+    pub(crate) async fn complete_timed(
+        &self,
+        resp: PostResponse,
+        received: Option<Instant>,
+        parsed: Option<Instant>,
+    ) {
         let id = resp.id;
         let waiter = {
             let mut map = self.inner.lock().await;
@@ -103,12 +128,28 @@ impl PostRouter {
         };
 
         if let Some(waiter) = waiter {
+            waiter
+                .trace
+                .mark_at(TimingStage::ResponseDequeued, received);
+            waiter.trace.mark_at(TimingStage::EnvelopeParsed, parsed);
             if waiter.tx.send(resp).is_err() {
                 log::warn!("Post waiter dropped before delivery: id={id}");
             }
             // waiter drops here → permit released
         } else {
             log::warn!("Post response with unknown id (late/duplicate?): id={id}");
+        }
+    }
+
+    pub(crate) fn receive_instant(&self) -> Option<Instant> {
+        self.timing_enabled
+            .load(Ordering::Relaxed)
+            .then(Instant::now)
+    }
+
+    pub(crate) async fn mark_reconnected(&self) {
+        for waiter in self.inner.lock().await.values() {
+            waiter.trace.mark(TimingStage::Reconnected);
         }
     }
 

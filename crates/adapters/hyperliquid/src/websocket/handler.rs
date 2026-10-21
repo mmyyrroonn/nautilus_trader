@@ -59,9 +59,12 @@ use super::{
     post::PostRouter,
     trades::TradeStreamUses,
 };
-use crate::data_types::{
-    HyperliquidAllDexsAssetCtxs, HyperliquidAllMids, HyperliquidDexAssetCtx,
-    HyperliquidImpactPrices,
+use crate::{
+    data_types::{
+        HyperliquidAllDexsAssetCtxs, HyperliquidAllMids, HyperliquidDexAssetCtx,
+        HyperliquidImpactPrices,
+    },
+    execution_timing::{TimingStage, TimingTrace},
 };
 
 /// Commands sent from the outer client to the inner message handler.
@@ -85,7 +88,11 @@ pub enum HandlerCommand {
         subscriptions: Vec<SubscriptionRequest>,
     },
     /// Send a WebSocket post request.
-    Post { id: u64, request: PostRequest },
+    Post {
+        id: u64,
+        request: PostRequest,
+        trace: TimingTrace,
+    },
     /// Initialize the instruments cache with the given instruments.
     InitializeInstruments(Vec<InstrumentAny>),
     /// Update a single instrument in the cache.
@@ -292,6 +299,15 @@ impl FeedHandler {
     }
 
     async fn send_with_retry(&self, payload: String) -> anyhow::Result<()> {
+        self.send_with_retry_timed(payload, &TimingTrace::default())
+            .await
+    }
+
+    async fn send_with_retry_timed(
+        &self,
+        payload: String,
+        trace: &TimingTrace,
+    ) -> anyhow::Result<()> {
         if let Some(client) = &self.client {
             self.retry_manager
                 .execute_with_retry(
@@ -299,7 +315,14 @@ impl FeedHandler {
                     || {
                         let payload = payload.clone();
                         async move {
-                            client.send_text(payload, None).await.map_err(|e| {
+                            trace.mark(TimingStage::TransportAttempt);
+                            let result = client.send_text(payload, None).await;
+                            trace.mark(if result.is_ok() {
+                                TimingStage::WriterEnqueued
+                            } else {
+                                TimingStage::TransportError
+                            });
+                            result.map_err(|e| {
                                 HyperliquidWsError::ClientError(format!("Send failed: {e}"))
                             })
                         }
@@ -378,12 +401,15 @@ impl FeedHandler {
                                 }
                             }
                         }
-                        HandlerCommand::Post { id, request } => {
+                        HandlerCommand::Post { id, request, trace } => {
+                            trace.mark(TimingStage::HandlerReceived);
+                            trace.mark(TimingStage::SerializeStart);
                             let request = HyperliquidWsRequest::Post { id, request };
                             match serde_json::to_string(&request) {
                                 Ok(payload) => {
+                                    trace.mark(TimingStage::SerializeEnd);
                                     log::debug!("Sending post payload: id={id}");
-                                    if let Err(e) = self.send_with_retry(payload).await {
+                                    if let Err(e) = self.send_with_retry_timed(payload, &trace).await {
                                         log::error!("Error sending post request id={id}: {e}");
                                         self.post_router.cancel(id).await;
                                     }
@@ -452,14 +478,17 @@ impl FeedHandler {
                     match raw_msg {
                         Message::Text(text) => {
                             if text == RECONNECTED {
+                                self.post_router.mark_reconnected().await;
                                 log::info!("Received RECONNECTED sentinel");
                                 return Some(NautilusWsMessage::Reconnected);
                             }
 
+                            let received = self.post_router.receive_instant();
+
                             match serde_json::from_str::<HyperliquidWsMessage>(&text) {
                                 Ok(msg) => {
                                     if let HyperliquidWsMessage::Post { data } = msg {
-                                        self.post_router.complete(data).await;
+                                        self.post_router.complete_timed(data, received, self.post_router.receive_instant()).await;
                                         continue;
                                     }
 
@@ -1434,6 +1463,7 @@ mod tests {
     use crate::{
         common::consts::HYPERLIQUID_VENUE,
         data_types::{HyperliquidAllDexsAssetCtxs, HyperliquidOpenInterest},
+        execution_timing::{ExecutionTiming, TimingStage},
     };
 
     const SECRET_MARKER: &str = "OUTBOUND_SECRET_MARKER";
@@ -1644,18 +1674,23 @@ mod tests {
         );
 
         let id = 99;
-        let rx = post_router.register(id).await.unwrap();
-
-        let task = tokio::spawn(async move { handler.next().await });
+        let (timing, records) = ExecutionTiming::bounded(32);
+        let trace = timing.trace(None).with_post_id(id);
+        let rx = post_router.register_timed(id, trace.clone()).await.unwrap();
+        trace.mark(TimingStage::CommandEnqueue);
 
         cmd_tx
             .send(HandlerCommand::Post {
                 id,
+                trace,
                 request: PostRequest::Info {
                     payload: json!({"type": "userRateLimit", "user": "0x123"}),
                 },
             })
             .unwrap();
+        tokio::time::sleep(Duration::from_millis(60)).await;
+
+        let task = tokio::spawn(async move { handler.next().await });
         drop(cmd_tx);
         drop(raw_tx);
 
@@ -1668,6 +1703,26 @@ mod tests {
             .await
             .expect("post id should be reusable after cancellation");
         assert!(task.await.unwrap().is_none());
+        let records: Vec<_> = records.try_iter().collect();
+        let queued = records
+            .iter()
+            .find(|r| r.stage == TimingStage::CommandEnqueue)
+            .unwrap();
+        let handled = records
+            .iter()
+            .find(|r| r.stage == TimingStage::HandlerReceived)
+            .unwrap();
+        assert!(handled.elapsed_ns - queued.elapsed_ns >= 60_000_000);
+        assert!(
+            records
+                .iter()
+                .all(|r| r.trace_id == queued.trace_id && r.post_id == Some(id))
+        );
+        assert!(
+            !records
+                .iter()
+                .any(|r| r.stage == TimingStage::WriterEnqueued)
+        );
     }
 
     #[rstest]
