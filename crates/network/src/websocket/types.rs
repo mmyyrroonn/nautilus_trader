@@ -65,6 +65,21 @@ pub type EpochMessageHandler = Arc<dyn Fn(u64, Message) + Send + Sync>;
 /// Synthetic reconnect notifications carry `None`. Callbacks must not block.
 pub type TimedMessageHandler = Arc<dyn Fn(Message, Option<Instant>) + Send + Sync>;
 
+/// Local observations for the final poll returning a complete WebSocket message.
+///
+/// Wake time is the first forwarded wake since the preceding poll, when available.
+/// Wakes can come from readiness or the split-stream lock, not necessarily packets.
+/// Earlier partial reads and their waits are not attributed to this final poll.
+#[derive(Clone, Copy, Debug)]
+pub struct WebSocketReadTiming {
+    pub wake_observed: Option<Instant>,
+    pub poll_started: Instant,
+    pub completed: Instant,
+}
+
+/// Handler receiving final-poll observations; synthetic reconnects carry `None`.
+pub type ReadTimingMessageHandler = Arc<dyn Fn(Message, Option<WebSocketReadTiming>) + Send + Sync>;
+
 /// Observable stages of an ordinary WebSocket write, including reconnect replay.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum WebSocketWriteStage {

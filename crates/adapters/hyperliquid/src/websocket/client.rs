@@ -323,9 +323,9 @@ impl HyperliquidWebSocketClient {
             .map(SocketControl::sink)
             .or_else(|| self.socket_sink.clone());
         let client = if self.timing.is_enabled() {
-            WebSocketClient::timed_builder()
+            WebSocketClient::read_timing_builder()
                 .config(cfg)
-                .timed_handler(Arc::new(receive))
+                .read_timing_handler(Arc::new(receive))
                 .maybe_state_sink(state_sink)
                 .connect()
                 .await?

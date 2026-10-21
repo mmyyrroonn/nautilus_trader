@@ -96,10 +96,11 @@ use super::{
         CONNECTION_STATE_CHECK_INTERVAL_MS, GRACEFUL_SHUTDOWN_DELAY_MS,
         GRACEFUL_SHUTDOWN_TIMEOUT_SECS,
     },
+    read_timing::ReadObserver,
     types::{
         EpochMessageHandler, EpochPingHandler, MessageHandler, MessageReader, MessageWriter,
-        PingHandler, TimedMessageHandler, WebSocketWriteObserver, WebSocketWriteStage,
-        WriterCommand,
+        PingHandler, ReadTimingMessageHandler, TimedMessageHandler, WebSocketReadTiming,
+        WebSocketWriteObserver, WebSocketWriteStage, WriterCommand,
     },
 };
 #[cfg(feature = "turmoil")]
@@ -1466,6 +1467,7 @@ impl WebSocketClientInner {
         tokio::task::spawn(async move {
             let mut last_data_time = dst::time::Instant::now();
             let mut last_frame_time = dst::time::Instant::now();
+            let mut read_observer = ReadObserver::default();
 
             loop {
                 if !ConnectionMode::from_atomic(&connection_state).is_active()
@@ -1474,13 +1476,28 @@ impl WebSocketClientInner {
                     break;
                 }
 
-                let read_result = dst::time::timeout(check_interval, reader.next()).await;
+                let mut detailed_read = None;
+                let read_result = if matches!(&handler, Some(IncomingHandler::ReadTiming(_))) {
+                    dst::time::timeout(check_interval, async {
+                        let (result, timing) = read_observer.next(&mut reader).await;
+                        detailed_read = timing;
+                        result
+                    })
+                    .await
+                } else {
+                    dst::time::timeout(check_interval, reader.next()).await
+                };
                 let read_completed = if matches!(&read_result, Ok(Some(Ok(_))))
                     && matches!(&handler, Some(IncomingHandler::Timed(_)))
                 {
-                    Some(std::time::Instant::now()) // dst-ok: Diagnostic only; never drives transport state
+                    let completed = std::time::Instant::now(); // dst-ok: Diagnostic only; never drives transport state
+                    Some(WebSocketReadTiming {
+                        wake_observed: None,
+                        poll_started: completed,
+                        completed,
+                    })
                 } else {
-                    None
+                    detailed_read
                 };
 
                 if let Ok(Some(Ok(ref message))) = read_result
@@ -2251,6 +2268,7 @@ enum IncomingHandler {
     Message(MessageHandler),
     Epoch(EpochMessageHandler),
     Timed(TimedMessageHandler),
+    ReadTiming(ReadTimingMessageHandler),
 }
 
 impl IncomingHandler {
@@ -2262,12 +2280,13 @@ impl IncomingHandler {
         &self,
         connection_epoch: u64,
         message: Message,
-        read_completed: Option<std::time::Instant>,
+        read_completed: Option<WebSocketReadTiming>,
     ) {
         match self {
             Self::Message(handler) => handler(message),
             Self::Epoch(handler) => handler(connection_epoch, message),
-            Self::Timed(handler) => handler(message, read_completed),
+            Self::Timed(handler) => handler(message, read_completed.map(|read| read.completed)),
+            Self::ReadTiming(handler) => handler(message, read_completed),
         }
     }
 }
@@ -2856,6 +2875,35 @@ impl WebSocketClient {
         Self::connect_with_handler_scoped(
             config,
             IncomingHandler::Timed(timed_handler),
+            None,
+            rate_limiter,
+            state_sink,
+            None,
+            InitialConnectOptions {
+                retry_policy: None,
+                cancellation_token: None,
+            },
+        )
+        .await
+    }
+
+    /// Returns a builder observing the final stream poll and its preceding wake.
+    ///
+    /// Observations do not represent kernel packet arrival. Callbacks must not block.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the configuration is invalid or connection fails.
+    #[builder(builder_type = WebSocketClientReadTimingBuilder, finish_fn = connect)]
+    pub async fn read_timing_builder(
+        config: WebSocketConfig,
+        read_timing_handler: ReadTimingMessageHandler,
+        state_sink: Option<SocketStateSink>,
+    ) -> Result<Self, TransportError> {
+        let rate_limiter = Self::resolve_rate_limiter(None, Vec::new(), None)?;
+        Self::connect_with_handler_scoped(
+            config,
+            IncomingHandler::ReadTiming(read_timing_handler),
             None,
             rate_limiter,
             state_sink,
@@ -3727,7 +3775,9 @@ impl WebSocketClient {
                                         Message::Text(RECONNECTED.to_string().into());
                                     handler.handle(connection_epoch, reconnected_msg);
                                     match handler {
-                                        IncomingHandler::Message(_) | IncomingHandler::Timed(_) => {
+                                        IncomingHandler::Message(_)
+                                        | IncomingHandler::Timed(_)
+                                        | IncomingHandler::ReadTiming(_) => {
                                             log::debug!("Sent reconnected message to handler");
                                         }
                                         IncomingHandler::Epoch(_) => {
@@ -5043,11 +5093,14 @@ mod rust_tests {
     }
 
     #[rstest]
-    #[case(TransportBackend::Tungstenite)]
-    #[cfg_attr(feature = "transport-sockudo", case(TransportBackend::Sockudo))]
+    #[case(TransportBackend::Tungstenite, false)]
+    #[case(TransportBackend::Tungstenite, true)]
+    #[cfg_attr(feature = "transport-sockudo", case(TransportBackend::Sockudo, false))]
+    #[cfg_attr(feature = "transport-sockudo", case(TransportBackend::Sockudo, true))]
     #[tokio::test]
     async fn test_timed_handler_preserves_read_time_and_reconnect(
         #[case] backend: TransportBackend,
+        #[case] detailed: bool,
     ) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let mut config = reconnect_test_config(listener.local_addr().unwrap().port());
@@ -5077,14 +5130,37 @@ mod rust_tests {
         });
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         let before_connect = std::time::Instant::now();
-        let client = WebSocketClient::timed_builder()
-            .config(config)
-            .timed_handler(Arc::new(move |message, read| {
-                tx.send((message, read, std::time::Instant::now())).unwrap();
-            }))
-            .connect()
-            .await
-            .unwrap();
+        let client = if detailed {
+            WebSocketClient::read_timing_builder()
+                .config(config)
+                .read_timing_handler(Arc::new(move |message, read| {
+                    if let Some(read) = read {
+                        assert!(read.poll_started <= read.completed);
+                        assert!(
+                            read.wake_observed
+                                .is_none_or(|wake| wake <= read.poll_started)
+                        );
+                    }
+                    tx.send((
+                        message,
+                        read.map(|read| read.completed),
+                        std::time::Instant::now(),
+                    ))
+                    .unwrap();
+                }))
+                .connect()
+                .await
+                .unwrap()
+        } else {
+            WebSocketClient::timed_builder()
+                .config(config)
+                .timed_handler(Arc::new(move |message, read| {
+                    tx.send((message, read, std::time::Instant::now())).unwrap();
+                }))
+                .connect()
+                .await
+                .unwrap()
+        };
         client.send_text("observed".into(), None).await.unwrap();
         let (message, read, dispatched) = tokio::time::timeout(TEST_TIMEOUT, rx.recv())
             .await

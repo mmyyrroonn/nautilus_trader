@@ -47,6 +47,17 @@ before parsing but published after the post ID is known. Subtract only timestamp
 from the same session. Never subtract these values from exchange time, wall-clock
 event timestamps, another host, another session, or a restarted process.
 
+On Linux, capture also creates `hyperliquid-clock-<session UUID>.json` once at
+client construction. It contains PID, boot ID, and one `CLOCK_MONOTONIC` reading
+bracketed by `elapsed_before_ns` and `elapsed_after_ns`. Thus a record's host
+monotonic time lies between `elapsed_ns + monotonic_ns - elapsed_after_ns` and
+`elapsed_ns + monotonic_ns - elapsed_before_ns`. A consumer must verify the same
+host boot/process and clock implementation before joining Python/native clocks.
+Carry the calibration window into derived intervals; do not invent an exact
+offset. Calibration uses the safe rustix clock interface, adds no order-path
+clock calls, and never overwrites an existing anchor. Other platforms retain
+session-relative capture without this cross-language calibration.
+
 ## Boundaries
 
 | Stages                                            | Actual observation                                                                                                          |
@@ -66,6 +77,8 @@ event timestamps, another host, another session, or a restarted process.
 | `writer_command_enqueue`                          | Immediately before the actual writer-channel send, after transport admission.                                               |
 | `socket_write_started` / `socket_write_completed` | Bracket the transport sink send-and-flush operation. Completion is not peer acknowledgement or actual NIC transmission.     |
 | `socket_read_completed`                           | Complete WebSocket message returned by the transport reader, after TCP/TLS/WebSocket decoding, before adapter dispatch.     |
+| `read_wake_observed`                              | First forwarded wake after the preceding poll, if the final read was pending. Not necessarily packet readiness.             |
+| `read_poll_started`                               | Entry to the final stream poll returning this complete frame. Excludes earlier partial reads.                               |
 | `response_dequeued`                               | Handler dequeues the complete text frame, immediately before JSON envelope parsing.                                         |
 | `envelope_parsed`                                 | Post envelope decoded, before router lookup/delivery.                                                                       |
 | `caller_resumed`                                  | Waiting post future resumes with its correlated response.                                                                   |
@@ -103,10 +116,25 @@ network/server work and local read scheduling/decoding; it is not pure network R
 or exchange processing time. A response can race the write-completion observation
 on another task: retain such ordering rather than clamping a negative interval.
 
+`read_poll_started - read_wake_observed` exposes local wake-to-poll delay when
+observed. The wake can come from readiness or the split-stream lock; this is not
+proof of kernel arrival. `socket_read_completed - read_poll_started` covers the
+final poll's local work, including read/TLS/WebSocket processing. Previous polls
+and partial-frame waits remain outside that interval. Buffered frames, reconnect
+sentinels and reads canceled by the existing timeout do not inherit a stale wake.
+Missing wake observations remain missing. No timeout, wake forwarding, retry or
+transport state decision uses these diagnostic clocks.
+
 Write observers travel with existing writer/replay commands; they do not add a
 queue or change transport decisions. Disabled capture adds no observer allocation
 or diagnostic clock reads. Enabled capture allocates one shared observer per
 timed send and reads the clock for complete incoming frames on that client.
+Detailed reads reuse one shared waker observer per reader task (replaced only if
+the parent task waker changes), with one atomic timestamp and no per-frame
+observer allocation. The existing raw-message channel carries three read
+observations rather than one; no additional queue is introduced. Kernel TCP
+metadata, when collected by a separate bounded probe, still requires explicit
+connection attribution because TLS may combine or split application messages.
 
 ## Validation and live interpretation
 
