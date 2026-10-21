@@ -195,6 +195,7 @@ struct TestServerState {
     tx_response_blocked: Arc<AtomicBool>,
     tx_response_release: Arc<tokio::sync::Notify>,
     inactive_orders_response: Arc<tokio::sync::Mutex<Option<Value>>>,
+    inactive_orders_responses: Arc<tokio::sync::Mutex<VecDeque<Value>>>,
     inactive_orders_unscoped_response: Arc<tokio::sync::Mutex<Option<Value>>>,
     trades_response: Arc<tokio::sync::Mutex<Option<Value>>>,
     trades_responses: Arc<tokio::sync::Mutex<VecDeque<Value>>>,
@@ -239,6 +240,7 @@ impl Default for TestServerState {
             tx_response_blocked: Arc::new(AtomicBool::new(false)),
             tx_response_release: Arc::new(tokio::sync::Notify::new()),
             inactive_orders_response: Arc::new(tokio::sync::Mutex::new(None)),
+            inactive_orders_responses: Arc::new(tokio::sync::Mutex::new(VecDeque::new())),
             inactive_orders_unscoped_response: Arc::new(tokio::sync::Mutex::new(None)),
             trades_response: Arc::new(tokio::sync::Mutex::new(None)),
             trades_responses: Arc::new(tokio::sync::Mutex::new(VecDeque::new())),
@@ -457,6 +459,9 @@ async fn account_inactive_orders(
     Query(query): Query<std::collections::HashMap<String, String>>,
 ) -> Response {
     state.inactive_orders_calls.fetch_add(1, Ordering::Relaxed);
+    if let Some(body) = state.inactive_orders_responses.lock().await.pop_front() {
+        return (StatusCode::OK, body.to_string()).into_response();
+    }
     if !query.contains_key("market_id")
         && let Some(body) = state.inactive_orders_unscoped_response.lock().await.clone()
     {
@@ -2886,6 +2891,344 @@ async fn test_acknowledged_create_allows_delayed_active_order() {
     );
 
     client.disconnect().await.expect("disconnect");
+}
+
+#[rstest]
+#[case("zero", false)]
+#[case("partial", false)]
+#[case("late_fills", false)]
+#[case("zero", true)]
+#[case("partial", true)]
+#[case("late_fills", true)]
+#[case("active_first", false)]
+#[tokio::test(flavor = "multi_thread")]
+async fn acknowledged_ioc_recovers_inactive_order_without_stream_terminal(
+    #[case] mode: &str,
+    #[case] accepted_first: bool,
+) {
+    let (addr, state) = start_server().await;
+    let control = nautilus_lighter::control::LighterExecutionControl::default();
+    let mut config = build_config(addr);
+    config.control = Some(control.clone());
+    let (mut client, mut rx, cache) = build_client_with(config);
+    client.connect().await.unwrap();
+    let order = make_limit_order(
+        "O-IOC-HISTORY",
+        OrderSide::Buy,
+        Quantity::from("0.2672"),
+        Price::from("2361.31"),
+        TimeInForce::Ioc,
+        false,
+        true,
+    );
+    cache_order(&cache, order.clone());
+    let started = std::time::Instant::now();
+    client.submit_order(submit_command(&order)).unwrap();
+    await_send_tx_count(&state, 1).await;
+    let info = send_tx_info(&state.send_txs().await[0]);
+    let index = info["ClientOrderIndex"].as_i64().unwrap();
+    let nonce = info["Nonce"].as_i64().unwrap();
+    let quantity = if mode == "zero" { "0.0000" } else { "0.1336" };
+    let venue_id = "562947905631053";
+    if accepted_first {
+        let mut open = account_all_orders_open_entry(index, venue_id, &index.to_string(), nonce);
+        open["initial_base_amount"] = json!("0.2672");
+        open["remaining_base_amount"] = json!("0.2672");
+        state.push_frame(&json!({"type":"update/account_all_orders",
+            "channel":format!("account_all_orders:{TEST_ACCOUNT_INDEX}"),"orders":{"0":[open]}}));
+        next_event_matching(&mut rx, Duration::from_secs(1), |event| {
+            matches!(event, ExecutionEvent::Order(OrderEventAny::Accepted(_)))
+        })
+        .await
+        .expect("stream acceptance must not stop IOC terminal recovery");
+    }
+    let mut terminal = http_order_fixture(venue_id, &index.to_string(), "canceled", quantity);
+    terminal["initial_base_amount"] = json!("0.2672");
+    terminal["nonce"] = json!(nonce);
+    terminal["time_in_force"] = json!("immediate-or-cancel");
+    terminal["reduce_only"] = json!(true);
+    *state.inactive_orders_response.lock().await =
+        Some(http_orders_payload(&[terminal.clone()], None));
+    let trade = http_trade_fixture(19_209_006_902, index);
+    if mode == "late_fills" {
+        state
+            .trades_responses
+            .lock()
+            .await
+            .push_back(json!({"code":200,"trades":[]}));
+    } else if mode == "active_first" {
+        let mut active = terminal.clone();
+        active["status"] = json!("open");
+        active["filled_base_amount"] = json!("0.0000");
+        state
+            .active_orders_responses
+            .lock()
+            .await
+            .push_back(http_orders_payload(&[active], None));
+    } else {
+        state
+            .inactive_orders_responses
+            .lock()
+            .await
+            .push_back(http_orders_payload(&[], None));
+    }
+    *state.trades_response.lock().await = Some(json!({"code":200,"trades":[trade.clone()]}));
+
+    wait_until_async(
+        || async {
+            if mode == "late_fills" {
+                state.trades_calls.load(Ordering::Relaxed) >= 1
+            } else if mode == "active_first" {
+                state.active_orders_calls.load(Ordering::Relaxed) >= 1
+            } else {
+                state.tx_calls.load(Ordering::Relaxed) >= 1
+            }
+        },
+        Duration::from_secs(4),
+    )
+    .await;
+    assert!(
+        control
+            .terminal_fill_evidence_json(order.client_order_id().as_str())
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        next_event_matching(&mut rx, Duration::from_millis(100), |event| {
+            matches!(
+                event,
+                ExecutionEvent::Report(ExecutionReport::OrderWithFills(report, _)) if report.order_status.is_closed()
+            )
+        })
+        .await
+        .is_none(),
+        "missing order or fills must not release a terminal"
+    );
+
+    let event = next_event_matching(&mut rx, Duration::from_secs(5), |event| {
+        matches!(
+            event,
+            ExecutionEvent::Report(ExecutionReport::OrderWithFills(report, _)) if report.order_status.is_closed()
+        )
+    })
+    .await
+    .expect("IOC recovered before the receipt timeout without a stream terminal");
+    let ExecutionEvent::Report(ExecutionReport::OrderWithFills(report, fills)) = event else {
+        unreachable!()
+    };
+    assert_eq!(report.client_order_id, Some(order.client_order_id()));
+    assert_eq!(report.venue_order_id, VenueOrderId::from(venue_id));
+    assert_eq!(report.order_status, OrderStatus::Canceled);
+    assert_eq!(report.filled_qty, Quantity::from(quantity));
+    assert_eq!(fills.len(), usize::from(mode != "zero"));
+    if mode != "zero" {
+        assert_eq!(fills[0].commission, Money::from("0.000196 USDC"));
+        assert_eq!(fills[0].client_order_id, Some(order.client_order_id()));
+    }
+    assert_eq!(
+        state.send_txs().await.len(),
+        1,
+        "recovery must never submit another order"
+    );
+    assert_eq!(
+        state.inactive_orders_calls.load(Ordering::Relaxed),
+        if mode == "active_first" { 1 } else { 2 }
+    );
+    assert_eq!(
+        state.trades_calls.load(Ordering::Relaxed),
+        match mode {
+            "zero" => 0,
+            "partial" | "active_first" => 1,
+            _ => 2,
+        }
+    );
+    println!(
+        "IOC recovery mode={mode} elapsed_ms={}",
+        started.elapsed().as_millis()
+    );
+
+    state.push_frame(&json!({"type":"update/account_all_orders",
+        "channel":format!("account_all_orders:{TEST_ACCOUNT_INDEX}"),"orders":{"0":[terminal]}}));
+    if mode != "zero" {
+        state.push_frame(&json!({"type":"update/account_all_trades",
+            "channel":format!("account_all_trades:{TEST_ACCOUNT_INDEX}"),"trades":{"0":[trade.clone(),trade]}}));
+    }
+    assert!(
+        next_event_matching(&mut rx, Duration::from_millis(300), |event| {
+            matches!(
+                event,
+                ExecutionEvent::Order(OrderEventAny::Filled(_))
+                    | ExecutionEvent::Report(ExecutionReport::Fill(_))
+            )
+        })
+        .await
+        .is_none(),
+        "late stream replays must not account a recovered execution twice"
+    );
+    let proof: Value = serde_json::from_str(
+        &control
+            .terminal_fill_evidence_json(order.client_order_id().as_str())
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(proof["conflicting"], false);
+    client.disconnect().await.unwrap();
+}
+
+#[rstest]
+#[case("matched")]
+#[case("not_found")]
+#[case("stale_nonce")]
+#[case("wrong_account")]
+#[case("wrong_market")]
+#[case("wrong_order_id")]
+#[case("ambiguous")]
+#[case("repeated_cursor")]
+#[case("page_limit")]
+#[case("invalid_venue_id")]
+#[case("different_venue_id")]
+#[case("stale_active")]
+#[case("second_page")]
+#[tokio::test(flavor = "multi_thread")]
+async fn query_unacknowledged_ioc_requires_exact_submission_identity(#[case] mode: &str) {
+    let (addr, state) = start_server().await;
+    let control = nautilus_lighter::control::LighterExecutionControl::default();
+    let mut config = build_config(addr);
+    config.control = Some(control.clone());
+    let (mut client, mut rx, cache) = build_client_with(config);
+    client.connect().await.unwrap();
+    let order = make_limit_order(
+        "O-QUERY-IOC-HISTORY",
+        OrderSide::Sell,
+        Quantity::from("0.0050"),
+        Price::from("2361.31"),
+        TimeInForce::Ioc,
+        false,
+        true,
+    );
+    cache_order(&cache, order.clone());
+    client.submit_order(submit_command(&order)).unwrap();
+    await_send_tx_count(&state, 1).await;
+    let info = send_tx_info(&state.send_txs().await[0]);
+    let index = info["ClientOrderIndex"].as_i64().unwrap();
+    let nonce = info["Nonce"].as_i64().unwrap();
+    let mut terminal =
+        http_order_fixture("281476929510500", &index.to_string(), "canceled", "0.0000");
+    terminal["nonce"] = json!(nonce);
+    terminal["is_ask"] = json!(true);
+    terminal["side"] = json!("sell");
+    terminal["reduce_only"] = json!(true);
+    if mode == "stale_active" {
+        let mut stale = terminal.clone();
+        stale["status"] = json!("open");
+        stale["nonce"] = json!(nonce - 1);
+        *state.active_orders_response.lock().await = Some(http_orders_payload(&[stale], None));
+    }
+    if mode == "second_page" {
+        state
+            .inactive_orders_responses
+            .lock()
+            .await
+            .push_back(http_orders_payload(&[], Some("next")));
+    }
+    match mode {
+        "stale_nonce" => terminal["nonce"] = json!(nonce - 1),
+        "wrong_account" => terminal["owner_account_index"] = json!(TEST_ACCOUNT_INDEX + 1),
+        "wrong_market" => terminal["market_index"] = json!(999),
+        "wrong_order_id" => terminal["order_id"] = json!("281476929510501"),
+        _ => {}
+    }
+    let rows = match mode {
+        "not_found" | "repeated_cursor" | "page_limit" => vec![],
+        "ambiguous" => vec![terminal.clone(), terminal],
+        _ => vec![terminal],
+    };
+    *state.inactive_orders_response.lock().await = Some(http_orders_payload(
+        &rows,
+        (mode == "repeated_cursor").then_some("stuck"),
+    ));
+    if mode == "page_limit" {
+        state
+            .inactive_orders_responses
+            .lock()
+            .await
+            .extend((0..3).map(|page| http_orders_payload(&[], Some(&format!("page-{page}")))));
+    }
+    let result = client
+        .generate_order_status_report(&GenerateOrderStatusReport::new(
+            UUID4::new(),
+            UnixNanos::default(),
+            Some(eth_perp_id()),
+            Some(order.client_order_id()),
+            match mode {
+                "invalid_venue_id" => Some(VenueOrderId::from("invalid")),
+                "different_venue_id" => Some(VenueOrderId::from("281476929510999")),
+                _ => None,
+            },
+            None,
+            None,
+        ))
+        .await;
+    match mode {
+        "matched" | "stale_active" | "second_page" => {
+            let report = result
+                .unwrap()
+                .expect("terminal matched by nonce without venue ack");
+            assert_eq!(report.client_order_id, Some(order.client_order_id()));
+            assert_eq!(report.order_status, OrderStatus::Canceled);
+            assert!(report.filled_qty.is_zero());
+        }
+        "not_found" | "stale_nonce" | "different_venue_id" => assert!(result.unwrap().is_none()),
+        _ => assert!(
+            result.is_err(),
+            "invalid identity/history must stay unresolved: {mode}"
+        ),
+    }
+    assert_eq!(
+        state.inactive_orders_calls.load(Ordering::Relaxed),
+        match mode {
+            "repeated_cursor" | "second_page" => 2,
+            "page_limit" => 3,
+            "invalid_venue_id" => 0,
+            _ => 1,
+        }
+    );
+    if mode == "matched" {
+        client
+            .query_order(QueryOrder::new(
+                trader_id(),
+                Some(client_id()),
+                strategy_id(),
+                eth_perp_id(),
+                order.client_order_id(),
+                None,
+                UUID4::new(),
+                UnixNanos::default(),
+                None,
+                None,
+            ))
+            .unwrap();
+        next_event_matching(&mut rx, Duration::from_secs(1), |event| {
+            matches!(
+                event,
+                ExecutionEvent::Report(ExecutionReport::OrderWithFills(..))
+            )
+        })
+        .await
+        .expect("query publishes the original terminal without a stream ack");
+        let proof: Value = serde_json::from_str(
+            &control
+                .terminal_fill_evidence_json(order.client_order_id().as_str())
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(proof["final_filled_quantity"], "0");
+        assert_eq!(proof["conflicting"], false);
+    }
+    assert_eq!(state.send_txs().await.len(), 1);
+    client.disconnect().await.unwrap();
 }
 
 #[rstest]
@@ -5423,7 +5766,7 @@ async fn test_open_order_reports_fail_when_an_in_scope_row_cannot_be_parsed() {
 
 #[rstest]
 #[tokio::test(flavor = "multi_thread")]
-async fn test_single_order_report_fails_when_matching_row_cannot_be_parsed() {
+async fn test_single_order_report_rejects_matching_row_from_wrong_market() {
     let (addr, state) = start_server().await;
     let (mut client, _rx, _cache) = build_client(addr);
     client.connect().await.expect("connect");
@@ -5448,7 +5791,7 @@ async fn test_single_order_report_fails_when_matching_row_cannot_be_parsed() {
     assert!(
         error
             .to_string()
-            .contains("failed to parse matching Lighter order"),
+            .contains("Lighter order lookup returned inconsistent order identity"),
         "unexpected error: {error:#}",
     );
     assert_eq!(state.active_orders_calls.load(Ordering::Relaxed), 1);
@@ -5750,21 +6093,21 @@ async fn test_generate_order_status_report_resolves_single_active_client_index()
     cache_order(&cache, order.clone());
     client.submit_order(submit_command(&order)).expect("submit");
     await_send_tx_count(&state, 1).await;
-    let client_order_index = send_tx_info(&state.send_txs().await[0])["ClientOrderIndex"]
+    let info = send_tx_info(&state.send_txs().await[0]);
+    let client_order_index = info["ClientOrderIndex"]
         .as_i64()
         .expect("ClientOrderIndex")
         .to_string();
     let venue_order_id = VenueOrderId::from("281476929510300");
 
-    *state.active_orders_response.lock().await = Some(http_orders_payload(
-        &[http_order_fixture(
-            venue_order_id.as_str(),
-            &client_order_index,
-            "open",
-            "0.0000",
-        )],
-        None,
-    ));
+    let mut active = http_order_fixture(
+        venue_order_id.as_str(),
+        &client_order_index,
+        "open",
+        "0.0000",
+    );
+    active["nonce"] = info["Nonce"].clone();
+    *state.active_orders_response.lock().await = Some(http_orders_payload(&[active], None));
 
     let report = client
         .generate_order_status_report(&GenerateOrderStatusReport::new(
@@ -5930,18 +6273,18 @@ async fn test_generate_order_status_report_rejects_ambiguous_active_client_index
     cache_order(&cache, order.clone());
     client.submit_order(submit_command(&order)).expect("submit");
     await_send_tx_count(&state, 1).await;
-    let client_order_index = send_tx_info(&state.send_txs().await[0])["ClientOrderIndex"]
-        .as_i64()
-        .expect("ClientOrderIndex");
+    let info = send_tx_info(&state.send_txs().await[0]);
+    let client_order_index = info["ClientOrderIndex"].as_i64().expect("ClientOrderIndex");
     let client_order_index = client_order_index.to_string();
 
-    *state.active_orders_response.lock().await = Some(http_orders_payload(
-        &[
-            http_order_fixture("281476929510300", &client_order_index, "open", "0.0000"),
-            http_order_fixture("281476929510301", &client_order_index, "open", "0.0000"),
-        ],
-        None,
-    ));
+    let mut active = [
+        http_order_fixture("281476929510300", &client_order_index, "open", "0.0000"),
+        http_order_fixture("281476929510301", &client_order_index, "open", "0.0000"),
+    ];
+    for order in &mut active {
+        order["nonce"] = info["Nonce"].clone();
+    }
+    *state.active_orders_response.lock().await = Some(http_orders_payload(&active, None));
 
     let err = client
         .generate_order_status_report(&GenerateOrderStatusReport::new(

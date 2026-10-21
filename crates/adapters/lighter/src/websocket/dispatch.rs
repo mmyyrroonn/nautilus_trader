@@ -82,6 +82,9 @@ pub(crate) const ORDER_EXPIRY_IOC: i64 = 0;
 /// Defensive cap for authenticated reconciliation pagination.
 pub(crate) const MAX_RECONCILIATION_PAGES: usize = 1_000;
 
+// A recent create must not scan an account's entire history on every probe
+const MAX_CREATE_LOOKUP_PAGES: usize = 3;
+
 /// Order identity context captured at submit time.
 ///
 /// Used by the consumption loop to construct typed `OrderEventAny` variants
@@ -299,7 +302,11 @@ impl OrderIdentity {
         self.binding.lock().submission_nonce = Some(nonce);
     }
 
-    fn bind_venue_order_id(&self, venue_order_id: VenueOrderId) -> bool {
+    fn same_submission(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.binding, &other.binding)
+    }
+
+    pub(crate) fn bind_venue_order_id(&self, venue_order_id: VenueOrderId) -> bool {
         let mut binding = self.binding.lock();
         if binding.create_resolution == CreateResolution::Rejected {
             return false;
@@ -350,14 +357,20 @@ impl OrderIdentity {
         !self.accepted_emitted.swap(true, Ordering::AcqRel)
     }
 
-    fn submission_is_pending(&self, client_order_index: i64, nonce: i64) -> bool {
+    fn submission_needs_reconciliation(
+        &self,
+        client_order_index: i64,
+        nonce: i64,
+        require_terminal: bool,
+    ) -> bool {
         if self.client_order_index != client_order_index {
             return false;
         }
 
         let binding = self.binding.lock();
         binding.submission_nonce == Some(nonce)
-            && binding.create_resolution == CreateResolution::Pending
+            && (binding.create_resolution == CreateResolution::Pending
+                || (require_terminal && binding.create_resolution == CreateResolution::Confirmed))
     }
 
     fn confirm_submission(&self, client_order_index: i64, nonce: i64) -> bool {
@@ -1153,15 +1166,16 @@ impl WsDispatchState {
         }
     }
 
-    pub(crate) fn create_submission_is_pending(
+    pub(crate) fn create_submission_needs_reconciliation(
         &self,
         cloid: &ClientOrderId,
         client_order_index: i64,
         nonce: i64,
+        require_terminal: bool,
     ) -> bool {
-        self.order_identities
-            .get(cloid)
-            .is_some_and(|identity| identity.submission_is_pending(client_order_index, nonce))
+        self.order_identities.get(cloid).is_some_and(|identity| {
+            identity.submission_needs_reconciliation(client_order_index, nonce, require_terminal)
+        })
     }
 
     pub(crate) fn confirm_create_submission(
@@ -1269,6 +1283,26 @@ impl WsDispatchState {
             .get(cloid)
             .map(|entry| entry.value().clone())
             .or_else(|| self.retired_orders.identity_for_cloid(cloid))
+    }
+
+    /// Publishes queried evidence only while its original submission remains current.
+    pub(crate) fn with_queried_identity(
+        &self,
+        cloid: Option<ClientOrderId>,
+        expected: Option<&OrderIdentity>,
+        publish: impl FnOnce() -> anyhow::Result<()>,
+    ) -> anyhow::Result<()> {
+        let _guard = self.create_registry.lock();
+        let current = cloid.and_then(|id| self.order_identity(&id));
+        anyhow::ensure!(
+            match (expected, &current) {
+                (Some(expected), Some(current)) => expected.same_submission(current),
+                (None, None) => true,
+                _ => false,
+            },
+            "Lighter queried order submission changed while awaiting HTTP evidence",
+        );
+        publish()
     }
 
     /// Returns `true` if an `OrderAccepted` has already been emitted for
@@ -1917,7 +1951,7 @@ pub(crate) fn parse_http_order_to_report(
     }
 }
 
-/// Look up an acknowledged create by its exact client index and submission nonce.
+/// Looks up a submitted create by its exact client index and submission nonce.
 #[expect(
     clippy::too_many_arguments,
     reason = "exact create identity and report context cross the REST translation boundary"
@@ -1938,40 +1972,85 @@ pub(crate) async fn lookup_create_order_status_report(
         .market_index(&instrument_id)
         .ok_or_else(|| anyhow::anyhow!("no Lighter market_index for instrument {instrument_id}"))?;
     let auth = mint_auth_token(credential)?;
-    let active = http_client
+    let mut response = http_client
         .get_account_active_orders(&LighterAccountActiveOrdersQuery {
             authorization: None,
-            auth: Some(auth),
+            auth: Some(auth.clone()),
             account_index: credential.account_index(),
             market_id: market_index,
         })
         .await
         .context("failed to fetch Lighter active orders")?;
 
-    let mut matches = active
-        .orders
-        .iter()
-        .filter(|order| order.client_order_index == client_order_index && order.nonce == nonce);
-    let Some(order) = matches.next() else {
-        return Ok(None);
-    };
-    anyhow::ensure!(
-        matches.next().is_none(),
-        "ambiguous Lighter active-order lookup for client_order_index {client_order_index} and nonce {nonce}",
-    );
+    let mut pages = 0;
+    let mut seen_cursors = AHashSet::new();
 
-    let report =
-        parse_http_order_to_report(order, dispatch, registry, account_id, clock.get_time_ns())
+    loop {
+        let mut matches = response
+            .orders
+            .iter()
+            .filter(|order| order.client_order_index == client_order_index && order.nonce == nonce);
+        let order = matches.next();
+        anyhow::ensure!(
+            matches.next().is_none(),
+            "ambiguous Lighter {}-order lookup for client_order_index {client_order_index} and nonce {nonce}",
+            if pages == 0 { "active" } else { "inactive" },
+        );
+
+        if let Some(order) = order {
+            anyhow::ensure!(
+                order.market_index == market_index
+                    && order.owner_account_index == credential.account_index()
+                    && order.order_id.parse::<i64>().ok() == Some(order.order_index),
+                "Lighter create lookup returned inconsistent order identity",
+            );
+            let report = parse_http_order_to_report(
+                order,
+                dispatch,
+                registry,
+                account_id,
+                clock.get_time_ns(),
+            )
             .ok_or_else(|| {
                 anyhow::anyhow!(
-                    "failed to parse Lighter active order {} for acknowledged create",
+                    "failed to parse Lighter order {} for submitted create",
                     order.order_index,
                 )
-            })?;
-    let report = dispatch
-        .translate_order_cloid(report)
-        .with_client_order_id(client_order_id);
-    Ok(Some(dispatch.preserve_pending_order_status(report)))
+            })?
+            .with_client_order_id(client_order_id);
+            return Ok(Some(dispatch.preserve_pending_order_status(report)));
+        }
+
+        let cursor = response.next_cursor.filter(|next| !next.is_empty());
+        if pages > 0 && cursor.is_none() {
+            return Ok(None);
+        }
+        anyhow::ensure!(
+            pages < MAX_CREATE_LOOKUP_PAGES,
+            "Lighter create lookup exceeded {MAX_CREATE_LOOKUP_PAGES} inactive pages; order remains unresolved",
+        );
+        if let Some(next) = &cursor {
+            anyhow::ensure!(
+                seen_cursors.insert(next.clone()),
+                "Lighter create lookup repeated cursor `{next}`",
+            );
+        }
+
+        response = http_client
+            .get_account_inactive_orders(&LighterAccountInactiveOrdersQuery {
+                authorization: None,
+                auth: Some(auth.clone()),
+                account_index: credential.account_index(),
+                market_id: Some(market_index),
+                ask_filter: None,
+                between_timestamps: None,
+                cursor: if pages == 0 { None } else { cursor },
+                limit: LIGHTER_REST_PAGE_SIZE,
+            })
+            .await
+            .context("failed to fetch Lighter inactive orders for submitted create")?;
+        pages += 1;
+    }
 }
 
 /// Look up a single order via the active and inactive HTTP endpoints, returning
@@ -1979,9 +2058,8 @@ pub(crate) async fn lookup_create_order_status_report(
 ///
 /// Resolution order: explicit `venue_order_id` > cached `venue_id_map` >
 /// derived `client_order_index` from `dispatch.derive_client_order_index`.
-/// The third path is active-order only. It makes `query_order` work between
-/// submission and the venue's first `account_*` ack, while avoiding ambiguous
-/// terminal history where Lighter can reuse client indexes.
+/// The third path searches recent inactive orders only with a retained submission
+/// nonce. A derived client index alone cannot identify reused terminal history.
 #[expect(
     clippy::too_many_arguments,
     reason = "translation helper that threads context to the parser without a wrapper struct"
@@ -2005,18 +2083,43 @@ pub(crate) async fn lookup_order_status_report(
         .ok_or_else(|| anyhow::anyhow!("no Lighter market_index for instrument {instrument_id}"))?;
 
     // Try, in order: explicit voi, cached voi, derived client_order_index.
-    let target_venue_index: Option<i64> = venue_order_id
-        .and_then(|voi| voi.as_str().parse::<i64>().ok())
-        .or_else(|| {
-            client_order_id
-                .and_then(|cloid| dispatch.lookup_venue_order_id(cloid))
-                .and_then(|voi| voi.as_str().parse::<i64>().ok())
-        });
+    let target_venue_index = venue_order_id
+        .copied()
+        .or_else(|| client_order_id.and_then(|cloid| dispatch.lookup_venue_order_id(cloid)))
+        .map(|voi| voi.as_str().parse::<i64>())
+        .transpose()
+        .context("invalid Lighter venue order ID for lookup")?;
     let target_client_index: Option<i64> = client_order_id.map(|cloid| {
         dispatch
             .client_order_index(cloid)
             .unwrap_or_else(|| dispatch.derive_client_order_index(cloid))
     });
+
+    if target_venue_index.is_none()
+        && let Some(cloid) = client_order_id
+        && let Some(identity) = dispatch.order_identity(cloid)
+    {
+        let nonce = identity.binding.lock().submission_nonce;
+        if let Some(nonce) = nonce {
+            anyhow::ensure!(
+                identity.instrument_id == instrument_id,
+                "Lighter create lookup instrument does not match submitted order",
+            );
+            return lookup_create_order_status_report(
+                http_client,
+                registry,
+                credential,
+                account_id,
+                instrument_id,
+                *cloid,
+                identity.client_order_index,
+                nonce,
+                dispatch,
+                clock,
+            )
+            .await;
+        }
+    }
 
     let matches_order = |o: &LighterOrder| {
         order_matches_lookup(
@@ -2042,6 +2145,12 @@ pub(crate) async fn lookup_order_status_report(
     let supplied_cloid = client_order_id.copied();
 
     let finalize = |order: &LighterOrder| -> anyhow::Result<OrderStatusReport> {
+        anyhow::ensure!(
+            order.market_index == market_index
+                && order.owner_account_index == credential.account_index()
+                && order.order_id.parse::<i64>().ok() == Some(order.order_index),
+            "Lighter order lookup returned inconsistent order identity",
+        );
         let report = parse_http_order_to_report(order, dispatch, registry, account_id, ts_init)
             .ok_or_else(|| {
                 anyhow::anyhow!(
@@ -3203,10 +3312,10 @@ mod tests {
         assert!(state.lookup_venue_order_id(&cid).is_none());
         assert!(!state.reject_create_submission(&cid, index, 10, None));
         assert!(state.cloid_map.contains_key(&index));
-        assert!(state.create_submission_is_pending(&cid, index, 11));
+        assert!(state.create_submission_needs_reconciliation(&cid, index, 11, false));
         let reconnected_epoch = AtomicU64::new(1);
         assert!(!state.reject_create_submission(&cid, index, 11, Some((&reconnected_epoch, 0)),));
-        assert!(state.create_submission_is_pending(&cid, index, 11));
+        assert!(state.create_submission_needs_reconciliation(&cid, index, 11, false));
         assert!(state.reject_create_submission(&cid, index, 11, None));
         assert!(!state.cloid_map.contains_key(&index));
         assert!(state.order_identity(&cid).is_none());

@@ -64,7 +64,7 @@ use nautilus_live::{
 };
 use nautilus_model::{
     accounts::AccountAny,
-    enums::{AccountType, LiquiditySide, OmsType, OrderSide, OrderType, PositionSide},
+    enums::{AccountType, LiquiditySide, OmsType, OrderSide, OrderType, PositionSide, TimeInForce},
     events::{OrderAccepted, OrderDeniedReason, OrderEventAny},
     identifiers::{
         AccountId, ClientId, ClientOrderId, InstrumentId, StrategyId, TraderId, Venue, VenueOrderId,
@@ -3163,10 +3163,17 @@ fn spawn_acked_order_probe(pending: &PendingSendTx, context: AckedOrderProbeCont
     let pending_tasks = context.pending_tasks.clone();
 
     let future = async move {
+        let delay_started = tokio::time::Instant::now();
         tokio::select! {
             () = context.cancellation_token.cancelled() => return,
             () = tokio::time::sleep(ACKED_ORDER_LOOKUP_DELAY) => {}
         }
+
+        log::debug!(
+            "Lighter acknowledged order probe: client_order_id={} stage=initial_delay elapsed_ms={}",
+            probe.client_order_id(),
+            delay_started.elapsed().as_millis(),
+        );
 
         if let Err(e) = probe_acked_order(probe, &context).await {
             log::warn!("Lighter acknowledged order probe failed: {e:?}");
@@ -3239,6 +3246,9 @@ async fn probe_acked_create(
     };
     let client_order_id = order.client_order_id();
     let mut transaction_executed = false;
+    let started = tokio::time::Instant::now();
+    let require_terminal =
+        order.time_in_force() == TimeInForce::Ioc || order.order_type() == OrderType::Market;
 
     for attempt in 1..=ACKED_CREATE_PROBE_ATTEMPTS {
         if context.connection_epoch.load(Ordering::Acquire) != connection_epoch {
@@ -3248,14 +3258,16 @@ async fn probe_acked_create(
             return Ok(());
         }
 
-        if !context.dispatch.create_submission_is_pending(
+        if !context.dispatch.create_submission_needs_reconciliation(
             &client_order_id,
             client_order_index,
             nonce,
+            require_terminal,
         ) {
             return Ok(());
         }
 
+        let lookup_started = tokio::time::Instant::now();
         let report = match lookup_create_order_status_report(
             &context.http_client,
             &context.registry,
@@ -3279,13 +3291,18 @@ async fn probe_acked_create(
             }
         };
 
+        log::debug!(
+            "Lighter create recovery: client_order_id={client_order_id} attempt={attempt} stage=order_lookup found={} elapsed_ms={} probe_elapsed_ms={}",
+            report.is_some(),
+            lookup_started.elapsed().as_millis(),
+            started.elapsed().as_millis(),
+        );
+
         if let Some(report) = report {
-            if context.dispatch.observe_create_submission(
-                &client_order_id,
-                client_order_index,
-                nonce,
-                report.venue_order_id,
-            ) {
+            let terminal = report.order_status.is_closed();
+            let identity = context.dispatch.order_identity(&client_order_id);
+            let fills_started = tokio::time::Instant::now();
+            let result: anyhow::Result<()> = async {
                 let instrument = context
                     .instruments
                     .get(&report.instrument_id)
@@ -3316,65 +3333,112 @@ async fn probe_acked_create(
                         })
                     })
                     .collect::<anyhow::Result<Vec<_>>>()?;
-                publish_queried_order(report, fills, &context.dispatch, &context.emitter)?;
+                // Keep the probe pending until actual executions and fees are
+                // available. Missing details must not consume its retry budget
+                // by marking the submission confirmed before the next attempt.
+                if context.connection_epoch.load(Ordering::Acquire) == connection_epoch
+                    && context.dispatch.observe_create_submission(
+                        &client_order_id,
+                        client_order_index,
+                        nonce,
+                        report.venue_order_id,
+                    )
+                {
+                    publish_queried_order(
+                        report,
+                        fills,
+                        identity.as_ref(),
+                        &context.dispatch,
+                        &context.emitter,
+                    )?;
+                }
+                Ok(())
             }
-            return Ok(());
-        }
+            .await;
 
-        match context.http_client.get_tx(tx_hash.clone()).await {
-            Ok(tx) => {
-                validate_acked_create_tx(
-                    &tx,
-                    context.credential.account_index(),
-                    api_key_index,
-                    client_order_index,
-                    nonce,
-                    &tx_hash,
-                )?;
-                let event = parse_acked_create_event(&tx.event_info).unwrap_or_else(|e| {
+            log::debug!(
+                "Lighter create recovery: client_order_id={client_order_id} attempt={attempt} stage=execution_details complete={} elapsed_ms={} probe_elapsed_ms={}",
+                result.is_ok(),
+                fills_started.elapsed().as_millis(),
+                started.elapsed().as_millis(),
+            );
+            match result {
+                Ok(()) if terminal || !require_terminal => return Ok(()),
+                Ok(()) => {}
+                Err(e) => log::warn!(
+                    "Lighter create recovery awaiting execution details for {client_order_id} on attempt {attempt}: {e}",
+                ),
+            }
+        } else {
+            let tx_started = tokio::time::Instant::now();
+            match context.http_client.get_tx(tx_hash.clone()).await {
+                Ok(tx) => {
+                    validate_acked_create_tx(
+                        &tx,
+                        context.credential.account_index(),
+                        api_key_index,
+                        client_order_index,
+                        nonce,
+                        &tx_hash,
+                    )?;
+                    let event = parse_acked_create_event(&tx.event_info).unwrap_or_else(|e| {
                     log::warn!(
                         "Lighter create transaction carried invalid event_info for {client_order_id}: {e}",
                     );
                     AckedCreateEvent::default()
                 });
 
-                if tx.status == LighterTxStatus::Failed || !event.app_error.is_empty() {
-                    let detail = if event.app_error.is_empty() {
-                        "transaction failed without an application error".to_string()
-                    } else {
-                        event.app_error
-                    };
-                    let reason = format!(
-                        "Lighter sequencer rejected acknowledged create transaction {tx_hash}: {detail}",
-                    );
-                    reject_create_order(
-                        &context.dispatch,
-                        &context.emitter,
-                        &order,
-                        client_order_index,
-                        nonce,
-                        &reason,
-                        context.clock.get_time_ns(),
-                        lighter_reason_indicates_post_only_rejection(&detail),
-                        Some((&context.connection_epoch, connection_epoch)),
-                    );
-                    return Ok(());
+                    if tx.status == LighterTxStatus::Failed || !event.app_error.is_empty() {
+                        let detail = if event.app_error.is_empty() {
+                            "transaction failed without an application error".to_string()
+                        } else {
+                            event.app_error
+                        };
+                        let reason = format!(
+                            "Lighter sequencer rejected acknowledged create transaction {tx_hash}: {detail}",
+                        );
+                        reject_create_order(
+                            &context.dispatch,
+                            &context.emitter,
+                            &order,
+                            client_order_index,
+                            nonce,
+                            &reason,
+                            context.clock.get_time_ns(),
+                            lighter_reason_indicates_post_only_rejection(&detail),
+                            Some((&context.connection_epoch, connection_epoch)),
+                        );
+                        return Ok(());
+                    }
+                    transaction_executed |= tx.status == LighterTxStatus::Executed;
                 }
-                transaction_executed |= tx.status == LighterTxStatus::Executed;
+                Err(LighterHttpError::Venue { code: 21500, .. }) => {}
+                Err(e) => {
+                    log::warn!(
+                        "Lighter acknowledged create transaction lookup failed for {client_order_id} on attempt {attempt}: {e}",
+                    );
+                }
             }
-            Err(LighterHttpError::Venue { code: 21500, .. }) => {}
-            Err(e) => {
-                log::warn!(
-                    "Lighter acknowledged create transaction lookup failed for {client_order_id} on attempt {attempt}: {e}",
-                );
-            }
+
+            log::debug!(
+                "Lighter create recovery: client_order_id={client_order_id} attempt={attempt} stage=transaction_lookup elapsed_ms={} probe_elapsed_ms={}",
+                tx_started.elapsed().as_millis(),
+                started.elapsed().as_millis(),
+            );
         }
 
         if attempt < ACKED_CREATE_PROBE_ATTEMPTS {
+            let retry_started = tokio::time::Instant::now();
             tokio::select! {
                 () = context.cancellation_token.cancelled() => return Ok(()),
                 () = tokio::time::sleep(ACKED_ORDER_LOOKUP_DELAY) => {}
             }
+
+            log::debug!(
+                "Lighter create recovery: client_order_id={client_order_id} attempt={attempt} stage=retry_delay elapsed_ms={} probe_elapsed_ms={}",
+                retry_started.elapsed().as_millis(),
+                started.elapsed().as_millis(),
+            );
         }
     }
 
@@ -4637,6 +4701,7 @@ impl ExecutionClient for LighterExecutionClient {
         let dispatch = self.dispatch.clone();
         let clock = self.clock;
 
+        let identity = dispatch.order_identity(&cmd.client_order_id);
         self.spawn_task("query_order", async move {
             let report = lookup_order_status_report(
                 &http_client,
@@ -4683,7 +4748,7 @@ impl ExecutionClient for LighterExecutionClient {
                             .ok_or_else(|| anyhow::anyhow!("queried Lighter fill account mismatch"))
                         })
                         .collect::<anyhow::Result<Vec<_>>>()?;
-                    publish_queried_order(report, fills, &dispatch, &emitter)?;
+                    publish_queried_order(report, fills, identity.as_ref(), &dispatch, &emitter)?;
                 }
                 None => {
                     log::warn!(
@@ -5257,45 +5322,57 @@ struct FillSweep {
 
 fn publish_queried_order(
     report: OrderStatusReport,
-    fills: Vec<FillReport>,
+    mut fills: Vec<FillReport>,
+    identity: Option<&OrderIdentity>,
     dispatch: &WsDispatchState,
     emitter: &ExecutionEventEmitter,
 ) -> anyhow::Result<()> {
     let cloid = report.client_order_id;
-    let identity = cloid.and_then(|id| dispatch.order_identity(&id));
     let quantity = report.filled_qty;
     let trades = fills
-        .iter()
-        .map(|fill| (fill.trade_id, FillEconomics::from(fill)))
+        .iter_mut()
+        .map(|fill| {
+            // Exact REST identity is available before the first stream ack
+            fill.client_order_id = cloid;
+            (fill.trade_id, FillEconomics::from(&*fill))
+        })
         .collect();
     let terminal = report.order_status.is_closed();
     let evidence = report.clone();
-    let emit = || {
-        for fill in &fills {
-            dispatch.mark_trade_reconciled(fill.trade_id);
+    dispatch.with_queried_identity(cloid, identity, || {
+        if let Some(identity) = identity {
+            anyhow::ensure!(
+                identity.bind_venue_order_id(report.venue_order_id),
+                "Lighter queried order does not match the retained venue identity",
+            );
         }
-        dispatch.seed_accepted_from_report(&report);
-        emitter.send_order_with_fills(report, fills);
-        dispatch.observe_terminal_report(&evidence, "http_order_status");
-    };
-    if let Some(identity) = identity {
-        if let Err(error) = identity.route_reconciled_fills(quantity, trades, terminal, emit) {
-            dispatch.invalidate_http_terminal_conflict(&evidence);
-            if error.is::<RoutedFillConflict>()
-                && let Some(cloid) = cloid
-            {
-                dispatch.control.invalidate(cloid, "http_order_status");
+        let emit = || {
+            for fill in &fills {
+                dispatch.mark_trade_reconciled(fill.trade_id);
             }
-            return Err(error);
+            dispatch.seed_accepted_from_report(&report);
+            emitter.send_order_with_fills(report, fills);
+            dispatch.observe_terminal_report(&evidence, "http_order_status");
+        };
+        if let Some(identity) = identity {
+            if let Err(error) = identity.route_reconciled_fills(quantity, trades, terminal, emit) {
+                dispatch.invalidate_http_terminal_conflict(&evidence);
+                if error.is::<RoutedFillConflict>()
+                    && let Some(cloid) = cloid
+                {
+                    dispatch.control.invalidate(cloid, "http_order_status");
+                }
+                return Err(error);
+            }
+            if terminal && let Some(cloid) = cloid {
+                dispatch.venue_id_map.remove(&cloid);
+                dispatch.retire_order_identity(&cloid);
+            }
+        } else {
+            emit();
         }
-        if terminal && let Some(cloid) = cloid {
-            dispatch.venue_id_map.remove(&cloid);
-            dispatch.retire_order_identity(&cloid);
-        }
-    } else {
-        emit();
-    }
-    Ok(())
+        Ok(())
+    })
 }
 
 /// Fetches true trade details for exactly one venue order, never inferred economics.
@@ -10685,13 +10762,26 @@ mod tests {
         let mut checked_zero = report.clone();
         checked_zero.filled_qty = Quantity::from("0.0000");
         let checked_zero = rig.dispatch.preserve_pending_order_status(checked_zero);
-        publish_queried_order(report.clone(), vec![fill], &rig.dispatch, &rig.emitter).unwrap();
+        publish_queried_order(
+            report.clone(),
+            vec![fill],
+            rig.dispatch.order_identity(&rig.cloid).as_ref(),
+            &rig.dispatch,
+            &rig.emitter,
+        )
+        .unwrap();
         assert_eq!(drain_events(&mut rig.rx).len(), 1);
         assert_eq!(proof().unwrap()["source"], "http_order_status");
         if conflict == "http_zero_checked_before_other_query" {
             assert!(
-                publish_queried_order(checked_zero, Vec::new(), &rig.dispatch, &rig.emitter)
-                    .is_err()
+                publish_queried_order(
+                    checked_zero,
+                    Vec::new(),
+                    rig.dispatch.order_identity(&rig.cloid).as_ref(),
+                    &rig.dispatch,
+                    &rig.emitter
+                )
+                .is_err()
             );
         } else if conflict == "http_zero_without_trades" {
             report.filled_qty = Quantity::from("0.0000");
@@ -10702,8 +10792,14 @@ mod tests {
                 "an explicit HTTP cumulative contradiction must invalidate before trade validation"
             );
             assert!(
-                publish_queried_order(contradictory, Vec::new(), &rig.dispatch, &rig.emitter)
-                    .is_err()
+                publish_queried_order(
+                    contradictory,
+                    Vec::new(),
+                    rig.dispatch.order_identity(&rig.cloid).as_ref(),
+                    &rig.dispatch,
+                    &rig.emitter
+                )
+                .is_err()
             );
         } else {
             trade.size += Decimal::from_str("0.1").unwrap();
@@ -10720,6 +10816,56 @@ mod tests {
         }
         assert!(drain_events(&mut rig.rx).is_empty());
         assert_eq!(proof().unwrap()["conflicting"], true);
+    }
+
+    #[rstest]
+    #[case(false)]
+    #[case(true)]
+    fn queried_terminal_cannot_bind_a_replaced_submission(#[case] initially_tracked: bool) {
+        let mut rig = dispatcher_rig("QUERY-REPLACED");
+        register_identity(&rig);
+        let order = dispatcher_test_order(&rig, LighterOrderStatus::Canceled);
+        let instrument = LIGHTER_INSTRUMENT_CACHE.get(&rig.instrument_id).unwrap();
+        let mut report = parse_ws_order_status_report(
+            &order,
+            instrument.value(),
+            account_id(),
+            UnixNanos::from(1),
+        )
+        .unwrap()
+        .with_client_order_id(rig.cloid);
+        report.filled_qty = Quantity::from("0.0000");
+        drop(instrument);
+        let identity = initially_tracked.then(|| rig.dispatch.order_identity(&rig.cloid).unwrap());
+
+        // A newer create with the same local ID appears while HTTP is in flight
+        register_identity(&rig);
+        rig.dispatch
+            .mark_order_submission(&rig.cloid, TEST_SUBMISSION_NONCE + 1);
+        let error = publish_queried_order(
+            report,
+            Vec::new(),
+            identity.as_ref(),
+            &rig.dispatch,
+            &rig.emitter,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("submission changed"));
+        assert!(drain_events(&mut rig.rx).is_empty());
+        assert!(rig.dispatch.lookup_venue_order_id(&rig.cloid).is_none());
+        assert!(
+            rig.dispatch
+                .control
+                .terminal_fill_evidence_json(rig.cloid.as_str())
+                .unwrap()
+                .is_none()
+        );
+        assert!(rig.dispatch.create_submission_needs_reconciliation(
+            &rig.cloid,
+            rig.dispatch.client_order_index(&rig.cloid).unwrap(),
+            TEST_SUBMISSION_NONCE + 1,
+            true,
+        ));
     }
 
     #[rstest]
@@ -10756,6 +10902,7 @@ mod tests {
         publish_queried_order(
             report.clone(),
             vec![fill.clone()],
+            Some(&identity),
             &rig.dispatch,
             &rig.emitter,
         )
@@ -10770,7 +10917,14 @@ mod tests {
             || panic!("identical economics cannot conflict"),
         );
         // A complete replay must remain usable; doubled volume would reject this.
-        publish_queried_order(report, vec![fill], &rig.dispatch, &rig.emitter).unwrap();
+        publish_queried_order(
+            report,
+            vec![fill],
+            Some(&identity),
+            &rig.dispatch,
+            &rig.emitter,
+        )
+        .unwrap();
         assert_eq!(drain_events(&mut rig.rx).len(), 1);
     }
 
