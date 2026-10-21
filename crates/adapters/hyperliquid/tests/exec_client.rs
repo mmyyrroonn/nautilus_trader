@@ -7448,6 +7448,9 @@ async fn test_execution_timing_loopback_response_delay(
         TimingStage::SerializeEnd,
         TimingStage::TransportAttempt,
         TimingStage::WriterEnqueued,
+        TimingStage::WriterCommandEnqueue,
+        TimingStage::SocketWriteStarted,
+        TimingStage::SocketWriteCompleted,
         TimingStage::SubmissionFinished,
     ] {
         assert!(stages.contains(&stage), "missing {stage:?}: {stages:?}");
@@ -7471,16 +7474,22 @@ async fn test_execution_timing_loopback_response_delay(
             .all(|id| id == post)
     );
     let stamp = |stage| timing_stamp(&records, stage);
+    assert!(stamp(TimingStage::SocketWriteStarted) >= stamp(TimingStage::WriterCommandEnqueue));
+    assert!(stamp(TimingStage::SocketWriteCompleted) >= stamp(TimingStage::SocketWriteStarted));
     if timeout {
         assert!(stages.contains(&TimingStage::Timeout));
+        assert!(!stages.contains(&TimingStage::SocketReadCompleted));
         assert!(!stages.contains(&TimingStage::ResponseDequeued));
         assert!(!stages.contains(&TimingStage::RejectionEventStart));
         state.pause_release.notify_one();
     } else {
         assert!(stages.contains(&TimingStage::EnvelopeParsed));
         assert!(stages.contains(&TimingStage::ResponseParseEnd));
+        assert!(stamp(TimingStage::ResponseDequeued) >= stamp(TimingStage::SocketReadCompleted));
+
         if !fail {
-            let wait = stamp(TimingStage::ResponseDequeued) - stamp(TimingStage::WriterEnqueued);
+            let wait =
+                stamp(TimingStage::SocketReadCompleted) - stamp(TimingStage::SocketWriteCompleted);
             assert!(wait >= 80_000_000, "mock wait missing: {wait}ns");
             assert!(stamp(TimingStage::SignEnd) <= stamp(TimingStage::WriterEnqueued));
             assert!(stamp(TimingStage::ResponseParseStart) >= stamp(TimingStage::ResponseDequeued));

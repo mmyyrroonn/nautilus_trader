@@ -112,12 +112,13 @@ impl PostRouter {
 
     /// Completes a waiting caller when a response arrives (releases inflight via Waiter drop).
     pub async fn complete(&self, resp: PostResponse) {
-        self.complete_timed(resp, None, None).await;
+        self.complete_timed(resp, None, None, None).await;
     }
 
     pub(crate) async fn complete_timed(
         &self,
         resp: PostResponse,
+        read_completed: Option<Instant>,
         received: Option<Instant>,
         parsed: Option<Instant>,
     ) {
@@ -128,6 +129,9 @@ impl PostRouter {
         };
 
         if let Some(waiter) = waiter {
+            waiter
+                .trace
+                .mark_at(TimingStage::SocketReadCompleted, read_completed);
             waiter
                 .trace
                 .mark_at(TimingStage::ResponseDequeued, received);
