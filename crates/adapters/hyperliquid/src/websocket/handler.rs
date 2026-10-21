@@ -35,7 +35,7 @@ use nautilus_model::{
 use nautilus_network::{
     RECONNECTED,
     retry::{RetryManager, create_websocket_retry_manager},
-    websocket::{SubscriptionState, WebSocketClient},
+    websocket::{SubscriptionState, WebSocketClient, WebSocketReadTiming},
 };
 use rust_decimal::Decimal;
 use tokio_tungstenite::tungstenite::Message;
@@ -222,7 +222,7 @@ pub(super) struct FeedHandler {
     signal: Arc<AtomicBool>,
     client: Option<WebSocketClient>,
     cmd_rx: tokio::sync::mpsc::UnboundedReceiver<HandlerCommand>,
-    raw_rx: tokio::sync::mpsc::UnboundedReceiver<(Message, Option<std::time::Instant>)>,
+    raw_rx: tokio::sync::mpsc::UnboundedReceiver<(Message, Option<WebSocketReadTiming>)>,
     out_tx: tokio::sync::mpsc::UnboundedSender<NautilusWsMessage>,
     account_id: Option<AccountId>,
     subscriptions: SubscriptionState,
@@ -252,7 +252,7 @@ impl FeedHandler {
     pub(super) fn new(
         signal: Arc<AtomicBool>,
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<HandlerCommand>,
-        raw_rx: tokio::sync::mpsc::UnboundedReceiver<(Message, Option<std::time::Instant>)>,
+        raw_rx: tokio::sync::mpsc::UnboundedReceiver<(Message, Option<WebSocketReadTiming>)>,
         out_tx: tokio::sync::mpsc::UnboundedSender<NautilusWsMessage>,
         account_id: Option<AccountId>,
         subscriptions: SubscriptionState,
@@ -1445,7 +1445,7 @@ mod tests {
         instruments::{CryptoPerpetual, Instrument, InstrumentAny},
         types::{Currency, Price, Quantity},
     };
-    use nautilus_network::websocket::SubscriptionState;
+    use nautilus_network::websocket::{SubscriptionState, WebSocketReadTiming};
     use parking_lot::Mutex;
     use rstest::rstest;
     use rust_decimal::Decimal;
@@ -1685,7 +1685,11 @@ mod tests {
                     .to_string()
                     .into(),
                 ),
-                Some(read),
+                Some(WebSocketReadTiming {
+                    wake_observed: None,
+                    poll_started: read,
+                    completed: read,
+                }),
             ))
             .unwrap();
         tokio::time::sleep(Duration::from_millis(60)).await;

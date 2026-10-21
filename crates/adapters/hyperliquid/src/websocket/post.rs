@@ -25,6 +25,7 @@ use ahash::AHashMap;
 use derive_builder::Builder;
 use futures_util::future::BoxFuture;
 use nautilus_live::task::TaskGroup;
+use nautilus_network::websocket::WebSocketReadTiming;
 use tokio::{
     sync::{Mutex, OwnedSemaphorePermit, Semaphore, mpsc, oneshot},
     time,
@@ -118,7 +119,7 @@ impl PostRouter {
     pub(crate) async fn complete_timed(
         &self,
         resp: PostResponse,
-        read_completed: Option<Instant>,
+        read_completed: Option<WebSocketReadTiming>,
         received: Option<Instant>,
         parsed: Option<Instant>,
     ) {
@@ -129,9 +130,17 @@ impl PostRouter {
         };
 
         if let Some(waiter) = waiter {
-            waiter
-                .trace
-                .mark_at(TimingStage::SocketReadCompleted, read_completed);
+            if let Some(read) = read_completed {
+                waiter
+                    .trace
+                    .mark_at(TimingStage::ReadWakeObserved, read.wake_observed);
+                waiter
+                    .trace
+                    .mark_at(TimingStage::ReadPollStarted, Some(read.poll_started));
+                waiter
+                    .trace
+                    .mark_at(TimingStage::SocketReadCompleted, Some(read.completed));
+            }
             waiter
                 .trace
                 .mark_at(TimingStage::ResponseDequeued, received);

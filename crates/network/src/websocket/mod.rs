@@ -77,6 +77,8 @@ pub mod proxy;
 pub mod subscription;
 pub mod types;
 
+mod read_timing;
+
 // Re-export main types for convenience
 pub use auth::AuthTracker;
 pub use client::{
@@ -87,6 +89,6 @@ pub use consts::{AUTHENTICATION_TIMEOUT_SECS, TEXT_PING, TEXT_PONG};
 pub use subscription::{SubscriptionSnapshot, SubscriptionState, split_topic};
 pub use types::{
     EpochMessageHandler, EpochPingHandler, MessageHandler, MessageReader, PingHandler,
-    TimedMessageHandler, WebSocketWriteObserver, WebSocketWriteStage,
-    channel_epoch_message_handler, channel_message_handler,
+    ReadTimingMessageHandler, TimedMessageHandler, WebSocketReadTiming, WebSocketWriteObserver,
+    WebSocketWriteStage, channel_epoch_message_handler, channel_message_handler,
 };

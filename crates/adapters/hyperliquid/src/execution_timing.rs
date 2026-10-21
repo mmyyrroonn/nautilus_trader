@@ -65,6 +65,8 @@ pub enum TimingStage {
     SocketWriteTimedOut,
     WriterBuffered,
     ReplayWriteStarted,
+    ReadWakeObserved,
+    ReadPollStarted,
     SocketReadCompleted,
     TransportError,
     ResponseDequeued,
@@ -142,8 +144,8 @@ impl ExecutionTiming {
         };
         let (timing, rx) = Self::bounded(MAX_QUEUE);
         let session = timing.0.as_ref().expect("collector initialized");
-        let path = std::path::PathBuf::from(directory)
-            .join(format!("hyperliquid-timing-{}.jsonl", session.session_id));
+        let directory = std::path::PathBuf::from(directory);
+        let path = directory.join(format!("hyperliquid-timing-{}.jsonl", session.session_id));
         let file = match OpenOptions::new().write(true).create_new(true).open(path) {
             Ok(file) => file,
             Err(e) => {
@@ -151,6 +153,12 @@ impl ExecutionTiming {
                 return Self::default();
             }
         };
+        // Startup-only calibration; the order path still reads only Instant
+        #[cfg(target_os = "linux")]
+        if let Err(e) = write_clock_anchor(session, &directory) {
+            log::warn!("Cannot write Hyperliquid timing clock anchor: {e}");
+            return Self::default();
+        }
 
         // File I/O and serialization stay on a dedicated thread, never on execution tasks
         if let Err(e) = std::thread::Builder::new()
@@ -196,6 +204,33 @@ impl ExecutionTiming {
         }
         .mark(stage);
     }
+}
+
+#[cfg(target_os = "linux")]
+fn write_clock_anchor(session: &TimingSession, directory: &std::path::Path) -> std::io::Result<()> {
+    let before = Instant::now(); // dst-ok: Diagnostic only; never drives transport state
+    // dst-ok: Diagnostic clock calibration only; never drives adapter state
+    let stamp = rustix::time::clock_gettime(rustix::time::ClockId::Monotonic);
+    let after = Instant::now(); // dst-ok: Diagnostic only; never drives transport state
+    let monotonic_ns = u64::try_from(stamp.tv_sec)
+        .ok()
+        .and_then(|seconds| seconds.checked_mul(1_000_000_000))
+        .and_then(|seconds| seconds.checked_add(u64::try_from(stamp.tv_nsec).ok()?))
+        .ok_or_else(|| std::io::Error::other("Invalid monotonic clock value"))?;
+    let anchor = serde_json::json!({
+        "schema_version": 1, "session_id": session.session_id,
+        "pid": std::process::id(), "clock": "CLOCK_MONOTONIC", "platform": "linux",
+        "boot_id": std::fs::read_to_string("/proc/sys/kernel/random/boot_id")?.trim(),
+        "elapsed_before_ns": before.duration_since(session.origin).as_nanos(),
+        "monotonic_ns": monotonic_ns,
+        "elapsed_after_ns": after.duration_since(session.origin).as_nanos(),
+    });
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(directory.join(format!("hyperliquid-clock-{}.json", session.session_id)))?;
+    serde_json::to_writer(&mut file, &anchor)?;
+    file.write_all(b"\n")
 }
 
 #[derive(Debug)]
@@ -288,6 +323,29 @@ mod tests {
     use rstest::rstest;
 
     use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[rstest]
+    fn clock_anchor_bounds_session_conversion_and_never_overwrites() {
+        let (timing, _) = ExecutionTiming::bounded(1);
+        let session = timing.0.as_ref().unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        write_clock_anchor(session, directory.path()).unwrap();
+        let path = directory
+            .path()
+            .join(format!("hyperliquid-clock-{}.json", session.session_id));
+        let bytes = std::fs::read(&path).unwrap();
+        let anchor: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(anchor["pid"], std::process::id());
+        assert_eq!(anchor["clock"], "CLOCK_MONOTONIC");
+        assert!(
+            anchor["elapsed_before_ns"].as_u64().unwrap()
+                <= anchor["elapsed_after_ns"].as_u64().unwrap()
+        );
+        assert!(anchor["monotonic_ns"].as_u64().unwrap() > 0);
+        assert!(write_clock_anchor(session, directory.path()).is_err());
+        assert_eq!(std::fs::read(path).unwrap(), bytes);
+    }
 
     #[rstest]
     fn overflow_is_bounded_and_reports_gaps_without_blocking() {
