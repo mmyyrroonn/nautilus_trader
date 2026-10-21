@@ -67,6 +67,7 @@ use crate::{
         },
         reports::wallet_report,
     },
+    execution::owner::{BackpackShutdownAccountProof, BackpackShutdownReason},
     http::{
         client::{BackpackClock, BackpackHttpClient, BackpackSystemClock},
         request::{BackpackReadOperation, BackpackReadRequest},
@@ -128,6 +129,7 @@ fn safe_failure_category(error: &anyhow::Error) -> String {
         "conflicting terminal order observations" => "TerminalOrderConflict",
         "conflicting cumulative quote economics" => "CumulativeQuoteConflict",
         "private frames await delivery"
+        | "stale account snapshot"
         | "production order history raced private updates"
         | "completed recovery raced private updates"
         | "stale fill recovery" => "PrivateRevisionRace",
@@ -1303,7 +1305,10 @@ impl BackpackLoopbackControlRuntime {
         }
         Ok(())
     }
-    fn stop_production(&self) -> anyhow::Result<crate::execution::owner::BackpackShutdownReport> {
+    fn stop_production(
+        &self,
+        refresh: Result<(), BackpackShutdownReason>,
+    ) -> anyhow::Result<crate::execution::owner::BackpackShutdownReport> {
         let shared = self.shared()?;
         let control = shared
             .restricted
@@ -1313,51 +1318,64 @@ impl BackpackLoopbackControlRuntime {
         // Hold the private gate until dispatch is stopped. A private event may not
         // invalidate the snapshot between verification and the durable stop report.
         let mut gate = shared.gate.lock();
-        let proof =
-            (|| -> anyhow::Result<crate::execution::owner::BackpackShutdownAccountProof> {
-                anyhow::ensure!(reconciled, "terminal evidence remains unresolved");
-                let epoch = gate
-                    .health
-                    .connection_epoch
-                    .ok_or_else(|| anyhow::anyhow!("private epoch absent"))?;
-                anyhow::ensure!(
-                    gate.current(shared.run, gate.health.generation, epoch),
-                    "private owner is not current"
-                );
-                let (snapshot, revision, observed_at) =
-                    shared.production_snapshot.lock().clone().ok_or_else(|| {
-                        anyhow::anyhow!("current authenticated shutdown snapshot required")
-                    })?;
-                anyhow::ensure!(
-                    gate.revision == revision && gate.pending_frames == 0,
-                    "shutdown snapshot invalidated by private events"
-                );
-                anyhow::ensure!(
-                    snapshot.open_orders.is_empty()
-                        && shared.fills.lock().pending_in_event_order().is_empty(),
-                    "shutdown has open orders or unconsumed fills"
-                );
-                let facts = snapshot.production_facts(
+        let proof = (|| -> Result<BackpackShutdownAccountProof, BackpackShutdownReason> {
+            refresh?;
+            if !reconciled {
+                return Err(BackpackShutdownReason::TerminalEvidenceUnresolved);
+            }
+            let epoch = gate
+                .health
+                .connection_epoch
+                .ok_or(BackpackShutdownReason::PrivateUnavailable)?;
+            if !gate.current(shared.run, gate.health.generation, epoch) {
+                return Err(BackpackShutdownReason::PrivateUnavailable);
+            }
+            let (snapshot, revision, observed_at) = shared
+                .production_snapshot
+                .lock()
+                .clone()
+                .ok_or(BackpackShutdownReason::AccountProofMissing)?;
+            if gate.revision != revision || gate.pending_frames != 0 {
+                return Err(BackpackShutdownReason::PrivateRevisionChanged);
+            }
+            if !snapshot.open_orders.is_empty() {
+                return Err(BackpackShutdownReason::OpenOrders);
+            }
+            if !shared.fills.lock().pending_in_event_order().is_empty() {
+                return Err(BackpackShutdownReason::UnconsumedFills);
+            }
+            let facts = snapshot
+                .production_facts(
                     &shared.config.namespace,
                     gate.health.generation,
                     observed_at,
                     shared.config.scope.symbols(),
-                )?;
-                self.verify_native_positions(&shared, &facts)?;
-                Ok(crate::execution::owner::BackpackShutdownAccountProof {
-                    observed_at_ms: facts.observed_at_ms,
-                    positions_flat: facts
-                        .net_positions
-                        .values()
-                        .all(|q| *q == rust_decimal::Decimal::ZERO),
-                })
-            })();
+                )
+                .map_err(|_| BackpackShutdownReason::AccountInvalid)?;
+            let positions_flat = facts
+                .net_positions
+                .values()
+                .all(|q| *q == rust_decimal::Decimal::ZERO);
+            // A confirmed venue residual remains nonzero even if the native cache is empty
+            if positions_flat {
+                self.verify_native_positions(&shared, &facts)
+                    .map_err(|_| BackpackShutdownReason::NativePositionMismatch)?;
+            }
+            Ok(BackpackShutdownAccountProof {
+                observed_at_ms: facts.observed_at_ms,
+                completed_at_ms: observed_at,
+                generation: gate.health.generation,
+                epoch,
+                revision,
+                positions_flat,
+            })
+        })();
         if proof.is_err() {
             gate.health
                 .evidence_gaps
                 .insert("ShutdownAccountUnverified".into());
         }
-        let report = control.stop_with_account(proof.ok())?;
+        let report = control.stop_with_account(proof)?;
         gate.running = false;
         Ok(report)
     }
@@ -2327,6 +2345,37 @@ impl BackpackExecutionClient {
     ) -> Result<BackpackFillAcknowledgement, BackpackAccountError> {
         self.fill_delivery().acknowledge_with(key, commit)
     }
+    async fn refresh_shutdown_account(&self) -> Result<(), BackpackShutdownReason> {
+        let cancel = self.tasks.cancellation_token();
+        let (generation, epoch) = self
+            .shared
+            .token()
+            .map_err(|_| BackpackShutdownReason::PrivateUnavailable)?;
+        // Retry only concurrent private updates, within one total shutdown deadline
+        for attempt in 0..3 {
+            let revision = self.shared.gate.lock().revision;
+            match self.shared.recover(generation, epoch, &cancel).await {
+                Ok(()) => return Ok(()),
+                Err(e) => {
+                    let gate = self.shared.gate.lock();
+                    if !gate.current(self.shared.run, generation, epoch) {
+                        return Err(BackpackShutdownReason::PrivateUnavailable);
+                    }
+                    if gate.revision == revision
+                        && gate.pending_frames == 0
+                        && safe_failure_category(&e) != "PrivateRevisionRace"
+                    {
+                        return Err(BackpackShutdownReason::RefreshFailed);
+                    }
+                }
+            }
+            if attempt < 2 {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        }
+        Err(BackpackShutdownReason::PrivateRevisionChanged)
+    }
+
     async fn connect_inner(
         &mut self,
         generation: u64,
@@ -2504,8 +2553,15 @@ async fn run_session(
 }
 impl Drop for BackpackExecutionClient {
     fn drop(&mut self) {
-        if let Some(control) = &self.shared.restricted {
-            match control.stop() {
+        if let Some(control) = &self.shared.restricted
+            && self.shared.shutdown.lock().is_none()
+        {
+            let result = if self.shared.production() {
+                control.stop_with_account(Err(BackpackShutdownReason::DisconnectIncomplete))
+            } else {
+                control.stop()
+            };
+            match result {
                 Ok(report) => *self.shared.shutdown.lock() = Some(report),
                 Err(_) => self
                     .shared
@@ -2620,11 +2676,20 @@ impl ExecutionClient for BackpackExecutionClient {
     }
     fn stop(&mut self) -> anyhow::Result<()> {
         let already_stopped = self.shared.shutdown.lock().is_some();
+        if self.shared.production() && !already_stopped && self.shared.gate.lock().running {
+            // Stop is synchronous: fence dispatch now and let disconnect finish bounded reads
+            if let Some(control) = &self.shared.restricted {
+                control.owner.begin_shutdown()?;
+            }
+            self.core.set_stopped();
+            return Ok(());
+        }
         if let Some(control) = &self.shared.restricted
             && !already_stopped
         {
             let report = if self.shared.production() {
-                self.control_runtime.stop_production()?
+                self.control_runtime
+                    .stop_production(Err(BackpackShutdownReason::PrivateUnavailable))?
             } else {
                 control.stop()?
             };
@@ -2705,25 +2770,15 @@ impl ExecutionClient for BackpackExecutionClient {
     }
     async fn disconnect(&mut self) -> anyhow::Result<()> {
         if self.shared.production() && self.shared.shutdown.lock().is_none() {
-            let budget = self.shared.config.policy.shutdown_timeout;
-            let refreshed = if let Ok((generation, epoch)) = self.shared.token() {
-                tokio::time::timeout(
-                    budget,
-                    self.shared
-                        .recover(generation, epoch, &self.tasks.cancellation_token()),
-                )
-                .await
-                .is_ok_and(|result| result.is_ok())
-            } else {
-                false
-            };
-            if !refreshed {
-                // Invalidate the prior revision rather than certifying shutdown with an old read
-                self.shared
-                    .gate
-                    .lock()
-                    .fault("ShutdownAccountRefreshFailed");
+            if let Some(control) = &self.shared.restricted {
+                control.owner.begin_shutdown()?;
             }
+            let budget = self.shared.config.policy.shutdown_timeout;
+            let refreshed = tokio::time::timeout(budget, self.refresh_shutdown_account())
+                .await
+                .unwrap_or(Err(BackpackShutdownReason::RefreshTimeout));
+            let report = self.control_runtime.stop_production(refreshed)?;
+            *self.shared.shutdown.lock() = Some(report);
         }
         self.stop()?;
         let budget = self.shared.config.policy.shutdown_timeout;

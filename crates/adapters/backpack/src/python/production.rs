@@ -215,6 +215,16 @@ impl PyBackpackProductionControl {
                     "unknown":report.unknown, "observed_unreconciled":report.observed_unreconciled,
                     "pending_cancellations":report.pending_cancellations,
                     "positions_unknown_or_nonzero":report.positions_unknown_or_nonzero,
+                    "positions_unknown":report.positions_unknown,
+                    "positions_nonzero":report.positions_nonzero,
+                    "complete_account_proof":report.complete_account_proof,
+                    "account_observed_at_ms":report.account_observed_at_ms,
+                    "account_completed_at_ms":report.account_completed_at_ms,
+                    "evaluated_at_ms":report.evaluated_at_ms,
+                    "private_generation":report.private_generation,
+                    "private_epoch":report.private_epoch,
+                    "private_revision":report.private_revision,
+                    "reason":report.reason,
                 }))
                 .map_err(|_| to_pyruntime_err("shutdown serialization failed"))
             })
