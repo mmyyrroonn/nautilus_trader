@@ -119,6 +119,7 @@ struct PeerState {
     pongs: AtomicUsize,
     capital_requests: AtomicUsize,
     capital_delay_ms: AtomicU64,
+    capital_private_events: AtomicUsize,
     bad_history: AtomicBool,
     public_senders: Mutex<Vec<mpsc::UnboundedSender<PeerCommand>>>,
     guarded: AtomicBool,
@@ -303,6 +304,21 @@ async fn rest(State(state): State<Arc<PeerState>>, request: Request) -> Response
             "/api/v1/account" => fixture("policy"),
             "/api/v1/capital" => {
                 state.capital_requests.fetch_add(1, Ordering::Relaxed);
+                if state
+                    .capital_private_events
+                    .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| n.checked_sub(1))
+                    .is_ok()
+                {
+                    state
+                        .senders
+                        .lock()
+                        .unwrap()
+                        .last()
+                        .unwrap()
+                        .send(PeerCommand::Text(balance_frame("100").to_string()))
+                        .unwrap();
+                    tokio::time::sleep(Duration::from_millis(30)).await;
+                }
                 let delay = state.capital_delay_ms.load(Ordering::Relaxed);
                 tokio::time::sleep(Duration::from_millis(delay)).await;
                 if state.production_flat.load(Ordering::Relaxed) {
@@ -467,18 +483,27 @@ async fn test_native_factory_configuration_claims_and_no_constructor_network() {
     drop(second);
 }
 #[rstest]
-#[case(false)]
-#[case(true)]
+#[case("clean")]
+#[case("timeout")]
+#[case("invalidated")]
+#[case("late_event")]
+#[case("continuous_events")]
+#[case("nonzero")]
+#[case("stale")]
 #[tokio::test]
-async fn production_shutdown_refreshes_before_stopping_and_keeps_timeout_dirty(
-    #[case] timeout: bool,
+async fn production_shutdown_preserves_fresh_fenced_account_evidence(
+    #[case] scenario: &str,
+    #[values(false, true)] stop_first: bool,
 ) {
     use std::collections::BTreeMap;
 
     use nautilus_backpack::{
         config::BackpackDataClientConfig,
         data::BackpackDataClient,
-        execution::{guard::BackpackExecutionAuthority, owner::BackpackMutationPolicy},
+        execution::{
+            guard::BackpackExecutionAuthority,
+            owner::{BackpackMutationPolicy, BackpackShutdownReason},
+        },
         execution_client::production_config::{
             BackpackProductionExecutionClientConfig, BackpackProductionExecutionClientFactory,
         },
@@ -526,7 +551,11 @@ async fn production_shutdown_refreshes_before_stopping_and_keeps_timeout_dirty(
         .unwrap(),
         directory.path().join("identity"),
         BackpackExecutionPolicy {
-            shutdown_timeout: Duration::from_millis(300),
+            shutdown_timeout: if matches!(scenario, "late_event" | "continuous_events") {
+                Duration::from_secs(2)
+            } else {
+                Duration::from_millis(300)
+            },
             recovery_interval: Duration::from_secs(30),
             ..Default::default()
         },
@@ -536,7 +565,7 @@ async fn production_shutdown_refreshes_before_stopping_and_keeps_timeout_dirty(
     .unwrap();
     let authority = BackpackExecutionAuthority {
         expires_at_ms: get_atomic_clock_realtime().get_time_ns().as_u64() / 1_000_000 + 60_000,
-        max_account_age_ms: 500,
+        max_account_age_ms: if scenario == "stale" { 20 } else { 500 },
         max_market_age_ms: 5000,
         max_order_notional: Decimal::ONE,
         max_reserved_notional: Decimal::from(2),
@@ -567,20 +596,92 @@ async fn production_shutdown_refreshes_before_stopping_and_keeps_timeout_dirty(
     until(|| control.account_snapshot_json().is_ok()).await;
     let before = peer.state.capital_requests.load(Ordering::Relaxed);
     tokio::time::sleep(Duration::from_millis(550)).await;
-    if timeout {
-        peer.state.capital_delay_ms.store(1000, Ordering::Relaxed);
+    match scenario {
+        "timeout" => peer.state.capital_delay_ms.store(1000, Ordering::Relaxed),
+        "stale" => peer.state.capital_delay_ms.store(40, Ordering::Relaxed),
+        "nonzero" => peer
+            .state
+            .positions
+            .lock()
+            .unwrap()
+            .push(fixture("position")),
+        "invalidated" => {
+            peer.send(&balance_frame("100"));
+            until(|| control.account_snapshot_json().is_err()).await;
+        }
+        "late_event" => peer
+            .state
+            .capital_private_events
+            .store(1, Ordering::Relaxed),
+        "continuous_events" => peer
+            .state
+            .capital_private_events
+            .store(3, Ordering::Relaxed),
+        _ => {}
     }
+    if stop_first {
+        client.stop().unwrap();
+        client.stop().unwrap();
+        assert!(control.shutdown().is_none());
+        assert!(
+            client.is_connected(),
+            "private transport must survive the synchronous stop"
+        );
+        assert_eq!(control.admission_status_json().unwrap()["ready"], false);
+    }
+    let started = std::time::Instant::now();
     client.disconnect().await.unwrap();
     let report = control.shutdown().unwrap();
+    let expected_reason = match scenario {
+        "timeout" => Some(BackpackShutdownReason::RefreshTimeout),
+        "continuous_events" => Some(BackpackShutdownReason::PrivateRevisionChanged),
+        "nonzero" => Some(BackpackShutdownReason::PositionsNonzero),
+        "stale" => Some(BackpackShutdownReason::AccountStale),
+        _ => None,
+    };
     assert_eq!(
         report.dirty,
-        timeout,
+        expected_reason.is_some(),
         "report={report:?}, health={:?}",
         control.health()
     );
-    assert_eq!(report.positions_unknown_or_nonzero, timeout);
+    assert_eq!(
+        report.reason,
+        expected_reason,
+        "health={:?}",
+        control.health()
+    );
+    assert_eq!(report.positions_unknown_or_nonzero, report.dirty);
+    assert_eq!(report.positions_nonzero, scenario == "nonzero");
+    assert_eq!(
+        report.positions_unknown,
+        matches!(scenario, "timeout" | "continuous_events" | "stale")
+    );
+    assert_eq!(report.complete_account_proof, !report.positions_unknown);
+    if report.complete_account_proof {
+        assert!(report.account_observed_at_ms <= report.account_completed_at_ms);
+        assert!(report.account_completed_at_ms <= report.evaluated_at_ms);
+        assert_eq!(report.private_generation, Some(1));
+        assert_eq!(report.private_epoch, Some(0));
+        assert!(report.private_revision.is_some());
+    }
+    assert!(started.elapsed() < Duration::from_secs(3));
     assert!(peer.state.capital_requests.load(Ordering::Relaxed) > before);
     assert!(control.account_snapshot_json().is_err());
+    assert!(!client.is_connected());
+    client.stop().unwrap();
+    client.disconnect().await.unwrap();
+    assert_eq!(control.shutdown(), Some(report));
+    let persisted: Value = serde_json::from_slice(
+        &std::fs::read(directory.path().join("identity/execution.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        persisted["payload"]["shutdown_report"],
+        serde_json::to_value(report).unwrap()
+    );
+    drop(client);
+    assert_eq!(control.shutdown(), Some(report));
 }
 
 #[tokio::test]

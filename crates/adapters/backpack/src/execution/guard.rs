@@ -189,7 +189,7 @@ impl BackpackExecutionGuard {
     ) -> Result<(), BackpackExecutionError> {
         let _change = self.fence.change();
         let mut state = self.lock()?;
-        if state.stopped || state.poisoned {
+        if state.stopping || state.stopped || state.poisoned {
             return Err(BackpackExecutionErrorKind::Stopped.into());
         }
         if namespace != &state.namespace || generation <= state.generation {

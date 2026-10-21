@@ -209,7 +209,13 @@ except RuntimeError:
     pass
 else:
     raise AssertionError('control retained disposed owner')
-assert json.loads(control.shutdown_report_json())['dirty'] is True
+report = json.loads(control.shutdown_report_json())
+assert report['dirty'] is True
+assert report['positions_unknown'] is True
+assert report['positions_nonzero'] is False
+assert report['complete_account_proof'] is False
+assert report['reason'] == 'disconnect_incomplete'
+assert report['account_observed_at_ms'] is None
 replacement_account = m.BackpackExecutionClientConfig(['BTC_USDC_PERP','ETH_USDC_PERP'],credential,
     'BACKPACK-SIMULATION','peer-account',directory,quota=quota,base_url_http=http,base_url_ws=ws)
 replacement_public = m.BackpackDataClientConfig(['BTC_USDC_PERP','ETH_USDC_PERP'],

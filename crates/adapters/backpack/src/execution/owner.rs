@@ -166,10 +166,13 @@ impl BackpackOrderOwner {
             generation: 0,
             session_active: false,
             stopped: false,
+            stopping: false,
             poisoned: false,
             dirty_sticky: false,
             account: None,
             shutdown_account: None,
+            shutdown_failure: None,
+            final_shutdown: None,
             markets: BTreeMap::new(),
             public: None,
             records: BTreeMap::new(),
@@ -648,11 +651,21 @@ impl BackpackOrderOwner {
         state.stop(now)
     }
 
+    /// Fences mutations while the private reader finishes the final account observation.
+    pub(crate) fn begin_shutdown(&self) -> Result<(), BackpackExecutionError> {
+        let _change = self.guard.fence.change();
+        let mut state = self.guard.lock()?;
+        state.stopping = true;
+        state.session_active = false;
+        state.account = None;
+        Ok(())
+    }
+
     /// Stops with a final account observation fenced by the native private owner.
     /// This observation never grants financial admission or requires public market readiness.
     pub(crate) fn stop_with_account(
         &self,
-        proof: Option<BackpackShutdownAccountProof>,
+        proof: Result<BackpackShutdownAccountProof, BackpackShutdownReason>,
     ) -> Result<BackpackShutdownReport, BackpackExecutionError> {
         let _change = self.guard.fence.change();
         let now = self.clock.timestamp_ms().ok();
@@ -660,7 +673,10 @@ impl BackpackOrderOwner {
         if !state.stopped {
             // A failed final observation must not fall back to an invalidated admission snapshot.
             state.account = None;
-            state.shutdown_account = proof;
+            match proof {
+                Ok(proof) => state.shutdown_account = Some(proof),
+                Err(reason) => state.shutdown_failure = Some(reason),
+            }
         }
         state.stop(now)
     }
@@ -928,7 +944,7 @@ pub struct BackpackLoopbackTerminalEvidence {
 }
 
 /// Durable shutdown evidence, without manufactured cancellation or flatness.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BackpackShutdownReport {
     pub dirty: bool,
     pub unsent: usize,
@@ -936,6 +952,37 @@ pub struct BackpackShutdownReport {
     pub observed_unreconciled: usize,
     pub pending_cancellations: usize,
     pub positions_unknown_or_nonzero: bool,
+    pub positions_unknown: bool,
+    pub positions_nonzero: bool,
+    pub complete_account_proof: bool,
+    pub account_observed_at_ms: Option<u64>,
+    pub account_completed_at_ms: Option<u64>,
+    pub evaluated_at_ms: Option<u64>,
+    pub private_generation: Option<u64>,
+    pub private_epoch: Option<u64>,
+    pub private_revision: Option<u64>,
+    pub reason: Option<BackpackShutdownReason>,
+}
+
+/// Bounded shutdown failure categories; never includes private response text.
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BackpackShutdownReason {
+    AccountProofMissing,
+    RefreshTimeout,
+    RefreshFailed,
+    PrivateUnavailable,
+    PrivateRevisionChanged,
+    TerminalEvidenceUnresolved,
+    OpenOrders,
+    UnconsumedFills,
+    AccountInvalid,
+    NativePositionMismatch,
+    AccountStale,
+    PositionsNonzero,
+    UnresolvedOrders,
+    PriorDirtyStop,
+    DisconnectIncomplete,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1000,6 +1047,10 @@ enum CancelStatus {
 #[derive(Debug)]
 pub(crate) struct BackpackShutdownAccountProof {
     pub(crate) observed_at_ms: u64,
+    pub(crate) completed_at_ms: u64,
+    pub(crate) generation: u64,
+    pub(crate) epoch: u64,
+    pub(crate) revision: u64,
     pub(crate) positions_flat: bool,
 }
 
@@ -1015,10 +1066,13 @@ pub(crate) struct OwnerState {
     pub(crate) generation: u64,
     pub(crate) session_active: bool,
     pub(crate) stopped: bool,
+    pub(crate) stopping: bool,
     pub(crate) poisoned: bool,
     dirty_sticky: bool,
     pub(crate) account: Option<BackpackLoopbackAccountFacts>,
     shutdown_account: Option<BackpackShutdownAccountProof>,
+    shutdown_failure: Option<BackpackShutdownReason>,
+    final_shutdown: Option<Box<BackpackShutdownReport>>,
     pub(crate) markets: BTreeMap<InstrumentId, BackpackLoopbackMarketFacts>,
     pub(crate) public: Option<super::guard::PublicAdmission>,
     pub(crate) records: BTreeMap<ClientOrderId, OrderRecord>,
@@ -1028,11 +1082,19 @@ pub(crate) struct OwnerState {
 }
 impl OwnerState {
     fn stop(&mut self, now: Option<u64>) -> Result<BackpackShutdownReport, BackpackExecutionError> {
+        if let Some(report) = &self.final_shutdown {
+            return Ok(**report);
+        }
         self.stopped = true;
         self.session_active = false;
-        self.dirty_sticky |= self.shutdown_report(now).dirty;
-        self.persist()?;
-        Ok(self.shutdown_report(now))
+        let report = self.shutdown_report(now);
+        self.dirty_sticky |= report.dirty;
+        self.final_shutdown = Some(Box::new(report));
+        if let Err(e) = self.persist() {
+            self.final_shutdown = None;
+            return Err(e);
+        }
+        Ok(report)
     }
     fn check_cancel(&self, id: ClientOrderId, now: u64) -> Result<(), BackpackExecutionError> {
         self.check_session(now)?;
@@ -1050,22 +1112,26 @@ impl OwnerState {
         Ok(())
     }
     fn shutdown_report(&self, now_ms: Option<u64>) -> BackpackShutdownReport {
-        let positions_unknown_or_nonzero = if let Some(proof) = &self.shutdown_account {
-            !proof.positions_flat
-                || now_ms.is_none_or(|now| {
-                    now.checked_sub(proof.observed_at_ms)
-                        .is_none_or(|age| age > self.authority.max_account_age_ms)
-                })
+        let (observed_at, flat) = if let Some(proof) = &self.shutdown_account {
+            (Some(proof.observed_at_ms), proof.positions_flat)
         } else {
-            self.account.as_ref().is_none_or(|account| {
-                account.generation != self.generation
-                    || now_ms.is_none_or(|now| {
-                        now.checked_sub(account.observed_at_ms)
-                            .is_none_or(|age| age > self.authority.max_account_age_ms)
-                    })
-                    || account.net_positions.values().any(|q| *q != Decimal::ZERO)
-            })
+            self.account
+                .as_ref()
+                .filter(|a| a.generation == self.generation)
+                .map_or((None, false), |a| {
+                    (
+                        Some(a.observed_at_ms),
+                        a.net_positions.values().all(|q| *q == Decimal::ZERO),
+                    )
+                })
         };
+        let positions_unknown = observed_at.is_none_or(|observed| {
+            now_ms
+                .and_then(|now| now.checked_sub(observed))
+                .is_none_or(|age| age > self.authority.max_account_age_ms)
+        });
+        let positions_nonzero = !positions_unknown && !flat;
+        let positions_unknown_or_nonzero = positions_unknown || positions_nonzero;
         let unsent = self
             .records
             .values()
@@ -1092,6 +1158,23 @@ impl OwnerState {
                 )
             })
             .count();
+        let reason = self.shutdown_failure.or_else(|| {
+            if positions_unknown {
+                Some(if observed_at.is_some() {
+                    BackpackShutdownReason::AccountStale
+                } else {
+                    BackpackShutdownReason::AccountProofMissing
+                })
+            } else if positions_nonzero {
+                Some(BackpackShutdownReason::PositionsNonzero)
+            } else if unsent + unknown + observed_unreconciled + pending_cancellations > 0 {
+                Some(BackpackShutdownReason::UnresolvedOrders)
+            } else if self.dirty_sticky {
+                Some(BackpackShutdownReason::PriorDirtyStop)
+            } else {
+                None
+            }
+        });
         BackpackShutdownReport {
             dirty: self.dirty_sticky
                 || unsent + unknown + observed_unreconciled + pending_cancellations > 0
@@ -1101,6 +1184,16 @@ impl OwnerState {
             observed_unreconciled,
             pending_cancellations,
             positions_unknown_or_nonzero,
+            positions_unknown,
+            positions_nonzero,
+            complete_account_proof: !positions_unknown && self.shutdown_account.is_some(),
+            account_observed_at_ms: observed_at,
+            account_completed_at_ms: self.shutdown_account.as_ref().map(|p| p.completed_at_ms),
+            evaluated_at_ms: now_ms,
+            private_generation: self.shutdown_account.as_ref().map(|p| p.generation),
+            private_epoch: self.shutdown_account.as_ref().map(|p| p.epoch),
+            private_revision: self.shutdown_account.as_ref().map(|p| p.revision),
+            reason,
         }
     }
     fn restore(&mut self) -> Result<(), BackpackExecutionError> {
@@ -1236,6 +1329,7 @@ impl OwnerState {
             generation: self.generation,
             dirty_sticky: self.dirty_sticky,
             recovery_start_ms: self.recovery_start_ms,
+            shutdown_report: self.final_shutdown.as_deref().copied(),
         };
         let canonical =
             serde_json::to_vec(&payload).map_err(|_| BackpackExecutionErrorKind::Storage)?;
@@ -1293,6 +1387,8 @@ struct CheckpointPayload {
     dirty_sticky: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     recovery_start_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    shutdown_report: Option<BackpackShutdownReport>,
 }
 fn reject_symlink(path: &Path) -> Result<(), BackpackExecutionError> {
     match fs::symlink_metadata(path) {
@@ -1814,22 +1910,79 @@ mod checkpoint_tests {
             state.authority.expires_at_ms = 999;
             assert!(!state.session_active && state.public.is_none());
         }
-        let proof = stamp.map(|observed_at_ms| BackpackShutdownAccountProof {
-            observed_at_ms,
-            positions_flat: flat,
-        });
+        let proof = stamp
+            .map(|observed_at_ms| BackpackShutdownAccountProof {
+                observed_at_ms,
+                completed_at_ms: observed_at_ms,
+                generation: 1,
+                epoch: 0,
+                revision: 1,
+                positions_flat: flat,
+            })
+            .ok_or(BackpackShutdownReason::AccountProofMissing);
         let report = owner.stop_with_account(proof).unwrap();
         assert_eq!(report.dirty, dirty);
         assert_eq!(report.positions_unknown_or_nonzero, dirty);
+        let fresh = stamp == Some(1000);
+        assert_eq!(report.positions_unknown, !fresh);
+        assert_eq!(report.positions_nonzero, fresh && !flat);
+        assert_eq!(report.complete_account_proof, fresh);
         assert!(guard.lock().unwrap().check_session(1000).is_err());
         let repeated = owner
-            .stop_with_account(Some(BackpackShutdownAccountProof {
+            .stop_with_account(Ok(BackpackShutdownAccountProof {
                 observed_at_ms: 1000,
+                completed_at_ms: 1000,
+                generation: 1,
+                epoch: 0,
+                revision: 2,
                 positions_flat: true,
             }))
             .unwrap();
         assert_eq!(repeated.dirty, dirty);
         assert_eq!(repeated.positions_unknown_or_nonzero, dirty);
+    }
+
+    #[rstest]
+    fn shutdown_fences_session_reentry_and_freezes_durable_evidence() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut owner = recovery_anchor_owner(directory.path());
+        let clock = Arc::new(Clock(std::sync::atomic::AtomicU64::new(1000)));
+        owner.clock = clock.clone();
+        let guard = owner.guard();
+        let namespace = guard.lock().unwrap().namespace.clone();
+        guard.begin_session(&namespace, 1).unwrap();
+        assert!(guard.lock().unwrap().check_session(1000).is_ok());
+
+        owner.begin_shutdown().unwrap();
+        assert!(guard.lock().unwrap().check_session(1000).is_err());
+        assert!(guard.begin_session(&namespace, 2).is_err());
+        assert!(!guard.lock().unwrap().stopped);
+        let report = owner
+            .stop_with_account(Ok(BackpackShutdownAccountProof {
+                observed_at_ms: 1000,
+                completed_at_ms: 1000,
+                generation: 1,
+                epoch: 0,
+                revision: 7,
+                positions_flat: true,
+            }))
+            .unwrap();
+        assert!(!report.dirty);
+        clock.0.store(100_000, Ordering::Release);
+        assert_eq!(owner.stop().unwrap(), report);
+        let checkpoint: serde_json::Value =
+            serde_json::from_slice(&fs::read(directory.path().join(CHECKPOINT_NAME)).unwrap())
+                .unwrap();
+        assert_eq!(
+            checkpoint["payload"]["shutdown_report"],
+            serde_json::to_value(report).unwrap()
+        );
+        drop(guard);
+        drop(owner);
+        let restored = recovery_anchor_owner(directory.path());
+        assert!(restored.guard().lock().unwrap().account.is_none());
+        assert!(restored.guard().lock().unwrap().final_shutdown.is_none());
+        assert!(restored.stop().unwrap().positions_unknown);
     }
 
     #[rstest]
