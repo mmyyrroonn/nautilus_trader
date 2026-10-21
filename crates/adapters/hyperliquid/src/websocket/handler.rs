@@ -222,7 +222,7 @@ pub(super) struct FeedHandler {
     signal: Arc<AtomicBool>,
     client: Option<WebSocketClient>,
     cmd_rx: tokio::sync::mpsc::UnboundedReceiver<HandlerCommand>,
-    raw_rx: tokio::sync::mpsc::UnboundedReceiver<Message>,
+    raw_rx: tokio::sync::mpsc::UnboundedReceiver<(Message, Option<std::time::Instant>)>,
     out_tx: tokio::sync::mpsc::UnboundedSender<NautilusWsMessage>,
     account_id: Option<AccountId>,
     subscriptions: SubscriptionState,
@@ -252,7 +252,7 @@ impl FeedHandler {
     pub(super) fn new(
         signal: Arc<AtomicBool>,
         cmd_rx: tokio::sync::mpsc::UnboundedReceiver<HandlerCommand>,
-        raw_rx: tokio::sync::mpsc::UnboundedReceiver<Message>,
+        raw_rx: tokio::sync::mpsc::UnboundedReceiver<(Message, Option<std::time::Instant>)>,
         out_tx: tokio::sync::mpsc::UnboundedSender<NautilusWsMessage>,
         account_id: Option<AccountId>,
         subscriptions: SubscriptionState,
@@ -308,15 +308,20 @@ impl FeedHandler {
         payload: String,
         trace: &TimingTrace,
     ) -> anyhow::Result<()> {
+        let observer = trace.write_observer();
+
         if let Some(client) = &self.client {
             self.retry_manager
                 .execute_with_retry(
                     "websocket_send",
                     || {
                         let payload = payload.clone();
+                        let observer = observer.clone();
                         async move {
                             trace.mark(TimingStage::TransportAttempt);
-                            let result = client.send_text(payload, None).await;
+                            let result = client
+                                .send_text_with_observer(payload, None, observer)
+                                .await;
                             trace.mark(if result.is_ok() {
                                 TimingStage::WriterEnqueued
                             } else {
@@ -474,7 +479,7 @@ impl FeedHandler {
                     }
                 }
 
-                Some(raw_msg) = self.raw_rx.recv() => {
+                Some((raw_msg, read_completed)) = self.raw_rx.recv() => {
                     match raw_msg {
                         Message::Text(text) => {
                             if text == RECONNECTED {
@@ -488,7 +493,7 @@ impl FeedHandler {
                             match serde_json::from_str::<HyperliquidWsMessage>(&text) {
                                 Ok(msg) => {
                                     if let HyperliquidWsMessage::Post { data } = msg {
-                                        self.post_router.complete_timed(data, received, self.post_router.receive_instant()).await;
+                                        self.post_router.complete_timed(data, read_completed, received, self.post_router.receive_instant()).await;
                                         continue;
                                     }
 
@@ -1458,7 +1463,7 @@ mod tests {
             },
             post::PostRouter,
         },
-        AllMidsDataTypeCache, AssetContextCaches, FeedHandler, HandlerCommand,
+        AllMidsDataTypeCache, AssetContextCaches, FeedHandler, HandlerCommand, Message,
     };
     use crate::{
         common::consts::HYPERLIQUID_VENUE,
@@ -1648,6 +1653,63 @@ mod tests {
         WsAllDexsAssetCtxsData {
             ctxs: vec![default_entry, xyz_entry],
         }
+    }
+
+    #[tokio::test]
+    async fn post_read_timestamp_survives_handler_backlog() {
+        let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (raw_tx, raw_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (out_tx, _out_rx) = tokio::sync::mpsc::unbounded_channel();
+        let post_router = PostRouter::new();
+        let (timing, records) = ExecutionTiming::bounded(32);
+        let trace = timing.trace(None).with_post_id(42);
+        let rx = post_router.register_timed(42, trace.clone()).await.unwrap();
+        let mut handler = FeedHandler::new(
+            Arc::new(AtomicBool::new(false)),
+            cmd_rx,
+            raw_rx,
+            out_tx,
+            None,
+            SubscriptionState::new(':'),
+            Arc::new(Mutex::new(FifoCacheMap::new())),
+            post_router,
+        );
+        let read = trace.now().unwrap();
+        raw_tx
+            .send((
+                Message::Text(
+                    json!({
+                        "channel": "post",
+                        "data": {"id": 42, "response": {"type": "info", "payload": {}}}
+                    })
+                    .to_string()
+                    .into(),
+                ),
+                Some(read),
+            ))
+            .unwrap();
+        tokio::time::sleep(Duration::from_millis(60)).await;
+        let task = tokio::spawn(async move { handler.next().await });
+        tokio::time::timeout(Duration::from_secs(2), rx)
+            .await
+            .unwrap()
+            .unwrap();
+        drop(cmd_tx);
+        drop(raw_tx);
+        assert!(task.await.unwrap().is_none());
+        let records: Vec<_> = records.try_iter().collect();
+        let stamp = |stage| {
+            records
+                .iter()
+                .find(|r| r.stage == stage)
+                .unwrap()
+                .elapsed_ns
+        };
+        assert!(
+            stamp(TimingStage::ResponseDequeued) - stamp(TimingStage::SocketReadCompleted)
+                >= 60_000_000
+        );
+        assert!(records.iter().all(|r| r.post_id == Some(42)));
     }
 
     #[tokio::test]

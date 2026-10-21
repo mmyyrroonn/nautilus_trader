@@ -28,6 +28,7 @@ use std::{
 
 use nautilus_core::UUID4;
 use nautilus_model::identifiers::ClientOrderId;
+use nautilus_network::websocket::{WebSocketWriteObserver, WebSocketWriteStage};
 use serde::Serialize;
 
 const MAX_QUEUE: usize = 4096;
@@ -57,6 +58,14 @@ pub enum TimingStage {
     SerializeEnd,
     TransportAttempt,
     WriterEnqueued,
+    WriterCommandEnqueue,
+    SocketWriteStarted,
+    SocketWriteCompleted,
+    SocketWriteFailed,
+    SocketWriteTimedOut,
+    WriterBuffered,
+    ReplayWriteStarted,
+    SocketReadCompleted,
     TransportError,
     ResponseDequeued,
     EnvelopeParsed,
@@ -96,6 +105,10 @@ pub struct TimingRecord {
 pub struct ExecutionTiming(Option<Arc<TimingSession>>);
 
 impl ExecutionTiming {
+    pub(crate) fn is_enabled(&self) -> bool {
+        self.0.is_some()
+    }
+
     /// Creates a collector and receiver, clamping capacity to 1..=4096 records.
     ///
     /// Each session attempts at most 100,000 records. Drain outside execution tasks.
@@ -204,6 +217,27 @@ pub(crate) struct TimingTrace {
 }
 
 impl TimingTrace {
+    pub(crate) fn write_observer(&self) -> Option<WebSocketWriteObserver> {
+        if !self.is_enabled() {
+            return None;
+        }
+        let trace = self.clone();
+        Some(WebSocketWriteObserver::new(move |stage, instant| {
+            trace.mark_at(
+                match stage {
+                    WebSocketWriteStage::Enqueue => TimingStage::WriterCommandEnqueue,
+                    WebSocketWriteStage::Started => TimingStage::SocketWriteStarted,
+                    WebSocketWriteStage::Completed => TimingStage::SocketWriteCompleted,
+                    WebSocketWriteStage::Failed => TimingStage::SocketWriteFailed,
+                    WebSocketWriteStage::TimedOut => TimingStage::SocketWriteTimedOut,
+                    WebSocketWriteStage::Buffered => TimingStage::WriterBuffered,
+                    WebSocketWriteStage::ReplayStarted => TimingStage::ReplayWriteStarted,
+                },
+                Some(instant),
+            );
+        }))
+    }
+
     pub(crate) fn with_post_id(mut self, post_id: u64) -> Self {
         self.post_id = Some(post_id);
         self
@@ -312,6 +346,7 @@ mod tests {
         let trace = timing.trace(None);
         assert!(!trace.is_enabled());
         assert!(trace.now().is_none());
+        assert!(trace.write_observer().is_none());
         trace.mark(TimingStage::SignStart);
         assert_eq!(timing.dropped(), 0);
     }

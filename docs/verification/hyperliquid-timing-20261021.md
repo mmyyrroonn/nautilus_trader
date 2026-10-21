@@ -86,10 +86,70 @@ it adds no response cloning, unbounded diagnostic map, or file I/O on the hot pa
 Raw logs, the JSON performance result, benchmark executables, and the synthetic
 JSONL capture are retained under `E:\persarb\tmp\issue135-*`.
 
+## Transport follow-up
+
+The follow-up adds actual sink send/flush and complete-frame read observations.
+An 80 ms mock-server hold is now measured between write completion and frame read;
+a separate 60 ms raw-channel backlog is measured between read and handler dequeue.
+Blocked-flush tests prove completion is absent until flush finishes, including the
+failure path. The existing stalled-write/replay test checks timeout, buffering,
+replay, and completion with one retained observer. Both Tungstenite and Sockudo
+loopback tests verify read timestamps and an untimed reconnect sentinel. A panicking
+write observer does not change the successful send result.
+
+Final default-feature Windows results: 1,053 Hyperliquid tests passed (14 ignored)
+and 627 network tests passed. Strict package Clippy passed for both packages.
+An environment-enabled rejection loopback produced 32 JSONL records, passed the
+seven-field allowlist, and exposed writer queue, write/flush, read-to-handler,
+and rejection intervals through the local analyzer. It is an offline sample.
+
+The follow-up full pre-commit run used an identical candidate copy on the local
+Linux filesystem after interrupting a slow Windows-mount scan. Linux cargo fmt,
+Clippy, cargo doc, private-key scanning, and gitleaks passed. Repository-wide
+convention checks additionally exposed existing artifact/source issues; the new
+diagnostic-only clock reads were annotated with the supported `dst-ok` exception
+because they never drive simulation or transport state, then the DST hook was
+rerun. Changed-file convention checks passed. The remaining full-gate failures
+are outside this patch; generated formatting changes are excluded.
+
+Five alternating runs compare the pre-transport implementation with the follow-up,
+using the same Windows debug fixture (50 warmups, 500 requests). Medians of runs:
+
+| Build/capture       | p50      | p95      | p99      | Mean       | Sequential requests/s |
+| ------------------- | -------: | -------: | -------: | ---------: | --------------------: |
+| Before, disabled    | 291.9 us | 369.4 us | 459.3 us | 298.935 us | 3,345.2               |
+| Before, enabled     | 297.4 us | 383.2 us | 460.6 us | 306.264 us | 3,265.1               |
+| Follow-up, disabled | 291.1 us | 366.9 us | 449.6 us | 297.432 us | 3,362.1               |
+| Follow-up, enabled  | 298.8 us | 382.0 us | 473.9 us | 305.502 us | 3,273.3               |
+
+No disabled-path latency regression is visible in this sample. Enabled versus
+disabled adds 8.07 us to the observed mean (about 2.7%); enabled p99 is 24.3 us
+higher. Relative to the previous enabled build, mean is similar and p99 is 13.3 us
+higher. These small shared-host samples include scheduling noise and do not prove
+production tail latency or CPU utilization. No performance optimization is claimed.
+Raw runs are in `issue135-transport-performance.json` under the temporary evidence
+directory. Disk-export contention and full-universe market-data throughput remain
+unmeasured.
+
+Rust layout inspection on x86-64 Windows reports a 40-byte neutral message and a
+56-byte message-plus-optional-observer tuple; the optional read timestamp is 16
+bytes. This is fixed metadata on existing queues. Enabled sends allocate one
+shared observer capturing the existing trace. Disabled sends allocate no observer
+and read no diagnostic clock. The 88-byte record and 4,096-record collector bound
+are unchanged; the extra stages consume the session record budget sooner.
+
 ## Acceptance boundary
 
 No wheel was deployed and no live order was sent. The historical four IOC no-match
-samples cannot be divided into these new phases retrospectively. The live-sample
-acceptance item in issue 135 remains pending a separately authorized run with
-explicit execution parameters. The diagnostic implementation alone does not
-justify changing transport, signing, trading limits, or recovery behavior.
+samples cannot be divided into these new phases retrospectively. The user has
+authorized observation of the existing five-venue strategy, scanning its configured
+universe with $100 per leg, $500 gross limit, and at most two pairs. No new symbol
+selection or manual test-order program is required. Deployment and live sampling
+are blocked by confirmed server maintenance, not missing trading parameters.
+
+The application validation baseline is the previous production commit
+`bb443a0176dbde73e2ed881bdc8fc320521c3796`. The transport follow-up starts from
+merged native `7d9228a49879794519166e932da66b5a8c793013`, whose original baseline
+is `c8200a2915f35eb7eee579a5a9413cafbd93a59c`. It adds observations to the same
+execution path; strategy logic, venue coverage, limits, and reconciliation remain
+outside the patch.

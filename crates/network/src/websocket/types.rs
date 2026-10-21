@@ -24,7 +24,7 @@
 //! compatibility boundary. `WriterCommand` remains internal so all sink access, connection swaps,
 //! and reconnect buffering stay serialized in the writer task.
 
-use std::{fmt::Debug, sync::Arc};
+use std::{fmt::Debug, sync::Arc, time::Instant};
 
 use futures_util::stream::{SplitSink, SplitStream};
 
@@ -58,6 +58,62 @@ pub type MessageHandler = Arc<dyn Fn(Message) + Send + Sync>;
 /// The initial connection has epoch `0`. Each replacement connection increments the epoch, and
 /// every application or reconnect-control message carries the epoch of its originating reader.
 pub type EpochMessageHandler = Arc<dyn Fn(u64, Message) + Send + Sync>;
+
+/// Handler receiving the local instant a complete WebSocket message was read.
+///
+/// The timestamp precedes application dispatch, not TCP/TLS or WebSocket decoding.
+/// Synthetic reconnect notifications carry `None`. Callbacks must not block.
+pub type TimedMessageHandler = Arc<dyn Fn(Message, Option<Instant>) + Send + Sync>;
+
+/// Observable stages of an ordinary WebSocket write, including reconnect replay.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WebSocketWriteStage {
+    /// Immediately before sending the command into the writer channel.
+    Enqueue,
+    /// Immediately before the transport sink's send-and-flush operation.
+    Started,
+    /// The transport sink completed its flush; this is not a peer acknowledgement.
+    Completed,
+    Failed,
+    TimedOut,
+    Buffered,
+    ReplayStarted,
+}
+
+/// Optional per-message write observations, retained with the existing replay buffer.
+///
+/// The callback receives no payload and must remain nonblocking. Panics are isolated
+/// from transport execution. No observer or diagnostic clock reads are created by
+/// the ordinary send API.
+#[derive(Clone)]
+pub struct WebSocketWriteObserver(Arc<dyn Fn(WebSocketWriteStage, Instant) + Send + Sync>);
+
+impl WebSocketWriteObserver {
+    /// Creates a write observer whose callback must not block or perform I/O.
+    #[must_use]
+    pub fn new<F>(callback: F) -> Self
+    where
+        F: Fn(WebSocketWriteStage, Instant) + Send + Sync + 'static,
+    {
+        Self(Arc::new(callback))
+    }
+
+    pub(crate) fn record(&self, stage: WebSocketWriteStage) {
+        let instant = Instant::now(); // dst-ok: Diagnostic only; never drives transport state
+        if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (self.0)(stage, instant)))
+            .is_err()
+        {
+            log::error!("WebSocket write observer panicked while handling {stage:?}");
+        }
+    }
+}
+
+impl Debug for WebSocketWriteObserver {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct(stringify!(WebSocketWriteObserver))
+            .finish_non_exhaustive()
+    }
+}
 
 /// Function type for handling WebSocket ping messages.
 pub type PingHandler = Arc<dyn Fn(Vec<u8>) + Send + Sync>;
@@ -117,7 +173,7 @@ pub(crate) enum WriterCommand {
     /// Replaces the writer after reconnection.
     Update(MessageWriter, tokio::sync::oneshot::Sender<u64>),
     /// Sends a message to the server.
-    Send(Message),
+    Send(Message, Option<WebSocketWriteObserver>),
     /// Sends a connection keepalive. Never replayed on a replacement connection.
     Heartbeat(Message),
     /// Sends once if the active connection still owns the message.
@@ -137,7 +193,7 @@ impl Debug for WriterCommand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Update(_, _) => f.debug_tuple("Update").field(&"<writer>").finish(),
-            Self::Send(msg) => f.debug_tuple("Send").field(msg).finish(),
+            Self::Send(msg, _) => f.debug_tuple("Send").field(msg).finish(),
             Self::Heartbeat(msg) => f.debug_tuple("Heartbeat").field(msg).finish(),
             Self::SendOnConnection { message, .. } => {
                 f.debug_tuple("SendOnConnection").field(message).finish()
@@ -211,7 +267,7 @@ mod tests {
 
     #[rstest]
     fn writer_command_send_debug_includes_message() {
-        let cmd = WriterCommand::Send(Message::text("hi"));
+        let cmd = WriterCommand::Send(Message::text("hi"), None);
         let formatted = format!("{cmd:?}");
         assert!(
             formatted.starts_with("Send("),

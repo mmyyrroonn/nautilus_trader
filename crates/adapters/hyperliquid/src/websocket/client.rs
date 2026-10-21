@@ -46,9 +46,9 @@ use nautilus_model::{
 use nautilus_network::{
     SocketStateSink,
     mode::ConnectionMode,
+    transport::Message as TransportMessage,
     websocket::{
         AuthTracker, SubscriptionState, TransportBackend, WebSocketClient, WebSocketConfig,
-        channel_message_handler,
     },
 };
 use parking_lot::Mutex;
@@ -290,7 +290,17 @@ impl HyperliquidWebSocketClient {
         // entries must not gate the venue subscribe for re-subscriptions
         self.book_streams.clear();
 
-        let (message_handler, raw_rx) = channel_message_handler();
+        let (raw_tx, raw_rx) = tokio::sync::mpsc::unbounded_channel();
+        let receive = move |msg: TransportMessage, read_completed| {
+            match tokio_tungstenite::tungstenite::Message::try_from(msg) {
+                Ok(message) => {
+                    if raw_tx.send((message, read_completed)).is_err() {
+                        log::debug!("Hyperliquid raw message receiver closed");
+                    }
+                }
+                Err(e) => log::debug!("Dropping message that failed legacy conversion: {e}"),
+            }
+        };
         let cfg = WebSocketConfig {
             url: self.url.clone(),
             headers: vec![],
@@ -307,17 +317,26 @@ impl HyperliquidWebSocketClient {
             backend: self.transport_backend,
             proxy_url: self.proxy_url.clone(),
         };
-        let client = WebSocketClient::builder()
-            .config(cfg)
-            .message_handler(message_handler)
-            .maybe_state_sink(
-                self.socket_control
-                    .as_ref()
-                    .map(SocketControl::sink)
-                    .or_else(|| self.socket_sink.clone()),
-            )
-            .connect()
-            .await?;
+        let state_sink = self
+            .socket_control
+            .as_ref()
+            .map(SocketControl::sink)
+            .or_else(|| self.socket_sink.clone());
+        let client = if self.timing.is_enabled() {
+            WebSocketClient::timed_builder()
+                .config(cfg)
+                .timed_handler(Arc::new(receive))
+                .maybe_state_sink(state_sink)
+                .connect()
+                .await?
+        } else {
+            WebSocketClient::builder()
+                .config(cfg)
+                .message_handler(Arc::new(move |msg| receive(msg, None)))
+                .maybe_state_sink(state_sink)
+                .connect()
+                .await?
+        };
 
         if let Some(control) = &self.socket_control {
             let handle = client.reconnect_handle();
