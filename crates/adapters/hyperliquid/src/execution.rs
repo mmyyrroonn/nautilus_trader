@@ -172,6 +172,7 @@ use crate::{
         },
     },
     config::HyperliquidExecutionClientConfig,
+    execution_timing::{ExecutionTiming, TimingStage},
     http::{
         client::HyperliquidHttpClient,
         models::{
@@ -213,6 +214,11 @@ pub struct HyperliquidExecutionClient {
 }
 
 impl HyperliquidExecutionClient {
+    /// Sets an optional bounded execution timing collector before connecting.
+    pub fn set_execution_timing(&mut self, timing: ExecutionTiming) {
+        self.ws_client.set_execution_timing(timing);
+    }
+
     /// Returns a reference to the configuration.
     pub fn config(&self) -> &HyperliquidExecutionClientConfig {
         &self.config
@@ -827,6 +833,8 @@ impl ExecutionClient for HyperliquidExecutionClient {
     }
 
     fn submit_order(&self, cmd: SubmitOrder) -> anyhow::Result<()> {
+        let trace = self.ws_client.timing_trace(Some(cmd.client_order_id));
+        trace.mark(TimingStage::NativeReceived);
         let order = self.core.cache().try_order_owned(&cmd.client_order_id)?;
 
         if order.is_closed() {
@@ -927,12 +935,16 @@ impl ExecutionClient for HyperliquidExecutionClient {
         let nested_spawner = task_spawner.clone();
         let builder = self.http_client.builder_attribution();
         let denied_order = order.clone();
+        trace.mark(TimingStage::TaskQueued);
 
         if let Err(e) = task_spawner.spawn(async move {
+            trace.mark(TimingStage::TaskStarted);
             http_client.cache_client_order_id_cloid(order.client_order_id(), cloid);
             ws_client.cache_cloid_mapping(cloid_hex, order.client_order_id());
             register_order_context_into(&dispatch_state, &order);
+            trace.mark(TimingStage::SubmittedEventStart);
             emitter.emit_order_submitted(&order);
+            trace.mark(TimingStage::SubmittedEventEnd);
 
             let action = HyperliquidExchangeAction::Order {
                 orders: vec![hyperliquid_order],
@@ -947,7 +959,10 @@ impl ExecutionClient for HyperliquidExecutionClient {
                 nested_spawner,
             );
 
-            match ws_client.post_action_exec(&http_client, &action).await {
+            match ws_client
+                .post_action_exec_traced(&http_client, &action, &trace)
+                .await
+            {
                 Ok(response) => {
                     if response.is_ok() {
                         if let Some(inner_error) = extract_inner_error(&response) {
@@ -972,6 +987,7 @@ impl ExecutionClient for HyperliquidExecutionClient {
                 }
             }
             rejection_route.resolve_without_post_rejection(&order, clock.get_time_ns(), &cloid_hex);
+            trace.mark(TimingStage::SubmissionFinished);
         }) {
             log::warn!("Skipping Hyperliquid submit_order after shutdown began: {e}");
             self.emitter
@@ -3185,8 +3201,12 @@ impl PostRejectionRoute {
         let due_post_only = order.is_post_only()
             && (normalized_reason.contains(&HYPERLIQUID_POST_ONLY_WOULD_MATCH.to_lowercase())
                 || normalized_reason.contains("post-only order would have immediately matched"));
+        self.ws_client
+            .record_order_timing(Some(client_order_id), TimingStage::RejectionEventStart);
         self.emitter
             .emit_order_rejected(order, reason, ts_event, due_post_only);
+        self.ws_client
+            .record_order_timing(Some(client_order_id), TimingStage::RejectionEventEnd);
         let active_sibling = self
             .staged_brackets
             .lock()
@@ -3230,7 +3250,11 @@ impl PostRejectionRoute {
             return;
         };
         let is_terminal = !report.order_status.is_open();
+        self.ws_client
+            .record_order_timing(Some(client_order_id), TimingStage::OrderDispatchStart);
         let outcome = dispatch_order_event(&report, &self.dispatch_state, &self.emitter, ts_init);
+        self.ws_client
+            .record_order_timing(Some(client_order_id), TimingStage::OrderDispatchEnd);
 
         if outcome == DispatchOutcome::External {
             self.emitter.send_order_status_report(report);
@@ -3265,7 +3289,9 @@ fn handle_execution_report(
             let is_open = order_report.order_status.is_open();
             let client_order_id = order_report.client_order_id;
 
+            ws_client.record_order_timing(client_order_id, TimingStage::OrderDispatchStart);
             let outcome = dispatch_order_event(&order_report, dispatch_state, emitter, ts_init);
+            ws_client.record_order_timing(client_order_id, TimingStage::OrderDispatchEnd);
 
             if outcome == DispatchOutcome::External {
                 emitter.send_order_status_report(order_report);
@@ -3307,7 +3333,9 @@ fn handle_execution_report(
         ExecutionReport::Fill(fill_report) => {
             let client_order_id = fill_report.client_order_id;
 
+            ws_client.record_order_timing(client_order_id, TimingStage::FillDispatchStart);
             let outcome = dispatch_order_fill(&fill_report, dispatch_state, emitter, ts_init);
+            ws_client.record_order_timing(client_order_id, TimingStage::FillDispatchEnd);
 
             if outcome == DispatchOutcome::External {
                 emitter.send_fill_report(fill_report);
@@ -3453,6 +3481,7 @@ mod tests {
     };
     use crate::{
         common::enums::HyperliquidEnvironment,
+        execution_timing::{ExecutionTiming, TimingStage},
         http::models::{
             Cloid, HyperliquidExchangeGrouping, HyperliquidExchangeLimitParams,
             HyperliquidExchangeOrderKind, HyperliquidExchangePlaceOrderRequest,
@@ -4281,6 +4310,59 @@ mod tests {
             "Post only order would have immediately matched, bbo was 56729.0.",
         );
         assert!(rejected.due_post_only);
+    }
+
+    #[rstest]
+    fn test_timing_captures_deferred_rejection_after_post_failure() {
+        let mut ws_client = make_ws_client();
+        let (timing, records) = ExecutionTiming::bounded(32);
+        ws_client.set_execution_timing(timing);
+        let (emitter, mut rx) = test_emitter();
+        let state = Arc::new(WsDispatchState::new());
+        let mut pending_cloids: FifoCache<ClientOrderId, 10_000> = FifoCache::new();
+        let cid = ClientOrderId::from("O-TIMING-DEFERRED");
+        state.register_context(test_context(cid));
+        state.mark_submission_pending(cid);
+        let report = make_status_report(Some("O-TIMING-DEFERRED"), "v-rej", OrderStatus::Rejected);
+        handle_execution_report(
+            ExecutionReport::Order(report),
+            &state,
+            &emitter,
+            &ws_client,
+            &make_http_client(),
+            &mut pending_cloids,
+            UnixNanos::default(),
+        );
+        assert!(drain_events(&mut rx).is_empty());
+        let before: Vec<_> = records.try_iter().collect();
+        assert_eq!(before.len(), 2);
+        let order = limit_order_with_flags("O-TIMING-DEFERRED", false, true);
+        let http_client = make_http_client();
+        let tasks = TaskGroup::new();
+        let route = PostRejectionRoute::new(
+            &emitter,
+            &ws_client,
+            &http_client,
+            state,
+            tasks.spawner().unwrap(),
+        );
+        route.resolve_without_post_rejection(
+            &order,
+            UnixNanos::default(),
+            &cloid_for("O-TIMING-DEFERRED"),
+        );
+        let events = drain_events(&mut rx);
+        assert!(matches!(
+            events.as_slice(),
+            [ExecutionEvent::Order(OrderEventAny::Rejected(_))]
+        ));
+        let records: Vec<_> = records.try_iter().collect();
+        assert_eq!(records.len(), 2);
+        assert_eq!(records[0].stage, TimingStage::OrderDispatchStart);
+        assert_eq!(records[1].stage, TimingStage::OrderDispatchEnd);
+        assert!(records.iter().all(|r| r.client_order_id == Some(cid)));
+        assert_eq!(records[0].session_id, before[0].session_id);
+        assert!(records[0].elapsed_ns >= before[1].elapsed_ns);
     }
 
     #[rstest]
