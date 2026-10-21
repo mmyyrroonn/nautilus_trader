@@ -138,14 +138,88 @@ shared observer capturing the existing trace. Disabled sends allocate no observe
 and read no diagnostic clock. The 88-byte record and 4,096-record collector bound
 are unchanged; the extra stages consume the session record budget sooner.
 
-## Acceptance boundary
+## Authorized production observation
 
-No wheel was deployed and no live order was sent. The historical four IOC no-match
-samples cannot be divided into these new phases retrospectively. The user has
-authorized observation of the existing five-venue strategy, scanning its configured
-universe with $100 per leg, $500 gross limit, and at most two pairs. No new symbol
-selection or manual test-order program is required. Deployment and live sampling
-are blocked by confirmed server maintenance, not missing trading parameters.
+The user explicitly requested deployment and resumption after server maintenance.
+The replacement host had no previous application, service, or ledger. Deployment
+restored the original application at `bb443a0176dbde73e2ed881bdc8fc320521c3796`
+and the saved trading configuration. The six previously deployed diagnostic source
+files match this commit after Git line-ending normalization; the three trading,
+universe, and limit configuration hashes match exactly. The existing five-venue
+strategy still scans 496 configured markets, with $100 per leg, $500 gross limit,
+and at most two pairs. No manual test-order program or threshold change was used.
+
+The native release is merged commit `9a3164c7bf9ef5418d22ef3e16973d6eb1d54258`.
+The CPython 3.12 Linux wheel SHA-256 is
+`b26b1ac3e4374d62509870c4a07fe9604129ed7c389379f58584c510a78ae882`.
+Before deployment, the final installed wheel passed 208 application integration
+tests in a loopback-only Linux network namespace. On the replacement host, the
+installer verified provenance and source identity using CPython 3.12.9. Configuration
+validation and an isolated, nonconnecting capture-factory smoke check also passed.
+
+The last local ledger backup was captured at 2026-10-20 11:36 UTC; history after
+that backup was lost with the previous server. Its integrity, hash, account binding,
+and policy fingerprint were checked before restoration. The program's existing
+fresh-account recovery remained mandatory. It passed on all five venues at
+2026-10-21 07:43:04 UTC, after the service started at 07:40:27 UTC. Old saved
+`passed` fields were not counted as current account evidence.
+
+The 07:50:45 UTC evidence snapshot contains one naturally triggered GRIFFAIN
+Hyperliquid IOC no-match rejection, correlated through session, trace, post, and
+client-order IDs to the application's rejected entry order. There are 34 native
+records, zero reported drops, and no replay or ambiguous order join in this trace.
+All intervals below use the same local monotonic session.
+
+| Interval                                    | Duration (ms) |
+| ------------------------------------------- | ------------: |
+| Task queued to started                      |      0.054139 |
+| Rate limiter                                |      0.002730 |
+| Signing                                     |      0.116040 |
+| Handler queue                               |      0.008099 |
+| Serialization                               |      0.008780 |
+| Writer command enqueue to write start       |      0.008280 |
+| Sink write and flush                        |      0.053480 |
+| Flush completed to complete-frame read      |   1001.990542 |
+| Complete-frame read to adapter dequeue      |      0.006661 |
+| Envelope parsing                            |      0.013940 |
+| Typed response parsing                      |      0.005120 |
+| Response dequeue to rejection emitter start |      0.084689 |
+| Submitted emitter end to rejection start    |   1002.299653 |
+
+The flush-to-read interval accounts for about 99.97% of the observed submitted-to-
+rejection delay. Other measured local signing, queueing, write, and parse work is
+sub-millisecond. This sample supports investigating the period after flush and
+before read completion first, rather than optimizing signing or the measured
+queues. It does not prove where inside that remaining interval the delay occurs:
+flush is not NIC egress or peer acknowledgment, and complete-frame read follows
+local TCP/TLS/WebSocket decoding and scheduling. Network transit, exchange work,
+and local read scheduling are not independently resolved. One live observation
+is not a latency distribution or a production performance improvement claim.
+
+During observation, all 496 market snapshots were ready simultaneously. Backpack
+readiness fluctuated, and its native execution admission remained blocked with
+`Backpack execution refused: Readiness`; this is a separate limitation, not a
+successful five-venue execution acceptance. At the evidence cutoff the original
+service was active, with no restarts, zero positions and zero unresolved orders.
+The strategy recorded one closed pair and confirmed net PnL of -$0.49980365 after
+the rejected entry and its cleanup. No global halt or account pause remained.
+The service and bounded timing collection were left running as authorized.
+
+Evidence is retained at
+`E:\persarb\tmp\issue135-deployment-20261021\evidence` and remotely under
+`/opt/persarb/deployments/issue135-20261021/evidence`. The downloaded archive and
+all 16 manifest entries were hash-verified. Archive SHA-256:
+`50d2b108c2669e1d4c22aec378e6505c8ce9f0de0b6bc8bad8f37a0e9ccf0694`.
+It contains the seven-field native captures, analyzer, sanitized order correlation,
+startup and resource observations, and deployment identity; credentials and the
+full ledger are excluded. Private runtime evidence is not committed to Git.
+
+## Acceptance scope
+
+The historical four IOC no-match samples cannot be divided into these new phases
+retrospectively. The new authorized sample completes the production diagnostic
+check for issue 135. This does not certify profitability, resolve the separate
+Backpack readiness problem, or authorize later changes to trading parameters.
 
 The application validation baseline is the previous production commit
 `bb443a0176dbde73e2ed881bdc8fc320521c3796`. The transport follow-up starts from
