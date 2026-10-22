@@ -29,6 +29,7 @@ use nautilus_common::live::dst::{
     task::{self, JoinHandle},
     time,
 };
+use nautilus_cryptography::providers::install_cryptographic_provider;
 use serde_json::{Value, json};
 use tokio::net::TcpStream;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message};
@@ -81,6 +82,7 @@ impl ArcusWebSocket {
         idle_timeout: Duration,
         minimum_subscriptions: usize,
     ) -> anyhow::Result<(Self, tokio::sync::mpsc::Receiver<ArcusWsEvent>)> {
+        install_cryptographic_provider();
         anyhow::ensure!(queue_capacity > 0, "Arcus queue capacity must be positive");
         anyhow::ensure!(
             !idle_timeout.is_zero(),

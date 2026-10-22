@@ -39,6 +39,15 @@ fn market() -> ArcusMarket {
     serde_json::from_str(include_str!("../test_data/market.json")).unwrap()
 }
 
+#[rstest]
+fn http_construction_initializes_the_shared_tls_provider() {
+    let _client = ArcusHttpClient::new("https://api.arcus.xyz".into(), 10, None).unwrap();
+    assert!(rustls::crypto::CryptoProvider::get_default().is_some());
+    let _config = rustls::ClientConfig::builder()
+        .with_root_certificates(rustls::RootCertStore::empty())
+        .with_no_client_auth();
+}
+
 fn order() -> ArcusOrderRequest {
     ArcusOrderRequest {
         address: "0xABCDEF0123456789ABCDEF0123456789ABCDEF01".into(),

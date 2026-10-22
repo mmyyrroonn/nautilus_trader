@@ -21,6 +21,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use nautilus_cryptography::providers::install_cryptographic_provider;
 use reqwest::{Client, Method, Url};
 use serde::de::DeserializeOwned;
 use serde_json::json;
@@ -94,6 +95,7 @@ impl ArcusHttpClient {
         timeout_secs: u64,
         signer: Option<Arc<ArcusSigner>>,
     ) -> anyhow::Result<Self> {
+        install_cryptographic_provider();
         anyhow::ensure!(timeout_secs > 0, "Arcus HTTP timeout must be positive");
         let base_url = Url::parse(base_url.trim_end_matches('/'))?;
         anyhow::ensure!(
