@@ -15,12 +15,15 @@
 
 //! Bounded asynchronous REST transport. Mutating requests are never retried.
 
+mod funding;
+
 use std::{
     collections::HashSet,
     sync::{Arc, LazyLock},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+pub(crate) use funding::ArcusMarketFundingRate;
 use nautilus_cryptography::providers::install_cryptographic_provider;
 use reqwest::{Client, Method, Url};
 use serde::de::DeserializeOwned;
@@ -600,6 +603,37 @@ impl ArcusHttpClient {
             &Self::account_query(&order.address, order.account_index)?,
             Some(body),
             Some((order.timestamp, signature)),
+            0,
+        )
+        .await
+    }
+
+    /// Signs and transmits a modify exactly once; acknowledgments are not order updates.
+    ///
+    /// # Errors
+    ///
+    /// Returns validation or definite rejection errors, or an uncertain-outcome error.
+    pub async fn modify_order(
+        &self,
+        order: &ArcusModifyRequest,
+        market: &ArcusMarket,
+    ) -> ArcusHttpResult<ArcusOrderResponse> {
+        let timestamp = order
+            .client_time
+            .parse::<u64>()
+            .map_err(|e| ArcusHttpError::Validation(e.to_string()))?;
+        let signature = self
+            .signer()?
+            .sign_modify(order, market, timestamp)
+            .map_err(|e| ArcusHttpError::Validation(e.to_string()))?;
+        let body =
+            serde_json::to_value(order).map_err(|e| ArcusHttpError::Validation(e.to_string()))?;
+        self.request(
+            Method::POST,
+            "/v1/modifyOrder",
+            &Self::account_query(&order.address, order.account_index)?,
+            Some(body),
+            Some((timestamp, signature)),
             0,
         )
         .await

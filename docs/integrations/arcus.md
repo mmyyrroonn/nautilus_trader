@@ -9,15 +9,17 @@ and factories, following the same integration pattern as Hyperliquid.
 | Area          | Support                                                                            |
 | :------------ | :--------------------------------------------------------------------------------- |
 | Instruments   | USD-quoted perpetuals, `BTC-USD-PERP.ARCUS` naming, exact tick and size increments |
-| Streaming     | Best bid/ask, trades, L2 market-by-price snapshots and deltas                      |
+| Streaming     | Best bid/ask, trades, L2, mark prices, oracle/index prices, predicted funding      |
+| History       | Hourly market funding rates with bounded pagination                                |
 | Orders        | Limit GTC, IOC, FOK, post-only GTC, reduce-only                                    |
 | Market orders | Slippage-bounded IOC limit using a recent cached quote                             |
+| Modification  | Price and total quantity of confirmed resting limit orders                         |
 | Cancellation  | Individual orders and instrument/side-scoped cancel-all                            |
 | Account       | USDG margin balance, order/fill/position reports and reconciliation                |
 | Environments  | Mainnet and testnet, with separate credential variables                            |
 
-Order modification, conditional/trailing orders, order lists, historical bars,
-and mark/index/funding subscriptions are not supported. Unsupported trading
+Conditional/trailing orders, order lists, bars, recent public trade requests,
+and standalone REST book requests are not supported. Unsupported trading
 commands fail explicitly before sending an order.
 
 Arcus uses GTT for resting orders. Nautilus GTC maps to GTT with a 33-day expiry;
@@ -30,6 +32,61 @@ Arcus client IDs are case-sensitive, 1 through 36 ASCII letters, digits,
 hyphens, or underscores. Use unique client order IDs across the account's
 history; the venue permits reusing a client ID after a terminal order, which
 does not provide durable request idempotency.
+
+## Reference prices and funding
+
+`subscribe_mark_prices` publishes the engine's `markPrice` with its
+`markEpochNanos` source timestamp. A zero or unavailable mark is not substituted
+with the oracle price. An initial snapshot without a mark timestamp waits for
+a live update before publishing a mark.
+
+`subscribe_index_prices` maps Arcus's oracle `price` into `IndexPriceUpdate`.
+The oracle feed's live batch `epoch` is in nanoseconds. An initial snapshot with
+no source timestamp uses receipt time, without advancing the live source
+watermark. Mark and index subscribers share one `oraclePrices` subscription
+per market; removing one leaves the other active. Reconnection restores the
+subscriptions and clears the previous connection's decoding watermarks.
+
+`subscribe_funding_rates` publishes the `predictedFunding` channel's `rate1h`
+as a decimal hourly fraction with `interval=60` minutes. For example, `0.0001`
+means 0.01% per hour. Negative rates retain their sign. These predictions are
+timestamped at receipt because the documented payload has no source event time;
+`next_funding_ns` remains unset. Predictions and settled historical rates have
+different meanings even though both use `FundingRateUpdate`.
+
+`request_funding_rates` reads public
+[`/v1/fundingRates`](https://docs.arcus.xyz/api-reference/public/get-market-funding-rates)
+history. The adapter
+converts inclusive time bounds to microseconds, deduplicates overlapping page
+boundaries, and returns rates in ascending payment-time order. A requested limit
+selects the latest available rows. Requests are bounded to 64 pages of at most
+1,000 rows and fail if the requested result cannot be proven complete within
+that bound. The venue does not document a lifetime retention guarantee. These
+requests share the process-wide read budget and do not block streaming updates.
+Invalid request bounds fail synchronously. Asynchronous retrieval failures are
+logged with the request ID and leave the framework request to time out; they do
+not emit a successful empty result.
+
+## Order modification
+
+`modify_order` changes a confirmed open limit order's price, total quantity, or
+both. Total quantity includes fills already received. The request preserves the
+original side, time in force, reduce-only flag, and expiry. Modification requires
+an authoritative server order ID and reconciled order state; unconfirmed orders,
+market orders, and trigger-price changes are rejected locally. The original
+expiry must still satisfy Arcus's one-month minimum when the modify is signed;
+the adapter does not silently extend it.
+
+The adapter signs [`modifyOrder`](https://docs.arcus.xyz/api-reference/exchange/modify-order)
+with typed operation `3`. An HTTP acknowledgment
+does not produce an order update. Post-only modifications use the cancellation
+priority queue. Depending on the venue deployment, a modify may preserve the
+order in place or emit an intermediate `MODIFY_CANCELED` followed by a replacement
+under the same server ID. That intermediate event is not treated as a terminal
+cancellation. Ambiguous outcomes require authoritative reconciliation and are
+never retried automatically. A stale or unsequenced report cannot confirm a
+pending modification. An unresolved modification prevents new risk until its
+outcome is reconciled; cancellation remains available.
 
 ## Credentials and accounts
 

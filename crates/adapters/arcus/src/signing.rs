@@ -19,15 +19,15 @@ use std::{collections::BTreeMap, fmt::Debug};
 
 use anyhow::Context;
 use ed25519_dalek::{Signer, SigningKey};
-use nautilus_core::hex;
+use nautilus_core::{UnixNanos, datetime::add_n_months_nanos, hex};
 use rust_decimal::{Decimal, prelude::ToPrimitive};
 use serde::Serialize;
 use serde_json::{Value, json};
 use zeroize::Zeroizing;
 
 use crate::models::{
-    ArcusCancelRequest, ArcusMarket, ArcusOrderRequest, ArcusOrderSide, ArcusOrderType,
-    ArcusTimeInForce,
+    ArcusCancelRequest, ArcusMarket, ArcusModifyRequest, ArcusOrderRequest, ArcusOrderSide,
+    ArcusOrderType, ArcusTimeInForce,
 };
 
 /// Holds a reusable signing key without exposing secret material in Debug output.
@@ -93,6 +93,21 @@ impl ArcusSigner {
         timestamp: u64,
     ) -> anyhow::Result<String> {
         let payload = cancel_signing_payload(order, timestamp)?;
+        Ok(hex::encode(self.key.sign(payload.as_bytes()).to_bytes()))
+    }
+
+    /// Signs an exact operation-three modify payload for a confirmed server order ID.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error for invalid immutable attributes, identity, expiry, or increments.
+    pub fn sign_modify(
+        &self,
+        order: &ArcusModifyRequest,
+        market: &ArcusMarket,
+        timestamp: u64,
+    ) -> anyhow::Result<String> {
+        let payload = modify_signing_payload(order, market, timestamp)?;
         Ok(hex::encode(self.key.sign(payload.as_bytes()).to_bytes()))
     }
 
@@ -194,6 +209,22 @@ pub fn order_signing_payload(
     market: &ArcusMarket,
     timestamp: u64,
 ) -> anyhow::Result<String> {
+    let minimum = timestamp / 1_000 + 32 * 86_400 * 1_000_000;
+    let mut payload = typed_order_fields(order, market, timestamp, minimum)?;
+
+    if let Some(id) = &order.client_id {
+        validate_client_id(id)?;
+        payload.insert("c", json!(id));
+    }
+    Ok(serde_json::to_string(&payload)?)
+}
+
+fn typed_order_fields(
+    order: &ArcusOrderRequest,
+    market: &ArcusMarket,
+    timestamp: u64,
+    minimum_expiry_us: u64,
+) -> anyhow::Result<BTreeMap<&'static str, Value>> {
     validate_address(&order.address, order.account_index)?;
     anyhow::ensure!(
         order.timestamp == timestamp,
@@ -246,16 +277,14 @@ pub fn order_signing_payload(
         .good_til_time
         .parse()
         .context("Invalid Arcus goodTilTime")?;
-    // Thirty-two days comfortably exceeds the server's one-calendar-month minimum
-    let minimum = timestamp / 1_000 + 32 * 86_400 * 1_000_000;
     anyhow::ensure!(
-        expiry >= minimum,
-        "Arcus goodTilTime must be at least 32 days ahead"
+        expiry >= minimum_expiry_us,
+        "Arcus goodTilTime is earlier than the required future expiry"
     );
     let expiry_ns = expiry
         .checked_mul(1_000)
         .context("Arcus goodTilTime overflows nanoseconds")?;
-    let mut payload = BTreeMap::from([
+    let payload = BTreeMap::from([
         ("ad", json!(order.address.to_ascii_lowercase())),
         ("ai", json!(order.account_index)),
         ("ct", json!(timestamp)),
@@ -282,10 +311,47 @@ pub fn order_signing_payload(
         ("v", json!(1)),
     ]);
 
-    if let Some(id) = &order.client_id {
-        validate_client_id(id)?;
-        payload.insert("c", json!(id));
-    }
+    Ok(payload)
+}
+
+/// Builds the canonical operation-three payload without a client-ID alias or action prefix.
+///
+/// # Errors
+///
+/// Returns an error for a non-hex server order ID, stale expiry, invalid nonce, or market limits.
+pub fn modify_signing_payload(
+    order: &ArcusModifyRequest,
+    market: &ArcusMarket,
+    timestamp: u64,
+) -> anyhow::Result<String> {
+    anyhow::ensure!(
+        !order.order_id.is_empty() && order.order_id.bytes().all(|byte| byte.is_ascii_hexdigit()),
+        "Arcus modify requires a hexadecimal server order ID"
+    );
+    anyhow::ensure!(
+        order.client_time.parse::<u64>()? == timestamp,
+        "Arcus modify nonce must match signing timestamp"
+    );
+    let minimum = add_n_months_nanos(UnixNanos::from(timestamp), 1)?
+        .as_u64()
+        .div_ceil(1_000);
+    let base = ArcusOrderRequest {
+        address: order.address.clone(),
+        account_index: order.account_index,
+        market_id: order.market_id,
+        order_side: order.side,
+        order_type: ArcusOrderType::Limit,
+        time_in_force: order.time_in_force,
+        quantity: order.quantity,
+        price: order.price,
+        good_til_time: order.good_til_time.clone(),
+        reduce_only: order.reduce_only,
+        client_id: None,
+        timestamp,
+    };
+    let mut payload = typed_order_fields(&base, market, timestamp, minimum)?;
+    payload.insert("op", json!(3));
+    payload.insert("id", json!(order.order_id));
     Ok(serde_json::to_string(&payload)?)
 }
 
