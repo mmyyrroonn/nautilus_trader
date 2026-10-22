@@ -6,6 +6,7 @@ The following integrations are currently supported:
 
 | Name                                                       | ID                    | Type                    | Status                                               | Docs                            |
 | :--------------------------------------------------------- | :-------------------- | :---------------------- | :--------------------------------------------------- | :------------------------------ |
+| [Arcus](https://arcus.xyz)                                 | `ARCUS`               | Crypto Exchange (DEX)   | ![status](https://img.shields.io/badge/beta-yellow)  | [Guide](arcus.md)               |
 | [AX Exchange](https://architect.exchange)                  | `AX`                  | Derivatives Exchange    | ![status](https://img.shields.io/badge/stable-green) | [Guide](architect_ax.md)        |
 | [Betfair](https://betfair.com)                             | `BETFAIR`             | Sports Betting Exchange | ![status](https://img.shields.io/badge/stable-green) | [Guide](betfair.md)             |
 | [Binance](https://binance.com)                             | `BINANCE`             | Crypto Exchange (CEX)   | ![status](https://img.shields.io/badge/stable-green) | [Guide](binance.md)             |

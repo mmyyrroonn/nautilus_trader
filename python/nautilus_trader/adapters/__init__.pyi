@@ -2,6 +2,7 @@
 # ruff: noqa: E501
 
 from . import architect_ax
+from . import arcus
 from . import aster
 from . import backpack
 from . import betfair
@@ -26,6 +27,7 @@ from . import tardis
 
 __all__ = [
     "architect_ax",
+    "arcus",
     "aster",
     "backpack",
     "betfair",

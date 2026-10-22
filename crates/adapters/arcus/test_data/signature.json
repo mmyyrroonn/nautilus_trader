@@ -1,0 +1,6 @@
+{
+  "source": "https://docs.arcus.xyz/api-reference/authentication",
+  "reference": "Python cryptography 50.0.1 Ed25519, RFC 8032 public test seed",
+  "payload": "{\"ad\":\"0xabcdef0123456789abcdef0123456789abcdef01\",\"ai\":3,\"c\":\"MixedCase_1\",\"ct\":1790000000000000000,\"g\":1800000000000000000,\"m\":1,\"op\":1,\"p\":500001,\"q\":100000,\"r\":0,\"s\":0,\"t\":3,\"v\":1}",
+  "signature": "3b2e2b1a06dcae12a8a816dfcac3774223153d5827b36d0c92aabc3f685b42949e196fc8ad0e828da4a6f3e5385477506fa2028b6b660646bf5c6a13b9747d0b"
+}

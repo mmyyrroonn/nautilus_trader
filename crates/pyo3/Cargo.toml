@@ -37,6 +37,7 @@ defi = [
 extension-module = [
   "nautilus-analysis/extension-module",
   "nautilus-architect-ax/extension-module",
+  "nautilus-arcus/extension-module",
   "nautilus-aster/extension-module",
   "nautilus-backpack/extension-module",
   "nautilus-backtest/extension-module",
@@ -80,6 +81,7 @@ high-precision = [
   "nautilus-model/high-precision",
   "nautilus-serialization/high-precision",
   "nautilus-testkit/high-precision",
+  "nautilus-arcus/high-precision",
   "nautilus-aster/high-precision",
   "nautilus-backpack/high-precision",
   "nautilus-betfair?/high-precision",
@@ -142,6 +144,7 @@ nautilus-trading = { workspace = true, features = ["python"] }
 
 # Adapters
 nautilus-architect-ax = { workspace = true, features = ["python"] }
+nautilus-arcus = { workspace = true, features = ["python"] }
 nautilus-aster = { workspace = true, features = ["python"] }
 nautilus-backpack = { workspace = true, features = ["python"] }
 nautilus-betfair = { workspace = true, optional = true }
