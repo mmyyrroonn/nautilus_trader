@@ -44,7 +44,7 @@ use nautilus_common::{
         },
     },
 };
-use nautilus_core::{Params, UnixNanos, time::get_atomic_clock_realtime};
+use nautilus_core::{Params, UUID4, UnixNanos, time::get_atomic_clock_realtime};
 use nautilus_live::{ExecutionClientCore, ExecutionEventEmitter};
 use nautilus_model::{
     accounts::AccountAny,
@@ -52,6 +52,7 @@ use nautilus_model::{
         AccountType, LiquiditySide, OmsType, OrderSide, OrderStatus, OrderType, PositionSide,
         TimeInForce,
     },
+    events::{OrderEventAny, OrderPendingUpdate, OrderUpdated},
     identifiers::{AccountId, ClientId, ClientOrderId, InstrumentId, TradeId, Venue, VenueOrderId},
     instruments::{Instrument, InstrumentAny},
     orders::{Order, OrderAny},
@@ -66,8 +67,8 @@ use crate::{
     http::{ArcusHttpClient, ArcusHttpError},
     instruments::{parse_instrument, settlement_currency},
     models::{
-        ArcusCancelRequest, ArcusFill, ArcusMarket, ArcusOrder, ArcusOrderRequest, ArcusOrderSide,
-        ArcusOrderType, ArcusPosition, ArcusTimeInForce,
+        ArcusCancelRequest, ArcusFill, ArcusMarket, ArcusModifyRequest, ArcusOrder,
+        ArcusOrderRequest, ArcusOrderSide, ArcusOrderType, ArcusPosition, ArcusTimeInForce,
     },
     websocket::{ArcusPrivateStream, ArcusWsEvent},
 };
@@ -136,6 +137,18 @@ struct MarketContext {
     instrument: InstrumentAny,
 }
 
+#[derive(Clone, Debug)]
+struct PendingModify {
+    command: ModifyOrder,
+    request: ArcusModifyRequest,
+    prior: ArcusOrder,
+    baseline_filled: Decimal,
+    sent: bool,
+    uncertain: bool,
+    rejection_reported: bool,
+    emit_pending: bool,
+}
+
 #[derive(Debug)]
 struct Session {
     http: ArcusHttpClient,
@@ -159,6 +172,9 @@ struct Session {
     reconcile_notify: tokio::sync::Notify,
     state_revision: AtomicU64,
     commit: Mutex<()>,
+    modifications: Mutex<HashMap<ClientOrderId, PendingModify>>,
+    replacements: Mutex<HashMap<VenueOrderId, Decimal>>,
+    modify_uncertain: AtomicBool,
 }
 
 impl Session {
@@ -168,6 +184,7 @@ impl Session {
 
     fn ready(&self) -> bool {
         self.ready.load(Ordering::Acquire)
+            && !self.modify_uncertain.load(Ordering::Acquire)
             && self.stream_health.read().load(Ordering::Acquire)
             && self.ready_epoch.load(Ordering::Acquire)
                 == self.stream_epoch.read().load(Ordering::Acquire)
@@ -181,6 +198,221 @@ impl Session {
             .ok_or_else(|| anyhow::anyhow!("Arcus instrument {id} is not loaded"))
     }
 
+    fn refresh_modify_uncertainty(&self) {
+        let uncertain = self
+            .modifications
+            .lock()
+            .values()
+            .any(|pending| pending.uncertain);
+        let replacing = !self.replacements.lock().is_empty();
+        self.modify_uncertain
+            .store(uncertain || replacing, Ordering::Release);
+    }
+
+    fn reject_modify(&self, pending: &PendingModify, reason: &str) {
+        self.emitter.emit_order_modify_rejected_event(
+            pending.command.strategy_id,
+            pending.command.instrument_id,
+            pending.command.client_order_id,
+            Some(VenueOrderId::from(pending.request.order_id.as_str())),
+            reason,
+            Self::now(),
+        );
+    }
+
+    fn mark_modifies_uncertain(&self) {
+        for pending in self.modifications.lock().values_mut() {
+            if pending.sent {
+                pending.uncertain = true;
+            }
+        }
+        self.refresh_modify_uncertainty();
+    }
+
+    fn reject_unsent_modifies(&self, reason: &str) {
+        let mut modifications = self.modifications.lock();
+        modifications.retain(|_, pending| {
+            if pending.sent {
+                return true;
+            }
+            self.reject_modify(pending, reason);
+            false
+        });
+        drop(modifications);
+        self.refresh_modify_uncertainty();
+    }
+
+    // Called with the short publication lock held; it never performs network I/O.
+    fn resolve_modify(
+        &self,
+        record: &ArcusOrder,
+        report: &mut OrderStatusReport,
+    ) -> anyhow::Result<bool> {
+        let venue_id = report.venue_order_id;
+        let mut modifications = self.modifications.lock();
+        let client_id = record
+            .client_id
+            .as_deref()
+            .and_then(|id| ClientOrderId::new_checked(id).ok())
+            .filter(|id| modifications.contains_key(id))
+            .or_else(|| {
+                modifications
+                    .iter()
+                    .find(|(_, pending)| pending.request.order_id == record.order_id)
+                    .map(|(id, _)| *id)
+            });
+        let Some(client_id) = client_id else {
+            if let Some(baseline) = self.replacements.lock().get(&venue_id).copied() {
+                anyhow::ensure!(
+                    report.filled_qty.as_decimal() >= baseline,
+                    "Arcus external replacement decreased cumulative fills; refusing to infer a reset"
+                );
+            }
+
+            if report.order_status == OrderStatus::Rejected
+                && self.replacements.lock().contains_key(&venue_id)
+            {
+                report.order_status = OrderStatus::Canceled;
+            }
+            self.replacements.lock().remove(&venue_id);
+            drop(modifications);
+            self.refresh_modify_uncertainty();
+            return Ok(true);
+        };
+        let pending = modifications
+            .get_mut(&client_id)
+            .context("Arcus pending modify disappeared")?;
+
+        if !pending.sent {
+            return Ok(true);
+        }
+
+        if record
+            .sequence_number
+            .zip(pending.prior.sequence_number)
+            .is_none_or(|(new, old)| new <= old)
+        {
+            return Ok(false);
+        }
+        anyhow::ensure!(
+            report.filled_qty.as_decimal() >= pending.baseline_filled,
+            "Arcus replacement decreased cumulative fills; refusing to infer a fill reset"
+        );
+        anyhow::ensure!(
+            record.original_size - record.remaining_size == report.filled_qty.as_decimal(),
+            "Arcus modified order cumulative fills disagree with total minus remaining quantity"
+        );
+        anyhow::ensure!(
+            record.side == pending.request.side
+                && record.time_in_force == Some(pending.request.time_in_force)
+                && record.reduce_only == pending.request.reduce_only
+                && record
+                    .good_til_time
+                    .as_ref()
+                    .is_none_or(|expiry| expiry == &pending.request.good_til_time),
+            "Arcus modified order changed immutable attributes"
+        );
+        let replaced = self.replacements.lock().contains_key(&venue_id);
+        let reason = record
+            .rejection_reason
+            .as_deref()
+            .unwrap_or("Arcus modify was rejected");
+
+        if report.order_status == OrderStatus::Rejected {
+            if !pending.rejection_reported {
+                self.reject_modify(pending, reason);
+                pending.rejection_reported = true;
+            }
+
+            if !replaced && modify_rejection_preserves_order(reason) {
+                let mut prior = pending.prior.clone();
+                prior.sequence_number = record.sequence_number;
+                prior.updated_at = record.updated_at;
+                self.order_records
+                    .lock()
+                    .insert(record.order_id.clone(), prior);
+                modifications.remove(&client_id);
+                drop(modifications);
+                self.refresh_modify_uncertainty();
+                return Ok(false);
+            }
+
+            if replaced || modify_rejection_cancels_order(reason) {
+                report.order_status = OrderStatus::Canceled;
+            } else {
+                pending.uncertain = true;
+                let mut prior = pending.prior.clone();
+                prior.sequence_number = record.sequence_number;
+                prior.updated_at = record.updated_at;
+                self.order_records
+                    .lock()
+                    .insert(record.order_id.clone(), prior);
+                drop(modifications);
+                self.refresh_modify_uncertainty();
+                self.reconcile_notify.notify_one();
+                return Ok(false);
+            }
+        } else if report.quantity.as_decimal() != pending.request.quantity
+            || report
+                .price
+                .is_none_or(|price| price.as_decimal() != pending.request.price)
+        {
+            anyhow::ensure!(
+                record.original_size == pending.prior.original_size
+                    && record.price == pending.prior.price,
+                "Arcus modify outcome matches neither original nor requested total quantity and price"
+            );
+
+            if !is_terminal(report.order_status) {
+                return Ok(true);
+            }
+
+            if !pending.rejection_reported {
+                self.reject_modify(
+                    pending,
+                    "Arcus target terminated before the requested modification was confirmed",
+                );
+            }
+        }
+
+        if report.quantity.as_decimal() == pending.request.quantity
+            && report
+                .price
+                .is_some_and(|price| price.as_decimal() == pending.request.price)
+            && record.state.as_deref().unwrap_or(&record.status) != "REJECTED"
+            && !matches!(
+                report.order_status,
+                OrderStatus::Submitted | OrderStatus::PendingUpdate | OrderStatus::PendingCancel
+            )
+        {
+            // Generic Accepted reconciliation clears PendingUpdate without applying amended fields.
+            // Confirm the operation explicitly before publishing its authoritative state and fills.
+            self.emitter
+                .send_order_event(OrderEventAny::Updated(OrderUpdated::new(
+                    pending.command.trader_id,
+                    pending.command.strategy_id,
+                    pending.command.instrument_id,
+                    client_id,
+                    report.quantity,
+                    UUID4::new(),
+                    report.ts_last,
+                    Self::now(),
+                    false,
+                    Some(report.venue_order_id),
+                    Some(self.config.account_id),
+                    report.price,
+                    None,
+                    None,
+                    false,
+                )));
+        }
+        modifications.remove(&client_id);
+        self.replacements.lock().remove(&venue_id);
+        drop(modifications);
+        self.refresh_modify_uncertainty();
+        Ok(true)
+    }
+
     fn context_for_market(&self, id: u16) -> anyhow::Result<Arc<MarketContext>> {
         self.markets
             .read()
@@ -188,6 +420,25 @@ impl Session {
             .find(|c| c.market.market_id == id)
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("Unknown Arcus market ID {id}"))
+    }
+
+    fn validate_public_order_report(&self, report: &OrderStatusReport) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            !self
+                .replacements
+                .lock()
+                .contains_key(&report.venue_order_id),
+            "Arcus replacement outcome is pending; refusing a terminal public report"
+        );
+
+        if self.modifications.lock().values().any(|pending| {
+            pending.sent && pending.request.order_id == report.venue_order_id.as_str()
+        }) {
+            anyhow::bail!(
+                "Arcus pending modification requires operation reconciliation before public order reporting"
+            );
+        }
+        Ok(())
     }
 
     async fn load_markets(&self) -> anyhow::Result<()> {
@@ -297,16 +548,32 @@ impl Session {
             if let Some(previous) = cache.get(&record.order_id)
                 && previous
                     .sequence_number
-                    .zip(record.sequence_number)
-                    .is_some_and(|(old, new)| old > new)
+                    .is_some_and(|old| record.sequence_number.is_none_or(|new| old >= new))
             {
                 *record = previous.clone();
             }
         }
-        let reports: Vec<_> = records
-            .iter()
-            .map(|order| self.order_report(order))
-            .collect::<anyhow::Result<_>>()?;
+        let mut reports = Vec::with_capacity(records.len());
+
+        for record in &records {
+            if is_modify_cancel(record) {
+                let baseline = cache
+                    .get(&record.order_id)
+                    .filter(|prior| !is_modify_cancel(prior))
+                    .map_or(Decimal::ZERO, |prior| {
+                        prior
+                            .filled_size
+                            .unwrap_or(prior.original_size - prior.remaining_size)
+                    });
+                self.replacements
+                    .lock()
+                    .entry(VenueOrderId::new_checked(&record.order_id)?)
+                    .or_insert(baseline);
+                self.modify_uncertain.store(true, Ordering::Release);
+                continue;
+            }
+            reports.push(self.order_report(record)?);
+        }
 
         for order in records {
             anyhow::ensure!(
@@ -395,7 +662,7 @@ impl Session {
         let cutoff = Self::now().as_u64() / 1_000;
         let cursor = self.order_cursor_us.load(Ordering::Acquire);
         let order_start = (cursor != 0).then(|| cursor.saturating_sub(FILL_OVERLAP_US));
-        let old_active: Vec<_> = self
+        let mut old_active: Vec<_> = self
             .order_records
             .lock()
             .values()
@@ -405,6 +672,12 @@ impl Session {
             })
             .map(|record| record.order_id.clone())
             .collect();
+
+        for id in self.replacements.lock().keys() {
+            if !old_active.iter().any(|old| old == id.as_str()) {
+                old_active.push(id.to_string());
+            }
+        }
         self.account().await?;
         let history = self.orders(None, order_start, Some(cutoff)).await?;
         let open_records = self
@@ -467,7 +740,7 @@ impl Session {
                     .http
                     .order_status(&self.address, self.config.subaccount_id, order_id.as_str())
                     .await?;
-                orders.push(self.order_report(&record)?);
+                orders.extend(self.cache_order_records(vec![record])?);
             }
         }
         anyhow::ensure!(
@@ -483,6 +756,16 @@ impl Session {
         let mut resolved = Vec::new();
 
         for mut order in orders {
+            let record = self
+                .order_records
+                .lock()
+                .get(order.venue_order_id.as_str())
+                .cloned()
+                .context("Arcus reconciled order record is missing")?;
+
+            if !self.resolve_modify(&record, &mut order)? {
+                continue;
+            }
             let mut fills = by_order.remove(&order.venue_order_id).unwrap_or_default();
             fills.sort_by_key(|fill| fill.ts_event);
 
@@ -516,6 +799,25 @@ impl Session {
                 let mut watermark = self.watermark_us.lock();
                 *watermark = (*watermark).max(key.0 / 1_000);
                 delivered.remember(key.0, key.1)?;
+            }
+        }
+
+        // A pending operation can suppress its order snapshot, never its real executions.
+        for fills in by_order.into_values() {
+            for fill in fills {
+                let mut delivered = self.delivered.lock();
+
+                if delivered.contains(&fill) {
+                    continue;
+                }
+                let key = (fill.ts_event.as_u64(), DeliveredFills::key(&fill));
+                delivered.prune(key.0);
+                delivered.validate_capacity(1)?;
+                self.emitter
+                    .try_send_execution_report(ExecutionReport::Fill(Box::new(fill)))?;
+                delivered.remember(key.0, key.1)?;
+                let mut watermark = self.watermark_us.lock();
+                *watermark = (*watermark).max(key.0 / 1_000);
             }
         }
 
@@ -582,6 +884,20 @@ impl Session {
                     }
                     delivered.prune(key.0);
                     delivered.validate_capacity(1)?;
+
+                    for pending in
+                        self.modifications.lock().values_mut().filter(|pending| {
+                            pending.sent && pending.request.order_id == fill.order_id
+                        })
+                    {
+                        if fill
+                            .sequence_number
+                            .zip(pending.prior.sequence_number)
+                            .is_some_and(|(new, old)| new > old)
+                        {
+                            pending.baseline_filled += fill.size;
+                        }
+                    }
                     self.emitter
                         .try_send_execution_report(ExecutionReport::Fill(Box::new(report)))?;
                     delivered.remember(key.0, key.1)?;
@@ -657,6 +973,14 @@ impl Session {
                 if contents.get("filledSize").is_none() {
                     object.insert("filledSize".into(), serde_json::Value::Null);
                 }
+
+                if contents.get("cancelReason").is_none() {
+                    object.insert("cancelReason".into(), serde_json::Value::Null);
+                }
+
+                if contents.get("rejectionReason").is_none() {
+                    object.insert("rejectionReason".into(), serde_json::Value::Null);
+                }
                 let record = match serde_json::from_value::<ArcusOrder>(value) {
                     Ok(record) => record,
                     Err(_) => {
@@ -676,7 +1000,31 @@ impl Session {
                 {
                     return Ok(());
                 }
-                let report = self.order_report(&record)?;
+
+                if is_modify_cancel(&record) {
+                    let baseline = records
+                        .get(order_id)
+                        .filter(|prior| !is_modify_cancel(prior))
+                        .map_or(Decimal::ZERO, |prior| {
+                            prior
+                                .filled_size
+                                .unwrap_or(prior.original_size - prior.remaining_size)
+                        });
+                    self.replacements
+                        .lock()
+                        .entry(VenueOrderId::new_checked(order_id)?)
+                        .or_insert(baseline);
+                    self.modify_uncertain.store(true, Ordering::Release);
+                    records.insert(order_id.to_owned(), record);
+                    self.reconcile_notify.notify_one();
+                    return Ok(());
+                }
+                drop(records);
+                let mut report = self.order_report(&record)?;
+
+                if !self.resolve_modify(&record, &mut report)? {
+                    return Ok(());
+                }
 
                 if report.order_status != OrderStatus::Submitted
                     && let Some(id) = report.client_order_id
@@ -685,6 +1033,8 @@ impl Session {
                 }
                 self.emitter
                     .try_send_execution_report(ExecutionReport::Order(Box::new(report)))?;
+
+                let mut records = self.order_records.lock();
 
                 if records.len() >= MAX_DEDUPE_FILLS && !records.contains_key(order_id) {
                     anyhow::bail!("Arcus order identity capacity reached");
@@ -706,6 +1056,10 @@ impl Session {
     }
 
     fn order_report(&self, order: &ArcusOrder) -> anyhow::Result<OrderStatusReport> {
+        anyhow::ensure!(
+            !is_modify_cancel(order),
+            "Arcus cancel-replace is pending; MODIFY_CANCELED is not terminal"
+        );
         anyhow::ensure!(
             order.account_index == self.config.subaccount_id,
             "Arcus order subaccount mismatch"
@@ -857,6 +1211,7 @@ enum Command {
     Cancel(CancelOrder, ArcusCancelRequest),
     CancelAll(CancelAllOrders),
     Reconcile,
+    Modify(ClientOrderId, UUID4, Arc<MarketContext>, bool),
 }
 
 /// Arcus perpetuals execution client with bounded commands and fail-closed readiness.
@@ -925,6 +1280,9 @@ impl ArcusExecutionClient {
                 reconcile_notify: tokio::sync::Notify::new(),
                 state_revision: AtomicU64::new(0),
                 commit: Mutex::new(()),
+                modifications: Mutex::new(HashMap::new()),
+                replacements: Mutex::new(HashMap::new()),
+                modify_uncertain: AtomicBool::new(false),
             }),
             commands: None,
             cancels: None,
@@ -934,7 +1292,10 @@ impl ArcusExecutionClient {
     }
 
     fn enqueue(&self, command: Command) -> anyhow::Result<()> {
-        let queue = if matches!(command, Command::Cancel(..) | Command::CancelAll(_)) {
+        let queue = if matches!(
+            command,
+            Command::Cancel(..) | Command::CancelAll(_) | Command::Modify(_, _, _, true)
+        ) {
             &self.cancels
         } else {
             &self.commands
@@ -1093,6 +1454,150 @@ impl ArcusExecutionClient {
         crate::signing::order_signing_payload(&request, &context.market, now)?;
         Ok((request, context))
     }
+
+    fn modification(
+        &self,
+        cmd: &ModifyOrder,
+    ) -> anyhow::Result<(PendingModify, Arc<MarketContext>)> {
+        anyhow::ensure!(
+            self.session.ready(),
+            "Arcus modification requires a healthy reconciled session"
+        );
+        anyhow::ensure!(
+            cmd.trigger_price.is_none() && (cmd.price.is_some() || cmd.quantity.is_some()),
+            "Arcus modify requires price or total quantity and does not support trigger changes"
+        );
+        let order = self.core.get_order(&cmd.client_order_id)?;
+        anyhow::ensure!(
+            order.instrument_id() == cmd.instrument_id && order.strategy_id() == cmd.strategy_id,
+            "Arcus modify command does not match the cached order identity"
+        );
+        anyhow::ensure!(
+            order.order_type() == OrderType::Limit
+                && !order.is_closed()
+                && !order.is_pending_cancel(),
+            "Arcus can modify only an open resting limit order"
+        );
+        let venue_id = cmd
+            .venue_order_id
+            .or(order.venue_order_id())
+            .context("Arcus modify requires a confirmed server order ID")?;
+        anyhow::ensure!(
+            order.venue_order_id().is_none_or(|id| id == venue_id),
+            "Arcus modify server order ID mismatch"
+        );
+        let prior = self
+            .session
+            .order_records
+            .lock()
+            .get(venue_id.as_str())
+            .cloned()
+            .context("Arcus modify requires a confirmed venue order record")?;
+        anyhow::ensure!(
+            prior.account_index == self.session.config.subaccount_id
+                && prior
+                    .client_id
+                    .as_deref()
+                    .is_none_or(|id| id == cmd.client_order_id.as_str()),
+            "Arcus modify venue record identity mismatch"
+        );
+        anyhow::ensure!(
+            matches!(
+                order_status(prior.state.as_deref().unwrap_or(&prior.status))?,
+                OrderStatus::Accepted | OrderStatus::PartiallyFilled
+            ) && prior.cancel_reason.as_deref() != Some("MODIFY_CANCELED"),
+            "Arcus modify target is not resting"
+        );
+        anyhow::ensure!(
+            prior.sequence_number.is_some(),
+            "Arcus modify requires an authoritative order sequence"
+        );
+        let context = self.session.context(cmd.instrument_id)?;
+        anyhow::ensure!(
+            prior.market_id == context.market.market_id
+                && prior.market_display_name == context.market.market_display_name
+                && context.market.status == "ONLINE",
+            "Arcus modify market identity or trading status mismatch"
+        );
+        let expected_tif = if order.is_post_only() {
+            ArcusTimeInForce::Alo
+        } else {
+            ArcusTimeInForce::Gtt
+        };
+        anyhow::ensure!(
+            order.time_in_force() == TimeInForce::Gtc
+                && prior.time_in_force == Some(expected_tif)
+                && prior
+                    .order_type
+                    .is_none_or(|kind| kind == ArcusOrderType::Limit)
+                && prior.reduce_only == order.is_reduce_only()
+                && side(prior.side) == order.order_side(),
+            "Arcus modify cannot change side, type, time in force, or reduce-only"
+        );
+        let baseline_filled = prior
+            .filled_size
+            .unwrap_or(prior.original_size - prior.remaining_size)
+            .max(order.filled_qty().as_decimal());
+        anyhow::ensure!(
+            baseline_filled >= Decimal::ZERO && baseline_filled <= prior.original_size,
+            "Arcus modify cumulative fills are inconsistent"
+        );
+        let quantity = cmd
+            .quantity
+            .map_or(prior.original_size, |quantity| quantity.as_decimal());
+        let price = cmd.price.map_or(prior.price, |price| price.as_decimal());
+        anyhow::ensure!(
+            quantity > baseline_filled,
+            "Arcus modify total quantity must exceed already filled quantity; use cancel to stop the remainder"
+        );
+        anyhow::ensure!(
+            quantity != prior.original_size || price != prior.price,
+            "Arcus modify does not change price or total quantity"
+        );
+        let good_til_time = prior
+            .good_til_time
+            .clone()
+            .or_else(|| {
+                self.session
+                    .submitted
+                    .lock()
+                    .get(cmd.client_order_id.as_str())
+                    .map(|request| request.good_til_time.clone())
+            })
+            .context("Arcus modify requires the resting order's exact goodTilTime")?;
+        let request = ArcusModifyRequest {
+            address: self.session.address.clone(),
+            account_index: self.session.config.subaccount_id,
+            market_id: prior.market_id,
+            order_id: venue_id.to_string(),
+            quantity,
+            price,
+            side: prior.side,
+            time_in_force: expected_tif,
+            reduce_only: prior.reduce_only,
+            good_til_time,
+            client_time: Session::now().as_u64().to_string(),
+        };
+        crate::signing::modify_signing_payload(
+            &request,
+            &context.market,
+            request.client_time.parse()?,
+        )
+        .context("Arcus modify cannot preserve an invalid or insufficiently distant expiry")?;
+        Ok((
+            PendingModify {
+                command: cmd.clone(),
+                request,
+                prior,
+                baseline_filled,
+                sent: false,
+                uncertain: false,
+                rejection_reported: false,
+                emit_pending: !order.is_pending_update(),
+            },
+            context,
+        ))
+    }
 }
 
 #[async_trait(?Send)]
@@ -1136,7 +1641,9 @@ impl ExecutionClient for ArcusExecutionClient {
         Ok(())
     }
     fn stop(&mut self) -> anyhow::Result<()> {
+        let _commit = self.session.commit.lock();
         self.session.ready.store(false, Ordering::Release);
+        self.session.mark_modifies_uncertain();
 
         if let Some(stream) = self.stream.take() {
             stream.abort();
@@ -1147,6 +1654,8 @@ impl ExecutionClient for ArcusExecutionClient {
         }
         self.commands.take();
         self.cancels.take();
+        self.session
+            .reject_unsent_modifies("Arcus execution stopped before modification dispatch");
         self.core.set_disconnected();
         self.core.set_stopped();
         Ok(())
@@ -1197,6 +1706,7 @@ impl ExecutionClient for ArcusExecutionClient {
                     | ArcusWsEvent::Error(_)
                     | ArcusWsEvent::Connected => {
                         session.ready.store(false, Ordering::Release);
+                        session.mark_modifies_uncertain();
                         Ok(())
                     }
                     ArcusWsEvent::Ready => {
@@ -1276,7 +1786,11 @@ impl ExecutionClient for ArcusExecutionClient {
         Ok(())
     }
     async fn disconnect(&mut self) -> anyhow::Result<()> {
-        self.session.ready.store(false, Ordering::Release);
+        {
+            let _commit = self.session.commit.lock();
+            self.session.ready.store(false, Ordering::Release);
+            self.session.mark_modifies_uncertain();
+        }
 
         if let Some(mut stream) = self.stream.take() {
             stream.close().await;
@@ -1288,6 +1802,8 @@ impl ExecutionClient for ArcusExecutionClient {
         }
         self.commands.take();
         self.cancels.take();
+        self.session
+            .reject_unsent_modifies("Arcus execution disconnected before modification dispatch");
         self.core.set_disconnected();
         Ok(())
     }
@@ -1341,15 +1857,46 @@ impl ExecutionClient for ArcusExecutionClient {
         anyhow::bail!("Arcus order lists are unsupported")
     }
     fn modify_order(&self, cmd: ModifyOrder) -> anyhow::Result<()> {
-        self.session.emitter.emit_order_modify_rejected_event(
-            cmd.strategy_id,
-            cmd.instrument_id,
-            cmd.client_order_id,
-            cmd.venue_order_id,
-            "Arcus order modification is unsupported",
-            Session::now(),
-        );
-        anyhow::bail!("Arcus order modification is unsupported")
+        let result = self.modification(&cmd).and_then(|(pending, market)| {
+            let mut modifications = self.session.modifications.lock();
+            anyhow::ensure!(
+                !modifications.contains_key(&cmd.client_order_id),
+                "Arcus order already has a pending modification"
+            );
+            anyhow::ensure!(
+                modifications.len() < self.session.config.queue_capacity,
+                "Arcus pending modification capacity reached"
+            );
+            let prioritized = pending.request.time_in_force == ArcusTimeInForce::Alo;
+            modifications.insert(cmd.client_order_id, pending);
+            drop(modifications);
+            let result = self.enqueue(Command::Modify(
+                cmd.client_order_id,
+                cmd.command_id,
+                market,
+                prioritized,
+            ));
+
+            if result.is_err() {
+                self.session
+                    .modifications
+                    .lock()
+                    .remove(&cmd.client_order_id);
+            }
+            result
+        });
+
+        if let Err(e) = &result {
+            self.session.emitter.emit_order_modify_rejected_event(
+                cmd.strategy_id,
+                cmd.instrument_id,
+                cmd.client_order_id,
+                cmd.venue_order_id,
+                &e.to_string(),
+                Session::now(),
+            );
+        }
+        result
     }
     fn cancel_order(&self, cmd: CancelOrder) -> anyhow::Result<()> {
         let result = (|| {
@@ -1424,7 +1971,12 @@ impl ExecutionClient for ArcusExecutionClient {
                     id.as_str(),
                 )
                 .await?;
-            let report = self.session.order_report(&record)?;
+            let report = self
+                .session
+                .cache_order_records(vec![record])?
+                .pop()
+                .context("Arcus order is in an unresolved replacement transition")?;
+            self.session.validate_public_order_report(&report)?;
             anyhow::ensure!(
                 cmd.instrument_id
                     .is_none_or(|id| id == report.instrument_id),
@@ -1440,12 +1992,17 @@ impl ExecutionClient for ArcusExecutionClient {
         let id = cmd
             .client_order_id
             .context("Arcus order query requires an order identifier")?;
-        Ok(self
+        let report = self
             .session
             .orders(cmd.instrument_id, None, None)
             .await?
             .into_iter()
-            .find(|report| report.client_order_id == Some(id)))
+            .find(|report| report.client_order_id == Some(id));
+
+        if let Some(report) = &report {
+            self.session.validate_public_order_report(report)?;
+        }
+        Ok(report)
     }
     async fn generate_order_status_reports(
         &self,
@@ -1459,6 +2016,15 @@ impl ExecutionClient for ArcusExecutionClient {
                 cmd.end.map(|t| t.as_u64() / 1_000),
             )
             .await?;
+
+        anyhow::ensure!(
+            self.session.replacements.lock().is_empty(),
+            "Arcus replacement outcomes remain pending"
+        );
+
+        for report in &reports {
+            self.session.validate_public_order_report(report)?;
+        }
 
         if cmd.open_only {
             reports.retain(|r| {
@@ -1499,8 +2065,225 @@ impl ExecutionClient for ArcusExecutionClient {
     }
 }
 
+async fn dispatch_modify(
+    session: &Session,
+    client_id: ClientOrderId,
+    generation: UUID4,
+    market: &MarketContext,
+) -> anyhow::Result<()> {
+    let Some(mut pending) = session
+        .modifications
+        .lock()
+        .get(&client_id)
+        .filter(|pending| pending.command.command_id == generation)
+        .cloned()
+    else {
+        return Ok(());
+    };
+    let validation = (|| -> anyhow::Result<()> {
+        anyhow::ensure!(
+            session.ready(),
+            "Arcus modification dispatch requires a healthy reconciled session"
+        );
+        let latest = session
+            .order_records
+            .lock()
+            .get(&pending.request.order_id)
+            .cloned()
+            .context("Arcus modify target record disappeared")?;
+        anyhow::ensure!(
+            !is_modify_cancel(&latest)
+                && matches!(
+                    order_status(latest.state.as_deref().unwrap_or(&latest.status))?,
+                    OrderStatus::Accepted | OrderStatus::PartiallyFilled
+                ),
+            "Arcus modify target is no longer resting"
+        );
+        anyhow::ensure!(
+            latest.sequence_number.is_some(),
+            "Arcus modify target lost its authoritative sequence"
+        );
+        anyhow::ensure!(
+            latest.side == pending.request.side
+                && latest.time_in_force == Some(pending.request.time_in_force)
+                && latest.reduce_only == pending.request.reduce_only
+                && latest
+                    .good_til_time
+                    .as_ref()
+                    .is_none_or(|expiry| expiry == &pending.request.good_til_time),
+            "Arcus modify immutable attributes changed while queued"
+        );
+
+        if pending.command.quantity.is_none() {
+            pending.request.quantity = latest.original_size;
+        }
+
+        if pending.command.price.is_none() {
+            pending.request.price = latest.price;
+        }
+        pending.baseline_filled = pending.baseline_filled.max(
+            latest
+                .filled_size
+                .unwrap_or(latest.original_size - latest.remaining_size),
+        );
+        anyhow::ensure!(
+            pending.request.quantity > pending.baseline_filled,
+            "Arcus modify total quantity is no longer above cumulative fills; use cancel"
+        );
+        pending.prior = latest;
+        pending.request.client_time = Session::now().as_u64().to_string();
+        crate::signing::modify_signing_payload(
+            &pending.request,
+            &market.market,
+            pending.request.client_time.parse()?,
+        )?;
+        Ok(())
+    })();
+
+    if let Err(e) = validation {
+        let _commit = session.commit.lock();
+
+        if session
+            .modifications
+            .lock()
+            .get(&client_id)
+            .is_some_and(|current| current.command.command_id == generation)
+        {
+            session.modifications.lock().remove(&client_id);
+            session.reject_modify(&pending, &e.to_string());
+            session.refresh_modify_uncertainty();
+        }
+        return Ok(());
+    }
+    {
+        let _commit = session.commit.lock();
+        let still_queued = session
+            .modifications
+            .lock()
+            .get(&client_id)
+            .is_some_and(|current| current.command.command_id == generation);
+
+        if !still_queued {
+            return Ok(());
+        }
+
+        if !session.ready() {
+            session.modifications.lock().remove(&client_id);
+            session.reject_modify(
+                &pending,
+                "Arcus session lost readiness before modification dispatch",
+            );
+            session.refresh_modify_uncertainty();
+            return Ok(());
+        }
+        pending.sent = true;
+        session
+            .modifications
+            .lock()
+            .insert(client_id, pending.clone());
+        session.state_revision.fetch_add(2, Ordering::AcqRel);
+
+        if pending.emit_pending {
+            session
+                .emitter
+                .send_order_event(OrderEventAny::PendingUpdate(OrderPendingUpdate::new(
+                    session.emitter.trader_id(),
+                    pending.command.strategy_id,
+                    pending.command.instrument_id,
+                    client_id,
+                    Some(session.config.account_id),
+                    UUID4::new(),
+                    Session::now(),
+                    Session::now(),
+                    false,
+                    Some(VenueOrderId::from(pending.request.order_id.as_str())),
+                )));
+        }
+    }
+    let result = session
+        .http
+        .modify_order(&pending.request, &market.market)
+        .await;
+    let _commit = session.commit.lock();
+    let mut modifications = session.modifications.lock();
+    let Some(current) = modifications
+        .get_mut(&client_id)
+        .filter(|current| current.command.command_id == generation)
+    else {
+        return Ok(());
+    }; // An earlier WS outcome already resolved this generation.
+
+    match result {
+        Ok(response) => {
+            if response
+                .order_id
+                .as_deref()
+                .is_some_and(|id| id != current.request.order_id)
+            {
+                current.uncertain = true;
+                session.reconcile_notify.notify_one();
+            } else if response.status == "REJECTED" {
+                let reason = response
+                    .rejection_reason
+                    .as_deref()
+                    .unwrap_or("Arcus modify was rejected");
+
+                if !current.rejection_reported {
+                    session.reject_modify(current, reason);
+                    current.rejection_reported = true;
+                }
+
+                if modify_rejection_preserves_order(reason)
+                    && !session
+                        .replacements
+                        .lock()
+                        .contains_key(&VenueOrderId::from(current.request.order_id.as_str()))
+                {
+                    modifications.remove(&client_id);
+                } else {
+                    current.uncertain = true;
+                    session.reconcile_notify.notify_one();
+                }
+            } else if response.status != "ACK" {
+                session.reconcile_notify.notify_one();
+            }
+        }
+        Err(e) => {
+            if let Some(reason) = definite_modify_error(&e) {
+                session.reject_modify(current, &reason);
+                modifications.remove(&client_id);
+            } else {
+                current.uncertain = true;
+                session.reconcile_notify.notify_one();
+                log::warn!("Arcus modify outcome requires reconciliation for {client_id}: {e}");
+            }
+        }
+    }
+    drop(modifications);
+    session.refresh_modify_uncertainty();
+    Ok(())
+}
+
+fn definite_modify_error(error: &ArcusHttpError) -> Option<String> {
+    match error {
+        ArcusHttpError::Rejected { message, .. }
+        | ArcusHttpError::Validation(message)
+        | ArcusHttpError::Transport(message) => Some(message.clone()),
+        ArcusHttpError::RateLimited {
+            reason,
+            retry_after_ms,
+        } => Some(format!(
+            "Arcus rate limited {reason}; retry after {retry_after_ms} ms"
+        )),
+        _ => None,
+    }
+}
+
 async fn dispatch(session: &Session, command: Command) -> anyhow::Result<()> {
     match command {
+        Command::Modify(client_id, generation, market, _) => {
+            dispatch_modify(session, client_id, generation, &market).await
+        }
         Command::Submit(order, mut request, market) => {
             if !session.ready() {
                 session.pending.lock().remove(&order.client_order_id());
@@ -1513,6 +2296,10 @@ async fn dispatch(session: &Session, command: Command) -> anyhow::Result<()> {
             request.timestamp = Session::now().as_u64();
             request.good_til_time =
                 (request.timestamp / 1_000 + 33 * 86_400 * 1_000_000).to_string();
+            session
+                .submitted
+                .lock()
+                .insert(order.client_order_id().to_string(), request.clone());
             session.pending.lock().insert(order.client_order_id());
             session.emitter.emit_order_submitted(&order);
 
@@ -1695,6 +2482,32 @@ fn order_status(status: &str) -> anyhow::Result<OrderStatus> {
         "EXPIRED" => OrderStatus::Expired,
         other => anyhow::bail!("Unknown or non-final Arcus order status {other}"),
     })
+}
+
+fn is_modify_cancel(record: &ArcusOrder) -> bool {
+    record.cancel_reason.as_deref() == Some("MODIFY_CANCELED")
+        && matches!(
+            record.state.as_deref().unwrap_or(&record.status),
+            "CANCELED" | "MARGIN_CANCELED"
+        )
+}
+
+fn modify_rejection_preserves_order(reason: &str) -> bool {
+    matches!(
+        reason,
+        "MODIFY_CHANGED_IMMUTABLE_FIELD"
+            | "MODIFY_WOULD_CROSS_OUTSIDE_RTH_TRADING_BOUNDARY"
+            | "MODIFY_TPSL_NOT_SUPPORTED"
+    )
+}
+
+fn modify_rejection_cancels_order(reason: &str) -> bool {
+    matches!(
+        reason,
+        "MODIFY_SIZE_ALREADY_FILLED"
+            | "MODIFY_SUPERSEDED_BY_CANCEL"
+            | "FILL_WILL_EXCEED_TRADING_BOUND"
+    )
 }
 
 fn is_terminal(status: OrderStatus) -> bool {

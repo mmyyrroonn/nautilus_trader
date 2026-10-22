@@ -17,6 +17,7 @@
 
 use std::{
     collections::HashMap,
+    mem,
     str::FromStr,
     sync::{
         Arc,
@@ -31,11 +32,14 @@ use nautilus_common::{
     clients::DataClient,
     live::{
         dst::task::{self, JoinHandle},
+        get_runtime,
         runner::get_data_event_sender,
     },
     messages::{DataEvent, data::*},
 };
-use nautilus_core::{UnixNanos, time::get_atomic_clock_realtime};
+use nautilus_core::{
+    UnixNanos, datetime::try_datetime_to_unix_nanos, time::get_atomic_clock_realtime,
+};
 use nautilus_model::{
     data::{
         BookOrder, Data, InstrumentStatus, OrderBookDelta, OrderBookDeltas, QuoteTick, TradeTick,
@@ -45,6 +49,7 @@ use nautilus_model::{
     instruments::{Instrument, InstrumentAny},
     types::{Price, Quantity},
 };
+use parking_lot::Mutex;
 use rust_decimal::Decimal;
 use serde_json::{Value, json};
 use ustr::Ustr;
@@ -54,6 +59,7 @@ use crate::{
     consts::ARCUS_VENUE,
     http::ArcusHttpClient,
     instruments::parse_instrument,
+    market_data::{ReferenceDecoder, ReferenceKind, ReferenceSubscriptions},
     websocket::{ArcusWebSocket, ArcusWsEvent},
 };
 
@@ -68,6 +74,8 @@ pub struct ArcusDataClient {
     publisher: Option<JoinHandle<()>>,
     connected: Arc<AtomicBool>,
     sender: tokio::sync::mpsc::UnboundedSender<DataEvent>,
+    reference_subscriptions: Arc<Mutex<ReferenceSubscriptions>>,
+    pending_requests: Mutex<Vec<JoinHandle<()>>>,
 }
 
 impl ArcusDataClient {
@@ -89,11 +97,18 @@ impl ArcusDataClient {
             publisher: None,
             connected: Arc::new(AtomicBool::new(false)),
             sender: get_data_event_sender(),
+            reference_subscriptions: Arc::new(Mutex::new(ReferenceSubscriptions::default())),
+            pending_requests: Mutex::new(Vec::new()),
         })
     }
 
     fn shutdown(&mut self) {
         self.connected.store(false, Ordering::Release);
+        self.reference_subscriptions.lock().clear();
+
+        for request in self.pending_requests.get_mut().drain(..) {
+            request.abort();
+        }
 
         if let Some(socket) = self.socket.take() {
             socket.abort();
@@ -103,6 +118,29 @@ impl ArcusDataClient {
             publisher.abort();
         }
         invalidate(&self.sender, self.instruments.keys().copied());
+    }
+
+    fn reference_subscription(
+        &self,
+        instrument_id: InstrumentId,
+        kind: ReferenceKind,
+        active: bool,
+    ) -> anyhow::Result<()> {
+        let instrument = self
+            .instruments
+            .get(&instrument_id)
+            .context("Arcus instrument has not been loaded")?;
+        let socket = self
+            .socket
+            .as_ref()
+            .context("Arcus data client is disconnected")?;
+        self.reference_subscriptions.lock().set(
+            instrument_id,
+            instrument.raw_symbol().as_str(),
+            kind,
+            active,
+            socket,
+        )
     }
 
     fn subscription(
@@ -214,6 +252,7 @@ impl DataClient for ArcusDataClient {
         let worker_socket = socket.clone();
         let stream_epoch = socket.epoch();
         let sender = self.sender.clone();
+        let reference_subscriptions = self.reference_subscriptions.clone();
         let connected = self.connected.clone();
         let by_symbol: HashMap<String, InstrumentAny> = instruments
             .values()
@@ -224,32 +263,58 @@ impl DataClient for ArcusDataClient {
 
         self.publisher = Some(task::spawn(async move {
             let mut streams = MarketStreams::default();
+            let mut references = ReferenceDecoder::default();
 
             while let Some(event) = events.recv().await {
                 match event {
                     ArcusWsEvent::Connected => {
                         connected.store(true, Ordering::Release);
                         streams.clear();
+                        references.clear();
                     }
                     ArcusWsEvent::Disconnected => {
                         connected.store(false, Ordering::Release);
                         streams.clear();
+                        references.clear();
                         invalidate(&sender, by_symbol.values().map(InstrumentAny::id));
                     }
                     ArcusWsEvent::Error(e) => log::warn!("Arcus data transport: {e}"),
                     ArcusWsEvent::Ready => {}
                     ArcusWsEvent::Message { epoch, value } => {
-                        let result = process_market_message(
-                            &sender,
-                            &by_symbol,
-                            &value,
-                            &mut streams,
-                            epoch,
-                            &stream_epoch,
-                        );
+                        let result = if epoch == stream_epoch.load(Ordering::Acquire)
+                            && matches!(
+                                value["channel"].as_str(),
+                                Some("oraclePrices" | "predictedFunding")
+                            ) {
+                            references
+                                .decode(
+                                    &by_symbol,
+                                    &value,
+                                    &reference_subscriptions.lock(),
+                                    get_atomic_clock_realtime().get_time_ns(),
+                                )
+                                .and_then(|events| {
+                                    for event in events {
+                                        sender
+                                            .send(event)
+                                            .context("Data engine receiver closed")?;
+                                    }
+                                    Ok(true)
+                                })
+                        } else {
+                            process_market_message(
+                                &sender,
+                                &by_symbol,
+                                &value,
+                                &mut streams,
+                                epoch,
+                                &stream_epoch,
+                            )
+                        };
 
                         if matches!(result, Ok(false)) {
                             connected.store(false, Ordering::Release);
+                            references.clear();
                             continue;
                         }
 
@@ -257,6 +322,7 @@ impl DataClient for ArcusDataClient {
                             log::warn!("Arcus market data invalidated: {e}");
                             connected.store(false, Ordering::Release);
                             streams.clear();
+                            references.clear();
                             invalidate(&sender, by_symbol.values().map(InstrumentAny::id));
 
                             if worker_socket.reconnect().is_err() {
@@ -275,6 +341,16 @@ impl DataClient for ArcusDataClient {
 
     async fn disconnect(&mut self) -> anyhow::Result<()> {
         self.connected.store(false, Ordering::Release);
+        self.reference_subscriptions.lock().clear();
+        let requests = mem::take(self.pending_requests.get_mut());
+
+        for request in &requests {
+            request.abort();
+        }
+
+        for request in requests {
+            let _ = request.await;
+        }
 
         if let Some(publisher) = self.publisher.take() {
             publisher.abort();
@@ -393,14 +469,23 @@ impl DataClient for ArcusDataClient {
     fn subscribe_bars(&mut self, _: SubscribeBars) -> anyhow::Result<()> {
         anyhow::bail!("Arcus bar subscription is unsupported")
     }
-    fn subscribe_mark_prices(&mut self, _: SubscribeMarkPrices) -> anyhow::Result<()> {
-        anyhow::bail!("Arcus mark price subscription is unsupported")
+    fn subscribe_mark_prices(&mut self, cmd: SubscribeMarkPrices) -> anyhow::Result<()> {
+        self.reference_subscription(cmd.instrument_id, ReferenceKind::Mark, true)
     }
-    fn subscribe_index_prices(&mut self, _: SubscribeIndexPrices) -> anyhow::Result<()> {
-        anyhow::bail!("Arcus index price subscription is unsupported")
+    fn unsubscribe_mark_prices(&mut self, cmd: &UnsubscribeMarkPrices) -> anyhow::Result<()> {
+        self.reference_subscription(cmd.instrument_id, ReferenceKind::Mark, false)
     }
-    fn subscribe_funding_rates(&mut self, _: SubscribeFundingRates) -> anyhow::Result<()> {
-        anyhow::bail!("Arcus funding rate subscription is unsupported")
+    fn subscribe_index_prices(&mut self, cmd: SubscribeIndexPrices) -> anyhow::Result<()> {
+        self.reference_subscription(cmd.instrument_id, ReferenceKind::Index, true)
+    }
+    fn unsubscribe_index_prices(&mut self, cmd: &UnsubscribeIndexPrices) -> anyhow::Result<()> {
+        self.reference_subscription(cmd.instrument_id, ReferenceKind::Index, false)
+    }
+    fn subscribe_funding_rates(&mut self, cmd: SubscribeFundingRates) -> anyhow::Result<()> {
+        self.reference_subscription(cmd.instrument_id, ReferenceKind::Funding, true)
+    }
+    fn unsubscribe_funding_rates(&mut self, cmd: &UnsubscribeFundingRates) -> anyhow::Result<()> {
+        self.reference_subscription(cmd.instrument_id, ReferenceKind::Funding, false)
     }
     fn subscribe(&mut self, _: SubscribeCustomData) -> anyhow::Result<()> {
         anyhow::bail!("Arcus custom data subscription is unsupported")
@@ -417,8 +502,89 @@ impl DataClient for ArcusDataClient {
     fn request_book_depth(&self, _: RequestBookDepth) -> anyhow::Result<()> {
         anyhow::bail!("Arcus historical book depth is unsupported")
     }
-    fn request_funding_rates(&self, _: RequestFundingRates) -> anyhow::Result<()> {
-        anyhow::bail!("Arcus funding history is unsupported")
+    fn request_funding_rates(&self, cmd: RequestFundingRates) -> anyhow::Result<()> {
+        anyhow::ensure!(self.socket.is_some(), "Arcus data client is disconnected");
+        let instrument = self
+            .instruments
+            .get(&cmd.instrument_id)
+            .context("Arcus instrument has not been loaded")?
+            .clone();
+        let start = cmd.start.map(try_datetime_to_unix_nanos).transpose()?;
+        let end = cmd.end.map(try_datetime_to_unix_nanos).transpose()?;
+        anyhow::ensure!(
+            start.zip(end).is_none_or(|(start, end)| start <= end),
+            "Arcus funding history start exceeds end"
+        );
+        let from_us =
+            start.map(|value| value.as_u64() / 1000 + u64::from(value.as_u64() % 1000 != 0));
+        let to_us = end.map(|value| value.as_u64() / 1000);
+        let empty_window = from_us.zip(to_us).is_some_and(|(from, to)| from > to);
+        let upper = if empty_window {
+            None
+        } else {
+            Some(ArcusHttpClient::validate_funding_rates_query(
+                instrument.raw_symbol().as_str(),
+                from_us,
+                to_us,
+                cmd.limit.map(|limit| limit.get()),
+            )?)
+        };
+        let request_id = cmd.request_id;
+        let mut pending = self.pending_requests.lock();
+        pending.retain(|task| !task.is_finished());
+        anyhow::ensure!(
+            pending.len() < self.config.queue_capacity,
+            "Arcus historical request queue is full"
+        );
+        let http = self.http.clone();
+        let sender = self.sender.clone();
+        let client_id = self.client_id;
+
+        pending.push(get_runtime().spawn(async move {
+            let result: anyhow::Result<()> = async {
+                let rows = if empty_window {
+                    Vec::new()
+                } else {
+                    http.funding_rates(
+                        instrument.raw_symbol().as_str(),
+                        from_us,
+                        upper,
+                        cmd.limit.map(|limit| limit.get()),
+                    )
+                    .await?
+                };
+                let now = get_atomic_clock_realtime().get_time_ns();
+                let mut data = rows
+                    .iter()
+                    .map(|row| crate::market_data::funding_history_update(&instrument, row))
+                    .collect::<anyhow::Result<Vec<_>>>()?;
+                data.retain(|update| {
+                    start.is_none_or(|start| update.ts_event >= start)
+                        && end.is_none_or(|end| update.ts_event <= end)
+                });
+                sender
+                    .send(DataEvent::Response(DataResponse::FundingRates(
+                        FundingRatesResponse::new(
+                            cmd.request_id,
+                            client_id,
+                            cmd.instrument_id,
+                            data,
+                            start,
+                            end,
+                            now,
+                            cmd.params,
+                        ),
+                    )))
+                    .context("Data engine receiver closed")?;
+                Ok(())
+            }
+            .await;
+
+            if let Err(e) = result {
+                log::error!("Arcus funding history request {request_id} failed: {e}");
+            }
+        }));
+        Ok(())
     }
     fn request_quotes(&self, _: RequestQuotes) -> anyhow::Result<()> {
         anyhow::bail!("Arcus historical quotes are unsupported")

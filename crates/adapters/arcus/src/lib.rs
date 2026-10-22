@@ -34,5 +34,7 @@ pub mod models;
 pub mod signing;
 pub mod websocket;
 
+pub(crate) mod market_data;
+
 #[cfg(feature = "python")]
 pub mod python;

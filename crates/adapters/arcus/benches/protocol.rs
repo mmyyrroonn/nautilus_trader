@@ -40,6 +40,19 @@ fn protocol(c: &mut Criterion) {
         timestamp: 1790000000000000000,
     };
     let signer = ArcusSigner::from_seed_hex(&"00".repeat(32)).unwrap();
+    let modify = ArcusModifyRequest {
+        address: order.address.clone(),
+        account_index: order.account_index,
+        market_id: order.market_id,
+        order_id: "abcdef0123456789".into(),
+        quantity: order.quantity,
+        price: order.price,
+        side: order.order_side,
+        time_in_force: order.time_in_force,
+        reduce_only: order.reduce_only,
+        good_til_time: order.good_til_time.clone(),
+        client_time: order.timestamp.to_string(),
+    };
     c.bench_function("arcus_market_decode", |b| {
         b.iter(|| serde_json::from_str::<ArcusMarket>(black_box(fixture)).unwrap());
     });
@@ -52,6 +65,13 @@ fn protocol(c: &mut Criterion) {
         b.iter(|| {
             signer
                 .sign_order(black_box(&order), black_box(&market), order.timestamp)
+                .unwrap()
+        });
+    });
+    c.bench_function("arcus_modify_sign", |b| {
+        b.iter(|| {
+            signer
+                .sign_modify(black_box(&modify), black_box(&market), order.timestamp)
                 .unwrap()
         });
     });

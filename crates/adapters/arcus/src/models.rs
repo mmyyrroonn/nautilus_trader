@@ -110,6 +110,24 @@ pub struct ArcusCancelRequest {
     pub timestamp: u64,
 }
 
+/// Replaces only the price or total size while echoing a resting limit order's attributes.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ArcusModifyRequest {
+    pub address: String,
+    pub account_index: u8,
+    pub market_id: u16,
+    pub order_id: String,
+    pub quantity: Decimal,
+    pub price: Decimal,
+    pub side: ArcusOrderSide,
+    pub time_in_force: ArcusTimeInForce,
+    pub reduce_only: bool,
+    pub good_til_time: String,
+    /// Replay nonce in epoch nanoseconds, matching the signed HTTP timestamp.
+    pub client_time: String,
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ArcusOrderResponse {
