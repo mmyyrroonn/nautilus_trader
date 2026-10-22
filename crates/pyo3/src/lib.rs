@@ -195,6 +195,11 @@ fn _libnautilus(py: Python<'_>, m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_wrapped(submodule)?;
     sys_modules.set_item(format!("{module_name}.{n}"), m.getattr(n)?)?;
 
+    let n = "arcus";
+    let submodule = pyo3::wrap_pymodule!(nautilus_arcus::python::arcus);
+    m.add_wrapped(submodule)?;
+    sys_modules.set_item(format!("{module_name}.{n}"), m.getattr(n)?)?;
+
     let n = "aster";
     let submodule = pyo3::wrap_pymodule!(nautilus_aster::python::aster);
     m.add_wrapped(submodule)?;

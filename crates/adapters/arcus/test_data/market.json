@@ -1,0 +1,20 @@
+{
+  "marketDisplayName": "BTC-USD",
+  "marketId": 1,
+  "baseAsset": "BTC",
+  "quoteAsset": "USD",
+  "status": "ONLINE",
+  "type": "PERPETUAL",
+  "tickSize": "0.1",
+  "stepSize": "0.00000001",
+  "tickTiers": [{ "upToPrice": "500000", "tick": "0.1" }, { "tick": "0.2" }],
+  "minOrderSize": "0.0001",
+  "maxOrderSize": "10000",
+  "minOrderNotional": "5",
+  "oraclePrice": "50000",
+  "markPrice": "50000",
+  "initialMarginFraction": "0.025",
+  "maintenanceMarginFraction": "0.016667",
+  "effectiveMakerFeePpm": -20,
+  "effectiveTakerFeePpm": 225
+}

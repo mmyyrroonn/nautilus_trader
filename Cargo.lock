@@ -5464,6 +5464,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "nautilus-arcus"
+version = "0.63.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "codspeed-criterion-compat",
+ "ed25519-dalek",
+ "futures-util",
+ "log",
+ "nautilus-common",
+ "nautilus-core",
+ "nautilus-live",
+ "nautilus-model",
+ "nautilus-system",
+ "parking_lot",
+ "pyo3",
+ "pyo3-stub-gen",
+ "reqwest 0.13.4",
+ "rstest",
+ "rust_decimal",
+ "rust_decimal_macros",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-tungstenite 0.30.0",
+ "tokio-util",
+ "url",
+ "ustr",
+ "zeroize",
+]
+
+[[package]]
 name = "nautilus-aster"
 version = "0.63.0"
 dependencies = [
@@ -6849,6 +6883,7 @@ dependencies = [
  "mimalloc",
  "nautilus-analysis",
  "nautilus-architect-ax",
+ "nautilus-arcus",
  "nautilus-aster",
  "nautilus-backpack",
  "nautilus-backtest",

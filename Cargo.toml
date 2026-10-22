@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "crates",
   "crates/adapters/architect_ax",
+  "crates/adapters/arcus",
   "crates/adapters/aster",
   "crates/adapters/backpack",
   "crates/adapters/betfair",
@@ -101,6 +102,7 @@ nautilus-trading = { path = "crates/trading", version = "0.63.0" }
 # Note: default-features = false keeps high-precision selection explicit
 # -----------------------------------------------------------------------------
 nautilus-architect-ax = { path = "crates/adapters/architect_ax", version = "0.63.0" }
+nautilus-arcus = { path = "crates/adapters/arcus", version = "0.63.0", default-features = false }
 nautilus-aster = { path = "crates/adapters/aster", version = "0.63.0", default-features = false }
 nautilus-betfair = { path = "crates/adapters/betfair", version = "0.63.0", default-features = false }
 nautilus-backpack = { path = "crates/adapters/backpack", version = "0.63.0", default-features = false }

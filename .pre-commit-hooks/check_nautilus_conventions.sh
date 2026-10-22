@@ -363,6 +363,7 @@ echo "Checking Python submodule registrations..."
 # nautilus-system does for `Controller` in the trading module.
 EXPECTED_PYO3_MODULES="analysis nautilus_analysis::python::analysis
 architect_ax nautilus_architect_ax::python::architect_ax
+arcus nautilus_arcus::python::arcus
 backtest nautilus_backtest::python::backtest
 betfair nautilus_betfair::python::betfair
 binance nautilus_binance::python::binance
