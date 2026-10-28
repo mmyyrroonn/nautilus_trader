@@ -238,8 +238,7 @@ fn test_the_python_module_registers_the_documented_surface() {
     });
 }
 
-/// The two factories a live node builds in Python draw on one REST budget per environment, and the
-/// client one of them creates is paced by it (plan §4.4, finding F13).
+/// Python factories share reactive cooldowns without restoring historical fixed pacing.
 ///
 /// Both factories are constructed here **through the Python surface** - `OndoDataClientFactory()`
 /// and `OndoExecutionClientFactory()`, which is what the node's registration does - and nothing
@@ -284,14 +283,18 @@ async fn test_the_python_factories_share_one_environment_budget_under_concurrenc
         shared_rest_budget(OndoEnvironment::Production).limiter()
     ));
 
-    // Concurrency across the two factories: the slot one of them spent is the slot the other waits
-    // for. Neither handle was passed to the test - each came from its own factory - and the second
-    // acquisition is driven by hand rather than spawned, so the assertion is about the budget
-    // rather than about how the runtime happened to schedule a task.
-    data_factory
-        .budget()
-        .acquire(nautilus_ondo::http::rate_limit::OndoRequestPriority::Normal)
-        .await;
+    let started = tokio::time::Instant::now();
+    for _ in 0..100 {
+        for budget in [data_factory.budget(), exec_factory.budget()] {
+            budget
+                .acquire(nautilus_ondo::http::rate_limit::OndoRequestPriority::Normal)
+                .await;
+        }
+    }
+    assert_eq!(tokio::time::Instant::now(), started);
+
+    // A rate-limit response observed by either client blocks both factories
+    data_factory.budget().defer(Duration::from_secs(2));
 
     let exec_budget = exec_factory.budget().clone();
     let mut waiting =
@@ -299,16 +302,11 @@ async fn test_the_python_factories_share_one_environment_budget_under_concurrenc
     for _ in 0..16 {
         assert!(
             poll!(waiting.as_mut()).is_pending(),
-            "the second factory waits on the slot the first one spent"
+            "the second factory observes the first factory's cooldown"
         );
         tokio::task::yield_now().await;
     }
 
-    // Two seconds rather than one: this bucket is process-wide, so the reference instant its
-    // limiter counts from was taken by whichever test in this binary created it - possibly a
-    // runtime whose paused clock is a millisecond or so away from this one's. What is asserted
-    // exactly is that the second factory *waits*; the release allows for that skew rather than
-    // pretending two runtimes share one clock.
     tokio::time::advance(Duration::from_secs(2)).await;
 
     let mut released = false;
@@ -320,13 +318,9 @@ async fn test_the_python_factories_share_one_environment_budget_under_concurrenc
         }
         tokio::task::yield_now().await;
     }
-    assert!(
-        released,
-        "one request per second, however many factories share the environment"
-    );
+    assert!(released, "the shared cooldown expires for both factories");
 
-    // And the client one of them creates is paced by the bucket of the environment its own
-    // configuration names - here the other one, which is what the isolation key buys.
+    // A client observes the cooldown of its configured environment
     let config = Python::attach(|py| {
         let module = scratch_module(py);
         let kwargs = PyDict::new(py);
@@ -349,18 +343,8 @@ async fn test_the_python_factories_share_one_environment_budget_under_concurrenc
             .expect("the configuration extracts back into Rust")
     });
 
-    // This bucket is created here, by this test's own runtime, and the client's read is the only
-    // thing that draws on it - so the cell it spends is the cell the assertion below finds gone.
     let sandbox_budget = shared_rest_budget(OndoEnvironment::Sandbox);
-    assert!(
-        sandbox_budget
-            .limiter()
-            .check_key(&ustr::Ustr::from(
-                nautilus_ondo::http::rate_limit::ONDO_REST_BUCKET
-            ))
-            .is_ok(),
-        "the sandbox environment's bucket holds its one cell before the read"
-    );
+    sandbox_budget.defer(Duration::from_secs(2));
 
     let mut client = data_factory
         .create(
@@ -380,17 +364,10 @@ async fn test_the_python_factories_share_one_environment_budget_under_concurrenc
         tokio::task::yield_now().await;
     }
 
-    assert!(
-        sandbox_budget
-            .limiter()
-            .check_key(&ustr::Ustr::from(
-                nautilus_ondo::http::rate_limit::ONDO_REST_BUCKET
-            ))
-            .is_err(),
-        "the client created through the Python factory drew the sandbox environment's cell"
-    );
-
-    tokio::time::advance(Duration::from_secs(1)).await;
+    let mut production =
+        Box::pin(exec_budget.acquire(nautilus_ondo::http::rate_limit::OndoRequestPriority::Normal));
+    assert!(poll!(production.as_mut()).is_ready());
+    tokio::time::advance(Duration::from_secs(2)).await;
 
     let mut connected = None;
     for _ in 0..16 {
