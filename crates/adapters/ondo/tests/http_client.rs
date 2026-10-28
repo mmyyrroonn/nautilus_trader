@@ -323,7 +323,7 @@ fn retry_policy(
 ///
 /// These tests are about the transport, so their budget must not be the thing a failure can be
 /// blamed on, and it must not pace a multi-request test for real seconds. The production
-/// one-request-per-second default is asserted in `nautilus_ondo::http::rate_limit`'s own tests.
+/// unpaced default is asserted in `nautilus_ondo::http::rate_limit`'s own tests.
 fn test_budget() -> OndoRateBudget {
     OndoRateBudget::with_quota(Quota::per_second(NonZeroU32::new(1_000).unwrap()).unwrap())
 }
@@ -347,11 +347,10 @@ fn test_client(server: &MockServer) -> OndoHttpClient {
 
 #[tokio::test]
 async fn test_a_429_without_retry_after_backs_off_exponentially_and_stays_bounded() {
-    // Every reply is a 429 that carries no `Retry-After`, so the retry delay can only come from
-    // the policy's own exponential backoff. The bound is the policy: one attempt plus
-    // `max_retries`, and the observed gaps must grow.
+    // Use backoff intervals above the one-second shared fallback cooldown so both the
+    // exponential growth and the bounded retry count remain observable.
     let server = MockServer::start(vec![Reply::answer(429, "too many requests")]).await;
-    let client = client_for(&server, retry_policy(2, 50, 200, Some(5_000)));
+    let client = client_for(&server, retry_policy(2, 1_100, 2_200, Some(8_000)));
 
     let started = Instant::now();
     let error = client
@@ -377,25 +376,50 @@ async fn test_a_429_without_retry_after_backs_off_exponentially_and_stays_bounde
         3,
         "one attempt plus the policy's two bounded retries",
     );
-    assert!(elapsed < Duration::from_secs(1), "bounded: {elapsed:?}");
+    assert!(elapsed < Duration::from_secs(8), "bounded: {elapsed:?}");
 
-    // The policy's 50 ms initial delay doubling to 100 ms is the spacing the two observed attempts
-    // must show: the lower bounds are what makes this an exponential backoff and not merely "some
-    // delay" (a scheduler under load can only lengthen a gap, never shorten it below the timer).
+    // The shared floor does not replace a larger exponential backoff
     let first_gap = requests[1].at.duration_since(requests[0].at);
     let second_gap = requests[2].at.duration_since(requests[1].at);
     assert!(
-        first_gap >= Duration::from_millis(45),
+        first_gap >= Duration::from_millis(1_050),
         "the first retry waits the policy's initial delay: {first_gap:?}",
     );
     assert!(
-        second_gap >= Duration::from_millis(90),
+        second_gap >= Duration::from_millis(2_100),
         "the second retry waits twice the initial delay: {second_gap:?}",
     );
     assert!(
         second_gap > first_gap,
         "the delay between attempts must grow (exponential backoff): {first_gap:?} then {second_gap:?}",
     );
+}
+
+#[tokio::test]
+async fn test_a_429_without_retry_after_defers_other_clients_sharing_the_budget() {
+    let server = MockServer::start(vec![
+        Reply::answer(429, "too many requests"),
+        Reply::ok(MARKETS_BODY),
+    ])
+    .await;
+    let client = client_for(&server, retry_policy(0, 1, 2, Some(5_000)));
+    let other = client.clone();
+
+    assert!(matches!(
+        client.get_markets().await,
+        Err(OndoHttpError::RateLimited { .. })
+    ));
+    assert_eq!(server.captured().len(), 1, "the first call does not replay");
+    other.get_markets().await.unwrap();
+
+    let requests = server.captured();
+    assert_eq!(requests.len(), 2);
+    let gap = requests[1].at.duration_since(requests[0].at);
+    assert!(
+        gap >= Duration::from_millis(900),
+        "shared cooldown: {gap:?}"
+    );
+    assert!(gap < Duration::from_secs(5), "bounded cooldown: {gap:?}");
 }
 
 #[tokio::test]

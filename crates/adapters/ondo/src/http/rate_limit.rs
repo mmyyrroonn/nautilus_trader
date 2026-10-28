@@ -13,35 +13,13 @@
 //  limitations under the License.
 // -------------------------------------------------------------------------------------------------
 
-//! The shared REST request budget for one Ondo Perps adapter environment.
+//! Shared REST admission with cancel-first priority and reactive venue cooldowns.
 //!
-//! Plan §4.4 sets the REST limit conservatively at **one request per second per adapter per
-//! environment**. That is deliberately *one budget*, not one per endpoint and not one per client:
-//! [`OndoRateBudget`] is injectable, and every client that talks to the same environment is built
-//! from a clone of the same instance, so a data client and an execution client in one process draw
-//! on the same tokens.
-//!
-//! # How two clients end up on one budget
-//!
-//! A factory is constructed before any configuration reaches it - `OndoDataClientFactory()` in
-//! Python, then `create(name, config, ..)` once the node has one - and the environment is a member
-//! of *that configuration*, not of the factory. So the shared instance is resolved at `create`:
-//! [`shared_rest_budget`] answers the process-wide budget of the environment a configuration names,
-//! which is what makes the data and execution clients of one environment contend for one bucket
-//! without either surface having to be wired to the other. The registry is keyed by the environment
-//! itself, so a production client and a sandbox client in one process never share a bucket - and
-//! [`OndoRateBudget::new`] is still the way a test or a Rust embedder takes an independent one.
-//!
-//! # Priority
-//!
-//! §4.4 also requires cancels, unknown-order queries and reconciliation to take precedence over
-//! ordinary metadata and history reads *within the same budget*, by reserving a request slot rather
-//! than bypassing the limit. [`OndoRequestPriority`] is that hook: [`OndoRateBudget::acquire`]
-//! takes it, so every caller already names the class of traffic it is. Both classes consume the same
-//! single bucket. Safety traffic reserves the next unconsumed slot ahead of ordinary reads,
-//! including a read already waiting for replenishment. Ordinary waits use FIFO ordering when no
-//! safety reservation intervenes.
-//! Cancelling a safety waiter releases its reservation; priority never bypasses the rate limit.
+//! The historical one-request-per-second default was a local integration precaution,
+//! not a venue limit. Production defaults to no fixed pacing. Explicit quotas remain
+//! available to callers. HTTP 429 cooldowns apply to all clients of one environment.
+//! Cancel requests precede reductions/reconciliation, which precede ordinary requests;
+//! priority does not bypass a venue cooldown or a caller-specified quota.
 
 use std::{
     num::NonZeroU32,
@@ -49,6 +27,7 @@ use std::{
         Arc, LazyLock, Mutex, PoisonError,
         atomic::{AtomicUsize, Ordering},
     },
+    time::Duration,
 };
 
 use ahash::AHashMap;
@@ -64,10 +43,10 @@ use crate::common::enums::OndoEnvironment;
 /// budget §4.4 asks for.
 pub const ONDO_REST_BUCKET: &str = "ondo:rest";
 
-/// The conservative REST budget: one request per second for the whole adapter (§4.4).
+/// Historical opt-in quota, retained for callers that explicitly choose conservative pacing.
 pub const ONDO_REST_REQUESTS_PER_SECOND: u32 = 1;
 
-/// The default REST quota: one request per second, with a single-request burst.
+/// Historical opt-in REST quota with a single-request burst.
 pub static ONDO_REST_QUOTA: LazyLock<Quota> = LazyLock::new(|| {
     Quota::per_second(NonZeroU32::new(ONDO_REST_REQUESTS_PER_SECOND).expect("non-zero"))
         .expect("one request per second has a non-zero replenish interval")
@@ -103,11 +82,13 @@ pub fn shared_rest_budget(environment: OndoEnvironment) -> OndoRateBudget {
 pub enum OndoRequestPriority {
     /// Ordinary market metadata and history reads.
     Normal,
-    /// Reduce-only close, cancel, unknown-order query and reconciliation traffic (§4.4).
+    /// Reduce-only close, unknown-order query and reconciliation traffic.
     ///
     /// It reserves the next unconsumed slot ahead of ordinary reads while drawing on the same
     /// budget as [`Self::Normal`].
     High,
+    /// Cancellations precede all other queued traffic.
+    Cancel,
 }
 
 /// The shared REST budget for one adapter environment.
@@ -126,6 +107,9 @@ pub struct OndoRateBudget {
     waiters: Arc<AsyncMutex<()>>,
     priority_waiters: Arc<AtomicUsize>,
     priority_changed: Arc<Notify>,
+    cancel_waiters: Arc<AtomicUsize>,
+    cooldown: Arc<Mutex<Option<tokio::time::Instant>>>,
+    paced: bool,
 }
 
 impl Default for OndoRateBudget {
@@ -135,17 +119,17 @@ impl Default for OndoRateBudget {
 }
 
 impl OndoRateBudget {
-    /// Creates an independent budget with the default one-request-per-second quota.
+    /// Creates an independent unpaced budget with shared reactive cooldowns.
     #[must_use]
     pub fn new() -> Self {
-        Self::with_quota(*ONDO_REST_QUOTA)
+        let mut budget = Self::with_quota(*ONDO_REST_QUOTA);
+        budget.paced = false;
+        budget
     }
 
     /// Creates an independent budget with an explicit quota.
     ///
-    /// The plan's one request per second is a conservative *default*, not a venue constant: it is a
-    /// historical value P0 recorded for re-checking against the live host. Nothing else about the
-    /// budget changes - it is still one bucket every request draws on, whatever the quota is.
+    /// All clients sharing this budget obey the supplied quota as well as venue cooldowns.
     #[must_use]
     pub fn with_quota(quota: Quota) -> Self {
         Self {
@@ -156,6 +140,9 @@ impl OndoRateBudget {
             waiters: Arc::new(AsyncMutex::new(())),
             priority_waiters: Arc::new(AtomicUsize::new(0)),
             priority_changed: Arc::new(Notify::new()),
+            cancel_waiters: Arc::new(AtomicUsize::new(0)),
+            cooldown: Arc::new(Mutex::new(None)),
+            paced: true,
         }
     }
 
@@ -169,20 +156,50 @@ impl OndoRateBudget {
         &self.limiter
     }
 
-    /// Awaits one slot in the shared budget, for traffic of the given priority.
-    ///
-    /// A request that cannot be admitted waits here rather than being sent: the budget reserves a
-    /// slot, it never bypasses the limit. The wait is on the caller's clock, so a client parks in
-    /// its own task and does not sleep mid-loop.
+    /// Extends the shared cooldown after a venue rate-limit response.
+    pub fn defer(&self, duration: Duration) {
+        let until = tokio::time::Instant::now() + duration;
+        let mut current = self.cooldown.lock().unwrap_or_else(PoisonError::into_inner);
+        *current = Some(current.map_or(until, |old| old.max(until)));
+        self.priority_changed.notify_waiters();
+    }
+
+    fn higher_waiting(&self, priority: OndoRequestPriority) -> bool {
+        (priority != OndoRequestPriority::Cancel
+            && self.cancel_waiters.load(Ordering::Acquire) != 0)
+            || (priority == OndoRequestPriority::Normal
+                && self.priority_waiters.load(Ordering::Acquire) != 0)
+    }
+
+    async fn ready(&self) {
+        loop {
+            let until = *self.cooldown.lock().unwrap_or_else(PoisonError::into_inner);
+            match until {
+                Some(until) if until > tokio::time::Instant::now() => {
+                    tokio::time::sleep_until(until).await;
+                }
+                _ => break,
+            }
+        }
+        if self.paced {
+            self.limiter
+                .await_keys_ready(Some(&[Ustr::from(ONDO_REST_BUCKET)]))
+                .await;
+        }
+    }
+
+    /// Waits for shared cooldown/quota availability, allowing cancels to preempt waiters.
     pub async fn acquire(&self, priority: OndoRequestPriority) {
-        log::trace!("Awaiting the shared Ondo REST budget for {priority:?} traffic");
-        // Cancellation drops the registration, so a cancelled safety request cannot leave
-        // ordinary reads permanently parked. Every winner still consumes the same bucket.
-        let _registration = (priority == OndoRequestPriority::High).then(|| {
-            self.priority_waiters.fetch_add(1, Ordering::AcqRel);
+        let count = match priority {
+            OndoRequestPriority::Normal => None,
+            OndoRequestPriority::High => Some(&self.priority_waiters),
+            OndoRequestPriority::Cancel => Some(&self.cancel_waiters),
+        };
+        let _registration = count.map(|count| {
+            count.fetch_add(1, Ordering::AcqRel);
             self.priority_changed.notify_waiters();
             PriorityRegistration {
-                count: Arc::clone(&self.priority_waiters),
+                count: Arc::clone(count),
                 changed: Arc::clone(&self.priority_changed),
             }
         });
@@ -190,30 +207,19 @@ impl OndoRateBudget {
             let changed = self.priority_changed.notified();
             tokio::pin!(changed);
             changed.as_mut().enable();
-            if priority == OndoRequestPriority::Normal
-                && self.priority_waiters.load(Ordering::Acquire) != 0
-            {
+            if self.higher_waiting(priority) {
                 changed.await;
                 continue;
             }
             let turn = self.waiters.lock().await;
-            if priority == OndoRequestPriority::High {
-                self.limiter
-                    .await_keys_ready(Some(&[Ustr::from(ONDO_REST_BUCKET)]))
-                    .await;
-                return;
-            }
-            if self.priority_waiters.load(Ordering::Acquire) != 0 {
+            if self.higher_waiting(priority) {
                 drop(turn);
                 continue;
             }
-            // Yield an unconsumed future slot to newly arrived safety traffic. Without this,
-            // a history read holding the turnstile would defeat the priority reservation.
-            let keys = [Ustr::from(ONDO_REST_BUCKET)];
             tokio::select! {
                 biased;
                 () = &mut changed => { drop(turn); }
-                () = self.limiter.await_keys_ready(Some(&keys)) => { return; }
+                () = self.ready() => { return; }
             }
         }
     }
@@ -223,6 +229,7 @@ struct PriorityRegistration {
     count: Arc<AtomicUsize>,
     changed: Arc<Notify>,
 }
+
 impl Drop for PriorityRegistration {
     fn drop(&mut self) {
         self.count.fetch_sub(1, Ordering::AcqRel);
@@ -252,7 +259,7 @@ mod tests {
     }
 
     #[rstest]
-    fn test_the_default_budget_is_one_request_per_second() {
+    fn test_the_explicit_historical_quota_is_one_request_per_second() {
         assert_eq!(ONDO_REST_REQUESTS_PER_SECOND, 1);
         assert_eq!(ONDO_REST_BUCKET, "ondo:rest");
         assert_eq!(ONDO_REST_QUOTA.burst_size().get(), 1);
@@ -283,7 +290,7 @@ mod tests {
 
     #[rstest]
     fn test_clones_share_one_budget_and_independent_budgets_do_not() {
-        let budget = OndoRateBudget::new();
+        let budget = OndoRateBudget::with_quota(*ONDO_REST_QUOTA);
         let clone = budget.clone();
         let independent = OndoRateBudget::new();
 
@@ -296,7 +303,7 @@ mod tests {
     /// A later periodic read must not repeatedly take the slot an older order already awaits.
     #[tokio::test(start_paused = true)]
     async fn test_waiters_take_replenished_slots_in_arrival_order() {
-        let budget = OndoRateBudget::new();
+        let budget = OndoRateBudget::with_quota(*ONDO_REST_QUOTA);
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
 
         budget.acquire(OndoRequestPriority::Normal).await;
@@ -323,7 +330,7 @@ mod tests {
     /// A safety close reserves the next shared slot even when a history read is already waiting.
     #[tokio::test(start_paused = true)]
     async fn test_safety_priority_preempts_waiting_history_without_bypassing_quota() {
-        let budget = OndoRateBudget::new();
+        let budget = OndoRateBudget::with_quota(*ONDO_REST_QUOTA);
         budget.acquire(OndoRequestPriority::Normal).await;
         let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
         for (label, priority) in [
@@ -360,7 +367,7 @@ mod tests {
     /// A cancelled priority request must not consume capacity or strand ordinary traffic.
     #[tokio::test(start_paused = true)]
     async fn test_cancelled_safety_wait_releases_reservation_without_consuming_slot() {
-        let budget = OndoRateBudget::new();
+        let budget = OndoRateBudget::with_quota(*ONDO_REST_QUOTA);
         budget.acquire(OndoRequestPriority::Normal).await;
         let high_budget = budget.clone();
         let high = tokio::spawn(async move {
@@ -413,7 +420,7 @@ mod tests {
     /// so the assertion costs no real time.
     #[tokio::test(start_paused = true)]
     async fn test_two_clients_sharing_one_budget_cannot_exceed_one_request_per_second() {
-        let budget = OndoRateBudget::new();
+        let budget = OndoRateBudget::with_quota(*ONDO_REST_QUOTA);
         let data_client = client_on(&budget);
         let exec_client = client_on(&budget);
         let done = Arc::new(AtomicUsize::new(0));
@@ -461,7 +468,7 @@ mod tests {
     /// §4.4: priority reserves a slot, it does not bypass the limit.
     #[tokio::test(start_paused = true)]
     async fn test_a_priority_request_draws_on_the_same_budget_instead_of_bypassing_it() {
-        let budget = OndoRateBudget::new();
+        let budget = OndoRateBudget::with_quota(*ONDO_REST_QUOTA);
         let done = Arc::new(AtomicUsize::new(0));
 
         budget.acquire(OndoRequestPriority::Normal).await;
@@ -487,5 +494,45 @@ mod tests {
             tokio::task::yield_now().await;
         }
         assert_eq!(done.load(Ordering::SeqCst), 1);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_default_has_no_fixed_pacing() {
+        let budget = OndoRateBudget::new();
+        let start = tokio::time::Instant::now();
+        for _ in 0..100 {
+            budget.acquire(OndoRequestPriority::Normal).await;
+        }
+        assert_eq!(tokio::time::Instant::now(), start);
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_shared_cooldown_releases_cancels_before_close_and_reads() {
+        let budget = OndoRateBudget::new();
+        budget.defer(Duration::from_secs(2));
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        for priority in [
+            OndoRequestPriority::Normal,
+            OndoRequestPriority::High,
+            OndoRequestPriority::Cancel,
+        ] {
+            let b = budget.clone();
+            let tx = tx.clone();
+            tokio::spawn(async move {
+                b.acquire(priority).await;
+                tx.send(priority).unwrap();
+            });
+            for _ in 0..16 {
+                tokio::task::yield_now().await;
+            }
+        }
+        assert!(rx.try_recv().is_err());
+        tokio::time::advance(Duration::from_secs(2)).await;
+        for _ in 0..32 {
+            tokio::task::yield_now().await;
+        }
+        assert_eq!(rx.try_recv(), Ok(OndoRequestPriority::Cancel));
+        assert_eq!(rx.try_recv(), Ok(OndoRequestPriority::High));
+        assert_eq!(rx.try_recv(), Ok(OndoRequestPriority::Normal));
     }
 }

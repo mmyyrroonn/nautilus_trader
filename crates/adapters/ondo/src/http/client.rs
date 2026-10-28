@@ -658,6 +658,7 @@ impl OndoHttpClient {
             .await
             .map_err(transport_error)?;
 
+        self.observe_rate_limit(&response);
         check_response(response).map(|response| response.body)
     }
 
@@ -858,6 +859,7 @@ impl OndoHttpClient {
                             .await
                             .map_err(transport_error)?;
 
+                        self.observe_rate_limit(&response);
                         auth.observe(&response.headers);
 
                         check_private_response(response, auth)
@@ -945,6 +947,7 @@ impl OndoHttpClient {
             .await
             .map_err(transport_error)?;
 
+        self.observe_rate_limit(&response);
         auth.observe(&response.headers);
 
         check_private_response(response, auth).map_err(OndoNewRiskSendError::from)
@@ -997,7 +1000,7 @@ impl OndoHttpClient {
     async fn delete_signed_with<T>(
         &self,
         target: &OndoRequestTarget,
-        priority: OndoRequestPriority,
+        _priority: OndoRequestPriority,
         decode: fn(u16, &[u8]) -> OndoHttpResult<T>,
     ) -> OndoHttpResult<T> {
         self.require_write_scope("DELETE")?;
@@ -1005,7 +1008,7 @@ impl OndoHttpClient {
         let auth = self.auth(target)?;
         let url = self.url(target);
 
-        self.budget.acquire(priority).await;
+        self.budget.acquire(OndoRequestPriority::Cancel).await;
 
         let headers = signed_request_headers(auth, "DELETE", target, &[])?;
         if let Some(guard) = &self.production_guard {
@@ -1019,6 +1022,7 @@ impl OndoHttpClient {
             .await
             .map_err(transport_error)?;
 
+        self.observe_rate_limit(&response);
         auth.observe(&response.headers);
 
         check_private_response_with(response, auth, decode)
@@ -1264,6 +1268,15 @@ impl OndoHttpClient {
             .map(|response| response.body)
     }
 
+    /// Shares venue throttling across public reads and authenticated writes.
+    fn observe_rate_limit(&self, response: &HttpResponse) {
+        if response.status.as_u16() == 429 {
+            self.budget.defer(Duration::from_secs(
+                retry_after_secs(&response.headers).unwrap_or(1),
+            ));
+        }
+    }
+
     /// Sends a `GET` through the retry policy and returns the successful response itself.
     async fn get_response(&self, target: &OndoRequestTarget) -> OndoHttpResult<OndoRawResponse> {
         let url = self.url(target);
@@ -1283,6 +1296,7 @@ impl OndoHttpClient {
                             .await
                             .map_err(transport_error)?;
 
+                        self.observe_rate_limit(&response);
                         check_response(response)
                     }
                 },
@@ -1550,7 +1564,16 @@ fn classify_status(status: u16, headers: &HashMap<String, String>, body: String)
 /// Only the delay-seconds form is honoured. The header's HTTP-date form would require trusting the
 /// venue's clock, which this adapter cannot verify, so it is left to the exponential backoff.
 fn retry_after_secs(headers: &HashMap<String, String>) -> Option<u64> {
-    headers.get(RETRY_AFTER_HEADER)?.trim().parse::<u64>().ok()
+    headers
+        .get(RETRY_AFTER_HEADER)?
+        .trim()
+        .parse::<u64>()
+        .ok()
+        .filter(|secs| {
+            tokio::time::Instant::now()
+                .checked_add(Duration::from_secs(*secs))
+                .is_some()
+        })
 }
 
 /// The minimum wait an error asks for before the retry, when it asks for one.
@@ -1601,6 +1624,7 @@ mod tests {
             None
         );
         assert_eq!(retry_after_secs(&header("soon")), None);
+        assert_eq!(retry_after_secs(&header(&u64::MAX.to_string())), None);
         assert_eq!(retry_after_secs(&HashMap::new()), None);
     }
 

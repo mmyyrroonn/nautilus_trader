@@ -63,6 +63,14 @@ impl OndoExecutionClientFactory {
         true
     }
 
+    /// Reports cancel-first REST admission without the historical fixed one-second pacing.
+    #[getter]
+    #[pyo3(name = "supports_cancel_first_unpaced_rest")]
+    #[must_use]
+    pub const fn py_supports_cancel_first_unpaced_rest(&self) -> bool {
+        true
+    }
+
     /// Native amend is unavailable; price changes require confirmed cancel then a new order ID.
     #[getter]
     #[pyo3(name = "supports_native_amend")]

@@ -71,6 +71,24 @@ logic and an **unverified** claim about the venue: nothing here shows that the v
 renewal message this adapter builds or that it cancels resting orders when the switch fires. Treat
 the switch as untested against Ondo Perps until the sandbox run happens.
 
+## REST request admission
+
+The default REST budget has no fixed requests-per-second pacing. Public and authenticated
+clients still share one budget per environment. An HTTP 429 response extends their shared
+cooldown using integer-second `Retry-After`, or at least one second when that header is missing
+or invalid. Queued cancellations precede reductions and reconciliation, followed by ordinary
+reads. Priority never bypasses the shared cooldown, and writes are not automatically replayed.
+Already dispatched requests cannot be preempted.
+
+Rust callers can opt into explicit pacing with `OndoRateBudget::with_quota`. The historical
+one-request-per-second quota remains available for that purpose. The Python execution factory
+exposes `supports_cancel_first_unpaced_rest` so applications can reject incompatible wheels.
+
+The continuous authority's `max_requests_per_second` is a separate caller-configured refusal
+threshold for creates and owned cancellations. It remains enforced. Applications that previously
+relied on the removed REST pacing must allocate that threshold for their actual order/cancel
+bursts; a two-request threshold can reject a rapid create/cancel/replace sequence.
+
 ## Continuous execution
 
 `OndoExecutionClientConfig.continuous_execution` accepts an explicit
