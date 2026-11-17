@@ -723,10 +723,11 @@ impl ProductionAuthority {
         });
         if minimum.is_some_and(|minimum| {
             minimum <= Decimal::ZERO
-                || intent
-                    .quantity
-                    .checked_mul(price)
-                    .is_none_or(|value| value < minimum)
+                || (!intent.reduce_only
+                    && intent
+                        .quantity
+                        .checked_mul(price)
+                        .is_none_or(|value| value < minimum))
         }) {
             return Err("continuous native minimum is invalid or unmet".into());
         }
@@ -1652,6 +1653,77 @@ mod tests {
             (intent.quantity, true, Some("owned".into())),
         );
         sync_reading(guard, evidence, true);
+    }
+
+    #[rstest]
+    #[case("buy", "sell", false)]
+    #[case("sell", "buy", false)]
+    #[case("buy", "sell", true)]
+    #[case("sell", "buy", true)]
+    fn test_subminimum_residual_can_reduce_owned_position(
+        #[case] open: &str,
+        #[case] close: &str,
+        #[case] market: bool,
+    ) {
+        let (guard, evidence, path) = authority(config());
+        fill(
+            &guard,
+            &evidence,
+            &market_body("entry", open, "0.10", false),
+        );
+        let bytes = if market {
+            market_body("tail", close, "0.01", true)
+        } else {
+            body(
+                "tail",
+                "NVDA-USD.P",
+                close,
+                "0.01",
+                "230.00",
+                true,
+                "IOC",
+                false,
+            )
+        };
+        let (_, intent) = ProductionAuthority::continuous_intent(&bytes).unwrap();
+        guard
+            .prepare(
+                "tail".into(),
+                bytes.clone(),
+                Some(quote(intent.instrument_id, "230.00")),
+                Some(Decimal::from(10)),
+            )
+            .unwrap();
+        guard.authorize_post("/v1/perps/orders", &bytes).unwrap();
+        assert_eq!(guard.state.lock().continuous.intents["tail"].body, bytes);
+        evidence.lock().orders.insert(
+            "tail".into(),
+            (
+                Decimal::from_str_exact("0.01").unwrap(),
+                true,
+                Some("tail-venue".into()),
+            ),
+        );
+        sync_reading(&guard, &evidence, true);
+        let net =
+            ProductionAuthority::continuous_own_net(&guard.state.lock(), &evidence.lock()).unwrap();
+        assert_eq!(
+            net[&intent.instrument_id].abs(),
+            Decimal::from_str_exact("0.09").unwrap()
+        );
+        let entry = market_body("small-entry", open, "0.01", false);
+        assert!(
+            guard
+                .prepare(
+                    "small-entry".into(),
+                    entry,
+                    Some(quote(intent.instrument_id, "230.00")),
+                    Some(Decimal::from(10)),
+                )
+                .unwrap_err()
+                .contains("minimum")
+        );
+        remove_journal(guard, path);
     }
 
     fn remove_journal(guard: Arc<ProductionAuthority>, path: PathBuf) {

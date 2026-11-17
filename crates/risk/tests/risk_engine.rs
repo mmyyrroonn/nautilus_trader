@@ -3193,11 +3193,19 @@ fn test_submit_order_below_min_notional_respects_reduce_only(
     strategy_id_ema_cross: StrategyId,
     client_id_binance: ClientId,
     trader_id: TraderId,
-    instrument_eth_usdt: InstrumentAny,
+    mut instrument_eth_usdt: InstrumentAny,
     process_order_event_handler: TypedIntoMessageSavingHandler<OrderEventAny>,
     execute_order_event_handler: TypedIntoMessageSavingHandler<TradingCommand>,
     mut simple_cache: Cache,
+    #[values(false, true)] below_min_quantity: bool,
 ) {
+    if below_min_quantity {
+        let InstrumentAny::CryptoPerpetual(ref mut instrument) = instrument_eth_usdt else {
+            panic!("Expected perpetual instrument");
+        };
+        instrument.min_quantity = Some(Quantity::from("0.010"));
+    }
+
     simple_cache
         .add_instrument(instrument_eth_usdt.clone())
         .unwrap();
@@ -3260,7 +3268,11 @@ fn test_submit_order_below_min_notional_respects_reduce_only(
 
     assert_eq!(
         instrument_eth_usdt.min_quantity(),
-        Some(Quantity::from("0.001"))
+        Some(Quantity::from(if below_min_quantity {
+            "0.010"
+        } else {
+            "0.001"
+        }))
     );
     assert_eq!(
         instrument_eth_usdt.min_notional(),
@@ -3306,10 +3318,11 @@ fn test_submit_order_below_min_notional_respects_reduce_only(
         );
         assert_eq!(
             saved_process_messages[0].message().unwrap(),
-            Ustr::from(
-                "NOTIONAL_BELOW_MINIMUM: min=10.00000000 USDT, \
-                 notional=5.00000000 USDT"
-            )
+            Ustr::from(if below_min_quantity {
+                "QUANTITY_BELOW_MINIMUM: effective=0.001, min=0.010"
+            } else {
+                "NOTIONAL_BELOW_MINIMUM: min=10.00000000 USDT, notional=5.00000000 USDT"
+            })
         );
         assert!(saved_execute_messages.is_empty());
     } else {

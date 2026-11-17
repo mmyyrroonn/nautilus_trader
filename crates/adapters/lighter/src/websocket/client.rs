@@ -1065,7 +1065,7 @@ impl LighterWebSocketClient {
         tx_type: u8,
         tx_info: Box<serde_json::value::RawValue>,
     ) -> Result<(), LighterWsError> {
-        self.send_tx_on_connection(tx_type, tx_info, self.connection_epoch())
+        self.send_tx_on_connection(tx_type, tx_info, self.connection_epoch(), None)
             .await
     }
 
@@ -1074,9 +1074,11 @@ impl LighterWebSocketClient {
         tx_type: u8,
         tx_info: Box<serde_json::value::RawValue>,
         connection_epoch: u64,
+        request_id: Option<String>,
     ) -> Result<(), LighterWsError> {
         let (response_tx, response_rx) = tokio::sync::oneshot::channel();
         self.send_cmd(HandlerCommand::SendTx {
+            request_id,
             tx_type,
             tx_info,
             connection_epoch,

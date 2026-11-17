@@ -1689,7 +1689,7 @@ impl SessionContext {
                         ),
                     }
                 }
-                Err(e) if e.is_unknown_order() => {
+                Err(e) if e.is_unknown_order() && !e.is_ambiguous_execution() => {
                     log::warn!(
                         "Aster never received order {client_order_id} ({cause}); rejecting it \
                          locally"
@@ -1990,7 +1990,7 @@ impl SessionContext {
                         });
                     }
                 },
-                Err(e) if e.is_unknown_order() => {
+                Err(e) if e.is_unknown_order() && !e.is_ambiguous_execution() => {
                     log::warn!("Aster no longer knows order {client_order_id}; dropping it");
                     self.state.write().forget_working_order(&client_order_id);
                 }

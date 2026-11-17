@@ -148,6 +148,130 @@ fn client_id() -> ClientId {
     ClientId::new("LIGHTER")
 }
 
+#[rstest]
+#[case::single(1)]
+#[case::concurrent(2)]
+#[tokio::test(flavor = "multi_thread")]
+async fn margin_rejection_correlates_exact_request_and_preserves_other_orders(
+    #[case] count: usize,
+) {
+    let (addr, state) = start_server().await;
+    let control = nautilus_lighter::control::LighterExecutionControl::default();
+    let mut config = build_config(addr);
+    config.control = Some(control.clone());
+    let (mut client, mut rx, cache) = build_client_with(config);
+    client.connect().await.expect("connect");
+    let mut orders = Vec::new();
+    for index in 0..count {
+        *state.next_send_tx_ack.lock().await = Some(json!({"type":"hold"}));
+        let order = make_limit_order(
+            &format!("MARGIN-{index}"),
+            OrderSide::Sell,
+            Quantity::from("0.0050"),
+            Price::from("2361.31"),
+            TimeInForce::Ioc,
+            false,
+            false,
+        );
+        cache_order(&cache, order.clone());
+        client.submit_order(submit_command(&order)).expect("submit");
+        assert!(matches!(
+            next_order_event(&mut rx, Duration::from_secs(2)).await,
+            Some(OrderEventAny::Submitted(_))
+        ));
+        await_send_tx_count(&state, index + 1).await;
+        orders.push(order);
+    }
+    let frames = state.send_txs().await;
+    let last = count - 1;
+    let id = frames[last]["data"]["id"]
+        .as_str()
+        .expect("explicit request ID");
+    assert!(!id.is_empty());
+    // Replay the incident without identity first: even one pending request is insufficient.
+    state.push_frame(&json!({"error":{"code":21613,"message":"invalid margin mode"}}));
+    assert!(
+        next_order_event(&mut rx, Duration::from_millis(80))
+            .await
+            .is_none()
+    );
+    assert!(
+        control
+            .terminal_fill_evidence_json(orders[last].client_order_id().as_str())
+            .unwrap()
+            .is_none()
+    );
+    // A conflicting response must not pick either correlation field.
+    state.push_frame(&json!({"type":"jsonapi/sendtx","code":21613,
+        "message":"invalid margin mode","id":id,"tx_hash":"different"}));
+    assert!(
+        next_order_event(&mut rx, Duration::from_millis(80))
+            .await
+            .is_none()
+    );
+    for frame in [
+        json!({"error":{"code":21613,"message":"invalid margin mode"},
+            "id":id,"tx_hash":"different"}),
+        json!({"error":{"code":21613,"message":"invalid margin mode"},
+            "id":null,"tx_hash":id}),
+    ] {
+        state.push_frame(&frame);
+        assert!(
+            next_order_event(&mut rx, Duration::from_millis(80))
+                .await
+                .is_none()
+        );
+    }
+    let rejected = json!({"error":{"code":21613,"message":"invalid margin mode"},"id":id});
+    state.push_frame(&rejected);
+    let event = next_order_event(&mut rx, Duration::from_secs(2))
+        .await
+        .expect("exact rejection");
+    match event {
+        OrderEventAny::Rejected(event) => {
+            assert_eq!(event.client_order_id, orders[last].client_order_id());
+            assert_eq!(event.reason.as_str(), "LIGHTER_21613: invalid margin mode");
+        }
+        other => panic!("expected rejection, was {other:?}"),
+    }
+    let proof: Value = serde_json::from_str(
+        &control
+            .terminal_fill_evidence_json(orders[last].client_order_id().as_str())
+            .unwrap()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(proof["source"], "submission_rejected");
+    assert_eq!(proof["final_filled_quantity"], "0");
+    assert_eq!(proof["venue_order_id"], Value::Null);
+    assert_eq!(proof["conflicting"], false);
+    state.push_frame(&rejected);
+    state.push_frame(&json!({"type":"jsonapi/sendtx","code":200,"id":id}));
+    assert!(
+        next_order_event(&mut rx, Duration::from_millis(80))
+            .await
+            .is_none()
+    );
+    if count == 2 {
+        assert!(
+            control
+                .terminal_fill_evidence_json(orders[0].client_order_id().as_str())
+                .unwrap()
+                .is_none()
+        );
+        state.push_frame(
+            &json!({"error":{"code":21613,"message":"invalid margin mode"},
+            "id":frames[0]["data"]["id"]}),
+        );
+        assert!(
+            matches!(next_order_event(&mut rx, Duration::from_secs(2)).await,
+            Some(OrderEventAny::Rejected(event)) if event.client_order_id == orders[0].client_order_id())
+        );
+    }
+    assert_eq!(state.send_txs().await.len(), count, "no blind resubmission");
+    client.disconnect().await.expect("disconnect");
+}
+
 fn trader_id() -> TraderId {
     TraderId::from("TESTER-001")
 }
@@ -661,6 +785,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<TestServerState>) {
                         }
                     }
                     "jsonapi/sendtx" => {
+                        let request_id = value["data"]["id"].clone();
                         state.send_txs.lock().await.push(value);
 
                         // Ack so the handler clears the pending sendTx head.
@@ -668,7 +793,7 @@ async fn handle_socket(socket: WebSocket, state: Arc<TestServerState>) {
                         // Poseidon hash, and a fabricated one would go
                         // unattributed. Tests drive venue rejections via the
                         // `next_send_tx_ack` override.
-                        let ack = state
+                        let mut ack = state
                             .next_send_tx_ack
                             .lock()
                             .await
@@ -677,8 +802,13 @@ async fn handle_socket(socket: WebSocket, state: Arc<TestServerState>) {
                                 json!({
                                     "type": "jsonapi/sendtx",
                                     "code": 200,
+                                    "id": request_id.clone(),
                                 })
                             });
+
+                        if ack.get("id").is_none() && ack.get("tx_hash").is_none() {
+                            ack["id"] = request_id;
+                        }
 
                         if sink
                             .send(Message::Text(ack.to_string().into()))

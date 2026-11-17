@@ -22,7 +22,7 @@
 //! actually sent (and, for the denial paths, on what it did *not* send).
 
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     net::SocketAddr,
     sync::{
         Arc,
@@ -133,6 +133,8 @@ pub(crate) struct VenueScript {
     /// query for that key consumes one, so a transient outage can be scripted for exactly one
     /// compensation pass.
     pub(crate) order_query_faults: HashMap<String, usize>,
+    /// Per-key raw order-query responses consumed before the normal order lookup.
+    pub(crate) order_query_responses: HashMap<String, VecDeque<(u16, String)>>,
     /// `GET /fapi/v3/positionRisk` body.
     pub(crate) position_risk: Value,
     /// Raw position endpoint failure or delay, for incomplete-snapshot recovery tests.
@@ -179,6 +181,7 @@ impl Default for VenueScript {
             user_trades: HashMap::new(),
             user_trades_error: HashMap::new(),
             order_query_faults: HashMap::new(),
+            order_query_responses: HashMap::new(),
             position_risk: json!([]),
             position_status: None,
             position_stall: None,
@@ -673,6 +676,12 @@ async fn handle_order_query(
         .or_else(|| params.get("orderId"))
         .cloned()
         .unwrap_or_default();
+
+    if let Some(responses) = script.order_query_responses.get_mut(&key)
+        && let Some((status, body)) = responses.pop_front()
+    {
+        return raw_status(status, &body);
+    }
 
     if let Some(remaining) = script.order_query_faults.get_mut(&key)
         && *remaining > 0

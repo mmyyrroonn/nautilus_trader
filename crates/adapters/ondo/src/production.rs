@@ -861,7 +861,7 @@ impl ProductionAuthority {
         let notional = quantity
             .checked_mul(price)
             .ok_or("production notional overflow")?;
-        if minimum.is_some_and(|v| notional < v)
+        if (!order.reduce_only && minimum.is_some_and(|v| notional < v))
             || notional > e.max_notional_per_order_usd
             || notional > e.max_gross_exposure_usd
         {
@@ -1783,6 +1783,38 @@ mod tests {
             assert!(result.unwrap_err().contains("no approved production close"));
             assert_eq!(guard.state.lock().requests, 0);
         }
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[rstest]
+    #[case(false, "hard notional ceiling")]
+    #[case(true, "no own opening order")]
+    fn test_subminimum_reduction_still_requires_owned_fill(
+        #[case] reduce_only: bool,
+        #[case] expected: &str,
+    ) {
+        let (guard, path) = started_authority(30);
+        let body = serde_json::to_vec(&serde_json::json!({
+            "market": "NVDA-USD.P", "side": "sell", "type": "limit",
+            "size": "0.01", "price": "230.00", "timeInForce": "IOC",
+            "postOnly": false, "reduceOnly": reduce_only, "clientOrderId": "small"
+        }))
+        .unwrap();
+        guard
+            .prepare(
+                "small".into(),
+                body.clone(),
+                Some(prepared_quote(&guard)),
+                Some(Decimal::from(10)),
+            )
+            .unwrap();
+        assert!(
+            guard
+                .authorize_post("/v1/perps/orders", &body)
+                .unwrap_err()
+                .contains(expected)
+        );
+        assert!(guard.state.lock().creates.is_empty());
         std::fs::remove_file(path).unwrap();
     }
 

@@ -273,7 +273,7 @@ impl Shared {
             .to_string())
     }
     async fn metadata(&self, generation: u64, cancel: &CancellationToken) -> anyhow::Result<()> {
-        let revision = self.gate.lock().revision;
+        let epoch = self.gate.lock().health.connection_epoch;
         let request = BackpackReadRequest::new(
             BackpackReadOperation::Markets,
             BackpackParameters::default(),
@@ -290,8 +290,8 @@ impl Shared {
             gate.running
                 && gate.health.run_id == Some(self.run)
                 && gate.health.generation == generation
-                && gate.health.connection_epoch.is_some()
-                && gate.revision == revision,
+                && epoch.is_some()
+                && gate.health.connection_epoch == epoch,
             "stale market metadata"
         );
         self.provider
@@ -463,9 +463,6 @@ impl Shared {
         cancel: &CancellationToken,
         stage: &mut &'static str,
     ) -> anyhow::Result<()> {
-        if self.production() {
-            self.metadata(generation, cancel).await?;
-        }
         *stage = "SnapshotRead";
         let revision = {
             let g = self.gate.lock();
@@ -1215,18 +1212,12 @@ impl BackpackLoopbackControlRuntime {
                 .clone(),
         )
     }
-    fn prepare_production(
-        &self,
-        reduction_market: Option<InstrumentId>,
-    ) -> anyhow::Result<BackpackLoopbackSession> {
+    fn prepare_production_account(&self) -> anyhow::Result<BackpackLoopbackSession> {
         let shared = self.shared()?;
         let token = self.production_session()?;
         let control = self.loopback(token)?;
         self.persist_economics()?;
         self.reconcile_terminal_evidence(token)?;
-        for symbol in shared.config.scope.symbols() {
-            self.refresh_market(token, InstrumentId::from(format!("{symbol}.BACKPACK")))?;
-        }
         let mut gate = shared.gate.lock();
         let (snapshot, revision, observed_at) =
             shared.production_snapshot.lock().clone().ok_or_else(|| {
@@ -1251,13 +1242,12 @@ impl BackpackLoopbackControlRuntime {
             shared.config.scope.symbols(),
         )?;
         self.verify_native_positions(&shared, &facts)?;
+        let exposures: Vec<_> = facts
+            .net_positions
+            .iter()
+            .filter_map(|(id, quantity)| (!quantity.is_zero()).then_some(*id))
+            .collect();
         control.account(token, facts, now().as_u64() / 1_000_000)?;
-        // A public reconnect can replace its token without changing the private epoch.
-        // Revalidate the full scope, or the reduction target, retaining in-flight state.
-        control
-            .owner
-            .guard()
-            .refresh_production_public(now().as_u64() / 1_000_000, reduction_market)?;
         // Read-only snapshots deliberately carry conservative account gaps. This
         // production admission has now verified the exact credential authority and
         // supported policy using authenticated observations; those two gaps no
@@ -1267,6 +1257,62 @@ impl BackpackLoopbackControlRuntime {
             .evidence_gaps
             .remove("AccountIdentityUnverified");
         gate.health.evidence_gaps.remove("UnsupportedAccountPolicy");
+        drop(gate);
+        // Nonzero positions need current marks for aggregate risk valuation.
+        // Never require a quote merely because a flat market is configured.
+        for id in exposures {
+            self.refresh_market(token, id)?;
+            control
+                .owner
+                .guard()
+                .refresh_production_public(now().as_u64() / 1_000_000, Some(id))?;
+        }
+        Ok(token)
+    }
+    fn prepare_production(
+        &self,
+        instrument_id: InstrumentId,
+    ) -> anyhow::Result<BackpackLoopbackSession> {
+        let token = self.prepare_production_account()?;
+        self.refresh_market(token, instrument_id)?;
+        // Account trust is global; quote trust belongs to the order's market.
+        // Rebinding a public epoch must retain in-flight orders and reservations.
+        self.loopback(token)?
+            .owner
+            .guard()
+            .refresh_production_public(now().as_u64() / 1_000_000, Some(instrument_id))?;
+        Ok(token)
+    }
+    fn prepare_production_reduction(
+        &self,
+        order: &OrderAny,
+    ) -> anyhow::Result<BackpackLoopbackSession> {
+        let token = self.production_session()?;
+        let instrument = order.instrument_id();
+        let position = self
+            .core
+            .cache()
+            .positions_open(
+                Some(&self.core.venue),
+                Some(&instrument),
+                Some(&order.strategy_id()),
+                Some(&self.core.account_id),
+                None,
+            )
+            .iter()
+            .try_fold(rust_decimal::Decimal::ZERO, |sum, position| {
+                let quantity = match position.side {
+                    nautilus_model::enums::PositionSide::Long => position.quantity.as_decimal(),
+                    nautilus_model::enums::PositionSide::Short => -position.quantity.as_decimal(),
+                    _ => rust_decimal::Decimal::ZERO,
+                };
+                crate::execution::guard::add(sum, quantity)
+            })?;
+        self.refresh_market(token, instrument)?;
+        self.loopback(token)?
+            .owner
+            .guard()
+            .refresh_production_reduction(now().as_u64() / 1_000_000, instrument, position)?;
         Ok(token)
     }
     fn verify_native_positions(
@@ -1414,10 +1460,47 @@ impl BackpackLoopbackControlRuntime {
     pub(super) fn production_admission_status(&self) -> anyhow::Result<serde_json::Value> {
         let shared = self.shared()?;
         anyhow::ensure!(shared.production(), "client has no production authority");
-        Ok(match self.prepare_production(None) {
-            Ok(_) => serde_json::json!({"ready":true,"reason":null}),
-            Err(error) => serde_json::json!({"ready":false,"reason":error.to_string()}),
-        })
+        let result = (|| -> anyhow::Result<serde_json::Value> {
+            // Prepare account evidence once, then report each market independently.
+            let token = self.prepare_production_account()?;
+            let mut failures = std::collections::BTreeMap::new();
+            for symbol in shared.config.scope.symbols() {
+                let id = InstrumentId::from(format!("{symbol}.BACKPACK"));
+                if let Err(error) = self.refresh_market(token, id) {
+                    failures.insert(id, error.to_string());
+                }
+            }
+            let public = self
+                .loopback(token)?
+                .owner
+                .guard()
+                .refresh_production_markets(now().as_u64() / 1_000_000, None)?;
+            let mut markets = serde_json::Map::new();
+            let mut first_reason = None;
+            for (id, result) in public {
+                let reason = failures
+                    .remove(&id)
+                    .or_else(|| result.err().map(|e| e.to_string()));
+                if first_reason.is_none() {
+                    first_reason.clone_from(&reason);
+                }
+                markets.insert(
+                    id.to_string(),
+                    serde_json::json!({
+                        "ready": reason.is_none(), "reason": reason,
+                    }),
+                );
+            }
+            Ok(
+                serde_json::json!({"ready": first_reason.is_none(), "reason": first_reason,
+                "global_ready": true, "markets": markets}),
+            )
+        })();
+        Ok(result.unwrap_or_else(|error| {
+            serde_json::json!({
+                "ready": false, "reason": error.to_string(), "global_ready": false, "markets": {},
+            })
+        }))
     }
     pub(super) fn renew_production_authority(&self, expires_at_ms: u64) -> anyhow::Result<()> {
         let shared = self.shared()?;
@@ -1600,15 +1683,24 @@ impl BackpackLoopbackControlRuntime {
             .get(&id)
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("validated metadata is absent"))?;
-        control.market(
+        let now_ms = now().as_u64() / 1_000_000;
+        let metadata_ms = metadata.received_at.as_u64() / 1_000_000;
+        let result = control.market(
             token,
             crate::execution::guard::BackpackLoopbackMarketFacts {
                 generation: token.generation,
                 quote,
                 metadata,
             },
-            now().as_u64() / 1_000_000,
-        )
+            now_ms,
+        );
+        if result.is_err() {
+            let max_age = control.owner.guard().lock()?.authority.max_market_age_ms;
+            if metadata_ms > now_ms || now_ms - metadata_ms > max_age {
+                return result.map_err(|e| e.context("native market metadata expired"));
+            }
+        }
+        result
     }
     /// Invalidates only this currently admitted local-peer token; late invalidations cannot affect a replacement.
     ///
@@ -1701,7 +1793,16 @@ impl BackpackLoopbackControlRuntime {
                 .lock()?
                 .records
                 .get(&id)
-                .is_some_and(|record| !record.holds_capacity());
+                .is_some_and(|record| record.is_reconciled());
+            if terminal && native_terminal && !already && !complete {
+                control.owner.observe_execution_closed(
+                    id,
+                    report.venue_order_id,
+                    report.instrument_id,
+                    token.generation(),
+                    report.filled_qty.as_decimal(),
+                )?;
+            }
             if complete && !already {
                 control.owner.acknowledge_reconciled_terminal(
                     &crate::execution::owner::BackpackLoopbackTerminalEvidence {
@@ -2507,6 +2608,38 @@ impl BackpackExecutionClient {
             g.health.state = BackpackAccountState::Degraded;
         }
         self.shared.subscribe(&ws, 0).await?;
+        if self.shared.production() {
+            let shared = self.shared.clone();
+            let metadata_cancel = cancel.clone();
+            let max_age = shared
+                .config
+                .restricted
+                .as_ref()
+                .unwrap()
+                .authority
+                .max_market_age_ms;
+            let interval = self
+                .shared
+                .config
+                .policy
+                .recovery_interval
+                .min(Duration::from_millis((max_age / 2).max(100)));
+            self.tasks.spawn(async move {
+                let mut tick = tokio::time::interval(interval);
+                tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+                loop {
+                    tokio::select! {
+                        biased;
+                        () = metadata_cancel.cancelled() => break,
+                        _ = tick.tick() => {
+                            // One bounded public read at a time, independent of account history.
+                            // Failed reads retain their original timestamp and expire normally.
+                            let _ = shared.metadata(generation, &metadata_cancel).await;
+                        }
+                    }
+                }
+            })?;
+        }
         let shared = self.shared.clone();
         let interval = self.shared.config.policy.recovery_interval;
         self.tasks.spawn(async move {
@@ -2805,10 +2938,13 @@ impl ExecutionClient for BackpackExecutionClient {
             .map(|order| (*order).clone())
             .ok_or_else(|| anyhow::anyhow!("native cached order is absent"))?;
         let token = if self.shared.production() {
-            match self
-                .control_runtime
-                .prepare_production(order.is_reduce_only().then_some(order.instrument_id()))
-            {
+            let prepared = if order.is_reduce_only() {
+                self.control_runtime.prepare_production_reduction(&order)
+            } else {
+                self.control_runtime
+                    .prepare_production(order.instrument_id())
+            };
+            match prepared {
                 Ok(token) => token,
                 Err(error) => {
                     let reason = format!("BackpackProductionAdmission: {error}");
@@ -2840,65 +2976,6 @@ impl ExecutionClient for BackpackExecutionClient {
                 self.core.trader_id,
                 self.core.client_id,
             )?;
-            if self.shared.production() && spec.reduce_only {
-                let quantity = self
-                    .core
-                    .cache()
-                    .positions_open(
-                        Some(&self.core.venue),
-                        Some(&spec.instrument_id),
-                        Some(&order.strategy_id()),
-                        Some(&self.core.account_id),
-                        None,
-                    )
-                    .iter()
-                    .filter(|position| {
-                        matches!(
-                            (position.side, spec.side),
-                            (
-                                nautilus_model::enums::PositionSide::Long,
-                                nautilus_model::enums::OrderSide::Sell
-                            ) | (
-                                nautilus_model::enums::PositionSide::Short,
-                                nautilus_model::enums::OrderSide::Buy
-                            )
-                        )
-                    })
-                    .try_fold(rust_decimal::Decimal::ZERO, |sum, position| {
-                        crate::execution::guard::add(sum, position.quantity.as_decimal())
-                    })?;
-                let native_orders = control.native_orders.lock();
-                let mut reservations = control
-                    .owner
-                    .reserved_reductions(spec.instrument_id, spec.side)?
-                    .into_iter()
-                    .collect::<std::collections::BTreeMap<_, _>>();
-                for id in control.pending_submissions.lock().iter() {
-                    if let Some(owned) = native_orders.get(id) {
-                        let pending = super::commands::cached_spec(owned)?;
-                        if pending.reduce_only
-                            && pending.instrument_id == spec.instrument_id
-                            && pending.side == spec.side
-                        {
-                            reservations.entry(*id).or_insert(pending.quantity);
-                        }
-                    }
-                }
-                let reserved = reservations
-                    .iter()
-                    .filter(|(id, _)| {
-                        native_orders
-                            .get(id)
-                            .is_none_or(|owned| owned.strategy_id() == order.strategy_id())
-                    })
-                    .try_fold(rust_decimal::Decimal::ZERO, |sum, (_, quantity)| {
-                        crate::execution::guard::add(sum, *quantity)
-                    })?;
-                anyhow::ensure!(
-                    crate::execution::guard::add(reserved, spec.quantity)? <= quantity,
-                    "reduce-only command and pending reductions exceed this strategy's owned native allocation"
-                );
-            }
             control
                 .owner
                 .guard()
@@ -2932,36 +3009,53 @@ impl ExecutionClient for BackpackExecutionClient {
         control.retain_native(command.client_order_id, order.clone())?;
         if self.control_runtime.economics.borrow().is_some() {
             // Retain the original native replay seed before the mutation task can send bytes
-            let shared = self.shared.clone();
-            let delivery = BackpackFillDelivery {
-                shared: shared.clone(),
-            };
-            let pending = delivery.pending();
-            let records = {
-                let fills = shared.fills.lock();
-                pending
-                    .into_iter()
-                    .map(|report| {
-                        let key = BackpackFillKey {
-                            instrument_id: report.instrument_id,
-                            trade_id: report.trade_id,
-                        };
-                        Ok((report, fills.pending_acknowledgement(key)?))
-                    })
-                    .collect::<anyhow::Result<Vec<_>>>()?
-            };
-            let mut storage = self.control_runtime.economics.try_borrow_mut()?;
-            let storage = storage
-                .as_mut()
-                .ok_or_else(|| anyhow::anyhow!("economic consumer unavailable"))?;
-            let (snapshot, _) = storage.prepare(
-                &self.core.cache(),
-                records,
-                shared.fills.lock().time_evidence(),
-                shared.config.policy.fill_capacity,
-                Some(command.client_order_id),
-            )?;
-            storage.commit(snapshot)?;
+            let checkpoint = (|| -> anyhow::Result<()> {
+                let shared = self.shared.clone();
+                let delivery = BackpackFillDelivery {
+                    shared: shared.clone(),
+                };
+                let pending = delivery.pending();
+                let records = {
+                    let fills = shared.fills.lock();
+                    pending
+                        .into_iter()
+                        .map(|report| {
+                            let key = BackpackFillKey {
+                                instrument_id: report.instrument_id,
+                                trade_id: report.trade_id,
+                            };
+                            Ok((report, fills.pending_acknowledgement(key)?))
+                        })
+                        .collect::<anyhow::Result<Vec<_>>>()?
+                };
+                let mut storage = self.control_runtime.economics.try_borrow_mut()?;
+                let storage = storage
+                    .as_mut()
+                    .ok_or_else(|| anyhow::anyhow!("economic consumer unavailable"))?;
+                let (snapshot, _) = storage.prepare(
+                    &self.core.cache(),
+                    records,
+                    shared.fills.lock().time_evidence(),
+                    shared.config.policy.fill_capacity,
+                    Some(command.client_order_id),
+                )?;
+                storage.commit(snapshot)?;
+                Ok(())
+            })();
+            if let Err(error) = checkpoint {
+                if !self.shared.production() || !order.is_reduce_only() {
+                    return Err(error);
+                }
+                // The original order identity is still journaled by the mutation
+                // owner below. Economic corruption fences entries and restart,
+                // but must not prevent a live venue-enforced risk reduction.
+                self.shared
+                    .gate
+                    .lock()
+                    .health
+                    .evidence_gaps
+                    .insert("ReductionEconomicCheckpointPending".to_string());
+            }
         }
         control
             .pending_submissions

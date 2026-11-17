@@ -94,6 +94,64 @@ fn update(
 }
 
 #[rstest]
+fn test_dense_book_continuous_updates_preserve_levels_and_measure_cost() {
+    use std::time::Instant;
+
+    let info = metadata();
+    let mut sync = BackpackDepthSynchronizer::new_checked(info, 1, 1000, 64, 5000).unwrap();
+    let bids: Vec<_> = (0..1000)
+        .map(|i| [format!("{}.0", 10_000 - i), "1.00000".to_string()])
+        .collect();
+    let asks: Vec<_> = (0..1000)
+        .map(|i| [format!("{}.0", 10_001 + i), "1.00000".to_string()])
+        .collect();
+    let body = serde_json::to_vec(
+        &json!({"lastUpdateId":"100","timestamp":1_694_687_965_940_999_u64,
+        "bids":bids,"asks":asks}),
+    )
+    .unwrap();
+    sync.install_snapshot(1, &body, UnixNanos::from(77))
+        .unwrap();
+    let mut samples = Vec::with_capacity(10_000);
+    let started = Instant::now();
+    for sequence in 101..10_101 {
+        let input = update(1, sequence, sequence, &[("10000.0", "2.00000")], &[]);
+        let before = Instant::now();
+        let batch = sync.apply(input).unwrap().unwrap();
+        samples.push(before.elapsed().as_nanos());
+        assert_eq!(batch.deltas.len(), 1);
+        assert_eq!(batch.sequence, sequence);
+    }
+    let elapsed = started.elapsed();
+    samples.sort_unstable();
+    eprintln!(
+        "DENSE_DEPTH samples={} levels_per_side=1000 elapsed_us={} p50_ns={} p99_ns={}",
+        samples.len(),
+        elapsed.as_micros(),
+        samples[5000],
+        samples[9900]
+    );
+    assert!(sync.is_continuous());
+    assert_eq!(
+        sync.best_covered_bid().unwrap().1.as_decimal(),
+        d("2.00000")
+    );
+    assert_eq!(
+        sync.best_covered_ask().unwrap().0.as_decimal(),
+        d("10001.0")
+    );
+    // A malformed next update must clear all state, even after many mutations.
+    assert!(
+        sync.apply(update(1, 10_101, 10_101, &[("10002.0", "1.00000")], &[]))
+            .is_err()
+    );
+    assert_eq!(sync.state(), BackpackBookState::Stale);
+    assert!(sync.coverage().is_none());
+    assert!(sync.best_covered_bid().is_none());
+    assert!(sync.best_covered_ask().is_none());
+}
+
+#[rstest]
 fn test_real_quote_capture_and_exact_integer_sequence_compatibility() {
     let mut decoder = parser(1);
     let tick = match decoder

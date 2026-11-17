@@ -576,6 +576,220 @@ async fn test_unknown_execution_status_is_reconciled_rather_than_rejected(#[case
     );
 }
 
+#[rstest]
+#[case(503, -2011)]
+#[case(503, -2013)]
+#[case(408, -2011)]
+#[case(408, -2013)]
+#[tokio::test]
+async fn test_ambiguous_order_lookup_preserves_submit_ownership(
+    #[case] status: u16,
+    #[case] code: i64,
+    #[values(1, 3)] failures: usize,
+) {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    let client_order_id = "O-LOOKUP-AMBIG";
+    venue.script(|script| {
+        script.submit = SubmitOutcome::Status {
+            status: 503,
+            body: json!({"code": -1007, "msg": "Execution status unknown."}).to_string(),
+        };
+        script.order_query_responses.insert(
+            client_order_id.to_string(),
+            vec![
+                (
+                    status,
+                    json!({"code": code, "msg": "Order does not exist."}).to_string(),
+                );
+                failures
+            ]
+            .into(),
+        );
+        script.orders.insert(
+            client_order_id.to_string(),
+            venue_order(900_103, client_order_id, "BTCUSDT", "NEW", "BUY"),
+        );
+    });
+    let order = limit_order(client_order_id, OrderSide::Buy, false);
+    drain_exec(&mut harness.exec_rx);
+    submit_and_settle(&harness, &order, &venue).await;
+
+    let mut events = if failures == 1 {
+        wait_for_events(&mut harness, Duration::from_secs(15), |events| {
+            !order_reports(events).is_empty()
+                || order_events(events)
+                    .iter()
+                    .any(|event| matches!(event, OrderEventAny::Rejected(_)))
+        })
+        .await
+    } else {
+        // Exhaust the bounded submit lookup, then recover through the stream-outage pass.
+        // The order is absent from openOrders, so that pass can only find it if ownership stayed.
+        wait_until_async(
+            || async { venue.requests_for("GET", "order").len() >= 3 },
+            Duration::from_secs(30),
+        )
+        .await;
+        let events = drain_exec(&mut harness.exec_rx);
+        venue.drop_ws();
+        events
+    };
+    if failures == 3 {
+        events.extend(
+            wait_for_events(&mut harness, Duration::from_secs(20), |events| {
+                !order_reports(events).is_empty()
+            })
+            .await,
+        );
+    }
+
+    assert!(
+        !order_events(&events)
+            .iter()
+            .any(|event| matches!(event, OrderEventAny::Rejected(_))),
+        "an ambiguous lookup must not reject or forget the submitted order: {events:?}",
+    );
+    assert_eq!(venue.requests_for("POST", "order").len(), 1);
+    assert_eq!(venue.requests_for("GET", "order").len(), failures + 1);
+    assert_eq!(
+        order_reports(&events),
+        vec![(
+            OrderStatus::Accepted,
+            Some(ClientOrderId::from(client_order_id))
+        )],
+        "the order must remain recoverable after ambiguous lookup failures: {events:?}",
+    );
+    assert!(venue.requests_for("GET", "order").iter().all(|request| {
+        request.param("origClientOrderId") == Some(client_order_id)
+            && request.param("symbol") == Some("BTCUSDT")
+    }));
+}
+
+#[rstest]
+#[case(-2011)]
+#[case(-2013)]
+#[tokio::test]
+async fn test_definitive_order_lookup_resolves_ambiguous_submit(#[case] code: i64) {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    venue.script(|script| {
+        script.submit = SubmitOutcome::Status {
+            status: 503,
+            body: "Service unavailable".to_string(),
+        };
+        script.order_query_responses.insert(
+            "O-LOOKUP-ABSENT".to_string(),
+            vec![(
+                400,
+                json!({"code": code, "msg": "Order does not exist."}).to_string(),
+            )]
+            .into(),
+        );
+    });
+    let order = limit_order("O-LOOKUP-ABSENT", OrderSide::Buy, false);
+    drain_exec(&mut harness.exec_rx);
+    submit_and_settle(&harness, &order, &venue).await;
+    let events = wait_for_events(&mut harness, Duration::from_secs(10), |events| {
+        order_events(events)
+            .iter()
+            .any(|event| matches!(event, OrderEventAny::Rejected(_)))
+    })
+    .await;
+
+    assert!(
+        order_events(&events)
+            .iter()
+            .any(|event| matches!(event, OrderEventAny::Rejected(_)))
+    );
+    assert_eq!(venue.requests_for("POST", "order").len(), 1);
+    assert_eq!(venue.requests_for("GET", "order").len(), 1);
+    assert!(order_reports(&events).is_empty());
+}
+
+#[rstest]
+#[case(503, -2011)]
+#[case(503, -2013)]
+#[case(408, -2011)]
+#[case(408, -2013)]
+#[tokio::test]
+async fn test_ambiguous_compensation_lookup_preserves_working_order(
+    #[case] status: u16,
+    #[case] code: i64,
+) {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    let client_order_id = "O-COMP-AMBIG";
+    venue.script(|script| {
+        script.order_query_responses.insert(
+            client_order_id.to_string(),
+            vec![(
+                status,
+                json!({"code": code, "msg": "Order does not exist."}).to_string(),
+            )]
+            .into(),
+        );
+        script.orders.insert(
+            client_order_id.to_string(),
+            venue_order(900_104, client_order_id, "BTCUSDT", "NEW", "BUY"),
+        );
+    });
+    let order = limit_order(client_order_id, OrderSide::Buy, false);
+    submit_and_settle(&harness, &order, &venue).await;
+    drain_exec(&mut harness.exec_rx);
+
+    drive_compensation(&venue, 2).await;
+    let first = drain_exec(&mut harness.exec_rx);
+    assert!(!harness.client.is_ready());
+    assert_eq!(venue.requests_for("GET", "order").len(), 1);
+    assert!(order_reports(&first).is_empty());
+
+    // The next pass finds the order by retained ownership; openOrders still omits it.
+    drive_compensation(&venue, 3).await;
+    let recovered = drain_exec(&mut harness.exec_rx);
+    assert!(harness.client.is_ready());
+    assert_eq!(venue.requests_for("GET", "order").len(), 1);
+    assert_eq!(
+        order_reports(&recovered),
+        vec![(
+            OrderStatus::Accepted,
+            Some(ClientOrderId::from(client_order_id))
+        )],
+        "an ambiguous compensation lookup must leave the order recoverable: {recovered:?}",
+    );
+    assert!(venue.requests_for("POST", "order").is_empty());
+}
+
+#[rstest]
+#[tokio::test]
+async fn test_http_400_submit_rejection_needs_no_lookup() {
+    let venue = MockVenue::start().await;
+    let mut harness = connected_harness(&venue).await;
+    venue.script(|script| {
+        script.submit = SubmitOutcome::Status {
+            status: 400,
+            body: json!({"code": -2010, "msg": "New order rejected."}).to_string(),
+        };
+    });
+    let order = limit_order("O-POST-REJECT", OrderSide::Buy, false);
+    drain_exec(&mut harness.exec_rx);
+    submit_and_settle(&harness, &order, &venue).await;
+    let events = wait_for_events(&mut harness, Duration::from_secs(5), |events| {
+        order_events(events)
+            .iter()
+            .any(|event| matches!(event, OrderEventAny::Rejected(_)))
+    })
+    .await;
+
+    assert!(
+        order_events(&events)
+            .iter()
+            .any(|event| matches!(event, OrderEventAny::Rejected(_)))
+    );
+    assert_eq!(venue.requests_for("POST", "order").len(), 1);
+    assert!(venue.requests_for("GET", "order").is_empty());
+}
+
 /// An ambiguous submit can have filled the order before the POST response was lost. The
 /// reconciliation query must carry the venue's real trade into the execution engine rather than
 /// publishing a cumulative `FILLED` status that makes the engine invent a synthetic fill.

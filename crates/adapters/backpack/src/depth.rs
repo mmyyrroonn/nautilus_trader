@@ -270,14 +270,13 @@ impl BackpackDepthSynchronizer {
                     return Err(BackpackPublicError::Gap);
                 }
 
-                let mut bids = self.bids.clone();
-                let mut asks = self.asks.clone();
-                apply_levels(&mut bids, &update.bids);
-                apply_levels(&mut asks, &update.asks);
-                self.validate_book(&bids, &asks)?;
+                // Every failure in apply_checked invalidates and clears this book,
+                // no observer can access it during this exclusive mutable borrow.
+                // Mutate only touched levels instead of copying both complete trees.
+                apply_levels(&mut self.bids, &update.bids);
+                apply_levels(&mut self.asks, &update.asks);
+                self.validate_book(&self.bids, &self.asks)?;
                 let batch = self.update_batch(&update)?;
-                self.bids = bids;
-                self.asks = asks;
                 self.last = Some(update.last);
                 Ok(batch)
             }

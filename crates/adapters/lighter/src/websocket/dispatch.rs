@@ -420,9 +420,8 @@ impl OrderIdentity {
 ///
 /// Every signed sendTx (create, cancel, modify, update_leverage) enqueues an
 /// entry keyed by the signed `tx_hash`, which the venue echoes in its ACK.
-/// Responses that carry the hash remove their matching entry directly;
-/// responses without one fall back to FIFO-head attribution, so the queue
-/// order still matches the send order. The `kind` records whether the entry
+/// The hash is also sent as the request ID, which rejection responses echo.
+/// Only correlated responses remove their matching entry. The `kind` records whether the entry
 /// has an originating Nautilus order that should receive a typed
 /// order event on a venue rejection.
 #[derive(Debug, Clone)]
@@ -983,54 +982,10 @@ impl WsDispatchState {
 
     /// Pop the oldest pending entry unconditionally.
     ///
-    /// Tests and reconnect cleanup use this directly. Live hashless response
-    /// attribution must use [`Self::pop_pending_sendtx_if_only`].
+    /// Test inspection only; live responses require an exact transaction identity.
     #[cfg(test)]
     pub(crate) fn pop_pending_sendtx_head(&self) -> Option<PendingSendTx> {
         self.pending_sendtx.lock().pop_front()
-    }
-
-    /// Pop a pending entry only when it is the sole possible match.
-    ///
-    /// Lighter does not always echo `tx_hash`. With two or more transactions
-    /// in flight, FIFO attribution is unsafe because responses may arrive out
-    /// of order.
-    pub(crate) fn pop_pending_sendtx_if_only(
-        &self,
-        connection_epoch: u64,
-    ) -> Option<PendingSendTx> {
-        let mut queue = self.pending_sendtx.lock();
-        let mut matches = queue
-            .iter()
-            .enumerate()
-            .filter(|(_, pending)| pending.connection_epoch == connection_epoch);
-        let (position, _) = matches.next()?;
-        if matches.next().is_some() {
-            return None;
-        }
-        queue.remove(position)
-    }
-
-    /// Pop the sole pending entry only if its `submitted_at` is within
-    /// `max_age_ms` of `now`.
-    pub(crate) fn pop_pending_sendtx_if_only_within(
-        &self,
-        connection_epoch: u64,
-        now: UnixNanos,
-        max_age_ms: u64,
-    ) -> Option<PendingSendTx> {
-        let cutoff_ns = now.as_u64().saturating_sub(max_age_ms * 1_000_000);
-        let mut queue = self.pending_sendtx.lock();
-        let mut matches = queue
-            .iter()
-            .enumerate()
-            .filter(|(_, pending)| pending.connection_epoch == connection_epoch);
-        let (position, pending) = matches.next()?;
-        let fresh = pending.submitted_at.as_u64() >= cutoff_ns;
-        if matches.next().is_some() || !fresh {
-            return None;
-        }
-        queue.remove(position)
     }
 
     /// Remove a pending entry by connection epoch and nonce.
@@ -4040,30 +3995,6 @@ mod tests {
         let third = state.pop_pending_sendtx_head().expect("third present");
         assert_eq!(pending_cloid(&third), Some(cloid("B")));
         assert!(state.pop_pending_sendtx_head().is_none());
-    }
-
-    #[rstest]
-    fn pop_within_window_attributes_only_recent_head() {
-        let state = WsDispatchState::new();
-        let submitted_ns = 1_000_000_000_u64;
-        state.enqueue_pending_sendtx(stub_pending_create("A", 1, submitted_ns));
-
-        let within = UnixNanos::from(submitted_ns + 500 * 1_000_000);
-        assert!(
-            state
-                .pop_pending_sendtx_if_only_within(0, within, 1_000)
-                .is_some(),
-        );
-
-        state.enqueue_pending_sendtx(stub_pending_create("B", 2, submitted_ns));
-        let outside = UnixNanos::from(submitted_ns + 1_500 * 1_000_000);
-        assert!(
-            state
-                .pop_pending_sendtx_if_only_within(0, outside, 1_000)
-                .is_none(),
-            "outside the attribution window the head must not pop",
-        );
-        assert_eq!(state.pending_sendtx_len(), 1, "head must remain queued");
     }
 
     #[rstest]

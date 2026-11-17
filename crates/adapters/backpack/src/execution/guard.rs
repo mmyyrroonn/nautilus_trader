@@ -199,6 +199,7 @@ impl BackpackExecutionGuard {
         state.session_active = true;
         state.account = None;
         state.markets.clear();
+        state.reduction_positions.clear();
         state.public = None;
         Ok(())
     }
@@ -220,25 +221,72 @@ impl BackpackExecutionGuard {
         Ok(())
     }
 
-    /// Rebinds public trust after the full scope, or an explicit reduction target, is current.
+    /// Rebinds public trust after the full scope, or an explicit order target, is current.
     /// Retains the execution generation, reservations and economic acknowledgements.
     pub(crate) fn refresh_production_public(
         &self,
         now_ms: u64,
-        reduction_market: Option<InstrumentId>,
+        admission_market: Option<InstrumentId>,
     ) -> Result<(), BackpackExecutionError> {
+        self.refresh_production_markets(now_ms, admission_market)?
+            .into_values()
+            .collect()
+    }
+
+    /// Reports independent market gates using one public snapshot and one account check.
+    pub(crate) fn refresh_production_markets(
+        &self,
+        now_ms: u64,
+        admission_market: Option<InstrumentId>,
+    ) -> Result<BTreeMap<InstrumentId, Result<(), BackpackExecutionError>>, BackpackExecutionError>
+    {
+        self.refresh_markets(now_ms, admission_market, true)
+    }
+
+    /// Admits only venue-enforced reductions of native strategy-owned inventory.
+    /// Account-wide reconciliation and unresolved reservations remain entry barriers.
+    pub(crate) fn refresh_production_reduction(
+        &self,
+        now_ms: u64,
+        instrument: InstrumentId,
+        native_position: Decimal,
+    ) -> Result<(), BackpackExecutionError> {
+        {
+            let _change = self.fence.change();
+            let mut state = self.lock()?;
+            state.check_session(now_ms)?;
+            if !state.production || !state.authority.allow_reduction {
+                return Err(BackpackExecutionErrorKind::Readiness.into());
+            }
+            state
+                .reduction_positions
+                .insert(instrument, (native_position, now_ms));
+        }
+        self.refresh_markets(now_ms, Some(instrument), false)?
+            .into_values()
+            .collect()
+    }
+
+    fn refresh_markets(
+        &self,
+        now_ms: u64,
+        admission_market: Option<InstrumentId>,
+        require_account: bool,
+    ) -> Result<BTreeMap<InstrumentId, Result<(), BackpackExecutionError>>, BackpackExecutionError>
+    {
         let _change = self.fence.change();
         let mut state = self.lock()?;
         state.check_session(now_ms)?;
         if !state.production
-            || state.account.as_ref().is_none_or(|account| {
-                account.generation != state.generation
-                    || !fresh(
-                        account.observed_at_ms,
-                        now_ms,
-                        state.authority.max_account_age_ms,
-                    )
-            })
+            || (require_account
+                && state.account.as_ref().is_none_or(|account| {
+                    account.generation != state.generation
+                        || !fresh(
+                            account.observed_at_ms,
+                            now_ms,
+                            state.authority.max_account_age_ms,
+                        )
+                }))
         {
             return Err(BackpackExecutionErrorKind::Readiness.into());
         }
@@ -248,9 +296,12 @@ impl BackpackExecutionGuard {
             .ok_or(BackpackExecutionErrorKind::Readiness)?
             .telemetry
             .clone();
-        let (_, token) = telemetry.admission_snapshot();
+        let (observed, token) = telemetry.admission_snapshot();
+        if !observed.connected || !observed.metadata_ready || observed.stale_reason.is_some() {
+            return Err(BackpackExecutionErrorKind::Readiness.into());
+        }
         let public = PublicAdmission { telemetry, token };
-        if let Some(target) = reduction_market
+        if let Some(target) = admission_market
             && !state
                 .config
                 .symbols()
@@ -259,19 +310,38 @@ impl BackpackExecutionGuard {
         {
             return Err(BackpackExecutionErrorKind::Readiness.into());
         }
+        let mut admissions = BTreeMap::new();
         for symbol in state.config.symbols() {
             let id = InstrumentId::from(format!("{symbol}.BACKPACK"));
-            if reduction_market.is_some_and(|target| target != id) {
+            if admission_market.is_some_and(|target| target != id) {
                 continue;
             }
-            let market = state
-                .markets
-                .get(&id)
-                .ok_or(BackpackExecutionErrorKind::Readiness)?;
-            public.validate(market, true)?;
+            let result = (|| {
+                let market = state
+                    .markets
+                    .get(&id)
+                    .ok_or(BackpackExecutionErrorKind::Readiness)?;
+                if [
+                    market.quote.ts_event,
+                    market.quote.ts_init,
+                    market.metadata.received_at,
+                ]
+                .iter()
+                .any(|stamp| {
+                    !fresh(
+                        stamp.as_u64() / 1_000_000,
+                        now_ms,
+                        state.authority.max_market_age_ms,
+                    )
+                }) {
+                    return Err(BackpackExecutionErrorKind::Readiness.into());
+                }
+                public.validate_observation(market, true, &observed, token)
+            })();
+            admissions.insert(id, result);
         }
         state.public = Some(public);
-        Ok(())
+        Ok(admissions)
     }
 
     /// Accepts explicitly complete local peer account facts. This never verifies a real account.
@@ -422,6 +492,7 @@ impl BackpackExecutionGuard {
             state.session_active = false;
             state.account = None;
             state.markets.clear();
+            state.reduction_positions.clear();
         }
     }
     pub(crate) fn lock(&self) -> Result<MutexGuard<'_, OwnerState>, BackpackExecutionError> {
@@ -451,19 +522,11 @@ impl OwnerState {
         exclude: Option<&OrderRecord>,
     ) -> Result<(Decimal, Decimal), BackpackExecutionError> {
         self.check_session(now_ms)?;
-        let account = self
-            .account
-            .as_ref()
-            .ok_or(BackpackExecutionErrorKind::Readiness)?;
         let market = self
             .markets
             .get(&spec.instrument_id)
             .ok_or(BackpackExecutionErrorKind::Readiness)?;
         if !fresh(
-            account.observed_at_ms,
-            now_ms,
-            self.authority.max_account_age_ms,
-        ) || !fresh(
             market.quote.ts_event.as_u64() / 1_000_000,
             now_ms,
             self.authority.max_market_age_ms,
@@ -494,6 +557,33 @@ impl OwnerState {
         )?;
         if self.production && estimated_cost > self.authority.max_order_notional {
             return Err(BackpackExecutionErrorKind::Capacity.into());
+        }
+        if self.production
+            && spec.reduce_only
+            && let Some((position, observed_at)) = self.reduction_positions.get(&spec.instrument_id)
+        {
+            if !self.authority.allow_reduction
+                || !fresh(*observed_at, now_ms, self.authority.max_account_age_ms)
+                || !((*position > Decimal::ZERO && spec.side == OrderSide::Sell)
+                    || (*position < Decimal::ZERO && spec.side == OrderSide::Buy))
+                || spec.quantity > position.abs()
+            {
+                return Err(BackpackExecutionErrorKind::Capacity.into());
+            }
+            // Each command is capped to owned inventory and carries reduceOnly on
+            // the wire, pending reductions cannot reverse the exchange position.
+            return Ok((Decimal::ZERO, Decimal::ZERO));
+        }
+        let account = self
+            .account
+            .as_ref()
+            .ok_or(BackpackExecutionErrorKind::Readiness)?;
+        if !fresh(
+            account.observed_at_ms,
+            now_ms,
+            self.authority.max_account_age_ms,
+        ) {
+            return Err(BackpackExecutionErrorKind::Readiness.into());
         }
         let records = self.records.values().filter(|record| {
             record.holds_capacity()
@@ -571,10 +661,37 @@ impl OwnerState {
         // corresponding order reservation has been reconciled and released.
         if self.production {
             for (instrument, quantity) in &account.net_positions {
+                if quantity.is_zero() {
+                    continue;
+                }
                 let observed = self
                     .markets
                     .get(instrument)
                     .ok_or(BackpackExecutionErrorKind::Readiness)?;
+                // Every actual exposure needs a current valuation, even when the
+                // new order targets another market. Flat markets need no mark.
+                if *instrument != spec.instrument_id
+                    && [
+                        observed.quote.ts_event,
+                        observed.quote.ts_init,
+                        observed.metadata.received_at,
+                    ]
+                    .iter()
+                    .any(|stamp| {
+                        !fresh(
+                            stamp.as_u64() / 1_000_000,
+                            now_ms,
+                            self.authority.max_market_age_ms,
+                        )
+                    })
+                {
+                    return Err(BackpackExecutionErrorKind::Readiness.into());
+                }
+                if *instrument != spec.instrument_id
+                    && let Some(public) = &self.public
+                {
+                    public.validate(observed, true)?;
+                }
                 let mark = observed
                     .quote
                     .ask_price
@@ -653,6 +770,16 @@ impl PublicAdmission {
         production: bool,
     ) -> Result<(), BackpackExecutionError> {
         let (current, token) = self.telemetry.admission_snapshot();
+        self.validate_observation(market, production, &current, token)
+    }
+
+    fn validate_observation(
+        &self,
+        market: &BackpackLoopbackMarketFacts,
+        production: bool,
+        current: &crate::runtime::BackpackPublicHealth,
+        token: crate::telemetry::BackpackPublicAdmissionToken,
+    ) -> Result<(), BackpackExecutionError> {
         let symbol = market.metadata.raw_symbol.as_str();
         if token != self.token
             || !current.connected
