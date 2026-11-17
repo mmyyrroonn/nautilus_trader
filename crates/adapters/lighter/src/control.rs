@@ -31,7 +31,7 @@ const EVIDENCE_CAPACITY: usize = 100_000;
 struct TerminalFillEvidence {
     client_order_id: ClientOrderId,
     instrument_id: InstrumentId,
-    venue_order_id: VenueOrderId,
+    venue_order_id: Option<VenueOrderId>,
     final_filled_quantity: String,
     source: String,
     ts_event_ns: u64,
@@ -80,7 +80,7 @@ impl LighterExecutionControl {
             && (prior.final_filled_quantity
                 != report.filled_qty.as_decimal().normalize().to_string()
                 || prior.instrument_id != report.instrument_id
-                || prior.venue_order_id != report.venue_order_id)
+                || prior.venue_order_id != Some(report.venue_order_id))
         {
             prior.conflicting = true;
             prior.http_conflicting = true;
@@ -112,6 +112,13 @@ impl LighterExecutionControl {
             return;
         }
         let mut state = self.inner.lock();
+        if let Some(prior) = state.evidence.get_mut(&cloid)
+            && prior.source == "submission_rejected"
+        {
+            prior.conflicting = true;
+            prior.http_conflicting = true;
+            return;
+        }
         if source == "websocket_terminal_order"
             && let Some(prior) = state.evidence.get_mut(&cloid)
             && prior.source == "http_order_status"
@@ -143,12 +150,12 @@ impl LighterExecutionControl {
                     && prior.source == source
                     && (prior.final_filled_quantity != quantity
                         || prior.instrument_id != report.instrument_id
-                        || prior.venue_order_id != report.venue_order_id))
+                        || prior.venue_order_id != Some(report.venue_order_id)))
         });
         let conflicting = state.evidence.get(&cloid).is_some_and(|prior| {
             let authoritative_upgrade = source == "http_order_status"
                 && prior.instrument_id == report.instrument_id
-                && prior.venue_order_id == report.venue_order_id
+                && prior.venue_order_id == Some(report.venue_order_id)
                 && report.ts_last.as_u64()
                     >= prior.stream_conflict_ts_ns.max(
                         if prior.source == "websocket_terminal_order" {
@@ -166,7 +173,7 @@ impl LighterExecutionControl {
                     && (prior.conflicting
                         || prior.final_filled_quantity != quantity
                         || prior.instrument_id != report.instrument_id
-                        || prior.venue_order_id != report.venue_order_id))
+                        || prior.venue_order_id != Some(report.venue_order_id)))
         });
         let stream_conflict_ts_ns = state
             .evidence
@@ -180,13 +187,48 @@ impl LighterExecutionControl {
             TerminalFillEvidence {
                 client_order_id: cloid,
                 instrument_id: report.instrument_id,
-                venue_order_id: report.venue_order_id,
+                venue_order_id: Some(report.venue_order_id),
                 final_filled_quantity: quantity,
                 source: source.into(),
                 ts_event_ns: report.ts_last.as_u64(),
                 conflicting,
                 http_conflicting,
                 stream_conflict_ts_ns,
+            },
+        );
+        while state.order.len() > EVIDENCE_CAPACITY {
+            if let Some(old) = state.order.pop_front() {
+                state.evidence.remove(&old);
+            }
+        }
+    }
+
+    /// Records an exact create rejection or a command proven never dispatched.
+    pub(crate) fn observe_submission_rejected(
+        &self,
+        client_order_id: ClientOrderId,
+        instrument_id: InstrumentId,
+        ts_event_ns: u64,
+    ) {
+        let mut state = self.inner.lock();
+        if let Some(prior) = state.evidence.get_mut(&client_order_id) {
+            prior.conflicting |=
+                prior.source != "submission_rejected" || prior.instrument_id != instrument_id;
+            return;
+        }
+        state.order.push_back(client_order_id);
+        state.evidence.insert(
+            client_order_id,
+            TerminalFillEvidence {
+                client_order_id,
+                instrument_id,
+                venue_order_id: None,
+                final_filled_quantity: "0".into(),
+                source: "submission_rejected".into(),
+                ts_event_ns,
+                conflicting: false,
+                http_conflicting: false,
+                stream_conflict_ts_ns: 0,
             },
         );
         while state.order.len() > EVIDENCE_CAPACITY {

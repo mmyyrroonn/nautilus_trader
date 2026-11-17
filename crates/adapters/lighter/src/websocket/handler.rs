@@ -137,6 +137,7 @@ pub enum HandlerCommand {
     /// confirms acceptance via the `account_*` streams (and reports any
     /// rejection via a control-plane `error` frame).
     SendTx {
+        request_id: Option<String>,
         tx_type: u8,
         tx_info: Box<serde_json::value::RawValue>,
         connection_epoch: u64,
@@ -446,9 +447,14 @@ impl FeedHandler {
         tx_type: u8,
         tx_info: Box<serde_json::value::RawValue>,
         connection_epoch: u64,
+        request_id: Option<String>,
     ) -> Result<(), LighterWsError> {
         let request = LighterWsRequest::SendTx {
-            data: super::messages::LighterWsSendTx { tx_type, tx_info },
+            data: super::messages::LighterWsSendTx {
+                id: request_id,
+                tx_type,
+                tx_info,
+            },
         };
 
         match serde_json::to_string(&request) {
@@ -581,13 +587,14 @@ impl FeedHandler {
                             self.exec_account = Some((account_id, account_index));
                         }
                         HandlerCommand::SendTx {
+                            request_id,
                             tx_type,
                             tx_info,
                             connection_epoch,
                             response_tx,
                         } => {
                             let result = self
-                                .dispatch_send_tx(tx_type, tx_info, connection_epoch)
+                                .dispatch_send_tx(tx_type, tx_info, connection_epoch, request_id)
                                 .await;
 
                             if response_tx.send(result).is_err() {
@@ -1042,6 +1049,7 @@ impl FeedHandler {
                         (
                             true,
                             Some(NautilusWsMessage::SendTxAck {
+                                request_id: response_request_id(value),
                                 connection_epoch: 0,
                                 tx_hash,
                                 code: 200,
@@ -1121,7 +1129,11 @@ impl FeedHandler {
                         log::warn!("Lighter WebSocket error frame: {value}");
                     }
                     let rejected = is_sendtx_error_code(nested_code).then(|| {
-                        send_tx_rejected_from_nested_error(error, SendTxRejectionSource::BareError)
+                        send_tx_rejected_from_nested_error(
+                            value,
+                            error,
+                            SendTxRejectionSource::BareError,
+                        )
                     });
                     return (true, rejected);
                 }
@@ -2067,6 +2079,7 @@ fn send_tx_rejected_from_value(
         .and_then(|v| v.as_str())
         .map(str::to_string);
     NautilusWsMessage::SendTxRejected {
+        request_id: response_request_id(value),
         connection_epoch: 0,
         source,
         code,
@@ -2075,9 +2088,9 @@ fn send_tx_rejected_from_value(
     }
 }
 
-// SendTxRejected from a nested `{"error":{"code":N,"message":...}}` frame;
-// these frames never carry a `tx_hash`.
+// SendTxRejected from a nested `{"error":{"code":N,"message":...}}` frame.
 fn send_tx_rejected_from_nested_error(
+    value: &serde_json::Value,
     error: &serde_json::Value,
     source: SendTxRejectionSource,
 ) -> NautilusWsMessage {
@@ -2088,12 +2101,24 @@ fn send_tx_rejected_from_nested_error(
         .unwrap_or("")
         .to_string();
     NautilusWsMessage::SendTxRejected {
+        request_id: response_request_id(value),
         connection_epoch: 0,
         source,
         code,
         message,
-        tx_hash: None,
+        tx_hash: value
+            .get("tx_hash")
+            .and_then(|v| v.as_str())
+            .map(str::to_string),
     }
+}
+
+fn response_request_id(value: &serde_json::Value) -> Option<String> {
+    // A malformed ID remains explicitly unmatched, rather than falling back
+    // to another field or allocating a serialized copy of an arbitrary object.
+    value
+        .get("id")
+        .map(|id| id.as_str().unwrap_or("").to_string())
 }
 
 fn log_integrator_not_approved() {
@@ -3438,6 +3463,7 @@ mod tests {
 
         cmd_tx
             .send(HandlerCommand::SendTx {
+                request_id: None,
                 tx_type: LighterTxType::CreateOrder as u8,
                 tx_info: serde_json::value::RawValue::from_string(
                     r#"{"AccountIndex":12345,"Nonce":42}"#.to_string(),

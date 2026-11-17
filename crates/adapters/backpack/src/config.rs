@@ -266,7 +266,7 @@ pub struct BackpackPublicLifecycleConfig {
     pub ws_idle_timeout_secs: u64,
     /// Maximum age of the latest valid BBO event and its original receipt.
     pub quote_stale_after_ms: u64,
-    /// Maximum continuous recovery interval before closing this session.
+    /// Budget for one recovery window before retrying with publication still closed.
     pub reconnect_timeout_secs: u64,
     /// Graceful teardown bound, followed by an equal forced drain bound.
     pub shutdown_timeout_secs: u64,

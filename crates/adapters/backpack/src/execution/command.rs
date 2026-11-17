@@ -146,7 +146,8 @@ impl BackpackOrderSpec {
         {
             return Err(UnsupportedCommand.into());
         }
-        if self.quantity < checked.min_quantity.as_decimal()
+        if self.quantity <= Decimal::ZERO
+            || (!self.reduce_only && self.quantity < checked.min_quantity.as_decimal())
             || checked
                 .max_quantity
                 .is_some_and(|max| self.quantity > max.as_decimal())

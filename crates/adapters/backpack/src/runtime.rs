@@ -15,7 +15,11 @@
 
 //! Owned public session, publication gates and bounded depth bootstrap.
 
-use std::{collections::BTreeMap, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeMap, VecDeque},
+    sync::Arc,
+    time::Duration,
+};
 
 use bytes::Bytes;
 use nautilus_common::messages::DataEvent;
@@ -31,6 +35,7 @@ use parking_lot::Mutex;
 use serde::Deserialize;
 use tokio::sync::{Notify, mpsc};
 use tokio_util::sync::CancellationToken;
+use ustr::Ustr;
 
 use crate::{
     config::BackpackDataClientConfig,
@@ -54,6 +59,21 @@ pub(crate) fn now() -> UnixNanos {
     get_atomic_clock_realtime().get_time_ns()
 }
 
+/// A bounded, sanitized public fault observation retained after recovery.
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct BackpackPublicFault {
+    /// Wall-clock fault timestamp, serialized exactly for JSON consumers.
+    pub unix_ns: String,
+    /// Transport epoch in which this transition occurred.
+    pub epoch: u64,
+    /// Fixed diagnostic reason without payloads or credentials.
+    pub reason: &'static str,
+    /// Queue occupancy most recently observed by the producer or consumer.
+    pub queued_frames: usize,
+    /// Largest queue wait observed before this transition.
+    pub max_queue_wait_ns: u64,
+}
+
 /// An observation of current public session readiness; execution readiness is never implied.
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct BackpackPublicHealth {
@@ -71,6 +91,20 @@ pub struct BackpackPublicHealth {
     pub connected: bool,
     /// Last critical fault, without response bodies or raw frames.
     pub stale_reason: Option<&'static str>,
+    /// Most recent public fault, retained after successful recovery.
+    pub last_fault_reason: Option<&'static str>,
+    /// Connection epoch on which the retained public fault was observed.
+    pub last_fault_epoch: u64,
+    /// Recovery budgets exhausted while the session remained closed to publication.
+    pub recovery_timeouts: u64,
+    /// Last 32 sanitized fault transitions, retained across connection recovery.
+    pub fault_history: Vec<BackpackPublicFault>,
+    /// Largest number of inputs waiting in the bounded public queue.
+    pub input_queue_high_water: usize,
+    /// Inputs refused by the bounded public queue.
+    pub input_queue_overflows: u64,
+    /// Largest monotonic receive-to-consume delay in this client run.
+    pub max_queue_wait_ns: u64,
     /// Per-symbol BBO freshness, independent of book depth coverage.
     pub quotes_fresh: BTreeMap<String, bool>,
     /// Positive subscription acknowledgements have not been established by official evidence.
@@ -102,6 +136,14 @@ pub(crate) struct Gate {
     pub metadata_ready: bool,
     pub connected: bool,
     pub stale: Option<&'static str>,
+    pub last_fault_reason: Option<&'static str>,
+    pub last_fault_epoch: u64,
+    pub recovery_timeouts: u64,
+    pub fault_history: VecDeque<BackpackPublicFault>,
+    pub queued_frames: usize,
+    pub input_queue_high_water: usize,
+    pub input_queue_overflows: u64,
+    pub max_queue_wait_ns: u64,
     pub lost_at: Option<nautilus_network::dst::time::Instant>,
     pub revisions: BTreeMap<String, u64>,
     pub quote_receipts: BTreeMap<String, (UnixNanos, UnixNanos)>,
@@ -112,6 +154,34 @@ pub(crate) struct Gate {
 }
 impl Gate {
     pub(crate) fn invalidate(&mut self, reason: &'static str) {
+        if !matches!(
+            reason,
+            "initial bootstrap"
+                | "replacement bootstrap"
+                | "session stopped"
+                | "stopped"
+                | "reset"
+                | "disposed"
+                | "owner dropped"
+                | "disconnected"
+                | "recovery deadline"
+        ) && (reason != "transport disconnected" || self.connected)
+        {
+            if self.stale != Some(reason) || self.last_fault_epoch != self.epoch {
+                if self.fault_history.len() == 32 {
+                    self.fault_history.pop_front();
+                }
+                self.fault_history.push_back(BackpackPublicFault {
+                    unix_ns: now().as_u64().to_string(),
+                    epoch: self.epoch,
+                    reason,
+                    queued_frames: self.queued_frames,
+                    max_queue_wait_ns: self.max_queue_wait_ns,
+                });
+            }
+            self.last_fault_reason = Some(reason);
+            self.last_fault_epoch = self.epoch;
+        }
         match self.fault_serial.checked_add(1) {
             Some(v) => self.fault_serial = v,
             None => self.running = false,
@@ -151,6 +221,13 @@ impl Gate {
             metadata_ready: self.metadata_ready,
             connected: self.running && self.connected,
             stale_reason: self.stale,
+            last_fault_reason: self.last_fault_reason,
+            last_fault_epoch: self.last_fault_epoch,
+            recovery_timeouts: self.recovery_timeouts,
+            fault_history: self.fault_history.iter().cloned().collect(),
+            input_queue_high_water: self.input_queue_high_water,
+            input_queue_overflows: self.input_queue_overflows,
+            max_queue_wait_ns: self.max_queue_wait_ns,
             subscription_acknowledgements_verified: false,
             execution_ready: false,
             books_continuous: self
@@ -415,11 +492,17 @@ impl PublicSession {
                 }
             };
 
-            if let Some(input) = input
-                && frame_tx.try_send(input).is_err()
-            {
-                state.invalidate("public frame queue overflow");
-                notify.notify_one();
+            if let Some(input) = input {
+                let waiting = frame_tx.max_capacity() - frame_tx.capacity();
+                state.queued_frames = waiting;
+                state.input_queue_high_water = state
+                    .input_queue_high_water
+                    .max((waiting + 1).min(frame_tx.max_capacity()));
+                if frame_tx.try_send(input).is_err() {
+                    state.input_queue_overflows = state.input_queue_overflows.saturating_add(1);
+                    state.invalidate("public frame queue overflow");
+                    notify.notify_one();
+                }
             }
         });
         let gate = self.gate.clone();
@@ -441,7 +524,8 @@ impl PublicSession {
             .connect_timeout_ms(policy.ws_connect_timeout_secs * 1000)
             .reconnect_delay_initial_ms(100)
             .reconnect_delay_max_ms(2000)
-            .reconnect_max_attempts(20)
+            // A long-running public feed must survive more than 20 short connections,
+            // attempts retain the transport's capped backoff and handshake timeout.
             .build()
             .map_err(|_| BackpackDataError::Configuration("websocket policy"))?;
         let ws = WebSocketClient::epoch_builder()
@@ -490,6 +574,9 @@ impl PublicSession {
             );
         }
 
+        let mut reconcile_pending = true;
+        let mut reconcile_after = None;
+
         loop {
             let (current, expired, ready) = {
                 let state = self.gate.lock();
@@ -508,17 +595,23 @@ impl PublicSession {
             }
 
             if expired {
-                self.gate.lock().invalidate("recovery deadline");
-                let _ = nautilus_network::dst::time::timeout(
-                    Duration::from_secs(self.config.lifecycle().shutdown_timeout_secs),
-                    ws.disconnect(),
-                )
-                .await;
-                break;
+                // Bound each bootstrap budget without abandoning the owning task,
+                // no observations become admissible until a fresh epoch is bootstrapped.
+                let mut state = self.gate.lock();
+                state.invalidate("recovery deadline");
+                state.recovery_timeouts = state.recovery_timeouts.saturating_add(1);
+                state.lost_at = Some(nautilus_network::dst::time::Instant::now());
+                drop(state);
+                let _ = ws.reconnect_handle().request_reconnect();
             }
 
             if ready
-                && self
+                && reconcile_pending
+                && rx.len() <= self.config.lifecycle().max_buffer_frames / 8
+                && reconcile_after
+                    .is_none_or(|deadline| nautilus_network::dst::time::Instant::now() >= deadline)
+            {
+                match self
                     .reconcile(
                         owner,
                         actor.epoch,
@@ -531,14 +624,21 @@ impl PublicSession {
                         &tx,
                     )
                     .await
-                    .is_err()
-            {
-                self.fault(owner, actor.epoch, "subscription send failed", &ws);
+                {
+                    Ok(pending) => {
+                        reconcile_pending = pending;
+                        reconcile_after = Some(
+                            nautilus_network::dst::time::Instant::now() + Duration::from_millis(20),
+                        );
+                    }
+                    Err(_) => self.fault(owner, actor.epoch, "subscription send failed", &ws),
+                }
             }
             let input = tokio::select! {
                 biased;
                 ()=cancel.cancelled()=>break,
                 ()=self.notify.notified()=> {
+                    reconcile_pending = true;
                     let needs_reconnect = self.gate.lock().needs_reconnect(owner,actor.epoch);
                     if needs_reconnect {
                         let _=ws.reconnect_handle().request_reconnect();
@@ -553,9 +653,11 @@ impl PublicSession {
                 Some(Input::Reconnected(epoch)) => {
                     self.rebootstrap(owner, &ws, &mut actor, epoch, &cancel)
                         .await;
+                    reconcile_pending = true;
+                    reconcile_after = None;
                 }
                 Some(Input::Frame(frame)) => {
-                    self.frame(owner, &ws, &mut actor, &frame, &spawner, &tx);
+                    self.frame(owner, &ws, &mut actor, &frame, &spawner, &tx, rx.len());
                 }
                 Some(Input::Snapshot(snapshot)) => self.install(owner, &ws, &mut actor, snapshot),
                 None => {}
@@ -683,9 +785,25 @@ impl PublicSession {
         frame: &Frame,
         spawner: &TaskSpawner,
         tx: &mpsc::Sender<Input>,
+        queued_frames: usize,
     ) {
         let epoch = actor.epoch;
-        if frame.epoch != epoch || !self.current_topic(owner, epoch, &frame.topic, frame.revision) {
+        let queue_wait_ns = frame
+            .received_at
+            .elapsed()
+            .as_nanos()
+            .try_into()
+            .unwrap_or(u64::MAX);
+        let admitted = {
+            // Reuse the required admission lock; diagnostics must not add a
+            // second producer/consumer lock handoff for every incoming frame.
+            let mut state = self.gate.lock();
+            state.queued_frames = queued_frames;
+            state.max_queue_wait_ns = state.max_queue_wait_ns.max(queue_wait_ns);
+            frame.epoch == epoch
+                && self.admits_topic(&state, owner, epoch, &frame.topic, frame.revision)
+        };
+        if !admitted {
             return;
         }
 
@@ -924,7 +1042,10 @@ impl PublicSession {
     ) -> bool {
         state.admits(owner, epoch)
             && state.revisions.get(topic) == Some(&revision)
-            && self.subscriptions.all_topics().iter().any(|t| t == topic)
+            && topic.split_once('.').is_some_and(|(channel, symbol)| {
+                self.subscriptions
+                    .is_subscribed(&Ustr::from(channel), &Ustr::from(symbol))
+            })
     }
     fn current_topic(&self, owner: u64, epoch: u64, topic: &str, revision: u64) -> bool {
         self.admits_topic(&self.gate.lock(), owner, epoch, topic, revision)
@@ -991,7 +1112,7 @@ impl PublicSession {
         generation: &mut u64,
         spawner: &TaskSpawner,
         tx: &mpsc::Sender<Input>,
-    ) -> Result<(), BackpackDataError> {
+    ) -> Result<bool, BackpackDataError> {
         let desired = {
             let state = self.gate.lock();
             self.subscriptions
@@ -1009,7 +1130,14 @@ impl PublicSession {
             .map(|(t, _)| t.clone())
             .collect::<Vec<_>>();
 
+        // Yield between bounded command batches so a subscription burst cannot
+        // monopolize the actor while its bounded market-data queue fills up.
+        let mut commands = 0;
+
         for topic in removed {
+            if commands == 8 {
+                return Ok(true);
+            }
             ws.send_text_on_connection(
                 serde_json::json!({"method":"UNSUBSCRIBE","params":[topic]}).to_string(),
                 None,
@@ -1018,6 +1146,7 @@ impl PublicSession {
             .await
             .map_err(|_| BackpackDataError::Transport)?;
             sent.remove(&topic);
+            commands += 1;
             if sent.is_empty() {
                 *last_data = None;
             }
@@ -1036,6 +1165,9 @@ impl PublicSession {
             if sent.get(&topic) == Some(&revision) {
                 continue;
             }
+            if commands == 8 {
+                return Ok(true);
+            }
 
             if let Some(symbol) = topic.strip_prefix("depth.") {
                 let market = markets.get_mut(symbol).ok_or(BackpackDataError::Metadata)?;
@@ -1050,13 +1182,14 @@ impl PublicSession {
             .await
             .map_err(|_| BackpackDataError::Transport)?;
             sent.insert(topic.clone(), revision);
+            commands += 1;
             last_data.get_or_insert_with(nautilus_network::dst::time::Instant::now);
             if let Some(symbol) = topic.strip_prefix("depth.") {
                 let market = markets.get_mut(symbol).ok_or(BackpackDataError::Metadata)?;
                 self.snapshot(owner, epoch, symbol, revision, market, spawner, tx)?;
             }
         }
-        Ok(())
+        Ok(false)
     }
     fn prepare_book(
         &self,
@@ -1151,7 +1284,8 @@ impl PublicSession {
                     state.admits(owner, epoch)
                         && state.book_tokens.get(&symbol) == Some(&token)
                         && state.revisions.get(&topic) == Some(&revision)
-                        && subscriptions.all_topics().contains(&topic)
+                        && subscriptions
+                            .is_subscribed(&Ustr::from("depth"), &Ustr::from(symbol.as_str()))
                 };
                 let response = http.read(&request, None, Some(&admission), &cancel).await;
                 let received = now();
@@ -1255,6 +1389,40 @@ mod reconnect_tests {
         // A real fault during the pending bootstrap must still request recovery
         gate.invalidate("malformed public frame");
         assert!(gate.needs_reconnect(1, 1));
+    }
+
+    #[rstest]
+    fn public_fault_history_is_bounded_and_survives_recovery() {
+        let mut gate = Gate {
+            running: true,
+            queued_frames: 64,
+            max_queue_wait_ns: 123,
+            ..Gate::default()
+        };
+        for epoch in 0..40 {
+            gate.epoch = epoch;
+            gate.connected = true;
+            gate.stale = None;
+            gate.invalidate("public frame queue overflow");
+            gate.invalidate("public frame queue overflow");
+        }
+        gate.invalidate("replacement bootstrap");
+        gate.connected = true;
+        gate.metadata_ready = true;
+        gate.stale = None;
+        let health = gate.health(60);
+        assert_eq!(health.fault_history.len(), 32);
+        assert_eq!(health.fault_history[0].epoch, 8);
+        assert_eq!(health.fault_history[31].epoch, 39);
+        assert_eq!(health.fault_history[31].queued_frames, 64);
+        assert_eq!(health.fault_history[31].max_queue_wait_ns, 123);
+        assert!(
+            health
+                .fault_history
+                .iter()
+                .all(|fault| fault.unix_ns.parse::<u64>().unwrap() > 0)
+        );
+        assert!(health.connected);
     }
 
     #[tokio::test]

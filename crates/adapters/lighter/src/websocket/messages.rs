@@ -72,11 +72,13 @@ pub enum NautilusWsMessage {
     },
     AccountState(Box<AccountState>),
     SendTxAck {
+        request_id: Option<String>,
         connection_epoch: u64,
         tx_hash: Option<String>,
         code: i64,
     },
     SendTxRejected {
+        request_id: Option<String>,
         connection_epoch: u64,
         source: SendTxRejectionSource,
         code: Option<i64>,
@@ -99,18 +101,26 @@ impl NautilusWsMessage {
     #[must_use]
     pub(crate) fn with_connection_epoch(self, connection_epoch: u64) -> Self {
         match self {
-            Self::SendTxAck { tx_hash, code, .. } => Self::SendTxAck {
+            Self::SendTxAck {
+                request_id,
+                tx_hash,
+                code,
+                ..
+            } => Self::SendTxAck {
+                request_id,
                 connection_epoch,
                 tx_hash,
                 code,
             },
             Self::SendTxRejected {
+                request_id,
                 source,
                 code,
                 message,
                 tx_hash,
                 ..
             } => Self::SendTxRejected {
+                request_id,
                 connection_epoch,
                 source,
                 code,
@@ -135,12 +145,9 @@ pub enum AccountStream {
 
 /// Origin of a Lighter `sendTx` rejection signal.
 ///
-/// `Ack` is a direct non-200 response to our own `jsonapi/sendtx` request,
-/// attributable via the echoed `tx_hash` when present and the FIFO head
-/// otherwise. `BareError` is a standalone error frame that carries no
-/// correlation field, so attribution relies on the FIFO pending queue plus a
-/// short attribution window; only codes in the venue's transaction range are
-/// routed here at all.
+/// `Ack` is a direct non-200 response to `jsonapi/sendtx`. `BareError` is a
+/// top-level or nested transaction error. Both require an echoed request ID
+/// or transaction hash for order attribution; time proximity is insufficient.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SendTxRejectionSource {
     Ack,
@@ -241,6 +248,8 @@ impl LighterWsRequest {
 /// doesn't implement it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LighterWsSendTx {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     pub tx_type: u8,
     pub tx_info: Box<RawValue>,
 }

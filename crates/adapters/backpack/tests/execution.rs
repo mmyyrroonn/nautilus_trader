@@ -577,6 +577,57 @@ async fn test_reduce_only_market_requires_direction_and_unreserved_position() {
 }
 
 #[rstest]
+#[case::residual(true, "0.00001", true)]
+#[case::entry_below_minimum(false, "0.00001", false)]
+#[case::zero(true, "0", false)]
+#[case::negative(true, "-0.00001", false)]
+#[case::off_grid(true, "0.000001", false)]
+#[case::over_maximum(true, "1.00001", false)]
+#[tokio::test]
+async fn test_reduce_only_residual_preserves_wire_quantity_and_bounds(
+    #[case] reduce_only: bool,
+    #[case] quantity: &str,
+    #[case] admitted: bool,
+) {
+    let server = Server::start(vec![]).await;
+    let directory = TempDir::new().unwrap();
+    let owner = build_owner(
+        &server,
+        &directory,
+        Arc::new(Clock(AtomicU64::new(1000))),
+        BackpackQuota::default(),
+        Duration::from_secs(1),
+    );
+    prepare(&owner, &server, 1, 1000);
+    let mut facts = market(1, 1000);
+    let mut raw = facts.metadata.raw_metadata.clone();
+    raw["filters"]["quantity"]["minQuantity"] = json!("0.01");
+    raw["filters"]["quantity"]["maxQuantity"] = json!("1");
+    facts.metadata = parse_market(
+        &serde_json::from_value::<BackpackMarket>(raw).unwrap(),
+        &BackpackConfig::new_checked(vec!["BTC_USDC_PERP".into()]).unwrap(),
+        UnixNanos::from(1_000_000_000),
+    )
+    .unwrap();
+    owner.guard().update_market(facts, 1000).unwrap();
+    let mut command = spec("tail");
+    command.side = OrderSide::Sell;
+    command.time_in_force = TimeInForce::Ioc;
+    command.reduce_only = reduce_only;
+    command.quantity = decimal(quantity);
+    let result = owner.submit(command, &CancellationToken::new()).await;
+    assert_eq!(result.is_ok(), admitted, "{result:?}");
+    let captured = server.captured();
+    assert_eq!(captured.len(), usize::from(admitted));
+    if admitted {
+        let body: Value = serde_json::from_slice(&captured[0].body).unwrap();
+        assert_eq!(body["quantity"], json!(quantity));
+        assert_eq!(body["reduceOnly"], json!(true));
+        verify_signature(&captured[0], "orderExecute");
+    }
+}
+
+#[rstest]
 #[case(429, "{}")]
 #[case(500, "{}")]
 #[case(200, "unreadable")]

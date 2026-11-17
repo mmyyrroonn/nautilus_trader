@@ -373,6 +373,19 @@ capabilities are exposed. No testnet, DMS, or clientId uniqueness guarantee is a
 
 ## Validation
 
+The public feed retries transport loss with capped backoff until its owner is stopped. A recovery
+budget bounds each metadata bootstrap window; exhausting that budget keeps publication closed
+and starts another window. Twenty short-lived connections must not permanently disable the feed.
+Every replacement still reloads metadata and requires fresh quotes and depth snapshots; prior
+epochs cannot re-establish readiness. Telemetry retains `last_fault_reason`, `last_fault_epoch`
+and `recovery_timeouts` after recovery, without retaining raw frames or endpoint details.
+
+Subscription reconciliation runs only after intent changes or transport replacement, in batches
+of at most eight commands with at least 20 ms between batches. It pauses while the input queue
+exceeds one eighth of its configured capacity. Normal frame admission checks a single topic
+directly instead of allocating and scanning the complete subscription list. Queue limits and
+epoch/revision checks remain enforced; subscription work yields to consuming market data.
+
 Run `cargo test -p nautilus-backpack` and `cargo clippy -p nautilus-backpack --all-targets -- -D warnings`.
 Native loopback tests exercise factory extraction, instruments before data, receive-before-snapshot
 bootstrap, depth gaps, cancellation/unsubscribe, idle/reconnect recovery, changed metadata precision,
@@ -803,8 +816,16 @@ production configuration from those two configurations, explicit finite
 `BackpackProductionExecutionAuthority`, mutation budget, receive window and an
 economic state directory. Register data before execution in `LiveNodeBuilder`.
 All submit/cancel/query commands originate in a normal native `Strategy`.
-`control.admission_status_json()` reports current readiness and the refusal reason;
-it does not submit an order. `persist_economics()` checkpoints actual native state,
+`control.admission_status_json()` reports `global_ready` for account/session trust
+and a `markets` map keyed by instrument ID with independent `ready`/`reason` rows.
+The top-level `ready` remains the all-market aggregate for older consumers; it
+does not veto a ready target when `global_ready` is true. Global failures return an
+empty map. Actual submits recheck the entire account and only the order's market,
+including new risk and reductions. Unrelated missing or stale quotes cannot veto
+that market when they have no exposure. Nonzero account positions still require
+current quotes for aggregate risk valuation; zero positions need no mark. Epoch,
+quote/metadata age, risk and unsettled-order fences still apply.
+The status call does not submit an order. `persist_economics()` checkpoints actual native state,
 and `reconcile_terminal_evidence()` reconciles terminal observations with receipts.
 
 Identity storage binds the credential authority and origins, retains original IDs,

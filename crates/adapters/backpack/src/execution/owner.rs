@@ -174,6 +174,7 @@ impl BackpackOrderOwner {
             shutdown_failure: None,
             final_shutdown: None,
             markets: BTreeMap::new(),
+            reduction_positions: BTreeMap::new(),
             public: None,
             records: BTreeMap::new(),
             checkpoint,
@@ -304,26 +305,6 @@ impl BackpackOrderOwner {
         VenueOrderId::new_checked(&raw.id).map_err(|_| BackpackExecutionErrorKind::Validation)?;
         Ok(Some(id))
     }
-    pub(crate) fn reserved_reductions(
-        &self,
-        instrument: InstrumentId,
-        side: nautilus_model::enums::OrderSide,
-    ) -> Result<Vec<(ClientOrderId, Decimal)>, BackpackExecutionError> {
-        Ok(self
-            .guard
-            .lock()?
-            .records
-            .values()
-            .filter(|record| {
-                record.holds_capacity()
-                    && record.spec.reduce_only
-                    && record.spec.instrument_id == instrument
-                    && record.spec.side == side
-            })
-            .map(|record| (record.spec.client_order_id, record.spec.quantity))
-            .collect())
-    }
-
     // Internal report conversion reads one immutable view while retaining the identity lock.
     // The closure is adapter-owned parsing, never a caller admission/transport callback.
     pub(crate) fn with_report_identity<T>(
@@ -429,6 +410,7 @@ impl BackpackOrderOwner {
                 id,
                 OrderRecord {
                     local_refusal_confirmed: false,
+                    execution_closed_quantity: None,
                     spec: intent.spec,
                     symbol: intent.symbol,
                     notional,
@@ -601,6 +583,43 @@ impl BackpackOrderOwner {
         Ok(())
     }
 
+    /// Records a bound venue terminal without claiming economic reconciliation.
+    pub(crate) fn observe_execution_closed(
+        &self,
+        id: ClientOrderId,
+        venue_id: VenueOrderId,
+        instrument_id: InstrumentId,
+        generation: u64,
+        cumulative_quantity: Decimal,
+    ) -> Result<(), BackpackExecutionError> {
+        let mut state = self.guard.lock()?;
+        if state.poisoned || state.stopped || generation != state.generation {
+            return Err(BackpackExecutionErrorKind::Readiness.into());
+        }
+        let record = state
+            .records
+            .get_mut(&id)
+            .ok_or(BackpackExecutionErrorKind::Ownership)?;
+        if record.spec.instrument_id != instrument_id
+            || record.venue_order_id.as_deref() != Some(venue_id.as_str())
+            || cumulative_quantity < record.observed_cumulative
+            || cumulative_quantity < Decimal::ZERO
+            || cumulative_quantity > record.spec.quantity
+            || record
+                .execution_closed_quantity
+                .is_some_and(|q| q != cumulative_quantity)
+        {
+            return Err(BackpackExecutionErrorKind::Ownership.into());
+        }
+        if record.execution_closed_quantity == Some(cumulative_quantity) {
+            return Ok(());
+        }
+        record.execution_closed_quantity = Some(cumulative_quantity);
+        // Admission still requires a fresh account; no fill, fee or ACK is invented.
+        state.account = None;
+        state.persist()
+    }
+
     /// Acknowledges independent terminal and already-applied true fill evidence from the local peer.
     ///
     /// # Errors
@@ -628,6 +647,9 @@ impl BackpackOrderOwner {
             || record.venue_order_id.as_deref() != Some(evidence.venue_order_id.as_str())
             || evidence.cumulative_quantity > record.spec.quantity
             || evidence.cumulative_quantity < record.observed_cumulative
+            || record
+                .execution_closed_quantity
+                .is_some_and(|q| q != evidence.cumulative_quantity)
         {
             return Err(BackpackExecutionErrorKind::Ownership.into());
         }
@@ -999,6 +1021,8 @@ struct StoredIntent {
 pub(crate) struct OrderRecord {
     #[serde(default, skip_serializing_if = "refusal_unconfirmed")]
     local_refusal_confirmed: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    execution_closed_quantity: Option<Decimal>,
     pub(crate) spec: BackpackOrderSpec,
     symbol: String,
     pub(crate) notional: Decimal,
@@ -1016,6 +1040,7 @@ fn refusal_unconfirmed(confirmed: &bool) -> bool {
 impl OrderRecord {
     pub(crate) fn holds_capacity(&self) -> bool {
         !self.local_refusal_confirmed
+            && self.execution_closed_quantity.is_none()
             && !matches!(
                 self.status,
                 CreateStatus::Rejected | CreateStatus::Reconciled
@@ -1023,6 +1048,9 @@ impl OrderRecord {
     }
     pub(crate) fn is_unknown(&self) -> bool {
         self.status == CreateStatus::Unknown
+    }
+    pub(crate) fn is_reconciled(&self) -> bool {
+        self.status == CreateStatus::Reconciled
     }
 }
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -1074,6 +1102,7 @@ pub(crate) struct OwnerState {
     shutdown_failure: Option<BackpackShutdownReason>,
     final_shutdown: Option<Box<BackpackShutdownReport>>,
     pub(crate) markets: BTreeMap<InstrumentId, BackpackLoopbackMarketFacts>,
+    pub(crate) reduction_positions: BTreeMap<InstrumentId, (Decimal, u64)>,
     pub(crate) public: Option<super::guard::PublicAdmission>,
     pub(crate) records: BTreeMap<ClientOrderId, OrderRecord>,
     checkpoint: PathBuf,
@@ -1259,6 +1288,7 @@ impl OwnerState {
                     id,
                     OrderRecord {
                         local_refusal_confirmed: false,
+                        execution_closed_quantity: None,
                         spec: intent.spec,
                         symbol: intent.symbol,
                         notional: intent.notional,
@@ -1282,6 +1312,15 @@ impl OwnerState {
         }
         // Process termination gives no proof about in-flight or observed-but-unapplied economics.
         for record in self.records.values_mut() {
+            if record.execution_closed_quantity.is_some_and(|q| {
+                record.venue_order_id.is_none()
+                    || q < record.observed_cumulative
+                    || q < Decimal::ZERO
+                    || q > record.spec.quantity
+                    || record.local_refusal_confirmed
+            }) {
+                return Err(BackpackExecutionErrorKind::Storage.into());
+            }
             if record.local_refusal_confirmed
                 && (record.status != CreateStatus::Unsent
                     || record.venue_order_id.is_some()
@@ -1771,6 +1810,7 @@ mod checkpoint_tests {
                 retained_spec.client_order_id,
                 OrderRecord {
                     local_refusal_confirmed: false,
+                    execution_closed_quantity: None,
                     spec: retained_spec,
                     symbol: "BTC_USDC_PERP".into(),
                     notional: Decimal::from(10),
@@ -1824,6 +1864,37 @@ mod checkpoint_tests {
         guard
             .refresh_production_public(now_ms, Some(target))
             .unwrap();
+        let admissions = guard.refresh_production_markets(now_ms, None).unwrap();
+        assert!(admissions[&target].is_ok());
+        assert!(admissions[&unrelated].is_err());
+        // New risk uses the same target-scoped quote gate as reductions.
+        let unrelated_facts = guard.lock().unwrap().markets.remove(&unrelated).unwrap();
+        assert!(
+            guard
+                .lock()
+                .unwrap()
+                .reservation(&spec(), now_ms, None)
+                .is_ok()
+        );
+        {
+            let mut state = guard.lock().unwrap();
+            state
+                .account
+                .as_mut()
+                .unwrap()
+                .net_positions
+                .insert(unrelated, Decimal::ONE);
+            assert!(state.reservation(&spec(), now_ms, None).is_err());
+            state.markets.insert(unrelated, unrelated_facts);
+            // Even a cached mark cannot value a held position across a public gap.
+            assert!(state.reservation(&spec(), now_ms, None).is_err());
+            state
+                .account
+                .as_mut()
+                .unwrap()
+                .net_positions
+                .insert(unrelated, Decimal::ZERO);
+        }
         let mut reduction = spec();
         reduction.side = OrderSide::Sell;
         reduction.reduce_only = true;
@@ -1874,18 +1945,43 @@ mod checkpoint_tests {
         }
         let mut account = guard.lock().unwrap().account.take().unwrap();
         assert!(guard.refresh_production_public(now_ms, None).is_err());
+        assert!(guard.refresh_production_markets(now_ms, None).is_err());
         account.observed_at_ms = now_ms - 10_001;
         guard.lock().unwrap().account = Some(account.clone());
         assert!(guard.refresh_production_public(now_ms, None).is_err());
+        assert!(guard.refresh_production_markets(now_ms, None).is_err());
         account.observed_at_ms = now_ms;
         guard.lock().unwrap().account = Some(account);
         guard.refresh_production_public(now_ms, None).unwrap();
+        guard.lock().unwrap().account = None;
+        guard
+            .refresh_production_reduction(now_ms, target, Decimal::ONE)
+            .unwrap();
+        {
+            let state = guard.lock().unwrap();
+            assert!(state.reservation(&spec(), now_ms, None).is_err());
+            assert!(state.reservation(&reduction, now_ms, None).is_ok());
+            let mut oversized = reduction.clone();
+            oversized.quantity = Decimal::from(2);
+            assert!(state.reservation(&oversized, now_ms, None).is_err());
+            let mut wrong_side = reduction.clone();
+            wrong_side.side = OrderSide::Buy;
+            assert!(state.reservation(&wrong_side, now_ms, None).is_err());
+            assert_eq!(serde_json::to_value(&state.records).unwrap(), retained);
+        }
         public_gate.lock().invalidate("synthetic late public fault");
         assert!(
             guard
                 .lock()
                 .unwrap()
                 .reservation(&spec(), now_ms, None)
+                .is_err()
+        );
+        assert!(
+            guard
+                .lock()
+                .unwrap()
+                .reservation(&reduction, now_ms, None)
                 .is_err()
         );
     }
@@ -2034,6 +2130,104 @@ mod checkpoint_tests {
     }
     fn instrument() -> InstrumentId {
         InstrumentId::from("BTC_USDC_PERP.BACKPACK")
+    }
+    #[rstest]
+    fn inactive_order_releases_capacity_before_economics_and_survives_restore() {
+        let directory = tempfile::tempdir().unwrap();
+        let owner = recovery_anchor_owner(directory.path());
+        let guard = owner.guard();
+        let original = spec();
+        let id = original.client_order_id;
+        let venue = VenueOrderId::from("venue-inactive");
+        {
+            let mut state = guard.lock().unwrap();
+            state.generation = 1;
+            let intent = StoredIntent {
+                spec: original.clone(),
+                symbol: "BTC_USDC_PERP".into(),
+                notional: Decimal::from(10),
+                margin: Decimal::ONE,
+            };
+            let encoded = serde_json::to_string(&intent).unwrap();
+            let client_id = state
+                .identities
+                .reserve_intent(BackpackSubmissionIntent::new_checked(id, encoded).unwrap())
+                .unwrap();
+            state.records.insert(
+                id,
+                OrderRecord {
+                    local_refusal_confirmed: false,
+                    execution_closed_quantity: None,
+                    spec: original,
+                    symbol: intent.symbol,
+                    notional: intent.notional,
+                    margin: intent.margin,
+                    client_id,
+                    status: CreateStatus::Unknown,
+                    venue_order_id: Some(venue.to_string()),
+                    cancel: CancelStatus::Unknown,
+                    observed_cumulative: Decimal::ZERO,
+                    economic_ack_reference: None,
+                },
+            );
+            state.account = Some(account(&state.namespace));
+            state.persist().unwrap();
+            assert!(state.records[&id].holds_capacity());
+        }
+        assert!(
+            owner
+                .observe_execution_closed(id, venue, instrument(), 2, Decimal::ZERO)
+                .is_err()
+        );
+        assert!(
+            owner
+                .observe_execution_closed(
+                    id,
+                    VenueOrderId::from("wrong"),
+                    instrument(),
+                    1,
+                    Decimal::ZERO
+                )
+                .is_err()
+        );
+        assert!(
+            owner
+                .observe_execution_closed(id, venue, instrument(), 1, Decimal::ONE)
+                .is_err()
+        );
+        owner
+            .observe_execution_closed(id, venue, instrument(), 1, Decimal::ZERO)
+            .unwrap();
+        {
+            let state = guard.lock().unwrap();
+            assert!(!state.records[&id].holds_capacity());
+            assert!(!state.records[&id].is_reconciled());
+            assert!(state.records[&id].economic_ack_reference.is_none());
+            assert!(state.account.is_none());
+            assert!(state.shutdown_report(Some(1000)).dirty);
+        }
+        drop(guard);
+        drop(owner);
+        let restored = recovery_anchor_owner(directory.path());
+        {
+            let guard = restored.guard();
+            let state = guard.lock().unwrap();
+            assert!(!state.records[&id].holds_capacity());
+            assert!(state.records[&id].is_unknown());
+            assert!(state.account.is_none());
+        }
+        restored
+            .acknowledge_reconciled_terminal(&BackpackLoopbackTerminalEvidence {
+                client_order_id: id,
+                venue_order_id: venue,
+                instrument_id: instrument(),
+                generation: 1,
+                cumulative_quantity: Decimal::ZERO,
+                applied_fill_quantity: Decimal::ZERO,
+                economic_ack_reference: "later-durable-economics".into(),
+            })
+            .unwrap();
+        assert!(restored.guard().lock().unwrap().records[&id].is_reconciled());
     }
     fn account(namespace: &BackpackClientIdNamespace) -> BackpackLoopbackAccountFacts {
         BackpackLoopbackAccountFacts {

@@ -1004,6 +1004,7 @@ impl RiskEngine {
             command.quantity,
             order.is_quote_quantity(),
             false,
+            order.is_reduce_only(),
         );
 
         if let Some(reason) = reason {
@@ -1108,6 +1109,7 @@ impl RiskEngine {
             Some(order.quantity()),
             order.is_quote_quantity(),
             full_position_exit,
+            order.is_reduce_only(),
         );
 
         if let Some(reason) = reason {
@@ -1548,7 +1550,8 @@ impl RiskEngine {
                     return false; // Denied
                 }
 
-                if let Some(min_quantity) = instrument.min_quantity()
+                if !order.is_reduce_only()
+                    && let Some(min_quantity) = instrument.min_quantity()
                     && effective_quantity < min_quantity
                 {
                     self.deny_order(
@@ -2124,6 +2127,7 @@ impl RiskEngine {
         quantity: Option<Quantity>,
         is_quote_quantity: bool,
         full_position_exit: bool,
+        is_reduce_only: bool,
     ) -> Option<OrderDeniedReason> {
         let quantity_val = quantity?;
 
@@ -2152,8 +2156,9 @@ impl RiskEngine {
             });
         }
 
-        // Check minimum quantity
-        if let Some(min_quantity) = instrument.min_quantity()
+        // Reduce-only residuals can be smaller than entry minima. Keep precision and maxima.
+        if !is_reduce_only
+            && let Some(min_quantity) = instrument.min_quantity()
             && quantity_val < min_quantity
         {
             return Some(OrderDeniedReason::QuantityBelowMinimum {

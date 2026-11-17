@@ -178,11 +178,6 @@ const NONCE_REFRESH_RETRY_MAX_DELAY: Duration = Duration::from_secs(30);
 const ACCOUNT_SNAPSHOT_TIMEOUT: Duration = Duration::from_secs(10);
 const REFERRAL_ATTRIBUTION_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Attribution window for a bare venue error frame. The frame carries no
-/// `tx_hash` or cloid; if the oldest pending sendTx was submitted within
-/// this window we attribute and emit `OrderRejected`. Outside the window
-/// the existing submit-timeout drives expiry.
-const SENDTX_BARE_ERROR_WINDOW_MS: u64 = 1_000;
 const INTEGRATOR_AUTO_APPROVAL_MAX_TTL_MS: i64 = 5 * 365 * 24 * 60 * 60 * 1_000;
 const INTEGRATOR_AUTO_APPROVAL_MAX_FEE_TICK: u32 = 0;
 const NONCE_CONNECTION_EPOCH_UNAVAILABLE: u64 = u64::MAX;
@@ -1229,10 +1224,15 @@ impl LighterExecutionClient {
                                 }
                             }
                             Some(NautilusWsMessage::SendTxAck {
+                                request_id,
                                 connection_epoch,
                                 tx_hash,
                                 code,
                             }) => {
+                                let Ok(response_hash) = correlated_response_hash(request_id.as_deref(), tx_hash.as_deref()) else {
+                                    log::warn!("Ignoring Lighter response with conflicting request ID and transaction hash");
+                                    continue;
+                                };
                                 let account_index = credential_for_loop
                                     .as_ref()
                                     .map(|c| c.account_index());
@@ -1241,7 +1241,7 @@ impl LighterExecutionClient {
                                     account_index,
                                     connection_epoch,
                                     code,
-                                    tx_hash.as_deref(),
+                                    response_hash,
                                 );
 
                                 if let (Some(pending), Some(credential)) =
@@ -1266,12 +1266,17 @@ impl LighterExecutionClient {
                                 }
                             }
                             Some(NautilusWsMessage::SendTxRejected {
+                                request_id,
                                 connection_epoch,
                                 source,
                                 code,
                                 message,
                                 tx_hash,
                             }) => {
+                                let Ok(response_hash) = correlated_response_hash(request_id.as_deref(), tx_hash.as_deref()) else {
+                                    log::warn!("Ignoring Lighter response with conflicting request ID and transaction hash");
+                                    continue;
+                                };
                                 let account_index = credential_for_loop
                                     .as_ref()
                                     .map(|c| c.account_index());
@@ -1284,7 +1289,7 @@ impl LighterExecutionClient {
                                     source,
                                     code,
                                     &message,
-                                    tx_hash.as_deref(),
+                                    response_hash,
                                 );
 
                                 // Invalid nonce means the sequential stream is
@@ -1686,7 +1691,13 @@ impl LighterExecutionClient {
                 order.trigger_price(),
             );
         }
-        validate_order_amount(&instrument, order.quantity(), price_ticks, price_precision)?;
+        validate_order_amount(
+            &instrument,
+            order.quantity(),
+            price_ticks,
+            price_precision,
+            order.is_reduce_only(),
+        )?;
 
         Ok(CreateOrderPlan {
             order: order.clone(),
@@ -1887,11 +1898,11 @@ impl LighterExecutionClient {
                 submitted_at: clock.get_time_ns(),
                 nonce,
                 api_key_index,
-                tx_hash,
+                tx_hash: tx_hash.clone(),
             });
 
             if let Err(e) = ws_client
-                .send_tx_on_connection(LighterTxType::ModifyOrder as u8, tx_info, connection_epoch)
+                .send_tx_on_connection(LighterTxType::ModifyOrder as u8, tx_info, connection_epoch, Some(tx_hash))
                 .await
             {
                 let failure = classify_lighter_ws_command_failure("modify_order", &e);
@@ -2015,7 +2026,13 @@ impl LighterExecutionClient {
                 "trigger_price `{new_trigger:?}` rounds to 0 ticks at precision {price_precision}",
             );
         }
-        validate_order_amount(&instrument, new_qty, price_ticks, price_precision)?;
+        validate_order_amount(
+            &instrument,
+            new_qty,
+            price_ticks,
+            price_precision,
+            order.is_reduce_only(),
+        )?;
 
         let ReservedTxContext {
             context,
@@ -2151,7 +2168,7 @@ impl LighterExecutionClient {
                 submitted_at: clock.get_time_ns(),
                 nonce: captured_nonce,
                 api_key_index: captured_api_key_index,
-                tx_hash: captured_tx_hash,
+                tx_hash: captured_tx_hash.clone(),
             });
 
             if let Err(e) = ws_client
@@ -2159,6 +2176,7 @@ impl LighterExecutionClient {
                     LighterTxType::UpdateLeverage as u8,
                     tx_info,
                     connection_epoch,
+                    Some(captured_tx_hash),
                 )
                 .await
             {
@@ -2862,12 +2880,17 @@ impl FanoutDispatchContext {
             submitted_at: self.clock.get_time_ns(),
             nonce,
             api_key_index,
-            tx_hash,
+            tx_hash: tx_hash.clone(),
         });
 
         if let Err(e) = self
             .ws_client
-            .send_tx_on_connection(LighterTxType::CreateOrder as u8, tx_info, connection_epoch)
+            .send_tx_on_connection(
+                LighterTxType::CreateOrder as u8,
+                tx_info,
+                connection_epoch,
+                Some(tx_hash),
+            )
             .await
         {
             let failure = classify_lighter_ws_command_failure("submit_order", &e);
@@ -2887,6 +2910,11 @@ impl FanoutDispatchContext {
                     Some(client_order_index),
                     &client_order_id,
                     nonce,
+                );
+                self.dispatch.control.observe_submission_rejected(
+                    client_order_id,
+                    order.instrument_id(),
+                    self.clock.get_time_ns().as_u64(),
                 );
                 self.emitter
                     .emit_order_rejected(&order, reason, self.clock.get_time_ns(), false);
@@ -2970,12 +2998,17 @@ impl FanoutDispatchContext {
             submitted_at: self.clock.get_time_ns(),
             nonce,
             api_key_index,
-            tx_hash,
+            tx_hash: tx_hash.clone(),
         });
 
         if let Err(e) = self
             .ws_client
-            .send_tx_on_connection(LighterTxType::CancelOrder as u8, tx_info, connection_epoch)
+            .send_tx_on_connection(
+                LighterTxType::CancelOrder as u8,
+                tx_info,
+                connection_epoch,
+                Some(tx_hash),
+            )
             .await
         {
             let failure = classify_lighter_ws_command_failure("cancel_order", &e);
@@ -3118,10 +3151,22 @@ impl Drop for TxDispatchGuard {
     }
 }
 
-// SendTxAck: remove by echoed tx_hash when present. A hashless ack is safe to
-// attribute only when one transaction is pending. An echoed hash is
-// authoritative: on a miss the entry was already consumed or never enqueued,
-// and a fallback would attribute the ack to the wrong tx.
+// Requests use the signed hash as their explicit wire ID. If a response carries
+// both correlation fields they must agree; an absent or unmatched identity
+// never falls back to pending-queue order or response timing.
+fn correlated_response_hash<'a>(
+    request_id: Option<&'a str>,
+    tx_hash: Option<&'a str>,
+) -> anyhow::Result<Option<&'a str>> {
+    if let (Some(id), Some(hash)) = (request_id, tx_hash) {
+        anyhow::ensure!(
+            tx_hash_matches(id, hash),
+            "Lighter response identity mismatch"
+        );
+    }
+    Ok(request_id.or(tx_hash))
+}
+
 fn handle_send_tx_ack_for_connection(
     dispatch: &WsDispatchState,
     account_index: Option<i64>,
@@ -3137,7 +3182,7 @@ fn handle_send_tx_ack_for_connection(
             }
             matched
         }
-        None => dispatch.pop_pending_sendtx_if_only(connection_epoch),
+        None => None,
     };
 
     if let (Some(pending), Some(account_index)) = (&popped, account_index) {
@@ -3630,9 +3675,8 @@ impl AckedOrderProbe {
     }
 }
 
-// SendTxRejected: attribute by echoed tx_hash when present (authoritative,
-// no fallback on a miss); otherwise pop only when one transaction is pending
-// for Ack, or head-within-window for BareError. Create emits OrderRejected,
+// SendTxRejected requires the echoed request ID or signed transaction hash,
+// with no queue-position or timing fallback. Create emits OrderRejected,
 // cancel/modify emit their typed rejections, and Other recovers via
 // reconciliation. All attributed rejections roll the nonce back when still
 // the latest issuance.
@@ -3660,6 +3704,11 @@ fn reject_create_order(
         );
         return false;
     }
+    dispatch.control.observe_submission_rejected(
+        order.client_order_id(),
+        order.instrument_id(),
+        now.as_u64(),
+    );
     emitter.emit_order_rejected(order, reason, now, due_post_only);
     true
 }
@@ -3685,14 +3734,7 @@ fn handle_send_tx_rejection_for_connection(
 
     let pending = match tx_hash {
         Some(hash) => dispatch.remove_pending_sendtx_by_hash(connection_epoch, hash),
-        None => match source {
-            SendTxRejectionSource::Ack => dispatch.pop_pending_sendtx_if_only(connection_epoch),
-            SendTxRejectionSource::BareError => dispatch.pop_pending_sendtx_if_only_within(
-                connection_epoch,
-                now,
-                SENDTX_BARE_ERROR_WINDOW_MS,
-            ),
-        },
+        None => None,
     };
     let Some(pending) = pending else {
         log::warn!(
@@ -3700,6 +3742,10 @@ fn handle_send_tx_rejection_for_connection(
         );
         return needs_nonce_resync;
     };
+    log::debug!(
+        "Lighter correlated rejection response latency_ns={}",
+        now.as_u64().saturating_sub(pending.submitted_at.as_u64()),
+    );
 
     match &pending.kind {
         PendingSendTxKind::Create {
@@ -4334,6 +4380,11 @@ impl ExecutionClient for LighterExecutionClient {
             .cloned();
 
         if let Some(reason) = local_submit_denial_reason(&order, cached_instrument.as_ref()) {
+            self.dispatch.control.observe_submission_rejected(
+                order.client_order_id(),
+                order.instrument_id(),
+                self.clock.get_time_ns().as_u64(),
+            );
             self.emitter.emit_order_denied(&order, &reason);
             return Ok(());
         }
@@ -4345,6 +4396,11 @@ impl ExecutionClient for LighterExecutionClient {
                 let reason = OrderDeniedReason::ValidationFailed {
                     detail: format!("Lighter submit_order failed: {e}"),
                 };
+                self.dispatch.control.observe_submission_rejected(
+                    order.client_order_id(),
+                    order.instrument_id(),
+                    self.clock.get_time_ns().as_u64(),
+                );
                 self.emitter.emit_order_denied(&order, &reason.to_string());
                 return Ok(());
             }
@@ -4354,6 +4410,11 @@ impl ExecutionClient for LighterExecutionClient {
             let reason = OrderDeniedReason::SubmitFailed {
                 detail: format!("Lighter submit_order failed: {e}"),
             };
+            self.dispatch.control.observe_submission_rejected(
+                order.client_order_id(),
+                order.instrument_id(),
+                self.clock.get_time_ns().as_u64(),
+            );
             self.emitter.emit_order_denied(&order, &reason.to_string());
         }
 
@@ -4382,6 +4443,11 @@ impl ExecutionClient for LighterExecutionClient {
             .to_string();
 
             for order in &orders {
+                self.dispatch.control.observe_submission_rejected(
+                    order.client_order_id(),
+                    order.instrument_id(),
+                    self.clock.get_time_ns().as_u64(),
+                );
                 self.emitter.emit_order_denied(order, &reason);
             }
             return Ok(());
@@ -4398,6 +4464,11 @@ impl ExecutionClient for LighterExecutionClient {
             .to_string();
 
             for order in &orders {
+                self.dispatch.control.observe_submission_rejected(
+                    order.client_order_id(),
+                    order.instrument_id(),
+                    self.clock.get_time_ns().as_u64(),
+                );
                 self.emitter.emit_order_denied(order, &reason);
             }
             return Ok(());
@@ -4419,6 +4490,11 @@ impl ExecutionClient for LighterExecutionClient {
                 .cloned();
 
             if let Some(reason) = local_submit_denial_reason(&order, cached_instrument.as_ref()) {
+                self.dispatch.control.observe_submission_rejected(
+                    order.client_order_id(),
+                    order.instrument_id(),
+                    self.clock.get_time_ns().as_u64(),
+                );
                 self.emitter.emit_order_denied(&order, &reason);
                 continue;
             }
@@ -4430,6 +4506,12 @@ impl ExecutionClient for LighterExecutionClient {
                         detail: format!("Lighter submit_order_list failed: {e}"),
                     }
                     .to_string();
+
+                    self.dispatch.control.observe_submission_rejected(
+                        order.client_order_id(),
+                        order.instrument_id(),
+                        self.clock.get_time_ns().as_u64(),
+                    );
 
                     self.emitter.emit_order_denied(&order, &reason);
                 }
@@ -4454,6 +4536,11 @@ impl ExecutionClient for LighterExecutionClient {
                         let reason = OrderDeniedReason::SubmitFailed {
                             detail: format!("Lighter submit_order_list failed: {e}"),
                         };
+                        context.dispatch.control.observe_submission_rejected(
+                            order.client_order_id(),
+                            order.instrument_id(),
+                            context.clock.get_time_ns().as_u64(),
+                        );
                         context
                             .emitter
                             .emit_order_denied(&order, &reason.to_string());
@@ -5988,7 +6075,14 @@ fn validate_order_amount(
     quantity: Quantity,
     price_ticks: u32,
     price_precision: u8,
+    reduce_only: bool,
 ) -> anyhow::Result<()> {
+    // The venue caps reduce-only fills to remaining exposure, including sub-minimum dust.
+    // Tick conversion and positive-amount checks still run before reaching this validation.
+    if reduce_only {
+        return Ok(());
+    }
+
     if let Some(min_quantity) = instrument.min_quantity() {
         anyhow::ensure!(
             quantity >= min_quantity,
@@ -9671,6 +9765,45 @@ mod tests {
         assert_nonce_reusable(&client.dispatch);
     }
 
+    #[rstest::rstest]
+    #[case::dust_reduction(true, "0.0600", true)]
+    #[case::dust_entry(false, "0.0600", false)]
+    #[case::below_notional_reduction(true, "2.5000", true)]
+    #[case::below_notional_entry(false, "2.5000", false)]
+    #[case::ordinary_entry(false, "4.0000", true)]
+    #[case::sub_tick_reduction(true, "0.00001", false)]
+    fn prepare_residual_order_preserves_reduce_only_and_entry_minima(
+        #[case] reduce_only: bool,
+        #[case] quantity: &str,
+        #[case] allowed: bool,
+    ) {
+        let (client, cache, _rx) = create_execution_client();
+        let instrument_id = register_test_instrument(&client, &cache);
+        let mut instrument = cache.borrow().instrument(&instrument_id).unwrap().clone();
+        let InstrumentAny::CryptoPerpetual(ref mut perpetual) = instrument else {
+            panic!("Expected perpetual instrument");
+        };
+        perpetual.min_quantity = Some(Quantity::from("2.5000"));
+        cache.borrow_mut().add_instrument(instrument).unwrap();
+        let order = nautilus_model::orders::OrderTestBuilder::new(OrderType::Limit)
+            .instrument_id(instrument_id)
+            .side(OrderSide::Buy)
+            .quantity(Quantity::from(quantity))
+            .price(Price::from("2.59"))
+            .time_in_force(TimeInForce::Ioc)
+            .reduce_only(reduce_only)
+            .build();
+
+        let result = client.prepare_create_order_plan(&order, 0);
+        assert_eq!(result.is_ok(), allowed);
+        if let Ok(plan) = result {
+            assert_eq!(plan.order.is_reduce_only(), reduce_only);
+            assert_eq!(plan.order.quantity(), order.quantity());
+            assert!(plan.base_amount > 0);
+        }
+        assert_nonce_reusable(&client.dispatch);
+    }
+
     #[tokio::test]
     async fn submit_stop_market_with_sub_tick_trigger_emits_denied() {
         let (client, cache, mut rx) = create_execution_client();
@@ -10706,6 +10839,47 @@ mod tests {
             other => panic!("second event should be Filled, was {other:?}"),
         }
         assert!(rig.dispatch.accepted_was_emitted(&rig.cloid));
+    }
+
+    #[rstest]
+    #[case("websocket_terminal_order", false)]
+    #[case("http_order_status", false)]
+    #[case("websocket_terminal_order", true)]
+    #[case("http_order_status", true)]
+    fn submission_rejection_cannot_override_contradictory_order_evidence(
+        #[case] source: &str,
+        #[case] report_first: bool,
+    ) {
+        let rig = dispatcher_rig("REJECT-CONFLICT");
+        let order = dispatcher_test_order(&rig, LighterOrderStatus::Canceled);
+        let instrument = LIGHTER_INSTRUMENT_CACHE.get(&rig.instrument_id).unwrap();
+        let report = parse_ws_order_status_report(
+            &order,
+            instrument.value(),
+            account_id(),
+            UnixNanos::from(1),
+        )
+        .unwrap()
+        .with_client_order_id(rig.cloid);
+        drop(instrument);
+        let control = &rig.dispatch.control;
+        if report_first {
+            control.observe(&report, source);
+        }
+        control.observe_submission_rejected(rig.cloid, rig.instrument_id, 2);
+        if !report_first {
+            control.observe(&report, source);
+        }
+        // Replayed rejections cannot clear a contradictory authoritative report.
+        control.observe_submission_rejected(rig.cloid, rig.instrument_id, 3);
+        let proof: serde_json::Value = serde_json::from_str(
+            &control
+                .terminal_fill_evidence_json(rig.cloid.as_str())
+                .unwrap()
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(proof["conflicting"], true);
     }
 
     #[rstest]
@@ -12828,7 +13002,7 @@ mod tests {
             SendTxRejectionSource::Ack,
             Some(21702),
             "invalid price",
-            None,
+            Some(&format!("hash{:02x}", nonce)),
         );
 
         let event = recv_order_event(&mut rx).await;
@@ -12904,7 +13078,7 @@ mod tests {
             SendTxRejectionSource::Ack,
             Some(21702),
             "invalid price",
-            None,
+            Some(&format!("hash{:02x}", rejected_nonce)),
         );
 
         let event = recv_order_event(&mut rx).await;
@@ -13321,7 +13495,7 @@ mod tests {
             SendTxRejectionSource::Ack,
             Some(21702),
             "invalid price",
-            None,
+            Some(&format!("hash{:02x}", 42)),
         );
 
         let event = recv_order_event(&mut rx).await;
@@ -13353,7 +13527,7 @@ mod tests {
             SendTxRejectionSource::Ack,
             Some(21700),
             "post-only order would execute",
-            None,
+            Some(&format!("hash{:02x}", 43)),
         );
 
         let event = recv_order_event(&mut rx).await;
@@ -13401,7 +13575,7 @@ mod tests {
             SendTxRejectionSource::Ack,
             Some(21727),
             "order is not cancelable",
-            None,
+            Some(&format!("hash{:02x}", nonce)),
         );
 
         let event = recv_order_event(&mut rx).await;
@@ -13452,7 +13626,7 @@ mod tests {
             SendTxRejectionSource::Ack,
             Some(21702),
             "modify rejected by venue",
-            None,
+            Some(&format!("hash{:02x}", nonce)),
         );
 
         let event = recv_order_event(&mut rx).await;
@@ -13541,7 +13715,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn handle_send_tx_rejection_bare_error_within_window_attributes() {
+    async fn handle_send_tx_rejection_bare_error_within_window_remains_unattributed() {
         let (client, cache, mut rx) = create_execution_client();
         let instrument_id = register_test_instrument(&client, &cache);
         let mut factory = test_order_factory();
@@ -13560,9 +13734,12 @@ mod tests {
             None,
         );
 
-        let event = recv_order_event(&mut rx).await;
-        assert!(matches!(event, OrderEventAny::Rejected(_)));
-        assert_eq!(client.dispatch.pending_sendtx_len(), 0);
+        assert_eq!(client.dispatch.pending_sendtx_len(), 1);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), rx.recv())
+                .await
+                .is_err()
+        );
     }
 
     #[tokio::test]
@@ -13646,7 +13823,7 @@ mod tests {
             SendTxRejectionSource::Ack,
             Some(23000),
             "Too Many Requests",
-            None,
+            Some(&format!("hash{:02x}", nonce)),
         );
 
         assert!(!needs_resync, "rate-limit rejection must not force resync");
@@ -13676,7 +13853,7 @@ mod tests {
             SendTxRejectionSource::Ack,
             Some(23000),
             "Too Many Requests",
-            None,
+            Some(&format!("hash{:02x}", rejected_nonce)),
         );
 
         assert_eq!(
@@ -13748,7 +13925,7 @@ mod tests {
             SendTxRejectionSource::Ack,
             Some(21727),
             "invalid client order index",
-            None,
+            Some(&format!("hash{:02x}", 70)),
         );
 
         assert_eq!(client.dispatch.pending_sendtx_len(), 0, "Other head pops");
