@@ -268,6 +268,84 @@ const DOCUMENTED_BALANCE_MEMBERS: [&str; 16] = [
     "netInvested",
 ];
 
+/// Balance members returned on single-collateral USDC accounts that carry no unsupported
+/// collateral when zero; any non-zero or non-numeric value stays unmapped (plan §6.4).
+const ZERO_ONLY_BALANCE_MEMBERS: [&str; 1] = ["tradingCreditBalance"];
+
+fn is_zero_balance_member(name: &str, value: &serde_json::Value) -> bool {
+    match value {
+        serde_json::Value::String(text) => balance_member(text, name).is_ok_and(|d| d.is_zero()),
+        serde_json::Value::Number(number) => {
+            balance_member(&number.to_string(), name).is_ok_and(|d| d.is_zero())
+        }
+        _ => false,
+    }
+}
+
+fn parse_balance_reading(raw: String) -> anyhow::Result<BalanceReading> {
+    let value: serde_json::Value = serde_json::from_str(&raw)
+        .map_err(|error| anyhow::anyhow!("the balance is not a JSON object: {error}"))?;
+
+    let Some(object) = value.as_object() else {
+        anyhow::bail!("the balance is not a JSON object");
+    };
+
+    let member = |name: &str| -> anyhow::Result<Option<Decimal>> {
+        match object.get(name).and_then(serde_json::Value::as_str) {
+            Some(value) => Ok(Some(balance_member(value, name)?)),
+            None => Ok(None),
+        }
+    };
+
+    let mut unmapped = Vec::new();
+
+    for (name, value) in object {
+        if DOCUMENTED_BALANCE_MEMBERS.contains(&name.as_str()) {
+            continue;
+        }
+
+        if ZERO_ONLY_BALANCE_MEMBERS.contains(&name.as_str())
+            && is_zero_balance_member(name, value)
+        {
+            continue;
+        }
+
+        // A member outside the documented set is a second collateral asset, a loan, or
+        // something this adapter has not been taught. It is kept verbatim and reported as
+        // unsupported rather than folded into the USDC numbers (plan §6.4).
+        unmapped.push((
+            name.clone(),
+            value
+                .as_str()
+                .map_or_else(|| value.to_string(), ToString::to_string),
+        ));
+    }
+
+    // `underLiquidation` is the one documented member that is not a decimal string: the frozen
+    // schema makes it a boolean. A member that is present and is not a boolean is a payload
+    // this adapter does not understand, and an absent one stays absent - "the venue did not
+    // say" and "the venue said no" are different facts about an account the venue is closing.
+    let under_liquidation = match object.get("underLiquidation") {
+        Some(value) => Some(value.as_bool().ok_or_else(|| {
+            anyhow::anyhow!("the balance member `underLiquidation` is not a boolean")
+        })?),
+        None => None,
+    };
+
+    Ok(BalanceReading {
+        wallet_balance: member("walletBalance")?,
+        margin_balance: member("marginBalance")?,
+        used_margin: member("usedMargin")?,
+        available_margin: member("availableMargin")?,
+        withdrawable_margin: member("withdrawableMargin")?,
+        maintenance_margin_requirement: member("maintenanceMarginRequirement")?,
+        under_liquidation,
+        total_funding_payments: member("totalFundingPayments")?,
+        unmapped,
+        raw,
+    })
+}
+
 /// The settlement currency every fee, commission and balance on this venue is denominated in.
 fn settlement_currency() -> Currency {
     Currency::from(ONDO_SETTLEMENT_CURRENCY)
@@ -4759,62 +4837,7 @@ impl OndoAccountRuntime {
             .await
             .map_err(|error| anyhow::anyhow!("the balance could not be read: {error}"))?;
 
-        let raw = response.raw_result().to_string();
-        let value: serde_json::Value = serde_json::from_str(&raw)
-            .map_err(|error| anyhow::anyhow!("the balance is not a JSON object: {error}"))?;
-
-        let Some(object) = value.as_object() else {
-            anyhow::bail!("the balance is not a JSON object");
-        };
-
-        let member = |name: &str| -> anyhow::Result<Option<Decimal>> {
-            match object.get(name).and_then(serde_json::Value::as_str) {
-                Some(value) => Ok(Some(balance_member(value, name)?)),
-                None => Ok(None),
-            }
-        };
-
-        let mut unmapped = Vec::new();
-
-        for (name, value) in object {
-            if DOCUMENTED_BALANCE_MEMBERS.contains(&name.as_str()) {
-                continue;
-            }
-
-            // A member outside the documented set is a second collateral asset, a loan, or
-            // something this adapter has not been taught. It is kept verbatim and reported as
-            // unsupported rather than folded into the USDC numbers (plan §6.4).
-            unmapped.push((
-                name.clone(),
-                value
-                    .as_str()
-                    .map_or_else(|| value.to_string(), ToString::to_string),
-            ));
-        }
-
-        // `underLiquidation` is the one documented member that is not a decimal string: the frozen
-        // schema makes it a boolean. A member that is present and is not a boolean is a payload
-        // this adapter does not understand, and an absent one stays absent - "the venue did not
-        // say" and "the venue said no" are different facts about an account the venue is closing.
-        let under_liquidation = match object.get("underLiquidation") {
-            Some(value) => Some(value.as_bool().ok_or_else(|| {
-                anyhow::anyhow!("the balance member `underLiquidation` is not a boolean")
-            })?),
-            None => None,
-        };
-
-        Ok(BalanceReading {
-            wallet_balance: member("walletBalance")?,
-            margin_balance: member("marginBalance")?,
-            used_margin: member("usedMargin")?,
-            available_margin: member("availableMargin")?,
-            withdrawable_margin: member("withdrawableMargin")?,
-            maintenance_margin_requirement: member("maintenanceMarginRequirement")?,
-            under_liquidation,
-            total_funding_payments: member("totalFundingPayments")?,
-            unmapped,
-            raw,
-        })
+        parse_balance_reading(response.raw_result().to_string())
     }
 
     /// Builds one order's reading, from the state the pass left the order in.
@@ -7904,6 +7927,48 @@ mod tests {
         assert!(
             ownership.claim().is_some(),
             "the account is free after the commit",
+        );
+    }
+
+    #[rstest]
+    #[case::string_zero("\"0\"")]
+    #[case::string_decimal_zero("\"0.00\"")]
+    #[case::number_zero("0")]
+    fn test_parse_balance_reading_allows_zero_trading_credit_balance(#[case] credit: &str) {
+        let raw = format!(
+            r#"{{"walletBalance":"500","marginBalance":"500","usedMargin":"0","availableMargin":"500","underLiquidation":false,"tradingCreditBalance":{credit}}}"#
+        );
+        let reading = parse_balance_reading(raw).expect("balance JSON parses");
+        assert!(reading.unmapped.is_empty());
+        assert_eq!(reading.margin_balance, Some(Decimal::from(500)));
+    }
+
+    #[rstest]
+    #[case::nonzero_string("\"12.5\"", "12.5")]
+    #[case::nonzero_number("5", "5")]
+    #[case::invalid_bool("true", "true")]
+    fn test_parse_balance_reading_rejects_nonzero_or_invalid_trading_credit_balance(
+        #[case] credit: &str,
+        #[case] expected: &str,
+    ) {
+        let raw = format!(
+            r#"{{"walletBalance":"500","marginBalance":"500","usedMargin":"0","availableMargin":"500","underLiquidation":false,"tradingCreditBalance":{credit}}}"#
+        );
+        let reading = parse_balance_reading(raw).expect("balance JSON parses");
+        assert_eq!(
+            reading.unmapped,
+            vec![("tradingCreditBalance".to_string(), expected.to_string())]
+        );
+    }
+
+    #[rstest]
+    fn test_parse_balance_reading_keeps_unknown_zero_member_unmapped() {
+        let raw = r#"{"walletBalance":"500","marginBalance":"500","usedMargin":"0","availableMargin":"500","underLiquidation":false,"otherCollateral":"0"}"#
+            .to_string();
+        let reading = parse_balance_reading(raw).expect("balance JSON parses");
+        assert_eq!(
+            reading.unmapped,
+            vec![("otherCollateral".to_string(), "0".to_string())]
         );
     }
 }
