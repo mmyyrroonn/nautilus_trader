@@ -15,9 +15,13 @@
 
 //! Configuration structures for the Hyperliquid adapter.
 
-use std::fmt::Debug;
+use std::{fmt::Debug, sync::Arc};
 
-use nautilus_model::identifiers::AccountId;
+use dashmap::DashMap;
+use nautilus_model::{
+    data::QuoteTick,
+    identifiers::{AccountId, InstrumentId},
+};
 use nautilus_network::websocket::TransportBackend;
 use serde::{Deserialize, Serialize};
 
@@ -93,6 +97,17 @@ pub struct HyperliquidDataClientConfig {
     /// the `transport-sockudo` feature is disabled).
     #[builder(default)]
     pub transport_backend: TransportBackend,
+    /// Only emit BBO `QuoteTick` events when best bid or ask price changes.
+    #[builder(default = false)]
+    pub bbo_price_changes_only: bool,
+    /// Cache incoming BBO `QuoteTick`s in `latest_bbo_cache` without emitting
+    /// `Data::Quote` events to the downstream data engine.
+    #[builder(default = false)]
+    pub bbo_cache_only: bool,
+    /// Lock-free cache of the latest Hyperliquid BBO `QuoteTick` per instrument.
+    #[serde(skip)]
+    #[builder(default)]
+    pub latest_bbo_cache: Arc<DashMap<InstrumentId, QuoteTick>>,
 }
 
 #[cfg(feature = "python")]
@@ -110,6 +125,8 @@ nautilus_core::impl_pyo3_config_getters!(HyperliquidDataClientConfig {
     stale_stream_recovery_enabled: bool,
     stale_stream_recovery_cooldown_secs: u64,
     stale_stream_max_targeted_resubscribes: u32,
+    bbo_price_changes_only: bool,
+    bbo_cache_only: bool,
 });
 
 impl Default for HyperliquidDataClientConfig {
@@ -147,6 +164,26 @@ impl HyperliquidDataClientConfig {
         self.base_url_http
             .clone()
             .unwrap_or_else(|| info_url(self.environment).to_string())
+    }
+
+    /// Returns the shared lock-free cache of latest Hyperliquid BBO `QuoteTick`s.
+    #[must_use]
+    pub fn latest_bbo_cache(&self) -> Arc<DashMap<InstrumentId, QuoteTick>> {
+        Arc::clone(&self.latest_bbo_cache)
+    }
+
+    /// Returns the latest cached BBO `QuoteTick` for `instrument_id`, if present.
+    #[must_use]
+    pub fn latest_bbo(&self, instrument_id: InstrumentId) -> Option<QuoteTick> {
+        self.latest_bbo_cache
+            .get(&instrument_id)
+            .map(|entry| *entry.value())
+    }
+
+    /// Returns the number of instruments currently present in `latest_bbo_cache`.
+    #[must_use]
+    pub fn latest_bbo_len(&self) -> usize {
+        self.latest_bbo_cache.len()
     }
 }
 
@@ -193,6 +230,9 @@ impl Debug for HyperliquidDataClientConfig {
                 &self.update_instruments_interval_mins,
             )
             .field("transport_backend", &self.transport_backend)
+            .field("bbo_price_changes_only", &self.bbo_price_changes_only)
+            .field("bbo_cache_only", &self.bbo_cache_only)
+            .field("latest_bbo_cache_len", &self.latest_bbo_cache.len())
             .finish()
     }
 }
@@ -412,6 +452,29 @@ transport_backend = "tungstenite"
         assert!(!config.stale_stream_recovery_enabled);
         assert_eq!(config.stale_stream_recovery_cooldown_secs, 120);
         assert_eq!(config.stale_stream_max_targeted_resubscribes, 3);
+        assert!(!config.bbo_price_changes_only);
+        assert!(!config.bbo_cache_only);
+        assert_eq!(config.latest_bbo_len(), 0);
+    }
+
+    #[rstest]
+    fn test_data_config_toml_bbo_options() {
+        let config: HyperliquidDataClientConfig = toml::from_str(
+            "
+bbo_price_changes_only = true
+bbo_cache_only = true
+",
+        )
+        .unwrap();
+
+        assert!(config.bbo_price_changes_only);
+        assert!(config.bbo_cache_only);
+        assert_eq!(config.latest_bbo_len(), 0);
+        let cloned = config.clone();
+        assert!(std::sync::Arc::ptr_eq(
+            &config.latest_bbo_cache,
+            &cloned.latest_bbo_cache,
+        ));
     }
 
     #[rstest]
