@@ -15,7 +15,13 @@
 
 //! Python bindings for Hyperliquid configuration.
 
-use nautilus_model::identifiers::AccountId;
+use std::str::FromStr;
+
+use nautilus_core::python::to_pyvalue_err;
+use nautilus_model::{
+    data::QuoteTick,
+    identifiers::{AccountId, InstrumentId},
+};
 use nautilus_network::websocket::TransportBackend;
 use pyo3::prelude::*;
 
@@ -52,6 +58,8 @@ impl HyperliquidDataClientConfig {
         stale_stream_recovery_enabled = None,
         stale_stream_recovery_cooldown_secs = None,
         stale_stream_max_targeted_resubscribes = None,
+        bbo_price_changes_only = None,
+        bbo_cache_only = None,
     ))]
     #[expect(clippy::too_many_arguments)]
     fn py_new(
@@ -70,6 +78,8 @@ impl HyperliquidDataClientConfig {
         stale_stream_recovery_enabled: Option<bool>,
         stale_stream_recovery_cooldown_secs: Option<u64>,
         stale_stream_max_targeted_resubscribes: Option<u32>,
+        bbo_price_changes_only: Option<bool>,
+        bbo_cache_only: Option<bool>,
     ) -> Self {
         let defaults = Self::default();
         Self {
@@ -95,12 +105,32 @@ impl HyperliquidDataClientConfig {
             update_instruments_interval_mins: update_instruments_interval_mins
                 .unwrap_or(defaults.update_instruments_interval_mins),
             transport_backend: transport_backend.unwrap_or(defaults.transport_backend),
+            bbo_price_changes_only: bbo_price_changes_only
+                .unwrap_or(defaults.bbo_price_changes_only),
+            bbo_cache_only: bbo_cache_only.unwrap_or(defaults.bbo_cache_only),
+            latest_bbo_cache: defaults.latest_bbo_cache,
         }
     }
 
     #[getter]
     const fn has_proxy_url(&self) -> bool {
         self.proxy_url.is_some()
+    }
+
+    #[pyo3(name = "latest_bbo")]
+    fn py_latest_bbo(&self, instrument_id: &Bound<'_, PyAny>) -> PyResult<Option<QuoteTick>> {
+        let parsed = if let Ok(id) = instrument_id.extract::<InstrumentId>() {
+            id
+        } else {
+            let raw: &str = instrument_id.extract()?;
+            InstrumentId::from_str(raw).map_err(to_pyvalue_err)?
+        };
+        Ok(self.latest_bbo(parsed))
+    }
+
+    #[pyo3(name = "latest_bbo_len")]
+    fn py_latest_bbo_len(&self) -> usize {
+        self.latest_bbo_len()
     }
 
     fn __repr__(&self) -> String {

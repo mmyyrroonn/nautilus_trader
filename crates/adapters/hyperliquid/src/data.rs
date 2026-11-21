@@ -24,6 +24,7 @@ use std::{
 
 use ahash::{AHashMap, AHashSet};
 use anyhow::Context;
+use dashmap::DashMap;
 use jiff::Timestamp;
 use nautilus_common::{
     cache::InstrumentLookupError,
@@ -54,7 +55,10 @@ use nautilus_live::{
     task::{TaskGroup, TaskGroupGuard},
 };
 use nautilus_model::{
-    data::{Bar, BarType, BookOrder, CustomData, Data, DataType, FundingRateUpdate, TradeTick},
+    data::{
+        Bar, BarType, BookOrder, CustomData, Data, DataType, FundingRateUpdate, QuoteTick,
+        TradeTick,
+    },
     enums::{BarAggregation, BookType, OrderSide},
     identifiers::{ClientId, InstrumentId, Venue},
     instruments::{Instrument, InstrumentAny},
@@ -100,6 +104,7 @@ pub struct HyperliquidDataClient {
     instruments: Arc<AtomicMap<InstrumentId, InstrumentAny>>,
     coin_to_instrument_id: Arc<AtomicMap<Ustr, InstrumentId>>,
     stream_health: Arc<Mutex<MarketDataStreamHealthMonitor>>,
+    latest_bbo_cache: Arc<DashMap<InstrumentId, QuoteTick>>,
 }
 
 impl HyperliquidDataClient {
@@ -170,6 +175,7 @@ impl HyperliquidDataClient {
         }
 
         let stream_health = Arc::new(Mutex::new(stream_health_monitor));
+        let latest_bbo_cache = config.latest_bbo_cache();
 
         let session_tasks = TaskGroup::new();
         let pending_tasks = TaskGroup::new();
@@ -189,6 +195,7 @@ impl HyperliquidDataClient {
             instruments: Arc::new(AtomicMap::new()),
             coin_to_instrument_id: Arc::new(AtomicMap::new()),
             stream_health,
+            latest_bbo_cache,
         })
     }
 
@@ -234,6 +241,7 @@ impl HyperliquidDataClient {
             self.shutdown_errors.push(e.to_string());
         }
         self.clear_stream_health();
+        self.latest_bbo_cache.clear();
         self.is_connected.store(false, Ordering::Release);
 
         if !self.shutdown_errors.is_empty() {
@@ -424,6 +432,9 @@ impl HyperliquidDataClient {
         let data_sender = self.data_sender.clone();
         let cancellation_token = self.cancellation_token.clone();
         let stream_health = Arc::clone(&self.stream_health);
+        let latest_bbo_cache = Arc::clone(&self.latest_bbo_cache);
+        let bbo_price_changes_only = self.config.bbo_price_changes_only;
+        let bbo_cache_only = self.config.bbo_cache_only;
 
         self.session_tasks.spawn(async move {
             log::debug!("Hyperliquid WebSocket consumption loop started");
@@ -458,10 +469,19 @@ impl HyperliquidDataClient {
                                     }
                                 }
                                 NautilusWsMessage::Quote(quote) => {
-                                    if let Err(e) = data_sender
-                                        .send(DataEvent::Data(Data::Quote(quote)))
-                                    {
-                                        log::error!("Failed to send quote tick: {e}");
+                                    let previous =
+                                        latest_bbo_cache.insert(quote.instrument_id, quote);
+                                    if should_emit_quote(
+                                        bbo_cache_only,
+                                        bbo_price_changes_only,
+                                        previous,
+                                        quote,
+                                    ) {
+                                        if let Err(e) =
+                                            data_sender.send(DataEvent::Data(Data::Quote(quote)))
+                                        {
+                                            log::error!("Failed to send quote tick: {e}");
+                                        }
                                     }
                                 }
                                 NautilusWsMessage::Deltas(deltas) => {
@@ -514,6 +534,7 @@ impl HyperliquidDataClient {
                                     }
                                 }
                                 NautilusWsMessage::Reconnected => {
+                                    latest_bbo_cache.clear();
                                     log::info!("WebSocket reconnected");
                                 }
                                 NautilusWsMessage::Error(e) => {
@@ -566,6 +587,7 @@ impl DataClient for HyperliquidDataClient {
         self.cancellation_token.cancel();
         self.abort_session_tasks();
         self.abort_pending_tasks();
+        self.latest_bbo_cache.clear();
         self.is_connected.store(false, Ordering::Relaxed);
         Ok(())
     }
@@ -578,6 +600,7 @@ impl DataClient for HyperliquidDataClient {
         self.cancellation_token.cancel();
         self.abort_session_tasks();
         self.abort_pending_tasks();
+        self.latest_bbo_cache.clear();
         self.is_connected.store(false, Ordering::Relaxed);
         self.instruments.store(AHashMap::new());
         self.coin_to_instrument_id.store(AHashMap::new());
@@ -1063,6 +1086,7 @@ impl DataClient for HyperliquidDataClient {
         let ws = self.ws_client.clone();
         let instrument_id = unsubscription.instrument_id;
         self.remove_stream_health(MarketDataChannel::Quote, instrument_id);
+        self.latest_bbo_cache.remove(&instrument_id);
 
         self.spawn_task("unsubscribe_quotes", async move {
             ws.unsubscribe_quotes(instrument_id).await
@@ -1826,6 +1850,24 @@ fn record_stream_receive(
     stream_health
         .lock()
         .record_receive(channel, instrument_id, Instant::now(), venue_ts_event);
+}
+
+fn should_emit_quote(
+    bbo_cache_only: bool,
+    bbo_price_changes_only: bool,
+    previous: Option<QuoteTick>,
+    next: QuoteTick,
+) -> bool {
+    if bbo_cache_only {
+        return false;
+    }
+    if !bbo_price_changes_only {
+        return true;
+    }
+    match previous {
+        Some(prev) => prev.bid_price != next.bid_price || prev.ask_price != next.ask_price,
+        None => true,
+    }
 }
 
 fn log_stream_health_event(event: &MarketDataStaleEvent) {
@@ -2654,6 +2696,101 @@ mod tests {
             )),
         );
         assert_eq!(stream_health_update(&NautilusWsMessage::Reconnected), None,);
+    }
+
+    #[rstest]
+    fn test_should_emit_quote_respects_cache_only_and_price_changes_only() {
+        let id = btc_perp_id();
+        let q1 = QuoteTick::new(
+            id,
+            Price::from("50000.0"),
+            Price::from("50001.0"),
+            Quantity::from("1.0"),
+            Quantity::from("2.0"),
+            UnixNanos::from(1),
+            UnixNanos::from(1),
+        );
+        let q_size_only = QuoteTick::new(
+            id,
+            Price::from("50000.0"),
+            Price::from("50001.0"),
+            Quantity::from("3.0"),
+            Quantity::from("4.0"),
+            UnixNanos::from(2),
+            UnixNanos::from(2),
+        );
+        let q_bid_changed = QuoteTick::new(
+            id,
+            Price::from("50000.5"),
+            Price::from("50001.0"),
+            Quantity::from("3.0"),
+            Quantity::from("4.0"),
+            UnixNanos::from(3),
+            UnixNanos::from(3),
+        );
+        let q_ask_changed = QuoteTick::new(
+            id,
+            Price::from("50000.5"),
+            Price::from("50001.5"),
+            Quantity::from("3.0"),
+            Quantity::from("4.0"),
+            UnixNanos::from(4),
+            UnixNanos::from(4),
+        );
+
+        assert!(!should_emit_quote(true, false, None, q1));
+        assert!(!should_emit_quote(true, true, Some(q1), q_bid_changed));
+
+        assert!(should_emit_quote(false, false, None, q1));
+        assert!(should_emit_quote(false, false, Some(q1), q_size_only));
+
+        assert!(should_emit_quote(false, true, None, q1));
+        assert!(!should_emit_quote(false, true, Some(q1), q_size_only));
+        assert!(should_emit_quote(false, true, Some(q_size_only), q_bid_changed));
+        assert!(should_emit_quote(
+            false,
+            true,
+            Some(q_bid_changed),
+            q_ask_changed
+        ));
+    }
+
+    #[rstest]
+    fn test_bbo_cache_lifecycle_shared_with_config_and_cleared_on_stop_reset() {
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        set_data_event_sender(tx);
+        let config = HyperliquidDataClientConfig {
+            bbo_cache_only: true,
+            ..HyperliquidDataClientConfig::default()
+        };
+        let mut client = HyperliquidDataClient::new(
+            *crate::common::consts::HYPERLIQUID_CLIENT_ID,
+            config.clone(),
+        )
+        .unwrap();
+
+        let id = btc_perp_id();
+        let quote = QuoteTick::new(
+            id,
+            Price::from("50000.0"),
+            Price::from("50001.0"),
+            Quantity::from("1.0"),
+            Quantity::from("2.0"),
+            UnixNanos::from(10),
+            UnixNanos::from(10),
+        );
+        client.latest_bbo_cache.insert(id, quote);
+        assert_eq!(config.latest_bbo_len(), 1);
+        assert_eq!(config.latest_bbo(id), Some(quote));
+
+        client.stop().unwrap();
+        assert_eq!(config.latest_bbo_len(), 0);
+        assert!(config.latest_bbo(id).is_none());
+
+        client.latest_bbo_cache.insert(id, quote);
+        assert_eq!(config.latest_bbo_len(), 1);
+        client.reset().unwrap();
+        assert_eq!(config.latest_bbo_len(), 0);
     }
 
     #[rstest]

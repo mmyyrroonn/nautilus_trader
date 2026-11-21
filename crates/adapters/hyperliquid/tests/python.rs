@@ -126,6 +126,45 @@ fn test_hyperliquid_data_config_python_constructor_preserves_positional_order() 
             .extract()
             .expect("recovery config should extract");
 
+        let bbo_args = PyTuple::new(
+            py,
+            [
+                py.None(),
+                py.None(),
+                py.None(),
+                py.None(),
+                py.None(),
+                py.None(),
+                py.None(),
+                obj(py, 19_u64),
+                py.None(),
+                obj(py, 31_u64),
+                obj(py, 7_u64),
+                obj(py, 23_u64),
+                obj(py, true),
+                obj(py, 45_u64),
+                obj(py, 5_u32),
+                obj(py, true),
+                obj(py, true),
+            ],
+        )
+        .expect("bbo args tuple should build");
+        let bbo_obj = config_cls
+            .call1(bbo_args)
+            .expect("bbo positional constructor should succeed");
+        let bbo_len: usize = bbo_obj
+            .call_method0("latest_bbo_len")
+            .expect("latest_bbo_len should succeed")
+            .extract()
+            .expect("latest_bbo_len should extract as usize");
+        let missing_bbo: Option<nautilus_model::data::QuoteTick> = bbo_obj
+            .call_method1("latest_bbo", ("BTC-USD-PERP.HYPERLIQUID",))
+            .expect("latest_bbo should accept string")
+            .extract()
+            .expect("latest_bbo should extract as Option<QuoteTick>");
+        let bbo_config: HyperliquidDataClientConfig =
+            bbo_obj.extract().expect("bbo config should extract");
+
         assert_eq!(legacy_config.update_instruments_interval_mins, 17);
         assert_eq!(legacy_config.stale_stream_receive_timeout_secs, 120);
         assert_eq!(legacy_config.stream_health_check_interval_secs, 15);
@@ -137,9 +176,15 @@ fn test_hyperliquid_data_config_python_constructor_preserves_positional_order() 
         assert!(!extended_config.stale_stream_recovery_enabled);
         assert_eq!(extended_config.stale_stream_recovery_cooldown_secs, 120);
         assert_eq!(extended_config.stale_stream_max_targeted_resubscribes, 3);
+        assert!(!extended_config.bbo_price_changes_only);
+        assert!(!extended_config.bbo_cache_only);
         assert!(recovery_config.stale_stream_recovery_enabled);
         assert_eq!(recovery_config.stale_stream_recovery_cooldown_secs, 45);
         assert_eq!(recovery_config.stale_stream_max_targeted_resubscribes, 5);
+        assert!(bbo_config.bbo_price_changes_only);
+        assert!(bbo_config.bbo_cache_only);
+        assert_eq!(bbo_len, 0);
+        assert!(missing_bbo.is_none());
     });
 }
 
