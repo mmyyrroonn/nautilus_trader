@@ -135,4 +135,125 @@ mod tests {
             );
         });
     }
+
+    #[rstest]
+    fn test_python_orderbook_counts_and_deltas_batch_summary() {
+        ensure_python_initialized();
+
+        Python::attach(|py| {
+            use crate::{
+                data::{BookOrder, OrderBookDelta, OrderBookDeltas},
+                enums::{BookAction, OrderSide, RecordFlag},
+                types::{Price, Quantity},
+            };
+
+            let instrument_id = InstrumentId::from("AAPL.XNAS");
+            let book = Py::new(py, OrderBook::new(instrument_id, BookType::L2_MBP)).unwrap();
+            let bound_book = book.bind(py);
+            assert_eq!(
+                bound_book
+                    .call_method0("bid_count")
+                    .unwrap()
+                    .extract::<usize>()
+                    .unwrap(),
+                0
+            );
+            assert_eq!(
+                bound_book
+                    .call_method0("ask_count")
+                    .unwrap()
+                    .extract::<usize>()
+                    .unwrap(),
+                0
+            );
+
+            let clear = OrderBookDelta::clear(instrument_id, 1, 1.into(), 1.into());
+            let bid = OrderBookDelta::new(
+                instrument_id,
+                BookAction::Add,
+                BookOrder::new(
+                    OrderSide::Buy,
+                    Price::from("100.0"),
+                    Quantity::from("2.0"),
+                    1,
+                ),
+                RecordFlag::F_SNAPSHOT as u8,
+                1,
+                1.into(),
+                1.into(),
+            );
+            let ask = OrderBookDelta::new(
+                instrument_id,
+                BookAction::Add,
+                BookOrder::new(
+                    OrderSide::Sell,
+                    Price::from("101.0"),
+                    Quantity::from("3.0"),
+                    2,
+                ),
+                (RecordFlag::F_SNAPSHOT as u8) | (RecordFlag::F_LAST as u8),
+                1,
+                1.into(),
+                1.into(),
+            );
+            let snap_batch = Py::new(
+                py,
+                OrderBookDeltas::new(instrument_id, vec![clear, bid, ask]),
+            )
+            .unwrap();
+            assert_eq!(
+                snap_batch
+                    .bind(py)
+                    .call_method0("batch_summary")
+                    .unwrap()
+                    .extract::<(usize, bool, bool)>()
+                    .unwrap(),
+                (3, true, true)
+            );
+            bound_book
+                .call_method1("apply_deltas", (&snap_batch,))
+                .unwrap();
+            assert_eq!(
+                bound_book
+                    .call_method0("bid_count")
+                    .unwrap()
+                    .extract::<usize>()
+                    .unwrap(),
+                1
+            );
+            assert_eq!(
+                bound_book
+                    .call_method0("ask_count")
+                    .unwrap()
+                    .extract::<usize>()
+                    .unwrap(),
+                1
+            );
+
+            let inc = OrderBookDelta::new(
+                instrument_id,
+                BookAction::Update,
+                BookOrder::new(
+                    OrderSide::Buy,
+                    Price::from("99.5"),
+                    Quantity::from("1.0"),
+                    3,
+                ),
+                RecordFlag::F_LAST as u8,
+                2,
+                2.into(),
+                2.into(),
+            );
+            let inc_batch = Py::new(py, OrderBookDeltas::new(instrument_id, vec![inc])).unwrap();
+            assert_eq!(
+                inc_batch
+                    .bind(py)
+                    .call_method0("batch_summary")
+                    .unwrap()
+                    .extract::<(usize, bool, bool)>()
+                    .unwrap(),
+                (1, false, false)
+            );
+        });
+    }
 }

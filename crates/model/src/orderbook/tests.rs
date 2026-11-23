@@ -10090,3 +10090,43 @@ fn test_book_integrity_locked_market_is_valid() {
 
     assert_eq!(book_check_integrity(&book), Ok(()));
 }
+
+#[rstest]
+fn test_book_bid_and_ask_counts() {
+    let instrument_id = InstrumentId::from("ETHUSDT-PERP.BINANCE");
+    let mut book = OrderBook::new(instrument_id, BookType::L2_MBP);
+    assert_eq!(book.bid_count(), 0);
+    assert_eq!(book.ask_count(), 0);
+
+    let b1 = BookOrder::new(
+        OrderSide::Buy,
+        Price::from("100.0"),
+        Quantity::from("1.0"),
+        1,
+    );
+    let b2 = BookOrder::new(
+        OrderSide::Buy,
+        Price::from("99.5"),
+        Quantity::from("2.0"),
+        2,
+    );
+    let a1 = BookOrder::new(
+        OrderSide::Sell,
+        Price::from("101.0"),
+        Quantity::from("3.0"),
+        3,
+    );
+    book.add(b1, 0, 1, 1.into());
+    book.add(b2, 0, 2, 2.into());
+    book.add(a1, 0, 3, 3.into());
+    assert_eq!(book.bid_count(), 2);
+    assert_eq!(book.ask_count(), 1);
+
+    book.delete(b1, 0, 4, 4.into());
+    assert_eq!(book.bid_count(), 1);
+    assert_eq!(book.ask_count(), 1);
+
+    book.clear(5, 5.into());
+    assert_eq!(book.bid_count(), 0);
+    assert_eq!(book.ask_count(), 0);
+}

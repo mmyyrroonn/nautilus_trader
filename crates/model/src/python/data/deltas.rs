@@ -23,6 +23,7 @@ use pyo3::{IntoPyObjectExt, prelude::*, pyclass::CompareOp, types::PyList};
 
 use crate::{
     data::{OrderBookDelta, OrderBookDeltas},
+    enums::{BookAction, RecordFlag},
     identifiers::InstrumentId,
     python::common::PY_MODULE_MODEL,
 };
@@ -95,6 +96,25 @@ impl OrderBookDeltas {
     #[pyo3(name = "ts_init")]
     fn py_ts_init(&self) -> u64 {
         self.ts_init.as_u64()
+    }
+
+    /// Returns `(delta_count, has_clear, has_snapshot)` without cloning the delta vector.
+    #[pyo3(name = "batch_summary")]
+    fn py_batch_summary(&self) -> (usize, bool, bool) {
+        let mut has_clear = false;
+        let mut has_snapshot = false;
+        for delta in &self.deltas {
+            if delta.action == BookAction::Clear {
+                has_clear = true;
+            }
+            if RecordFlag::F_SNAPSHOT.matches(delta.flags) {
+                has_snapshot = true;
+            }
+            if has_clear && has_snapshot {
+                break;
+            }
+        }
+        (self.deltas.len(), has_clear, has_snapshot)
     }
 
     #[staticmethod]

@@ -25,7 +25,13 @@ use bytes::Bytes;
 use nautilus_common::messages::DataEvent;
 use nautilus_core::{UnixNanos, time::get_atomic_clock_realtime};
 use nautilus_live::task::TaskSpawner;
-use nautilus_model::{data::Data, instruments::InstrumentAny};
+use nautilus_model::{
+    data::{BookOrder, Data, OrderBookDelta, OrderBookDeltas, QuoteTick},
+    enums::{BookAction, OrderSide, RecordFlag},
+    identifiers::InstrumentId,
+    instruments::InstrumentAny,
+    types::{Price, Quantity},
+};
 use nautilus_network::{
     SocketState, SocketStateSink,
     transport::Message,
@@ -146,7 +152,9 @@ pub(crate) struct Gate {
     pub max_queue_wait_ns: u64,
     pub lost_at: Option<nautilus_network::dst::time::Instant>,
     pub revisions: BTreeMap<String, u64>,
+    pub quote_cache_only: bool,
     pub quote_receipts: BTreeMap<String, (UnixNanos, UnixNanos)>,
+    pub latest_quotes: BTreeMap<String, QuoteTick>,
     pub books: BTreeMap<String, Option<BackpackBookCoverage>>,
     pub book_receipts: BTreeMap<String, UnixNanos>,
     pub book_tokens: BTreeMap<String, u64>,
@@ -190,6 +198,7 @@ impl Gate {
         self.metadata_ready = false;
         self.stale = Some(reason);
         self.quote_receipts.clear();
+        self.latest_quotes.clear();
         self.book_receipts.clear();
         self.books.values_mut().for_each(|v| *v = None);
         self.lost_at
@@ -393,6 +402,16 @@ struct FrameHeader {
     #[serde(default)]
     error: Option<serde_json::Value>,
 }
+struct PendingDepthBatch {
+    revision: u64,
+    instrument_id: InstrumentId,
+    first_queued_at: nautilus_network::dst::time::Instant,
+    sequence: u64,
+    ts_event: UnixNanos,
+    ts_init: UnixNanos,
+    bids: BTreeMap<Price, Quantity>,
+    asks: BTreeMap<Price, Quantity>,
+}
 struct MarketState {
     metadata: BackpackInstrumentMetadata,
     stream_token: u64,
@@ -402,6 +421,7 @@ struct MarketState {
     token: u64,
     last_sequence: Option<u64>,
     snapshot_cancel: Option<CancellationToken>,
+    pending_depth: Option<PendingDepthBatch>,
 }
 impl Drop for MarketState {
     fn drop(&mut self) {
@@ -570,6 +590,7 @@ impl PublicSession {
                     token: actor.generation,
                     last_sequence: None,
                     snapshot_cancel: None,
+                    pending_depth: None,
                 },
             );
         }
@@ -634,6 +655,25 @@ impl PublicSession {
                     Err(_) => self.fault(owner, actor.epoch, "subscription send failed", &ws),
                 }
             }
+            let coalesce_ms = self.config.lifecycle().depth_coalesce_ms;
+            let depth_sleep = if coalesce_ms > 0 {
+                self.flush_due_depth(owner, &mut actor);
+                let window = Duration::from_millis(coalesce_ms);
+                actor
+                    .markets
+                    .values()
+                    .filter_map(|m| {
+                        m.pending_depth
+                            .as_ref()
+                            .map(|p| window.saturating_sub(p.first_queued_at.elapsed()))
+                    })
+                    .min()
+                    .map_or(Duration::from_millis(100), |d| {
+                        d.min(Duration::from_millis(100))
+                    })
+            } else {
+                Duration::from_millis(100)
+            };
             let input = tokio::select! {
                 biased;
                 ()=cancel.cancelled()=>break,
@@ -645,7 +685,7 @@ impl PublicSession {
                     }
                     None
                 },
-                ()=nautilus_network::dst::time::sleep(Duration::from_millis(100))=>None,
+                ()=nautilus_network::dst::time::sleep(depth_sleep)=>None,
                 input=rx.recv()=>match input {Some(input)=>Some(input),None=>break},
             };
 
@@ -661,6 +701,9 @@ impl PublicSession {
                 }
                 Some(Input::Snapshot(snapshot)) => self.install(owner, &ws, &mut actor, snapshot),
                 None => {}
+            }
+            if coalesce_ms > 0 {
+                self.flush_due_depth(owner, &mut actor);
             }
             // Heartbeats cover an unsubscribed connection. Business-data silence
             // becomes a fault only after a subscription was sent on this epoch.
@@ -767,6 +810,7 @@ impl PublicSession {
                     token: actor.generation,
                     last_sequence: None,
                     snapshot_cancel: None,
+                    pending_depth: None,
                 },
             );
         }
@@ -863,23 +907,27 @@ impl PublicSession {
                     state
                         .quote_receipts
                         .insert(symbol.to_owned(), (quote.ts_event, frame.received));
+                    state.latest_quotes.insert(symbol.to_owned(), quote);
 
-                    if self
-                        .sender
-                        .send(DataEvent::Data(Data::Quote(quote)))
-                        .is_err()
+                    if !self.config.lifecycle().quote_cache_only
+                        && self
+                            .sender
+                            .send(DataEvent::Data(Data::Quote(quote)))
+                            .is_err()
                     {
                         state.invalidate("data engine unavailable");
                         state.running = false;
                     }
                 } else {
                     state.quote_receipts.remove(symbol);
+                    state.latest_quotes.remove(symbol);
                 }
             }
             Ok(BackpackPublicEvent::QuoteUnavailable { .. }) => {
                 let mut state = self.gate.lock();
                 if self.admits_topic(&state, owner, epoch, &frame.topic, frame.revision) {
                     state.quote_receipts.remove(symbol);
+                    state.latest_quotes.remove(symbol);
                 }
             }
             Ok(BackpackPublicEvent::Trade(trade)) => self.publish(
@@ -904,6 +952,7 @@ impl PublicSession {
                 let last = update.last;
                 let observed_at = update.ts_event.min(frame.received);
                 let advances = market.last_sequence.is_none_or(|previous| last > previous);
+                let instrument_id = market.metadata.instrument_id;
                 if let Some(book) = market.book.as_mut() {
                     match book.apply(update) {
                         Ok(Some(batch)) => {
@@ -916,13 +965,61 @@ impl PublicSession {
                                 book.coverage(),
                                 batch.ts_init.min(batch.ts_event),
                             );
-                            self.publish(
-                                owner,
-                                epoch,
-                                &frame.topic,
-                                frame.revision,
-                                Data::from(batch),
-                            );
+                            if self.config.lifecycle().depth_coalesce_ms == 0 {
+                                self.publish(
+                                    owner,
+                                    epoch,
+                                    &frame.topic,
+                                    frame.revision,
+                                    Data::from(batch),
+                                );
+                            } else {
+                                let entry =
+                                    market
+                                        .pending_depth
+                                        .get_or_insert_with(|| PendingDepthBatch {
+                                            revision: frame.revision,
+                                            instrument_id,
+                                            first_queued_at:
+                                                nautilus_network::dst::time::Instant::now(),
+                                            sequence: batch.sequence,
+                                            ts_event: batch.ts_event,
+                                            ts_init: batch.ts_init,
+                                            bids: BTreeMap::new(),
+                                            asks: BTreeMap::new(),
+                                        });
+                                if entry.revision != frame.revision {
+                                    *entry = PendingDepthBatch {
+                                        revision: frame.revision,
+                                        instrument_id,
+                                        first_queued_at: nautilus_network::dst::time::Instant::now(
+                                        ),
+                                        sequence: batch.sequence,
+                                        ts_event: batch.ts_event,
+                                        ts_init: batch.ts_init,
+                                        bids: BTreeMap::new(),
+                                        asks: BTreeMap::new(),
+                                    };
+                                }
+                                entry.sequence = batch.sequence;
+                                entry.ts_event = batch.ts_event;
+                                entry.ts_init = batch.ts_init;
+                                for delta in batch.deltas {
+                                    let side_map = match delta.order.side {
+                                        Some(OrderSide::Buy) => &mut entry.bids,
+                                        Some(OrderSide::Sell) => &mut entry.asks,
+                                        None => continue,
+                                    };
+                                    let size = if delta.action == BookAction::Delete
+                                        || delta.order.size.is_zero()
+                                    {
+                                        Quantity::zero(delta.order.size.precision)
+                                    } else {
+                                        delta.order.size
+                                    };
+                                    side_map.insert(delta.order.price, size);
+                                }
+                            }
                         }
                         Ok(None) => {
                             if book.is_continuous() && advances {
@@ -938,6 +1035,7 @@ impl PublicSession {
                             }
                         }
                         Err(_) => {
+                            market.pending_depth = None;
                             self.book_ready(
                                 owner,
                                 epoch,
@@ -1001,6 +1099,7 @@ impl PublicSession {
             return;
         };
 
+        market.pending_depth = None;
         if let Some(book) = market.book.as_mut() {
             match book.install_snapshot(snapshot.token, &body, snapshot.received) {
                 Ok(batch) => {
@@ -1083,6 +1182,83 @@ impl PublicSession {
             state.book_receipts.insert(symbol.to_owned(), received);
         }
     }
+    fn flush_due_depth(&self, owner: u64, actor: &mut ActorState) {
+        let coalesce_ms = self.config.lifecycle().depth_coalesce_ms;
+        if coalesce_ms == 0 {
+            return;
+        }
+        let window = Duration::from_millis(coalesce_ms);
+        let due_symbols: Vec<String> = actor
+            .markets
+            .iter()
+            .filter_map(|(symbol, market)| {
+                market
+                    .pending_depth
+                    .as_ref()
+                    .filter(|pending| pending.first_queued_at.elapsed() >= window)
+                    .map(|_| symbol.clone())
+            })
+            .collect();
+        for symbol in due_symbols {
+            let Some(market) = actor.markets.get_mut(&symbol) else {
+                continue;
+            };
+            let Some(pending) = market.pending_depth.take() else {
+                continue;
+            };
+            let count = pending.bids.len() + pending.asks.len();
+            if count == 0 {
+                continue;
+            }
+            let mut deltas = Vec::with_capacity(count);
+            for (price, size) in pending.bids.into_iter().rev() {
+                if let Ok(delta) = OrderBookDelta::new_checked(
+                    pending.instrument_id,
+                    if size.is_zero() {
+                        BookAction::Delete
+                    } else {
+                        BookAction::Update
+                    },
+                    BookOrder::new(OrderSide::Buy, price, size, 0),
+                    0,
+                    pending.sequence,
+                    pending.ts_event,
+                    pending.ts_init,
+                ) {
+                    deltas.push(delta);
+                }
+            }
+            for (price, size) in pending.asks {
+                if let Ok(delta) = OrderBookDelta::new_checked(
+                    pending.instrument_id,
+                    if size.is_zero() {
+                        BookAction::Delete
+                    } else {
+                        BookAction::Update
+                    },
+                    BookOrder::new(OrderSide::Sell, price, size, 0),
+                    0,
+                    pending.sequence,
+                    pending.ts_event,
+                    pending.ts_init,
+                ) {
+                    deltas.push(delta);
+                }
+            }
+            if let Some(last) = deltas.last_mut() {
+                last.flags |= RecordFlag::F_LAST as u8;
+            }
+            if let Ok(batch) = OrderBookDeltas::new_checked(pending.instrument_id, deltas) {
+                self.publish(
+                    owner,
+                    actor.epoch,
+                    &format!("depth.{symbol}"),
+                    pending.revision,
+                    Data::from(batch),
+                );
+            }
+        }
+    }
     fn fault(&self, owner: u64, epoch: u64, reason: &'static str, ws: &WebSocketClient) {
         let mut state = self.gate.lock();
         if !state.current(owner, epoch) {
@@ -1153,6 +1329,7 @@ impl PublicSession {
             if let Some(symbol) = topic.strip_prefix("depth.") {
                 if let Some(m) = markets.get_mut(symbol) {
                     m.book = None;
+                    m.pending_depth = None;
                     if let Some(c) = m.snapshot_cancel.take() {
                         c.cancel();
                     }
@@ -1213,6 +1390,7 @@ impl PublicSession {
         market.book_parser = Some(BackpackPublicStreamParser::new(metadata.clone(), token));
         market.token = token;
         market.last_sequence = None;
+        market.pending_depth = None;
         market.book = Some(
             BackpackDepthSynchronizer::new_checked(
                 metadata,

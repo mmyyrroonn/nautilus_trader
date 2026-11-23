@@ -1676,6 +1676,12 @@ impl BackpackLoopbackControlRuntime {
             .cache()
             .quote(&id)
             .copied()
+            .or_else(|| {
+                shared.config.restricted.as_ref().and_then(|mode| {
+                    mode.public_telemetry
+                        .latest_cached_quote(id.symbol.as_str())
+                })
+            })
             .ok_or_else(|| anyhow::anyhow!("native quote cache is empty"))?;
         let metadata = shared
             .provider

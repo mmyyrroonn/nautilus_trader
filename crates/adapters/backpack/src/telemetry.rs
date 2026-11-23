@@ -63,6 +63,30 @@ impl BackpackPublicTelemetry {
     pub fn snapshot(&self) -> BackpackPublicHealth {
         self.admission_snapshot().0
     }
+    /// Returns the latest validated public quote cached for `symbol`, if present.
+    #[must_use]
+    pub fn latest_quote(&self, symbol: &str) -> Option<nautilus_model::data::QuoteTick> {
+        let current = self.inner.gate.lock().clone();
+        let quote = current.lock().latest_quotes.get(symbol).copied();
+        quote
+    }
+    pub(crate) fn latest_cached_quote(
+        &self,
+        symbol: &str,
+    ) -> Option<nautilus_model::data::QuoteTick> {
+        let current = self.inner.gate.lock().clone();
+        let gate = current.lock();
+        if gate.quote_cache_only
+            && gate.running
+            && gate.connected
+            && gate.metadata_ready
+            && gate.stale.is_none()
+        {
+            gate.latest_quotes.get(symbol).copied()
+        } else {
+            None
+        }
+    }
     pub(crate) fn admission_snapshot(
         &self,
     ) -> (BackpackPublicHealth, BackpackPublicAdmissionToken) {

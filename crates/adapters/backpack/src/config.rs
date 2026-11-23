@@ -278,6 +278,10 @@ pub struct BackpackPublicLifecycleConfig {
     pub max_levels_per_side: usize,
     /// Maximum incoming application frame bytes.
     pub max_ws_message_bytes: usize,
+    /// Cache valid public quotes in native telemetry without publishing `Data::Quote` events.
+    pub quote_cache_only: bool,
+    /// Coalesce incremental depth deltas per symbol over this window in milliseconds (`0` disables).
+    pub depth_coalesce_ms: u64,
 }
 impl Default for BackpackPublicLifecycleConfig {
     fn default() -> Self {
@@ -293,6 +297,8 @@ impl Default for BackpackPublicLifecycleConfig {
             max_buffer_frames: 2048,
             max_levels_per_side: 5000,
             max_ws_message_bytes: 1_048_576,
+            quote_cache_only: false,
+            depth_coalesce_ms: 0,
         }
     }
 }
@@ -322,6 +328,7 @@ impl BackpackPublicLifecycleConfig {
             || self.max_levels_per_side < self.depth_snapshot_limit
             || self.max_levels_per_side > 10_000
             || !(1024..=1_048_576).contains(&self.max_ws_message_bytes)
+            || self.depth_coalesce_ms > 1_000
         {
             return Err(BackpackDataError::Configuration("lifecycle bounds"));
         }

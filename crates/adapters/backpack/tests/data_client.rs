@@ -1437,3 +1437,230 @@ async fn loopback_old_depth_event_cannot_become_fresh_by_arriving_now() {
     assert!(client.health().books_fresh[SYMBOL]);
     client.disconnect().await.unwrap();
 }
+
+#[tokio::test]
+async fn loopback_quote_cache_only_tracks_health_without_emitting_quote_events() {
+    let server = Server::start().await;
+    let base = server.config();
+    let config =
+        BackpackDataClientConfig::new_checked(base.scope().clone(), base.economics().clone())
+            .unwrap()
+            .with_lifecycle_checked(BackpackPublicLifecycleConfig {
+                quote_cache_only: true,
+                ..base.lifecycle().clone()
+            })
+            .unwrap();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    replace_data_event_sender(tx);
+    let mut client = BackpackDataClient::new(ClientId::from("BP"), config.clone()).unwrap();
+    client
+        .subscribe_quotes(SubscribeQuotes::new(
+            id(),
+            Some(ClientId::from("BP")),
+            None,
+            UUID4::new(),
+            instant(),
+            None,
+            None,
+        ))
+        .unwrap();
+    client.connect().await.unwrap();
+    assert!(matches!(event(&mut rx).await, DataEvent::Instrument(_)));
+    server
+        .wait_topic(0, "SUBSCRIBE", &format!("bookTicker.{SYMBOL}"))
+        .await;
+    let mut custom = quote(1);
+    custom["data"]["b"] = json!("100.5");
+    custom["data"]["a"] = json!("101.5");
+    server.send(custom);
+    tokio::time::timeout(Duration::from_secs(3), async {
+        while config.telemetry().latest_quote(SYMBOL).is_none() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    no_event(&mut rx).await;
+    let cached = config.telemetry().latest_quote(SYMBOL).unwrap();
+    assert_eq!(
+        cached.bid_price,
+        nautilus_model::types::Price::from("100.5")
+    );
+    assert_eq!(
+        cached.ask_price,
+        nautilus_model::types::Price::from("101.5")
+    );
+    assert_eq!(client.health().quotes_fresh.get(SYMBOL), Some(&true));
+    client.disconnect().await.unwrap();
+}
+
+#[tokio::test]
+async fn loopback_depth_coalesce_window_merges_updates_with_exact_book_state() {
+    use nautilus_model::orderbook::OrderBook;
+    use std::collections::BTreeMap;
+
+    let server = Server::start().await;
+    let base = server.config();
+    let config =
+        BackpackDataClientConfig::new_checked(base.scope().clone(), base.economics().clone())
+            .unwrap()
+            .with_lifecycle_checked(BackpackPublicLifecycleConfig {
+                depth_coalesce_ms: 40,
+                ..base.lifecycle().clone()
+            })
+            .unwrap();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    replace_data_event_sender(tx);
+    let mut client = BackpackDataClient::new(ClientId::from("BP"), config).unwrap();
+    client
+        .subscribe_book_deltas(SubscribeBookDeltas::new(
+            id(),
+            BookType::L2_MBP,
+            Some(ClientId::from("BP")),
+            None,
+            UUID4::new(),
+            instant(),
+            None,
+            true,
+            None,
+            None,
+        ))
+        .unwrap();
+    client.connect().await.unwrap();
+    assert!(matches!(event(&mut rx).await, DataEvent::Instrument(_)));
+    let DataEvent::Data(Data::Deltas(initial)) = event(&mut rx).await else {
+        panic!("missing initial snapshot")
+    };
+    let mut actual = OrderBook::new(id(), BookType::L2_MBP);
+    actual.apply_deltas(&initial).unwrap();
+
+    let t = micros();
+    server.send(json!({
+        "stream": format!("depth.{SYMBOL}"),
+        "data": {"e": "depth", "E": t - 2000, "T": t - 2000, "s": SYMBOL,
+                 "b": [["100.0", "3.00000"], ["99.5", "4.00000"]],
+                 "a": [["101.0", "2.00000"]], "U": 101, "u": 101}
+    }));
+    server.send(json!({
+        "stream": format!("depth.{SYMBOL}"),
+        "data": {"e": "depth", "E": t - 1000, "T": t - 1000, "s": SYMBOL,
+                 "b": [["100.0", "0.00000"], ["99.8", "5.00000"]],
+                 "a": [["101.5", "6.00000"]], "U": 102, "u": 102}
+    }));
+    server.send(json!({
+        "stream": format!("depth.{SYMBOL}"),
+        "data": {"e": "depth", "E": t, "T": t, "s": SYMBOL,
+                 "b": [["99.5", "7.00000"]],
+                 "a": [["101.0", "0.00000"]], "U": 103, "u": 103}
+    }));
+
+    let DataEvent::Data(Data::Deltas(coalesced)) = event(&mut rx).await else {
+        panic!("missing coalesced deltas")
+    };
+    no_event(&mut rx).await;
+    assert_eq!(coalesced.sequence, 103);
+    actual.apply_deltas(&coalesced).unwrap();
+    assert_eq!(
+        actual
+            .bids_as_map(None)
+            .into_iter()
+            .collect::<BTreeMap<_, _>>(),
+        BTreeMap::from([
+            (
+                Decimal::from_str_exact("99.8").unwrap(),
+                Decimal::from_str_exact("5.00000").unwrap()
+            ),
+            (
+                Decimal::from_str_exact("99.5").unwrap(),
+                Decimal::from_str_exact("7.00000").unwrap()
+            ),
+        ])
+    );
+    assert_eq!(
+        actual
+            .asks_as_map(None)
+            .into_iter()
+            .collect::<BTreeMap<_, _>>(),
+        BTreeMap::from([(
+            Decimal::from_str_exact("101.5").unwrap(),
+            Decimal::from_str_exact("6.00000").unwrap()
+        ),])
+    );
+    client.disconnect().await.unwrap();
+}
+
+#[tokio::test]
+async fn loopback_depth_coalesce_clears_pending_on_gap_before_recovery() {
+    use nautilus_model::orderbook::OrderBook;
+    use std::collections::BTreeMap;
+
+    let server = Server::start().await;
+    let base = server.config();
+    let config =
+        BackpackDataClientConfig::new_checked(base.scope().clone(), base.economics().clone())
+            .unwrap()
+            .with_lifecycle_checked(BackpackPublicLifecycleConfig {
+                depth_coalesce_ms: 80,
+                ..base.lifecycle().clone()
+            })
+            .unwrap();
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    replace_data_event_sender(tx);
+    let mut client = BackpackDataClient::new(ClientId::from("BP"), config).unwrap();
+    client
+        .subscribe_book_deltas(SubscribeBookDeltas::new(
+            id(),
+            BookType::L2_MBP,
+            Some(ClientId::from("BP")),
+            None,
+            UUID4::new(),
+            instant(),
+            None,
+            true,
+            None,
+            None,
+        ))
+        .unwrap();
+    client.connect().await.unwrap();
+    assert!(matches!(event(&mut rx).await, DataEvent::Instrument(_)));
+    assert!(matches!(
+        event(&mut rx).await,
+        DataEvent::Data(Data::Deltas(_))
+    ));
+
+    let t = micros();
+    server.send(json!({
+        "stream": format!("depth.{SYMBOL}"),
+        "data": {"e": "depth", "E": t - 1000, "T": t - 1000, "s": SYMBOL,
+                 "b": [["98.0", "9.00000"]], "a": [], "U": 101, "u": 101}
+    }));
+    server.snapshot(200, 0);
+    server.send(json!({
+        "stream": format!("depth.{SYMBOL}"),
+        "data": {"e": "depth", "E": t, "T": t, "s": SYMBOL,
+                 "b": [["97.0", "1.00000"]], "a": [], "U": 105, "u": 105}
+    }));
+
+    let DataEvent::Data(Data::Deltas(recovered)) = event(&mut rx).await else {
+        panic!("missing replacement snapshot after gap")
+    };
+    no_event(&mut rx).await;
+    assert_eq!(recovered.sequence, 200);
+    let mut book = OrderBook::new(id(), BookType::L2_MBP);
+    book.apply_deltas(&recovered).unwrap();
+    assert!(
+        !book
+            .bids_as_map(None)
+            .contains_key(&Decimal::from_str_exact("98.0").unwrap())
+    );
+    assert_eq!(
+        book.bids_as_map(None)
+            .into_iter()
+            .collect::<BTreeMap<_, _>>(),
+        BTreeMap::from([(
+            Decimal::from_str_exact("100.0").unwrap(),
+            Decimal::from_str_exact("1.00000").unwrap()
+        ),])
+    );
+    client.disconnect().await.unwrap();
+}

@@ -145,12 +145,14 @@ mod recovery;
 #[cfg(feature = "plugin")]
 pub mod plugin;
 
+mod coalesce;
 mod metrics;
 mod queue;
 mod state;
 
 use builder::ExternalMessageBusIngress;
 pub use builder::LiveNodeBuilder;
+use coalesce::{DataEventCoalescer, recv_data_event};
 use config::{LiveNodeConfig, PluginConfig, validate_live_environment};
 pub use metrics::{RunnerChannelMetricsSnapshot, RunnerMetricsDelta, RunnerMetricsSnapshot};
 use metrics::{RunnerChannelQueueDepths, RunnerMetrics};
@@ -1452,6 +1454,11 @@ impl LiveNode {
             .queue_monitor
             .as_ref()
             .map(|config| QueueMonitor::new(config, metrics.snapshot()));
+        let mut data_coalescer = self
+            .config
+            .data_engine
+            .coalesce_book_deltas
+            .then(DataEventCoalescer::new);
         let mut dispatches_since_yield = 0usize;
 
         loop {
@@ -1605,14 +1612,18 @@ impl LiveNode {
                 // starvation). See module docs for design rationale.
                 _ = maintenance_timer.tick(), if is_running => {
                     let maintenance_start = dst::time::Instant::now();
+                    let mut depths = RunnerChannelQueueDepths::from_receivers(
+                        &time_evt_rx,
+                        &exec_evt_rx,
+                        &exec_cmd_rx,
+                        &data_evt_rx,
+                        &data_cmd_rx,
+                    );
+                    if let Some(coalescer) = data_coalescer.as_ref() {
+                        depths.add_data_events(coalescer.pending_len());
+                    }
                     metrics.publish_queue_depths(
-                        RunnerChannelQueueDepths::from_receivers(
-                            &time_evt_rx,
-                            &exec_evt_rx,
-                            &exec_cmd_rx,
-                            &data_evt_rx,
-                            &data_cmd_rx,
-                        ),
+                        depths,
                         metrics_start.elapsed(),
                     );
 
@@ -1770,7 +1781,7 @@ impl LiveNode {
                         metrics_start,
                     );
                 }
-                Some(evt) = data_evt_rx.recv() => {
+                Some(evt) = recv_data_event(&mut data_evt_rx, data_coalescer.as_mut()) => {
                     let dispatch_start = dst::time::Instant::now();
 
                     if is_shutting_down {
@@ -1820,6 +1831,12 @@ impl LiveNode {
         );
         drop(external_msgbus_rx.take());
         let _ = self.kernel.cache().borrow().check_residuals();
+
+        if let Some(mut coalescer) = data_coalescer {
+            while let Some(evt) = coalescer.pop_next() {
+                AsyncRunner::handle_data_event(evt);
+            }
+        }
 
         let stop_result = self.finalize_stop().await;
 

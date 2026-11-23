@@ -96,6 +96,18 @@ impl OrderBook {
         self.update_count
     }
 
+    /// Returns the number of bid price levels currently in the book.
+    #[pyo3(name = "bid_count")]
+    fn py_bid_count(&self) -> usize {
+        self.bid_count()
+    }
+
+    /// Returns the number of ask price levels currently in the book.
+    #[pyo3(name = "ask_count")]
+    fn py_ask_count(&self) -> usize {
+        self.ask_count()
+    }
+
     /// Resets the order book to its initial empty state.
     #[pyo3(name = "reset")]
     fn py_reset(&mut self) {
