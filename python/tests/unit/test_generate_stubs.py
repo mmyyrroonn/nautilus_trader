@@ -3743,6 +3743,8 @@ def test_config_inventory_backpack_native_nondefault_readback(tmp_path) -> None:
         "max_buffer_frames": 31,
         "max_levels_per_side": 43,
         "max_ws_message_bytes": 65537,
+        "quote_cache_only": True,
+        "depth_coalesce_ms": 15,
     }
     data = backpack.BackpackDataClientConfig(
         ["BTC_USDC_PERP"],

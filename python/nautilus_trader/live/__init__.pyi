@@ -97,6 +97,8 @@ class LiveDataEngineConfig:
     @property
     def buffer_deltas(self) -> bool: ...
     @property
+    def coalesce_book_deltas(self) -> bool: ...
+    @property
     def emit_quotes_from_book(self) -> bool: ...
     @property
     def emit_quotes_from_book_depths(self) -> bool: ...
@@ -114,6 +116,7 @@ class LiveDataEngineConfig:
         time_bars_origin_offset: typing.Mapping[str, int] | None = None,
         validate_data_sequence: bool | None = None,
         buffer_deltas: bool | None = None,
+        coalesce_book_deltas: bool | None = None,
         emit_quotes_from_book: bool | None = None,
         emit_quotes_from_book_depths: bool | None = None,
         external_clients: typing.Sequence[model.ClientId] | None = None,

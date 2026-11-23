@@ -174,7 +174,7 @@ impl LiveDataEngineConfig {
         clippy::needless_pass_by_value,
         reason = "PyO3 #[new] requires owned params"
     )]
-    #[pyo3(signature = (time_bars_build_with_no_updates=None, time_bars_timestamp_on_close=None, time_bars_skip_first_non_full_bar=None, time_bars_interval_type=None, time_bars_build_delay=None, time_bars_origin_offset=None, validate_data_sequence=None, buffer_deltas=None, emit_quotes_from_book=None, emit_quotes_from_book_depths=None, external_clients=None, debug=None))]
+    #[pyo3(signature = (time_bars_build_with_no_updates=None, time_bars_timestamp_on_close=None, time_bars_skip_first_non_full_bar=None, time_bars_interval_type=None, time_bars_build_delay=None, time_bars_origin_offset=None, validate_data_sequence=None, buffer_deltas=None, coalesce_book_deltas=None, emit_quotes_from_book=None, emit_quotes_from_book_depths=None, external_clients=None, debug=None))]
     fn py_new(
         time_bars_build_with_no_updates: Option<bool>,
         time_bars_timestamp_on_close: Option<bool>,
@@ -184,6 +184,7 @@ impl LiveDataEngineConfig {
         time_bars_origin_offset: Option<HashMap<String, u64>>,
         validate_data_sequence: Option<bool>,
         buffer_deltas: Option<bool>,
+        coalesce_book_deltas: Option<bool>,
         emit_quotes_from_book: Option<bool>,
         emit_quotes_from_book_depths: Option<bool>,
         external_clients: Option<Vec<ClientId>>,
@@ -207,6 +208,7 @@ impl LiveDataEngineConfig {
             validate_data_sequence: validate_data_sequence
                 .unwrap_or(default.validate_data_sequence),
             buffer_deltas: buffer_deltas.unwrap_or(default.buffer_deltas),
+            coalesce_book_deltas: coalesce_book_deltas.unwrap_or(default.coalesce_book_deltas),
             emit_quotes_from_book: emit_quotes_from_book.unwrap_or(default.emit_quotes_from_book),
             emit_quotes_from_book_depths: emit_quotes_from_book_depths
                 .unwrap_or(default.emit_quotes_from_book_depths),
@@ -262,6 +264,12 @@ impl LiveDataEngineConfig {
     #[pyo3(name = "buffer_deltas")]
     const fn py_buffer_deltas(&self) -> bool {
         self.buffer_deltas
+    }
+
+    #[getter]
+    #[pyo3(name = "coalesce_book_deltas")]
+    const fn py_coalesce_book_deltas(&self) -> bool {
+        self.coalesce_book_deltas
     }
 
     #[getter]

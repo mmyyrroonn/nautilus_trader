@@ -114,6 +114,9 @@ pub struct LiveDataEngineConfig {
     /// If order book deltas should be buffered until the `F_LAST` flag is set for a delta.
     #[builder(default)]
     pub buffer_deltas: bool,
+    /// Coalesce backlog `OrderBookDeltas` per instrument in `LiveNode::run` while draining queued data events.
+    #[builder(default)]
+    pub coalesce_book_deltas: bool,
     /// If quotes should be emitted on order book updates.
     #[builder(default)]
     pub emit_quotes_from_book: bool,

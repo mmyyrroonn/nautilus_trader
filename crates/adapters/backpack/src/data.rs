@@ -118,6 +118,7 @@ impl BackpackDataClient {
             config.lifecycle().ws_idle_timeout_secs,
             config.lifecycle().quote_stale_after_ms,
         )?;
+        gate.lock().quote_cache_only = config.lifecycle().quote_cache_only;
         Ok(Self {
             client_id,
             config,
@@ -178,6 +179,7 @@ impl BackpackDataClient {
         if !subscribe {
             if channel == "bookTicker" {
                 gate.quote_receipts.remove(&symbol);
+                gate.latest_quotes.remove(&symbol);
             }
 
             if channel == "depth" {

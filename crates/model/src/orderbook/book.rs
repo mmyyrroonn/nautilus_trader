@@ -633,6 +633,18 @@ impl OrderBook {
         Ok(order)
     }
 
+    /// Returns the number of bid price levels currently in the book.
+    #[must_use]
+    pub fn bid_count(&self) -> usize {
+        self.bids.len()
+    }
+
+    /// Returns the number of ask price levels currently in the book.
+    #[must_use]
+    pub fn ask_count(&self) -> usize {
+        self.asks.len()
+    }
+
     /// Returns an iterator over bid price levels.
     pub fn bids(&self, depth: Option<usize>) -> impl Iterator<Item = &BookLevel> {
         self.bids.levels.values().take(depth.unwrap_or(usize::MAX))

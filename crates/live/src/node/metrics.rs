@@ -362,6 +362,10 @@ pub(crate) struct RunnerChannelQueueDepths {
 }
 
 impl RunnerChannelQueueDepths {
+    pub(crate) fn add_data_events(&mut self, extra: usize) {
+        self.data_events = self.data_events.saturating_add(extra);
+    }
+
     pub(crate) fn from_receivers(
         time_events: &tokio::sync::mpsc::UnboundedReceiver<TimeEventMessage>,
         exec_events: &tokio::sync::mpsc::UnboundedReceiver<ExecutionEvent>,

@@ -125,7 +125,8 @@ impl PyBackpackDataClientConfig {
         http_timeout_secs=None, ws_connect_timeout_secs=None, ws_heartbeat_secs=None,
         ws_idle_timeout_secs=None, reconnect_timeout_secs=None, shutdown_timeout_secs=None,
         quote_stale_after_ms=None, depth_snapshot_limit=None, max_buffer_frames=None,
-        max_levels_per_side=None, max_ws_message_bytes=None))]
+        max_levels_per_side=None, max_ws_message_bytes=None,
+        quote_cache_only=None, depth_coalesce_ms=None))]
     #[expect(
         clippy::too_many_arguments,
         reason = "explicit checked public lifecycle configuration"
@@ -146,6 +147,8 @@ impl PyBackpackDataClientConfig {
         max_buffer_frames: Option<usize>,
         max_levels_per_side: Option<usize>,
         max_ws_message_bytes: Option<usize>,
+        quote_cache_only: Option<bool>,
+        depth_coalesce_ms: Option<u64>,
     ) -> PyResult<Self> {
         let endpoints = match (base_url_http, base_url_ws) {
             (None, None) => BackpackEndpoints::production(),
@@ -175,6 +178,8 @@ impl PyBackpackDataClientConfig {
             max_buffer_frames: max_buffer_frames.unwrap_or(defaults.max_buffer_frames),
             max_levels_per_side: max_levels_per_side.unwrap_or(defaults.max_levels_per_side),
             max_ws_message_bytes: max_ws_message_bytes.unwrap_or(defaults.max_ws_message_bytes),
+            quote_cache_only: quote_cache_only.unwrap_or(defaults.quote_cache_only),
+            depth_coalesce_ms: depth_coalesce_ms.unwrap_or(defaults.depth_coalesce_ms),
         };
         let inner = BackpackDataClientConfig::new_checked(
             scope,
@@ -253,6 +258,18 @@ impl PyBackpackDataClientConfig {
     #[getter]
     fn max_ws_message_bytes(&self) -> usize {
         self.inner.lifecycle().max_ws_message_bytes
+    }
+    #[getter]
+    fn quote_cache_only(&self) -> bool {
+        self.inner.lifecycle().quote_cache_only
+    }
+    #[getter]
+    fn depth_coalesce_ms(&self) -> u64 {
+        self.inner.lifecycle().depth_coalesce_ms
+    }
+    /// Returns the latest validated public quote cached for `symbol`, if present.
+    fn latest_quote(&self, symbol: &str) -> Option<nautilus_model::data::QuoteTick> {
+        self.inner.telemetry().latest_quote(symbol)
     }
     /// Returns actual sanitized per-run observations, distinct from capability support.
     fn telemetry_snapshot_json(&self) -> PyResult<String> {

@@ -321,3 +321,67 @@ fn test_python_registry_constructs_native_factory_with_shared_run_telemetry() {
         assert!(!module.hasattr("BackpackHttpClient").unwrap());
     });
 }
+
+#[rstest]
+fn test_python_data_config_stage2_coalesce_and_quote_cache_defaults_and_bounds() {
+    Python::initialize();
+    Python::attach(|py| {
+        let module = local_module(py);
+        let default_config = configured(py, &module);
+        assert!(
+            !default_config
+                .getattr("quote_cache_only")
+                .unwrap()
+                .extract::<bool>()
+                .unwrap()
+        );
+        assert_eq!(
+            default_config
+                .getattr("depth_coalesce_ms")
+                .unwrap()
+                .extract::<u64>()
+                .unwrap(),
+            0
+        );
+        assert!(
+            default_config
+                .call_method1("latest_quote", ("BTC_USDC_PERP",))
+                .unwrap()
+                .is_none()
+        );
+
+        let constructor = module.getattr("BackpackDataClientConfig").unwrap();
+        let economics = default_config.getattr("economics").unwrap();
+        let kwargs = PyDict::new(py);
+        kwargs.set_item("quote_cache_only", true).unwrap();
+        kwargs.set_item("depth_coalesce_ms", 12).unwrap();
+        let custom = constructor
+            .call((vec!["BTC_USDC_PERP"], economics.clone()), Some(&kwargs))
+            .unwrap();
+        assert!(
+            custom
+                .getattr("quote_cache_only")
+                .unwrap()
+                .extract::<bool>()
+                .unwrap()
+        );
+        assert_eq!(
+            custom
+                .getattr("depth_coalesce_ms")
+                .unwrap()
+                .extract::<u64>()
+                .unwrap(),
+            12
+        );
+        assert!(custom.setattr("quote_cache_only", false).is_err());
+        assert!(custom.setattr("depth_coalesce_ms", 0).is_err());
+
+        let bad_kwargs = PyDict::new(py);
+        bad_kwargs.set_item("depth_coalesce_ms", 1001).unwrap();
+        assert!(
+            constructor
+                .call((vec!["BTC_USDC_PERP"], economics), Some(&bad_kwargs))
+                .is_err()
+        );
+    });
+}
