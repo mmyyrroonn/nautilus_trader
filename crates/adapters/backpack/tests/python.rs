@@ -188,7 +188,7 @@ fn test_python_allowlist_and_economics_are_checked_together() {
 #[case("quote_stale_after_ms", 0)]
 #[case("quote_stale_after_ms", 30001)]
 #[case("http_timeout_secs", 61)]
-#[case("max_buffer_frames", 2049)]
+#[case("max_buffer_frames", 16_385)]
 #[case("depth_snapshot_limit", 7)]
 #[case("max_ws_message_bytes", 1048577)]
 fn test_python_lifecycle_bounds_use_native_validation(#[case] key: &str, #[case] value: u64) {
@@ -355,9 +355,18 @@ fn test_python_data_config_stage2_coalesce_and_quote_cache_defaults_and_bounds()
         let kwargs = PyDict::new(py);
         kwargs.set_item("quote_cache_only", true).unwrap();
         kwargs.set_item("depth_coalesce_ms", 12).unwrap();
+        kwargs.set_item("max_buffer_frames", 8192).unwrap();
         let custom = constructor
             .call((vec!["BTC_USDC_PERP"], economics.clone()), Some(&kwargs))
             .unwrap();
+        assert_eq!(
+            custom
+                .getattr("max_buffer_frames")
+                .unwrap()
+                .extract::<usize>()
+                .unwrap(),
+            8192
+        );
         assert!(
             custom
                 .getattr("quote_cache_only")

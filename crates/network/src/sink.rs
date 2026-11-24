@@ -82,6 +82,41 @@ impl SocketStateSink {
         }
     }
 
+    /// Returns a gated sink that buffers availability edges until [`SocketStatePromoter::promote`] is called.
+    #[must_use]
+    pub fn deferred(self) -> (Self, SocketStatePromoter) {
+        let Self {
+            callback: forwarded,
+            transition_lock,
+        } = self;
+        let inner = Arc::new(Mutex::new(DeferredSinkState::default()));
+        let inner_sink = Arc::clone(&inner);
+        let forwarded_sink = Arc::clone(&forwarded);
+        let gated = Self {
+            callback: Arc::new(move |state| {
+                let should_forward = {
+                    let mut guard = inner_sink.lock();
+                    if guard.promoted {
+                        true
+                    } else {
+                        guard.last_state = Some(state);
+                        false
+                    }
+                };
+                if should_forward {
+                    forwarded_sink(state);
+                }
+            }),
+            transition_lock: Arc::clone(&transition_lock),
+        };
+        let promoter = SocketStatePromoter {
+            inner,
+            forwarded,
+            transition_lock,
+        };
+        (gated, promoter)
+    }
+
     pub(crate) fn transition(
         &self,
         value: &AtomicU8,
@@ -156,6 +191,50 @@ impl SocketStateSink {
 impl Debug for SocketStateSink {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct(stringify!(SocketStateSink))
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Debug, Default)]
+struct DeferredSinkState {
+    promoted: bool,
+    last_state: Option<SocketState>,
+}
+
+/// Promotes a deferred [`SocketStateSink`] after candidate selection finishes.
+///
+/// Edges observed before [`Self::promote`] are collapsed to only the latest pending
+/// edge; dropped candidates never forward `Connected` or `Disconnected`.
+#[derive(Clone)]
+pub struct SocketStatePromoter {
+    inner: Arc<Mutex<DeferredSinkState>>,
+    forwarded: Arc<dyn Fn(SocketState) + Send + Sync>,
+    transition_lock: Arc<Mutex<()>>,
+}
+
+impl SocketStatePromoter {
+    /// Enables edge forwarding and replays the latest buffered edge synchronously.
+    pub fn promote(&self) {
+        let _lock = self.transition_lock.lock();
+        let pending = {
+            let mut guard = self.inner.lock();
+            guard.promoted = true;
+            guard.last_state.take()
+        };
+        if let Some(state) = pending
+            && std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                (self.forwarded)(state);
+            }))
+            .is_err()
+        {
+            log::error!("Socket state sink panicked while promoting {state:?}");
+        }
+    }
+}
+
+impl Debug for SocketStatePromoter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct(stringify!(SocketStatePromoter))
             .finish_non_exhaustive()
     }
 }
@@ -376,5 +455,48 @@ mod tests {
 
         assert_eq!(ConnectionMode::from_atomic(&mode), ConnectionMode::Closed);
         assert_eq!(*states.lock(), Vec::new());
+    }
+
+    #[rstest]
+    fn deferred_sink_suppresses_edges_until_promoted_then_replays_latest() {
+        let states = Arc::new(Mutex::new(Vec::new()));
+        let states_callback = Arc::clone(&states);
+        let base_sink = SocketStateSink::new(move |state| {
+            states_callback.lock().push(state);
+        });
+        let (loser_sink, _loser_promoter) = base_sink.clone().deferred();
+        let (winner_sink, winner_promoter) = base_sink.deferred();
+
+        // Losing candidate transitions must never surface before promotion.
+        let loser_mode = AtomicU8::new(ConnectionMode::Reconnect.as_u8());
+        assert_eq!(
+            ConnectionMode::complete_reconnect_with_sink(&loser_mode, Some(&loser_sink)),
+            ReconnectOutcome::Reconnected
+        );
+        assert!(ConnectionMode::request_reconnect_with_sink(
+            &loser_mode,
+            Some(&loser_sink)
+        ));
+        assert_eq!(*states.lock(), Vec::new());
+
+        // Winner buffers Connected, replays it once on promote(), then forwards Disconnected.
+        let winner_mode = AtomicU8::new(ConnectionMode::Reconnect.as_u8());
+        assert_eq!(
+            ConnectionMode::complete_reconnect_with_sink(&winner_mode, Some(&winner_sink)),
+            ReconnectOutcome::Reconnected
+        );
+        assert_eq!(*states.lock(), Vec::new());
+
+        winner_promoter.promote();
+        assert_eq!(*states.lock(), vec![SocketState::Connected]);
+
+        assert!(ConnectionMode::request_reconnect_with_sink(
+            &winner_mode,
+            Some(&winner_sink)
+        ));
+        assert_eq!(
+            *states.lock(),
+            vec![SocketState::Connected, SocketState::Disconnected]
+        );
     }
 }

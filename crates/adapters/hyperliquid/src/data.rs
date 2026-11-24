@@ -149,8 +149,13 @@ impl HyperliquidDataClient {
             None,
             config.transport_backend,
             config.proxy_url.clone(),
-        );
-        let ws_client = ws_client.with_socket_control(SocketControl::new(
+        )
+        .with_ws_selection(
+            config.ws_select_candidates,
+            Duration::from_millis(config.ws_select_probe_ms),
+            crate::websocket::select::WsSelectMode::MarketData,
+        )
+        .with_socket_control(SocketControl::new(
             client_id,
             Some(*HYPERLIQUID_VENUE),
             DATA_STREAMS_ENDPOINT,

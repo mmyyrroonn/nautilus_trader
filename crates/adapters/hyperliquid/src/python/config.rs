@@ -30,6 +30,23 @@ use crate::{
     config::{HyperliquidDataClientConfig, HyperliquidExecutionClientConfig},
 };
 
+fn validated_ws_selection(
+    candidates: Option<usize>,
+    probe_ms: Option<u64>,
+    default_candidates: usize,
+    default_probe_ms: u64,
+) -> PyResult<(usize, u64)> {
+    let candidates = candidates.unwrap_or(default_candidates);
+    if !(1..=12).contains(&candidates) {
+        return Err(to_pyvalue_err("ws_select_candidates must be in 1..=12"));
+    }
+    let probe_ms = probe_ms.unwrap_or(default_probe_ms);
+    if !(100..=15_000).contains(&probe_ms) {
+        return Err(to_pyvalue_err("ws_select_probe_ms must be in 100..=15_000"));
+    }
+    Ok((candidates, probe_ms))
+}
+
 #[pymethods]
 #[pyo3_stub_gen::derive::gen_stub_pymethods]
 impl HyperliquidDataClientConfig {
@@ -60,6 +77,8 @@ impl HyperliquidDataClientConfig {
         stale_stream_max_targeted_resubscribes = None,
         bbo_price_changes_only = None,
         bbo_cache_only = None,
+        ws_select_candidates = None,
+        ws_select_probe_ms = None,
     ))]
     #[expect(clippy::too_many_arguments)]
     fn py_new(
@@ -80,9 +99,17 @@ impl HyperliquidDataClientConfig {
         stale_stream_max_targeted_resubscribes: Option<u32>,
         bbo_price_changes_only: Option<bool>,
         bbo_cache_only: Option<bool>,
-    ) -> Self {
+        ws_select_candidates: Option<usize>,
+        ws_select_probe_ms: Option<u64>,
+    ) -> PyResult<Self> {
         let defaults = Self::default();
-        Self {
+        let (ws_select_candidates, ws_select_probe_ms) = validated_ws_selection(
+            ws_select_candidates,
+            ws_select_probe_ms,
+            defaults.ws_select_candidates,
+            defaults.ws_select_probe_ms,
+        )?;
+        Ok(Self {
             private_key,
             base_url_ws,
             base_url_http,
@@ -109,7 +136,9 @@ impl HyperliquidDataClientConfig {
                 .unwrap_or(defaults.bbo_price_changes_only),
             bbo_cache_only: bbo_cache_only.unwrap_or(defaults.bbo_cache_only),
             latest_bbo_cache: defaults.latest_bbo_cache,
-        }
+            ws_select_candidates,
+            ws_select_probe_ms,
+        })
     }
 
     #[getter]
@@ -162,6 +191,8 @@ impl HyperliquidExecutionClientConfig {
         include_builder_attribution = None,
         ws_post_timeout_secs = None,
         transport_backend = None,
+        ws_select_candidates = None,
+        ws_select_probe_ms = None,
     ))]
     #[expect(clippy::too_many_arguments)]
     fn py_new(
@@ -183,9 +214,17 @@ impl HyperliquidExecutionClientConfig {
         include_builder_attribution: Option<bool>,
         ws_post_timeout_secs: Option<u64>,
         transport_backend: Option<TransportBackend>,
-    ) -> Self {
+        ws_select_candidates: Option<usize>,
+        ws_select_probe_ms: Option<u64>,
+    ) -> PyResult<Self> {
         let defaults = Self::default();
-        Self {
+        let (ws_select_candidates, ws_select_probe_ms) = validated_ws_selection(
+            ws_select_candidates,
+            ws_select_probe_ms,
+            defaults.ws_select_candidates,
+            defaults.ws_select_probe_ms,
+        )?;
+        Ok(Self {
             account_id: account_id.unwrap_or(defaults.account_id),
             private_key,
             vault_address,
@@ -208,7 +247,9 @@ impl HyperliquidExecutionClientConfig {
             ws_post_timeout_secs: ws_post_timeout_secs.unwrap_or(defaults.ws_post_timeout_secs),
             transport_backend: transport_backend.unwrap_or(defaults.transport_backend),
             outcome_settlement_poll_secs: defaults.outcome_settlement_poll_secs,
-        }
+            ws_select_candidates,
+            ws_select_probe_ms,
+        })
     }
 
     #[getter]

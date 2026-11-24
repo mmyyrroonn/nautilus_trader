@@ -55,6 +55,7 @@ use parking_lot::Mutex;
 use rust_decimal::Decimal;
 use ustr::Ustr;
 
+use super::select::WsSelectMode;
 use crate::{
     common::{
         consts::{HTTP_TIMEOUT, ws_url},
@@ -146,6 +147,9 @@ pub struct HyperliquidWebSocketClient {
     proxy_url: Option<String>,
     socket_sink: Option<SocketStateSink>,
     socket_control: Option<SocketControl>,
+    ws_select_candidates: usize,
+    ws_select_probe_duration: Duration,
+    ws_select_mode: WsSelectMode,
 }
 
 impl Clone for HyperliquidWebSocketClient {
@@ -179,6 +183,9 @@ impl Clone for HyperliquidWebSocketClient {
             proxy_url: self.proxy_url.clone(),
             socket_sink: self.socket_sink.clone(),
             socket_control: self.socket_control.clone(),
+            ws_select_candidates: self.ws_select_candidates,
+            ws_select_probe_duration: self.ws_select_probe_duration,
+            ws_select_mode: self.ws_select_mode,
         }
     }
 }
@@ -235,7 +242,24 @@ impl HyperliquidWebSocketClient {
             proxy_url,
             socket_sink: None,
             socket_control: None,
+            ws_select_candidates: 1,
+            ws_select_probe_duration: Duration::from_millis(2500),
+            ws_select_mode: WsSelectMode::ExecutionPost,
         }
+    }
+
+    /// Configures startup multi-WebSocket probing and fastest-connection selection.
+    #[must_use]
+    pub fn with_ws_selection(
+        mut self,
+        candidates: usize,
+        probe_duration: Duration,
+        mode: WsSelectMode,
+    ) -> Self {
+        self.ws_select_candidates = candidates.clamp(1, 12);
+        self.ws_select_probe_duration = probe_duration;
+        self.ws_select_mode = mode;
+        self
     }
 
     /// Sets an optional bounded execution timing collector before connecting.
@@ -291,16 +315,6 @@ impl HyperliquidWebSocketClient {
         self.book_streams.clear();
 
         let (raw_tx, raw_rx) = tokio::sync::mpsc::unbounded_channel();
-        let receive = move |msg: TransportMessage, read_completed| {
-            match tokio_tungstenite::tungstenite::Message::try_from(msg) {
-                Ok(message) => {
-                    if raw_tx.send((message, read_completed)).is_err() {
-                        log::debug!("Hyperliquid raw message receiver closed");
-                    }
-                }
-                Err(e) => log::debug!("Dropping message that failed legacy conversion: {e}"),
-            }
-        };
         let cfg = WebSocketConfig {
             url: self.url.clone(),
             headers: vec![],
@@ -322,25 +336,52 @@ impl HyperliquidWebSocketClient {
             .as_ref()
             .map(SocketControl::sink)
             .or_else(|| self.socket_sink.clone());
-        let client = if self.timing.is_enabled() {
-            WebSocketClient::read_timing_builder()
-                .config(cfg)
-                .read_timing_handler(Arc::new(receive))
-                .maybe_state_sink(state_sink)
-                .connect()
-                .await?
+        let (client, promoter) = if self.ws_select_candidates > 1 {
+            super::select::connect_and_select_ws(
+                &cfg,
+                &self.timing,
+                state_sink,
+                raw_tx,
+                self.ws_select_candidates,
+                self.ws_select_probe_duration,
+                self.ws_select_mode,
+            )
+            .await?
         } else {
-            WebSocketClient::builder()
-                .config(cfg)
-                .message_handler(Arc::new(move |msg| receive(msg, None)))
-                .maybe_state_sink(state_sink)
-                .connect()
-                .await?
+            let receive = move |msg: TransportMessage, read_completed| {
+                match tokio_tungstenite::tungstenite::Message::try_from(msg) {
+                    Ok(message) => {
+                        if raw_tx.send((message, read_completed)).is_err() {
+                            log::debug!("Hyperliquid raw message receiver closed");
+                        }
+                    }
+                    Err(e) => log::debug!("Dropping message that failed legacy conversion: {e}"),
+                }
+            };
+            let client = if self.timing.is_enabled() {
+                WebSocketClient::read_timing_builder()
+                    .config(cfg)
+                    .read_timing_handler(Arc::new(receive))
+                    .maybe_state_sink(state_sink)
+                    .connect()
+                    .await?
+            } else {
+                WebSocketClient::builder()
+                    .config(cfg)
+                    .message_handler(Arc::new(move |msg| receive(msg, None)))
+                    .maybe_state_sink(state_sink)
+                    .connect()
+                    .await?
+            };
+            (client, None)
         };
 
         if let Some(control) = &self.socket_control {
             let handle = client.reconnect_handle();
             control.register(move || handle.request_reconnect());
+        }
+        if let Some(promoter) = promoter {
+            promoter.promote();
         }
 
         // Create channels for handler communication

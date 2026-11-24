@@ -23,6 +23,7 @@ pub mod parse;
 pub mod post;
 
 pub(crate) mod book;
+pub(crate) mod select;
 pub(crate) mod trades;
 
 pub(crate) const DATA_STREAMS_ENDPOINT: &str = "hyperliquid-data-streams";
@@ -33,3 +34,4 @@ pub use enums::HyperliquidWsChannel;
 pub use error::HyperliquidWsError;
 pub use handler::HandlerCommand;
 pub use messages::{ExecutionReport, NautilusWsMessage};
+pub use select::WsSelectMode;

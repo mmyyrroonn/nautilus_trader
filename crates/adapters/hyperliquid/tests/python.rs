@@ -312,3 +312,47 @@ fn assert_exec_factory_extracts_from_python_object(py: Python<'_>) {
     );
     assert_eq!(client.account_id(), account_id);
 }
+
+#[rstest]
+fn test_hyperliquid_ws_selection_python_config_validation() {
+    Python::initialize();
+
+    Python::attach(|py| {
+        let module = register_hyperliquid_python_module(py);
+        let data_cls = module.getattr("HyperliquidDataClientConfig").unwrap();
+        let exec_cls = module.getattr("HyperliquidExecutionClientConfig").unwrap();
+
+        let kwargs = pyo3::types::PyDict::new(py);
+        kwargs.set_item("ws_select_candidates", 8_usize).unwrap();
+        kwargs.set_item("ws_select_probe_ms", 2500_u64).unwrap();
+        let data_cfg: HyperliquidDataClientConfig = data_cls
+            .call((), Some(&kwargs))
+            .unwrap()
+            .extract()
+            .unwrap();
+        assert_eq!(data_cfg.ws_select_candidates, 8);
+        assert_eq!(data_cfg.ws_select_probe_ms, 2500);
+
+        let exec_cfg: HyperliquidExecutionClientConfig = exec_cls
+            .call((), Some(&kwargs))
+            .unwrap()
+            .extract()
+            .unwrap();
+        assert_eq!(exec_cfg.ws_select_candidates, 8);
+        assert_eq!(exec_cfg.ws_select_probe_ms, 2500);
+
+        for invalid in [0_usize, 13_usize] {
+            let bad = pyo3::types::PyDict::new(py);
+            bad.set_item("ws_select_candidates", invalid).unwrap();
+            assert!(data_cls.call((), Some(&bad)).is_err());
+            assert!(exec_cls.call((), Some(&bad)).is_err());
+        }
+
+        for invalid_ms in [99_u64, 15_001_u64] {
+            let bad = pyo3::types::PyDict::new(py);
+            bad.set_item("ws_select_probe_ms", invalid_ms).unwrap();
+            assert!(data_cls.call((), Some(&bad)).is_err());
+            assert!(exec_cls.call((), Some(&bad)).is_err());
+        }
+    });
+}

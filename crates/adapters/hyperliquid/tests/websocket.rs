@@ -71,6 +71,10 @@ struct TestServerState {
     last_pong: Arc<tokio::sync::Mutex<Option<Vec<u8>>>>,
     ping_count: Arc<AtomicUsize>,
     book_frames: Arc<tokio::sync::Mutex<Vec<Value>>>,
+    total_connections: Arc<AtomicUsize>,
+    conn_post_delays_ms: Arc<tokio::sync::Mutex<std::collections::HashMap<usize, u64>>>,
+    conn_bbo_delays_ms: Arc<tokio::sync::Mutex<std::collections::HashMap<usize, u64>>>,
+    post_conn_log: Arc<tokio::sync::Mutex<Vec<usize>>>,
 }
 
 impl Default for TestServerState {
@@ -88,6 +92,10 @@ impl Default for TestServerState {
             last_pong: Arc::new(tokio::sync::Mutex::new(None)),
             ping_count: Arc::new(AtomicUsize::new(0)),
             book_frames: Arc::new(tokio::sync::Mutex::new(Vec::new())),
+            total_connections: Arc::new(AtomicUsize::new(0)),
+            conn_post_delays_ms: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+            conn_bbo_delays_ms: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+            post_conn_log: Arc::new(tokio::sync::Mutex::new(Vec::new())),
         }
     }
 }
@@ -148,6 +156,7 @@ async fn handle_ws_upgrade(
 }
 
 async fn handle_socket(mut socket: WebSocket, state: Arc<TestServerState>) {
+    let conn_id = state.total_connections.fetch_add(1, Ordering::Relaxed);
     {
         let mut count = state.connection_count.lock().await;
         *count += 1;
@@ -241,15 +250,34 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<TestServerState>) {
                                             "channel": sub_type,
                                             "data": []
                                         }),
-                                        "bbo" => json!({
-                                            "channel": "bbo",
-                                            "data": {
-                                                "coin": "BTC",
-                                                "bid": "98450.00",
-                                                "ask": "98451.00",
-                                                "time": 1703875200000u64
+                                        "bbo" => {
+                                            let delay_ms = state
+                                                .conn_bbo_delays_ms
+                                                .lock()
+                                                .await
+                                                .get(&conn_id)
+                                                .copied()
+                                                .unwrap_or(0);
+                                            if delay_ms > 0 {
+                                                tokio::time::sleep(Duration::from_millis(delay_ms))
+                                                    .await;
                                             }
-                                        }),
+                                            let coin = subscription
+                                                .get("coin")
+                                                .and_then(|c| c.as_str())
+                                                .unwrap_or("BTC");
+                                            json!({
+                                                "channel": "bbo",
+                                                "data": {
+                                                    "coin": coin,
+                                                    "time": 1703875200000u64,
+                                                    "bbo": [
+                                                        {"px": "98450.00", "sz": "1.0", "n": 1},
+                                                        {"px": "98451.00", "sz": "1.0", "n": 1}
+                                                    ]
+                                                }
+                                            })
+                                        }
                                         "allMids" => allmids_payload.clone(),
                                         "allDexsAssetCtxs" => all_dexs_asset_ctxs_payload.clone(),
                                         "userTwapHistory" => load_json("ws_user_twap_history.json"),
@@ -307,6 +335,60 @@ async fn handle_socket(mut socket: WebSocket, state: Arc<TestServerState>) {
 
                             if socket
                                 .send(Message::Text(pong_response.to_string().into()))
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
+                        }
+                        Some("post") => {
+                            let post_id = payload.get("id").and_then(|v| v.as_u64()).unwrap_or(0);
+                            let req_type = payload
+                                .pointer("/request/type")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("info");
+                            state.post_conn_log.lock().await.push(conn_id);
+                            let delay_ms = state
+                                .conn_post_delays_ms
+                                .lock()
+                                .await
+                                .get(&conn_id)
+                                .copied()
+                                .unwrap_or(0);
+                            if delay_ms > 0 {
+                                tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                            }
+                            let reply = if req_type == "action" {
+                                json!({
+                                    "channel": "post",
+                                    "data": {
+                                        "id": post_id,
+                                        "response": {
+                                            "type": "action",
+                                            "payload": {
+                                                "status": "ok",
+                                                "response": {
+                                                    "type": "cancel",
+                                                    "data": {"statuses": ["success"]}
+                                                }
+                                            }
+                                        }
+                                    }
+                                })
+                            } else {
+                                json!({
+                                    "channel": "post",
+                                    "data": {
+                                        "id": post_id,
+                                        "response": {
+                                            "type": "info",
+                                            "payload": {"status": "ok", "conn_id": conn_id}
+                                        }
+                                    }
+                                })
+                            };
+                            if socket
+                                .send(Message::Text(reply.to_string().into()))
                                 .await
                                 .is_err()
                             {
@@ -2947,5 +3029,142 @@ async fn test_fast_conflicts_do_not_change_stream_or_retain_failed_use(#[case] s
         slow.map(Value::Bool).as_ref()
     );
     assert_eq!(state.subscription_events().await.len(), 3);
+    client.disconnect().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_multi_ws_select_execution_post_picks_fastest_and_closes_losers() {
+    use nautilus_network::{SocketState, SocketStateSink};
+
+    let state = Arc::new(TestServerState::default());
+    {
+        let mut delays = state.conn_post_delays_ms.lock().await;
+        delays.insert(0, 140);
+        delays.insert(1, 2);
+        delays.insert(2, 160);
+    }
+    let addr = start_ws_server(state.clone()).await;
+    let ws_url = format!("ws://{addr}/ws");
+
+    let recorded_states = Arc::new(parking_lot::Mutex::new(Vec::new()));
+    let recorded_states_cb = Arc::clone(&recorded_states);
+    let sink = SocketStateSink::new(move |s| {
+        recorded_states_cb.lock().push(s);
+    });
+
+    // Derive WsSelectMode from ExecutionPost via public API or internal test helper:
+    // Verify both ExecutionPost & MarketData modes via `with_ws_selection`
+    let mut client = HyperliquidWebSocketClient::new(
+        Some(ws_url),
+        HyperliquidEnvironment::Mainnet,
+        None,
+        TransportBackend::default(),
+        None,
+    )
+    .with_state_sink(sink)
+    .with_ws_selection(
+        3,
+        Duration::from_millis(320),
+        nautilus_hyperliquid::websocket::WsSelectMode::ExecutionPost,
+    );
+    cache_test_instruments(&mut client);
+
+    client.connect().await.expect("multi-ws connect failed");
+    wait_until_active(&client, 2.0).await.unwrap();
+
+    // Losers must disconnect cleanly without leaking Disconnected edges.
+    wait_until_async(
+        || {
+            let state = state.clone();
+            async move { *state.connection_count.lock().await == 1 }
+        },
+        Duration::from_secs(3),
+    )
+    .await;
+    assert_eq!(*recorded_states.lock(), vec![SocketState::Connected]);
+
+    // Subsequent post requests must route solely to winning fast conn_id=1.
+    state.post_conn_log.lock().await.clear();
+    let signer = nautilus_hyperliquid::http::client::HyperliquidHttpClient::from_credentials(
+        "0x59c6995e998f97a5a0044966f094538a1da6d1310dce3f687da73cf015b05d7e",
+        None,
+        HyperliquidEnvironment::Mainnet,
+        5,
+        None,
+    )
+    .expect("signer construction should succeed");
+    let action = nautilus_hyperliquid::http::models::HyperliquidExchangeAction::Cancel {
+        cancels: vec![],
+        fast: None,
+    };
+    let resp = client
+        .post_action_exec(&signer, &action)
+        .await
+        .expect("post on winning connection should succeed");
+    assert!(resp.is_ok());
+    assert_eq!(*state.post_conn_log.lock().await, vec![1]);
+
+    client.disconnect().await.unwrap();
+}
+
+#[tokio::test]
+async fn test_multi_ws_select_market_data_picks_earliest_bbo_and_drains_probes() {
+    use nautilus_network::{SocketState, SocketStateSink};
+
+    let state = Arc::new(TestServerState::default());
+    {
+        let mut bbo_delays = state.conn_bbo_delays_ms.lock().await;
+        bbo_delays.insert(0, 120);
+        bbo_delays.insert(1, 130);
+        bbo_delays.insert(2, 2);
+    }
+    let addr = start_ws_server(state.clone()).await;
+    let ws_url = format!("ws://{addr}/ws");
+
+    let recorded_states = Arc::new(parking_lot::Mutex::new(Vec::new()));
+    let recorded_states_cb = Arc::clone(&recorded_states);
+    let sink = SocketStateSink::new(move |s| {
+        recorded_states_cb.lock().push(s);
+    });
+
+    let mut client = HyperliquidWebSocketClient::new(
+        Some(ws_url),
+        HyperliquidEnvironment::Mainnet,
+        None,
+        TransportBackend::default(),
+        None,
+    )
+    .with_state_sink(sink)
+    .with_ws_selection(
+        3,
+        Duration::from_millis(320),
+        nautilus_hyperliquid::websocket::WsSelectMode::MarketData,
+    );
+    cache_test_instruments(&mut client);
+
+    client.connect().await.expect("multi-ws connect failed");
+    wait_until_active(&client, 2.0).await.unwrap();
+
+    wait_until_async(
+        || {
+            let state = state.clone();
+            async move { *state.connection_count.lock().await == 1 }
+        },
+        Duration::from_secs(3),
+    )
+    .await;
+    assert_eq!(*recorded_states.lock(), vec![SocketState::Connected]);
+    assert!(
+        state.unsubscriptions.lock().await.len() >= 2,
+        "probe bbo subscriptions must be unsubscribed before promotion"
+    );
+
+    // No probe BBO frames may leak into the handler after promotion.
+    assert!(
+        tokio::time::timeout(Duration::from_millis(80), client.next_event())
+            .await
+            .is_err()
+    );
+
     client.disconnect().await.unwrap();
 }

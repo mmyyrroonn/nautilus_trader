@@ -464,8 +464,13 @@ impl HyperliquidExecutionClient {
             Some(core.account_id),
             config.transport_backend,
             config.proxy_url.clone(),
-        );
-        ws_client = ws_client.with_socket_control(SocketControl::new(
+        )
+        .with_ws_selection(
+            config.ws_select_candidates,
+            Duration::from_millis(config.ws_select_probe_ms),
+            crate::websocket::select::WsSelectMode::ExecutionPost,
+        )
+        .with_socket_control(SocketControl::new(
             core.client_id,
             Some(*HYPERLIQUID_VENUE),
             USER_STREAMS_ENDPOINT,
