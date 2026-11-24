@@ -31,6 +31,22 @@ pub struct BackpackConfig {
     endpoints: BackpackEndpoints,
 }
 
+pub(crate) fn is_valid_usdc_perp_symbol(symbol: &str) -> bool {
+    let Some(base) = symbol.strip_suffix("_USDC_PERP") else {
+        return false;
+    };
+    let is_segment = |seg: &str| {
+        !seg.is_empty()
+            && seg
+                .bytes()
+                .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
+    };
+    match base.split_once('.') {
+        Some((stem, suffix)) => is_segment(stem) && is_segment(suffix),
+        None => is_segment(base),
+    }
+}
+
 impl BackpackConfig {
     /// Validates the symbol allowlist and selects official production endpoints.
     ///
@@ -57,14 +73,7 @@ impl BackpackConfig {
         let mut allowlist = BTreeSet::new();
 
         for symbol in symbols {
-            let valid = symbol.strip_suffix("_USDC_PERP").is_some_and(|base| {
-                !base.is_empty()
-                    && base
-                        .bytes()
-                        .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
-            });
-
-            if !valid {
+            if !is_valid_usdc_perp_symbol(&symbol) {
                 return Err(BackpackConfigError::InvalidSymbol(symbol));
             }
 
@@ -190,6 +199,11 @@ mod tests {
     #[case("BTC_USDC_IPERP")]
     #[case("BTC_USDC_PERP.BACKPACK")]
     #[case("_USDC_PERP")]
+    #[case(".US_USDC_PERP")]
+    #[case("NVDA._USDC_PERP")]
+    #[case("NVDA..US_USDC_PERP")]
+    #[case("A.B.C_USDC_PERP")]
+    #[case("NVDA.us_USDC_PERP")]
     #[case("btc_USDC_PERP")]
     #[case("BTC_USDC_PERP ")]
     #[case(" BTC_USDC_PERP")]
@@ -199,6 +213,17 @@ mod tests {
         assert_eq!(
             BackpackConfig::new_checked(vec![symbol.to_string()]),
             Err(BackpackConfigError::InvalidSymbol(symbol.to_string())),
+        );
+    }
+
+    #[rstest]
+    #[case("NVDA.US_USDC_PERP")]
+    #[case("SPY.US_USDC_PERP")]
+    fn test_dotted_rwa_allowlist_symbol_accepted(#[case] symbol: &str) {
+        let config = BackpackConfig::new_checked(vec![symbol.to_string()]).unwrap();
+        assert_eq!(
+            config.validate_market(symbol, "PERP", "USDC"),
+            Ok(())
         );
     }
 

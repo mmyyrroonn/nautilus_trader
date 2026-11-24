@@ -149,14 +149,7 @@ impl BackpackCredential {
                         topic == prefix
                             || topic
                                 .strip_prefix(&format!("{prefix}."))
-                                .is_some_and(|symbol| {
-                                    symbol.strip_suffix("_USDC_PERP").is_some_and(|base| {
-                                        !base.is_empty()
-                                            && base.bytes().all(|b| {
-                                                b.is_ascii_uppercase() || b.is_ascii_digit()
-                                            })
-                                    })
-                                })
+                                .is_some_and(crate::config::is_valid_usdc_perp_symbol)
                     });
             if !valid || !unique.insert(topic) {
                 return Err(BackpackHttpError::local(BackpackHttpErrorKind::Validation));
@@ -273,6 +266,18 @@ mod tests {
                     BackpackReceiveWindow::default()
                 )
                 .is_err()
+        );
+        let rwa_payload = credential
+            .subscription(
+                &endpoints,
+                vec!["account.orderUpdate.NVDA.US_USDC_PERP".into()],
+                1_614_550_000_000,
+                BackpackReceiveWindow::default(),
+            )
+            .unwrap();
+        assert_eq!(
+            rwa_payload.to_json()["params"],
+            serde_json::json!(["account.orderUpdate.NVDA.US_USDC_PERP"])
         );
     }
     #[rstest]
