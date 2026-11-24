@@ -109,6 +109,29 @@ fn apply_incremental_deltas(
     }
 }
 
+fn build_coalesced_deltas(
+    instrument_id: InstrumentId,
+    mut deltas: Vec<OrderBookDelta>,
+    sequence: u64,
+    ts_event: UnixNanos,
+    ts_init: UnixNanos,
+) -> DataEvent {
+    // Coalescing groups by price rather than ingestion order, so stamp the batch
+    // high-water metadata across all deltas to preserve monotonic OrderBook updates.
+    for delta in &mut deltas {
+        delta.sequence = sequence;
+        delta.ts_event = ts_event;
+        delta.ts_init = ts_init;
+    }
+    if let Some(last) = deltas.last_mut() {
+        last.flags |= RecordFlag::F_LAST as u8;
+    }
+    DataEvent::Data(Data::Deltas(Box::new(OrderBookDeltas::new(
+        instrument_id,
+        deltas,
+    ))))
+}
+
 impl BookSlotKind {
     fn from_snapshot(
         deltas: &[OrderBookDelta],
@@ -157,9 +180,9 @@ impl BookSlotKind {
                 bids,
                 asks,
             } => {
-                *sequence = next_sequence;
-                *ts_event = next_ts_event;
-                *ts_init = next_ts_init;
+                *sequence = (*sequence).max(next_sequence);
+                *ts_event = (*ts_event).max(next_ts_event);
+                *ts_init = (*ts_init).max(next_ts_init);
                 apply_snapshot_deltas(bids, asks, &deltas.deltas, instrument_id);
             }
             Self::Incremental {
@@ -169,9 +192,9 @@ impl BookSlotKind {
                 bids,
                 asks,
             } => {
-                *sequence = next_sequence;
-                *ts_event = next_ts_event;
-                *ts_init = next_ts_init;
+                *sequence = (*sequence).max(next_sequence);
+                *ts_event = (*ts_event).max(next_ts_event);
+                *ts_init = (*ts_init).max(next_ts_init);
                 apply_incremental_deltas(bids, asks, deltas.deltas);
             }
         }
@@ -195,16 +218,7 @@ impl BookSlotKind {
                 ));
                 vec.extend(bids.into_values().rev());
                 vec.extend(asks.into_values());
-                if let Some(last) = vec.last_mut() {
-                    last.flags |= RecordFlag::F_LAST as u8;
-                    last.sequence = sequence;
-                    last.ts_event = ts_event;
-                    last.ts_init = ts_init;
-                }
-                DataEvent::Data(Data::Deltas(Box::new(OrderBookDeltas::new(
-                    instrument_id,
-                    vec,
-                ))))
+                build_coalesced_deltas(instrument_id, vec, sequence, ts_event, ts_init)
             }
             Self::Incremental {
                 sequence,
@@ -216,16 +230,7 @@ impl BookSlotKind {
                 let mut vec = Vec::with_capacity(bids.len() + asks.len());
                 vec.extend(bids.into_values().rev());
                 vec.extend(asks.into_values());
-                if let Some(last) = vec.last_mut() {
-                    last.flags |= RecordFlag::F_LAST as u8;
-                    last.sequence = sequence;
-                    last.ts_event = ts_event;
-                    last.ts_init = ts_init;
-                }
-                DataEvent::Data(Data::Deltas(Box::new(OrderBookDeltas::new(
-                    instrument_id,
-                    vec,
-                ))))
+                build_coalesced_deltas(instrument_id, vec, sequence, ts_event, ts_init)
             }
         }
     }
@@ -712,5 +717,69 @@ mod tests {
             matches!(coalescer.pop_next(), Some(DataEvent::Data(Data::Deltas(d))) if d.sequence == 3)
         );
         assert!(coalescer.is_empty());
+    }
+
+    #[rstest]
+    fn test_coalesced_deltas_keep_monotonic_metadata() {
+        let id = inst_a();
+        let mut inc_coalescer = DataEventCoalescer::new();
+        inc_coalescer.push(delta_event(inc(
+            id,
+            11,
+            110,
+            &[
+                (BookAction::Update, OrderSide::Buy, "98.5", "2.0"),
+                (BookAction::Update, OrderSide::Sell, "102.0", "3.0"),
+            ],
+            true,
+        )));
+        inc_coalescer.push(delta_event(inc(
+            id,
+            12,
+            120,
+            &[(BookAction::Update, OrderSide::Buy, "100.0", "1.0")],
+            true,
+        )));
+
+        let merged_inc = match inc_coalescer.pop_next().unwrap() {
+            DataEvent::Data(Data::Deltas(d)) => *d,
+            other => panic!("unexpected event: {other:?}"),
+        };
+        assert_eq!(merged_inc.deltas.len(), 3);
+        for (idx, delta) in merged_inc.deltas.iter().enumerate() {
+            assert_eq!(delta.sequence, 12);
+            assert_eq!(delta.ts_event, UnixNanos::from(120));
+            assert_eq!(delta.ts_init, UnixNanos::from(120));
+            assert_eq!(
+                RecordFlag::F_LAST.matches(delta.flags),
+                idx + 1 == merged_inc.deltas.len()
+            );
+        }
+
+        let mut snap_coalescer = DataEventCoalescer::new();
+        snap_coalescer.push(delta_event(snap(
+            id,
+            1,
+            100,
+            &[("99.0", "1.0")],
+            &[("101.0", "1.0")],
+        )));
+        snap_coalescer.push(delta_event(inc(
+            id,
+            2,
+            200,
+            &[(BookAction::Update, OrderSide::Buy, "100.0", "2.0")],
+            true,
+        )));
+
+        let merged_snap = match snap_coalescer.pop_next().unwrap() {
+            DataEvent::Data(Data::Deltas(d)) => *d,
+            other => panic!("unexpected event: {other:?}"),
+        };
+        for delta in &merged_snap.deltas {
+            assert_eq!(delta.sequence, 2);
+            assert_eq!(delta.ts_event, UnixNanos::from(200));
+            assert_eq!(delta.ts_init, UnixNanos::from(200));
+        }
     }
 }
