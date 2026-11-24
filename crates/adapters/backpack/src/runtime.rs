@@ -663,9 +663,11 @@ impl PublicSession {
                     .markets
                     .values()
                     .filter_map(|m| {
-                        m.pending_depth
-                            .as_ref()
-                            .map(|p| window.saturating_sub(p.first_queued_at.elapsed()))
+                        m.pending_depth.as_ref().map(|p| {
+                            window
+                                .saturating_sub(p.first_queued_at.elapsed())
+                                .max(Duration::from_millis(1))
+                        })
                     })
                     .min()
                     .map_or(Duration::from_millis(100), |d| {
@@ -685,22 +687,54 @@ impl PublicSession {
                     }
                     None
                 },
-                ()=nautilus_network::dst::time::sleep(depth_sleep)=>None,
                 input=rx.recv()=>match input {Some(input)=>Some(input),None=>break},
+                ()=nautilus_network::dst::time::sleep(depth_sleep)=>None,
             };
 
-            match input {
-                Some(Input::Reconnected(epoch)) => {
-                    self.rebootstrap(owner, &ws, &mut actor, epoch, &cancel)
-                        .await;
+            if let Some(first) = input {
+                let mut reconnected = self
+                    .process_input(
+                        owner,
+                        &ws,
+                        &mut actor,
+                        first,
+                        &spawner,
+                        &tx,
+                        rx.len(),
+                        &cancel,
+                    )
+                    .await;
+                if reconnected {
                     reconcile_pending = true;
                     reconcile_after = None;
+                } else {
+                    // Drain up to 63 already-queued frames per wakeup so burst traffic cannot starve behind timers.
+                    for _ in 0..63 {
+                        if cancel.is_cancelled() {
+                            break;
+                        }
+                        let Ok(item) = rx.try_recv() else {
+                            break;
+                        };
+                        reconnected = self
+                            .process_input(
+                                owner,
+                                &ws,
+                                &mut actor,
+                                item,
+                                &spawner,
+                                &tx,
+                                rx.len(),
+                                &cancel,
+                            )
+                            .await;
+                        if reconnected {
+                            reconcile_pending = true;
+                            reconcile_after = None;
+                            break;
+                        }
+                    }
                 }
-                Some(Input::Frame(frame)) => {
-                    self.frame(owner, &ws, &mut actor, &frame, &spawner, &tx, rx.len());
-                }
-                Some(Input::Snapshot(snapshot)) => self.install(owner, &ws, &mut actor, snapshot),
-                None => {}
             }
             if coalesce_ms > 0 {
                 self.flush_due_depth(owner, &mut actor);
@@ -730,6 +764,34 @@ impl PublicSession {
             ws.disconnect(),
         )
         .await;
+    }
+
+    #[expect(clippy::too_many_arguments)]
+    async fn process_input(
+        &self,
+        owner: u64,
+        ws: &WebSocketClient,
+        actor: &mut ActorState,
+        input: Input,
+        spawner: &TaskSpawner,
+        tx: &mpsc::Sender<Input>,
+        queued_frames: usize,
+        cancel: &CancellationToken,
+    ) -> bool {
+        match input {
+            Input::Reconnected(epoch) => {
+                self.rebootstrap(owner, ws, actor, epoch, cancel).await;
+                true
+            }
+            Input::Frame(frame) => {
+                self.frame(owner, ws, actor, &frame, spawner, tx, queued_frames);
+                false
+            }
+            Input::Snapshot(snapshot) => {
+                self.install(owner, ws, actor, snapshot);
+                false
+            }
+        }
     }
 
     async fn rebootstrap(
@@ -1188,6 +1250,14 @@ impl PublicSession {
             return;
         }
         let window = Duration::from_millis(coalesce_ms);
+        if !actor.markets.values().any(|market| {
+            market
+                .pending_depth
+                .as_ref()
+                .is_some_and(|pending| pending.first_queued_at.elapsed() >= window)
+        }) {
+            return;
+        }
         let due_symbols: Vec<String> = actor
             .markets
             .iter()

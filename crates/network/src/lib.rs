@@ -110,7 +110,7 @@ pub mod python;
 pub mod error;
 pub mod ratelimiter;
 
-pub use sink::{SocketState, SocketStateSink};
+pub use sink::{SocketState, SocketStatePromoter, SocketStateSink};
 pub use transport::{Message, TransportError};
 
 /// Sentinel message indicating that a WebSocket reconnection completed.

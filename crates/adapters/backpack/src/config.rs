@@ -324,7 +324,7 @@ impl BackpackPublicLifecycleConfig {
             || self.ws_idle_timeout_secs <= self.ws_heartbeat_secs
             || self.reconnect_timeout_secs < self.ws_connect_timeout_secs
             || ![5, 10, 20, 50, 100, 500, 1000].contains(&self.depth_snapshot_limit)
-            || !(1..=2048).contains(&self.max_buffer_frames)
+            || !(1..=16_384).contains(&self.max_buffer_frames)
             || self.max_levels_per_side < self.depth_snapshot_limit
             || self.max_levels_per_side > 10_000
             || !(1024..=1_048_576).contains(&self.max_ws_message_bytes)

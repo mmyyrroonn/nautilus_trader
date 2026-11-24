@@ -108,6 +108,12 @@ pub struct HyperliquidDataClientConfig {
     #[serde(skip)]
     #[builder(default)]
     pub latest_bbo_cache: Arc<DashMap<InstrumentId, QuoteTick>>,
+    /// Number of candidate WebSocket connections to race at startup (`1` disables selection).
+    #[builder(default = 1)]
+    pub ws_select_candidates: usize,
+    /// Probe duration in milliseconds when selecting among multiple WebSocket candidates.
+    #[builder(default = 2500)]
+    pub ws_select_probe_ms: u64,
 }
 
 #[cfg(feature = "python")]
@@ -127,6 +133,8 @@ nautilus_core::impl_pyo3_config_getters!(HyperliquidDataClientConfig {
     stale_stream_max_targeted_resubscribes: u32,
     bbo_price_changes_only: bool,
     bbo_cache_only: bool,
+    ws_select_candidates: usize,
+    ws_select_probe_ms: u64,
 });
 
 impl Default for HyperliquidDataClientConfig {
@@ -233,6 +241,8 @@ impl Debug for HyperliquidDataClientConfig {
             .field("bbo_price_changes_only", &self.bbo_price_changes_only)
             .field("bbo_cache_only", &self.bbo_cache_only)
             .field("latest_bbo_cache_len", &self.latest_bbo_cache.len())
+            .field("ws_select_candidates", &self.ws_select_candidates)
+            .field("ws_select_probe_ms", &self.ws_select_probe_ms)
             .finish()
     }
 }
@@ -319,6 +329,12 @@ pub struct HyperliquidExecutionClientConfig {
     /// when the venue fill stream is unavailable.
     #[builder(default = 0)]
     pub outcome_settlement_poll_secs: u64,
+    /// Number of candidate WebSocket connections to race at startup (`1` disables selection).
+    #[builder(default = 1)]
+    pub ws_select_candidates: usize,
+    /// Probe duration in milliseconds when selecting among multiple WebSocket candidates.
+    #[builder(default = 2500)]
+    pub ws_select_probe_ms: u64,
 }
 
 #[cfg(feature = "python")]
@@ -339,6 +355,8 @@ nautilus_core::impl_pyo3_config_getters!(HyperliquidExecutionClientConfig {
     include_builder_attribution: bool,
     ws_post_timeout_secs: u64,
     transport_backend: TransportBackend,
+    ws_select_candidates: usize,
+    ws_select_probe_ms: u64,
 });
 
 impl Default for HyperliquidExecutionClientConfig {
@@ -405,6 +423,8 @@ impl Debug for HyperliquidExecutionClientConfig {
                 "outcome_settlement_poll_secs",
                 &self.outcome_settlement_poll_secs,
             )
+            .field("ws_select_candidates", &self.ws_select_candidates)
+            .field("ws_select_probe_ms", &self.ws_select_probe_ms)
             .finish()
     }
 }

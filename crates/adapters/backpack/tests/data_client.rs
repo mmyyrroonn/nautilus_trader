@@ -122,7 +122,7 @@ impl Server {
     async fn start() -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
-        let (control, _) = broadcast::channel(64);
+        let (control, _) = broadcast::channel(512);
         let state = Arc::new(ServerState {
             commands: Mutex::new(vec![]),
             requests: Mutex::new(vec![]),
@@ -1661,6 +1661,91 @@ async fn loopback_depth_coalesce_clears_pending_on_gap_before_recovery() {
             Decimal::from_str_exact("100.0").unwrap(),
             Decimal::from_str_exact("1.00000").unwrap()
         ),])
+    );
+    client.disconnect().await.unwrap();
+}
+
+#[tokio::test]
+async fn loopback_burst_with_depth_coalesce_drains_without_queue_overflow() {
+    use nautilus_model::orderbook::OrderBook;
+
+    let server = Server::start().await;
+    let base = server.config();
+    let config =
+        BackpackDataClientConfig::new_checked(base.scope().clone(), base.economics().clone())
+            .unwrap()
+            .with_lifecycle_checked(BackpackPublicLifecycleConfig {
+                depth_coalesce_ms: 5,
+                max_buffer_frames: 8192,
+                ..base.lifecycle().clone()
+            })
+            .unwrap();
+    let invalid = BackpackDataClientConfig::new_checked(base.scope().clone(), base.economics().clone())
+        .unwrap()
+        .with_lifecycle_checked(BackpackPublicLifecycleConfig {
+            max_buffer_frames: 16_385,
+            ..base.lifecycle().clone()
+        });
+    assert!(invalid.is_err());
+
+    let (tx, mut rx) = mpsc::unbounded_channel();
+    replace_data_event_sender(tx);
+    let mut client = BackpackDataClient::new(ClientId::from("BP"), config).unwrap();
+    client
+        .subscribe_book_deltas(SubscribeBookDeltas::new(
+            id(),
+            BookType::L2_MBP,
+            Some(ClientId::from("BP")),
+            None,
+            UUID4::new(),
+            instant(),
+            None,
+            true,
+            None,
+            None,
+        ))
+        .unwrap();
+    client.connect().await.unwrap();
+    assert!(matches!(event(&mut rx).await, DataEvent::Instrument(_)));
+    let DataEvent::Data(Data::Deltas(initial)) = event(&mut rx).await else {
+        panic!("missing initial snapshot")
+    };
+    let mut book = OrderBook::new(id(), BookType::L2_MBP);
+    book.apply_deltas(&initial).unwrap();
+
+    for seq in 101_u64..=400 {
+        let t = micros();
+        let bid_px = if seq % 2 == 0 { "100.0" } else { "99.5" };
+        server.send(json!({
+            "stream": format!("depth.{SYMBOL}"),
+            "data": {"e": "depth", "E": t, "T": t, "s": SYMBOL,
+                     "b": [[bid_px, format!("{}.00000", (seq % 9) + 1)]],
+                     "a": [["101.0", "2.00000"]], "U": seq, "u": seq}
+        }));
+    }
+
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    let mut latest_seq = 0_u64;
+    while tokio::time::Instant::now() < deadline && latest_seq < 400 {
+        if let Ok(Some(DataEvent::Data(Data::Deltas(deltas)))) =
+            tokio::time::timeout(Duration::from_millis(200), rx.recv()).await
+        {
+            latest_seq = deltas.sequence;
+            book.apply_deltas(&deltas).unwrap();
+        }
+    }
+    assert_eq!(latest_seq, 400);
+    let health = client.health();
+    assert_eq!(health.input_queue_overflows, 0);
+    assert_eq!(health.connection_epoch, 0);
+    assert_eq!(health.stale_reason, None);
+    assert_eq!(
+        book.best_bid_price().unwrap(),
+        nautilus_model::types::Price::from("100.0")
+    );
+    assert_eq!(
+        book.best_ask_price().unwrap(),
+        nautilus_model::types::Price::from("101.0")
     );
     client.disconnect().await.unwrap();
 }

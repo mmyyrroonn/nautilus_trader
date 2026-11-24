@@ -96,6 +96,10 @@ class HyperliquidDataClientConfig:
     def bbo_price_changes_only(self) -> bool: ...
     @property
     def bbo_cache_only(self) -> bool: ...
+    @property
+    def ws_select_candidates(self) -> int: ...
+    @property
+    def ws_select_probe_ms(self) -> int: ...
     def __init__(
         self,
         environment: HyperliquidEnvironment | None = None,
@@ -115,6 +119,8 @@ class HyperliquidDataClientConfig:
         stale_stream_max_targeted_resubscribes: int | None = None,
         bbo_price_changes_only: bool | None = None,
         bbo_cache_only: bool | None = None,
+        ws_select_candidates: int | None = None,
+        ws_select_probe_ms: int | None = None,
     ) -> None: ...
     @property
     def has_proxy_url(self) -> bool: ...
@@ -160,6 +166,10 @@ class HyperliquidExecutionClientConfig:
     def ws_post_timeout_secs(self) -> int: ...
     @property
     def transport_backend(self) -> network.TransportBackend: ...
+    @property
+    def ws_select_candidates(self) -> int: ...
+    @property
+    def ws_select_probe_ms(self) -> int: ...
     def __init__(
         self,
         account_id: model.AccountId | None = None,
@@ -180,6 +190,8 @@ class HyperliquidExecutionClientConfig:
         include_builder_attribution: bool | None = None,
         ws_post_timeout_secs: int | None = None,
         transport_backend: network.TransportBackend | None = None,
+        ws_select_candidates: int | None = None,
+        ws_select_probe_ms: int | None = None,
     ) -> None: ...
     @property
     def has_proxy_url(self) -> bool: ...
