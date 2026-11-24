@@ -185,12 +185,7 @@ impl BackpackAccountSnapshot {
         let mut net_positions = BTreeMap::new();
         for symbol in symbols {
             anyhow::ensure!(
-                symbol
-                    .strip_suffix("_USDC_PERP")
-                    .is_some_and(|base| !base.is_empty()
-                        && base
-                            .bytes()
-                            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())),
+                crate::config::is_valid_usdc_perp_symbol(symbol),
                 "unsupported production symbol"
             );
             net_positions.insert(

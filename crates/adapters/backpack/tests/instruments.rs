@@ -572,3 +572,19 @@ fn test_provider_explicit_invalidation_after_transport_or_decode_failure() {
     provider.invalidate();
     assert_eq!(provider.all().count(), 0);
 }
+
+#[rstest]
+fn test_rwa_dotted_usdc_perp_market_parses_cleanly() {
+    let mut market = fixture(SOL);
+    market.symbol = "NVDA.US_USDC_PERP".to_string();
+    market.base_symbol = "NVDA.US".to_string();
+    market.extra.insert("rwaMarketType".to_string(), json!("STOCK"));
+    let selected = config(&["NVDA.US_USDC_PERP"]);
+    let metadata = parse_market(&market, &selected, UnixNanos::from(10)).unwrap();
+    let instrument = metadata.to_instrument(Some(&synthetic_economics())).unwrap();
+    assert_eq!(
+        instrument.id,
+        InstrumentId::from_str("NVDA.US_USDC_PERP.BACKPACK").unwrap()
+    );
+    assert_eq!(instrument.raw_symbol.as_str(), "NVDA.US_USDC_PERP");
+}

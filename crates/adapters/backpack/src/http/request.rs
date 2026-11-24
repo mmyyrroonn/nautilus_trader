@@ -128,12 +128,7 @@ impl BackpackReadRequest {
             let value = parameters.get(key).ok_or_else(invalid)?;
             let valid = match (key, value) {
                 ("symbol", BackpackScalar::Token(symbol)) => {
-                    symbol.strip_suffix("_USDC_PERP").is_some_and(|base| {
-                        !base.is_empty()
-                            && base
-                                .bytes()
-                                .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit())
-                    })
+                    crate::config::is_valid_usdc_perp_symbol(symbol)
                 }
                 ("orderId", BackpackScalar::Token(_)) => true,
                 ("marketType", BackpackScalar::Token(kind)) => kind == "PERP",
@@ -259,5 +254,14 @@ mod tests {
         )
         .unwrap();
         assert!(BackpackReadRequest::new(BackpackReadOperation::OpenOrder, p).is_err());
+
+        let mut rwa_p = BackpackParameters::default();
+        rwa_p
+            .insert(
+                "symbol",
+                Some(BackpackScalar::Token("NVDA.US_USDC_PERP".into())),
+            )
+            .unwrap();
+        assert!(BackpackReadRequest::new(BackpackReadOperation::Depth, rwa_p).is_ok());
     }
 }
